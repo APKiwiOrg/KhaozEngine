@@ -26,7 +26,8 @@
 
 name: cross-platform-gpu
 
-# Cost control: the macOS leg bills at 10x, so don't fire this matrix on EVERY push. On push it runs
+# Cost control: the Metal leg runs on the self-hosted dev Mac (free), but the D3D11 (2x) and Vulkan (1x)
+# legs still bill on GitHub-hosted runners, so don't fire this matrix on EVERY push. On push it runs
 # only when something that can change a GPU golden is touched (rendering stack, the GPU seam, the GPU
 # test dir, or this workflow). Docs/netcode/etc. pushes skip it. PRs + manual bake still run as before.
 concurrency:
@@ -59,21 +60,29 @@ on:
 jobs:
   gpu-golden:
     name: ${{ matrix.os }} / ${{ matrix.backend }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     # All three desktop backends are validated and blocking: Metal (macOS), Direct3D11 (Windows/WARP), and
     # Vulkan (Linux/Mesa lavapipe). Goldens are tolerance-based (32x18 averaged grid), robust to software-
     # rasterizer noise. If the lavapipe leg ever flakes on a runner-image change, re-add
     # `continue-on-error: ${{ matrix.backend == 'vulkan' }}` here to drop it back to informational.
+    #
+    # Runner split (engine is private, so hosted minutes bill): the Metal leg runs on the self-hosted dev
+    # Mac (real Metal, free, and where the metal golden is baked so it matches). D3D11/Vulkan are software
+    # rasterizers with no local host, so they stay GitHub-hosted; both are path-gated (rare) => trivial spend.
+    # The matrix keys stay on `os` (drives the OS-specific setup steps + the leg name); `runner` picks where.
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-14
             backend: metal
+            runner: [self-hosted, macOS, ARM64]
           - os: windows-latest
             backend: direct3d11
+            runner: windows-latest
           - os: ubuntu-latest
             backend: vulkan
+            runner: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 

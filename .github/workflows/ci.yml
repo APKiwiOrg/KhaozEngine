@@ -13,8 +13,12 @@ on:
     branches: [ main ]
 
 jobs:
+  # Full build/test/pack/publish on the self-hosted arm64 Linux container (free minutes; the engine is
+  # private so GitHub-hosted minutes bill). The engine's x64 FP-determinism net is asserted separately in
+  # `determinism-x64` below, so DeterministicFp is EXCLUDED here rather than run on arm64 where its
+  # byte-identical guarantee is not defined.
   build-test-pack:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64, apple-container]
     permissions:
       contents: read
       packages: write
@@ -33,11 +37,29 @@ jobs:
       - run: mkdir -p local-feed
       - run: dotnet restore
       - run: dotnet build -c Release --no-restore
-      # Exclude live-socket smokes (real UDP, fixed port) from CI: they are a manual/local smoke, covered
-      # headlessly by LoopbackTransport. Run them locally with the full (unfiltered) test command.
-      - run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
-      # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes.
-      # (The default run above covers ambient tiering; these pin the two extremes explicitly.)
+      # Exclude live-socket smokes (real UDP, fixed port): a manual/local smoke, covered headlessly by
+      # LoopbackTransport. Exclude DeterministicFp: asserted on the x64 sentinel (see determinism-x64).
+      # Run the full suite locally with the unfiltered test command.
+      - run: dotnet test -c Release --no-build --filter "Category!=LiveSocket & FullyQualifiedName!~DeterministicFp"
+      - run: dotnet pack -c Release -o ./artifacts --no-build
+      - name: Publish to GitHub Packages (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        # Pushes all packed packages; --skip-duplicate means only newly-versioned ones actually publish.
+        run: dotnet nuget push "./artifacts/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
+
+  # The x64 FP-determinism net: the engine's determinism guarantee is verified on x64 (the arch the dev
+  # Mac is not). Deliberately the ONLY GitHub-hosted leg of the inner-loop CI - keep it minimal: build +
+  # the DeterministicFp tests under both JIT tiering modes (byte-identical under 0 and 1). ~1x, a few min.
+  determinism-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: mkdir -p local-feed
+      - run: dotnet restore
+      - run: dotnet build -c Release --no-restore
       - name: Determinism under JIT tiering 0 and 1
         run: |
           for tc in 0 1; do
@@ -45,8 +67,3 @@ jobs:
             DOTNET_TieredCompilation=$tc dotnet test -c Release --no-build \
               --filter "FullyQualifiedName~DeterministicFp"
           done
-      - run: dotnet pack -c Release -o ./artifacts --no-build
-      - name: Publish to GitHub Packages (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        # Pushes all packed packages; --skip-duplicate means only newly-versioned ones actually publish.
-        run: dotnet nuget push "./artifacts/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate

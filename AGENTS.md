@@ -60,10 +60,15 @@ version/release work.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
-- **Public repo, free CI.** `KhaozEngine` is public under the `APKiwiOrg` org, so its CI (including the
-  cross-platform GPU goldens on macOS/Windows/Linux) runs free on GitHub-hosted runners. The private
-  games instead run CI on self-hosted runners on the dev Mac; the fleet-wide CI model (org, both
-  runners, secretless OIDC, macOS arm64-only) is in `game-template/docs/CI-AND-RUNNERS.md`.
+- **Private repo, mostly self-hosted CI.** `KhaozEngine` is a private repo under the `APKiwiOrg` org, so
+  GitHub-hosted minutes bill (Linux 1x, Windows 2x, macOS 10x). To avoid the 10x macOS cost, most CI runs
+  on the shared self-hosted fleet on the dev Mac: `ci.yml` build/test/pack/publish on the `apple-container`
+  arm64 Linux runner, and the `cross-platform-gpu.yml` Metal golden leg on the native `mac-native-arm64`
+  runner (real Metal, where the metal golden is baked). Two legs stay GitHub-hosted on purpose: the
+  D3D11 (Windows/WARP) and Vulkan (Linux/lavapipe) GPU goldens (no local host for those; software
+  rasterizers; path-gated so trivial spend), plus a tiny x64 determinism sentinel (`determinism-x64` in
+  `ci.yml`) that preserves the x64 FP-determinism net the arm64 fleet can't. The fleet-wide CI model (org,
+  both runners, secretless OIDC, macOS arm64-only) is in `game-template/docs/CI-AND-RUNNERS.md`.
 - **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
   (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
   warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`

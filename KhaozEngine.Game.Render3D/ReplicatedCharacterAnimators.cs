@@ -421,7 +421,12 @@ namespace KhaozEngine.Game
                         Character = _factory() ?? throw new InvalidOperationException("the AnimatedCharacter factory returned null."),
                         PrevPosition = s.Position,
                         HasPrev = false,
-                        Yaw = 0f,
+                        // Seed the first-observation yaw from an explicit server-authoritative facing when the sample
+                        // supplies one, so a server-faced entity SPAWNS already facing correctly instead of turning in
+                        // from the default yaw 0 over several frames. The seed matches the facing target below
+                        // (FacingYaw + FacingYawOffset), so the first frame's LerpAngle has zero delta and holds it.
+                        // No explicit facing -> default 0 (the derived path turns in from travel as before).
+                        Yaw = s.FacingYaw.HasValue ? s.FacingYaw.Value + _tuning.FacingYawOffset : 0f,
                     };
                     _entries[s.Id] = e;
                 }

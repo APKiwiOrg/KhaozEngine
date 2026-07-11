@@ -685,5 +685,36 @@ namespace KhaozEngine.Tests.Game
             Vector3 held = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
             Assert.True(held.X > 0.95f, $"yaw should hold below threshold with no explicit facing, got {held}");
         }
+
+        [Fact]
+        public void ExplicitFacing_SeedsSpawnYaw_FacesCorrectlyOnTheFirstFrame()
+        {
+            // Spawn seeding: a first-observation sample carrying explicit facing renders already facing that yaw on the
+            // FIRST frame, instead of turning in from the default yaw 0 over several frames. Without the seed, frame one
+            // is only LerpAngle(0, target, YawSmoothing) - a fraction of the way - and here YawSmoothing < 1 (the
+            // stationary convergence test above loops to settle), so the seedless first frame would face nowhere near
+            // +X. A single Update proves the seed.
+            var a = NewAnimators();
+            float target = MathF.PI / 2f;   // face +X
+            a.Update(new[] { new CharacterSample(1, new Vector3(2, 0, -3)).WithFacingYaw(target) }, Dt);
+
+            Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd.X > 0.999f, $"spawn should already face +X on frame one, got {fwd}");
+            Assert.True(MathF.Abs(fwd.Z) < 0.01f, $"expected ~0 Z on frame one, got {fwd}");
+        }
+
+        [Fact]
+        public void ExplicitFacing_SpawnSeed_ComposesFacingYawOffset_OnTheFirstFrame()
+        {
+            // The spawn seed composes FacingYawOffset exactly as the running facing target does: an explicit facing of 0
+            // with a +pi asset offset spawns facing -Z on frame one (not the seedless partial turn from +Z).
+            var tuning = CharacterAnimatorTuning.Default;
+            tuning.FacingYawOffset = MathF.PI;   // asset authored facing -Z
+            var a = NewAnimators(tuning);
+            a.Update(new[] { new CharacterSample(1, Vector3.Zero).WithFacingYaw(0f) }, Dt);
+
+            Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd.Z < -0.999f, $"spawn seed must compose the offset, facing -Z on frame one, got {fwd}");
+        }
     }
 }

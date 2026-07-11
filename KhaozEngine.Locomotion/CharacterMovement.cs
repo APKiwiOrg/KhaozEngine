@@ -281,6 +281,21 @@ public static class CharacterMovement
             float climbCap = MathF.Max(terrainGroundY, s.Position.Y + t.MaxStepClimbSpeed * dt);
             if (pos.Y > climbCap)
             {
+                // Pace the climb as a COHERENT unit. When the rise came from mounting discrete step geometry (a
+                // stair riser - steppedUp), scale the WHOLE step-up displacement by the same ratio the vertical is
+                // capped by, not just pos.Y. Capping Y alone let the step-up's forward teleport (a full probe length,
+                // ~one radius) race ahead horizontally while the vertical lagged; with the forward then blocked by the
+                // next riser, the leftover horizontal speed projected SIDEWAYS along the tread and accumulated into the
+                // shaft wall, wedging an angled climb (and pulsing a fore-aft lurch even head-on). Scaling horizontal
+                // WITH vertical keeps the capsule on its intended line and the pace uniform - a stair now feels like a
+                // ramp. A NON-step rise (a prop-top/dome mount or the support settle) keeps the Y-only cap unchanged.
+                float rise = pos.Y - s.Position.Y;
+                if (steppedUp && rise > 1e-6f)
+                {
+                    float scale = (climbCap - s.Position.Y) / rise;   // in (0, 1): H advances in lock-step with the paced V
+                    pos.X = s.Position.X + (pos.X - s.Position.X) * scale;
+                    pos.Z = s.Position.Z + (pos.Z - s.Position.Z) * scale;
+                }
                 pos.Y = climbCap;
                 grounded = true;
                 tSinceGround = 0f;
@@ -656,7 +671,7 @@ public static class CharacterMovement
             // Step-up: only while grounded, only over a near-vertical contact (a riser/wall), only on the
             // horizontal remainder. Climbs a stair tread; a real wall has no ledge within StepHeight so it slides.
             if (grounded && MathF.Abs(n.Y) < StepUpNormalY &&
-                TryStepUp(world, capsule, pos, remaining, t, out Vector3 stepped))
+                TryStepUp(world, capsule, pos, remaining, n, t, out Vector3 stepped))
             {
                 steppedUp = true; steppedFloorY = stepped.Y;
                 pos = stepped;
@@ -749,13 +764,21 @@ public static class CharacterMovement
     /// walkable-slope ledge strictly higher than the start (a stair tread/curb). A vertical wall has no such ledge
     /// within StepHeight, so this returns false and the caller slides. Returns the stepped capsule centre.</summary>
     private static bool TryStepUp(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 remaining,
-        in MoveTuning t, out Vector3 stepped)
+        in Vector3 contactNormal, in MoveTuning t, out Vector3 stepped)
     {
         stepped = pos;
         Vector3 horiz = new(remaining.X, 0f, remaining.Z);
         float horizLen = horiz.Length();
         if (horizLen <= 1e-6f) return false;
-        Vector3 horizDir = horiz / horizLen;
+        // Probe forward PERPENDICULAR to the riser edge - straight UP the stairs (opposite the contact's horizontal
+        // normal) - not along the raw (possibly angled) move direction. An angled approach used to drive this probe
+        // SIDEWAYS: pressed against a stair-shaft side wall, the along-move probe swept into that wall, failed to
+        // advance, and the riser fell through to a wall-slide that killed the forward (up-stairs) motion - the climb
+        // wedged in the corner. Climbing square to the tread instead lets the side wall merely shave the lateral
+        // (a normal flat-ground wall slide) while the ascent continues. Falls back to the move direction when the
+        // contact normal has no usable horizontal component (degenerate one-sided hit).
+        Vector3 nHoriz = new(contactNormal.X, 0f, contactNormal.Z);
+        Vector3 horizDir = nHoriz.LengthSquared() > 1e-8f ? Vector3.Normalize(-nHoriz) : horiz / horizLen;
         float step = t.StepHeight;
         // Probe forward at least the capsule radius: the per-tick remainder after the contact is only a few mm
         // (walk speed * dt minus the swept distance), far too short to carry the raised capsule over the step lip

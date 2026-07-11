@@ -20,6 +20,43 @@ sealed class MatchScene : GameScene, IGameScene3D
 scenes.Draw3D(scene);
 ```
 
+## CharacterAvatar - the turnkey third-person character
+
+`CharacterAvatar` is the one object a game builds to get a moving, climbing, facing, animated, drawn character with
+no per-game glue. It composes the three pieces that already exist - `CharacterController3D` (the body: walking,
+slopes, smooth stair climbing, collision), `AnimatedCharacter` (the brain: idle/walk/run/jump/fall/swim clip
+selection), and `CharacterFacing` (which way to face) - and wires them the way every game was re-wiring them by hand.
+
+```csharp
+// Build once (TryLoadGltf does the rig load: skinned-ingest, map clip names to states, scale to the capsule):
+var controller = new CharacterController3D { CapsuleHalfHeight = 0.9f, CapsuleRadius = 0.4f };
+controller.SetXZ(spawnX, spawnZ);
+CharacterAvatar? avatar = CharacterAvatar.TryLoadGltf(scene, "assets/character/Player.glb", controller,
+    onFailure: reason => Console.WriteLine($"rig load failed ({reason}); using a capsule"));
+
+// Per frame - one call replaces the whole hand-rolled glue:
+avatar?.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, physics);
+// ...then in the 3D pass:
+avatar?.Draw(scene);
+```
+
+`Update` mirrors `CharacterController3D.Update` exactly, then internally: faces the INTENDED move direction (input +
+camera, never the collision-slid velocity, so a scraped wall cannot spin the model), advances the animation off the
+REAL collision-clamped horizontal speed plus the controller's grounded/vertical/swim state, and eases the facing at
+`MaxTurnRate`. `Draw` renders the skinned mesh at the capsule's feet with that facing and the capsule-match scale.
+`TryLoadGltf` returns `null` (never throws) on a missing/unreadable/skeleton-less/clip-less asset, so a game keeps a
+greybox fallback. The composed pieces stay usable on their own - a movement-only game uses `CharacterController3D`
+directly, a remote player uses `ReplicatedCharacterAnimators`, the facing math is the static `CharacterFacing` - the
+bundle is the convenient default, never a requirement. Client-cosmetic: pose and facing never feed sim or netcode.
+
+### CharacterFacing
+
+The canonical facing math, so games stop re-deriving it (and stop hitting the wall-spin bug that velocity-steered
+facing produces in tight spaces): `MoveAxis(input)` (the WASD axis, the single source `CharacterController3D` also
+reads so move and facing never diverge), `IntendedMoveDirection(input, cameraYaw)` (that axis rotated into the camera
+basis), `YawOf(direction)`, `TurnTowards(currentYaw, intendedDirection, maxTurnRate, dt)` (a bounded-rate,
+shortest-path turn that holds facing when no key is held), and `WrapAngle`.
+
 ## ReplicatedCharacterAnimators
 
 A render-free bridge that drives one skinned-character brain per networked entity from a per-frame list of

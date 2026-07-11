@@ -38,10 +38,6 @@ namespace KhaozEngine.Showcase
         const float CapsuleRadius = 0.3f;
         const float CapsuleHalfHeight = 0.9f;     // 1.8 m total (height 1.2 + 2*radius 0.6)
 
-        // Max yaw turn rate (rad/s) when facing toward horizontal motion, matching Room3D's animated-character
-        // facing turn bound (a one-frame collision jitter cannot snap the model).
-        const float MaxTurnRate = 12f;
-
         // The dungeon's props are hand-placed once at generation time and drawn every frame (not streamed),
         // same as Room3D's town buildings. The draw radius just needs to comfortably cover the generated
         // plot regardless of where the player wanders; the 128x128-tile plot at 3 m cells spans at most
@@ -93,14 +89,10 @@ namespace KhaozEngine.Showcase
         // stepped each frame and consulted by CharacterController3D, matching Room3D's pattern.
         BepuPhysicsWorld _physics = null!;
 
-        // Animated character (replaces the static capsule when the asset loads). Falls back to the greybox
-        // capsule if the asset is missing/unreadable, matching Room3D's TryLoadAnimatedCharacter.
-        SkinnedMeshHandle _characterMesh;
-        AnimatedCharacter _animChar = null!;
-        bool _animated;
-        float _charScale = 1f;
-        float _facingYaw;
-        Vector3 _prevCharPos;
+        // Turnkey animated character: CharacterAvatar (KhaozEngine.Game.Render3D) composes the controller + animation
+        // + collision-robust facing + draw. Null while the rig asset is missing/unreadable, in which case the room
+        // falls back to drawing the greybox capsule.
+        CharacterAvatar? _avatar;
 
         public RoomDungeon Init(Scene3D scene, Texture2D white, DpiFont hud)
         {
@@ -158,11 +150,15 @@ namespace KhaozEngine.Showcase
             };
             _character.SetXZ(ex, ez);
             _character.Update(InputState.Empty, 0f, 0f, GroundHeight, GroundNormal, _physics);
-            _prevCharPos = _character.Position;
 
-            // Animated character: skinned-ingest the committed Quaternius Universal CC0 rig. The capsule stays
-            // as a fallback if the asset is missing/unreadable.
-            TryLoadAnimatedCharacter(_scene);
+            // Wrap the controller in a CharacterAvatar: it skinned-ingests the committed Quaternius Universal CC0 rig,
+            // maps its clips, scales it to the capsule, and owns the facing + animation + draw. Null on any load
+            // failure, so the room keeps the greybox capsule.
+            _avatar = CharacterAvatar.TryLoadGltf(_scene,
+                Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb"), _character,
+                onFailure: reason => Console.WriteLine($"Character load failed ({reason}); falling back to the capsule."));
+            if (_avatar is not null)
+                Console.WriteLine($"Animated character loaded (scale {_avatar.ModelScale:0.00}).");
 
             _camera = new FollowCamera3D { Target = _character.Position, HeightOffset = 1.2f };
             _camera.Distance = 9f;
@@ -208,33 +204,13 @@ namespace KhaozEngine.Showcase
             // Physics world ticks once per frame before movement, matching Room3D's ordering.
             _physics.Step(dt);
 
-            _character.Update(Manager!.Input, dt, _camera.Yaw, GroundHeight, GroundNormal, _physics);
-
-            // Animate the character: horizontal speed from the XZ position delta over dt (reflects collision-clamped
-            // motion, so a wall-blocked walk still slows the walk-cycle), vertical state straight from the
-            // controller. But FACING is steered from the player's INTENDED move direction (camera-relative WASD),
-            // NOT the collision-resolved velocity. In the tight walled stairwell the capsule rubs the walls, so the
-            // resolved XZ delta gains a lateral/backward slide component; steering facing off that swings the model
-            // sideways or spins it a full 180. The intended direction is stable against wall contact, so the
-            // character faces the way it is trying to travel up the stairs. Client-cosmetic. (Room3D uses the same
-            // intent-steered facing; on open terrain intent and velocity agree, so its feel is unchanged.)
-            if (_animated && dt > 1e-5f)
-            {
-                Vector3 cur = _character.Position;
-                Vector3 d = cur - _prevCharPos; d.Y = 0f;
-                float horizSpeed = d.Length() / dt;
-
-                Vector3 intended = IntendedMoveDirection(Manager!.Input, _camera.Yaw);
-                if (intended.LengthSquared() > 1e-6f)
-                {
-                    float target = MathF.Atan2(intended.X, intended.Z);
-                    float delta = Wrap(target - _facingYaw);          // shortest signed angle, in (-pi, pi]
-                    float maxStep = MaxTurnRate * dt;                 // bounded yaw step this frame
-                    _facingYaw = Wrap(_facingYaw + Math.Clamp(delta, -maxStep, maxStep));
-                }
-                _animChar.Update(horizSpeed, _character.Grounded, _character.VerticalVelocity, dt);
-                _prevCharPos = cur;
-            }
+            // Drive the character. The avatar (when the rig loaded) owns movement + collision-robust facing (stable
+            // against the tight stairwell walls, so the model never spins) + animation in a single call; without it,
+            // drive the controller alone for the greybox capsule.
+            if (_avatar is not null)
+                _avatar.Update(Manager!.Input, dt, _camera.Yaw, GroundHeight, GroundNormal, _physics);
+            else
+                _character.Update(Manager!.Input, dt, _camera.Yaw, GroundHeight, GroundNormal, _physics);
 
             _camera.Target = _character.Position;
             _camera.AspectRatio = Manager!.FrameHeight > 0 ? (float)Manager!.FrameWidth / Manager!.FrameHeight : _camera.AspectRatio;
@@ -245,18 +221,16 @@ namespace KhaozEngine.Showcase
         {
             scene.DrawProps(_placements, _kitMeshes, _character.Position, PropDrawRadius);
 
-            // Draw the character so its feet sit on the ground (Position is the capsule centre, feet = centre - half).
-            Vector3 p = _character.Position;
-            float footY = p.Y - CapsuleHalfHeight;
-            if (_animated)
+            // Draw the character. The avatar draws its skinned mesh at the feet with the right facing/scale; without
+            // it, draw the greybox capsule (Position is the capsule centre, feet = centre - half).
+            if (_avatar is not null)
             {
-                Matrix4x4 model = Matrix4x4.CreateScale(_charScale)
-                                  * Matrix4x4.CreateRotationY(_facingYaw)
-                                  * Matrix4x4.CreateTranslation(p.X, footY, p.Z);
-                scene.DrawSkinned(_characterMesh, _animChar.Pose, model, Color.White);
+                _avatar.Draw(scene);
             }
             else
             {
+                Vector3 p = _character.Position;
+                float footY = p.Y - CapsuleHalfHeight;
                 scene.Draw(_capsule, Matrix4x4.CreateTranslation(p.X, footY, p.Z), new Color(0.85f, 0.55f, 0.25f, 1f));
             }
         }
@@ -274,7 +248,7 @@ namespace KhaozEngine.Showcase
             foreach (MeshHandle h in _kitMeshes.Values) _scene.UnloadMesh(h);
             _kitMeshes.Clear();
             _placements = null!;
-            if (_animated) _scene.UnloadSkinnedMesh(_characterMesh);
+            if (_avatar is not null) _scene.UnloadSkinnedMesh(_avatar.Mesh);
 
             _scene.CameraOverride = null;
 
@@ -284,87 +258,7 @@ namespace KhaozEngine.Showcase
             _scene.Post.Outline = true;
 
             _physics = null!;
-            _characterMesh = default;
-            _animChar = null!;
-            _animated = false;
-        }
-
-        // The player's INTENDED horizontal move direction in world XZ: the WASD axis (same mapping
-        // CharacterController3D reads) rotated into the camera basis (forward = the camera's look projected onto the
-        // ground), exactly the camera-relative basis CharacterMovement uses to build the desired move. Zero when no
-        // move key is held. Facing is steered off THIS rather than the collision-resolved velocity so wall contact
-        // in the stairwell cannot swing or spin the model. Matches Room3D's helper.
-        static Vector3 IntendedMoveDirection(in InputState input, float cameraYaw)
-        {
-            Vector2 axis = Vector2.Zero;
-            if (input.IsDown(Key.W)) axis.Y += 1f;
-            if (input.IsDown(Key.S)) axis.Y -= 1f;
-            if (input.IsDown(Key.D)) axis.X += 1f;
-            if (input.IsDown(Key.A)) axis.X -= 1f;
-            if (axis.LengthSquared() <= 1e-6f) return Vector3.Zero;
-
-            float s = MathF.Sin(cameraYaw), c = MathF.Cos(cameraYaw);
-            Vector3 forward = new(-s, 0f, -c);
-            Vector3 right = new(c, 0f, -s);
-            return right * axis.X + forward * axis.Y;
-        }
-
-        // Normalize an angle to (-pi, pi] so the facing turn always takes the shortest path. Matches Room3D's helper.
-        static float Wrap(float a)
-        {
-            a %= MathF.Tau;
-            if (a > MathF.PI) a -= MathF.Tau;
-            else if (a <= -MathF.PI) a += MathF.Tau;
-            return a;
-        }
-
-        // Skinned-ingest the committed Quaternius Universal CC0 character + its animation clips, map the clip
-        // names to the locomotion states, and build the AnimatedCharacter. On any failure the room keeps the
-        // capsule. Matches Room3D's TryLoadAnimatedCharacter exactly (same asset, same clip mapping).
-        void TryLoadAnimatedCharacter(Scene3D sc)
-        {
-            try
-            {
-                string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb");
-                (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
-                if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton; using the capsule."); return; }
-                _characterMesh = sc.LoadSkinnedMesh(charMesh, charMaps);
-
-                var byName = new Dictionary<string, AnimationClip>();
-                foreach (AnimationClip c in GltfLoader.LoadAnimations(charPath)) byName[c.Name] = c;
-                var clips = new Dictionary<LocomotionState, AnimationClip>();
-                void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
-                Map(LocomotionState.Idle, "Idle");
-                Map(LocomotionState.Walk, "Walk");
-                Map(LocomotionState.Run, "Run");           // a forward jog
-                Map(LocomotionState.Jump, "Jump");         // airborne loop (rising)
-                Map(LocomotionState.Fall, "Fall");         // airborne loop (descending)
-                Map(LocomotionState.SwimIdle, "SwimIdle"); // tread water (absent in this rig -> degrades to Idle)
-                Map(LocomotionState.Swim, "Swim");         // forward stroke (absent -> degrades to Idle)
-                if (clips.Count == 0) { Console.WriteLine("Character has no expected clips; using the capsule."); return; }
-
-                // Scale the model to ~the 1.8 m capsule height so it lines up with the camera + collision footprint.
-                float modelHeight = ModelHeight(charMesh);
-                _charScale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
-
-                // Thresholds split walk/run between the controller's 6 m/s walk and 12 m/s run.
-                _animChar = new AnimatedCharacter(charMesh.Skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
-                _animated = true;
-                Console.WriteLine($"Animated character: {charMesh.BoneCount} bones, states [{string.Join(", ", clips.Keys)}], scale {_charScale:0.00}.");
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Character load failed ({e.Message}); falling back to the capsule.");
-                _animated = false;
-            }
-        }
-
-        // Model-space height (max - min Y) of the rest mesh, for the capsule-match scale.
-        static float ModelHeight(SkinnedGltfMesh mesh)
-        {
-            float min = float.MaxValue, max = float.MinValue;
-            foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
-            return max - min;
+            _avatar = null;
         }
     }
 }

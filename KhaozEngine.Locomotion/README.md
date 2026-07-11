@@ -21,7 +21,11 @@ optional slope gate via a ground-normal delegate):
   below the gate) are followed; steep contacts block and redirect tangentially. A **step-up probe** wires
   `MoveTuning.StepHeight`: stair treads and curbs below `StepHeight` are mounted without a jump. Step-up climbing
   rises at a **bounded vertical rate** (`MoveTuning.MaxStepClimbSpeed`, default 3.5 m/s), so a stair run ascends at
-  a steady walking pace instead of snapping up a whole riser per tick. A low curb whose rise fits one tick's budget
+  a steady walking pace instead of snapping up a whole riser per tick. The whole step-up displacement is paced as a
+  unit (horizontal scaled in lock-step with the capped vertical) and the probe climbs **perpendicular to the riser
+  edge** (up the stairs, not along the raw move direction), so an off-axis approach ascends square to the treads and
+  merely slides along a shaft wall instead of leaking sideways and wedging - a stair climbs like a ramp at any
+  approach angle. A low curb whose rise fits one tick's budget
   still mounts in one tick, and `MaxStepClimbSpeed <= 0` restores the instant snap. Depenetration
   via `ComputePenetration` is retained as a residual settle pass. Pass `world: null` for terrain-only
   (byte-identical to pre-8.4.0).

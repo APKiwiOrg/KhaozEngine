@@ -1463,6 +1463,37 @@ state, not the reverse.
 
 ## Animated characters (glTF clip playback + locomotion blend)
 
+### Turnkey: `CharacterAvatar` (one `Update`/`Draw`)
+
+For a LOCAL third-person player, `CharacterAvatar` (`KhaozEngine.Game.Render3D`) is the one object to build. It
+composes `CharacterController3D` (movement + smooth stair climbing + collision) + `AnimatedCharacter` (clip brain) +
+`CharacterFacing` (facing) + the skinned draw, so you do NOT hand-wire the facing, the speed-derive, the animation
+feed, and the feet-draw matrix (that manual wiring is spelled out under *Under the hood* below, for when you need the
+pieces on their own):
+
+```csharp
+var controller = new CharacterController3D { CapsuleHalfHeight = 0.9f, CapsuleRadius = 0.4f };
+controller.SetXZ(spawnX, spawnZ);
+// TryLoadGltf does the rig load (skinned-ingest, map clip names to states, scale to the capsule); null on failure.
+CharacterAvatar? avatar = CharacterAvatar.TryLoadGltf(scene, "player.glb", controller,
+    onFailure: reason => Console.WriteLine($"rig load failed ({reason}); using a greybox"));
+
+// Per frame - Update mirrors CharacterController3D.Update, then faces the intended dir + animates:
+avatar?.Update(input, dt, cameraYaw, terrain.GroundHeight, terrain.GroundNormal, physics);
+avatar?.Draw(scene);   // draws the skinned mesh at the capsule's feet with the right facing + scale
+```
+
+It faces the player's INTENDED move direction (`CharacterFacing`, input steered by camera yaw), never the
+collision-slid velocity, so a wall/prop the capsule scrapes cannot spin the model; it feeds the animator the REAL
+collision-clamped horizontal speed plus the controller's grounded / vertical-velocity / swim state; and
+`TryLoadGltf` returns `null` (never throws) on a missing/unreadable/skeleton-less/clip-less asset so you can keep a
+greybox capsule fallback. Tune facing turn speed with `avatar.MaxTurnRate`. The composed pieces stay usable alone -
+`CharacterController3D` for a movement-only game, `ReplicatedCharacterAnimators` (below) for remote players, the
+static `CharacterFacing` for the facing math - the bundle is the convenient default, never a requirement.
+Client-cosmetic: pose and facing never feed sim or netcode.
+
+### Under the hood (the pieces `CharacterAvatar` composes)
+
 The skinned path above poses a mesh from bone matrices you supply. To play *authored glTF animation
 clips* (idle/walk/run/jump, plus swim/tread in water) and crossfade them off a character's movement, ingest the rig
 through the skinned loader (which now also reads the joint hierarchy) and read its clips:

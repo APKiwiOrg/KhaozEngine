@@ -60,15 +60,17 @@ version/release work.
 
 ## Build / test / release
 - `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
-- **Private repo, mostly self-hosted CI.** `KhaozEngine` is a private repo under the `APKiwiOrg` org, so
-  GitHub-hosted minutes bill (Linux 1x, Windows 2x, macOS 10x). To avoid the 10x macOS cost, most CI runs
-  on the shared self-hosted fleet on the dev Mac: `ci.yml` build/test/pack/publish on the `apple-container`
-  arm64 Linux runner, and the `cross-platform-gpu.yml` Metal golden leg on the native `mac-native-arm64`
-  runner (real Metal, where the metal golden is baked). Two legs stay GitHub-hosted on purpose: the
-  D3D11 (Windows/WARP) and Vulkan (Linux/lavapipe) GPU goldens (no local host for those; software
-  rasterizers; path-gated so trivial spend), plus a tiny x64 determinism sentinel (`determinism-x64` in
-  `ci.yml`) that preserves the x64 FP-determinism net the arm64 fleet can't. The fleet-wide CI model (org,
-  both runners, secretless OIDC, macOS arm64-only) is in `game-template/docs/CI-AND-RUNNERS.md`.
+- **Private repo, one self-hosted leg.** `KhaozEngine` is a private repo under the `APKiwiOrg` org, so
+  GitHub-hosted minutes bill (Linux 1x, Windows 2x, macOS 10x). The only expensive work is the macOS
+  Metal golden leg at 10x, so that ONE leg is self-hosted on the native `mac-native-arm64` runner (real
+  Metal, where the metal golden is baked); it kills the 10x. Everything else stays GitHub-hosted, where
+  it's cheap and native-complete: `ci.yml` build/test/pack/publish on x64 `ubuntu-latest` (1x, ~2 min,
+  within the free tier - and it MUST be x64: the engine test suite needs x64-only natives like
+  `libveldrid-spirv`, which ships linux-x64 but not linux-arm64, so it can't run on the arm64
+  self-hosted container), plus the `cross-platform-gpu.yml` D3D11 (Windows/WARP, 2x) and Vulkan
+  (Linux/lavapipe, 1x) golden legs (no local host, software rasterizers, path-gated so trivial spend).
+  The games' fleet-wide CI model (org, both runners, secretless OIDC, macOS arm64-only) is in
+  `game-template/docs/CI-AND-RUNNERS.md`.
 - **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
   (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
   warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`

@@ -69,3 +69,8 @@ public sealed record FlatAreaResult(float Radius, IReadOnlyList<FlatSpot> Spots)
 /// (terrain features, exclusions, scatter overrides).</summary>
 public sealed record MutationResult(string Verb, string Detail, bool WorldChanged,
     float? GroundY = null, string? Id = null, int? Index = null);
+
+/// <summary>Result of a region bake: the layer frozen, how many scatter props became authored placements, the ids
+/// of those baked placements (each <c>baked-&lt;layer&gt;-N</c>), and whether a covering exclusion was added to
+/// stop the frozen props from being re-scattered on top of themselves.</summary>
+public sealed record BakeResult(string Layer, int BakedCount, IReadOnlyList<string> BakedIds, bool ExclusionAdded);

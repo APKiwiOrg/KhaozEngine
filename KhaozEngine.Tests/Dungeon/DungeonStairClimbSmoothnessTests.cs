@@ -73,14 +73,17 @@ namespace KhaozEngine.Tests.Dungeon
         // Head-on: the ascent must be SMOOTH. Against the pre-fix instant step-up the capsule teleported a full
         // probe length (~one radius) forward on each mount tick and stalled between - a fore-aft lurch. This pins
         // that no single tick advances the capsule along the climb axis by more than a normal walk step, and that
-        // it never drifts sideways off the straight climb line.
-        [Fact]
-        public void HeadOnClimb_IsSmooth_NoLurch_NoLateralDrift()
+        // it never drifts sideways off the straight climb line. Run at BOTH the 0.4 stair-test radius and the 0.3
+        // demo radius: the geometry-robust mount must keep the cap (no lurch) on the stair run at either footprint.
+        [Theory]
+        [InlineData(0.4f)]
+        [InlineData(0.3f)]
+        public void HeadOnClimb_IsSmooth_NoLurch_NoLateralDrift(float capsuleRadius)
         {
             var (world, start, climb, perp, axisYaw, _, upperFloorY, halfH) = BuildClimb();
             using (world as IDisposable)
             {
-                MoveTuning tuning = MoveTuning.Default;
+                MoveTuning tuning = MoveTuning.Default with { CapsuleRadius = capsuleRadius };
                 var state = new MoveState { Position = start, Grounded = true };
                 var cmd = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: axisYaw, jump: false);
                 float GroundHeight(float x, float z) => start.Y - halfH;

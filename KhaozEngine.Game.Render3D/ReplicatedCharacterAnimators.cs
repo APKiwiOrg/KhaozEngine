@@ -17,9 +17,32 @@ namespace KhaozEngine.Game
     /// constructor so <see cref="HasMovement"/> is set and the grounded flag + vertical velocity are taken verbatim
     /// instead of derived; the fullest constructor additionally takes the exact planar speed
     /// (<see cref="CharacterSample.PlanarSpeed"/>) so the locomotion state is driven by the clean commanded speed, not
-    /// finite-differenced from the render position (no walk&lt;-&gt;idle flicker on a decel-to-stop).</summary>
+    /// finite-differenced from the render position (no walk&lt;-&gt;idle flicker on a decel-to-stop).
+    ///
+    /// Facing is derived from the position delta by default, but a sample may carry an EXPLICIT server-authoritative
+    /// facing yaw (<see cref="FacingYaw"/>, set via the position+facing constructor or <see cref="WithFacingYaw"/>).
+    /// When present it overrides the derived heading and turns the character in place even while stationary - for a
+    /// server-owned NPC tracking a target at melee range, a turret, a mount, or a player standing still and turning,
+    /// whose facing the server knows every tick but a position delta cannot reveal at rest.</summary>
     public readonly struct CharacterSample
     {
+        // Full-field constructor (private) backing WithFacingYaw: copies every field and overrides the facing yaw.
+        // Keeping it private avoids a public 10-arg overload; the public constructors below stay the documented surface.
+        CharacterSample(long id, Vector3 position, bool isLocal, bool hasMovement, bool grounded, float verticalVelocity,
+            bool swimming, bool hasPlanarSpeed, float planarSpeed, float? facingYaw)
+        {
+            Id = id;
+            Position = position;
+            IsLocal = isLocal;
+            HasMovement = hasMovement;
+            Grounded = grounded;
+            VerticalVelocity = verticalVelocity;
+            Swimming = swimming;
+            HasPlanarSpeed = hasPlanarSpeed;
+            PlanarSpeed = planarSpeed;
+            FacingYaw = facingYaw;
+        }
+
         /// <summary>Position-only sample: speed, vertical velocity, grounded, and swimming are all derived from the
         /// position delta vs the previous frame (swimming cannot actually be derived from position, so it reads false -
         /// pass an exact-movement constructor to animate swimming).</summary>
@@ -34,6 +57,7 @@ namespace KhaozEngine.Game
             Swimming = false;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
+            FacingYaw = null;
         }
 
         /// <summary>Sample with exact movement (the local player, or any entity whose replicated <c>MovementState</c>
@@ -51,6 +75,7 @@ namespace KhaozEngine.Game
             Swimming = swimming;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
+            FacingYaw = null;
         }
 
         /// <summary>Fullest sample (the local player): exact <see cref="Grounded"/>, <see cref="VerticalVelocity"/>,
@@ -72,6 +97,28 @@ namespace KhaozEngine.Game
             Swimming = swimming;
             HasPlanarSpeed = true;
             PlanarSpeed = planarSpeed;
+            FacingYaw = null;
+        }
+
+        /// <summary>Position + EXPLICIT facing sample: the position drives the derived planar speed / air state as the
+        /// position-only constructor does, but the facing yaw is taken as authoritative (see <see cref="FacingYaw"/>)
+        /// instead of derived from the heading. The simplest way to face a purely position-streamed entity where the
+        /// server owns the facing (a turret, an NPC standing still at melee range). <paramref name="facingYaw"/> is a
+        /// world yaw in radians about +Y (0 faces +Z; <see cref="CharacterAnimatorTuning.FacingYawOffset"/> still
+        /// composes). To attach explicit facing to an EXACT-movement sample (grounded / vertical / planar speed /
+        /// swimming) instead, build that sample and call <see cref="WithFacingYaw"/>.</summary>
+        public CharacterSample(long id, Vector3 position, float facingYaw, bool isLocal = false)
+        {
+            Id = id;
+            Position = position;
+            IsLocal = isLocal;
+            HasMovement = false;
+            Grounded = false;
+            VerticalVelocity = 0f;
+            Swimming = false;
+            HasPlanarSpeed = false;
+            PlanarSpeed = 0f;
+            FacingYaw = facingYaw;
         }
 
         /// <summary>Stable per-entity key (e.g. <c>NetId.Value</c>, 64-bit since 10.0.0). Identifies the brain across frames.</summary>
@@ -106,8 +153,25 @@ namespace KhaozEngine.Game
         public bool HasPlanarSpeed { get; }
 
         /// <summary>Exact planar (ground-plane) speed, m/s (only meaningful when <see cref="HasPlanarSpeed"/>). Drives
-        /// the idle/walk/run state and the clip-speed sync; facing still uses the derived heading.</summary>
+        /// the idle/walk/run state and the clip-speed sync; facing uses the derived heading UNLESS <see cref="FacingYaw"/>
+        /// is supplied.</summary>
         public float PlanarSpeed { get; }
+
+        /// <summary>Optional EXPLICIT facing yaw (world radians about +Y, 0 faces +Z), or null to derive facing from the
+        /// position delta as before. When set, <see cref="ReplicatedCharacterAnimators.Update"/> aims the character at
+        /// this yaw plus <see cref="CharacterAnimatorTuning.FacingYawOffset"/> through the existing
+        /// <see cref="CharacterAnimatorTuning.YawSmoothing"/> smoothing, so it turns in place even while stationary and
+        /// WINS over the position-derived heading even while moving (server authority over derivation). Null on every
+        /// existing constructor, so a caller that never supplies it behaves exactly as before. Sourced from whatever
+        /// yaw the game replicates for the entity (e.g. a per-entity facing component on a server-owned NPC).</summary>
+        public float? FacingYaw { get; }
+
+        /// <summary>Returns a copy of this sample carrying an explicit <paramref name="facingYaw"/> (world radians about
+        /// +Y, 0 faces +Z), preserving every other field. The orthogonal way to add server-authoritative facing to ANY
+        /// sample shape - position-only, exact-movement, or the fullest exact-speed sample - since facing is independent
+        /// of the movement/speed/swim data. <see cref="CharacterAnimatorTuning.FacingYawOffset"/> still composes on top.</summary>
+        public CharacterSample WithFacingYaw(float facingYaw) =>
+            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, HasPlanarSpeed, PlanarSpeed, facingYaw);
     }
 
     /// <summary>A draw-ready character produced by <see cref="ReplicatedCharacterAnimators.Update"/>: the world
@@ -165,7 +229,9 @@ namespace KhaozEngine.Game
         /// faster. Default 0.2.</summary>
         public float YawSmoothing;
 
-        /// <summary>Below this planar speed (m/s) the facing yaw is held (no spin at rest). Default 0.05.</summary>
+        /// <summary>Below this planar speed (m/s) the DERIVED facing yaw is held (no spin at rest). Ignored when a
+        /// sample carries an explicit <see cref="CharacterSample.FacingYaw"/> - server-authoritative facing turns in
+        /// place regardless of speed. Default 0.05.</summary>
         public float MinPlanarSpeedForFacing;
 
         /// <summary>When a sample carries no exact movement, |vertical velocity| below this (m/s) reads as grounded;
@@ -177,8 +243,9 @@ namespace KhaozEngine.Game
         /// directly. Default 1.</summary>
         public float Scale;
 
-        /// <summary>Radians added to the derived facing yaw. The bridge faces an asset whose rest pose looks down +Z;
-        /// set this (e.g. <see cref="MathF.PI"/>) for an asset authored facing another axis. Default 0.</summary>
+        /// <summary>Radians added to the facing yaw, whether it is derived from the heading OR supplied explicitly via
+        /// <see cref="CharacterSample.FacingYaw"/>. The bridge faces an asset whose rest pose looks down +Z; set this
+        /// (e.g. <see cref="MathF.PI"/>) for an asset authored facing another axis. Default 0.</summary>
         public float FacingYawOffset;
 
         /// <summary>Length (seconds) of the sliding window the bridge averages position displacement over to derive
@@ -267,7 +334,9 @@ namespace KhaozEngine.Game
     /// Per <see cref="Update"/>: a new id is created via the factory; a tracked id absent from the samples is dropped
     /// (no leak on disconnect); planar speed / vertical velocity / facing are derived from the position displacement
     /// averaged over a short window (so a plateauing / zero-delta position stream does not strobe the state; the
-    /// exact grounded flag + vertical velocity are used instead when the sample <see cref="CharacterSample.HasMovement"/>);
+    /// exact grounded flag + vertical velocity are used instead when the sample <see cref="CharacterSample.HasMovement"/>,
+    /// and the facing is taken from the sample's explicit <see cref="CharacterSample.FacingYaw"/> when supplied - which
+    /// turns the character in place at rest and overrides the derived heading while moving);
     /// the swim flag is exact-only (<see cref="CharacterSample.Swimming"/>, the replicated <c>MovementState.Swimming</c>
     /// bit) since a swimmer glides horizontally like a walker and cannot be told from one by position;
     /// the locomotion state machine inside <see cref="AnimatedCharacter"/> picks the clip. The set owns no GPU handle
@@ -397,20 +466,37 @@ namespace KhaozEngine.Game
                 // position because a swimmer glides horizontally like a walker. A position-only sample never swims.
                 bool swimming = s.HasMovement && s.Swimming;
 
-                // Facing: aim along the derived planar heading, but only while the entity is genuinely moving. The
-                // derived heading (from the render-position delta) swings around during the post-stop render settle -
-                // the local avatar's rendered position sags backward then recovers, so the delta briefly points
-                // backward/sideways - and chasing it spins the model for a few frames before it corrects. So gate on the
-                // EXACT planar speed too when it is supplied (the local player): at a real stop it is 0, holding the yaw
-                // through the settle. Remotes (no exact speed) gate on the derived speed alone as before. The derived
-                // magnitude is still required so there is a valid heading direction for the Atan2. Below the threshold
-                // the yaw holds (no spin at rest).
-                bool movingForFacing = derivedPlanarSpeed > _tuning.MinPlanarSpeedForFacing
-                    && (!s.HasPlanarSpeed || locomotionSpeed > _tuning.MinPlanarSpeedForFacing);
-                if (movingForFacing)
+                // Facing has two sources. EXPLICIT server-authoritative facing (CharacterSample.FacingYaw) WINS when the
+                // sample supplies it: the yaw target is the supplied facing plus the asset offset, run through the SAME
+                // LerpAngle smoothing (so the turn rate and the +/-pi wrap are shared with the derived path). It applies
+                // whether or not the entity is moving - server authority beats the position-derived heading - and it
+                // turns a STATIONARY entity in place (the derived path below holds the yaw at rest; explicit facing does
+                // not). That is the whole point of the seam: a server-owned NPC standing at melee range, a turret, a
+                // mount, or a player turning on the spot can face where the server says even though a position delta
+                // reveals nothing at rest.
+                //
+                // DERIVED facing (no explicit value) is unchanged: aim along the derived planar heading, but only while
+                // the entity is genuinely moving. The derived heading (from the render-position delta) swings around
+                // during the post-stop render settle - the local avatar's rendered position sags backward then recovers,
+                // so the delta briefly points backward/sideways - and chasing it spins the model for a few frames before
+                // it corrects. So gate on the EXACT planar speed too when it is supplied (the local player): at a real
+                // stop it is 0, holding the yaw through the settle. Remotes (no exact speed) gate on the derived speed
+                // alone as before. The derived magnitude is still required so there is a valid heading direction for the
+                // Atan2. Below the threshold the yaw holds (no spin at rest).
+                if (s.FacingYaw.HasValue)
                 {
-                    float target = MathF.Atan2(planarVel.X, planarVel.Z) + _tuning.FacingYawOffset;
+                    float target = s.FacingYaw.Value + _tuning.FacingYawOffset;
                     e.Yaw = LerpAngle(e.Yaw, target, _tuning.YawSmoothing);
+                }
+                else
+                {
+                    bool movingForFacing = derivedPlanarSpeed > _tuning.MinPlanarSpeedForFacing
+                        && (!s.HasPlanarSpeed || locomotionSpeed > _tuning.MinPlanarSpeedForFacing);
+                    if (movingForFacing)
+                    {
+                        float target = MathF.Atan2(planarVel.X, planarVel.Z) + _tuning.FacingYawOffset;
+                        e.Yaw = LerpAngle(e.Yaw, target, _tuning.YawSmoothing);
+                    }
                 }
 
                 e.Character.Update(locomotionSpeed, grounded, verticalVelocity, swimming, dt);

@@ -538,5 +538,152 @@ namespace KhaozEngine.Tests.Game
         static bool HasNaN(Matrix4x4 m) =>
             float.IsNaN(m.M11 + m.M12 + m.M13 + m.M14 + m.M21 + m.M22 + m.M23 + m.M24 +
                         m.M31 + m.M32 + m.M33 + m.M34 + m.M41 + m.M42 + m.M43 + m.M44);
+
+        // --- Explicit facing (server-authoritative facing yaw on the sample) --------------------------------------
+
+        // The world yaw baked into CharacterPose.World: forward = RotationY(yaw) * +Z = (sin yaw, 0, cos yaw).
+        static float YawOf(Matrix4x4 world)
+        {
+            Vector3 f = Vector3.TransformNormal(new Vector3(0, 0, 1), world);
+            return MathF.Atan2(f.X, f.Z);
+        }
+
+        // Wrap into (-pi, pi], mirroring the source's private WrapPi so the wrap assertions are self-contained.
+        static float WrapPi(float a)
+        {
+            const float twoPi = MathF.PI * 2f;
+            a %= twoPi;
+            if (a > MathF.PI) a -= twoPi;
+            else if (a < -MathF.PI) a += twoPi;
+            return a;
+        }
+
+        static bool AngleClose(float a, float b, float tol) => MathF.Abs(WrapPi(a - b)) < tol;
+
+        [Fact]
+        public void ExplicitFacing_Stationary_TurnsInPlaceTowardIt()
+        {
+            // The core gap this seam closes: a stationary character (zero position delta -> derived speed 0) can never
+            // turn under the derived path (facing holds below MinPlanarSpeedForFacing). With an explicit facing yaw it
+            // converges in place via the same LerpAngle smoothing, from the default yaw 0 (facing +Z) to +X.
+            var a = NewAnimators();
+            var pos = new Vector3(2, 0, -3);   // arbitrary fixed position: it never moves
+            float target = MathF.PI / 2f;      // face +X
+            for (int i = 0; i < 200; i++)
+                a.Update(new[] { new CharacterSample(1, pos).WithFacingYaw(target) }, Dt);
+
+            Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd.X > 0.99f, $"stationary character should turn in place to +X, got {fwd}");
+            Assert.True(MathF.Abs(fwd.Z) < 0.05f, $"expected ~0 Z, got {fwd}");
+        }
+
+        [Fact]
+        public void ExplicitFacing_PositionCtor_TurnsInPlace_SameAsWither()
+        {
+            // The position+facing convenience constructor is equivalent to a position-only sample + WithFacingYaw.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 200; i++)
+                a.Update(new[] { new CharacterSample(1, pos, facingYaw: -MathF.PI / 2f) }, Dt);   // face -X
+
+            Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd.X < -0.99f, $"position+facing ctor should face -X, got {fwd}");
+        }
+
+        [Fact]
+        public void ExplicitFacing_ConvergesToArbitraryYaw_AndRespectsWrapAcrossPi()
+        {
+            // Converge to a yaw just under +pi, then flip the target just past -pi (its short path crosses the +/-pi
+            // seam). LerpAngle+WrapPi must take the SHORT way (a tiny step over the seam), not unwind the long -6.1 rad
+            // way back through 0, and must converge to the new yaw.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 400; i++) a.Update(new[] { new CharacterSample(1, pos).WithFacingYaw(3.05f) }, Dt);
+            float yawBefore = YawOf(a.Live[0].World);
+            Assert.True(AngleClose(yawBefore, 3.05f, 0.02f), $"should have converged to +3.05, got {yawBefore}");
+
+            // One step toward -3.05: the wrapped delta is ~ +0.18 (short, across the seam), so the first step is small
+            // and positive-wrapped - NOT a big negative swing toward 0 (which the long way would produce).
+            a.Update(new[] { new CharacterSample(1, pos).WithFacingYaw(-3.05f) }, Dt);
+            float step = WrapPi(YawOf(a.Live[0].World) - yawBefore);
+            Assert.True(step > 0f && step < 0.1f, $"first step should be a small short-path step across pi, got {step}");
+
+            // And it converges to the new yaw (mod 2pi).
+            for (int i = 0; i < 400; i++) a.Update(new[] { new CharacterSample(1, pos).WithFacingYaw(-3.05f) }, Dt);
+            Assert.True(AngleClose(YawOf(a.Live[0].World), -3.05f, 0.02f), $"should converge to -3.05, got {YawOf(a.Live[0].World)}");
+        }
+
+        [Fact]
+        public void ExplicitFacing_WhileMoving_WinsOverTravelDirection()
+        {
+            // Server authority over derivation: an entity travelling +X (derived heading would face +X) but carrying an
+            // explicit facing of +Z must face +Z, while its locomotion state still derives from the motion. Uses the
+            // exact-movement (wolf) sample shape + WithFacingYaw, the motivating consumer path.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 200; i++)
+            {
+                pos += new Vector3(6f * Dt, 0, 0);   // travel +X at 6 m/s
+                a.Update(new[]
+                {
+                    new CharacterSample(1, pos, isLocal: false, grounded: true, verticalVelocity: 0f, swimming: false)
+                        .WithFacingYaw(0f)   // explicit facing = +Z (yaw 0)
+                }, Dt);
+            }
+
+            Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd.Z > 0.99f, $"explicit facing +Z must win over +X travel, got {fwd}");
+            Assert.True(MathF.Abs(fwd.X) < 0.05f, $"expected ~0 X, got {fwd}");
+            Assert.NotEqual(LocomotionState.Idle, a.Live[0].State);   // locomotion still derives from the motion
+        }
+
+        [Fact]
+        public void ExplicitFacing_ComposesFacingYawOffset()
+        {
+            // FacingYawOffset composes on top of the explicit yaw exactly as it does the derived yaw: an explicit facing
+            // of 0 with a +pi asset offset points the model -Z.
+            var tuning = CharacterAnimatorTuning.Default;
+            tuning.FacingYawOffset = MathF.PI;   // asset authored facing -Z
+            var a = NewAnimators(tuning);
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 200; i++) a.Update(new[] { new CharacterSample(1, pos).WithFacingYaw(0f) }, Dt);
+
+            Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd.Z < -0.99f, $"offset must compose on explicit facing (forward -Z), got {fwd}");
+        }
+
+        [Fact]
+        public void NoExplicitFacing_Moving_DerivesFacingFromTravel_Unchanged()
+        {
+            // Regression pin: with no explicit facing (null), a moving sample derives facing from travel exactly as
+            // before - the else branch is byte-for-byte the old path. Travel +Z -> face +Z.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 200; i++) { pos += new Vector3(0, 0, 6f * Dt); a.Update(new[] { Pos(1, pos) }, Dt); }
+
+            Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(fwd.Z > 0.99f, $"derived facing must follow +Z travel, got {fwd}");
+            Assert.True(MathF.Abs(fwd.X) < 0.05f, $"expected ~0 X, got {fwd}");
+        }
+
+        [Fact]
+        public void NoExplicitFacing_SubThresholdSpeed_StillHoldsYaw()
+        {
+            // Regression pin: below MinPlanarSpeedForFacing with NO explicit facing the yaw still holds (today's
+            // behavior). Converge facing +X by moving, then feed sub-threshold jitter - the yaw must not spin or snap.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 120; i++) { pos += new Vector3(6f * Dt, 0, 0); a.Update(new[] { Pos(1, pos) }, Dt); }
+            Vector3 moved = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(moved.X > 0.95f, $"expected facing +X after moving, got {moved}");
+
+            for (int i = 0; i < 30; i++)
+            {
+                pos += new Vector3(i % 2 == 0 ? 0.001f : -0.001f, 0, 0);   // planar speed well below 0.05 m/s
+                a.Update(new[] { Pos(1, pos) }, Dt);
+            }
+            Vector3 held = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
+            Assert.True(held.X > 0.95f, $"yaw should hold below threshold with no explicit facing, got {held}");
+        }
     }
 }

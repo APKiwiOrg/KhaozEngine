@@ -1633,6 +1633,26 @@ magnitude-only) but gates on the exact speed too (since 10.7.1), so at a real st
 that residual sag instead of spinning to chase the settling delta. Remotes still derive from the (windowed) position
 stream above.
 
+**Explicit server-authoritative facing.** By default facing is derived from the position delta, so a STATIONARY
+character can never turn in place (below `MinPlanarSpeedForFacing` the yaw holds). When the server owns an entity's
+facing every tick, even at rest (a server-owned NPC tracking a target at melee range, a turret, a ranged attacker, a
+mount, or a player standing still and turning), replicate that yaw and put it on the sample. It runs through the same
+`YawSmoothing` LerpAngle as the derived path (so the turn rate and the `+/-pi` wrap are shared), turns the character in
+place while stationary, and WINS over the derived heading while moving (server authority beats derivation).
+`FacingYawOffset` still composes for an asset not authored facing +Z.
+
+```csharp
+// Position-streamed entity (a turret): the position drives locomotion, the yaw is authoritative.
+samples.Add(new CharacterSample(e.Id.Value, feet, facingYaw: replicatedYaw));
+
+// Attach facing to ANY existing sample shape - facing is orthogonal to the movement/speed/swim data:
+samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming)
+    .WithFacingYaw(replicatedYaw));   // e.g. a server-owned NPC that also carries exact grounded/vertical/swim
+```
+
+`CharacterSample.FacingYaw` is a nullable `float?` (world radians about +Y, 0 faces +Z); every existing constructor
+leaves it null, so a consumer that never supplies it derives facing exactly as before.
+
 Even windowed, the derived speed ripples a little - the prediction/reconcile render stream is not perfectly
 smooth, and a remote's replicated position arrives as a ~30 Hz staircase - enough to occasionally cross a band
 threshold and, since `AnimationPlayer.Play` restarts a clip on every state change, reset the walk/run cycle to

@@ -78,7 +78,11 @@ exact-movement constructors (from the replicated `MovementState.Swimming` bit, s
 plays the forward `Swim` / tread `SwimIdle` clips; swim is exact-only, never derived (a swimmer glides horizontally
 like a walker, so position cannot tell them apart). Facing still takes its DIRECTION from the derived heading but
 gates on the exact speed too (when supplied), so the model holds its yaw through the post-stop render settle instead
-of spinning to chase it. See `docs/USING-KHAOZENGINE.md`.
+of spinning to chase it. For a server-authoritative facing (a server-owned NPC tracking a target at melee range, a
+turret, a mount, a player standing still and turning) a sample can carry an EXPLICIT facing yaw via
+`new CharacterSample(id, position, facingYaw, isLocal)` or `sample.WithFacingYaw(yaw)`: it turns the character in place
+even while stationary and wins over the derived heading while moving. `FacingYawOffset` still composes.
+See `docs/USING-KHAOZENGINE.md`.
 
 ### Locomotion states + clips
 

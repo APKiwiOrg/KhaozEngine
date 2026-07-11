@@ -210,17 +210,24 @@ namespace KhaozEngine.Showcase
 
             _character.Update(Manager!.Input, dt, _camera.Yaw, GroundHeight, GroundNormal, _physics);
 
-            // Animate the character off the same movement state as Room3D: horizontal speed from the XZ
-            // position delta over dt (reflects collision-clamped motion), facing turned toward the move
-            // direction at a bounded rate, vertical state straight from the controller. Client-cosmetic.
+            // Animate the character: horizontal speed from the XZ position delta over dt (reflects collision-clamped
+            // motion, so a wall-blocked walk still slows the walk-cycle), vertical state straight from the
+            // controller. But FACING is steered from the player's INTENDED move direction (camera-relative WASD),
+            // NOT the collision-resolved velocity. In the tight walled stairwell the capsule rubs the walls, so the
+            // resolved XZ delta gains a lateral/backward slide component; steering facing off that swings the model
+            // sideways or spins it a full 180. The intended direction is stable against wall contact, so the
+            // character faces the way it is trying to travel up the stairs. Client-cosmetic. (Room3D uses the same
+            // intent-steered facing; on open terrain intent and velocity agree, so its feel is unchanged.)
             if (_animated && dt > 1e-5f)
             {
                 Vector3 cur = _character.Position;
                 Vector3 d = cur - _prevCharPos; d.Y = 0f;
                 float horizSpeed = d.Length() / dt;
-                if (d.LengthSquared() > 1e-4f)   // raise the threshold so sub-cm jitter does not steer facing at all
+
+                Vector3 intended = IntendedMoveDirection(Manager!.Input, _camera.Yaw);
+                if (intended.LengthSquared() > 1e-6f)
                 {
-                    float target = MathF.Atan2(d.X, d.Z);
+                    float target = MathF.Atan2(intended.X, intended.Z);
                     float delta = Wrap(target - _facingYaw);          // shortest signed angle, in (-pi, pi]
                     float maxStep = MaxTurnRate * dt;                 // bounded yaw step this frame
                     _facingYaw = Wrap(_facingYaw + Math.Clamp(delta, -maxStep, maxStep));
@@ -280,6 +287,26 @@ namespace KhaozEngine.Showcase
             _characterMesh = default;
             _animChar = null!;
             _animated = false;
+        }
+
+        // The player's INTENDED horizontal move direction in world XZ: the WASD axis (same mapping
+        // CharacterController3D reads) rotated into the camera basis (forward = the camera's look projected onto the
+        // ground), exactly the camera-relative basis CharacterMovement uses to build the desired move. Zero when no
+        // move key is held. Facing is steered off THIS rather than the collision-resolved velocity so wall contact
+        // in the stairwell cannot swing or spin the model. Matches Room3D's helper.
+        static Vector3 IntendedMoveDirection(in InputState input, float cameraYaw)
+        {
+            Vector2 axis = Vector2.Zero;
+            if (input.IsDown(Key.W)) axis.Y += 1f;
+            if (input.IsDown(Key.S)) axis.Y -= 1f;
+            if (input.IsDown(Key.D)) axis.X += 1f;
+            if (input.IsDown(Key.A)) axis.X -= 1f;
+            if (axis.LengthSquared() <= 1e-6f) return Vector3.Zero;
+
+            float s = MathF.Sin(cameraYaw), c = MathF.Cos(cameraYaw);
+            Vector3 forward = new(-s, 0f, -c);
+            Vector3 right = new(c, 0f, -s);
+            return right * axis.X + forward * axis.Y;
         }
 
         // Normalize an angle to (-pi, pi] so the facing turn always takes the shortest path. Matches Room3D's helper.

@@ -6,6 +6,11 @@ selection with gizmos, and an undo/redo command stack, wrapped in a turn-key sce
 This package is **not** bundled in any umbrella (the `KhaozEngine.Server.Admin` precedent): add it
 explicitly to a game head that wants to edit its zone documents, so a shipping game never pulls the editor.
 
+`KhaozEngine.MapEdit.Tool` (the `ke-mapedit` MCP server) is also a consumer of this package, via
+`InternalsVisibleTo` rather than a game head: it reuses `MapEditorScene.ComputeOverlayDrawList`/
+`OverlayDraw` so its `render_topdown` PNGs paint the same exclusion, region, and feature overlays the
+GUI viewport does. See [`docs/MAP-EDITOR-DESIGN.md`](../docs/MAP-EDITOR-DESIGN.md).
+
 ## Quickstart
 
 Fill `MapEditorOptions` and push a `MapEditorScene` directly onto your `SceneManager`, the same way every

@@ -34,6 +34,13 @@ it, and `MapDocumentSchema.WriteTo(path)` materializes it into a game's data dir
 `$schema` reference resolves for editor/AI tooling and for `KhaozEngine.Content`'s build-time schema
 validator.
 
+Every closed structure (the document root, `bounds`, `terrain`, scatter layers, companion layers,
+placements, spawns, regions, exclusions, overrides, and each concrete shape) sets
+`additionalProperties: false`, so an unknown field anywhere on them fails validation. The one exception
+is deliberate: a `terrain.features` item only requires its `type` discriminator, because the feature
+union is registry-open (`MapDocRegistry.RegisterFeature`), and locking its fields to the built-in set
+would defeat a game's own feature type.
+
 ## Example document
 
 A small, complete `valley.map.json`:

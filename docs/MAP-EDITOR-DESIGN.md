@@ -226,7 +226,10 @@ editor-runtime cores. Never Fable-tier subagents.
     with numpad typing) after, and 10.55.0 apply-order and visibility (feature apply-order controls that
     reorder the fold order with Ctrl+Up/Down, R that snaps a placement to the ground undoably, and a
     visibility system with a Layers panel and per-selectable Visible toggles) after that. See CHANGELOG.
-- **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool. One release.
+- **Phase C (parallel after A, independent of B)**: ke-mapedit MCP tool, an MCP server over stdio
+  exposing 39 document, query, mutation, and headless-render verbs over the same `MapDoc` model the
+  GUI editor uses (`docs/USING-KHAOZENGINE.md` "ke-mapedit" section, `KhaozEngine.MapEdit.Tool`
+  README). Shipped in the next release after 10.55.0, version filled at release.
 - **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
   editor head and doc rewrite (after B).
 
@@ -246,7 +249,6 @@ READMEs, USING-KHAOZENGINE, DEPENDENCY-SEAMS, CHANGELOG).
 
 - Exact shape vocabulary for exclusions/overrides (disc and rect are certain, polygon cost
   is to be sized in Phase A).
-- Whether `find_flat_area` ships in the first MCP release or follows.
 - PropertyGrid descriptor API shape (explicit descriptors confirmed, exact fluent surface
   to be designed in Phase B).
 
@@ -258,12 +260,8 @@ questions above, which predate implementation. This section is what later review
 dispatches keep appending to. Same convention as the rest of the roadmap: delete an item
 once it ships, the detail moves to `CHANGELOG.md`.
 
-- **Format and schema (MapDoc)**: schema `additionalProperties` tightening for the closed
-  structures (or serializer `UnmappedMemberHandling`), once tooling generates documents.
-  Timing lines up with Phase C. Polygon shape end-to-end save/load round-trip test.
-  `MapTerrain` duplicates `TerrainConfig` defaults, a drift risk that is only partially
-  parity-tested. The Showcase demo's schema copy can drift from the canonical embedded
-  schema. Copy it at build time, or drop the `$schema` ref.
+- **Format and schema (MapDoc)**: `MapTerrain` duplicates `TerrainConfig` defaults, a drift risk that
+  is only partially parity-tested.
 - **Ruinborne adoption**: document-to-SQL spawn seed automation. `PostDeploy.sql` still
   hand-carries the wolf values, currently in agreement with the document. Retained
   constants (lake, town, rim, play area) are still read directly by game code. Migrate
@@ -316,9 +314,10 @@ once it ships, the detail moves to `CHANGELOG.md`.
   compute normals the unlit pass never uses. `RemoveExclusionCommand`'s raw indexing throws
   the wrong exception type for a bad index. No partial chunk invalidation, wholesale
   viewport rebuild is the perf ceiling for large zones. Inspector-driven terrain edits lag
-  the streamed world by one frame.
-- **Program phases**: Phase C, the `ke-mapedit` MCP server (document CRUD, world-aware
-  queries, headless renders). Phase D2, see Ruinborne adoption above. Sculpting via the
+  the streamed world by one frame. `Scene3D.UnloadSplatMaterial` needs a guard against a cleared
+  `_splatMaterials` list, so a `ViewportWorld` disposed after its owning `Scene3D` no longer throws
+  `ArgumentOutOfRangeException`. Found by ke-mapedit's `RenderService`, which documents the workaround
+  today: let the `Capture`-scoped scene own teardown instead of disposing the world explicitly.
+- **Program phases**: Phase D2, see Ruinborne adoption above. Sculpting via the
   reserved `terrainOverrides` delta layer. Live server editing and hot reload. Multi-user
-  editing. Polygon click-path authoring gesture for exclusions and regions. The
-  `find_flat_area` MCP verb: ship in the first MCP release, or follow.
+  editing. Polygon click-path authoring gesture for exclusions and regions.

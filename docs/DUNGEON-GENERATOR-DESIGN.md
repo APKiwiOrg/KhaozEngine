@@ -9,7 +9,7 @@ A render-free, deterministic, multi-level dungeon generator shipped as a new Fou
 whose output is provably completable by construction and re-verified by an always-on solver. Two sinks
 consume the layout: a MapDoc bake (static, editor-visible content) and a runtime stamp (placements plus
 3D static collision for an authoritative server). A thin CLI exposes generate/preview/verify/bake for
-collaborative human+AI dungeon building, with verbs designed to be absorbed by the planned `ke-mapedit`
+collaborative human+AI dungeon building, with verbs designed to be absorbed by the `ke-mapedit`
 MCP server.
 
 ## Decisions
@@ -131,7 +131,8 @@ Games swap in real kits via the same asset-manifest contract.
    - `preview`: per-floor top-down PNGs of the tile grid via `KhaozEngine.Imaging.PngWriter` (no GPU).
    - `verify`: run `DungeonSolver` on a layout JSON.
    - `bake`: emit into a `MapDocument` at a plot transform.
-3. The planned `ke-mapedit` MCP server absorbs these as verbs 1:1 when it lands. Nothing thrown away.
+3. `ke-mapedit` (shipped, `KhaozEngine.MapEdit.Tool`) absorbs these as verbs 1:1 once this generator
+   lands. Nothing thrown away.
 
 ## Error handling
 

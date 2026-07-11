@@ -68,6 +68,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Localization.TestKit** | Test-only localization coverage guard for a game's **test project**: `LocalizationCoverage.AssertComplete` takes a key universe (a keys class of `public const string` or `StringId` fields, the neutral resx's own entries via just a `ResourceManager`, or an explicit key sequence), then asserts every key resolves in the neutral resx AND in each shipped satellite with parent fallback disabled (a missing translation fails instead of silently reading the neutral language), plus placeholder-index integrity per culture. Framework-agnostic (throws `LocalizationCoverageException`, which fails any xUnit/NUnit/MSTest test). In NO umbrella - reference it explicitly from the test project. | App |
 | **KhaozEngine.Sfx.Tool** | The `ke-sfxbake` dotnet tool (`PackAsTool`): manifest-driven bulk SFX generation + bake. Reads a per-game `sfx.manifest.jsonc`, generates each effect via the ElevenLabs sound-effects REST API, encodes with ffmpeg/oggenc, idempotent via `.sfxmeta` sidecars. Author-time tool, not a runtime package. | Serialization |
 | **KhaozEngine.PropSurface.Tool** | The `ke-propbake` dotnet tool (`PackAsTool`): bakes a 3D collision `.coll` shape for every prop (trees get a leaning trunk-hull collider) and a walkable-surface `.surf` heightmap for walkable-solid props (rocks/logs/buildings) in a kit manifest, stamping the `surface`/`heightmap` fields and feeding `PropCollisionLoader` for physics wiring. Run as the last kit-ingest step (re-ingest = re-bake). Author-time tool, not a runtime package. | Render3D |
+| **KhaozEngine.MapEdit.Tool** | The `ke-mapedit` dotnet tool (`PackAsTool`): an MCP (Model Context Protocol) server over stdio exposing 39 document, query, mutation, and headless-render verbs over a `MapDoc` document, so an AI client edits a zone the same way the `MapEditor` GUI does. GPU is needed only for the two render verbs (`render_topdown`, `render_view`), everything else runs headless. Author-time tool, not a runtime package. | MapDoc, MapEditor, Imaging, ModelContextProtocol |
 
 **Umbrella metapackages** (code-free curated dependency groups - one `<PackageReference>` instead of a dozen):
 
@@ -194,6 +195,7 @@ KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngin
 KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk, map-editor rooms)
 SnapshotTool/ (also GPU-free `diff`/`score` subcommands)   MmoServerSample/ (reference dedicated MMO server)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
+KhaozEngine.MapEdit.Tool/ (ke-mapedit)
 tools/   docs/USING-KHAOZENGINE.md
 Directory.Build.props (shared version)   nuget.config   .github/workflows/ci.yml
 ```

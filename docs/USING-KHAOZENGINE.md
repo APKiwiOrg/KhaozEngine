@@ -2937,6 +2937,78 @@ mechanics, and the bake-region and rename mechanics in full.
 
 ---
 
+## ke-mapedit (`KhaozEngine.MapEdit.Tool`)
+
+The `ke-mapedit` dotnet tool is an MCP (Model Context Protocol) server over stdio: it opens, queries,
+mutates, validates, renders, and saves `KhaozEngine.MapDoc` documents, so an AI client edits a zone the
+same way `KhaozEngine.MapEditor`'s GUI does. Same document model, two frontends, so a git diff of the
+`.map.json` is the human review loop for either one.
+
+**Session model.** One document open at a time (`MapEditSession`): the current `MapDocument`, its path,
+the manifest paths it was opened with, a dirty flag, and a cached `TerrainField` invalidated by any
+world-affecting mutation (terrain features, terrain globals, exclusions, bake). `map_open` (or
+`map_create`) replaces whatever was open, with no dirty guard, since the git diff is the safety net and
+`map_summary` reports the dirty flag. Every mutation validates before it lands
+(`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
+into the thrown message on failure, so the in-session document is never left invalid.
+
+**Features and shapes cross the wire as JSON.** Terrain features (`featureJson`) and
+exclusion/region/override shapes (`shapeJson`) are registry-open or polymorphic unions, so they cross
+the MCP boundary as raw JSON strings parsed with the open document's own serializer options rather than
+typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
+"depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
+
+**Verb surface (39 tools).**
+
+| Group | Verbs |
+|---|---|
+| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area` |
+| Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
+| Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
+| Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder` |
+| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region` |
+| Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
+| Renders | `render_topdown`, `render_view` |
+
+`render_topdown` and `render_view` are the only two that need a GPU (`Render3DSnapshot.Capture`, the
+engine's one public headless render entry), and return a PNG `ImageContentBlock` directly, no files
+written. Every other verb runs headless on a machine with no display. `map_open`/`map_create` take
+optional asset manifest paths so a render resolves placement kinds the same way the game does, without
+them a render is terrain-only.
+
+**Wiring into Claude Code.** Register the tool as an MCP server, repo-local for development:
+
+```bash
+claude mcp add ke-mapedit -- dotnet run --project /path/to/KhaozEngine.MapEdit.Tool -c Debug
+```
+
+Or against the packaged tool, once installed (`dotnet tool install --global
+KhaozEngine.MapEdit.Tool`):
+
+```bash
+claude mcp add ke-mapedit -- ke-mapedit
+```
+
+Equivalent `.mcp.json` entry (repo-local form):
+
+```json
+{
+  "mcpServers": {
+    "ke-mapedit": {
+      "command": "dotnet",
+      "args": ["run", "--project", "/path/to/KhaozEngine.MapEdit.Tool", "-c", "Debug"]
+    }
+  }
+}
+```
+
+Full verb-by-verb reference, the manifest-path and error-mapping details, and the document format:
+the [`KhaozEngine.MapEdit.Tool` README](../KhaozEngine.MapEdit.Tool/README.md) and the
+[`KhaozEngine.MapDoc` README](../KhaozEngine.MapDoc/README.md).
+
+---
+
 ## Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)
 
 The movement math lives in one render-free place so local feel and networked feel are the same code.

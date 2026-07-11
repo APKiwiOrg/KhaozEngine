@@ -86,6 +86,11 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceSet _defaultSet;   // UBO + white + flatNormal + defaultRough + sampler; bound for meshes with no material set
         IGpuPipeline _pipeline = null!;         // rebuilt by SetOutputs when the MRT sample count (MSAA) changes (set via BuildPipelines)
         readonly IGpuShaderSet _shaders;
+        // Teleport CharDissolve variant: the SAME layout + vertex/instance layouts + outputs as _pipeline, only the
+        // fragment shader differs (noise alpha-clip + emissive edge). A separate pipeline so the normal skinned/rigid
+        // path keeps _pipeline byte-identical (the golden images are unaffected); selected per-draw by BindDissolvePass.
+        IGpuPipeline _dissolvePipeline = null!;
+        readonly IGpuShaderSet _dissolveShaders;
 
         // Splat-terrain pipeline (5-layer texture-array PBR, weights in vertex Color, triplanar). Shares _ubo
         // (frame uniforms) and the instance buffer; its own layout/sampler/shaders/pipeline.
@@ -162,6 +167,7 @@ namespace KhaozEngine.Render3D.Rendering
                 _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
+            _dissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
 
             // ONE descriptor set, ONE uniform buffer: the splat material's combined UBO carries the frame uniforms
             // (re-synced each frame, see WriteFrameUniformsTo) PLUS the per-material splat params appended at offset
@@ -197,7 +203,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// materials survive the rebuild.</summary>
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
-            _pipeline.Dispose(); _splatPipeline.Dispose();
+            _pipeline.Dispose(); _splatPipeline.Dispose(); _dissolvePipeline.Dispose();
             BuildPipelines(_gd.Factory, modelOutputs);
         }
 
@@ -241,6 +247,25 @@ namespace KhaozEngine.Render3D.Rendering
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _shaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
+                Outputs = modelOutputs,
+            });
+
+            // CharDissolve variant: identical to _pipeline except the fragment shader (noise alpha-clip + edge).
+            _dissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            {
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[]
+                {
+                    GpuBlendAttachment.OverrideBlend,
+                    GpuBlendAttachment.OverrideBlend,
+                    GpuBlendAttachment.OverrideBlend,
+                },
+                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
+                Topology = GpuPrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _layout },
+                ShaderSet = _dissolveShaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
@@ -417,6 +442,11 @@ namespace KhaozEngine.Render3D.Rendering
         /// material's combined UBO must already hold this frame's uniforms (<see cref="WriteFrameUniformsTo"/>).</summary>
         public void BindSplatPass(IGpuCommandList cl) => cl.SetPipeline(_splatPipeline);
 
+        /// <summary>Bind the CharDissolve pipeline variant for the skinned draws that carry a dissolve threshold (the
+        /// SpecParams.z/.w channels drive the noise alpha-clip + emissive edge). Same material sets + frame UBO as
+        /// <see cref="BindPass"/>; switch back with <see cref="BindPass"/> for non-dissolving draws.</summary>
+        public void BindDissolvePass(IGpuCommandList cl) => cl.SetPipeline(_dissolvePipeline);
+
         /// <summary>Draw one splat-terrain mesh run through the splat pipeline, reusing the shared instance buffer
         /// (terrain instances are identity-transform, white-tint). <paramref name="splatSet"/> carries the material's
         /// combined UBO + texture arrays + sampler. <see cref="BindSplatPass"/> must be bound.</summary>
@@ -528,6 +558,7 @@ namespace KhaozEngine.Render3D.Rendering
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
             _shaders.Dispose();
+            _dissolvePipeline.Dispose(); _dissolveShaders.Dispose();
             _splatPipeline.Dispose(); _splatLayout.Dispose(); _splatShaders.Dispose(); _terrainSampler.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();

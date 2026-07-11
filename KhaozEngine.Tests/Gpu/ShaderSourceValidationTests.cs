@@ -23,6 +23,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>WaterVert+WaterFrag (WaterRenderer animated water surface)</item>
     /// <item>FullscreenVert paired with each post fragment PaletteFrag/EdgeFrag/BlitFrag/FxaaFrag/BloomBrightFrag/
     /// BloomBlurFrag/BloomCompositeFrag (PixelPostProcess)</item>
+    /// <item>FullscreenVert+TransitionSolidFrag/TransitionCrossfadeFrag (TransitionRenderer), ModelVert+ModelDissolveFrag (CharDissolve)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
     /// </list>
     /// </summary>
@@ -99,6 +100,18 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void PostBloomComposite()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.BloomCompositeFrag, "PostBloomComposite");
+
+        [Fact]
+        public void TransitionSolid()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TransitionSolidFrag, "TransitionSolid");
+
+        [Fact]
+        public void TransitionCrossfade()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TransitionCrossfadeFrag, "TransitionCrossfade");
+
+        [Fact]
+        public void ModelDissolve()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, "ModelDissolve");
 
         [Fact]
         public void Sprite2D()

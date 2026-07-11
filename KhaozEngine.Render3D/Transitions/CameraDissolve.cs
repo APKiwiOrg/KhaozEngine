@@ -7,8 +7,15 @@ namespace KhaozEngine.Render3D
     /// destination (login/reconnect). The scene captures the frame when this becomes active and blends frozen->live by
     /// <see cref="ITransition.Cover"/> (1 = fully frozen, 0 = fully live).
     /// </summary>
-    public sealed class CameraDissolve : Transition
+    public sealed class CameraDissolve : Transition, IScreenTransition
     {
+        /// <inheritdoc/>
+        public ScreenTransitionStyle Style => ScreenTransitionStyle.FrozenCrossfade;
+
+        /// <summary>Unused by the crossfade (it samples the frozen frame); present to satisfy
+        /// <see cref="IScreenTransition"/>.</summary>
+        public Primitives.Color Color => Primitives.Color.White;
+
         /// <summary>Creates a camera dissolve. Covers instantly (the frozen frame); defaults: hold up to 1.5s for
         /// streaming, crossfade to the live view over ~0.35s.</summary>
         public CameraDissolve(float holdTimeoutSeconds = 1.5f, float revealSeconds = 0.35f)

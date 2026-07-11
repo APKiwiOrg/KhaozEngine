@@ -8,8 +8,11 @@ namespace KhaozEngine.Render3D
     /// reveals in ~0.08s. Hides the teleport jump and destination pop-in. The scene draws a fullscreen quad of
     /// <see cref="Color"/> at opacity <see cref="ITransition.Cover"/>.
     /// </summary>
-    public sealed class HardBlink : Transition
+    public sealed class HardBlink : Transition, IScreenTransition
     {
+        /// <inheritdoc/>
+        public ScreenTransitionStyle Style => ScreenTransitionStyle.Solid;
+
         /// <summary>The colour the screen fades to at full cover (default opaque <see cref="Primitives.Color.Black"/>).
         /// The on-screen opacity each frame is <see cref="ITransition.Cover"/>.</summary>
         public Color Color { get; }

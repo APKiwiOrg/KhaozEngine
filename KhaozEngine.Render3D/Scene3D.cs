@@ -31,6 +31,7 @@ namespace KhaozEngine.Render3D
         readonly LineRenderer _lines;
         readonly FillRenderer _fills;
         readonly BillboardRenderer _billboards;
+        readonly TransitionRenderer _transitions;
         readonly TexturedBillboardRenderer _texBillboards;
         readonly BeamRenderer _beams;
         readonly TrailRenderer _trails;
@@ -186,6 +187,16 @@ namespace KhaozEngine.Render3D
         /// effects can share it.</summary>
         public float EffectTimeSeconds { get; set; }
 
+        /// <summary>
+        /// The active screen-space teleport transition (<see cref="HardBlink"/> / <see cref="CameraDissolve"/>, or a
+        /// custom <see cref="IScreenTransition"/>), drawn as a fullscreen pass over the final image each frame. The
+        /// consumer owns its lifecycle (Begin/Update on a teleport, gating the streaming hold); the scene captures the
+        /// frozen frame for a crossfade and renders the overlay. Null (the default) renders nothing extra, so a scene
+        /// with no transition is byte-identical. World-space effects (<see cref="CharDissolve"/>) are applied per-draw
+        /// via <c>DrawSkinned</c> instead, not here. NOT cleared by <see cref="Begin"/> - the host owns it.
+        /// </summary>
+        public IScreenTransition? ScreenTransition { get; set; }
+
         /// <summary>Maximum dynamic point lights consumed in one frame. <see cref="AddLight"/> accepts any number,
         /// but only the first <see cref="MaxPointLights"/> queued are uploaded (extras are dropped); the host is
         /// expected to pick the N nearest per frame so a dense bullet-hell stays within budget.</summary>
@@ -205,6 +216,8 @@ namespace KhaozEngine.Render3D
             _lines = new LineRenderer(gd, targetOutput);
             _fills = new FillRenderer(gd, targetOutput);
             _billboards = new BillboardRenderer(gd, targetOutput);
+            _transitions = new TransitionRenderer(gd, targetOutput);
+            _transitions.BindTargets(_res);
             // Textured billboards draw INTO the model MRT (depth-interleaved with meshes), so they target the model
             // framebuffer's output description, not the final target like the overlay renderers above.
             _texBillboards = new TexturedBillboardRenderer(gd, _res.ModelFB.Outputs);
@@ -633,6 +646,23 @@ namespace KhaozEngine.Render3D
             int slot = _skinnedInstances.Items.Count;
             ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
             _skinnedInstances.Add(h, model, tint, material);
+        }
+
+        /// <summary>As the material overload, but dissolves the mesh for a <see cref="CharDissolve"/> teleport:
+        /// <paramref name="dissolve"/> is the 0..1 threshold (0 = solid, 1 = fully gone; feed
+        /// <see cref="ITransition.Cover"/>), with a glowing emissive edge of <paramref name="edgeColor"/> and width
+        /// <paramref name="edgeWidth"/> (a fraction of the noise range). A <paramref name="dissolve"/> of 0 draws
+        /// exactly like the material overload (the normal pipeline), so it is safe to call unconditionally while
+        /// gating the value on the transition.</summary>
+        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint,
+            Material material, float dissolve, float edgeWidth, Color edgeColor)
+        {
+            if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
+            var entry = _skinnedMeshes[h.Index];
+            if (entry is null) return;
+            int slot = _skinnedInstances.Items.Count;
+            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
+            _skinnedInstances.Add(h, model, tint, material, dissolve, edgeWidth, edgeColor);
         }
 
         /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op; a
@@ -1148,6 +1178,7 @@ namespace KhaozEngine.Render3D
                 if (sampleChanged) _gd.WaitForIdle();
                 _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled);
                 _post.BindTargets(_res);
+                _transitions.BindTargets(_res);
                 if (sampleChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count
             }
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
@@ -1271,14 +1302,19 @@ namespace KhaozEngine.Render3D
                     var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
                     for (int v = 0; v < src.Length; v++)
                         _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
+                    bool dissolving = it.Dissolving;
                     _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
                     {
                         Model = it.World,
                         Tint = it.Tint,
-                        Emissive = it.Material.Emissive,
-                        SpecParams = new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
+                        // During a dissolve the emissive channel carries the edge colour; SpecParams.z/.w carry the
+                        // dissolve threshold + edge width (0 on a normal draw, so the values match the pre-dissolve path).
+                        Emissive = dissolving ? it.DissolveEdge : it.Material.Emissive,
+                        SpecParams = dissolving
+                            ? new Vector4(it.Material.Specular, it.Material.Shininess, it.DissolveThreshold, it.DissolveEdgeWidth)
+                            : new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
                     });
-                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet));
+                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving));
                 }
                 if (_cpuSkinnedDraws.Count > 0)
                     _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
@@ -1381,9 +1417,15 @@ namespace KhaozEngine.Render3D
             if (_cpuSkinnedDraws.Count > 0)
             {
                 _model.BindPass(cl);   // re-bind the model pipeline (the skinned draws follow the rigid run)
+                bool dissolveBound = false;
                 for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
                 {
                     var dr = _cpuSkinnedDraws[d];
+                    if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
+                    {
+                        if (dr.Dissolve) _model.BindDissolvePass(cl); else _model.BindPass(cl);
+                        dissolveBound = dr.Dissolve;
+                    }
                     _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
                 }
             }
@@ -1494,6 +1536,10 @@ namespace KhaozEngine.Render3D
             BuildSortedAlphaBillboards();
             if (_billboardAlpha.Count > 0)
                 _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
+
+            // Screen-space teleport transition (blink / frozen-frame crossfade): a fullscreen pass over everything,
+            // last so it masks the whole 3D frame. No-op (and byte-identical) when none is active.
+            _transitions.Render(cl, _res, target, ScreenTransition);
 
             if (EnableTiming)
             {
@@ -1691,6 +1737,7 @@ namespace KhaozEngine.Render3D
             _lines.Dispose();
             _fills.Dispose();
             _billboards.Dispose();
+            _transitions.Dispose();
             _texBillboards.Dispose();
             _beams.Dispose();
             _trails.Dispose();
@@ -1773,9 +1820,10 @@ namespace KhaozEngine.Render3D
             public readonly GpuIndexFormat IndexFormat;
             public readonly int BaseVertex;
             public readonly IGpuResourceSet? MaterialSet;
-            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet)
+            public readonly bool Dissolve;   // route through the CharDissolve pipeline variant
+            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet, bool dissolve = false)
             {
-                Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet;
+                Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve;
             }
         }
 

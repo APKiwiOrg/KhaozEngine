@@ -229,6 +229,25 @@ public static class CharacterMovement
             tSinceGround = s.TimeSinceGrounded + dt;
         }
 
+        // 4a. Stair-climb ground-stick. The paced step-up (4b) commits the capsule BELOW the tread it is mounting,
+        //     so on the ticks BETWEEN mounts (no step-up fired, the paced feet drifted more than a StepHeight below
+        //     the tread ahead) step 4's downward capsule probe - which returns only the HIGHEST surface under the
+        //     footprint and rejects it as too high - reports no support, and `grounded` flips false with a one-tick
+        //     gravity dip. On a stair that reads as the character stuttering airborne between steps and spamming the
+        //     fall animation. But the capsule is still resting on the LOWER treads its footprint spans: if it was
+        //     grounded last tick, is above the terrain floor (genuinely on a step run, not on flat ground), is not
+        //     rising ballistically (a jump owns vVel > 0), and a walkable surface still sits within reach beneath its
+        //     feet, it has not left the ground - hold it grounded. Uses the same feet-down ray fan the wall slide
+        //     trusts for "am I supported" (rays never hit the zero-normal degeneracy a capsule sweep can), so a real
+        //     walk-off-a-ledge - where no floor sits under the feet - still falls on the very next tick.
+        if (!grounded && vVel <= 0f && s.Grounded && world is not null &&
+            pos.Y > terrainGroundY + OnPropSkin && WalkableFloorUnderFeet(world, capsule, pos, t))
+        {
+            grounded = true;
+            tSinceGround = 0f;
+            if (vVel < 0f) vVel = 0f;
+        }
+
         // 4b. Smooth step-up climb: cap the per-tick RISE onto step/prop support above the terrain floor to
         //     MaxStepClimbSpeed. The step-up mounts a whole riser in one tick, so a dungeon stair run (12-18 risers
         //     of ~0.33 m) otherwise snaps up ~0.33 m per mounting tick - it reads as shooting/jerking up. This paces
@@ -246,10 +265,27 @@ public static class CharacterMovement
         //     re-resolves the support and rises another budget's worth, so the climb still reliably reaches the top.
         //     A low curb whose rise is within one tick's budget is unaffected (mounted in one tick as before), and
         //     MaxStepClimbSpeed <= 0 disables the pacing entirely (the pre-smoothing instant snap).
+        //
+        //     Grounded-through-the-climb: when the cap clamps pos.Y, the real support (the tread/prop the step-up
+        //     mounted) sits ABOVE the paced height, so the capsule is genuinely resting on the step run (its
+        //     footprint still spans the lower treads) while it rises toward the tread ahead - it is NOT airborne.
+        //     Left alone, the paced lag makes step 4's support probe miss the tread once it drifts more than a
+        //     StepHeight above the lagging feet, so `grounded` flips false and vVel goes negative for a few ticks
+        //     between steps - the capsule reads as briefly FALLING mid-climb, which spams the fall animation (the
+        //     10.61 climb jank). So while the cap is actively holding the capsule below its support, force it
+        //     grounded and kill any residual downward velocity: the committed height still lags smoothly for the
+        //     visible rise, but the movement state reports a steady grounded climb. Only reached when NOT rising
+        //     ballistically (vVel <= 0), so a jump is never grounded-forced here.
         if (vVel <= 0f && world is not null && t.MaxStepClimbSpeed > 0f)
         {
             float climbCap = MathF.Max(terrainGroundY, s.Position.Y + t.MaxStepClimbSpeed * dt);
-            if (pos.Y > climbCap) pos.Y = climbCap;
+            if (pos.Y > climbCap)
+            {
+                pos.Y = climbCap;
+                grounded = true;
+                tSinceGround = 0f;
+                if (vVel < 0f) vVel = 0f;
+            }
         }
 
         // 5. Jump after contact (UNCHANGED): grounded or within coyote-time, consume both windows.

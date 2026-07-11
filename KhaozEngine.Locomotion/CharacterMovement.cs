@@ -176,9 +176,10 @@ public static class CharacterMovement
             // no-lateral-amplification pin); holding the full XZ leaves the sideways position exactly where it was, so a
             // shove tick contributes zero lateral. A real descent keeps the along-move component >= 0 (forward-and-down)
             // and is untouched; flat-ground knockback fails the on-the-run gate (its carried Y is at the floor). Gated
-            // on the PREVIOUS state, not the post-shove pos, because a deep shove has already dropped pos by now.
+            // on the PREVIOUS state, not the post-shove pos, because a deep shove has already dropped pos by now,
+            // and excludes jump-takeoff ticks when rising ballistically (vVel > 0).
             float floorAtStart = groundHeight(s.Position.X, s.Position.Z) + halfH;
-            if (s.Grounded && t.MaxStepClimbSpeed > 0f && s.Position.Y > floorAtStart + 0.05f)
+            if (s.Grounded && t.MaxStepClimbSpeed > 0f && vVel <= 0f && s.Position.Y > floorAtStart + 0.05f)
             {
                 float mvx = dx - s.Position.X, mvz = dz - s.Position.Z;
                 float mvLen = MathF.Sqrt(mvx * mvx + mvz * mvz);

@@ -63,7 +63,10 @@ area-of-interest deltas.
   history, and `InterpolateAt(world, renderTime)` renders every component at `renderTime` by lerping the two buffered
   samples bracketing it by their true timestamps (clamp to the oldest before the buffer; HOLD at the newest past it,
   flagged via `WasHeldAtLastInterpolation(netId)`; single-sample renders that sample). This decouples presentation
-  from the tick cadence and the render fps. An unregistered
+  from the tick cadence and the render fps. **`SnapInterpolationToNewest(netId)`** (since 10.67.0) drops all but the
+  newest buffered sample for one entity, so `InterpolateAt` cuts to it instead of lerping across a discontinuity - the
+  netcode layer calls it when an entity teleports (keyed off its replicated teleport epoch) so a remote teleport does
+  not streak across the world. An unregistered
   **extension** id (>= the floor) is skipped, so an older client tolerates a newer server's added component.
   `Apply` is full-state. **`ApplyDelta`** applies a `ServerReplicator`/`AoiDeltaReplicator` delta and is
   **self-healing**: a delta whose baseline is at or before `LastAppliedSeq` is a valid idempotent rebuild (the

@@ -153,6 +153,54 @@ public class ClientReplicationBufferTests
     }
 
     [Fact]
+    public void SnapInterpolationToNewest_drops_pre_jump_samples_and_renders_the_newest()
+    {
+        // A teleport leaves the interpolation buffer straddling the jump (a far-apart pre- and post-teleport sample).
+        // Snapping to the newest makes InterpolateAt render the post-jump position (a hard cut) instead of lerping
+        // between them (a streak across the world); smooth interpolation resumes once a later sample arrives.
+        var registry = NewRegistry();
+        var client = new World();
+        var view = new ClientReplicationView(registry);
+        var server = new World();
+        Entity s = server.Spawn(); server.Set(s, new NetId(7));
+
+        Push(view, client, server, s, 0f, 0f, t: 1.00);     // pre-teleport
+        Push(view, client, server, s, 1f, 0f, t: 1.10);     // pre-teleport, gliding +X
+        Push(view, client, server, s, 500f, 0f, t: 1.20);   // TELEPORT: the newest sample is far away
+
+        view.SnapInterpolationToNewest(7);
+
+        // A renderTime that WOULD have bracketed inside the pre-jump samples now renders the newest (post-teleport)
+        // value - the buffer holds only it - so there is never an in-between position emitted across the boundary.
+        view.InterpolateAt(client, 1.11);
+        Assert.True(view.TryGetEntity(7, out Entity c));
+        Assert.Equal(500f, client.Get<Pos>(c).X, 4);
+
+        // A later sample past the teleport resumes smooth interpolation forward FROM the destination.
+        Push(view, client, server, s, 501f, 0f, t: 1.30);
+        view.InterpolateAt(client, 1.25);   // halfway between 1.20 (500) and 1.30 (501)
+        Assert.Equal(500.5f, client.Get<Pos>(c).X, 3);
+    }
+
+    [Fact]
+    public void SnapInterpolationToNewest_is_a_no_op_for_a_single_sample_or_unknown_entity()
+    {
+        var registry = NewRegistry();
+        var client = new World();
+        var view = new ClientReplicationView(registry);
+        var server = new World();
+        Entity s = server.Spawn(); server.Set(s, new NetId(7));
+        Push(view, client, server, s, 2f, 9f, t: 1.00);   // one sample only
+
+        view.SnapInterpolationToNewest(7);      // single sample: nothing to drop
+        view.SnapInterpolationToNewest(999);    // untracked entity: no throw
+
+        view.InterpolateAt(client, 1.00);
+        Assert.True(view.TryGetEntity(7, out Entity c));
+        Assert.Equal(2f, client.Get<Pos>(c).X, 4);
+    }
+
+    [Fact]
     public void InterpolateAt_a_single_sample_renders_that_sample()
     {
         // A remote seen in exactly one snapshot has no bracket; render it at that one value, never throwing / NaN.

@@ -5340,22 +5340,32 @@ soon as the destination has streamed in (bounded by a timeout so it never hangs)
 
 ```csharp
 // Screen-space effects: assign one to the scene and drive it each frame.
-scene.ScreenTransition = new HardBlink();          // fast fade to black + back (self-rescue: snappy)
-// scene.ScreenTransition = new CameraDissolve();  // crossfade the frozen frame to the live view (login: far/unstreamed)
+scene.ScreenTransition = new HardBlink();          // instant reveal-only blink to black (self-rescue: a snappy hard cut)
+// scene.ScreenTransition = new CameraDissolve();  // crossfade the frozen origin frame to the live view (login: far/unstreamed)
 t.Swapped += () => { camera.Warp(dest); /* reposition */ };
 t.Begin();
 // per frame:
 t.Update(dt, destinationReady: streamer.ChunkReadyAt(dest));   // ready releases the streaming hold early
 
-// World-space effect: the avatar dissolves out then in (assumes an already-streamed destination, never holds).
+// World-space effect: the avatar MATERIALIZES IN at the destination (assumes an already-streamed destination, never holds).
 var cd = new CharDissolve();
 scene.DrawSkinned(mesh, bones, model, tint, material, dissolve: cd.Cover, edgeWidth: cd.EdgeWidth, edgeColor: cd.EdgeColor);
+
+// On session teardown (disconnect / screen swap) clear the overlay so a mid-transition tear-down does not leave it stuck.
+scene.ClearScreenTransition();   // detaches the overlay + drops the frozen-frame state; also cd.Reset() a reused effect
 ```
 
-`HardBlink`/`CameraDissolve` implement `IScreenTransition` and render as a fullscreen pass over the final image (the
-scene captures the frozen frame for the crossfade). `CharDissolve` renders through a dedicated skinned pipeline
-variant; a `dissolve` of 0 draws exactly like the plain overload, so it is safe to call unconditionally. All of it is
-byte-identical when no transition is active, and a consumer can author its own `ITransition`.
+`HardBlink`/`CameraDissolve` implement `IScreenTransition` and render as a fullscreen pass over the final image. A
+teleport is a **server-authoritative hard cut**, so the effects are pure cosmetics on top of an already-correct cut:
+`HardBlink` defaults to an instant, reveal-only cover (fully opaque on the cut frame, no fade-IN toward the jump), and
+`CameraDissolve` freezes the PREVIOUS frame (the origin view, captured before the cut) and crossfades it to the live
+view. `CharDissolve` covers instantly and materializes the avatar IN at the destination (there is no origin
+dissolve-out - the avatar has already cut there); it renders through a dedicated skinned pipeline variant, and a
+`dissolve` of 0 draws exactly like the plain overload, so it is safe to call unconditionally. For the crossfade to show
+the origin, warp the camera onto the post-teleport state BEFORE rendering the frame (warp-first, in the `Swapped` /
+`LocalTeleported` handler). **Remote** players that teleport cut for observers automatically (the client flushes their
+interpolation on the replicated teleport-epoch advance - no consumer code). All of it is byte-identical when no
+transition is active, and a consumer can author its own `ITransition`.
 
 ### Game messages (attack / interact / chat / inventory)
 

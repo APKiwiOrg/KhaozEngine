@@ -30,7 +30,10 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   so presentation is decoupled from both the tick cadence and the render fps - no hold frames, no catch-up snaps at
   a non-integer render:tick ratio (the pre-9.23.0 estimate-the-interval-and-ramp-alpha scheme drifted and stuttered).
   Tune the delay with **`WorldClientConfig.InterpolationDelayTicks`** (default 2 ticks); lower it for less latency,
-  raise it for a rougher network. A debug **`WorldClientConfig.PresentationTraceEnabled`** exposes
+  raise it for a rougher network. A **remote teleport is a hard cut for observers too** (since 10.67.0): when a
+  remote's replicated `MovementState.TeleportEpoch` advances, its interpolation buffer is flushed to the newest sample
+  so it snaps to the destination instead of streaking across the world, then smooth interpolation resumes - automatic,
+  no consumer code. A debug **`WorldClientConfig.PresentationTraceEnabled`** exposes
   `WorldClient.PresentationTrace` - a per-frame CSV-dumpable trace of the presentation internals (render time,
   interpolation delay, seconds-since-snapshot, per-remote starvation-hold flag, snapshot arrivals, local
   reconcile-error) for characterising a movement-smoothness bug; off by default, zero overhead.

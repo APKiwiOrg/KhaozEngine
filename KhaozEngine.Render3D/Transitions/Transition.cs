@@ -58,6 +58,17 @@ namespace KhaozEngine.Render3D
             swapFired = false;
         }
 
+        /// <summary>Cancels the transition back to <see cref="TransitionPhase.Idle"/> (fully revealed) WITHOUT firing
+        /// <see cref="Swapped"/> or <see cref="Completed"/>. For a consumer teardown that tears down mid-transition (a
+        /// disconnect, a scene swap): a stuck transition would otherwise hold the overlay covered forever. Idempotent.</summary>
+        public void Reset()
+        {
+            Phase = TransitionPhase.Idle;
+            phaseElapsed = 0f;
+            holdElapsed = 0f;
+            swapFired = false;
+        }
+
         /// <inheritdoc/>
         public void Update(float dt, bool destinationReady)
         {

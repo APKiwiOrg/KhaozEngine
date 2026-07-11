@@ -11,9 +11,17 @@ namespace KhaozEngine.Render3D.Rendering
     /// Draws the active screen-space teleport transition (<see cref="IScreenTransition"/>) as a fullscreen pass OVER
     /// the final post image, with standard src-alpha blend. Two styles: a solid fill (<see cref="HardBlink"/>) and a
     /// crossfade from a captured frozen frame to the live view (<see cref="CameraDissolve"/>). Fully skipped when no
-    /// transition is active (or its cover is 0), so a frame with no transition is byte-identical to before this pass
-    /// existed. Mirrors the fullscreen-pass plumbing of <see cref="PixelPostProcess"/> (shared
+    /// transition is active (Cover 0 = fully revealed), so a frame with no transition is byte-identical to before this
+    /// pass existed. Mirrors the fullscreen-pass plumbing of <see cref="PixelPostProcess"/> (shared
     /// <see cref="ShaderSources.FullscreenVert"/>, no vertex buffer, <c>Draw(3)</c>).
+    ///
+    /// <para>The frozen frame for a crossfade is captured from the PREVIOUS frame's resolved colour, not the current
+    /// one: a teleport is a hard cut, so by the time a crossfade begins the avatar (and camera) have already cut to the
+    /// destination and the current frame shows the post-teleport view. <see cref="BeginFrame"/> snapshots the
+    /// still-resident previous-frame <c>ColorTex</c> at the top of the frame (before the model pass overwrites it) on
+    /// the frame a crossfade first goes active. If no valid previous frame exists yet (the transition began the very
+    /// first frame after a resize, when <c>ColorTex</c> is blank), the crossfade degrades to a plain solid fade rather
+    /// than sampling a blank image.</para>
     /// </summary>
     internal sealed class TransitionRenderer : IDisposable
     {
@@ -32,6 +40,15 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuResourceSet _solidSet = null!;
         IGpuResourceSet? _crossSet;
         int _w, _h;
+
+        // FIX-1 frozen-frame lifecycle. _frozenValid: _frozen holds a real previous-frame image safe to sample (false
+        // until the first successful capture, and after any resize). _prevFrozenActive: a crossfade was frozen-style
+        // active LAST BeginFrame, so a false->true edge is "the crossfade just began" (capture once, then). _haveResolvedFrame:
+        // at least one full frame has resolved into ColorTex at the current size since the last (re)allocation, so
+        // ColorTex at the top of THIS frame is a real previous frame and not a blank post-resize target.
+        bool _frozenValid;
+        bool _prevFrozenActive;
+        bool _haveResolvedFrame;
 
         public TransitionRenderer(IGpuDevice gd, GpuOutputDescription targetOutput)
         {
@@ -86,25 +103,69 @@ namespace KhaozEngine.Render3D.Rendering
                 GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled | GpuTextureUsage.RenderTarget, 1, 1, 1));
             _crossSet = _gd.Factory.CreateResourceSet(
                 new GpuResourceSetDescription(_crossLayout, _frozen, _gd.LinearSampler, _crossBuf));
+            // The freshly (re)allocated _frozen is blank, and no frame has resolved into the new ColorTex yet: any
+            // capture this frame would snapshot a blank target. Invalidate both so a crossfade beginning right now
+            // falls back to a plain fade until the next frame has actually rendered.
+            _frozenValid = false;
+            _haveResolvedFrame = false;
+        }
+
+        /// <summary>Called once at the TOP of the frame (before the model pass overwrites <c>ColorTex</c>). On the
+        /// frame a <see cref="ScreenTransitionStyle.FrozenCrossfade"/> transition FIRST goes active, snapshots the
+        /// still-resident PREVIOUS-frame <c>ColorTex</c> as the frozen image - the origin view, before the teleport cut
+        /// - so the crossfade blends FROM the origin, not from the already-cut destination. A no-op for a solid
+        /// transition or none. If no previous frame is available yet (a crossfade beginning the first frame after a
+        /// resize, when <c>ColorTex</c> is blank), leaves the frozen image invalid so <see cref="Render"/> degrades to
+        /// a plain solid fade.</summary>
+        public void BeginFrame(IGpuCommandList cl, RenderResources res, IScreenTransition? t)
+        {
+            bool frozenActive = t is { IsActive: true, Style: ScreenTransitionStyle.FrozenCrossfade };
+            if (frozenActive && !_prevFrozenActive)   // rising edge: the crossfade just began this frame
+            {
+                if (_haveResolvedFrame)
+                {
+                    cl.CopyTexture(res.ColorTex, _frozen!);   // the previous frame still lives in ColorTex here
+                    _frozenValid = true;
+                }
+                else
+                {
+                    _frozenValid = false;   // no real previous frame (post-resize / first frame): plain-fade fallback
+                }
+            }
+            _prevFrozenActive = frozenActive;
+        }
+
+        /// <summary>Marks that a full frame has resolved into <c>ColorTex</c> at the current size. Call once per frame
+        /// AFTER <c>ResolveColorNormal</c>, so the NEXT frame's <see cref="BeginFrame"/> knows <c>ColorTex</c> holds a
+        /// real previous frame (not a blank post-resize target).</summary>
+        public void NoteFrameResolved() => _haveResolvedFrame = true;
+
+        /// <summary>Drops any captured frozen-frame state so a later transition starts clean. Called by
+        /// <c>Scene3D.ClearScreenTransition</c> when a consumer tears the overlay down mid-transition.</summary>
+        public void Reset()
+        {
+            _frozenValid = false;
+            _prevFrozenActive = false;
         }
 
         /// <summary>Draw the active screen transition over <paramref name="target"/> (the final post image). No-op when
-        /// <paramref name="t"/> is null, not active, or fully revealed. Uploads its uniform (and, for a crossfade,
-        /// captures the frozen frame) BEFORE binding <paramref name="target"/>, mirroring the overlay renderers'
-        /// between-pass upload.</summary>
+        /// <paramref name="t"/> is null, not active, or fully revealed. The frozen frame for a crossfade is captured in
+        /// <see cref="BeginFrame"/> (the previous frame), not here. Uploads its uniform BEFORE binding
+        /// <paramref name="target"/>, mirroring the overlay renderers' between-pass upload.</summary>
         public void Render(IGpuCommandList cl, RenderResources res, IGpuFramebuffer target, IScreenTransition? t)
         {
             if (t is null || !t.IsActive) return;
             float cover = t.Cover;
+            // Cover == 0 is FULLY REVEALED (the live view): nothing to draw, byte-identical to no pass. This is NOT the
+            // "cover ramp at zero" case - an instant-cover (coverSeconds 0) transition reports Cover == 1 on its cut
+            // frame (see Transition.Cover), so the opaque first frame is drawn, never skipped here.
             if (cover <= 0f) return;
 
-            if (t.Style == ScreenTransitionStyle.FrozenCrossfade)
+            // A frozen crossfade with a VALID captured frame blends frozen (origin) -> live by the cover weight. Without
+            // one (the crossfade began the first frame after a resize, ColorTex blank), degrade to a plain solid-black
+            // fade rather than sampling a blank frozen image - still masks the cut, just without the origin crossfade.
+            if (t.Style == ScreenTransitionStyle.FrozenCrossfade && _frozenValid)
             {
-                // Capture the pre-teleport frame during the cover phase (before the swap warps the camera). Cover is
-                // instant for CameraDissolve, so this snapshots the origin view; the frozen frame then holds it through
-                // the hold + reveal. Capturing the resolved ColorTex (pre-post) is a hair different from the final
-                // post image, imperceptible across a sub-second crossfade.
-                if (t.Phase == TransitionPhase.Cover) cl.CopyTexture(res.ColorTex, _frozen!);
                 var ubo = new CrossfadeUbo { Params = new Vector4(cover, 0f, 0f, 0f) };
                 cl.UpdateBuffer(_crossBuf, 0, in ubo);
                 cl.SetFramebuffer(target);
@@ -114,7 +175,8 @@ namespace KhaozEngine.Render3D.Rendering
             }
             else
             {
-                Color c = t.Color;
+                // Solid fill: HardBlink (its Color), or the invalid-frozen crossfade fallback (opaque black).
+                Color c = t.Style == ScreenTransitionStyle.FrozenCrossfade ? Color.Black : t.Color;
                 var ubo = new SolidUbo { ColorAlpha = new Vector4(c.R, c.G, c.B, cover * c.A) };
                 cl.UpdateBuffer(_solidBuf, 0, in ubo);
                 cl.SetFramebuffer(target);

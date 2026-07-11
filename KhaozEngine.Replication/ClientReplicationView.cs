@@ -411,4 +411,24 @@ public sealed class ClientReplicationView
     /// buffer (a snapshot starvation hold). Aggregated across the entity's components (held iff at least one held).
     /// Diagnostics-only; recomputed each <see cref="InterpolateAt"/>.</summary>
     public bool WasHeldAtLastInterpolation(long netId) => heldNetIds.Contains(netId);
+
+    /// <summary>
+    /// Drops every buffered interpolation sample for the entity with network id <paramref name="netId"/> EXCEPT the
+    /// newest, so the next <see cref="InterpolateAt"/> renders that newest sample (a hard cut) instead of lerping
+    /// across the gap between the pre- and post-jump samples. The caller uses this when an entity teleports: its
+    /// buffer then straddles the discontinuity (a far-apart old + new position), and interpolating between them would
+    /// streak the entity across the world. After the snap the buffer holds one sample, so the entity renders at the
+    /// destination and smooth interpolation resumes naturally as later samples arrive. No-op for an untracked or
+    /// already-single-sample entity. This view has no notion of what a "teleport" is (that lives in the netcode layer,
+    /// keyed off the replicated teleport epoch); it just exposes the flush.
+    /// </summary>
+    public void SnapInterpolationToNewest(long netId)
+    {
+        foreach (KeyValuePair<(long netId, ushort typeId), List<(double t, byte[] bytes)>> kv in sampleHistory)
+        {
+            if (kv.Key.netId != netId) continue;
+            List<(double t, byte[] bytes)> hist = kv.Value;
+            if (hist.Count > 1) hist.RemoveRange(0, hist.Count - 1);   // keep only the newest (post-jump) sample
+        }
+    }
 }

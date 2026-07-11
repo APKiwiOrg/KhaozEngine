@@ -197,6 +197,18 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public IScreenTransition? ScreenTransition { get; set; }
 
+        /// <summary>Clears the active <see cref="ScreenTransition"/> and drops the renderer's captured frozen-frame
+        /// state. For a consumer teardown that tears down mid-transition (a disconnect, a scene/screen swap): without
+        /// this a transition left assigned (and never driven to <see cref="TransitionPhase.Done"/>) would hold the
+        /// overlay covering the view forever. Does NOT drive the transition's own state machine (call
+        /// <c>Transition.Reset</c> on the effect too if the consumer keeps reusing the instance); this just detaches it
+        /// from the scene. Idempotent.</summary>
+        public void ClearScreenTransition()
+        {
+            ScreenTransition = null;
+            _transitions.Reset();
+        }
+
         /// <summary>Maximum dynamic point lights consumed in one frame. <see cref="AddLight"/> accepts any number,
         /// but only the first <see cref="MaxPointLights"/> queued are uploaded (extras are dropped); the host is
         /// expected to pick the N nearest per frame so a dense bullet-hell stays within budget.</summary>
@@ -1260,6 +1272,11 @@ namespace KhaozEngine.Render3D
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(ActiveCamera.Projection);
             _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa);
 
+            // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
+            // teleport cut). Snapshot ColorTex here, at the top of the frame, before the model pass overwrites it. No-op
+            // unless a FrozenCrossfade transition just went active. See TransitionRenderer.BeginFrame.
+            _transitions.BeginFrame(cl, _res, ScreenTransition);
+
             Matrix4x4 vp = ActiveCamera.ViewProjection;
             Vector3 eye = ActiveCamera.Eye;
 
@@ -1508,6 +1525,9 @@ namespace KhaozEngine.Render3D
             // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
             // samples (after ALL MRT writers: geometry + decals + water). No-op when not multisampled.
             _res.ResolveColorNormal(cl);
+            // ColorTex now holds this frame's resolved colour: mark it so next frame's crossfade capture knows a real
+            // previous frame exists (guards against sampling a blank target the frame right after a resize).
+            _transitions.NoteFrameResolved();
 
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;

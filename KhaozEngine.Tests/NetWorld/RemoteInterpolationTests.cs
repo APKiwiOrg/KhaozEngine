@@ -147,6 +147,47 @@ public class RemoteInterpolationTests
     }
 
     [Fact]
+    public void Remote_teleport_cuts_the_observer_render_never_streaks_across_the_world()
+    {
+        // FIX 4: MovementState.TeleportEpoch advances when a remote teleports. The observer's interpolation buffer then
+        // straddles the jump; without the flush it would lerp the remote across the world (a streak). With it, the
+        // observer cuts - every rendered frame shows the remote either still at the origin or already at the
+        // destination, never a position in between - and smooth interpolation resumes at the destination.
+        Rig rig = NewRig();
+
+        int bSlot = -1;
+        foreach (int slot in rig.Server.JoinedSlots)
+            if (rig.Server.TryGetPlayerNetId(slot, out long nid) && nid == rig.BId) { bSlot = slot; break; }
+        Assert.True(bSlot >= 0, "could not resolve B's server slot");
+
+        float beforeX = rig.Remote().X;
+        Assert.True(beforeX < 50f, $"B should still be near the origin before the teleport, was {beforeX}");
+
+        var dest = new Vector3(300f, 0f, 0f);   // within A's 500 interest radius, so B stays visible after the cut
+        rig.Server.Teleport(PlayerRef.Slot(bSlot), dest);
+
+        // Drive frames across the teleport, sampling B's rendered position every step. It must never land in the streak
+        // band between the origin region and the destination region.
+        bool reachedDest = false;
+        for (int i = 0; i < 20; i++)
+        {
+            rig.Tick(rig.Dt, moveB: false);   // B idle: the server has already teleported it
+            float x = rig.Remote().X;
+            bool nearOrigin = x < 50f;
+            bool nearDest = x > 250f;
+            Assert.True(nearOrigin || nearDest,
+                $"observer rendered B mid-teleport (a streak) at X={x}; a remote teleport must cut, not interpolate across");
+            if (nearDest) reachedDest = true;
+        }
+        Assert.True(reachedDest, "observer never saw B arrive at the teleport destination");
+
+        // Interpolation is healthy again after the cut: finite and settled at the destination.
+        rig.A.AdvancePresentation(rig.Dt);
+        float settled = rig.Remote().X;
+        Assert.True(float.IsFinite(settled) && settled > 250f, $"remote should be settled at the destination, was {settled}");
+    }
+
+    [Fact]
     public void Local_player_render_position_is_not_perturbed_by_remote_interpolation()
     {
         Rig rig = NewRig();

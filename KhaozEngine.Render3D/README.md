@@ -18,10 +18,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   camera does not "fly" across the jump.
 - Teleport transitions (`ITransition` + `HardBlink` / `CameraDissolve` / `CharDissolve`, since 10.65.0) - a phased
   cover -> swap -> optional streaming hold -> reveal state machine (pure timing) that masks a teleport swap +
-  destination pop-in. Screen-space effects (`IScreenTransition`) render over the final image via
-  `Scene3D.ScreenTransition` (the scene captures the frozen frame for the crossfade); the world-space `CharDissolve`
-  rides the `Scene3D.DrawSkinned(..., dissolve, edgeWidth, edgeColor)` overload through a dedicated pipeline variant.
-  Byte-identical when none is active. See docs/USING-KHAOZENGINE.md.
+  destination pop-in. A teleport is a hard cut, so `HardBlink` defaults to an instant, reveal-only cover (opaque on the
+  cut frame) and `CharDissolve` materializes the avatar IN at the destination (no unachievable origin dissolve-out).
+  Screen-space effects (`IScreenTransition`) render over the final image via `Scene3D.ScreenTransition` (the scene
+  freezes the PREVIOUS frame for the crossfade, so it shows the origin view, not the post-cut one); the world-space
+  `CharDissolve` rides the `Scene3D.DrawSkinned(..., dissolve, edgeWidth, edgeColor)` overload through a dedicated
+  pipeline variant. `Scene3D.ClearScreenTransition()` / `Transition.Reset()` cancel a transition on teardown. Remote
+  teleports cut for observers automatically (see `KhaozEngine.NetWorld`). Byte-identical when none is active. See
+  docs/USING-KHAOZENGINE.md.
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
   with per-instance tint + `Material`), per-mesh albedo textures, lighting, camera-facing billboards, an

@@ -116,6 +116,14 @@ public sealed class WorldClient : IDisposable
     private readonly float interpolationDelaySeconds; // fixed remote render delay (InterpolationDelayTicks * tick)
     private double presentationClock;                 // monotonic render-time seconds (drives snapshot stamps + renderTime)
 
+    // Remote teleport flush: the last replicated MovementState.TeleportEpoch seen per remote entity. A teleport is a
+    // server-authoritative hard cut, so when a remote's epoch advances its interpolation buffer now straddles the jump
+    // (a pre- and post-teleport sample); interpolating across that would streak the remote across the world. On an
+    // advance we snap that remote's interpolation to the newest sample (ClientReplicationView.SnapInterpolationToNewest)
+    // so observers cut too - matching the local prediction hard-cut. The local owner's epoch is handled by prediction.
+    private readonly Dictionary<long, uint> lastTeleportEpochByEntity = new();
+    private readonly List<long> teleportEpochPruneScratch = new();   // reused per-ingest to prune departed entities
+
     // Presentation trace (debug diagnostic; null unless PresentationTraceEnabled). Records per-frame internal signals.
     private readonly PresentationTrace? presentationTrace;
     private double lastSnapshotArrivalClock;          // presentationClock at the most recent ingest (for sinceSnapshot)
@@ -458,6 +466,7 @@ public sealed class WorldClient : IDisposable
         net = new NetClient(transport, token);
         world = new World();
         view = new ClientReplicationView(registry);
+        lastTeleportEpochByEntity.Clear();   // the fresh view has no entities/samples; start remote-teleport tracking clean
         LocalNetId = -1;
         secondsSinceServerFrame = 0f;
         attemptDeadlineRemaining = disconnectTimeout;
@@ -708,6 +717,10 @@ public sealed class WorldClient : IDisposable
             // Buffer this snapshot's interpolatable state stamped at the current render-clock time. InterpolateAt then
             // renders the two samples bracketing (presentationClock - interpolationDelaySeconds) by their true stamps.
             view.RecordInterpolationSample(presentationClock);
+            // Remote teleport hard-cut: AFTER the post-teleport sample is buffered above, snap any remote whose
+            // authoritative teleport epoch advanced this ingest to that newest sample, dropping the pre-teleport ones -
+            // otherwise the buffer straddles the jump and InterpolateAt streaks the remote across the world.
+            FlushTeleportedRemotes(localNetId);
         }
 
         // Reconcile reads the freshly applied 'current' here, BEFORE any AdvancePresentation interpolates the world,
@@ -736,6 +749,34 @@ public sealed class WorldClient : IDisposable
                 LocalTeleportEpoch++;
                 LocalTeleported?.Invoke();
             }
+        }
+    }
+
+    // Snap any REMOTE whose replicated MovementState.TeleportEpoch advanced this ingest to the newest interpolation
+    // sample (dropping the pre-teleport samples), so a remote teleport renders as a hard cut instead of a streak across
+    // the world. The local owner (localNetId) is skipped: its teleport is handled by prediction, and it renders from
+    // prediction, not this interpolation buffer. First observation of an entity just records its epoch (no flush; its
+    // buffer has a single sample anyway). Departed entities are pruned so the map stays bounded. Only called when
+    // interpolateRemotes is set (without interpolation a remote already snaps to the latest snapshot each frame).
+    private void FlushTeleportedRemotes(long localNetId)
+    {
+        foreach (KeyValuePair<long, Entity> kv in view.Entities)
+        {
+            long id = kv.Key;
+            if (id == localNetId) continue;
+            uint epoch = world.TryGet(kv.Value, out MovementState ms) ? ms.TeleportEpoch : 0u;
+            if (lastTeleportEpochByEntity.TryGetValue(id, out uint prev) && epoch != prev)
+                view.SnapInterpolationToNewest(id);
+            lastTeleportEpochByEntity[id] = epoch;
+        }
+
+        // Prune epochs for entities no longer present (left AoI / despawned), so the map cannot grow unbounded.
+        if (lastTeleportEpochByEntity.Count > view.Entities.Count)
+        {
+            teleportEpochPruneScratch.Clear();
+            foreach (long id in lastTeleportEpochByEntity.Keys)
+                if (!view.Entities.ContainsKey(id)) teleportEpochPruneScratch.Add(id);
+            foreach (long id in teleportEpochPruneScratch) lastTeleportEpochByEntity.Remove(id);
         }
     }
 

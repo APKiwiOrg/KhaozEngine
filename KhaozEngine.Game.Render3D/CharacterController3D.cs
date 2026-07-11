@@ -61,6 +61,10 @@ namespace KhaozEngine.Game
         /// <summary>Max upward support rise (metres) auto-mounted while grounded without a jump (a low rock/curb).
         /// Default 0.4.</summary>
         public float StepHeight = 0.4f;
+        /// <summary>Max vertical climb speed (m/s) a step-up mount rises at, so a stair run ascends at a steady
+        /// walking pace instead of snapping up a whole riser per tick (see <see cref="MoveTuning.MaxStepClimbSpeed"/>).
+        /// Default 3.5. A single low curb still mounts in one tick; a value &lt;= 0 disables the limit.</summary>
+        public float MaxStepClimbSpeed = 3.5f;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
@@ -95,6 +99,7 @@ namespace KhaozEngine.Game
                 Gravity = Gravity, JumpSpeed = JumpSpeed, MaxFallSpeed = MaxFallSpeed,
                 CoyoteTime = CoyoteTime, JumpBuffer = JumpBuffer, AirControl = AirControl,
                 GroundedEpsilon = GroundedEpsilon, StepHeight = StepHeight,
+                MaxStepClimbSpeed = MaxStepClimbSpeed,
             };
             _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
         }

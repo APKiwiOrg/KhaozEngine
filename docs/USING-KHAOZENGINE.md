@@ -1821,7 +1821,9 @@ For a walkable 3D world, pair `FollowCamera3D` (`KhaozEngine.Render3D`) with `Ch
 (`KhaozEngine.Game.Render3D`). The camera is a perspective sibling of `IsoCamera3D`: it orbits behind a `Target`
 at a clamped `Pitch`/`Distance` and always looks at the target (same Y-up convention, same `Eye`/`Forward`/
 `ScreenToGround`; it implements `IIsoCamera3D`). Drive it from the input snapshot with `FollowCameraController`
-(hold the orbit button and drag to swing yaw/pitch, scroll to zoom). To render through it, set
+(hold the orbit button - right mouse by default, matching the fly camera and leaving left-drag free for
+gameplay - and drag to swing yaw/pitch, scroll to zoom; set `FollowCameraController.OrbitButton` to change it).
+To render through it, set
 `Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio each frame:
 
 ```csharp
@@ -1850,6 +1852,13 @@ fields - `Gravity` (25), `JumpSpeed` (9.79796, apex ~1.92 m), `MaxFallSpeed` (50
 (0.1), `AirControl` (1, horizontal control while airborne), `GroundedEpsilon` (0.3, the slope skin so a downhill
 run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
 you fall.
+
+**Smooth stair climbing.** A step-up (curb or stair riser under `StepHeight`) is mounted without a jump, but it no
+longer snaps a whole riser up in one tick - the per-tick vertical rise onto step/prop support is paced to
+`MaxStepClimbSpeed` (m/s, default 3.5 on both `CharacterController3D` and `MoveTuning`), so a dungeon stair run
+ascends at a steady walking pace instead of shooting up. A single low curb (rise within one tick's budget) still
+mounts in one tick, terrain slopes and jumps are untouched, and `MaxStepClimbSpeed <= 0` restores the instant
+snap.
 
 Speeds, capsule half-height, max slope, the vertical-feel fields above, the camera distance/pitch limits,
 orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` / `InvertY`, for an "invert axis"

@@ -56,7 +56,9 @@ public static class CharacterMovement
     /// never enters a closed mesh (no inner-face suck-through). Walkable contacts (slope at or below the slope gate)
     /// are followed (walk across / mount a domed prop top); steep contacts block and redirect the velocity
     /// tangentially (no dead-stop). A step-up probe wires <see cref="MoveTuning.StepHeight"/>: a stair tread or
-    /// curb below <c>StepHeight</c> is mounted without a jump. Depenetration via
+    /// curb below <c>StepHeight</c> is mounted without a jump, rising toward the ledge at no more than
+    /// <see cref="MoveTuning.MaxStepClimbSpeed"/> per tick (a tall stair run ascends as a steady walk, a single low
+    /// curb still mounts in one tick). Depenetration via
     /// <see cref="IPhysicsWorld.ComputePenetration"/> is retained as a residual-overlap settle pass (rarely
     /// fires after the swept move). The analytic terrain stays the floor (resolved on the final XZ).
     /// <paramref name="world"/> null = terrain only (byte-identical to pre-8.4.0). The same world + math runs
@@ -225,6 +227,29 @@ public static class CharacterMovement
         {
             grounded = false;
             tSinceGround = s.TimeSinceGrounded + dt;
+        }
+
+        // 4b. Smooth step-up climb: cap the per-tick RISE onto step/prop support above the terrain floor to
+        //     MaxStepClimbSpeed. The step-up mounts a whole riser in one tick, so a dungeon stair run (12-18 risers
+        //     of ~0.33 m) otherwise snaps up ~0.33 m per mounting tick - it reads as shooting/jerking up. This paces
+        //     that rise to a steady walk. Scoped tightly so nothing else changes:
+        //       - only when NOT rising ballistically (vVel <= 0): a JUMP (vVel > 0, applied in step 5 below) is
+        //         never throttled, so jump height/arc is untouched; this covers both the grounded climb ticks and
+        //         the brief airborne transition at a stair's emergence, where the support still lifts the capsule a
+        //         step;
+        //       - only the UPWARD delta (a fall/descent, pos.Y < prev, is below the cap and passes through); and
+        //       - only the portion of support ABOVE the analytic terrain floor - a terrain slope is never throttled
+        //         (its height passes through via the terrainGroundY floor of the cap), so horizontal walk speed,
+        //         coyote, and landing stay untouched and only the discrete static step geometry is paced.
+        //     The capped capsule lags the tread it is mounting by at most the few frames it takes to catch up (it
+        //     stays on the step run, resting on the lower treads its footprint still spans); the next tick
+        //     re-resolves the support and rises another budget's worth, so the climb still reliably reaches the top.
+        //     A low curb whose rise is within one tick's budget is unaffected (mounted in one tick as before), and
+        //     MaxStepClimbSpeed <= 0 disables the pacing entirely (the pre-smoothing instant snap).
+        if (vVel <= 0f && world is not null && t.MaxStepClimbSpeed > 0f)
+        {
+            float climbCap = MathF.Max(terrainGroundY, s.Position.Y + t.MaxStepClimbSpeed * dt);
+            if (pos.Y > climbCap) pos.Y = climbCap;
         }
 
         // 5. Jump after contact (UNCHANGED): grounded or within coyote-time, consume both windows.

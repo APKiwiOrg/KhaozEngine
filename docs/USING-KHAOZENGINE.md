@@ -1923,7 +1923,9 @@ longer snaps a whole riser up in one tick - the per-tick vertical rise onto step
 `MaxStepClimbSpeed` (m/s, default 3.5 on both `CharacterController3D` and `MoveTuning`), so a dungeon stair run
 ascends at a steady walking pace instead of shooting up. A single low curb (rise within one tick's budget) still
 mounts in one tick, terrain slopes and jumps are untouched, and `MaxStepClimbSpeed <= 0` restores the instant
-snap.
+snap. As of 10.66.0 the first-riser mount is geometry-robust: it validates the capped advance against the
+underfoot support fan instead of a fixed clearance constant, so a slow walk into a deep single riser no longer
+stalls vibrating at the bottom step.
 
 Speeds, capsule half-height, max slope, the vertical-feel fields above, the camera distance/pitch limits,
 orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX` / `InvertY`, for an "invert axis"

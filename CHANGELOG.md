@@ -7,7 +7,7 @@ metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the p
 
 ## 10.67.0
 
-Three changes landed together: teleport + screen-transitions hardening (a 10.65 follow-up), an optional server-authoritative facing seam on the replicated-character animator, and a locomotion fix so a solid single riser mounts at any walk speed.
+Three independent changes in one release: teleport + screen-transitions hardening (a 10.65 follow-up, with one breaking-but-unadopted `CharDissolve` constructor change), an optional server-authoritative facing seam on the replicated-character animator, and a locomotion fix so a solid single riser mounts at any walk speed.
 
 ### Teleport + screen-transitions hardening
 

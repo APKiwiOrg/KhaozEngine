@@ -245,13 +245,20 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
 
     /// <summary>Overrides a joined player's authoritative state (and its replicated position). Used by
-    /// load-on-join to place the player at the saved position; no-op for an unknown slot.</summary>
-    public void SetPlayerState(int slot, in PlayerMoveState state)
+    /// load-on-join to place the player at the saved position, and by admin/self-rescue teleports; no-op for an
+    /// unknown slot. When <paramref name="teleport"/> is true the player's monotonic teleport epoch is advanced
+    /// (from the server-held value, ignoring any epoch on the incoming state) so the client cuts to the new position
+    /// instead of gliding; otherwise the current epoch is preserved. The per-tick movement path bypasses this and
+    /// never advances the epoch.</summary>
+    public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
     {
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
-        stateBySlot[slot] = state;
-        world.Set(e, new ReplicatedPosition { Value = state.Position });
-        world.Set(e, MovementState.From(state));
+        uint baseEpoch = stateBySlot.TryGetValue(slot, out PlayerMoveState cur) ? cur.TeleportEpoch : 0u;
+        PlayerMoveState next = state;
+        next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
+        stateBySlot[slot] = next;
+        world.Set(e, new ReplicatedPosition { Value = next.Position });
+        world.Set(e, MovementState.From(next));
     }
 
     /// <summary>Sets the display name replicated for a joined player (added to its entity as a
@@ -477,7 +484,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
                 {
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
-                    SetPlayerState(slot, st);
+                    SetPlayerState(slot, st, teleport: true);   // admin + self-rescue teleports cut on the client
                 }
                 break;
             }

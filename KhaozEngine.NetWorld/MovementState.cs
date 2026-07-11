@@ -31,6 +31,13 @@ public struct MovementState : IComponent
     /// connect by the always-on <see cref="WireGenerationAuthenticator"/>.</summary>
     public bool Swimming;
 
+    /// <summary>The authoritative teleport epoch (see <see cref="PlayerMoveState.TeleportEpoch"/>): a monotonic
+    /// counter the server bumps only at teleport sites, replicated to the local owner alongside the vertical axis so
+    /// its prediction cuts on an advance. Added on the wire in generation 4
+    /// (<see cref="MoveProtocol.WireProtocolVersion"/>); a mismatched peer is rejected at connect by the always-on
+    /// <see cref="WireGenerationAuthenticator"/>.</summary>
+    public uint TeleportEpoch;
+
     /// <summary>The vertical part of a full <see cref="PlayerMoveState"/> (the position is in
     /// <see cref="ReplicatedPosition"/>).</summary>
     public static MovementState From(in PlayerMoveState state) => new()
@@ -40,5 +47,6 @@ public struct MovementState : IComponent
         TimeSinceGrounded = state.Move.TimeSinceGrounded,
         JumpBufferRemaining = state.Move.JumpBufferRemaining,
         Swimming = state.Move.Swimming,
+        TeleportEpoch = state.TeleportEpoch,
     };
 }

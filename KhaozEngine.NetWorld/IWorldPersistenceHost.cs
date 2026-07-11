@@ -18,8 +18,11 @@ public interface IWorldPersistenceHost
     /// <summary>Raised just before a player despawns: (slot, accountId, final state). Persistence saves the final state here.</summary>
     event Action<int, string, PlayerMoveState>? PlayerLeaving;
 
-    /// <summary>Overrides a joined player's authoritative state (load-on-join placement). No-op for an unknown slot.</summary>
-    void SetPlayerState(int slot, in PlayerMoveState state);
+    /// <summary>Overrides a joined player's authoritative state (load-on-join placement). No-op for an unknown slot.
+    /// When <paramref name="teleport"/> is true the host advances the player's monotonic teleport epoch
+    /// (<see cref="MovementState.TeleportEpoch"/>) so the client cuts to the placed position rather than gliding;
+    /// load-on-join passes true (the placement is a teleport). Normal per-tick movement never advances it.</summary>
+    void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false);
 
     /// <summary>The slots of all currently joined players.</summary>
     IReadOnlyCollection<int> JoinedSlots { get; }

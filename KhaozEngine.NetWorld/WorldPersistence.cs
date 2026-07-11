@@ -185,7 +185,7 @@ public sealed class WorldPersistence
     {
         while (applyQueue.TryDequeue(out (int slot, string accountId, PlayerMoveState state, byte[]? game) a))
         {
-            server.SetPlayerState(a.slot, a.state);
+            server.SetPlayerState(a.slot, a.state, teleport: true);   // placing a loaded player is a teleport (cut, no glide)
             if (a.game is { Length: > 0 } && config.ApplyGameState is { } apply)
                 apply(new PlayerPersistenceContext(a.slot, a.accountId), a.game);
             loadsInFlight.TryRemove(a.accountId, out _);   // restore applied; the account is now safe to dirty-save

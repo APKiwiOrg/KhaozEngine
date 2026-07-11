@@ -18,6 +18,15 @@ public interface IPredictedState<TSelf>
     /// </summary>
     float Vertical => 0f;
 
+    /// <summary>
+    /// A monotonic teleport epoch stamped by the authoritative host onto this state. Client prediction compares it
+    /// across reconciliations: an ADVANCE marks a hard teleport - an intentional discontinuity (join/reconnect
+    /// placement, respawn, admin or fast-travel move) that must CUT instantly rather than glide, regardless of the
+    /// <see cref="PredictionSettings.HardSnapDistance"/> gate. Defaults to 0 for states with no teleport concept, so
+    /// an ordinary predicted state keeps its distance-only cut-vs-glide behaviour with no change required.
+    /// </summary>
+    uint TeleportEpoch => 0;
+
     /// <summary>Returns a copy of this state with the planar <paramref name="position"/> applied (vertical unchanged).</summary>
     TSelf WithPosition(Vector2 position);
 

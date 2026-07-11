@@ -16,6 +16,15 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     /// <summary>The carried kinematic state (position + vertical velocity + grounded + coyote/buffer timers).</summary>
     public MoveState Move;
 
+    /// <summary>
+    /// Monotonic teleport epoch (implements <see cref="IPredictedState{T}.TeleportEpoch"/>). The authoritative server
+    /// bumps it ONLY at teleport sites (join/reconnect placement, admin/self-rescue, future fast-travel); normal
+    /// movement leaves it unchanged. An advance tells client prediction to hard-CUT rather than glide, regardless of
+    /// distance. It is a networking marker, not a movement quantity - the simulator carries it through a step
+    /// unchanged, and it rides the wire on <see cref="MovementState.TeleportEpoch"/>.
+    /// </summary>
+    public uint TeleportEpoch { get; set; }
+
     /// <summary>Capsule-centre world position (Y is ground-clamped while grounded, free while airborne).</summary>
     public Vector3 Position { readonly get => Move.Position; set => Move.Position = value; }
 
@@ -39,7 +48,7 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     {
         MoveState m = Move;
         m.Position = new Vector3(position.X, Move.Position.Y, position.Y);
-        return new PlayerMoveState { Move = m };
+        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch };
     }
 
     /// <summary>Returns a copy with the smoothed planar (XZ) AND vertical (Y) render position applied; the rest of
@@ -49,11 +58,12 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     {
         MoveState m = Move;
         m.Position = new Vector3(position.X, vertical, position.Y);
-        return new PlayerMoveState { Move = m };
+        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch };
     }
 
     /// <summary>Rebuilds a full state from the two replicated components: the 3D <paramref name="position"/>
-    /// (<see cref="ReplicatedPosition"/>) plus the vertical <paramref name="movement"/> (<see cref="MovementState"/>).</summary>
+    /// (<see cref="ReplicatedPosition"/>) plus the vertical <paramref name="movement"/> (<see cref="MovementState"/>,
+    /// which also carries the <see cref="TeleportEpoch"/>).</summary>
     public static PlayerMoveState From(Vector3 position, in MovementState movement) => new()
     {
         Move = new MoveState
@@ -65,5 +75,6 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             JumpBufferRemaining = movement.JumpBufferRemaining,
             Swimming = movement.Swimming,
         },
+        TeleportEpoch = movement.TeleportEpoch,
     };
 }

@@ -44,7 +44,7 @@ public class WorldPersistenceGameStateTests
 
         public void Move(int slot, Vector3 position) => SetPlayerState(slot, new PlayerMoveState { Position = position });
 
-        public void SetPlayerState(int slot, in PlayerMoveState state)
+        public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
         {
             if (players.TryGetValue(slot, out (string acct, PlayerMoveState state) p)) players[slot] = (p.acct, state);
         }

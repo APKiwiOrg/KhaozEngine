@@ -20,6 +20,11 @@ not inherit platform velocity today). Recorded smaller follow-ups: velocity-base
 quaternion bit-packing for replicated bodies, a per-frame re-clamp option for slider servo targets, and a
 BufferPool-health churn assertion if Bepu ever exposes cheap introspection.
 
+Height-gate the WalkableFloorUnderFeet support fan to accept support only near the paced feet height, so the
+step-mount cap-vs-seat discriminator stops relying on approach floors being analytic. This prevents edge cases
+where deep risers on physics floor slabs stall slow-walk mounts. No shipped geometry has this combination yet,
+but the stair tests cannot catch it since all approach floors are analytic.
+
 ### 2. Visual fidelity (textures + materials)
 
 Terrain PBR splat and per-prop albedo/normal/roughness materials (`PropLoader.LoadPropWithMaterial`) have

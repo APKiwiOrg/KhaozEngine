@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.61.0
+
+Dungeon walkability fixes: floor pieces sit flush with their collision, dungeon stairs are genuinely walkable, and the dungeon Showcase demo no longer forces the outline post.
+
+- **Floor pieces flush with collision (`KhaozEngine.Dungeon`).** Floor and stair-landing kit pieces were rendered a slab-thickness (0.2 m) above the collision surface, so a character stood 0.2 m below the visible floor. `PieceMapper` now offsets `Floor`/`StairDown` pieces down by the collision slab thickness so the rendered top meets the collision top, in both `DungeonStamp` and `DungeonMapDocEmitter` (baked maps are corrected too).
+- **Walkable dungeon stairs (`KhaozEngine.Dungeon`).** Stairs were a smooth 45-degree pitched ramp, which is not climbable from a flush floor (the walkable-slope gate treats it as steep and it also has no head clearance under the upper floor). Stairs are now a three-tread run of discrete step boxes at about 34 degrees (each riser well under the step-up height, so a character walks straight up at the default slope), with an open shaft for head clearance and the landing cell moved one tile past the top tread so the climber emerges onto solid floor. A new cell kind `StairMid` and the schema/JSON char map (`m`) were added, so multi-floor dungeon layouts and their hashes change. A headless test drives a real physics capsule up a stair and asserts it reaches the upper floor.
+- **Dungeon demo outline default (`KhaozEngine.Showcase`).** The `RoomDungeon` demo now clears the `Outline` post effect on entry (matching the other 3D demos) and toggles it with `O`, so the dungeon renders with the plain lit look by default.
+
 ## 10.60.0
 
 Third-person walk feel: a camera occlusion spring-arm keeps the follow camera out of walls and ceilings, and the default walk and sprint speeds double fleet-wide.

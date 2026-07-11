@@ -52,7 +52,7 @@ namespace KhaozEngine.Tests.Game
         public void Run_WhenFast()
         {
             var c = new AnimatedCharacter(OneBone(), Clips());
-            Settle(c, 6f, true, 0f);
+            Settle(c, 12f, true, 0f);
             Assert.Equal(LocomotionState.Run, c.State);
             Assert.True(System.MathF.Abs(c.Pose[0].Translation.X - 3f) < 1e-2f);
         }
@@ -121,7 +121,7 @@ namespace KhaozEngine.Tests.Game
             // Only Idle present: a Run state must fall back to Idle rather than throw.
             var clips = new Dictionary<LocomotionState, AnimationClip> { [LocomotionState.Idle] = Park("idle", 1f) };
             var c = new AnimatedCharacter(OneBone(), clips);
-            Settle(c, 6f, true, 0f);   // wants Run, only Idle exists
+            Settle(c, 12f, true, 0f);   // wants Run, only Idle exists
             Assert.Equal(LocomotionState.Run, c.State);
             Assert.True(System.MathF.Abs(c.Pose[0].Translation.X - 1f) < 1e-2f);   // posed by the idle clip
         }

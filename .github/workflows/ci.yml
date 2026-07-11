@@ -11,8 +11,14 @@ on:
     tags: [ 'v*' ]   # all four packages share one version + tag line
   pull_request:
     branches: [ main ]
+  workflow_dispatch:   # manual re-trigger (e.g. after a self-hosted runner change) without a dummy commit
 
 jobs:
+  # Runs on GitHub-hosted x64 ubuntu, NOT the self-hosted arm64 container. The engine test suite needs
+  # x64-only native deps (notably libveldrid-spirv, which the Veldrid.SPIRV package ships for linux-x64
+  # but NOT linux-arm64 - the SPIRV shader-source tests DllNotFound on the arm64 fleet). Cost is fine:
+  # Linux is 1x and this is ~2 min, within the free tier. The only expensive work - the 10x macOS Metal
+  # golden - is the one thing self-hosted (on the dev Mac), in cross-platform-gpu.yml.
   build-test-pack:
     runs-on: ubuntu-latest
     permissions:

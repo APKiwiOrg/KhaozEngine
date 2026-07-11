@@ -29,10 +29,10 @@ namespace KhaozEngine.Game
         /// <summary>Current vertical velocity (m/s, positive up).</summary>
         public float VerticalVelocity => _state.VerticalVelocity;
 
-        /// <summary>Metres per second while walking. Default 3.</summary>
-        public float WalkSpeed = 3f;
-        /// <summary>Metres per second while running (shift held). Default 6.</summary>
-        public float RunSpeed = 6f;
+        /// <summary>Metres per second while walking. Default 6.</summary>
+        public float WalkSpeed = 6f;
+        /// <summary>Metres per second while running (shift held). Default 12.</summary>
+        public float RunSpeed = 12f;
         /// <summary>Half the capsule height, added to the ground so the feet sit on the ground. Default 0.9 (a 1.8 m capsule).</summary>
         public float CapsuleHalfHeight = 0.9f;
         /// <summary>Reject a step onto ground steeper than this (angle between surface normal and +Y), when a
@@ -45,8 +45,9 @@ namespace KhaozEngine.Game
 
         /// <summary>Gravity acceleration magnitude (m/s^2). Default 25.</summary>
         public float Gravity = 25f;
-        /// <summary>Jump launch velocity (m/s). Default 8 (apex ~1.28 m).</summary>
-        public float JumpSpeed = 8f;
+        /// <summary>Jump launch velocity (m/s). Default 9.79796 (= 8 * sqrt(1.5), +50% apex vs the old 8f: apex
+        /// ~1.92 m at <see cref="Gravity"/> 25), matching Ruinborne's deliberate jump-height value.</summary>
+        public float JumpSpeed = 9.79796f; // = 8 * sqrt(1.5), +50% apex vs the old 8f, matches Ruinborne's deliberate value
         /// <summary>Terminal fall speed (m/s). Default 50.</summary>
         public float MaxFallSpeed = 50f;
         /// <summary>Coyote-time window (seconds): jump still fires shortly after leaving the ground. Default 0.1.</summary>

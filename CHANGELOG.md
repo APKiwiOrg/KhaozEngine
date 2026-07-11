@@ -5,6 +5,55 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.61.0
+
+Dungeon walkability fixes: floor pieces sit flush with their collision, dungeon stairs are genuinely walkable, and the dungeon Showcase demo no longer forces the outline post.
+
+- **Floor pieces flush with collision (`KhaozEngine.Dungeon`).** Floor and stair-landing kit pieces were rendered a slab-thickness (0.2 m) above the collision surface, so a character stood 0.2 m below the visible floor. `PieceMapper` now offsets `Floor`/`StairDown` pieces down by the collision slab thickness so the rendered top meets the collision top, in both `DungeonStamp` and `DungeonMapDocEmitter` (baked maps are corrected too).
+- **Walkable dungeon stairs (`KhaozEngine.Dungeon`).** Stairs were a smooth 45-degree pitched ramp, which is not climbable from a flush floor (the walkable-slope gate treats it as steep and it also has no head clearance under the upper floor). Stairs are now a three-tread run of discrete step boxes at about 34 degrees (each riser well under the step-up height, so a character walks straight up at the default slope), with an open shaft for head clearance and the landing cell moved one tile past the top tread so the climber emerges onto solid floor. A new cell kind `StairMid` and the schema/JSON char map (`m`) were added, so multi-floor dungeon layouts and their hashes change. A headless test drives a real physics capsule up a stair and asserts it reaches the upper floor.
+- **Dungeon demo outline default (`KhaozEngine.Showcase`).** The `RoomDungeon` demo now clears the `Outline` post effect on entry (matching the other 3D demos) and toggles it with `O`, so the dungeon renders with the plain lit look by default.
+
+## 10.60.0
+
+Third-person walk feel: a camera occlusion spring-arm keeps the follow camera out of walls and ceilings, and the default walk and sprint speeds double fleet-wide.
+
+- **Camera occlusion spring-arm (`KhaozEngine.Render3D`).** `FollowCamera3D` gains opt-in occlusion: set `Occlusion` to an `IPhysicsWorld` (with optional `OcclusionRadius`, `OcclusionSkin`, `MinOcclusionDistance`) and the `Eye` getter sweeps a sphere probe from the target along the boom and pulls the eye in to the first static hit, so the camera never clips through a wall or ceiling. Off by default, so cameras that do not set it are unchanged. Wired into the Room3D and RoomDungeon Showcase demos.
+- **Default walk and sprint speed doubled (`KhaozEngine.Locomotion`, `KhaozEngine.Game.Render3D`).** `MoveTuning.Default.WalkSpeed` 3 to 6 and `RunSpeed` 6 to 12, parity'd in `CharacterController3D`, and the `LocomotionThresholds.Default` walk-to-run animation threshold moves 4.5 to 9 so the run animation still selects correctly. Every walk demo and every game using the defaults inherits the faster movement.
+- **ADOPTION NOTE (Ruinborne and any consumer using the default speeds).** Walk and sprint speed double on pin-bump. If a game wants its old feel, override `WalkSpeed`/`RunSpeed` back. Ruinborne additionally hardcodes animation clip speeds (`WalkClipSpeed = 3`, `RunClipSpeed = 6`) that must be bumped to 6 and 12 on adoption or the avatar's feet will slide. (The 10.59.0 jump adoption note still applies: drop Ruinborne's `Default.JumpSpeed * sqrt(1.5)` override, since the engine baseline now equals that value.)
+
+## 10.59.0
+
+Walk-demo polish: the default jump height rises to match Ruinborne (+50% apex), the Showcase dungeon demo gains real physics collision and the animated character, and the greybox kit is regenerated at the demo's larger scale.
+
+- **Default jump height raised to match Ruinborne (`KhaozEngine.Locomotion`, `KhaozEngine.Game.Render3D`).** The default `MoveTuning.JumpSpeed` and `CharacterController3D.JumpSpeed` both rise from `8` to `9.79796` (= 8 * sqrt(1.5), apex ~1.28 m to ~1.92 m), matching Ruinborne's deliberate feel. Every walk demo inherits it.
+- **ADOPTION NOTE (breaking for one pattern): any consumer that expresses its jump relative to the engine baseline as `MoveTuning.Default.JumpSpeed * MathF.Sqrt(1.5f)` must DROP that multiplier when adopting this version.** Ruinborne's `RuinborneWorld.cs` does exactly this: the baseline now already equals that value, so leaving the multiplier in place double-compounds the jump to ~11.997 (apex ~2.88 m). The equivalent expression in the engine's own `RealBuildingCollisionTests` was corrected in this release.
+- **Dungeon demo collision and animated character (`KhaozEngine.Showcase`).** `RoomDungeon` now registers every `DungeonStamp` static (walls, floor slabs, stair ramps, and, when roofed, ceiling slabs) with a `BepuPhysicsWorld` and drives the character through it, so the player collides with walls and climbs stairs instead of clipping. It also loads the rigged animated character (idle/walk/run/jump/fall) via Room3D's pattern, with a capsule fallback.
+- **Greybox kit regenerated at 3 m / 6 m (`KhaozEngine.Showcase`).** `tools/DungeonKitGen` is parameterized by cell size and floor height (defaults still 2 m / 4 m), and the committed Showcase kit (all pieces including the ceiling) is regenerated at the demo's 3 m / 6 m scale so stairs span floor-to-floor and the roof tiles cover full cells.
+
+## 10.58.0
+
+Variable-width corridors and a Hall room type for `KhaozEngine.Dungeon`: corridors were fixed 1-tile single-file connectors, now they can be grand multi-tile halls, with elongated Hall rooms as grand connectors. Default config stays byte-for-byte identical to before.
+
+- **Variable-width corridors (`KhaozEngine.Dungeon`).** New `DungeonConfig.CorridorMinWidth`/`CorridorMaxWidth` (default 1/1). When the range opens, growth and loop corridors carve a straight rectangular tube (a constant perpendicular band from one room edge to the other) instead of a single-file line, and door frames become multi-cell openings. The drawn width is capped to the narrower of the two room edges the corridor spans, so a wide draw still places against a smaller room by narrowing. The per-cell sinks (`DungeonMapDocEmitter`, `DungeonStamp`) and `DungeonSolver` handle wide corridors for free.
+- **Hall room type (`KhaozEngine.Dungeon`).** New `DungeonRoomType.Hall` plus `DungeonConfig.HallChancePercent` (default 0) and `HallMinLengthTiles`/`HallMaxLengthTiles`. When enabled, a share of grown rooms become elongated halls whose long axis runs along the corridor that reached them (girth stays a normal room span), so a run of them reads as monumental halls. A hall can still hold a key and be promoted to the boss room. When halls are enabled the plot must fit the largest hall on both axes.
+- **Determinism unchanged at the defaults.** The width and hall decisions are drawn from the `rooms` stream only when their range is open (`CorridorMaxWidth > CorridorMinWidth`, `HallChancePercent > 0`), guarded exactly like the stair and loop-edge draws, so a default config consumes no extra randomness and reproduces every existing seed byte-for-byte (`DungeonLayout.LayoutHash`). The width-1 carve reduces to the exact legacy single-line geometry, and loop corridors fall back to the 1-wide edge when a wide band does not fit so a loop still forms. Backed by pinned pre-feature back-compat hashes and a second 1000-seed sweep with wide corridors and halls proving solvability and every invariant.
+
+## 10.57.0
+
+Turnkey roofed interiors for `KhaozEngine.Dungeon`: `DungeonConfig.CeilingMode = Roofed` roofs a generated dungeon so it reads as an enclosed cave instead of roofless ruins, in both sinks, with open-top staying the default.
+
+- **Roofed dungeon interiors (`KhaozEngine.Dungeon`).** New `DungeonCeilingMode` (`Open`, the default, or `Roofed`) and optional `DungeonConfig.CeilingHeightMeters` (null resolves to `FloorHeightMeters`). When `Roofed`, both sinks place a new `DungeonPiece.Ceiling` over every walkable cell at `floorY + ceiling height`, EXCEPT where a walkable cell sits directly above at the same XZ, so open stairwells and vertical shafts stay open and a floor above roofs the floor below with its own slab. `DungeonStamp` additionally emits greedy-merged ceiling collision slabs (same axis-run pattern as the floor slabs, lifted a ceiling height and facing down). A `dungeon_ceiling` greybox piece ships in the Showcase kit (`DungeonKitMap.Greybox()` now maps all six pieces), and the "Dungeon (walk)" Showcase room is now roofed.
+- **Pure sink-time geometry, determinism unchanged.** `CeilingMode` is a presentation choice carried on the layout but excluded from `DungeonLayout.LayoutHash` (like `Stats`), so `Open` and `Roofed` layouts from the same seed share a structure hash and `Open` output is byte-for-byte the pre-ceiling output. No new RNG draws.
+
+## 10.56.0
+
+New `KhaozEngine.Dungeon` package: a deterministic, multi-level procedural dungeon generator whose layouts are completable by construction and re-proven by an always-on solver, with MapDoc-bake and runtime-stamp sinks, a greybox kit, and a `ke-dungeon` CLI.
+
+- **Procedural dungeon generator (`KhaozEngine.Dungeon`, new Foundation package).** `DungeonGenerator.Generate(config, seed)` grows a multi-level room graph on a 3D tile grid (rooms, corridors, cross-floor stairs), committing every corridor and stair together with its edge so a layout is connected by construction. Loop edges add cycles within a budget, bridge-edge gating places lock, key, and boss progression with keys proven reachable before their locks, and typed markers (spawn, loot, objective, entrance) ride along as pure data. `DungeonSolver.Verify` runs on every `Generate` call and throws if a layout is ever unsolvable, and a 1000-seed sweep test backs the guarantee.
+- **Deterministic and instance-ready.** Generation draws only from seeded `DeterministicRng` streams (`rooms`, `gating`, `markers`), and every layout is dungeon-local (tile coordinates plus a metre scale) with world placement applied only at the sinks via `DungeonPlotTransform`, so the same output drops into a far-corner overworld plot today or a true instance later.
+- **Two sinks.** `DungeonMapDocEmitter.Emit` bakes a layout into a `MapDocument` as kit-piece placements, tagged room regions, spawns, and a flatten feature, salted per bake so several dungeons accumulate in one document. `DungeonStamp.Build` produces runtime prop instances plus merged `PhysicsShape` static collision (greedy-merged wall boxes, floor slabs, and oriented stair ramps).
+- **Kit, JSON, CLI, demo.** A greybox dungeon kit ships in the Showcase assets with a `DungeonKitMap` piece vocabulary. `DungeonJson` round-trips configs and layouts with an embedded schema (`DungeonSchema`) for editor and tooling use. The `ke-dungeon` CLI generates, previews per-floor PNGs, verifies, and bakes. A "Dungeon (walk)" Showcase room renders a generated dungeon.
+
 ## 10.55.0
 
 Map-editor apply-order controls and visibility layers from the fourth playtest round (B2.4 of the

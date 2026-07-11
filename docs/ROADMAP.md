@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.55.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.61.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -47,17 +47,12 @@ duplicated here.
 - SpaceGame as the first netcode adopter / testbed: validate the authoritative stack on a real game.
 - Instanced world spaces (recorded 2026-07-10): per-group dungeon/zone instances as a first-class
   NetWorld/Sharding concept: instance lifecycle (spin up / tear down), portals or entry/exit transfer,
-  replication and persistence scoped per instance. End state for dungeons; the dungeon generator ships
-  first against the far-corner same-grid model and its instance-ready output adopts this when it lands.
+  replication and persistence scoped per instance. End state for dungeons: `KhaozEngine.Dungeon` ships
+  today against the far-corner same-grid model, and its dungeon-local output (one placement transform,
+  no world-absolute assumptions) adopts this when it lands.
 
 ## Overworld / world content
 
-- Procedural dungeon generator (design approved 2026-07-10, full design:
-  [DUNGEON-GENERATOR-DESIGN.md](DUNGEON-GENERATOR-DESIGN.md)). V1 world model: dungeons are stamped at
-  reserved far-corner regions of the existing world grid and entered via teleport, so
-  sharding/AoI/persistence work unchanged. Generated content is dungeon-local (one placement transform,
-  no world-absolute assumptions) so the same output can be dropped into true instanced spaces later (see
-  the instancing item under Netcode / MMO refinements, the recorded end state).
 - Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF
   animation-clip playback, `AnimatedCharacter` + locomotion blend, `ReplicatedCharacterAnimators`). SpaceGame's
   2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain

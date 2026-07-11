@@ -92,6 +92,10 @@ namespace KhaozEngine.Showcase
             // UDP, demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D.
             Rooms.Add(("Networked walk", () => new RoomNet().Init(Scene, _white, dpi22)));
 
+            // RoomDungeon is the walkable dungeon-generator demo: DungeonGenerator + DungeonStamp over the
+            // greybox kit, rendered as instanced props through the same shared Scene3D as Room3D.
+            Rooms.Add(("Dungeon (walk)", () => new RoomDungeon().Init(Scene, _white, dpi22)));
+
             // Map editor: the turn-key KhaozEngine.MapEditor scene, registered directly (see RoomMapEditor's
             // doc comment for why a wrapper GameScene would leave it half-wired) over the committed showcase
             // demo document. Unlike the other rooms, plain Esc does NOT leave this room (the editor reserves

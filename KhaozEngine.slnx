@@ -9,6 +9,7 @@
   <Project Path="KhaozEngine.Content.Validator/KhaozEngine.Content.Validator.csproj" />
   <Project Path="KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
   <Project Path="KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+  <Project Path="KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
   <Project Path="KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
   <Project Path="KhaozEngine.Game/KhaozEngine.Game.csproj" />
   <Project Path="KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
@@ -74,5 +75,7 @@
   <Project Path="KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
   <Project Path="tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj" />
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
+  <Project Path="tools/KeDungeon/KeDungeon.csproj" />
+  <Project Path="tools/KeDungeon.Tests/KeDungeon.Tests.csproj" />
   <Project Path="KhaozEngine.Physics.AotProbe/KhaozEngine.Physics.AotProbe.csproj" />
 </Solution>

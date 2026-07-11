@@ -1488,7 +1488,7 @@ var clips = new Dictionary<LocomotionState, AnimationClip>
 };
 
 // AnimatedCharacter (KhaozEngine.Game / Game.Render3D) wraps the skeleton + clips + player + state machine.
-var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f);
+var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
 ```
 
 Each frame, feed it the movement state your controller already computes, then draw with its pose
@@ -1609,7 +1609,7 @@ at 1x. **Default OFF** - every existing consumer is byte-identical until it opts
 
 ```csharp
 // Per AnimatedCharacter: pass the authored ground speeds of the Walk/Run clips + enable.
-var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 4.5f), crossfade: 0.15f,
+var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f,
     speedSync: LocomotionSpeedSync.Enable(walkClipSpeed: 1.4f, runClipSpeed: 4.0f));
 
 // Or set it ONCE per model on the tuning that ReplicatedCharacterAnimators builds brains from:
@@ -1846,7 +1846,7 @@ movement step: while airborne the character falls under `Gravity` (clamped to `M
 on the ground; a jump launches at `JumpSpeed` only when grounded (or within `CoyoteTime` of leaving the ground),
 and a jump pressed just before landing fires on contact (`JumpBuffer`). `character.Grounded` and
 `character.VerticalVelocity` are exposed (e.g. for jump/land animation or SFX). The feel is tunable via public
-fields - `Gravity` (25), `JumpSpeed` (8, apex ~1.28 m), `MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer`
+fields - `Gravity` (25), `JumpSpeed` (9.79796, apex ~1.92 m), `MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer`
 (0.1), `AirControl` (1, horizontal control while airborne), `GroundedEpsilon` (0.3, the slope skin so a downhill
 run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
 you fall.
@@ -1862,6 +1862,15 @@ character off this controller's movement state (see "Animated characters" above)
 `Target` each frame instead of snapping 1:1 - belt-and-suspenders against residual avatar jitter on a remote
 server. `FollowCameraController.Update(input, dt)` drives it (so pass the real frame `dt`); with damping off the
 camera reads `Target` directly and is unchanged. Read `EffectiveTarget` for the smoothed look-at point.
+
+**Optional occlusion spring-arm (off by default).** Set `FollowCamera3D.Occlusion` to an `IPhysicsWorld` and the
+camera sweeps a sphere probe (radius `OcclusionRadius`, default 0.25) from the target along the boom toward the
+geometric eye and pulls the eye in to the first static hit, so the eye never clips through a wall or a ceiling
+between the target and the desired eye (the roofed-dungeon case). `OcclusionSkin` (default 0.05) keeps the
+pulled-in eye just off the surface, and `MinOcclusionDistance` (default 0.2) floors how far in the boom is ever
+pulled so the eye can never collapse onto the target. The sweep hits statics only, and it runs before the
+`GroundHeight` clamp, so a ground dip still lifts the already pulled-in eye. Null (the default) leaves the eye
+purely geometric, so existing cameras are unchanged.
 
 ---
 
@@ -1962,6 +1971,105 @@ To **recolour in place** without touching the geometry: parse the GLB into its h
 `materials[*].pbrMetallicRoughness.baseColorFactor` / `metallicFactor` in the JSON chunk, re-pad the JSON chunk
 to a 4-byte boundary with spaces, then rewrite the chunk length + total length. The `POSITION` accessor
 `min`/`max` printed above give the raw model size in metres, handy for picking `heightMeters`.
+
+---
+
+## Procedural dungeons (`KhaozEngine.Dungeon`)
+
+A deterministic, render-free procedural dungeon generator: `DungeonGenerator.Generate(config, seed)` grows a
+multi-level room graph (rooms, corridors, stairs) on a 3D tile grid, committing every connection with its edge
+atomically so the result is completable by construction, then re-proves that via the always-on
+`DungeonSolver.Verify` before returning. Same config and seed always produce the same layout
+(`DungeonLayout.LayoutHash`). `using KhaozEngine.Dungeon;`:
+
+```csharp
+var config = new DungeonConfig { RoomCountTarget = 12, MaxFloors = 2, LockCount = 1 };
+DungeonLayout layout = DungeonGenerator.Generate(config, seed: 2026UL);   // throws if DungeonSolver.Verify fails
+```
+
+A `DungeonLayout` is just a tile raster plus a room graph, no kit content or world position. Two sinks turn it
+into content, both resolving the abstract `DungeonPiece` vocabulary (Floor/Wall/DoorFrame/StairUp/StairDown/Ceiling)
+through a `DungeonKitMap` (`DungeonKitMap.Greybox()` for a placeholder kit, or `Map(piece, kitId)` your own) and
+a world placement through a `DungeonPlotTransform` (origin, base Y, yaw):
+
+```csharp
+var kit = DungeonKitMap.Greybox();
+var plot = new DungeonPlotTransform(originX: 120f, originZ: 0f, baseY: 0f, yawRadians: 0f);
+
+// 1. Bake into a MapDoc zone document (KhaozEngine.MapDoc), same load/save path as hand-authored content:
+var target = new MapDocument { Id = "dungeon-01", DisplayName = "dungeon-01" };
+DungeonMapDocEmitter.Emit(layout, kit, plot, target);   // always appends, never clears the target
+MapDocumentFile.Save(target, "dungeon-01.map.json");
+
+// 2. Or stamp straight into runtime content (no MapDoc in between):
+DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
+// stamp.Props: one DungeonPropInstance (KitId, X, Y, Z, Yaw, Scale) per piece - load through your prop pipeline
+// stamp.Statics: merged (PhysicsShape, Pose) pairs (one BoxShape per wall/floor/ceiling run, a run of solid box
+// steps per stair) - register each with physicsWorld.AddStatic(shape, pose)
+```
+
+Dungeons are open-top by default. Set `config.CeilingMode = DungeonCeilingMode.Roofed` (optionally
+`CeilingHeightMeters`, default the floor height) for turnkey roofed interiors: both sinks then roof every
+walkable cell at `floorY + ceiling height`, except where a walkable cell sits directly above (open stairwells
+and shafts stay open). It is pure sink-time geometry - the layout structure and `LayoutHash` are unchanged, so
+`Open` output is byte-for-byte identical to before.
+
+Corridors are 1-tile single-file by default. Set `CorridorMinWidth`/`CorridorMaxWidth` above 1 to carve grand
+multi-tile halls (growth and loop corridors both widen into a straight rectangular tube with multi-cell door
+openings, capped to the narrower room edge). Set `HallChancePercent` above 0 (with `HallMinLengthTiles`/
+`HallMaxLengthTiles`) to grow a share of rooms as elongated `DungeonRoomType.Hall` grand connectors whose long
+axis runs along the corridor that reached them. Both draw from the `rooms` RNG only when their range is open,
+so a default config (1/1 widths, 0% halls) consumes no extra randomness and reproduces existing seeds exactly.
+
+Both sinks share the same cell-to-piece mapping internally, so a bake and a stamp of the same
+(layout, kit, plot) place identical props - see `KhaozEngine.Showcase`'s "Dungeon (walk)" room for a
+wiring example (generate once, stamp, load the committed greybox kit through `AssetManifest`/`PropLoader`, spawn
+the player at the layout's `Entrance` marker). The demo wires rendering and the walk camera only, it does not
+register the physics statics.
+
+`DungeonJson.SaveConfig`/`LoadConfig` and `SaveLayout`/`LoadLayout` round-trip both types to JSON, matching
+what the `ke-dungeon` CLI reads and writes. The JSON matches the embedded schema (`DungeonSchema.GetJson()`,
+a `oneOf` over the config and layout shapes), which the package's tests validate against and which is
+available for editor/AI tooling. The load path itself enforces its own semantic checks, throwing
+`DungeonJsonException` naming the offending field. A hand-authored or generated config looks like:
+
+```jsonc
+{
+  "roomCountTarget": 12,
+  "roomMinTiles": 3,
+  "roomMaxTiles": 8,
+  "maxFloors": 2,
+  "plotWidthTiles": 64,
+  "plotDepthTiles": 64,
+  "criticalPathTarget": 6,
+  "loopEdgeBudget": 2,
+  "lockCount": 1,
+  "bossRoom": true,
+  "spawnMarkersPerRoomMax": 3,
+  "lootMarkersPerRoomMax": 1,
+  "corridorMinWidth": 1,
+  "corridorMaxWidth": 1,
+  "hallChancePercent": 0,
+  "hallMinLengthTiles": 10,
+  "hallMaxLengthTiles": 16
+}
+```
+
+The `ke-dungeon` dev CLI (`tools/KeDungeon`) wraps the whole flow - `generate`, `preview` (one debug PNG per
+floor), `verify` (re-runs `DungeonSolver.Verify`), and `bake` (into a `MapDoc` document, accumulating on repeat
+runs):
+
+```bash
+dotnet run --project tools/KeDungeon -- generate --seed 2026 --config dungeon.config.json --out layout.json
+dotnet run --project tools/KeDungeon -- preview --layout layout.json --out-dir preview/
+dotnet run --project tools/KeDungeon -- verify --layout layout.json
+dotnet run --project tools/KeDungeon -- bake --layout layout.json --map zone.map.json \
+    --origin-x 120 --origin-z 0 --base-y 0 --yaw 0
+```
+
+Exit codes: 0 success, 1 a failed `verify`, 2 an unknown verb or a missing/invalid option, 3 malformed input
+JSON. See the `KhaozEngine.Dungeon` package README for the full kit contract and determinism/completability
+guarantees.
 
 ---
 

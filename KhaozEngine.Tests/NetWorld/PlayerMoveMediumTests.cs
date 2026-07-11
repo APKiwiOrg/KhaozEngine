@@ -107,11 +107,15 @@ public class PlayerMoveMediumTests
         PlayerMoveState predicted = client.LocalRenderState;
 
         // Aligned: the predicted planar position matches the authoritative one within a small tolerance (a fraction of
-        // one tick's slowed travel), i.e. prediction did not diverge from the server's wade.
+        // one tick's slowed travel), i.e. prediction did not diverge from the server's wade. Derived from the tuning
+        // (walk speed * the wade floor scale * one tick) rather than a bare literal, so the bound tracks
+        // MoveTuning.Default.WalkSpeed instead of going stale if the walk feel is re-tuned.
         float dx = predicted.Position.X - authoritative.Position.X;
         float dz = predicted.Position.Z - authoritative.Position.Z;
         float err = MathF.Sqrt(dx * dx + dz * dz);
-        Assert.True(err < 0.05f, $"predicted {predicted.Position} vs authoritative {authoritative.Position}, err {err}");
+        float oneTickWadeTravel = Unit.WalkSpeed * Unit.WadeMinSpeedScale * config.TickSeconds;
+        Assert.True(err < 1.2f * oneTickWadeTravel,
+            $"predicted {predicted.Position} vs authoritative {authoritative.Position}, err {err}");
 
         // And it actually moved forward (into -Z), so we tested a live wade, not a stalled avatar.
         Assert.True(authoritative.Position.Z < -0.5f, $"expected forward wade progress, got {authoritative.Position.Z}");

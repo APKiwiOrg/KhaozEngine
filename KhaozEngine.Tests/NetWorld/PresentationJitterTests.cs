@@ -178,6 +178,10 @@ public class PresentationJitterTests
         // within the 0.03 m CorrectionDeadZone). And the stop lands exactly on the authoritative position.
         Assert.True(excursion < 0.20f * tickStep,
             $"local avatar shakes on stop: backward excursion {excursion:F5} m is {excursion / tickStep:P0} of one tick at ratio {ratio} run {run}");
-        Assert.Equal(run ? 12f : 6f, xs[^1], 3);
+        // The stop lands exactly on the authoritative position: the distance covered by the 2 s of steady motion
+        // before the stop, at whichever of Walk/Run speed the command drove (self-adjusting via MoveTuning.Default
+        // rather than a bare literal, so a future speed re-tune does not go stale here).
+        float expectedFinalX = (run ? MoveTuning.Default.RunSpeed : MoveTuning.Default.WalkSpeed) * 2f;
+        Assert.Equal(expectedFinalX, xs[^1], 3);
     }
 }

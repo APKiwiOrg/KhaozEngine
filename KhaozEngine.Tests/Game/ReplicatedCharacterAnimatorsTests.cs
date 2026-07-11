@@ -80,12 +80,12 @@ namespace KhaozEngine.Tests.Game
             for (int i = 0; i < 4; i++) a.Update(new[] { Pos(1, pos) }, Dt);
             Assert.Equal(LocomotionState.Idle, a.Live[0].State);
 
-            // 3 m/s along +X (between the 0.1 walk and 4.5 run thresholds) -> Walk.
+            // 3 m/s along +X (between the 0.1 walk and 9 run thresholds) -> Walk.
             for (int i = 0; i < 4; i++) { pos += new Vector3(3f * Dt, 0, 0); a.Update(new[] { Pos(1, pos) }, Dt); }
             Assert.Equal(LocomotionState.Walk, a.Live[0].State);
 
-            // 6 m/s along +X (>= the 4.5 run threshold) -> Run.
-            for (int i = 0; i < 4; i++) { pos += new Vector3(6f * Dt, 0, 0); a.Update(new[] { Pos(1, pos) }, Dt); }
+            // 12 m/s along +X (>= the 9 run threshold) -> Run.
+            for (int i = 0; i < 4; i++) { pos += new Vector3(12f * Dt, 0, 0); a.Update(new[] { Pos(1, pos) }, Dt); }
             Assert.Equal(LocomotionState.Run, a.Live[0].State);
         }
 
@@ -340,13 +340,13 @@ namespace KhaozEngine.Tests.Game
             // plateau stream spikes high on move frames and is 0 on hold frames).
             const float renderDt = 1f / 90f;
 
-            // Run band: 6 m/s >= the 4.5 run threshold.
+            // Run band: 12 m/s >= the 9 run threshold.
             var run = NewAnimators();
             var rp = Vector3.Zero;
-            for (int i = 0; i < 30; i++) { if (i > 0 && i % 3 == 0) rp += new Vector3(6f / 30f, 0, 0); run.Update(new[] { Pos(1, rp) }, renderDt); }
+            for (int i = 0; i < 30; i++) { if (i > 0 && i % 3 == 0) rp += new Vector3(12f / 30f, 0, 0); run.Update(new[] { Pos(1, rp) }, renderDt); }
             Assert.Equal(LocomotionState.Run, run.Live[0].State);
 
-            // Walk band: 3 m/s between the 0.1 walk and 4.5 run thresholds.
+            // Walk band: 3 m/s between the 0.1 walk and 9 run thresholds.
             var walk = NewAnimators();
             var wp = Vector3.Zero;
             for (int i = 0; i < 30; i++) { if (i > 0 && i % 3 == 0) wp += new Vector3(3f / 30f, 0, 0); walk.Update(new[] { Pos(1, wp) }, renderDt); }

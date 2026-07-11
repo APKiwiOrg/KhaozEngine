@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Render3D
 {
@@ -90,6 +91,29 @@ namespace KhaozEngine.Render3D
         /// <summary>Minimum gap kept between the eye and the ground when <see cref="GroundHeight"/> is set. Default 0.5.</summary>
         public float GroundClearance = 0.5f;
 
+        /// <summary>
+        /// Optional occlusion sweep. When set, <see cref="Eye"/> sweeps a sphere probe from
+        /// <see cref="EffectiveTarget"/> toward the geometric eye (the boom) and pulls the eye in to the first
+        /// static hit, so the follow camera never clips through a wall or ceiling between the target and the
+        /// desired eye. Mirrors <c>CharacterMovement</c>'s own swept collide-and-slide: a zero-length capsule
+        /// (a sphere of radius <see cref="OcclusionRadius"/>) is swept via <see cref="IPhysicsWorld.SweepCapsule"/>
+        /// against statics only (<see cref="QueryFilter.StaticsOnly"/>). Applied BEFORE <see cref="GroundHeight"/>
+        /// clearance, so a ground dip can still lift the (already pulled-in) eye clear of the terrain. Null (the
+        /// default) leaves the eye purely geometric - existing consumers that never set this are unchanged.
+        /// </summary>
+        public IPhysicsWorld? Occlusion;
+        /// <summary>Sphere-probe radius (metres) used by the <see cref="Occlusion"/> sweep. Default 0.25.</summary>
+        public float OcclusionRadius = 0.25f;
+        /// <summary>Clearance (metres) kept between the pulled-in eye and the occluding surface (mirrors the swept
+        /// collide-and-slide skin-width convention), so the eye sits just off the wall rather than flush against
+        /// it. Default 0.05.</summary>
+        public float OcclusionSkin = 0.05f;
+        /// <summary>The closest the <see cref="Occlusion"/> sweep is ever allowed to pull the boom (metres), so the
+        /// eye never collapses onto the target and leave <see cref="Forward"/>/<see cref="View"/> degenerate (a
+        /// zero-length look direction). A static within a skin of the target (e.g. a character pressed flush against
+        /// a wall) is clamped to this floor instead. Default 0.2.</summary>
+        public float MinOcclusionDistance = 0.2f;
+
         float _pitch = MathF.PI / 6f;   // 30 deg, a comfortable default tilt
         float _distance = 8f;
 
@@ -121,7 +145,25 @@ namespace KhaozEngine.Render3D
         {
             get
             {
-                Vector3 eye = EffectiveTarget + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
+                Vector3 target = EffectiveTarget;
+                Vector3 eye = target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
+                if (Occlusion is { } world)
+                {
+                    // Sweep a sphere probe (a zero-length capsule) from the target toward the desired eye along the
+                    // boom. The first static hit clamps how far out the boom can extend, mirroring the
+                    // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide. The
+                    // pull-in is floored at MinOcclusionDistance so a static right at the target never collapses the
+                    // eye onto it (which would leave Forward/View with a zero-length look direction).
+                    Vector3 toEye = eye - target;
+                    float dist = toEye.Length();
+                    if (dist > 1e-6f)
+                    {
+                        Vector3 dir = toEye / dist;
+                        if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target), dir, dist,
+                                out SweepHit hit, QueryFilter.StaticsOnly))
+                            eye = target + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
+                    }
+                }
                 if (GroundHeight is { } ground)
                 {
                     float floor = ground(eye.X, eye.Z) + GroundClearance;

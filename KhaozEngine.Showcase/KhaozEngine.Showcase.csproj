@@ -22,6 +22,8 @@
          canonical KhaozEngine.MapDoc copy below, not a hand-kept duplicate, so it can never drift. -->
     <None Include="assets/maps/**" Exclude="assets/maps/schemas/**" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../KhaozEngine.MapDoc/mapdoc.schema.json" Link="assets/maps/schemas/mapdoc.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Greybox KhaozEngine.Dungeon kit pieces (DungeonKitMap.Greybox() ids); see assets/dungeon/CREDITS.md. -->
+    <None Include="assets/dungeon/**" CopyToOutputDirectory="PreserveNewest" />
     <!-- Sample player changelog for the Gui room's "Patch Notes" demo button. LogicalName matches
          PatchNotesLoader.ResourceName, so PatchNotesLoader.Load(typeof(RoomGui).Assembly) finds it as an
          embedded resource (no disk copy shipped alongside the showcase binary). -->
@@ -55,5 +57,7 @@
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
+    <!-- RoomDungeon: DungeonGenerator + DungeonStamp for the walkable dungeon-generator demo room. -->
+    <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
   </ItemGroup>
 </Project>

@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 10.63.0
+## 10.62.0
 
 Turnkey animated third-person character (`CharacterAvatar`) that composes movement + collision-robust facing + locomotion animation + drawing in one object, plus a stair-climb smoothness fix so an angled climb feels like a ramp.
 

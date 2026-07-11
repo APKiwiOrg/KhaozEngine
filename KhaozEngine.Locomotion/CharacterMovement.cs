@@ -901,6 +901,16 @@ public static class CharacterMovement
         {
             var origin = new Vector3(pos.X + fan[i].X, feetY, pos.Z + fan[i].Y);
             if (world.Raycast(origin, -Vector3.UnitY, FloorProbeReach, out RayHit hit) &&
+                // The floor must sit genuinely BELOW the feet. The ray origin is placed SkinWidth ABOVE the feet
+                // plane, so a real support surface lies at least SkinWidth down (distance >= SkinWidth). A hit
+                // CLOSER than that means the origin is embedded in the solid - the feet are inside / below the
+                // surface, not resting on top of it - which Bepu reports as a degenerate zero-distance up-normal
+                // hit. Counting that as floor was the paced step-up's embedded-riser false positive: on the capped
+                // (throttled) mount pose the feet sit inside a solid building-step riser, this fan returned true,
+                // the validated-cap discriminator kept the smooth stair cap for a single deep riser, and the mount
+                // was depenetrated back off the step every tick (buzz at flat height). Reject the embedded hit so
+                // that pose reads unsupported and the discriminator commits the probe's landed seat instead.
+                hit.Distance >= SkinWidth &&
                 hit.Normal.Y >= cosMaxSlope - 1e-4f)
                 return true;
         }

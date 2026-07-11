@@ -35,6 +35,11 @@
          <id>_collision.glb. The goal-metric fixture for the collision-proxy pipeline: a convex proxy must be
          wedge-free (the capsule can always walk or jump out) while keeping the body + furniture standable. -->
     <None Include="Physics/Fixtures/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- A REAL baked building-entrance proxy (the Ruinborne inn: a compound of solid convex boxes, one of which is
+         the door step in front of the hall wall). The regression fixture for the paced step-up's embedded-riser
+         mount: a walking capsule must climb this single solid door step, not buzz at flat height. Only the SOLID
+         (convex-box) proxy reproduces it - a one-sided mesh riser has no solid under the tread to embed the feet. -->
+    <None Include="Physics/Fixtures/inn_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
     <!-- A pre-10.0.0 (9.x) cell-persistence blob: one non-player entity (a ReplicatedPosition at (10,0,20)) under a
          32-bit NetId 5, wrapped [magic][schemaVersion=1]. The real-save fixture the 10.0.0 NetId-widening migration
          (NetIdBlobMigration.WidenV1ToV2) is tested against, so the forward-migration path can never silently rot. -->

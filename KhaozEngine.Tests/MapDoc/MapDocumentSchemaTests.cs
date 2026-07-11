@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using KhaozEngine.Content;
 using KhaozEngine.MapDoc;
 using Xunit;
@@ -37,6 +38,42 @@ namespace KhaozEngine.Tests.MapDoc
                 .Replace("\"formatVersion\": 1", "\"formatVersion\": \"one\"");
             ValidationReport report = JsonSchemaValidator.Validate(json, MapDocumentSchema.GetJson());
             Assert.False(report.IsValid);
+        }
+
+        [Fact]
+        public void UnknownPropertyAtRoot_FailsSchema()
+        {
+            JsonNode node = JsonNode.Parse(MapDocumentFile.SaveText(MapDocumentFileTests.SampleDoc()))!;
+            node["unknownRootField"] = "surprise";
+            ValidationReport report = JsonSchemaValidator.Validate(node.ToJsonString(), MapDocumentSchema.GetJson());
+            Assert.False(report.IsValid);
+        }
+
+        [Fact]
+        public void UnknownPropertyOnPlacement_FailsSchema()
+        {
+            JsonNode node = JsonNode.Parse(MapDocumentFile.SaveText(MapDocumentFileTests.SampleDoc()))!;
+            node["placements"]![0]!["unknownField"] = "surprise";
+            ValidationReport report = JsonSchemaValidator.Validate(node.ToJsonString(), MapDocumentSchema.GetJson());
+            Assert.False(report.IsValid);
+        }
+
+        [Fact]
+        public void UnknownPropertyOnShape_FailsSchema()
+        {
+            JsonNode node = JsonNode.Parse(MapDocumentFile.SaveText(MapDocumentFileTests.SampleDoc()))!;
+            node["exclusions"]![0]!["shape"]!["unknownShapeField"] = "surprise";
+            ValidationReport report = JsonSchemaValidator.Validate(node.ToJsonString(), MapDocumentSchema.GetJson());
+            Assert.False(report.IsValid);
+        }
+
+        [Fact]
+        public void UnknownPropertyOnFeature_StillPassesSchema()
+        {
+            JsonNode node = JsonNode.Parse(MapDocumentFile.SaveText(MapDocumentFileTests.SampleDoc()))!;
+            node["terrain"]!["features"]![0]!["customGameField"] = "totally fine";
+            ValidationReport report = JsonSchemaValidator.Validate(node.ToJsonString(), MapDocumentSchema.GetJson());
+            Assert.True(report.IsValid, string.Join("\n", report.Errors));
         }
     }
 }

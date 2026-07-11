@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json.Nodes;
+using KhaozEngine.Content;
 using KhaozEngine.MapDoc;
 using Xunit;
 
@@ -68,6 +70,35 @@ namespace KhaozEngine.Tests.MapDoc
             Assert.Null(back.Placements[0].Y);
             Assert.True(back.Spawns[0].Enabled);
             Assert.Contains("safe", back.Regions[0].Tags);
+        }
+
+        [Fact]
+        public void PolygonShape_SaveLoadRoundTripsExactly()
+        {
+            var doc = SampleDoc();
+            var points = new List<float[]>
+            {
+                new float[] { -10f, -10f },
+                new float[] { 10f, -10f },
+                new float[] { 15f, 0f },
+                new float[] { 10f, 10f },
+                new float[] { -10f, 10f },
+            };
+            doc.Exclusions.Add(new MapExclusion { Shape = new PolygonShapeDoc { Points = points } });
+
+            string json = MapDocumentFile.SaveText(doc);
+            var back = MapDocumentFile.LoadText(json);
+
+            var polygon = Assert.IsType<PolygonShapeDoc>(back.Exclusions[^1].Shape);
+            Assert.Equal(points.Count, polygon.Points.Count);
+            for (int i = 0; i < points.Count; i++)
+            {
+                Assert.Equal(points[i][0], polygon.Points[i][0]);
+                Assert.Equal(points[i][1], polygon.Points[i][1]);
+            }
+
+            ValidationReport report = JsonSchemaValidator.Validate(json, MapDocumentSchema.GetJson());
+            Assert.True(report.IsValid, string.Join("\n", report.Errors));
         }
 
         [Fact]

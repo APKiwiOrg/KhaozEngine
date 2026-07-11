@@ -4,6 +4,7 @@
   "title": "KhaozEngine zone map document",
   "type": "object",
   "required": ["formatVersion", "id", "bounds", "terrain"],
+  "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
     "formatVersion": { "type": "integer", "minimum": 1 },
@@ -12,6 +13,7 @@
     "bounds": {
       "type": "object",
       "required": ["minX", "minZ", "maxX", "maxZ"],
+      "additionalProperties": false,
       "properties": {
         "minX": { "type": "number" },
         "minZ": { "type": "number" },
@@ -21,6 +23,7 @@
     },
     "terrain": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "seed": { "type": "integer" },
         "waterLevel": { "type": "number" },
@@ -33,6 +36,7 @@
           "type": "array",
           "items": {
             "type": "object",
+            "additionalProperties": false,
             "properties": {
               "start": { "type": ["number", "null"] },
               "end": { "type": ["number", "null"] },
@@ -57,6 +61,7 @@
       "items": {
         "type": "object",
         "required": ["name"],
+        "additionalProperties": false,
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "seed": { "type": "integer" },
@@ -69,6 +74,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "additionalProperties": false,
               "properties": {
                 "biome": { "type": "string" },
                 "density": { "type": "number", "minimum": 0, "maximum": 1 },
@@ -84,6 +90,7 @@
       "items": {
         "type": "object",
         "required": ["name", "hostLayer"],
+        "additionalProperties": false,
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "hostLayer": { "type": "string", "minLength": 1 },
@@ -105,6 +112,7 @@
       "items": {
         "type": "object",
         "required": ["shape"],
+        "additionalProperties": false,
         "properties": {
           "shape": { "$ref": "#/$defs/shape" },
           "layers": { "type": ["array", "null"], "items": { "type": "string" } }
@@ -116,6 +124,7 @@
       "items": {
         "type": "object",
         "required": ["shape"],
+        "additionalProperties": false,
         "properties": {
           "shape": { "$ref": "#/$defs/shape" },
           "densityMultiplier": { "type": "number", "minimum": 0 },
@@ -129,6 +138,7 @@
       "items": {
         "type": "object",
         "required": ["id", "kind", "x", "z"],
+        "additionalProperties": false,
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "kind": { "type": "string", "minLength": 1 },
@@ -146,6 +156,7 @@
       "items": {
         "type": "object",
         "required": ["id", "archetypeId", "x", "z"],
+        "additionalProperties": false,
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "archetypeId": { "type": "string", "minLength": 1 },
@@ -161,6 +172,7 @@
       "items": {
         "type": "object",
         "required": ["name", "shape"],
+        "additionalProperties": false,
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "shape": { "$ref": "#/$defs/shape" },
@@ -176,6 +188,7 @@
       "items": {
         "type": "object",
         "required": ["id"],
+        "additionalProperties": false,
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "weight": { "type": "number", "minimum": 0 }
@@ -193,7 +206,8 @@
             "centerZ": { "type": "number" },
             "radius": { "type": "number", "minimum": 0 }
           },
-          "required": ["type", "radius"]
+          "required": ["type", "radius"],
+          "additionalProperties": false
         },
         {
           "properties": {
@@ -203,7 +217,8 @@
             "maxX": { "type": "number" },
             "maxZ": { "type": "number" }
           },
-          "required": ["type", "minX", "minZ", "maxX", "maxZ"]
+          "required": ["type", "minX", "minZ", "maxX", "maxZ"],
+          "additionalProperties": false
         },
         {
           "properties": {
@@ -214,7 +229,8 @@
               "items": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } }
             }
           },
-          "required": ["type", "points"]
+          "required": ["type", "points"],
+          "additionalProperties": false
         }
       ]
     }

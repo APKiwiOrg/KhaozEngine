@@ -203,6 +203,10 @@ namespace KhaozEngine.Showcase
             _camera = new FollowCamera3D { Target = _character.Position, HeightOffset = 1.2f, GroundHeight = _terrain.GroundHeight };
             _camera.Distance = 9f;
             _camera.Occlusion = _physics;   // spring-arm: pull the eye in through a wall/roof rather than clip it
+            // Demo-only: smooth the camera's follow target over the small per-riser fore-aft stutter the physics XZ
+            // still carries on a stair climb (see the matching note in RoomDungeon). Off by engine default; enabled
+            // in the two showcase rooms that have climbable stairs only, leaving other consumers' cameras untouched.
+            _camera.EnableTargetDamping = true;
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
 

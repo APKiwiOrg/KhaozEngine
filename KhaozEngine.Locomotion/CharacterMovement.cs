@@ -153,6 +153,42 @@ public static class CharacterMovement
                 pos += mtv / len * push;
             }
             if (clampXz is not null) { Vector2 c = clampXz(pos.X, pos.Z); pos.X = c.X; pos.Z = c.Y; }
+
+            // MONOTONE-FORWARD climb. The paced step-up caps the per-tick horizontal advance to the walk step while the
+            // rise is throttled, so between mounts the footprint sits slightly behind the tread it is climbing, embedded
+            // in the riser. This same swept pass's depenetrate-to-clearance (its pre-sweep push-out) then shoves the
+            // capsule BACKWARD off that riser next tick - a real per-riser fore-aft ripple (~-0.06 m at walk, ~-0.07 m at
+            // slow walk, then a catch-up) felt on the body AND on the camera, which tracks the physics XZ un-smoothed.
+            // The backward push is spurious while climbing: the capsule is SUPPOSED to press the riser it is mounting,
+            // and the step-up remounts it the very next tick. So when it was grounded up on the step run last tick (its
+            // carried Y sits above the analytic terrain floor, i.e. genuinely on a step, not on flat ground) and this
+            // tick's resolved move points net BACKWARD along the intended direction, HOLD the horizontal at last tick's
+            // position for this tick (do not commit the shove). This runs BEFORE the support floor (step 4) is read, so
+            // when the backward shove would also have dropped the height (its shoved-back footprint losing the riser and
+            // collapsing to the flat floor), sampling the floor at the held (still-on-the-riser) XZ keeps the capsule up
+            // on the step and the ascent stays smooth in Y too. A separate Y hold is deliberately NOT added: holding the
+            // height instead of the XZ freezes the step-up (the brief drop-to-flat is part of how a deep-footprint mount
+            // re-engages the next riser). It cannot push the capsule into new geometry (it only removes a regression,
+            // never adds reach) and never lowers the mount's forward cap (which the swept step-up needs to clear the
+            // pushback - lowering it re-creates the first-riser stall). The hold is the WHOLE displacement, not just its
+            // backward component: on an ANGLED climb, projecting out only the along-move part would spill that removed
+            // length onto the climb-perpendicular axis and amplify the sideways drift on shove ticks (breaking the
+            // no-lateral-amplification pin); holding the full XZ leaves the sideways position exactly where it was, so a
+            // shove tick contributes zero lateral. A real descent keeps the along-move component >= 0 (forward-and-down)
+            // and is untouched; flat-ground knockback fails the on-the-run gate (its carried Y is at the floor). Gated
+            // on the PREVIOUS state, not the post-shove pos, because a deep shove has already dropped pos by now.
+            float floorAtStart = groundHeight(s.Position.X, s.Position.Z) + halfH;
+            if (s.Grounded && t.MaxStepClimbSpeed > 0f && s.Position.Y > floorAtStart + 0.05f)
+            {
+                float mvx = dx - s.Position.X, mvz = dz - s.Position.Z;
+                float mvLen = MathF.Sqrt(mvx * mvx + mvz * mvz);
+                if (mvLen > 1e-6f)
+                {
+                    float inv = 1f / mvLen; mvx *= inv; mvz *= inv;
+                    float along = (pos.X - s.Position.X) * mvx + (pos.Z - s.Position.Z) * mvz;
+                    if (along < 0f) { pos.X = s.Position.X; pos.Z = s.Position.Z; }   // net backward: hold last tick's XZ
+                }
+            }
         }
 
         // 4. Support floor (analytic terrain + a downward prop sweep). The physics world holds only props

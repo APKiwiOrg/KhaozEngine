@@ -163,6 +163,13 @@ namespace KhaozEngine.Showcase
             _camera = new FollowCamera3D { Target = _character.Position, HeightOffset = 1.2f };
             _camera.Distance = 9f;
             _camera.Occlusion = _physics;   // spring-arm: pull the eye in through a wall/ceiling rather than clip it
+            // Demo-only: smooth the camera's follow target. The avatar's RenderPosition already eases the discrete
+            // stair-step HEIGHT snaps, but its physics XZ still carries a small, un-smoothed per-riser fore-aft
+            // stutter (the paced step-climb advances forward in a lumpy [0, walk-step] cadence, which the character
+            // fix keeps monotone-forward but cannot flatten without lowering the mount cap and re-stalling). A light
+            // target damping on the CAMERA glides over that residual so the dungeon-stair view reads smooth. Off by
+            // engine default; enabled here (and in Room3D) only, leaving every other consumer's camera untouched.
+            _camera.EnableTargetDamping = true;
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
 

@@ -76,6 +76,10 @@ public sealed class EntityCommandBuffer
         {
             _remapPool.Return(remap);   // Reset() clears Dict; safe even when an exception is thrown.
             _cmds.Clear();
+            _nextPlaceholder = -1;      // reset the placeholder counter so a played-back buffer is fully
+                                        // equivalent to a fresh one (matters for pooled, long-lived reuse:
+                                        // placeholders only need to be unique within one record/playback cycle,
+                                        // so resetting keeps a recycled buffer from drifting toward int overflow).
         }
     }
 

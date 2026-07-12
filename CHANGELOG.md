@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## Unreleased
+## 10.74.0
 
 ### Stair climbs render as a smooth glide up the stair slope (slope-fed render smoothing in the character bridge)
 

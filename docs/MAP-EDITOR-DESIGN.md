@@ -230,8 +230,8 @@ editor-runtime cores. Never Fable-tier subagents.
   exposing 39 document, query, mutation, and headless-render verbs over the same `MapDoc` model the
   GUI editor uses (`docs/USING-KHAOZENGINE.md` "ke-mapedit" section, `KhaozEngine.MapEdit.Tool`
   README). Shipped in 10.63.0, see CHANGELOG.
-- **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (after A),
-  editor head and doc rewrite (after B).
+- **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (D1,
+  Ruinborne 0.3.16), editor head and doc rewrite (D2, Ruinborne 0.6.2 era, engine 10.67.0).
 
 B and C share only the MapDoc contract from A, so they run concurrently in separate
 worktrees. Doc sweep obligations per phase follow `AGENTS.md` (README catalog, per-package
@@ -265,11 +265,8 @@ once it ships, the detail moves to `CHANGELOG.md`.
 - **Ruinborne adoption**: document-to-SQL spawn seed automation. `PostDeploy.sql` still
   hand-carries the wolf values, currently in agreement with the document. Retained
   constants (lake, town, rim, play area) are still read directly by game code. Migrate
-  those consumers to document reads in the editor era. `LegacyWorldReference` and the
-  parity tests get deleted on the first intentional edit to `valley.map.json`.
-  Clearing-disc boundary semantics differ at exactly the radius, strict vs inclusive, a
-  measure-zero case. Phase D2: the `Ruinborne.Editor` head plus the doc rewrite (see
-  Phasing above).
+  those consumers to document reads in the editor era. Clearing-disc boundary semantics
+  differ at exactly the radius, strict vs inclusive, a measure-zero case.
 - **Gui widgets**:
   - `NumberField`: the numeric filter is frame-granular, so a multi-key frame or a paste
     can admit a second dot. Public `Value` bypasses the clamp, the same gap as `Slider`.
@@ -318,6 +315,6 @@ once it ships, the detail moves to `CHANGELOG.md`.
   `_splatMaterials` list, so a `ViewportWorld` disposed after its owning `Scene3D` no longer throws
   `ArgumentOutOfRangeException`. Found by ke-mapedit's `RenderService`, which documents the workaround
   today: let the `Capture`-scoped scene own teardown instead of disposing the world explicitly.
-- **Program phases**: Phase D2, see Ruinborne adoption above. Sculpting via the
-  reserved `terrainOverrides` delta layer. Live server editing and hot reload. Multi-user
-  editing. Polygon click-path authoring gesture for exclusions and regions.
+- **Program phases**: Sculpting via the reserved `terrainOverrides` delta layer. Live
+  server editing and hot reload. Multi-user editing. Polygon click-path authoring gesture
+  for exclusions and regions.

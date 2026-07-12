@@ -3196,18 +3196,24 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (39 tools).**
+**Verb surface (54 tools).**
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
-| Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder` |
-| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region` |
+| Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
+| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
 | Renders | `render_topdown`, `render_view` |
+
+Biome bands and scatter/companion layers are closed-shape types, so they cross the wire as typed flat
+parameters (not json), with `kinds`/`hostKinds` as `"id"` / `"id:weight"` string lists.
+`scatter_layer_rename` cascades through every companion HostLayer and explicit layer filter that names
+it. `procedural_info` reads the full terrain/band/layer setup back at full field fidelity, including
+scatter layer rules, which stay a GUI-only edit surface for now.
 
 `render_topdown` and `render_view` are the only two that need a GPU (`Render3DSnapshot.Capture`, the
 engine's one public headless render entry), and return a PNG `ImageContentBlock` directly, no files

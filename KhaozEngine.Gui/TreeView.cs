@@ -155,12 +155,14 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// Reserve the region on the pointer, apply wheel scrolling, run the drag-and-drop reorder gesture, and
-        /// hit-test a tap for this frame. A held press whose origin is in the tree becomes a row drag once the
-        /// pointer clears <see cref="DragThreshold"/> (grabbing the press-origin row, unless that press landed in a
-        /// parent's caret zone, which stays reserved for the expand toggle). A valid same-parent release fires
-        /// <see cref="OnReordered"/>, Escape or an off-tree release cancels. Otherwise a caret-zone tap toggles
-        /// expansion and any other in-bounds tap selects the row. Returns true if the selection, an expansion, or a
-        /// reorder changed. Ignores everything after the region reservation when disabled.
+        /// hit-test a tap for this frame. Only armed when <see cref="OnReordered"/> is wired: with no handler the
+        /// drag path is fully inert and every held press is a plain tap candidate. When a handler is wired, a held
+        /// press whose origin is in the tree becomes a row drag once the pointer clears <see cref="DragThreshold"/>
+        /// (grabbing the press-origin row, unless that press landed in a parent's caret zone, which stays reserved
+        /// for the expand toggle). A valid same-parent release fires <see cref="OnReordered"/>, Escape or an
+        /// off-tree release cancels. Otherwise a caret-zone tap toggles expansion and any other in-bounds tap
+        /// selects the row. Returns true if the selection, an expansion, or a reorder changed. Ignores everything
+        /// after the region reservation when disabled.
         /// </summary>
         public bool Update(InputManager input)
         {
@@ -189,8 +191,10 @@ namespace KhaozEngine.Gui
             }
 
             // A held press whose origin is in the tree is a (potential) drag, never a tap: arm and track it here,
-            // committing nothing until release.
-            if (input.IsDragStartIn(Bounds)) { TrackDrag(input, rows); return false; }
+            // committing nothing until release. Gated on a reorder handler being wired: with none, this path
+            // stays fully inert (never arms, never draws the insertion line) so a held-then-released press falls
+            // through to the tap check below exactly as it did before the drag feature existed.
+            if (OnReordered is not null && input.IsDragStartIn(Bounds)) { TrackDrag(input, rows); return false; }
 
             // Release of an armed drag: the release position is the authoritative drop slot, so an off-tree or
             // cross-parent release cancels and a valid slot that actually moves the row fires OnReordered.

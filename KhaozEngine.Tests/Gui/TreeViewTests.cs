@@ -281,6 +281,32 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void TreeView_DragWithoutHandler_DoesNotArm_AndTapStillSelects()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+            a.Expanded = true;                       // rows: A(0), A1(1), A2(2), B(3)
+            TreeNode a2 = a.Children[1];
+
+            // No OnReordered wired: the drag path must stay inert no matter how far the press travels.
+            var input = new InputManager();
+            Vector2 release = RowLabel(tree, 2);     // A2's body, well past DragThreshold from A1's row
+
+            Step(tree, input, RowLabel(tree, 1), down: false);   // hover A1
+            Step(tree, input, RowLabel(tree, 1), down: true);    // press A1's label
+            Step(tree, input, release, down: true);              // move onto A2 (would arm a drag if a handler were wired)
+            Step(tree, input, release, down: false);             // release on A2
+
+            Assert.False(tree.WasReordered);          // no insertion state ever armed, so nothing can commit
+            // With the drag path inert, the release falls through to the OLD pre-drag tap path: IsTapIn(Bounds)
+            // only requires the press-origin AND the release to both land inside the tree's Bounds (not the same
+            // row), so a press-here-release-there gesture selects the row under the RELEASE position (A2), not
+            // the press-origin row (A1).
+            Assert.Same(a2, tree.Selected);
+            Assert.True(tree.WasSelectionChanged);
+        }
+
+        [Fact]
         public void TreeView_EscapeCancelsDrag()
         {
             var tree = NewTree();

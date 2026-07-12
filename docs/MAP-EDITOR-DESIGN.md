@@ -293,10 +293,8 @@ once it ships, the detail moves to `CHANGELOG.md`.
   sorted-first. Stale inactive filter focus survives across a mode swap. Whitespace-only
   filter edits trigger a redundant rebuild. Concave polygon overlays self-overlap, the
   centroid fan. The overlay draw list allocates per frame. Selected-overlay brighten clamps
-  channels, a slight hue shift. Feature-selection highlight and spawn-drag-vanish lack
-  direct unit tests. `RoomMapEditor` cannot restore the outline post default on exit
-  (documented, unobservable today). Custom `MapEditorScene` hosts must unsubscribe
-  `DocumentChanged` themselves (documented). `BakeRegion`'s two-arg overload has a doc
+  channels, a slight hue shift. Feature-selection highlight lacks direct unit tests.
+  Custom `MapEditorScene` hosts must unsubscribe `DocumentChanged` themselves (documented). `BakeRegion`'s two-arg overload has a doc
   nicety around its shadowed-discriminator caveat. Index-keyed hides (the feature and
   exclusion `Visible` rows key on list index) do not remap on a feature or exclusion
   reorder, whether via Ctrl+Up/Ctrl+Down or an outline drag-and-drop, or on a Delete, so

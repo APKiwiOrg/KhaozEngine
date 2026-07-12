@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Local player excluded from remote interpolation (post-teleport slide fix)
+
+The local player's reconcile basis is the client world's `ReplicatedPosition` (the last-received authoritative value),
+but `WorldClient.AdvancePresentation` ran the fixed-delay remote interpolator over EVERY interpolatable entity,
+including the local player, writing a delayed presentation value into that same `ReplicatedPosition`. The local avatar
+renders from prediction, never from that buffer, so the write was pure pollution. Steady movement masked it (the delta
+stream re-sends the changing position each tick and overwrites the stale value). After an epoch teleport the entity
+goes static at the destination, the delta stops carrying the unchanged position, and for ~`InterpolationDelayTicks` the
+interpolator wrote a stale pre-teleport-blended value back into `ReplicatedPosition`; the reconcile read that as its
+basis, the error sat under `HardSnapDistance`, and the avatar glided ~10% of the teleport distance off the mark over
+~1 s. It bit on login for returning players (spawn -> saved position) and on self-rescue.
+
+- **`ClientReplicationView.RecordInterpolationSample` / `InterpolateAt` gained an optional `excludeNetId`
+  (`KhaozEngine.Replication`).** Both default to excluding nothing (unchanged for every existing caller and the
+  Interpolate/buffer tests), and skip the one excluded entity when set. When the excluded id changes across calls (a
+  reconnect assigns a new local id) the new id's stale sample history is dropped, so a later un-exclude cannot lerp
+  across it.
+- **`WorldClient` passes the local net id into both (`KhaozEngine.NetWorld`).** The local avatar is no longer buffered
+  or interpolated, so its client-world `ReplicatedPosition` always holds the authoritative last-received value that
+  reconcile reads as its basis. Wasted per-frame interpolation work for the local entity is also gone.
+
+Consumer note: no change needed - the fix is automatic for any client with `InterpolateRemotes` set (the default). It
+removes the post-teleport slide seen on login and self-rescue for returning players.
+
 ## 10.67.0
 
 Three independent changes in one release: teleport + screen-transitions hardening (a 10.65 follow-up, with one breaking-but-unadopted `CharDissolve` constructor change), an optional server-authoritative facing seam on the replicated-character animator, and a locomotion fix so a solid single riser mounts at any walk speed.

@@ -825,6 +825,12 @@ public sealed class EditorToolController
                 if (!RegionExists(sel.Id)) return;
                 _document.Execute(new RemoveRegionCommand(sel.Id));
                 break;
+            case SelectionKind.BiomeBand:
+                if (!int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bi)
+                    || bi < 0 || bi >= _document.Doc.Terrain.Biomes.Count) return;
+                _document.Execute(new RemoveBiomeBandCommand(bi));
+                OnIndexRemoved?.Invoke(SelectionKind.BiomeBand, bi);   // no band hide today, but keeps the index-remap path uniform
+                break;
             default:
                 return;
         }

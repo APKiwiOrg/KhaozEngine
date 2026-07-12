@@ -571,6 +571,13 @@ namespace KhaozEngine.Tests.MapEditor
             return -1;
         }
 
+        // The center point of a node's visible row, so a tap lands on that row.
+        static Vector2 RowCenter(TreeView tree, TreeNode node)
+        {
+            Rect r = tree.RowBounds(RowOf(tree, node));
+            return new Vector2(r.X + r.Width * 0.5f, r.Y + r.Height * 0.5f);
+        }
+
         // The child at `childIndex` under the outline category labelled `label`.
         static TreeNode CategoryChild(TreeView tree, string label, int childIndex)
         {
@@ -972,7 +979,7 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void TerrainNode_InspectorShowsSeedAndBiomeReadouts()
+        public void TerrainNode_InspectorShowsEveryScalar_AndBiomeCount()
         {
             var scene = PushDocScene(() =>
             {
@@ -985,18 +992,156 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Terrain, "");
 
-            // The editable water level is a FloatRow; seed and biome count are read-only displays.
-            Assert.IsType<FloatRow>(FloatRowByLabel(scene.Inspector, "WaterLevel"));
-            ReadOnlyRow seed = ReadOnlyRowByLabel(scene.Inspector, "Seed");
-            ReadOnlyRow biomes = ReadOnlyRowByLabel(scene.Inspector, "Biomes");
+            // Every terrain scalar is now an editable FloatRow (decision 8 widened EditTerrainCommand + inspector).
+            foreach (string label in new[]
+                { "WaterLevel", "Seed", "BiomeBlend", "GentleFrequency", "GentleAmplitude", "DetailFrequency", "DetailOctaves" })
+                Assert.IsType<FloatRow>(FloatRowByLabel(scene.Inspector, label));
 
-            // ReadOnlyRow polls its display getter on Update, so drive each row once before reading Display.
+            // The seed FloatRow shows the live seed value, and the biome count stays a read-only display.
+            Assert.Equal(99f, FloatRowByLabel(scene.Inspector, "Seed").Field.Value);
+            ReadOnlyRow biomes = ReadOnlyRowByLabel(scene.Inspector, "Biomes");
+            biomes.Update(new Rect(0f, 0f, 200f, 28f), new InputManager(), 0f);
+            Assert.Equal("2", biomes.Display);
+        }
+
+        [Fact]
+        public void TerrainNode_SeedRow_EditsSeedThroughCommand()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Seed = 5;
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            FloatRow seed = FloatRowByLabel(scene.Inspector, "Seed");
+
+            // Scrub +100 px at the seed row's DragScale (1.0 per px -> +100), which rounds to an int seed.
             var cell = new Rect(0f, 0f, 200f, 28f);
             var ui = new InputManager();
-            seed.Update(cell, ui, 0f);
-            biomes.Update(cell, ui, 0f);
-            Assert.Equal("99", seed.Display);
-            Assert.Equal("2", biomes.Display);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false)); seed.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true)); seed.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(101f, 10f), leftDown: true)); seed.Update(cell, ui, 0.016f);
+
+            Assert.Equal(6, scene.Document.Doc.Terrain.Seed);   // +1 scrub, stored as an int
+            Assert.True(scene.Document.WorldRebuildPending);
+            Assert.True(scene.Document.History.CanUndo);
+            Assert.True(scene.Document.Undo());
+            Assert.Equal(5, scene.Document.Doc.Terrain.Seed);
+        }
+
+        // ---- biome bands (outline category + inspector) ------------------------------------------------
+
+        [Fact]
+        public void BiomesCategory_InOutline_SelectableEditable()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Biomes.Add(new MapBiomeBand
+                    { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow, BaseHeight = 2f, HillAmplitude = 3f });
+                doc.Terrain.Biomes.Add(new MapBiomeBand
+                    { Start = 40f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Mountains });
+                return doc;
+            });
+
+            // A Biomes category sits beside Terrain, with one selectable node per band plus a trailing add action.
+            TreeNode band0 = CategoryChild(scene.Outline, "Biomes", 0);
+            TreeNode band1 = CategoryChild(scene.Outline, "Biomes", 1);
+            Assert.Equal("[0] Meadow 0..40", band0.Label.Resolve());
+            Assert.Equal("[1] Mountains 40..*", band1.Label.Resolve());   // open end edge renders as "*"
+
+            // Selecting the band node builds its editable inspector (Biome choice + scalar rows).
+            scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
+            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[0]).Selected);
+            Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "BaseHeight").Field.Value);
+            Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "HillAmplitude").Field.Value);
+            Assert.Equal(0f, FloatRowByLabel(scene.Inspector, "Start").Field.Value);
+            Assert.Equal(40f, FloatRowByLabel(scene.Inspector, "End").Field.Value);
+        }
+
+        [Fact]
+        public void BiomeBandInspector_NullableEdges()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Biomes.Add(new MapBiomeBand
+                    { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+
+            // Start is a concrete 0 to begin with, so "Start open" reads off (the edge is not open).
+            BoolRow startOpen = BoolRowByLabel(scene.Inspector, "Start open");
+            Assert.False(startOpen.Toggle.IsOn);
+
+            // Tapping "Start open" flips the nullable Start edge to null (open, -infinity).
+            Assert.True(TapBool(startOpen));
+            Assert.Null(scene.Document.Doc.Terrain.Biomes[0].Start);
+
+            // Editing the Start FloatRow to a concrete value closes the open edge back to that value.
+            FloatRow start = FloatRowByLabel(scene.Inspector, "Start");
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false)); start.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true)); start.Update(cell, ui, 0.016f);   // press inside (grab-gate origin)
+            ui.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true)); start.Update(cell, ui, 0.016f);   // +100 px at 0.01 = +1.0 from 0
+            Assert.NotNull(scene.Document.Doc.Terrain.Biomes[0].Start);
+
+            // The End edge opens the same way through its own paired toggle.
+            BoolRow endOpen = BoolRowByLabel(scene.Inspector, "End open");
+            Assert.True(TapBool(endOpen));
+            Assert.Null(scene.Document.Doc.Terrain.Biomes[0].End);
+        }
+
+        [Fact]
+        public void BiomeBand_AddViaOutlineAction_AppendsAndSelects()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Biomes.Add(new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+                return doc;
+            });
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 600f);   // tall enough for every outline row
+            // The add action is the last child under the Biomes category (after the single band node).
+            TreeNode addNode = CategoryChild(outline, "Biomes", 1);
+            Assert.Equal("[+ add band]", addNode.Label.Resolve());
+
+            var input = new InputManager();
+            TapTree(outline, input, RowCenter(outline, addNode));
+
+            Assert.Equal(2, scene.Document.Doc.Terrain.Biomes.Count);   // a band was appended
+            Assert.Equal(SelectionKind.BiomeBand, scene.Document.Selection.Kind);
+            Assert.Equal("1", scene.Document.Selection.Id);             // the new band is selected
+            Assert.True(scene.Document.WorldRebuildPending);
+        }
+
+        [Fact]
+        public void BandDelete_ViaOutlineSelection()
+        {
+            var a = new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Meadow };
+            var b = new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Desert };
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Biomes.Add(a);
+                doc.Terrain.Biomes.Add(b);
+                return doc;
+            });
+
+            // Select the first band from the outline, then press Delete: the standard delete path removes it.
+            scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+            scene.Controller.Update(new EditorFrameInput(Vector3.Zero, Vector3.UnitZ, deletePressed: true));
+
+            Assert.Single(scene.Document.Doc.Terrain.Biomes);
+            Assert.Same(b, scene.Document.Doc.Terrain.Biomes[0]);
+            Assert.Equal(SelectionKind.None, scene.Document.Selection.Kind);   // selection cleared after delete
+            Assert.True(scene.Document.History.CanUndo);
         }
 
         [Fact]

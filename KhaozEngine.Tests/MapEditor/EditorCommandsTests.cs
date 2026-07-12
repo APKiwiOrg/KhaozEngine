@@ -859,5 +859,153 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(SelectionKind.None, ed.Selection.Kind);
             Assert.NotNull(ed.Registry);
         }
+
+        // ---- terrain scalars (widened EditTerrainCommand) ----------------------------------------------
+
+        [Fact]
+        public void EditTerrain_AllScalars_ApplyRevertMerge()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            MapTerrain t = doc.Terrain;
+            float w0 = t.WaterLevel;
+            int s0 = t.Seed;
+            float bb0 = t.BiomeBlend, gf0 = t.GentleFrequency, ga0 = t.GentleAmplitude, df0 = t.DetailFrequency;
+            int oct0 = t.DetailOctaves;
+
+            // Each scalar applies independently and reverts to its prior value, and a command that sets ONE
+            // scalar leaves every other scalar untouched (only-set-fields apply).
+            ed.Execute(new EditTerrainCommand(newBiomeBlend: 42f, oldBiomeBlend: bb0));
+            Assert.Equal(42f, t.BiomeBlend);
+            Assert.Equal(w0, t.WaterLevel);   // only-set: water not touched
+            Assert.Equal(s0, t.Seed);         // only-set: seed not touched
+            Assert.Equal(gf0, t.GentleFrequency);
+            Assert.Equal(ga0, t.GentleAmplitude);
+            Assert.Equal(df0, t.DetailFrequency);
+            Assert.Equal(oct0, t.DetailOctaves);
+            Assert.True(ed.WorldRebuildPending);   // AffectsWorld
+            ed.SealGesture();
+
+            ed.Execute(new EditTerrainCommand(newSeed: 555, oldSeed: s0));
+            Assert.Equal(555, t.Seed);
+            Assert.Equal(42f, t.BiomeBlend);   // the prior set field stands
+            ed.SealGesture();
+
+            ed.Execute(new EditTerrainCommand(newGentleFrequency: 0.5f, oldGentleFrequency: gf0));
+            Assert.Equal(0.5f, t.GentleFrequency);
+            ed.SealGesture();
+            ed.Execute(new EditTerrainCommand(newGentleAmplitude: 9f, oldGentleAmplitude: ga0));
+            Assert.Equal(9f, t.GentleAmplitude);
+            ed.SealGesture();
+            ed.Execute(new EditTerrainCommand(newDetailFrequency: 0.09f, oldDetailFrequency: df0));
+            Assert.Equal(0.09f, t.DetailFrequency);
+            ed.SealGesture();
+            ed.Execute(new EditTerrainCommand(newDetailOctaves: 7, oldDetailOctaves: oct0));
+            Assert.Equal(7, t.DetailOctaves);
+        }
+
+        [Fact]
+        public void EditTerrain_ScrubMerge_SameField_FirstOldLastNew()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            float w0 = doc.Terrain.WaterLevel;
+
+            // Two water edits of the same gesture coalesce: the level moves to the last value, but a single undo
+            // reverts the whole scrub to the first old (no barrier between them).
+            ed.Execute(new EditTerrainCommand(newWaterLevel: 1f, oldWaterLevel: w0));
+            ed.Execute(new EditTerrainCommand(newWaterLevel: 2f, oldWaterLevel: 1f));
+            Assert.Equal(2f, doc.Terrain.WaterLevel);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(w0, doc.Terrain.WaterLevel);   // first-old wins the revert
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void EditTerrain_Merge_UnionOfDifferentFields_EachOldFromFirstSetter()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            float w0 = doc.Terrain.WaterLevel;
+            int s0 = doc.Terrain.Seed;
+
+            // A water-only edit and a seed-only edit of the same gesture coalesce into ONE step carrying BOTH
+            // fields. One undo reverts both, each to the old captured by the FIRST command that set that field.
+            ed.Execute(new EditTerrainCommand(newWaterLevel: 3f, oldWaterLevel: w0));
+            ed.Execute(new EditTerrainCommand(newSeed: 88, oldSeed: s0));
+            Assert.Equal(3f, doc.Terrain.WaterLevel);
+            Assert.Equal(88, doc.Terrain.Seed);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(w0, doc.Terrain.WaterLevel);   // union revert restores water
+            Assert.Equal(s0, doc.Terrain.Seed);         // and seed, each from its own first-setter old
+            Assert.False(ed.History.CanUndo);
+
+            // Re-scrubbing water after the seed already merged keeps water's FIRST old (w0), not the seed edit's.
+            var ed2 = new EditorDocument(Sample());
+            float w1 = ed2.Doc.Terrain.WaterLevel;
+            ed2.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: w1));
+            ed2.Execute(new EditTerrainCommand(newSeed: 12, oldSeed: ed2.Doc.Terrain.Seed));
+            ed2.Execute(new EditTerrainCommand(newWaterLevel: 6f, oldWaterLevel: 5f));
+            Assert.True(ed2.Undo());
+            Assert.Equal(w1, ed2.Doc.Terrain.WaterLevel);   // still the first-ever water old, not 5
+        }
+
+        // ---- biome bands -------------------------------------------------------------------------------
+
+        [Fact]
+        public void BiomeBand_AddEditRemove_RoundTrip_AffectsWorld()
+        {
+            var band = new MapBiomeBand
+            {
+                Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Forest, BaseHeight = 3f, HillAmplitude = 5f,
+            };
+            AssertRoundTrip(Sample(), new AddBiomeBandCommand(band));
+
+            // Add is world-affecting (band shape feeds the terrain field).
+            var ed = new EditorDocument(Sample());
+            ed.Execute(new AddBiomeBandCommand(new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Snow }));
+            Assert.True(ed.WorldRebuildPending);
+
+            // Whole-value edit of an existing band round-trips, is world-affecting, and same-index edits merge.
+            var doc = Sample();
+            doc.Terrain.Biomes.Clear();
+            var original = new MapBiomeBand { Start = null, End = 10f, Biome = KhaozEngine.Terrain.BiomeId.Meadow };
+            doc.Terrain.Biomes.Add(original);
+            var ed2 = new EditorDocument(doc);
+            var v1 = new MapBiomeBand { Start = 1f, End = 10f, Biome = KhaozEngine.Terrain.BiomeId.Marsh };
+            var v2 = new MapBiomeBand { Start = 2f, End = 10f, Biome = KhaozEngine.Terrain.BiomeId.Marsh };
+            ed2.Execute(new EditBiomeBandCommand(0, v1, original));
+            Assert.True(ed2.WorldRebuildPending);
+            ed2.Execute(new EditBiomeBandCommand(0, v2, v1));   // same index, same gesture: coalesces
+            Assert.Same(v2, doc.Terrain.Biomes[0]);
+            Assert.True(ed2.Undo());                            // one undo reverts the whole scrub
+            Assert.Same(original, doc.Terrain.Biomes[0]);
+            Assert.False(ed2.History.CanUndo);
+
+            // Remove round-trips (restores at the same index).
+            var doc3 = Sample();
+            doc3.Terrain.Biomes.Clear();
+            var a = new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Meadow };
+            var b = new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Desert };
+            doc3.Terrain.Biomes.Add(a);
+            doc3.Terrain.Biomes.Add(b);
+            var ed3 = new EditorDocument(doc3);
+            ed3.Execute(new RemoveBiomeBandCommand(0));
+            Assert.Single(doc3.Terrain.Biomes);
+            Assert.Same(b, doc3.Terrain.Biomes[0]);
+            Assert.True(ed3.Undo());
+            Assert.Same(a, doc3.Terrain.Biomes[0]);   // back at index 0, not appended
+        }
+
+        [Fact]
+        public void RemoveBiomeBand_OutOfRange_Throws()
+        {
+            var doc = Sample();
+            int count = doc.Terrain.Biomes.Count;
+            var ed = new EditorDocument(doc);
+            Assert.Throws<ArgumentException>(() => ed.Execute(new RemoveBiomeBandCommand(count)));
+        }
     }
 }

@@ -3,8 +3,8 @@ using System;
 namespace KhaozEngine.MapEditor;
 
 /// <summary>What kind of document element a <see cref="EditorSelection"/> refers to. The id string is
-/// interpreted per kind: a placement or spawn id, a feature/exclusion list index rendered as a string, or the
-/// empty string for the singleton <see cref="Terrain"/> root.</summary>
+/// interpreted per kind: a placement or spawn id, a feature/exclusion/biome-band list index rendered as a
+/// string, or the empty string for the singleton <see cref="Terrain"/> root.</summary>
 public enum SelectionKind
 {
     /// <summary>Nothing selected.</summary>
@@ -24,6 +24,10 @@ public enum SelectionKind
     Exclusion,
     /// <summary>A named, game-interpreted region marker, keyed by its name.</summary>
     Region,
+    /// <summary>A terrain biome band (an elevation-range biome slice), keyed by its list index as a string.
+    /// Outline-only: bands have no viewport geometry, so they are never picked or gizmo-dragged and carry no
+    /// visibility toggle. Index-keyed like <see cref="Feature"/> and <see cref="Exclusion"/>.</summary>
+    BiomeBand,
 }
 
 /// <summary>What is selected in the editor, by kind plus stable id (placement id, spawn id, feature index

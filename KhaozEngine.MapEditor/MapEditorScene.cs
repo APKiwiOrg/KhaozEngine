@@ -861,7 +861,25 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void OnOutlineSelected(TreeNode node)
     {
+        // A normal node carries an OutlineRef and selects its element. A synthetic action node (e.g. "[+ add band]")
+        // carries an OutlineAction instead and runs its side effect rather than moving the selection there.
         if (node.Tag is OutlineRef r) _document.Selection.Set(r.Kind, r.Id);
+        else if (node.Tag is OutlineAction a) RunOutlineAction(a);
+    }
+
+    // Runs an outline action node's side effect. Today the only action appends a default biome band and selects it,
+    // so the just-added band opens straight into its inspector for editing (the place-tool select-on-add idiom).
+    void RunOutlineAction(OutlineAction action)
+    {
+        switch (action.Kind)
+        {
+            case OutlineActionKind.AddBiomeBand:
+                _document.Execute(new AddBiomeBandCommand(new MapBiomeBand()));
+                _document.SealGesture();
+                int added = _document.Doc.Terrain.Biomes.Count - 1;
+                _document.Selection.Set(SelectionKind.BiomeBand, added.ToString(CultureInfo.InvariantCulture));
+                break;
+        }
     }
 
     // A drag-and-drop reorder inside the outline. Same-parent drops are the only ones the TreeView reports, and
@@ -1033,6 +1051,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         _outline.Roots.Clear();
         _outline.Roots.Add(TerrainNode());
+        // Biomes sits BESIDE Terrain (a sibling category root, not a child), for consistency with the other
+        // per-collection categories (Features, Exclusions): each is a top-level category of selectable nodes.
+        _outline.Roots.Add(Category("Biomes", BiomeBandNodes()));
         _outline.Roots.Add(Category("Placements", PlacementNodes()));
         _outline.Roots.Add(Category("Spawns", SpawnNodes()));
         _outline.Roots.Add(Category("Features", FeatureNodes()));
@@ -1105,6 +1126,27 @@ public class MapEditorScene : GameScene, IGameScene3D
             yield return new TreeNode(LocalizedText.Raw(r.Name), new OutlineRef(SelectionKind.Region, r.Name));
     }
 
+    // The Biomes category's children: one selectable node per band (label = "[i] Biome start..end", with an open
+    // nullable edge rendered as "*"), then a trailing "[+ add band]" ACTION node. Bands carry no name and no
+    // viewport picking, so the outline is their only selection surface, and the add action is the only add
+    // affordance (there is no place-tool or palette for bands, and the PropertyGrid has no button row). The action
+    // node's Tag is an OutlineAction (not an OutlineRef), so OnOutlineSelected runs the add instead of selecting.
+    IEnumerable<TreeNode> BiomeBandNodes()
+    {
+        List<MapBiomeBand> bands = _document.Doc.Terrain.Biomes;
+        for (int i = 0; i < bands.Count; i++)
+            yield return new TreeNode(LocalizedText.Raw(BiomeBandLabel(bands[i], i)),
+                new OutlineRef(SelectionKind.BiomeBand, i.ToString(CultureInfo.InvariantCulture)));
+        yield return new TreeNode(LocalizedText.Raw("[+ add band]"), new OutlineAction(OutlineActionKind.AddBiomeBand));
+    }
+
+    // A compact band label: "[i] Biome start..end". A null (open) edge renders as "*" (its +/- infinity cannot be a
+    // finite number). Numbers use the invariant culture so a value like 12.5 reads the same everywhere.
+    static string BiomeBandLabel(MapBiomeBand band, int index) =>
+        $"[{index}] {band.Biome} {BandEdge(band.Start)}..{BandEdge(band.End)}";
+
+    static string BandEdge(float? edge) => edge is float v ? v.ToString(CultureInfo.InvariantCulture) : "*";
+
     void RebuildInspector()
     {
         _inspector.Rows.Clear();
@@ -1120,6 +1162,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             case SelectionKind.Feature: BuildFeatureInspector(sel.Id); break;
             case SelectionKind.Exclusion: BuildExclusionInspector(sel.Id); break;
             case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
+            case SelectionKind.BiomeBand: BuildBiomeBandInspector(sel.Id); break;
             default: BuildLayersInspector(); break;   // nothing selected: the visibility Layers panel
         }
     }
@@ -1165,16 +1208,42 @@ public class MapEditorScene : GameScene, IGameScene3D
         _controller.Field = _viewport.Field;
     }
 
-    // The terrain root inspector: the editable water level (routed through EditTerrainCommand so it coalesces
-    // scrubs and forces the scatter-honouring world rebuild) plus read-only seed and biome-count displays. The
-    // setter captures the LIVE water level as the command's old value before Execute applies the new one.
+    // The terrain root inspector: every terrain scalar as an editable row (each routed through the widened
+    // EditTerrainCommand so scrubs coalesce and the scatter-honouring world rebuild fires), plus a read-only
+    // biome-count summary. Each setter captures the LIVE field value as the command's old value before Execute
+    // applies the new one. Seed and DetailOctaves are integers, so their rows scrub whole steps (decimals 0) and
+    // round to an int on write. Biome bands themselves are edited via the Biomes outline category, not here.
     void BuildTerrainInspector()
     {
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("WaterLevel"),
             () => _document.Doc.Terrain.WaterLevel,
-            v => _document.Execute(new EditTerrainCommand(v, _document.Doc.Terrain.WaterLevel))));
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Seed"),
-            () => _document.Doc.Terrain.Seed.ToString(CultureInfo.InvariantCulture)));
+            v => _document.Execute(new EditTerrainCommand(newWaterLevel: v, oldWaterLevel: _document.Doc.Terrain.WaterLevel))));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Seed"),
+            () => _document.Doc.Terrain.Seed,
+            v => _document.Execute(new EditTerrainCommand(
+                newSeed: (int)MathF.Round(v), oldSeed: _document.Doc.Terrain.Seed)),
+            dragScale: 1f, decimals: 0));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("BiomeBlend"),
+            () => _document.Doc.Terrain.BiomeBlend,
+            v => _document.Execute(new EditTerrainCommand(newBiomeBlend: v, oldBiomeBlend: _document.Doc.Terrain.BiomeBlend)),
+            min: 0f));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleFrequency"),
+            () => _document.Doc.Terrain.GentleFrequency,
+            v => _document.Execute(new EditTerrainCommand(newGentleFrequency: v, oldGentleFrequency: _document.Doc.Terrain.GentleFrequency)),
+            min: 0f, dragScale: 0.001f, decimals: 3));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleAmplitude"),
+            () => _document.Doc.Terrain.GentleAmplitude,
+            v => _document.Execute(new EditTerrainCommand(newGentleAmplitude: v, oldGentleAmplitude: _document.Doc.Terrain.GentleAmplitude)),
+            min: 0f));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailFrequency"),
+            () => _document.Doc.Terrain.DetailFrequency,
+            v => _document.Execute(new EditTerrainCommand(newDetailFrequency: v, oldDetailFrequency: _document.Doc.Terrain.DetailFrequency)),
+            min: 0f, dragScale: 0.001f, decimals: 3));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailOctaves"),
+            () => _document.Doc.Terrain.DetailOctaves,
+            v => _document.Execute(new EditTerrainCommand(
+                newDetailOctaves: (int)MathF.Round(v), oldDetailOctaves: _document.Doc.Terrain.DetailOctaves)),
+            min: 1f, dragScale: 1f, decimals: 0));
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Biomes"),
             () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture)));
     }
@@ -1441,6 +1510,83 @@ public class MapEditorScene : GameScene, IGameScene3D
         AddShapeRows(() => RegionByName(cur())?.Shape,
             (newShape, oldShape) => _document.Execute(new EditRegionShapeCommand(cur(), newShape, oldShape)));
         AddVisibleRow(SelectionKind.Region, cur);
+    }
+
+    // ---- biome band inspector ------------------------------------------------------------------------------
+
+    /// <summary>The biome-choice options a band's Biome selector offers: the <see cref="BiomeId"/> names in
+    /// declaration order.</summary>
+    static readonly string[] BiomeChoices = Enum.GetNames<BiomeId>();
+
+    // The band inspector: the Biome choice (kind ChoiceRow, Rows[0]), the nullable Start / End edges, and the
+    // BaseHeight / HillAmplitude scalars. Every edit is a WHOLE-VALUE edit routed through EditBiomeBandCommand
+    // (clone the live band, change the one field, keep the live band as the command's old value), whose same-index
+    // merge coalesces a scrub into one undo step. Bands have no name and no viewport geometry, so there is no name
+    // row and no Visible row (visibility is a viewport concept, and a band never draws).
+    //
+    // Nullable edges (the smallest honest mechanism): each of Start / End is a FloatRow for the concrete value
+    // PAIRED with an "<edge> open" BoolRow that toggles the open edge (null = +/- infinity). This mirrors the
+    // exclusion "All layers" null-gate (decision 4): a BoolRow decides whether the nullable field is null, and
+    // editing the FloatRow closes an open edge to that concrete value. Both rows are always present (no reflow),
+    // and while the edge is open the FloatRow shows 0 as its placeholder (the toggle above it makes the open state
+    // explicit).
+    void BuildBiomeBandInspector(string id)
+    {
+        if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
+        if (BandAt(index) is null) return;
+
+        _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Biome"), BiomeChoices,
+            () => (BandAt(index)?.Biome ?? BiomeId.Meadow).ToString(),
+            v => { if (Enum.TryParse(v, out BiomeId biome)) EditBand(index, b => b.Biome = biome); }));
+
+        AddBandFloatRow(index, "Start", b => b.Start ?? 0f, (b, v) => b.Start = v);
+        AddBandEdgeToggle(index, "Start open", b => b.Start, (b, open) => b.Start = open ? null : (b.Start ?? 0f));
+        AddBandFloatRow(index, "End", b => b.End ?? 0f, (b, v) => b.End = v);
+        AddBandEdgeToggle(index, "End open", b => b.End, (b, open) => b.End = open ? null : (b.End ?? 0f));
+
+        AddBandFloatRow(index, "BaseHeight", b => b.BaseHeight, (b, v) => b.BaseHeight = v);
+        AddBandFloatRow(index, "HillAmplitude", b => b.HillAmplitude, (b, v) => b.HillAmplitude = v, min: 0f);
+    }
+
+    MapBiomeBand? BandAt(int index)
+    {
+        List<MapBiomeBand> bands = _document.Doc.Terrain.Biomes;
+        return index >= 0 && index < bands.Count ? bands[index] : null;
+    }
+
+    static MapBiomeBand CloneBand(MapBiomeBand b) => new MapBiomeBand
+    {
+        Start = b.Start, End = b.End, Biome = b.Biome, BaseHeight = b.BaseHeight, HillAmplitude = b.HillAmplitude,
+    };
+
+    // A whole-value band edit: clone the live band, apply `mutate` to the clone, then route (clone, live) through
+    // EditBiomeBandCommand (same-index merge coalesces a scrub). No-op when the band has vanished.
+    void EditBand(int index, Action<MapBiomeBand> mutate)
+    {
+        if (BandAt(index) is not { } current) return;
+        MapBiomeBand clone = CloneBand(current);
+        mutate(clone);
+        _document.Execute(new EditBiomeBandCommand(index, clone, current));
+    }
+
+    // One scrubbed scalar of the band at `index` (the AddFeatureRow idiom): get reads the LIVE band (every edit
+    // replaces the instance), set clones and writes the one field through EditBand.
+    void AddBandFloatRow(int index, string label, Func<MapBiomeBand, float> get, Action<MapBiomeBand, float> assign,
+        float min = float.MinValue)
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+            () => BandAt(index) is { } b ? get(b) : 0f,
+            v => EditBand(index, b => assign(b, v)), min: min));
+    }
+
+    // The "<edge> open" toggle for a nullable band edge: on == the edge is open (the field is null). `read` reads
+    // the live nullable edge (so the toggle reflects the current null state), and `apply` sets the field per the
+    // new open flag (true => null, false => a concrete value, closing the edge). Whole-value edit via EditBand.
+    void AddBandEdgeToggle(int index, string label, Func<MapBiomeBand, float?> read, Action<MapBiomeBand, bool> apply)
+    {
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(label),
+            () => BandAt(index) is { } b && read(b) is null,
+            v => EditBand(index, b => apply(b, v))));
     }
 
     /// <summary>The shape-kind options the inspector's kind selector offers. Polygon is read-only v1 (no
@@ -1734,6 +1880,14 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // Identity payload on an outline row: which document element the row selects.
     readonly record struct OutlineRef(SelectionKind Kind, string Id);
+
+    // Which side effect a synthetic outline ACTION node runs when tapped (a node with no document element behind
+    // it, e.g. an add affordance). Distinct from OutlineRef so OnOutlineSelected can tell the two apart.
+    enum OutlineActionKind { AddBiomeBand }
+
+    // Identity payload on a synthetic outline action row (e.g. "[+ add band]"): the action to run on tap. Carried
+    // in TreeNode.Tag in place of an OutlineRef, so the tap runs the action instead of setting a selection.
+    readonly record struct OutlineAction(OutlineActionKind Kind);
 
     // A palette category label plus its ordinal-sorted kit ids. The source list is itself category-sorted, so this
     // pair is all a tree build needs to emit a category root and its leaves.

@@ -282,11 +282,12 @@ public sealed class MutationService(MapEditSession session)
 
     // ---- terrain globals ------------------------------------------------------------------------------------
 
-    /// <summary>Edits the terrain globals: the water level (via <see cref="EditTerrainCommand"/>) and/or the noise
-    /// seed (a direct field edit, since no command carries it). At least one must be supplied. Both are applied,
-    /// validated once, and reverted together on failure inside a single world-affecting mutation, so a rejected
-    /// edit restores both to their prior values and the cached field is rebuilt only on success. The water command
-    /// is applied first, then the seed, matching the "globals" ordering the engine command was named for.</summary>
+    /// <summary>Edits the terrain globals: the water level and/or the noise seed, both carried by the widened
+    /// <see cref="EditTerrainCommand"/> (only the supplied fields are applied and reverted). At least one must be
+    /// supplied. The one command is applied, validated once, and reverted on failure inside a single
+    /// world-affecting mutation, so a rejected edit restores every touched field to its prior value and the cached
+    /// field is rebuilt only on success. The MCP verb surface stays water + seed here. The extra terrain scalars
+    /// the command now carries reach MCP through the widened <c>terrain_edit</c> verb separately.</summary>
     public MutationResult TerrainEdit(float? waterLevel = null, int? seed = null)
     {
         if (waterLevel is null && seed is null)
@@ -294,21 +295,17 @@ public sealed class MutationService(MapEditSession session)
 
         return session.Mutate((doc, registry) =>
         {
-            int oldSeed = doc.Terrain.Seed;
-            EditTerrainCommand? waterCommand = null;
-
-            if (waterLevel is float newWater)
-            {
-                waterCommand = new EditTerrainCommand(newWater, doc.Terrain.WaterLevel);
-                waterCommand.Apply(doc);
-            }
-            if (seed is int newSeed) doc.Terrain.Seed = newSeed;
+            // One widened command carries whichever of the two fields were supplied (only-set-fields apply), so the
+            // seed no longer needs a bespoke direct-set + manual revert: the command reverts every field it set.
+            var command = new EditTerrainCommand(
+                newWaterLevel: waterLevel, oldWaterLevel: waterLevel is null ? null : doc.Terrain.WaterLevel,
+                newSeed: seed, oldSeed: seed is null ? null : doc.Terrain.Seed);
+            command.Apply(doc);
 
             IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
             if (errors.Count > 0)
             {
-                if (seed is not null) doc.Terrain.Seed = oldSeed;
-                waterCommand?.Revert(doc);
+                command.Revert(doc);
                 throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
             }
 

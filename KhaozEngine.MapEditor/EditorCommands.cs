@@ -904,21 +904,66 @@ public sealed class EditRegionShapeCommand : EditorCommand
 
 // ---- terrain globals (terrain-shape affecting) -----------------------------------------------------------
 
-/// <summary>Edits the terrain's global settings. Named for terrain-wide globals so later globals can join it, but
-/// v1 carries the water level only. Successive edits coalesce into one undo step (scrub coalescing). Affects the
-/// streamed world: scatter honours the water level (underwater candidates skip), so a change forces a wholesale
-/// rebuild. The water surface itself derives live from the document, so it also updates on the same edit.</summary>
+/// <summary>Edits the terrain's global scalar settings: any subset of water level, noise seed, biome blend width,
+/// the gentle-noise frequency / amplitude, and the detail-noise frequency / octave count (<see cref="MapTerrain"/>).
+/// One command carries all seven as nullable fields, and only the set ones (a non-null <c>new*</c>) are applied and
+/// reverted, so a single-field inspector edit touches nothing else (only-set-fields apply). Each set field carries
+/// its own captured old value for revert, supplied by the caller (the live value before the edit), the same idiom
+/// the old water-only command used.
+/// <para>
+/// Successive terrain edits of one gesture coalesce into ONE undo step (scrub coalescing). Terrain is a singleton,
+/// so there is no id / index to match: any two terrain edits merge. The merge is a per-field UNION with
+/// first-old / last-new semantics: a field the absorbed command sets is folded in with its new value winning, and
+/// its old value taken from whichever command FIRST set that field (a later same-field scrub keeps the original
+/// old, so one undo still reverts the whole gesture to its pre-edit state). This means a water-only edit and a
+/// seed-only edit of the same gesture collapse to one step carrying BOTH, each revertible to its own first-setter
+/// old. Affects the streamed world: scatter honours the water level and the noise fields shape the terrain, so any
+/// change forces a wholesale rebuild. The water surface itself derives live from the document, so it also updates
+/// on the same edit.</para></summary>
 public sealed class EditTerrainCommand : EditorCommand
 {
-    float _newWaterLevel;
-    readonly float _oldWaterLevel;
+    float? _newWaterLevel, _oldWaterLevel;
+    int? _newSeed, _oldSeed;
+    float? _newBiomeBlend, _oldBiomeBlend;
+    float? _newGentleFrequency, _oldGentleFrequency;
+    float? _newGentleAmplitude, _oldGentleAmplitude;
+    float? _newDetailFrequency, _oldDetailFrequency;
+    int? _newDetailOctaves, _oldDetailOctaves;
 
-    /// <summary>Creates the command setting the water level to <paramref name="newWaterLevel"/>, capturing
-    /// <paramref name="oldWaterLevel"/> for revert.</summary>
-    public EditTerrainCommand(float newWaterLevel, float oldWaterLevel)
+    /// <summary>Creates a terrain-scalar edit. Pass a <c>new*</c> / <c>old*</c> pair for each field this edit
+    /// changes and leave the rest null: only fields with a non-null <c>new*</c> are applied and reverted. A field
+    /// whose <c>new*</c> is supplied MUST also supply its <c>old*</c> (needed for revert), else the constructor
+    /// throws. The <c>old*</c> is the live value the caller read before the edit, so a scrub merge preserves the
+    /// first command's old per field.</summary>
+    public EditTerrainCommand(
+        float? newWaterLevel = null, float? oldWaterLevel = null,
+        int? newSeed = null, int? oldSeed = null,
+        float? newBiomeBlend = null, float? oldBiomeBlend = null,
+        float? newGentleFrequency = null, float? oldGentleFrequency = null,
+        float? newGentleAmplitude = null, float? oldGentleAmplitude = null,
+        float? newDetailFrequency = null, float? oldDetailFrequency = null,
+        int? newDetailOctaves = null, int? oldDetailOctaves = null)
     {
-        _newWaterLevel = newWaterLevel;
-        _oldWaterLevel = oldWaterLevel;
+        RequirePair(newWaterLevel.HasValue, oldWaterLevel.HasValue, nameof(newWaterLevel));
+        RequirePair(newSeed.HasValue, oldSeed.HasValue, nameof(newSeed));
+        RequirePair(newBiomeBlend.HasValue, oldBiomeBlend.HasValue, nameof(newBiomeBlend));
+        RequirePair(newGentleFrequency.HasValue, oldGentleFrequency.HasValue, nameof(newGentleFrequency));
+        RequirePair(newGentleAmplitude.HasValue, oldGentleAmplitude.HasValue, nameof(newGentleAmplitude));
+        RequirePair(newDetailFrequency.HasValue, oldDetailFrequency.HasValue, nameof(newDetailFrequency));
+        RequirePair(newDetailOctaves.HasValue, oldDetailOctaves.HasValue, nameof(newDetailOctaves));
+        _newWaterLevel = newWaterLevel; _oldWaterLevel = oldWaterLevel;
+        _newSeed = newSeed; _oldSeed = oldSeed;
+        _newBiomeBlend = newBiomeBlend; _oldBiomeBlend = oldBiomeBlend;
+        _newGentleFrequency = newGentleFrequency; _oldGentleFrequency = oldGentleFrequency;
+        _newGentleAmplitude = newGentleAmplitude; _oldGentleAmplitude = oldGentleAmplitude;
+        _newDetailFrequency = newDetailFrequency; _oldDetailFrequency = oldDetailFrequency;
+        _newDetailOctaves = newDetailOctaves; _oldDetailOctaves = oldDetailOctaves;
+    }
+
+    static void RequirePair(bool hasNew, bool hasOld, string field)
+    {
+        if (hasNew && !hasOld)
+            throw new ArgumentException($"EditTerrainCommand '{field}' needs its matching old value for revert.", field);
     }
 
     /// <inheritdoc/>
@@ -926,18 +971,156 @@ public sealed class EditTerrainCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Terrain.WaterLevel = _newWaterLevel;
+    public override void Apply(MapDocument doc)
+    {
+        MapTerrain t = doc.Terrain;
+        if (_newWaterLevel is float wl) t.WaterLevel = wl;
+        if (_newSeed is int sd) t.Seed = sd;
+        if (_newBiomeBlend is float bb) t.BiomeBlend = bb;
+        if (_newGentleFrequency is float gf) t.GentleFrequency = gf;
+        if (_newGentleAmplitude is float ga) t.GentleAmplitude = ga;
+        if (_newDetailFrequency is float df) t.DetailFrequency = df;
+        if (_newDetailOctaves is int oct) t.DetailOctaves = oct;
+    }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Terrain.WaterLevel = _oldWaterLevel;
+    public override void Revert(MapDocument doc)
+    {
+        MapTerrain t = doc.Terrain;
+        // Revert only the fields this command actually set (gated on new, so a stray old with no new is ignored).
+        if (_newWaterLevel is not null && _oldWaterLevel is float wl) t.WaterLevel = wl;
+        if (_newSeed is not null && _oldSeed is int sd) t.Seed = sd;
+        if (_newBiomeBlend is not null && _oldBiomeBlend is float bb) t.BiomeBlend = bb;
+        if (_newGentleFrequency is not null && _oldGentleFrequency is float gf) t.GentleFrequency = gf;
+        if (_newGentleAmplitude is not null && _oldGentleAmplitude is float ga) t.GentleAmplitude = ga;
+        if (_newDetailFrequency is not null && _oldDetailFrequency is float df) t.DetailFrequency = df;
+        if (_newDetailOctaves is not null && _oldDetailOctaves is int oct) t.DetailOctaves = oct;
+    }
 
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
     {
-        // Terrain is a singleton, so any two terrain edits of the same gesture coalesce (no id/index to match).
-        if (next is EditTerrainCommand t)
+        // Terrain is a singleton, so any two terrain edits of the same gesture coalesce (no id / index to match).
+        // Each field folds in as a union: last-new wins, first-old is kept (see MergeField).
+        if (next is not EditTerrainCommand t) return false;
+        MergeField(ref _newWaterLevel, ref _oldWaterLevel, t._newWaterLevel, t._oldWaterLevel);
+        MergeField(ref _newSeed, ref _oldSeed, t._newSeed, t._oldSeed);
+        MergeField(ref _newBiomeBlend, ref _oldBiomeBlend, t._newBiomeBlend, t._oldBiomeBlend);
+        MergeField(ref _newGentleFrequency, ref _oldGentleFrequency, t._newGentleFrequency, t._oldGentleFrequency);
+        MergeField(ref _newGentleAmplitude, ref _oldGentleAmplitude, t._newGentleAmplitude, t._oldGentleAmplitude);
+        MergeField(ref _newDetailFrequency, ref _oldDetailFrequency, t._newDetailFrequency, t._oldDetailFrequency);
+        MergeField(ref _newDetailOctaves, ref _oldDetailOctaves, t._newDetailOctaves, t._oldDetailOctaves);
+        return true;
+    }
+
+    // Fold one field of an absorbed terrain edit into this one. The incoming command not setting the field leaves
+    // mine untouched. When it does set the field: I keep MY old if I already set it (first-old wins the revert),
+    // else I adopt the incoming old (it was the first to set the field). Either way the incoming new wins.
+    static void MergeField<T>(ref T? mineNew, ref T? mineOld, T? theirNew, T? theirOld) where T : struct
+    {
+        if (theirNew is null) return;
+        if (mineNew is null) mineOld = theirOld;
+        mineNew = theirNew;
+    }
+}
+
+// ---- terrain biome bands (terrain-shape affecting) -------------------------------------------------------
+
+/// <summary>Appends a terrain biome band (an elevation-range biome slice, <see cref="MapBiomeBand"/>). Bands feed
+/// the terrain field's biome selection and base-height / hill shaping, so this affects the streamed world. Appends
+/// at the end (the <see cref="AddFeatureCommand"/> idiom), and <see cref="Revert"/> removes the same instance.</summary>
+public sealed class AddBiomeBandCommand : EditorCommand
+{
+    readonly MapBiomeBand _band;
+
+    /// <summary>Creates the command for the given band (added on <see cref="Apply"/>).</summary>
+    public AddBiomeBandCommand(MapBiomeBand band) =>
+        _band = band ?? throw new ArgumentNullException(nameof(band));
+
+    /// <inheritdoc/>
+    public override string Label => "Add biome band";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.Biomes.Add(_band);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.Biomes.Remove(_band);
+}
+
+/// <summary>Removes the terrain biome band at the given index, restoring it at that index on revert. The index is
+/// range-guarded up front against the live band list, so a bad index is a precise <see cref="ArgumentException"/>
+/// (with the parameter name) rather than the raw list's <see cref="ArgumentOutOfRangeException"/>, matching the
+/// ke-mapedit RequireIndexInRange convention. Affects the streamed world.</summary>
+public sealed class RemoveBiomeBandCommand : EditorCommand
+{
+    readonly int _index;
+    MapBiomeBand? _removed;
+
+    /// <summary>Creates the command for the biome-band list index to remove.</summary>
+    public RemoveBiomeBandCommand(int index) => _index = index;
+
+    /// <inheritdoc/>
+    public override string Label => "Remove biome band";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        List<MapBiomeBand> bands = doc.Terrain.Biomes;
+        if (_index < 0 || _index >= bands.Count)
+            throw new ArgumentException(
+                bands.Count == 0
+                    ? $"biome band index {_index} is out of range: the terrain has no bands to address."
+                    : $"biome band index {_index} is out of range. Valid range is [0, {bands.Count - 1}].",
+                nameof(_index));
+        _removed = bands[_index];
+        bands.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.Terrain.Biomes.Insert(_index, _removed);
+    }
+}
+
+/// <summary>Replaces the terrain biome band at a given index with a new value (a whole-value edit, the
+/// <see cref="EditFeatureCommand"/> idiom). The caller supplies both the new and old band (a clone with the one
+/// changed field). Successive edits of the same index coalesce into one undo step (scrub coalescing). Affects the
+/// streamed world.</summary>
+public sealed class EditBiomeBandCommand : EditorCommand
+{
+    readonly int _index;
+    MapBiomeBand _newValue;
+    readonly MapBiomeBand _oldValue;
+
+    /// <summary>Creates the command replacing band <paramref name="index"/> with <paramref name="newValue"/>,
+    /// capturing <paramref name="oldValue"/> for revert.</summary>
+    public EditBiomeBandCommand(int index, MapBiomeBand newValue, MapBiomeBand oldValue)
+    {
+        _index = index;
+        _newValue = newValue ?? throw new ArgumentNullException(nameof(newValue));
+        _oldValue = oldValue ?? throw new ArgumentNullException(nameof(oldValue));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit biome band";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.Biomes[_index] = _newValue;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.Biomes[_index] = _oldValue;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditBiomeBandCommand b && b._index == _index)
         {
-            _newWaterLevel = t._newWaterLevel;
+            _newValue = b._newValue;
             return true;
         }
         return false;

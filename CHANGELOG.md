@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.69.1
+
+Headless architecture tests in `KhaozEngine.Tests` now mechanically enforce the documented dependency-graph rules, and a reflection guard proves `KhaozEngine.Gpu` leaks no Veldrid type on its public surface. No package content changed.
+
+- **`ArchitectureTests.cs` (`KhaozEngine.Tests`).** Reads the real `*.csproj` files and fails on drift: every third-party `PackageReference` stays inside its allowlisted seam/backend home (a new one must be added to the allowlist deliberately), `Primitives` and `Simulation` stay zero-dependency leaves, the Foundation umbrella's transitive closure stays GPU-free, `App` never references `Gui`, the `ProjectReference` membership of the four umbrellas (`Foundation`/`Game2D`/`Game3D`/`Server`) is locked, opt-in backends (physics, worldstore, commerce SQL) are unreachable from any umbrella, and `Render3D` is restricted to its documented seam set.
+- **`GpuPublicApiTests.cs` (`KhaozEngine.Tests`).** A reflection guard walks the public and protected surface of `KhaozEngine.Gpu` and fails if any Veldrid type leaks through, proving the GPU seam actually contains Veldrid rather than just documenting that it should.
+- **`docs/DEPENDENCY-SEAMS.md`.** Gained a "Mechanically enforced" section pointing at the two test files above, and tightened the opt-in-backends wording: physics, worldstore, and commerce SQL backends are genuinely opt-in, while the LiteNetLib transport backend is called out as deliberately bundled into the `Server` umbrella since a server needs a real transport.
+
 ## 10.69.0
 
 Editor polish round: the cel-shading outline is now opt-in per consumer instead of on by default, ridge terrain carving is opt-in instead of a mandatory notch, map editor gizmos gained visible spawn-marker drag arrows and dropped an inert axis, and the Gui TreeView gained drag-and-drop row reorder that the map editor outline uses to reorder features and exclusions.

@@ -490,6 +490,34 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void RenameFeatureCommand_GuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Terrain.Features[0].Name = "north-lake";
+            doc.Terrain.Features[1].Name = "south-flat";
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Guards duplicates: renaming feature 1 onto feature 0's name throws before mutating anything, and
+            // leaves no undo step (the RenameRegionCommand guard idiom, ported to the index-addressed
+            // feature/exclusion rename commands).
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameFeatureCommand(1, "north-lake", "south-flat")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));   // document untouched, byte for byte
+
+            // Renaming a feature to its OWN current name stays legal: the duplicate scan excludes the renaming
+            // feature's own index.
+            ed.Execute(new RenameFeatureCommand(0, "north-lake", "north-lake"));
+            Assert.Equal("north-lake", doc.Terrain.Features[0].Name);
+
+            // Clearing a name to empty stays legal even with another already-unnamed feature present: a null or
+            // empty name never collides, it carries no key to clash on.
+            doc.Terrain.Features[1].Name = null;
+            ed.Execute(new RenameFeatureCommand(0, "", "north-lake"));
+            Assert.Null(doc.Terrain.Features[0].Name);
+        }
+
+        [Fact]
         public void EditTerrainCommand_AppliesRevertsAndMerges()
         {
             var doc = Sample();
@@ -575,6 +603,34 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void RenameExclusionCommand_GuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Exclusions[0].Name = "market-clearing";
+            doc.Exclusions.Add(new MapExclusion { Name = "second-yard", Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 1f, Radius = 5f } });
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Guards duplicates: renaming exclusion 1 onto exclusion 0's name throws before mutating anything,
+            // and leaves no undo step (the RenameRegionCommand guard idiom, ported to the index-addressed
+            // feature/exclusion rename commands).
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameExclusionCommand(1, "market-clearing", "second-yard")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));   // document untouched, byte for byte
+
+            // Renaming an exclusion to its OWN current name stays legal: the duplicate scan excludes the
+            // renaming exclusion's own index.
+            ed.Execute(new RenameExclusionCommand(0, "market-clearing", "market-clearing"));
+            Assert.Equal("market-clearing", doc.Exclusions[0].Name);
+
+            // Clearing a name to empty stays legal even with another already-unnamed exclusion present: a null
+            // or empty name never collides, it carries no key to clash on.
+            doc.Exclusions[1].Name = null;
+            ed.Execute(new RenameExclusionCommand(0, "", "market-clearing"));
+            Assert.Null(doc.Exclusions[0].Name);
+        }
+
+        [Fact]
         public void EditExclusionLayers_RoundTrip_AffectsWorld_UnknownLayerRejected()
         {
             var doc = Sample();
@@ -601,6 +657,27 @@ namespace KhaozEngine.Tests.MapEditor
             // save catches it, the same invariant every other layer-filter field already relies on.
             ed.Execute(new EditExclusionLayersCommand(0, new List<string> { "nope" }, original));
             Assert.Throws<MapDocumentException>(() => Save(doc));
+        }
+
+        [Fact]
+        public void EditExclusionLayersCommand_ConstructorCopiesLists_NoAliasing()
+        {
+            var doc = Sample();
+            var newLayers = new List<string> { "trees" };
+            var oldLayers = new List<string> { "rocks" };
+            var cmd = new EditExclusionLayersCommand(0, newLayers, oldLayers);
+
+            // Mutate the caller's own lists after construction: if the command captured them by reference (not
+            // a copy), both Apply and Revert would observe this mutation instead of the value at construction.
+            newLayers.Add("mutated-new");
+            oldLayers.Add("mutated-old");
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(cmd);
+            Assert.Equal(new List<string> { "trees" }, doc.Exclusions[0].Layers);   // construction-time value
+
+            Assert.True(ed.Undo());
+            Assert.Equal(new List<string> { "rocks" }, doc.Exclusions[0].Layers);   // construction-time old value
         }
 
         [Fact]

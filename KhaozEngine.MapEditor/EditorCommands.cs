@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEditor;
@@ -86,6 +87,34 @@ public abstract class EditorCommand : IEditorCommand
         foreach (MapRegion r in doc.Regions)
             if (string.Equals(r.Name, name, StringComparison.Ordinal))
                 throw new InvalidOperationException($"A region named '{name}' already exists in the document.");
+    }
+
+    /// <summary>Rejects a duplicate terrain feature name before <see cref="RenameFeatureCommand.Apply"/> mutates
+    /// anything. Features are index-addressed (see <see cref="RenameFeatureCommand"/>), so the scan excludes the
+    /// renaming feature's own index (renaming to its current name, or the empty-clearing case with another
+    /// unnamed feature already present, both stay legal). A null or empty name never collides since an unnamed
+    /// feature carries no key to clash on.</summary>
+    private protected static void GuardNoFeatureName(MapDocument doc, string? name, int exceptIndex)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        List<MapFeature> features = doc.Terrain.Features;
+        for (int i = 0; i < features.Count; i++)
+            if (i != exceptIndex && string.Equals(features[i].Name, name, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A terrain feature named '{name}' already exists in the document.");
+    }
+
+    /// <summary>Rejects a duplicate exclusion name before <see cref="RenameExclusionCommand.Apply"/> mutates
+    /// anything. Exclusions are index-addressed (see <see cref="RenameExclusionCommand"/>), so the scan excludes
+    /// the renaming exclusion's own index (renaming to its current name, or the empty-clearing case with another
+    /// unnamed exclusion already present, both stay legal). A null or empty name never collides since an unnamed
+    /// exclusion carries no key to clash on.</summary>
+    private protected static void GuardNoExclusionName(MapDocument doc, string? name, int exceptIndex)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        List<MapExclusion> exclusions = doc.Exclusions;
+        for (int i = 0; i < exclusions.Count; i++)
+            if (i != exceptIndex && string.Equals(exclusions[i].Name, name, StringComparison.Ordinal))
+                throw new InvalidOperationException($"An exclusion named '{name}' already exists in the document.");
     }
 
     /// <summary>Coerces an empty rename target to null: features and exclusions store an optional Name where
@@ -635,8 +664,11 @@ public sealed class EditExclusionShapeCommand : EditorCommand
 /// idiom as <see cref="RenameFeatureCommand"/>), so this targets the list position rather than an old-name
 /// lookup. The caller supplies both the new and old name (empty for unnamed), and empty is normalized to null
 /// so a cleared name never persists as a bloating empty name key. Successive renames of the same index coalesce
-/// into one undo step (a text field committed on every keystroke stays one undo). Renaming does not change the
-/// exclusion's shape or layer filter, so this does not affect the streamed world.</summary>
+/// into one undo step (a text field committed on every keystroke stays one undo). The target name must be
+/// unique among named exclusions: <see cref="Apply"/> throws (before it mutates) if another exclusion already
+/// carries the new name, so a rejected rename lands no undo step (the <see cref="RenameRegionCommand"/> guard
+/// idiom). Renaming does not change the exclusion's shape or layer filter, so this does not affect the streamed
+/// world.</summary>
 public sealed class RenameExclusionCommand : EditorCommand
 {
     readonly int _index;
@@ -657,7 +689,12 @@ public sealed class RenameExclusionCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Name = NormalizeName(_newName);
+    public override void Apply(MapDocument doc)
+    {
+        string? normalized = NormalizeName(_newName);
+        GuardNoExclusionName(doc, normalized, _index);   // reject a duplicate target before touching the source
+        doc.Exclusions[_index].Name = normalized;
+    }
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Exclusions[_index].Name = NormalizeName(_oldName);
@@ -684,7 +721,9 @@ public sealed class RenameExclusionCommand : EditorCommand
 /// index coalesce (checkbox-drag coalescing). Affects the streamed world: which layers a region excludes
 /// changes scatter output. An unknown layer name is not rejected here: the caller relies on the standard
 /// document validator on save (<see cref="MapDocumentValidator"/>) to catch it, the same invariant every other
-/// layer-filter field already relies on.</summary>
+/// layer-filter field already relies on. Both lists are deep-copied at construction and again on every
+/// <see cref="Apply"/>/<see cref="Revert"/>, so the command, the document, and the caller's own list each hold
+/// an independent instance and none can alias another.</summary>
 public sealed class EditExclusionLayersCommand : EditorCommand
 {
     readonly int _index;
@@ -692,12 +731,14 @@ public sealed class EditExclusionLayersCommand : EditorCommand
     readonly List<string>? _oldLayers;
 
     /// <summary>Creates the command replacing exclusion <paramref name="index"/>'s layer filter with
-    /// <paramref name="newLayers"/>, capturing <paramref name="oldLayers"/> for revert.</summary>
+    /// <paramref name="newLayers"/>, capturing <paramref name="oldLayers"/> for revert. Both lists are copied
+    /// (<c>?.ToList()</c>) rather than stored by reference, so a caller mutating its own list after construction
+    /// cannot reach back into the command.</summary>
     public EditExclusionLayersCommand(int index, List<string>? newLayers, List<string>? oldLayers)
     {
         _index = index;
-        _newLayers = newLayers;
-        _oldLayers = oldLayers;
+        _newLayers = newLayers?.ToList();
+        _oldLayers = oldLayers?.ToList();
     }
 
     /// <inheritdoc/>
@@ -705,10 +746,10 @@ public sealed class EditExclusionLayersCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Layers = _newLayers;
+    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Layers = _newLayers?.ToList();
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Exclusions[_index].Layers = _oldLayers;
+    public override void Revert(MapDocument doc) => doc.Exclusions[_index].Layers = _oldLayers?.ToList();
 
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
@@ -999,8 +1040,10 @@ public sealed class EditFeatureCommand : EditorCommand
 /// than an old-name lookup. The caller supplies both the new and old name (empty for unnamed), and empty is
 /// normalized to null so a cleared name never persists as a bloating empty name key. Successive renames of the
 /// same index coalesce into one undo step (the <see cref="EditFeatureCommand"/> scrub-coalescing idiom, e.g. a
-/// text field committed on every keystroke). Renaming does not change the terrain shape, so this does not affect
-/// the streamed world.</summary>
+/// text field committed on every keystroke). The target name must be unique among named features: <see
+/// cref="Apply"/> throws (before it mutates) if another feature already carries the new name, so a rejected
+/// rename lands no undo step (the <see cref="RenameRegionCommand"/> guard idiom). Renaming does not change the
+/// terrain shape, so this does not affect the streamed world.</summary>
 public sealed class RenameFeatureCommand : EditorCommand
 {
     readonly int _index;
@@ -1021,7 +1064,12 @@ public sealed class RenameFeatureCommand : EditorCommand
     internal override bool AffectsWorld => false;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Terrain.Features[_index].Name = NormalizeName(_newName);
+    public override void Apply(MapDocument doc)
+    {
+        string? normalized = NormalizeName(_newName);
+        GuardNoFeatureName(doc, normalized, _index);   // reject a duplicate target before touching the source
+        doc.Terrain.Features[_index].Name = normalized;
+    }
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Terrain.Features[_index].Name = NormalizeName(_oldName);

@@ -26,9 +26,12 @@ optional slope gate via a ground-normal delegate):
   and merely shaves the lateral against a shaft wall like a normal flat-ground slide instead of leaking sideways and
   wedging; and the step-up's forward advance is **capped to the walk step** (no fore-aft lurch) and then validated
   against the underfoot support fan (10.66.0): a stair run's capped pose stays supported on the treads it spans, so
-  the cap holds and the climb stays smooth, while a deep single riser's capped pose finds nothing under it, so the
-  mount instead commits the step-up probe's already-proven landed seat, letting depenetration lift the capsule up
-  onto the step rather than push it back off. Monotone either way, so it starts cleanly from the flat floor at any
+  the cap holds and the climb stays smooth, while a deep single riser's capped pose has no genuine floor below the
+  feet, so the mount instead commits the step-up probe's already-proven landed seat, letting depenetration lift the
+  capsule up onto the step rather than push it back off. The fan counts only a support that sits genuinely below the
+  feet (a hit closer than the skin depth is the feet embedded in a solid riser box, not resting on it, and is
+  rejected), so a solid building or doorway riser reads unsupported and mounts too, not just a one-sided tread gap
+  (10.67.0). Monotone either way, so it starts cleanly from the flat floor at any
   angle/speed instead of vibrating on the first riser - a stair climbs like a ramp. A per-riser backward shove during
   a paced climb is also caught by a monotone-forward hold (grounded climb ticks only, a jump takeoff is never held).
   A low curb whose rise fits one tick's budget

@@ -65,6 +65,16 @@ namespace KhaozEngine.Tests.MapEditor
 
         static EditorFrameInput Release(Vector3 origin) => new(origin, Down, pointerReleased: true, dt: 0.016f);
 
+        // A held-and-moved frame carrying an explicit screen-space travel, for the body-drag arming threshold.
+        static EditorFrameInput BodyDrag(Vector3 origin, float travel) =>
+            new(origin, Down, pointerDown: true, pointerTravel: travel, dt: 0.016f);
+
+        // A press point on an object's body that clears every gizmo handle (arrows, ring, scale cube) at gizmo
+        // scale 1 over the origin: x = z = -0.4 misses the +X / +Z / +Y arrow boxes (half-width 0.15), the scale
+        // cube at (0.85, 0.85), and the yaw ring band at radius 1, while sitting inside a 1.0-wide spawn box and a
+        // hut placement's 1.8-wide box. The vertical ray still hits the object AABB, so the pick selects it.
+        static Vector3 BodyPoint => new(-0.4f, 100f, -0.4f);
+
         // ---- mode transitions --------------------------------------------------------------------------
 
         [Fact]
@@ -768,6 +778,202 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.True(doc.Undo());
             Assert.Single(doc.Doc.Terrain.Features);      // the removed feature is restored
+        }
+
+        // ---- body drag (grab the object, not just the handles) --------------------------------------------
+
+        [Fact]
+        public void BodyDrag_MovesSelectedSpawn_WithoutTouchingArrows()
+        {
+            var (doc, c) = Make();
+            var s = new MapSpawn { Id = "s1", ArchetypeId = "wolf", X = 0f, Z = 0f };
+            doc.Doc.Spawns.Add(s);
+            doc.Selection.Set(SelectionKind.Spawn, "s1");
+
+            // Press the spawn body clear of every gizmo handle: selection stays, but no drag arms yet.
+            c.Update(Press(BodyPoint));
+            Assert.False(c.IsDragging);
+            Assert.Equal(SelectionKind.Spawn, doc.Selection.Kind);
+            Assert.Equal(0, doc.History.UndoDepth);
+
+            // Move past the arming threshold: the SAME TranslateXZ path the arrows use takes over and the spawn
+            // follows the ground hit (press ground point x = -0.4, dragged to x = 4.6, so +5 on X).
+            c.Update(BodyDrag(new Vector3(4.6f, 100f, -0.4f), EditorToolController.BodyDragThreshold + 1f));
+            Assert.True(c.IsDragging);
+            c.Update(Release(new Vector3(4.6f, 100f, -0.4f)));
+
+            Assert.False(c.IsDragging);
+            Near(5f, s.X);
+            Near(0f, s.Z);
+            Assert.Equal(1, doc.History.UndoDepth);   // the whole body drag is one undo step
+
+            Assert.True(doc.Undo());
+            Near(0f, s.X);                            // undo restores the pre-drag position
+            Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
+        public void BodyDrag_SelectThenDrag_OneGesture()
+        {
+            var (doc, c) = Make();
+            var p = new MapPlacement { Id = "p1", Kind = "hut", X = 0f, Z = 0f };
+            doc.Doc.Placements.Add(p);
+            // Nothing selected: the press must both select the placement AND arm the body drag in one hold.
+
+            c.Update(Press(BodyPoint));
+            Assert.Equal(SelectionKind.Placement, doc.Selection.Kind);   // selection lands on press
+            Assert.Equal("p1", doc.Selection.Id);
+            Assert.False(c.IsDragging);
+
+            c.Update(BodyDrag(new Vector3(4.6f, 100f, -0.4f), EditorToolController.BodyDragThreshold + 1f));
+            Assert.True(c.IsDragging);
+            c.Update(Release(new Vector3(4.6f, 100f, -0.4f)));
+
+            Near(5f, p.X);
+            Near(0f, p.Z);
+            Assert.Null(p.Y);                          // ground-snap preserved through the drag
+            Assert.Equal(1, doc.History.UndoDepth);    // select-then-drag is one undo step (the move)
+
+            Assert.True(doc.Undo());
+            Near(0f, p.X);
+            Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
+        public void BodyTap_SelectsWithoutMoving()
+        {
+            var (doc, c) = Make();
+            var s = new MapSpawn { Id = "s1", ArchetypeId = "wolf", X = 0f, Z = 0f };
+            doc.Doc.Spawns.Add(s);
+
+            // Press then release below the threshold: a plain tap. Selection sticks, nothing moves, no undo step.
+            c.Update(Press(BodyPoint));
+            Assert.Equal(SelectionKind.Spawn, doc.Selection.Kind);
+            c.Update(Release(BodyPoint));
+
+            Assert.False(c.IsDragging);
+            Near(0f, s.X);
+            Near(0f, s.Z);
+            Assert.Equal(0, doc.History.UndoDepth);
+        }
+
+        [Fact]
+        public void BodyDrag_BelowThreshold_NeverMoves()
+        {
+            var (doc, c) = Make();
+            var s = new MapSpawn { Id = "s1", ArchetypeId = "wolf", X = 0f, Z = 0f };
+            doc.Doc.Spawns.Add(s);
+            doc.Selection.Set(SelectionKind.Spawn, "s1");
+
+            c.Update(Press(BodyPoint));
+            // Held frames that stay under the threshold never arm the drag.
+            c.Update(BodyDrag(new Vector3(0.2f, 100f, -0.4f), EditorToolController.BodyDragThreshold - 1f));
+            Assert.False(c.IsDragging);
+            c.Update(BodyDrag(new Vector3(0.2f, 100f, -0.4f), EditorToolController.BodyDragThreshold - 0.01f));
+            Assert.False(c.IsDragging);
+            c.Update(Release(new Vector3(0.2f, 100f, -0.4f)));
+
+            Assert.False(c.IsDragging);
+            Near(0f, s.X);
+            Assert.Equal(0, doc.History.UndoDepth);   // sub-threshold hold leaves no history
+        }
+
+        [Fact]
+        public void BodyDrag_EscapeCancelsPending()
+        {
+            var (doc, c) = Make();
+            var s = new MapSpawn { Id = "s1", ArchetypeId = "wolf", X = 0f, Z = 0f };
+            doc.Doc.Spawns.Add(s);
+            doc.Selection.Set(SelectionKind.Spawn, "s1");
+
+            c.Update(Press(BodyPoint));               // pending body drag recorded (still below threshold)
+            c.Update(new EditorFrameInput(default, default, escapePressed: true));   // Escape cancels it
+
+            // A later above-threshold move must NOT arm a drag: the pending state was cancelled.
+            c.Update(BodyDrag(new Vector3(6.6f, 100f, -0.4f), EditorToolController.BodyDragThreshold + 5f));
+            Assert.False(c.IsDragging);
+            Near(0f, s.X);
+            Assert.Equal(0, doc.History.UndoDepth);
+        }
+
+        // ---- place-and-adjust (place on press, adjust on hold, one undo step) -----------------------------
+
+        [Fact]
+        public void PlaceMode_PressHoldAdjustRelease_OneHistoryEntry()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.PlacePlacement;
+            c.PlaceKind = "hut";
+
+            // Press places the hut immediately (feedback + selection), still gripped.
+            c.Update(Press(new Vector3(5f, 100f, -3f)));
+            Assert.Single(doc.Doc.Placements);
+            Assert.Equal(SelectionKind.Placement, doc.Selection.Kind);
+            Near(5f, doc.Doc.Placements[0].X);
+            Near(-3f, doc.Doc.Placements[0].Z);
+
+            // Hold-adjust: while down, the placed hut tracks the ground hit.
+            c.Update(Drag(new Vector3(9f, 100f, 1f)));
+            Near(9f, doc.Doc.Placements[0].X);
+            Near(1f, doc.Doc.Placements[0].Z);
+            c.Update(Drag(new Vector3(12f, 100f, 4f)));
+            Near(12f, doc.Doc.Placements[0].X);
+            Near(4f, doc.Doc.Placements[0].Z);
+
+            c.Update(Release(new Vector3(12f, 100f, 4f)));   // seal the gesture
+
+            // The whole place-and-adjust is ONE undo step whose undo removes the placement.
+            Assert.Equal(1, doc.History.UndoDepth);
+            Assert.Null(doc.Doc.Placements[0].Y);            // ground-snap preserved through the adjust
+            Assert.True(doc.Undo());
+            Assert.Empty(doc.Doc.Placements);
+            Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
+        public void PlaceMode_SpawnPressHoldAdjustRelease_OneHistoryEntry()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.PlaceSpawn;
+            c.SpawnArchetype = "wolf";
+
+            c.Update(Press(new Vector3(2f, 100f, 2f)));
+            Assert.Single(doc.Doc.Spawns);
+            c.Update(Drag(new Vector3(7f, 100f, -1f)));
+            Near(7f, doc.Doc.Spawns[0].X);
+            Near(-1f, doc.Doc.Spawns[0].Z);
+            c.Update(Release(new Vector3(7f, 100f, -1f)));
+
+            Assert.Equal(1, doc.History.UndoDepth);
+            Assert.True(doc.Undo());
+            Assert.Empty(doc.Doc.Spawns);
+        }
+
+        [Fact]
+        public void PlaceMode_PlainClick_UnchangedBehavior()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.PlacePlacement;
+            c.PlaceKind = "hut";
+
+            // A plain click (press then release, no hold-move) still lands exactly one Add, one undo step.
+            c.Update(Press(new Vector3(5f, 100f, -3f)));
+            c.Update(Release(new Vector3(5f, 100f, -3f)));
+
+            Assert.Single(doc.Doc.Placements);
+            MapPlacement p = doc.Doc.Placements[0];
+            Near(5f, p.X);
+            Near(-3f, p.Z);
+            Assert.Null(p.Y);
+            Assert.Equal("hut", p.Kind);
+            Assert.Equal(SelectionKind.Placement, doc.Selection.Kind);
+            Assert.Equal(1, doc.History.UndoDepth);
+
+            // A second plain click is its own separate undo step (the release sealed the first).
+            c.Update(Press(new Vector3(8f, 100f, 8f)));
+            c.Update(Release(new Vector3(8f, 100f, 8f)));
+            Assert.Equal(2, doc.Doc.Placements.Count);
+            Assert.Equal(2, doc.History.UndoDepth);
         }
     }
 }

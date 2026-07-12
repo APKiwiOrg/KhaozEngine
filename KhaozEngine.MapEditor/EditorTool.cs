@@ -33,7 +33,8 @@ public enum EditorToolMode
 }
 
 /// <summary>Per-frame editor input, GPU-free and immutable: the pick ray (origin plus a caller-normalized
-/// direction, so a returned pick T reads as a world distance), the pointer press/down/release edges, the shift
+/// direction, so a returned pick T reads as a world distance), the pointer press/down/release edges, the
+/// screen-space distance the pointer has travelled since the press (for the body-drag arming threshold), the shift
 /// modifier, the delete/escape key edges, and the frame delta. A scene wires the window input into this struct;
 /// the controller reads nothing else, so its whole policy is headless-testable frame by frame.</summary>
 public readonly struct EditorFrameInput
@@ -48,6 +49,12 @@ public readonly struct EditorFrameInput
     public bool PointerDown { get; }
     /// <summary>True on the frame the primary pointer button went up (release edge).</summary>
     public bool PointerReleased { get; }
+    /// <summary>Screen-space distance (design units, the space the pointer helpers work in) from the press origin to
+    /// the current pointer position, i.e. how far the pointer has moved since the button went down. Zero on the
+    /// press frame. The body-drag gesture arms only once this clears
+    /// <see cref="EditorToolController.BodyDragThreshold"/>, matching the TreeView row-drag threshold precedent, so
+    /// a tap below it never turns into a move.</summary>
+    public float PointerTravel { get; }
     /// <summary>True while a shift modifier is held (switches the draw modes from disc to rect).</summary>
     public bool Shift { get; }
     /// <summary>True on the frame the delete key went down (removes the selection).</summary>
@@ -57,10 +64,11 @@ public readonly struct EditorFrameInput
     /// <summary>Seconds elapsed this frame.</summary>
     public float Dt { get; }
 
-    /// <summary>Builds a frame input. Every flag defaults to false and <paramref name="dt"/> to zero, so a test
-    /// only names the edges it exercises.</summary>
+    /// <summary>Builds a frame input. Every flag defaults to false, <paramref name="pointerTravel"/> and
+    /// <paramref name="dt"/> to zero, so a test only names the edges it exercises.</summary>
     public EditorFrameInput(Vector3 rayOrigin, Vector3 rayDirection,
         bool pointerPressed = false, bool pointerDown = false, bool pointerReleased = false,
+        float pointerTravel = 0f,
         bool shift = false, bool deletePressed = false, bool escapePressed = false, float dt = 0f)
     {
         RayOrigin = rayOrigin;
@@ -68,6 +76,7 @@ public readonly struct EditorFrameInput
         PointerPressed = pointerPressed;
         PointerDown = pointerDown;
         PointerReleased = pointerReleased;
+        PointerTravel = pointerTravel;
         Shift = shift;
         DeletePressed = deletePressed;
         EscapePressed = escapePressed;
@@ -115,6 +124,11 @@ public sealed class EditorToolController
     /// <summary>Smallest disc radius / rect edge a draw gesture commits, so a stray click makes no zero-size shape.</summary>
     const float MinDrawExtent = 0.05f;
 
+    /// <summary>Screen-space distance (design units) a body press must travel before it arms a drag, so a tap on an
+    /// object's body selects without moving it. Matches the TreeView row-drag threshold (6f). The gizmo handles keep
+    /// their deliberate arm-on-press, only a press on the object body away from a handle waits for this.</summary>
+    internal const float BodyDragThreshold = 6f;
+
     readonly EditorDocument _document;
     EditorToolMode _mode = EditorToolMode.Select;
 
@@ -130,6 +144,19 @@ public sealed class EditorToolController
     // into one undo step). Null for a placement / spawn drag, which move through their own Move commands.
     MapShapeDoc? _dragStartShape;
     MapFeature? _dragStartFeature;
+
+    // Pending body drag: a press that selected a translate-capable object away from every gizmo handle records this,
+    // then arms the real TranslateXZ drag once the pointer clears BodyDragThreshold. A release below the threshold
+    // is a plain tap (selection stands, no move). _pendingBodyStart is the ground-plane point under the cursor AT
+    // PRESS, so the armed drag starts from the grab point and the object tracks the cursor one-to-one.
+    bool _pendingBody;
+    Vector3 _pendingBodyStart;
+
+    // Place-and-adjust: the two Place tools set this after their press-edge Add, so while the pointer stays down the
+    // placed id follows the ground hit through Move commands that the Add absorbs (one undo step), sealed on release.
+    bool _placing;
+    SelectionKind _placeKind;
+    string _placeId = "";
 
     // Draw-mode rubber-band state (shared by the draw modes and the bake-region rect gesture).
     bool _drawing;
@@ -154,6 +181,8 @@ public sealed class EditorToolController
             if (_mode == value) return;
             _dragging = false;
             _drawing = false;
+            _pendingBody = false;
+            _placing = false;
             _document.SealGesture();
             _mode = value;
         }
@@ -225,6 +254,8 @@ public sealed class EditorToolController
         {
             _dragging = false;
             _drawing = false;
+            _pendingBody = false;
+            _placing = false;
             _document.SealGesture();
             _mode = EditorToolMode.Select;
             return;
@@ -272,7 +303,51 @@ public sealed class EditorToolController
             return;
         }
 
-        if (input.PointerPressed) BeginGestureOrSelect(input);
+        // A fresh press always starts a new gesture: it selects (and may record a pending body drag), superseding
+        // any stale pending state from a prior press that never released. This keeps the press-frame selection
+        // semantics intact (every PointerPressed re-picks) while the body-drag threshold lives on the held frames.
+        if (input.PointerPressed)
+        {
+            _pendingBody = false;
+            BeginGestureOrSelect(input);
+            return;
+        }
+
+        if (_pendingBody)
+        {
+            // Released below the threshold: a plain tap. The selection set on press stands, no history entry.
+            if (input.PointerReleased) { _pendingBody = false; return; }
+            // Held past the threshold: arm the SAME TranslateXZ drag path the arrows use, from the recorded grab
+            // point, and apply it this frame so the object moves immediately. Sub-threshold travel does nothing.
+            if (input.PointerDown && input.PointerTravel >= BodyDragThreshold)
+            {
+                if (ArmBodyDrag(input)) ApplyDrag(input);
+                _pendingBody = false;
+            }
+        }
+    }
+
+    // Arm a body drag on the current selection as a TranslateXZ gesture starting from the press-time ground point.
+    // Mirrors the gizmo-handle grab arm (seal + DragGesture + grab-time snapshots), but the handle is forced to the
+    // ground-plane translate and the start point is the recorded grab point rather than a fresh hit. Returns false
+    // when the selection is no longer a gizmo target (e.g. deleted mid-hold), so the caller runs no move on it.
+    bool ArmBodyDrag(in EditorFrameInput input)
+    {
+        if (!TryGizmoTarget(out Vector3 gizmoPos, out SelectionKind kind, out string id,
+                out float? startY, out float startYaw, out float startScale, out _))
+            return false;
+        _document.SealGesture();
+        _drag = new GizmoDrag.DragGesture(GizmoDrag.GizmoHandle.TranslateXZ, _pendingBodyStart, gizmoPos, startYaw, startScale);
+        _dragHandle = GizmoDrag.GizmoHandle.TranslateXZ;
+        _dragKind = kind;
+        _dragId = id;
+        _dragStartY = startY;
+        _dragStartShape = kind is SelectionKind.Exclusion or SelectionKind.Region
+            ? SelectedShapeOf(kind, id) : null;
+        _dragStartFeature = kind == SelectionKind.Feature && FeatureAt(id) is { } f
+            ? FeatureGeometry.Clone(f) : null;
+        _dragging = true;
+        return true;
     }
 
     // True while the dragged element still exists in the document, so a Delete edge or an undo drain mid-drag
@@ -332,6 +407,18 @@ public sealed class EditorToolController
         else
         {
             _document.Selection.Clear();
+        }
+
+        // The press landed on the object body, not a handle. If the (now current) selection is a translate-capable
+        // gizmo target, record a pending body drag from the ground point under the cursor: the held frames arm it
+        // once the pointer clears BodyDragThreshold (a press that newly selects can drag in the same hold), while a
+        // sub-threshold release stays a plain selection. Every gizmo target honours TranslateXZ, so being a gizmo
+        // target is exactly the "body-draggable" test.
+        if (TryGizmoTarget(out Vector3 bodyGizmoPos, out _, out _, out _, out _, out _, out _))
+        {
+            _pendingBody = true;
+            _pendingBodyStart = StartPointFor(GizmoDrag.GizmoHandle.TranslateXZ, bodyGizmoPos,
+                input.RayOrigin, input.RayDirection);
         }
     }
 
@@ -535,26 +622,50 @@ public sealed class EditorToolController
 
     // ---- place -------------------------------------------------------------------------------------------
 
+    // Press-edge Add gives immediate feedback + selection, then the gesture stays held: while down, Move commands
+    // for the placed id track the ground hit. AddPlacementCommand.TryMerge absorbs those same-id moves, so the whole
+    // place-and-adjust folds into ONE undo step whose undo removes the placement. Release seals. A plain click (no
+    // hold-move) lands the lone Add exactly as before.
     void UpdatePlacePlacement(in EditorFrameInput input)
     {
-        if (Field is null || !input.PointerPressed) return;
-        if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p)) return;
+        if (Field is null) return;
 
-        string id = UniqueName("placement", PlacementIdExists);
-        _document.Execute(new AddPlacementCommand(new MapPlacement { Id = id, Kind = PlaceKind, X = p.X, Z = p.Z, Y = null }));
-        _document.SealGesture();
-        _document.Selection.Set(SelectionKind.Placement, id);
+        if (input.PointerPressed)
+        {
+            if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p)) return;
+            string id = UniqueName("placement", PlacementIdExists);
+            _document.Execute(new AddPlacementCommand(new MapPlacement { Id = id, Kind = PlaceKind, X = p.X, Z = p.Z, Y = null }));
+            _document.Selection.Set(SelectionKind.Placement, id);
+            _placing = true; _placeKind = SelectionKind.Placement; _placeId = id;
+            return;
+        }
+
+        if (!_placing || _placeKind != SelectionKind.Placement) return;
+        if (input.PointerReleased) { _document.SealGesture(); _placing = false; return; }
+        if (input.PointerDown && FindPlacement(_placeId) is not null
+            && EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 hit))
+            _document.Execute(new MovePlacementCommand(_placeId, hit.X, hit.Z, null));
     }
 
     void UpdatePlaceSpawn(in EditorFrameInput input)
     {
-        if (Field is null || !input.PointerPressed) return;
-        if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p)) return;
+        if (Field is null) return;
 
-        string id = UniqueName("spawn", SpawnIdExists);
-        _document.Execute(new AddSpawnCommand(new MapSpawn { Id = id, ArchetypeId = SpawnArchetype, X = p.X, Z = p.Z }));
-        _document.SealGesture();
-        _document.Selection.Set(SelectionKind.Spawn, id);
+        if (input.PointerPressed)
+        {
+            if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p)) return;
+            string id = UniqueName("spawn", SpawnIdExists);
+            _document.Execute(new AddSpawnCommand(new MapSpawn { Id = id, ArchetypeId = SpawnArchetype, X = p.X, Z = p.Z }));
+            _document.Selection.Set(SelectionKind.Spawn, id);
+            _placing = true; _placeKind = SelectionKind.Spawn; _placeId = id;
+            return;
+        }
+
+        if (!_placing || _placeKind != SelectionKind.Spawn) return;
+        if (input.PointerReleased) { _document.SealGesture(); _placing = false; return; }
+        if (input.PointerDown && FindSpawn(_placeId) is not null
+            && EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 hit))
+            _document.Execute(new MoveSpawnCommand(_placeId, hit.X, hit.Z));
     }
 
     // ---- place feature -----------------------------------------------------------------------------------

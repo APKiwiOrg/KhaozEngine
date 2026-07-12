@@ -345,6 +345,67 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void AddPlacement_AbsorbsFollowingMove_OneUndoRemovesIt()
+        {
+            var doc = Sample();
+            string before = Save(doc);   // the pre-place document
+
+            // Place-and-adjust at the command layer: the Add lands on the press edge, then same-id Moves adjust the
+            // drop point. The Add absorbs each Move (folding the final X/Z/Y), so the whole gesture is ONE undo step.
+            var ed = new EditorDocument(doc);
+            ed.Execute(new AddPlacementCommand(new MapPlacement { Id = "dropped", Kind = "prop", X = 1f, Z = 1f }));
+            ed.Execute(new MovePlacementCommand("dropped", 5f, 6f, null));
+            ed.Execute(new MovePlacementCommand("dropped", 9f, 2f, null));
+
+            Assert.Equal(1, ed.History.UndoDepth);       // absorbed: still one step
+            MapPlacement placed = FindP(doc, "dropped");
+            Assert.Equal(9f, placed.X);                  // final adjusted position folded into the Add
+            Assert.Equal(2f, placed.Z);
+            Assert.Null(placed.Y);
+
+            // One undo removes the whole placement, restoring the pre-place document byte for byte.
+            Assert.True(ed.Undo());
+            Assert.DoesNotContain(doc.Placements, p => p.Id == "dropped");
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void AddSpawn_AbsorbsFollowingMove_OneUndoRemovesIt()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new AddSpawnCommand(new MapSpawn { Id = "dropped", ArchetypeId = "wolf", X = 1f, Z = 1f }));
+            ed.Execute(new MoveSpawnCommand("dropped", 5f, 6f));
+            ed.Execute(new MoveSpawnCommand("dropped", 9f, 2f));
+
+            Assert.Equal(1, ed.History.UndoDepth);
+            MapSpawn placed = doc.Spawns.First(s => s.Id == "dropped");
+            Assert.Equal(9f, placed.X);
+            Assert.Equal(2f, placed.Z);
+
+            Assert.True(ed.Undo());
+            Assert.DoesNotContain(doc.Spawns, s => s.Id == "dropped");
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void AddPlacement_DoesNotAbsorbDifferentIdMove()
+        {
+            var doc = Sample();
+            doc.Placements.Add(P("other", 3f, 3f));
+
+            // The Add only folds in a move of ITS OWN placement. A move of a different id stays a separate step.
+            var ed = new EditorDocument(doc);
+            ed.Execute(new AddPlacementCommand(new MapPlacement { Id = "dropped", Kind = "prop", X = 1f, Z = 1f }));
+            ed.Execute(new MovePlacementCommand("other", 8f, 8f, null));
+            Assert.Equal(2, ed.History.UndoDepth);       // not absorbed: a foreign-id move is its own step
+        }
+
+        [Fact]
         public void MoveSpawn_MergesSameId()
         {
             var doc = Sample();

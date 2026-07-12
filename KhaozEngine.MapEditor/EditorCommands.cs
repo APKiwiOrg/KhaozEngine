@@ -90,7 +90,10 @@ public abstract class EditorCommand : IEditorCommand
 
 // ---- placements ------------------------------------------------------------------------------------------
 
-/// <summary>Appends an authored placement to the document.</summary>
+/// <summary>Appends an authored placement to the document. Absorbs a same-id <see cref="MovePlacementCommand"/> that
+/// immediately follows (place-and-adjust): the placed prop can be dragged into position within the same gesture and
+/// the whole thing stays ONE undo step whose <see cref="Revert"/> removes the placement, restoring the pre-place
+/// document byte for byte.</summary>
 public sealed class AddPlacementCommand : EditorCommand
 {
     readonly MapPlacement _placement;
@@ -108,6 +111,21 @@ public sealed class AddPlacementCommand : EditorCommand
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Placements.Remove(_placement);
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        // Fold a same-id move into the Add: the placed prop's final position becomes part of the Add itself, so
+        // place-and-adjust is one undo step and Revert still just removes the placement.
+        if (next is MovePlacementCommand m && string.Equals(m.Id, _placement.Id, StringComparison.Ordinal))
+        {
+            _placement.X = m.NewX;
+            _placement.Z = m.NewZ;
+            _placement.Y = m.NewY;
+            return true;
+        }
+        return false;
+    }
 }
 
 /// <summary>Removes the placement with the given id, capturing the removed item and its index so
@@ -163,6 +181,15 @@ public sealed class MovePlacementCommand : EditorCommand
         _newZ = newZ;
         _newY = newY;
     }
+
+    /// <summary>The moved placement's id, so <see cref="AddPlacementCommand.TryMerge"/> can match a same-id move.</summary>
+    internal string Id => _id;
+    /// <summary>The target X this move sets, exposed so an absorbing Add can fold in the final position.</summary>
+    internal float NewX => _newX;
+    /// <summary>The target Z this move sets, exposed so an absorbing Add can fold in the final position.</summary>
+    internal float NewZ => _newZ;
+    /// <summary>The target Y this move sets (null = ground-snap), exposed for an absorbing Add.</summary>
+    internal float? NewY => _newY;
 
     /// <inheritdoc/>
     public override string Label => "Move placement";
@@ -317,7 +344,9 @@ public sealed class RenamePlacementCommand : EditorCommand
 
 // ---- spawns ----------------------------------------------------------------------------------------------
 
-/// <summary>Appends an NPC spawn marker to the document.</summary>
+/// <summary>Appends an NPC spawn marker to the document. Absorbs a same-id <see cref="MoveSpawnCommand"/> that
+/// immediately follows (place-and-adjust), so a just-placed spawn can be dragged into position within the same
+/// gesture and the whole thing stays ONE undo step whose <see cref="Revert"/> removes the spawn.</summary>
 public sealed class AddSpawnCommand : EditorCommand
 {
     readonly MapSpawn _spawn;
@@ -335,6 +364,20 @@ public sealed class AddSpawnCommand : EditorCommand
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Spawns.Remove(_spawn);
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        // Fold a same-id move into the Add: the placed spawn's final position becomes part of the Add itself, so
+        // place-and-adjust is one undo step and Revert still just removes the spawn.
+        if (next is MoveSpawnCommand m && string.Equals(m.Id, _spawn.Id, StringComparison.Ordinal))
+        {
+            _spawn.X = m.NewX;
+            _spawn.Z = m.NewZ;
+            return true;
+        }
+        return false;
+    }
 }
 
 /// <summary>Removes the spawn with the given id, restoring it at its original index on revert.</summary>
@@ -385,6 +428,13 @@ public sealed class MoveSpawnCommand : EditorCommand
         _newX = newX;
         _newZ = newZ;
     }
+
+    /// <summary>The moved spawn's id, so <see cref="AddSpawnCommand.TryMerge"/> can match a same-id move.</summary>
+    internal string Id => _id;
+    /// <summary>The target X this move sets, exposed so an absorbing Add can fold in the final position.</summary>
+    internal float NewX => _newX;
+    /// <summary>The target Z this move sets, exposed so an absorbing Add can fold in the final position.</summary>
+    internal float NewZ => _newZ;
 
     /// <inheritdoc/>
     public override string Label => "Move spawn";

@@ -1466,10 +1466,14 @@ public class MapEditorScene : GameScene, IGameScene3D
         bool pressed = !overChrome && (ptr?.IsJustPressed ?? false);
         bool down = !overChrome && (ptr?.IsDown ?? false);
         bool released = ptr?.IsJustReleased ?? false;
+        // Screen-space distance travelled since the press, in the pointer's own space (matches the TreeView row-drag
+        // threshold precedent), so the body-drag gesture arms on the same 6f dead zone the outline reorder uses.
+        float travel = ptr is not null ? (ptr.Position - ptr.PressOrigin).Length() : 0f;
 
         bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
         return new EditorFrameInput(ray.Origin, dir,
             pointerPressed: pressed, pointerDown: down, pointerReleased: released,
+            pointerTravel: travel,
             shift: shift,
             deletePressed: s.WasPressed(Key.Delete),
             // Shift+Escape is the exit chord (HandleExitChord), so it never doubles as the tool gesture

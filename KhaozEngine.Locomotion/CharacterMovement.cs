@@ -377,6 +377,41 @@ public static class CharacterMovement
             }
         }
 
+        // 4-tread-find. The downward capsule sweep above MISSES the tread at a staircase BASE when the footprint
+        // STRADDLES a tread shallower than the capsule diameter: the sweep grazes the vertical riser front face, returns
+        // a steep, off-footprint normal both of its guards (walkable-up + under-footprint) reject, and groundY stays at
+        // terrainGroundY. A single step below, that terrain sits within GroundedEpsilon of the partially-mounted capsule,
+        // so the onGround snap DROPS it a whole riser back onto the flat - the sticky / collapse-bob bottom stair (mid
+        // climb the terrain is metres below, so the same miss collapses to nothing reachable and never shows; only the
+        // base misbehaves). When the sweep contributed NO support (groundY still at terrain) yet the capsule was grounded
+        // and elevated on a step, drop a RADIUS-LESS ray fan over the footprint: a ray finds the tread top through the
+        // clear air above it where the full-radius sweep cannot. If a walkable tread sits in the step band (at or above
+        // the feet, within StepHeight), set groundY to it and the normal onGround snap seats the capsule UP onto the
+        // tread instead of collapsing; the paced step-up (4b) still caps the rise, so the mount stays smooth. The fan
+        // sources only real raycast hits at/above the feet, so it cannot invent support in open air: a genuine ledge
+        // walk-off (open air below the feet) finds no tread, groundY stays at terrain, and gravity still releases the
+        // capsule - the ledge-release invariant holds. Guarded behind the sweep miss + grounded + elevated, so it runs
+        // only on the rare base-handoff tick, never on a normal climb or flat tick.
+        // Gate on the PREVIOUS tick's elevation (s.Position.Y), not the current pos.Y: the collapse tick has already
+        // depenetrated the deeply-embedded footprint back down toward terrain by the time this runs, so the current Y
+        // reads at the flat and would skip the fix - it is precisely that collapse we are catching. The same reason the
+        // overProp sweep above gates on s.Position.Y. treadCentreY is bounded into the step band by the fan itself, so
+        // the upper guard only defends against a marginal skin overshoot.
+        //
+        // Scoped to the BASE by pos.Y <= terrainGroundY + GroundedEpsilon: the collapse ONLY fires where the onGround
+        // snap below can reach the terrain, i.e. within one GroundedEpsilon of it - the first riser. A step or more up,
+        // the capsule sits well above that band, so onGround never snaps it to terrain and there is nothing to fix; MID
+        // CLIMB the same sweep miss is harmless (the terrain is metres below, out of the snap band), so the fan MUST NOT
+        // run there or it would re-seat the height on a mid-climb miss and add penetration on a fast small-radius run.
+        // This fires the fan on exactly the ticks the collapse would fire the snap-down, and nowhere else.
+        if (world is not null && s.Grounded && groundY <= terrainGroundY + 1e-4f &&
+            s.Position.Y > terrainGroundY + OnPropSkin && pos.Y <= terrainGroundY + t.GroundedEpsilon &&
+            WalkableTreadUnderFeet(world, capsule, pos, t, out float treadCentreY) &&
+            treadCentreY > groundY && treadCentreY <= pos.Y + t.StepHeight + SkinWidth)
+        {
+            groundY = treadCentreY;
+        }
+
         bool grounded;
         float tSinceGround;
         // The swept resolver leaves the capsule at SkinWidth above a surface (not flush). Extend the landing
@@ -1020,6 +1055,75 @@ public static class CharacterMovement
                 return true;
         }
         return false;
+    }
+
+    /// <summary>Finds the highest WALKABLE tread top under the capsule footprint that sits in the step-climb band (from
+    /// the feet up to <see cref="MoveTuning.StepHeight"/> above them) and returns the capsule-centre Y that rests on it
+    /// (<paramref name="treadCentreY"/>). This is the MOUNT counterpart to <see cref="WalkableFloorUnderFeet"/>'s gravity
+    /// gate: where that answers "is there floor below my feet" for the wall slide, this answers "is there a tread I am
+    /// mounting AT or ABOVE my feet" for step 4's support floor. RAYS (radius-less) so a footprint STRADDLING a tread
+    /// shallower than the capsule diameter still finds the tread top through the clear air above it - exactly the contact
+    /// step 4's full-radius downward capsule sweep MISSES at a staircase base (the sweep grazes the vertical riser front
+    /// and returns a steep, off-footprint normal both of its guards reject). The origins sit a full StepHeight ABOVE the
+    /// feet, so at a PARTIAL mount - the paced feet still below the tread top - the ray starts in clear air above the
+    /// tread and drops onto it, never embedded in it. The reach spans only the band DOWN TO the feet plane, so the fan
+    /// never invents support in open air below the feet (a ledge walk-off finds no tread and falls) and never fights a
+    /// step-DOWN (a lower tread ahead is below the feet, out of the band - left to the downward sweep and gravity).
+    /// Deterministic: a fixed 5-ray fan over the deterministic Bepu raycast, keeping the highest hit. Follows the
+    /// one-sided-mesh-safe convention of <see cref="WalkableFloorUnderFeet"/> - a radius-less downward ray never hits the
+    /// zero-normal degeneracy a capsule sweep does, and reads a consumer +Y-wound tread top cleanly.</summary>
+    private static bool WalkableTreadUnderFeet(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, in MoveTuning t,
+        out float treadCentreY)
+    {
+        treadCentreY = 0f;
+        float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
+        float feetY = pos.Y - t.CapsuleHalfHeight;
+        float originY = feetY + t.StepHeight + SkinWidth;   // above any tread within one step of the feet
+        float reach = t.StepHeight + SkinWidth;             // reach down to the feet plane, never below it
+        float radius = capsule.Radius;
+        float bestY = float.NegativeInfinity;
+        foreach (Vector2 off in TreadFanOffsets)
+        {
+            var origin = new Vector3(pos.X + off.X * radius, originY, pos.Z + off.Y * radius);
+            if (world.Raycast(origin, -Vector3.UnitY, reach, out RayHit hit) &&
+                // Reject an embedded origin (distance < SkinWidth => the tread top is at/above the band ceiling, or the
+                // origin sits inside a solid) exactly as WalkableFloorUnderFeet does, so a ray that starts buried in
+                // geometry cannot report a spurious zero-distance up-normal hit as a tread.
+                hit.Distance >= SkinWidth &&
+                hit.Normal.Y >= cosMaxSlope - 1e-4f)   // a walkable tread top, not a steep riser face
+            {
+                float hitY = originY - hit.Distance;   // tread top world Y
+                if (hitY > bestY) bestY = hitY;
+            }
+        }
+        if (float.IsNegativeInfinity(bestY)) return false;
+        treadCentreY = bestY + t.CapsuleHalfHeight;    // capsule centre resting on that tread top
+        return true;
+    }
+
+    // Footprint sample offsets (fractions of the capsule radius) for WalkableTreadUnderFeet: the centre plus two rings
+    // (inner 0.65 R, outer 0.95 R) of 8 directions each. A dense DISC sample, not the 5-ray cross WalkableFloorUnderFeet
+    // uses, because at a PARTIAL mount the capsule centre sits IN FRONT of the riser (the step-up raised Y but the paced
+    // horizontal has not carried the centre onto the tread yet), so only the LEADING ARC of the footprint overlaps the
+    // shallow tread. The near-rim ring reaches that arc from any approach heading (head-on or angled), where the 0.7 R
+    // cross falls short of it and the mount collapses. Rim (~R) samples cannot invent open-air support: the fan is gated
+    // behind grounded + elevated-on-a-step + a missed downward sweep, and every hit is a real walkable tread within one
+    // StepHeight of the feet, so it only reports a tread the capsule body already spans.
+    private static readonly Vector2[] TreadFanOffsets = BuildTreadFanOffsets();
+
+    private static Vector2[] BuildTreadFanOffsets()
+    {
+        ReadOnlySpan<float> rings = stackalloc float[] { 0.65f, 0.95f };
+        var offsets = new Vector2[1 + rings.Length * 8];
+        offsets[0] = Vector2.Zero;
+        int n = 1;
+        foreach (float ring in rings)
+            for (int k = 0; k < 8; k++)
+            {
+                float a = k * (MathF.PI / 4f);
+                offsets[n++] = new Vector2(ring * MathF.Cos(a), ring * MathF.Sin(a));
+            }
+        return offsets;
     }
 
     // Tangent co-pace next-riser probe (step 4b, NextRiserAhead). Just BEYOND a steep face ahead, sample the floor at

@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Locomotion: bottom-stair mount no longer collapses to the ground below
+
+**The bottom step of a staircase now mounts cleanly at any approach speed and arrival phase (the support probe finds the tread under a straddling footprint instead of collapsing to the ground below); no consumer change needed.** At a staircase base, the capsule footprint (0.8 m across) straddles a shallow tread (0.4 m), so step 4's full-radius downward support sweep grazed the vertical riser front and both of its guards (walkable-up normal, under-footprint point) rejected the contact; groundY fell to the terrain a step below, and because that terrain sits within `GroundedEpsilon` of the partially-mounted capsule the onGround snap dropped it a whole riser back to the flat, where it bobbed and re-mounted (the sticky bottom stair). The fix drops a radius-less ray fan over the footprint when the sweep contributes no support, finds the tread the sweep cannot (a ray has no radius, so it reads the tread top through the clear air a straddling capsule sweep misses), and seats groundY on it, so the normal onGround snap lifts the capsule UP onto the tread. Scoped tightly to the base (fires only when the capsule is within `GroundedEpsilon` of the terrain, where the collapse can happen), so mid-climb and flat behaviour are untouched. The paced step-up still caps the rise, so the mount stays smooth. A `CharacterMovement` internals-only change (new private `WalkableTreadUnderFeet` fan); no public API change, no consumer change.
+
 ## 10.70.0
 
 Map editor polish round two: rotatable terrain features get a yaw ring gizmo, place and select gestures gained body-drag, and every editor keyboard chord is now Cmd-aware on macOS and gated off while an inspector or filter field holds focus.

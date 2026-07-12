@@ -315,7 +315,7 @@ waterline, so a level below all terrain renders nothing at negligible cost. Deri
 surface tracks a water-level edit immediately, ahead of the scatter rebuild. The terrain root in the outline
 (a `SelectionKind.Terrain` node) selects into an inspector with all seven terrain scalars editable
 (`BuildTerrainInspector`: WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency,
-DetailOctaves, the last two scrubbed as whole steps and rounded to an int on write), plus a read-only Biomes
+DetailOctaves, with Seed and DetailOctaves scrubbed as whole steps and rounded to an int on write), plus a read-only Biomes
 count. Biome bands themselves are edited via the Biomes outline category, not the terrain inspector, see
 Procedural setup editing below.
 
@@ -445,9 +445,10 @@ rebuild-on-mismatch idiom `SyncShapeInspector` uses for a shape-kind conversion.
 inspector's own rule rows use the analogous `_inspectorRuleCount` check so a rule add/remove reflows without
 a mid-iteration rebuild.
 
-All of the above are `AffectsWorld` true (they change terrain shape or scatter inputs), triggering the same
+The add, edit, and remove commands above are `AffectsWorld` true (they change terrain shape or scatter inputs), triggering the same
 streamed-world rebuild path described in Rebuild semantics above, including the one-frame inspector-scrub lag
-that section documents.
+that section documents. The two rename commands (for scatter layers and companions) are deliberately `AffectsWorld` false,
+since a rename is byte-identical to streamed output and requires no rebuild.
 
 ## `DocumentChanged` unsubscribe note for custom hosts
 

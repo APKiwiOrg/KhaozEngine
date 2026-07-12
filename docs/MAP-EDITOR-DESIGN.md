@@ -324,6 +324,10 @@ once it ships, the detail moves to `CHANGELOG.md`.
   but it does mean a rule add/remove undo step reverts the WHOLE layer value, not just the
   one rule, which would matter more if a layer ever grew a large rule list edited by
   multiple hands.
+- **ke-mapedit MCP surface**: exclusions support add/edit/remove and layer-targeting mutations plus
+  rename, but have no dedicated read-back verb (only the `map_summary` count is readable, not individual
+  exclusion details, names, or layer targeting). An `exclusions_info` read verb or a `map_summary`
+  enrichment is a candidate follow-up.
 - **Engine misc**: `RayMath`'s zero-length-ray edge is untested, and a NaN direction acts
   as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
   miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders

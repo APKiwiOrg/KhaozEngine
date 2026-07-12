@@ -26,6 +26,7 @@ namespace KhaozEngine.Locomotion;
 /// </summary>
 public static class CharacterMovement
 {
+
     /// <summary>Horizontal-only step (no vertical physics): Y is clamped onto the ground + half-height every tick.</summary>
     /// <param name="position">Current capsule-centre world position.</param>
     /// <param name="cmd">Movement intent (camera-relative axis + run + camera yaw).</param>
@@ -190,6 +191,12 @@ public static class CharacterMovement
         CapsuleShape capsule = CapsuleFor(t);
         float halfH = t.CapsuleHalfHeight;
 
+        // A grounded capsule with NO horizontal command this tick is AT REST: its walkable-contact depenetration must
+        // resolve vertically only, so it cannot creep down a tilted walkable prop surface (see the depenetration
+        // passes). Gated on the command bit, not just grounded, because a fast run-climb is also grounded but needs
+        // full-MTV horizontal depenetration to extract itself from the risers it embeds into.
+        bool restHold = s.Grounded && speedFraction <= 0f;
+
         // 0. Fluid medium: sampled ONCE per step at the step-start feet position (identical to how the wade ramp
         //    reads it below), so the swim decision, the wade scale, and the buoyancy target all see one consistent
         //    medium this tick. Null provider => Dry everywhere => no swim can ever engage and the dry/wade path is
@@ -235,12 +242,13 @@ public static class CharacterMovement
         }
         else
         {
-            pos = SweptMove(world, capsule, start, target, t, s.Grounded, out steppedUp, out steppedFloorY);
+            pos = SweptMove(world, capsule, start, target, t, s.Grounded, restHold, out steppedUp, out steppedFloorY);
 
             // Settle pass: residual-overlap depenetration (rarely fires now; the swept move starts known-outside).
             const int ResolveIterations = 6;
             const float ResolveSlop = 0.01f;
             const float MaxCorrection = 0.5f;
+            float cosMaxSlopeSettle = MathF.Cos(t.MaxSlopeRadians);
             for (int i = 0; i < ResolveIterations; i++)
             {
                 if (!world.ComputePenetration(capsule, Pose.At(pos), out Vector3 mtv)) break;
@@ -249,7 +257,19 @@ public static class CharacterMovement
                 if (mtv.Y > 0.5f * len) propGrounded = true;
                 if (len <= ResolveSlop) break;
                 float push = MathF.Min(len - ResolveSlop, MaxCorrection);
-                pos += mtv / len * push;
+                Vector3 correction = mtv / len * push;
+                // WALKABLE-CONTACT REST DEPENETRATION IS VERTICAL. When the capsule is grounded and the separation
+                // direction is walkable (its normal passes the slope gate), resolve ONLY the vertical component and
+                // drop the horizontal. Pushing a resting capsule out along the FULL MTV of a tilted walkable surface
+                // slides it down-slope by ResolveSlop*sin(slope) EVERY tick - a steady creep the analytic terrain
+                // (not in the physics world) never shows. Vertical-only lifts it clear without the sideways shove;
+                // step 4 clamps the resting height on the surface. A steep (wall/riser) contact is NOT walkable, so it
+                // keeps the full MTV: a capsule walking INTO a wall still depenetrates horizontally, and a riser
+                // push-out is unchanged. (Future seam: a steep-face slide policy, if ever wanted, would branch here on
+                // the non-walkable normal; today static-at-rest below the gate is the design, matching analytic terrain.)
+                // len > 1e-6 above, so mtv.Y >= cosMaxSlope*len is the divide-free normal.Y >= cosMaxSlope test.
+                if (restHold && mtv.Y >= cosMaxSlopeSettle * len) correction = new Vector3(0f, correction.Y, 0f);
+                pos += correction;
             }
             if (clampXz is not null) { Vector2 c = clampXz(pos.X, pos.Z); pos.X = c.X; pos.Z = c.Y; }
 
@@ -287,6 +307,19 @@ public static class CharacterMovement
                     float inv = 1f / mvLen; mvx *= inv; mvz *= inv;
                     float along = (pos.X - s.Position.X) * mvx + (pos.Z - s.Position.Z) * mvz;
                     if (along < 0f) { pos.X = s.Position.X; pos.Z = s.Position.Z; }   // net backward: hold last tick's XZ
+                }
+                else
+                {
+                    // ZERO-INPUT HOLD. No horizontal command this tick, yet the swept + depenetrate passes still
+                    // resolved a net XZ displacement (the riser the capsule was mounting pushes its embedded footprint
+                    // BACKWARD off the step - a steep riser normal, so it is not the walkable-rest vertical-only case
+                    // above). With no command that shove is pure artifact: a capsule that stops mid-climb should settle
+                    // vertically onto the tread it is on, not be knocked back a riser. Same arming as the forward hold
+                    // (grounded, elevated on a step, not rising ballistically), so a released climb holds its XZ and
+                    // the support/pacing below seats it on the current tread. Flat ground fails the elevated gate and
+                    // is untouched; a commanded move (mvLen > 1e-6) takes the forward-hold branch, so walking into a
+                    // wall still slides normally.
+                    pos.X = s.Position.X; pos.Z = s.Position.Z;
                 }
             }
         }
@@ -365,19 +398,33 @@ public static class CharacterMovement
             tSinceGround = s.TimeSinceGrounded + dt;
         }
 
-        // 4a. Stair-climb ground-stick. The paced step-up (4b) commits the capsule BELOW the tread it is mounting,
-        //     so on the ticks BETWEEN mounts (no step-up fired, the paced feet drifted more than a StepHeight below
-        //     the tread ahead) step 4's downward capsule probe - which returns only the HIGHEST surface under the
-        //     footprint and rejects it as too high - reports no support, and `grounded` flips false with a one-tick
-        //     gravity dip. On a stair that reads as the character stuttering airborne between steps and spamming the
-        //     fall animation. But the capsule is still resting on the LOWER treads its footprint spans: if it was
-        //     grounded last tick, is above the terrain floor (genuinely on a step run, not on flat ground), is not
-        //     rising ballistically (a jump owns vVel > 0), and a walkable surface still sits within reach beneath its
-        //     feet, it has not left the ground - hold it grounded. Uses the same feet-down ray fan the wall slide
-        //     trusts for "am I supported" (rays never hit the zero-normal degeneracy a capsule sweep can), so a real
-        //     walk-off-a-ledge - where no floor sits under the feet - still falls on the very next tick.
+        // 4a. Stair-climb ground-stick (with a step-contact hysteresis). The paced step-up (4b) commits the capsule
+        //     BELOW the tread it is mounting, so on the ticks BETWEEN mounts (no step-up fired, the paced feet drifted
+        //     more than a StepHeight below the tread ahead) step 4's downward capsule probe - which returns only the
+        //     HIGHEST surface under the footprint and rejects it as too high - reports no support, and `grounded` flips
+        //     false with a one-tick gravity dip. On a stair that reads as the character stuttering airborne between
+        //     steps and spamming the fall animation. But the capsule is still resting on the LOWER treads its footprint
+        //     spans: if it was grounded last tick, is above the terrain floor (genuinely on a step run, not on flat
+        //     ground), is not rising ballistically (a jump owns vVel > 0), and a walkable surface still sits within
+        //     reach beneath its feet, it has not left the ground - hold it grounded. Uses the same feet-down ray fan
+        //     the wall slide trusts for "am I supported" (rays never hit the zero-normal degeneracy a capsule sweep
+        //     can).
+        //
+        //     STEP-CONTACT HYSTERESIS (the terrain/prop handoff): mounting the FIRST riser at an angle, the freshly
+        //     lifted footprint can sit a hair IN FRONT of / straddling the riser edge, so no tread is under the feet
+        //     (the ray fan misses) yet the body is still EMBEDDED in the riser it is climbing - a step contact plainly
+        //     remains. The bare ray fan flipped grounded false there for a tick, and the avatar's snap-to-physics
+        //     branch (which fires on !Grounded) popped the model + camera: root cause C's angled first-riser grounded
+        //     flicker. So also hold grounded when the capsule OVERLAPS a static (ComputePenetration) - the honest "a
+        //     step contact remains" signal that the feet-ray fan cannot see through the riser. This holds only the
+        //     grounded FLAG (not pos.Y or the support height), so it cannot stall or float the paced climb - the
+        //     step-up/pacing still drive the rise; it only stops the spurious airborne pop. Ledge-safe: a genuine walk
+        //     off a ledge leaves the capsule in OPEN AIR (no overlap AND no floor under the feet), so both signals are
+        //     false and it releases and falls (the grounded-stick ledge-release pin holds). The penetration query is
+        //     guarded behind the ray-fan miss, so it runs only on the rare handoff tick, never on a normal climb tick.
         if (!grounded && vVel <= 0f && s.Grounded && world is not null &&
-            pos.Y > terrainGroundY + OnPropSkin && WalkableFloorUnderFeet(world, capsule, pos, t))
+            pos.Y > terrainGroundY + OnPropSkin &&
+            (WalkableFloorUnderFeet(world, capsule, pos, t) || world.ComputePenetration(capsule, Pose.At(pos), out _)))
         {
             grounded = true;
             tSinceGround = 0f;
@@ -789,7 +836,7 @@ public static class CharacterMovement
     /// fast jump never crosses a face. Deterministic (Bepu Sweep is deterministic single-threaded; the substep
     /// count is a deterministic length).</summary>
     private static Vector3 SweptMove(IPhysicsWorld world, CapsuleShape capsule, Vector3 start, Vector3 target,
-        in MoveTuning t, bool grounded, out bool steppedUp, out float steppedFloorY)
+        in MoveTuning t, bool grounded, bool restHold, out bool steppedUp, out float steppedFloorY)
     {
         steppedUp = false; steppedFloorY = 0f;
         Vector3 full = target - start;
@@ -804,7 +851,7 @@ public static class CharacterMovement
         Vector3 pos = start;
         for (int i = 0; i < substeps; i++)
         {
-            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded, out bool stepped, out float floorY);
+            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded, restHold, out bool stepped, out float floorY);
             if (stepped) { steppedUp = true; steppedFloorY = floorY; }
         }
         return pos;
@@ -816,7 +863,7 @@ public static class CharacterMovement
     /// steps up over a low ledge or projects the remainder onto the contact plane (slide), iterating to resolve
     /// inner corners.</summary>
     private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 delta,
-        in MoveTuning t, bool grounded, out bool steppedUp, out float steppedFloorY)
+        in MoveTuning t, bool grounded, bool restHold, out bool steppedUp, out float steppedFloorY)
     {
         steppedUp = false; steppedFloorY = 0f;
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
@@ -838,6 +885,19 @@ public static class CharacterMovement
             for (int d = 0; d < DepenIterations; d++)
             {
                 if (!world.ComputePenetration(probe, Pose.At(pos), out Vector3 push) || push.LengthSquared() <= 1e-12f) break;
+                // WALKABLE-CONTACT REST DEPENETRATION IS VERTICAL (mirrors the settle pass in StepCore): a grounded
+                // capsule with NO horizontal command, pushed off a tilted WALKABLE surface, takes only the vertical
+                // component, so a resting capsule cannot creep down-slope; a steep (wall/riser) normal keeps the full
+                // MTV so walking into a wall still pushes out horizontally. Gated on no command (not just grounded)
+                // because a fast run-climb IS grounded yet embeds in the risers, and its horizontal depenetration is
+                // load-bearing for extracting the swept climb - suppressing it there re-embeds the capsule and
+                // collapses support (the StairRunTangentPacing regression). cosMaxSlope is the slope gate at the top
+                // of this method. NaN-safe: push.LengthSquared() > 1e-12 guards the length divide above.
+                if (restHold)
+                {
+                    float pl = push.Length();
+                    if (push.Y >= cosMaxSlope * pl) push = new Vector3(0f, push.Y, 0f);
+                }
                 pos += push;   // MTV is direction*depth; the inflated overlap depth lands the real capsule ~SkinWidth clear
             }
 

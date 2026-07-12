@@ -15,6 +15,12 @@ public abstract class MapFeature
     /// <summary>The JSON discriminator this DTO serializes under. Must match its registry registration.</summary>
     [JsonIgnore]
     public abstract string Type { get; }
+
+    /// <summary>Optional display name, unique among terrain features when set (validator-enforced). Null or
+    /// empty means unnamed, and the editor falls back to an index-based label ("[i] type"). Serialized only
+    /// when set: the document's global WhenWritingNull option omits a null Name, so an unnamed feature does not
+    /// bloat every document with an empty name key.</summary>
+    public string? Name { get; set; }
 }
 
 /// <summary>DTO for <see cref="LakeFeature"/>.</summary>

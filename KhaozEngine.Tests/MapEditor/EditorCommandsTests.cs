@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
@@ -106,6 +107,27 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(ed.History.CanUndo);
             Assert.Contains(doc.Regions, r => r.Name == "town");     // source name intact
             Assert.Single(doc.Regions, r => r.Name == "village");    // target still unique: no clone
+        }
+
+        [Fact]
+        public void RenameRegion_NowMerges()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // The ledgered per-keystroke-undo wart: before the TryMerge retrofit, each keystroke pushed its own
+            // undo step. Successive renames of the same region (each one's old name matching the prior new name,
+            // the same-name-pair chain a per-keystroke commit produces) now coalesce into one undo step.
+            ed.Execute(new RenameRegionCommand("town", "t"));
+            ed.Execute(new RenameRegionCommand("t", "to"));
+            ed.Execute(new RenameRegionCommand("to", "town2"));
+            Assert.Equal(1, ed.History.UndoDepth);
+            Assert.Contains(doc.Regions, r => r.Name == "town2");
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
         }
 
         [Fact]
@@ -440,6 +462,34 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void RenameFeature_RoundTrip_MergesScrubs()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Applies and reverts: round trip is deep-equal. Features are index-addressed (no independent id),
+            // unlike RenamePlacementCommand's id-keyed variant.
+            ed.Execute(new RenameFeatureCommand(0, "north-lake", ""));
+            Assert.Equal("north-lake", doc.Terrain.Features[0].Name);
+            Assert.False(ed.WorldRebuildPending);   // renaming does not change terrain shape
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+
+            // Successive renames of the same index coalesce (a text field committed on every keystroke stays
+            // one undo step, the EditFeatureCommand scrub-coalescing idiom).
+            ed.Execute(new RenameFeatureCommand(0, "n", ""));
+            ed.Execute(new RenameFeatureCommand(0, "no", "n"));
+            ed.Execute(new RenameFeatureCommand(0, "north", "no"));
+            Assert.Equal("north", doc.Terrain.Features[0].Name);
+            Assert.Equal(1, ed.History.UndoDepth);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
         public void EditTerrainCommand_AppliesRevertsAndMerges()
         {
             var doc = Sample();
@@ -505,6 +555,52 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Same(original, doc.Exclusions[0].Shape);
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));
+        }
+
+        [Fact]
+        public void RenameExclusion_RoundTrip()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Exclusions are index-addressed (no independent id), the same idiom as RenameFeatureCommand.
+            ed.Execute(new RenameExclusionCommand(0, "market-clearing", ""));
+            Assert.Equal("market-clearing", doc.Exclusions[0].Name);
+            Assert.False(ed.WorldRebuildPending);   // renaming does not change scatter inputs
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void EditExclusionLayers_RoundTrip_AffectsWorld_UnknownLayerRejected()
+        {
+            var doc = Sample();
+            List<string>? original = doc.Exclusions[0].Layers;   // null in SampleDoc: applies to every layer
+            string before = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditExclusionLayersCommand(0, new List<string> { "trees" }, original));
+            Assert.Equal(new List<string> { "trees" }, doc.Exclusions[0].Layers);
+            Assert.True(ed.WorldRebuildPending);   // targeting changes scatter output
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+
+            // A second edit of the same index coalesces (checkbox-drag coalescing).
+            ed.Execute(new EditExclusionLayersCommand(0, new List<string> { "trees" }, original));
+            ed.Execute(new EditExclusionLayersCommand(0, null, new List<string> { "trees" }));
+            Assert.Null(doc.Exclusions[0].Layers);
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+
+            // An unknown layer name is not rejected by the command itself: the standard document validator on
+            // save catches it, the same invariant every other layer-filter field already relies on.
+            ed.Execute(new EditExclusionLayersCommand(0, new List<string> { "nope" }, original));
+            Assert.Throws<MapDocumentException>(() => Save(doc));
         }
 
         [Fact]

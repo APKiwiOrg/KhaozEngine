@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEditor;
@@ -86,6 +87,12 @@ public abstract class EditorCommand : IEditorCommand
             if (string.Equals(r.Name, name, StringComparison.Ordinal))
                 throw new InvalidOperationException($"A region named '{name}' already exists in the document.");
     }
+
+    /// <summary>Coerces an empty rename target to null: features and exclusions store an optional Name where
+    /// empty means unnamed (<see cref="MapDoc.MapFeature.Name"/>, <see cref="MapExclusion.Name"/>), and the
+    /// stored value must never be the empty string, only null or non-empty, so a clear-to-empty rename does not
+    /// persist as a bloating empty name key.</summary>
+    private protected static string? NormalizeName(string name) => string.IsNullOrEmpty(name) ? null : name;
 }
 
 // ---- placements ------------------------------------------------------------------------------------------
@@ -624,6 +631,97 @@ public sealed class EditExclusionShapeCommand : EditorCommand
     }
 }
 
+/// <summary>Renames the exclusion at a given index. Exclusions are index-addressed (no independent id, the same
+/// idiom as <see cref="RenameFeatureCommand"/>), so this targets the list position rather than an old-name
+/// lookup. The caller supplies both the new and old name (empty for unnamed), and empty is normalized to null
+/// so a cleared name never persists as a bloating empty name key. Successive renames of the same index coalesce
+/// into one undo step (a text field committed on every keystroke stays one undo). Renaming does not change the
+/// exclusion's shape or layer filter, so this does not affect the streamed world.</summary>
+public sealed class RenameExclusionCommand : EditorCommand
+{
+    readonly int _index;
+    string _newName;
+    readonly string _oldName;
+
+    /// <summary>Creates the command renaming the exclusion at <paramref name="index"/> to
+    /// <paramref name="newName"/>, capturing <paramref name="oldName"/> for revert.</summary>
+    public RenameExclusionCommand(int index, string newName, string oldName)
+    {
+        _index = index;
+        _newName = newName ?? throw new ArgumentNullException(nameof(newName));
+        _oldName = oldName ?? throw new ArgumentNullException(nameof(oldName));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename exclusion";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Name = NormalizeName(_newName);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Exclusions[_index].Name = NormalizeName(_oldName);
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is RenameExclusionCommand r && r._index == _index)
+        {
+            _newName = r._newName;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Replaces the layer filter of the exclusion at a given index (parameter scrub, the
+/// <see cref="EditExclusionShapeCommand"/> idiom). Null Layers means the exclusion applies to every scatter
+/// layer including any added later, an exact document semantic that must be preserved: the GUI's "All layers"
+/// toggle is the only control that produces null. Turning that toggle off materializes the current full
+/// explicit list, and checking every known layer back on by hand afterwards does NOT re-collapse to null, only
+/// the All toggle does, so the explicit list stays explicit even once it covers every layer. An empty explicit
+/// list (every box unchecked) is legal and means the exclusion applies to nothing. Successive edits of the same
+/// index coalesce (checkbox-drag coalescing). Affects the streamed world: which layers a region excludes
+/// changes scatter output. An unknown layer name is not rejected here: the caller relies on the standard
+/// document validator on save (<see cref="MapDocumentValidator"/>) to catch it, the same invariant every other
+/// layer-filter field already relies on.</summary>
+public sealed class EditExclusionLayersCommand : EditorCommand
+{
+    readonly int _index;
+    List<string>? _newLayers;
+    readonly List<string>? _oldLayers;
+
+    /// <summary>Creates the command replacing exclusion <paramref name="index"/>'s layer filter with
+    /// <paramref name="newLayers"/>, capturing <paramref name="oldLayers"/> for revert.</summary>
+    public EditExclusionLayersCommand(int index, List<string>? newLayers, List<string>? oldLayers)
+    {
+        _index = index;
+        _newLayers = newLayers;
+        _oldLayers = oldLayers;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit exclusion layers";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Layers = _newLayers;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Exclusions[_index].Layers = _oldLayers;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditExclusionLayersCommand e && e._index == _index)
+        {
+            _newLayers = e._newLayers;
+            return true;
+        }
+        return false;
+    }
+}
+
 // ---- regions (game-interpreted markers, not terrain-affecting) --------------------------------------------
 
 /// <summary>Appends a named region marker. Regions are game-interpreted, so this does not affect the
@@ -680,11 +778,13 @@ public sealed class RemoveRegionCommand : EditorCommand
 
 /// <summary>Renames a region. Regions are keyed by name, so the id-carrying selection follows the rename. The
 /// target name must be unique: <see cref="Apply"/> throws (before it mutates) if a region already carries the new
-/// name, so a rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
+/// name, so a rejected rename lands no undo step. A chained rename, where the next command's old name matches
+/// this one's current new name (the same-name-pair a per-keystroke commit produces), coalesces into this command
+/// instead of pushing its own step: previously every keystroke of a region rename landed its own undo entry.</summary>
 public sealed class RenameRegionCommand : EditorCommand
 {
     readonly string _oldName;
-    readonly string _newName;
+    string _newName;
 
     /// <summary>Creates the command renaming the region <paramref name="oldName"/> to
     /// <paramref name="newName"/>.</summary>
@@ -707,6 +807,17 @@ public sealed class RenameRegionCommand : EditorCommand
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Regions[IndexOfRegion(doc, _newName)].Name = _oldName;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is RenameRegionCommand r && string.Equals(r._oldName, _newName, StringComparison.Ordinal))
+        {
+            _newName = r._newName;
+            return true;
+        }
+        return false;
+    }
 }
 
 /// <summary>Replaces the shape of the region with a given name (parameter scrub or kind conversion). The caller
@@ -877,6 +988,50 @@ public sealed class EditFeatureCommand : EditorCommand
         if (next is EditFeatureCommand f && f._index == _index)
         {
             _newValue = f._newValue;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Renames the terrain feature at a given index. Features are index-addressed (no independent id,
+/// unlike placements/spawns/regions which carry their own id or name), so this targets the list position rather
+/// than an old-name lookup. The caller supplies both the new and old name (empty for unnamed), and empty is
+/// normalized to null so a cleared name never persists as a bloating empty name key. Successive renames of the
+/// same index coalesce into one undo step (the <see cref="EditFeatureCommand"/> scrub-coalescing idiom, e.g. a
+/// text field committed on every keystroke). Renaming does not change the terrain shape, so this does not affect
+/// the streamed world.</summary>
+public sealed class RenameFeatureCommand : EditorCommand
+{
+    readonly int _index;
+    string _newName;
+    readonly string _oldName;
+
+    /// <summary>Creates the command renaming the terrain feature at <paramref name="index"/> to
+    /// <paramref name="newName"/>, capturing <paramref name="oldName"/> for revert.</summary>
+    public RenameFeatureCommand(int index, string newName, string oldName)
+    {
+        _index = index;
+        _newName = newName ?? throw new ArgumentNullException(nameof(newName));
+        _oldName = oldName ?? throw new ArgumentNullException(nameof(oldName));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename terrain feature";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.Terrain.Features[_index].Name = NormalizeName(_newName);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.Terrain.Features[_index].Name = NormalizeName(_oldName);
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is RenameFeatureCommand r && r._index == _index)
+        {
+            _newName = r._newName;
             return true;
         }
         return false;

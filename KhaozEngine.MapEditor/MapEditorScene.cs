@@ -166,6 +166,12 @@ public class MapEditorScene : GameScene, IGameScene3D
     // conversion (or an undo/redo of one) swaps the param rows: see SyncShapeInspector.
     string? _inspectorShapeKind;
 
+    // Whether the current exclusion inspector's layer rows were built with "All layers" on (Layers null), or
+    // null when the inspector holds no exclusion layer rows. Compared each chrome step against the live
+    // exclusion's Layers so an All-toggle (or an undo/redo of one) reflows the per-layer membership rows into
+    // or out of view: see SyncShapeInspector.
+    bool? _inspectorLayersAllOn;
+
     /// <summary>Wires the render surface, the shared white pixel and UI font, and the editor options, then returns
     /// this for chaining (the Room3D Init-injection pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
     public MapEditorScene Init(Scene3D scene, Texture2D white, DpiFont font, MapEditorOptions options)
@@ -229,7 +235,12 @@ public class MapEditorScene : GameScene, IGameScene3D
 
         MapDocRegistry registry = _options.Registry ?? MapDocRegistry.CreateDefault();
         _document = new EditorDocument(CreateDocument(registry), registry);
-        _controller = new EditorToolController(_document) { HeightOf = KindHeight, IsVisible = _visibility.IsElementVisible };
+        _controller = new EditorToolController(_document)
+        {
+            HeightOf = KindHeight,
+            IsVisible = _visibility.IsElementVisible,
+            OnIndexRemoved = _visibility.RemoveIndex,
+        };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths) { ScatterLayerVisible = _visibility.GetLayer };
         _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f };
         _camController = new FlyCameraController(_camera);
@@ -773,6 +784,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         int to = from + delta;
         if (to < 0 || to >= count) return;   // clamp at the ends: nothing to move, so land no command
         _document.Execute(new ReorderFeatureCommand(from, to));
+        _visibility.RemapIndex(SelectionKind.Feature, from, to);   // a hide follows the moved feature, not the slot
         selection.Set(SelectionKind.Feature, to.ToString(CultureInfo.InvariantCulture));
     }
 
@@ -864,10 +876,12 @@ public class MapEditorScene : GameScene, IGameScene3D
         {
             case SelectionKind.Feature:
                 _document.Execute(new ReorderFeatureCommand(fromIndex, toIndex));
+                _visibility.RemapIndex(SelectionKind.Feature, fromIndex, toIndex);   // a hide follows the moved feature
                 _document.Selection.Set(SelectionKind.Feature, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             case SelectionKind.Exclusion:
                 _document.Execute(new ReorderExclusionCommand(fromIndex, toIndex));
+                _visibility.RemapIndex(SelectionKind.Exclusion, fromIndex, toIndex);   // a hide follows the moved exclusion
                 _document.Selection.Set(SelectionKind.Exclusion, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             default:
@@ -1051,19 +1065,39 @@ public class MapEditorScene : GameScene, IGameScene3D
             yield return new TreeNode(LocalizedText.Raw($"{s.Id} ({s.ArchetypeId})"), new OutlineRef(SelectionKind.Spawn, s.Id));
     }
 
+    // A feature node shows its Name when set, else the index/type fallback ("[i] type"). Features carry no
+    // targeting hint (that is an exclusion-only concept, see ExclusionNodes).
     IEnumerable<TreeNode> FeatureNodes()
     {
-        for (int i = 0; i < _document.Doc.Terrain.Features.Count; i++)
-            yield return new TreeNode(LocalizedText.Raw($"[{i}] {_document.Doc.Terrain.Features[i].Type}"),
+        List<MapFeature> features = _document.Doc.Terrain.Features;
+        for (int i = 0; i < features.Count; i++)
+        {
+            MapFeature f = features[i];
+            string label = string.IsNullOrEmpty(f.Name) ? $"[{i}] {f.Type}" : f.Name!;
+            yield return new TreeNode(LocalizedText.Raw(label),
                 new OutlineRef(SelectionKind.Feature, i.ToString(CultureInfo.InvariantCulture)));
+        }
     }
 
+    // An exclusion node shows its Name when set, else the index fallback ("exclusion[i]"), ALWAYS suffixed with
+    // the targeting hint from its Layers (see TargetingHint), so the outline surfaces which scatter layers the
+    // exclusion masks without opening the inspector.
     IEnumerable<TreeNode> ExclusionNodes()
     {
-        for (int i = 0; i < _document.Doc.Exclusions.Count; i++)
-            yield return new TreeNode(LocalizedText.Raw($"exclusion[{i}]"),
+        List<MapExclusion> exclusions = _document.Doc.Exclusions;
+        for (int i = 0; i < exclusions.Count; i++)
+        {
+            MapExclusion e = exclusions[i];
+            string baseLabel = string.IsNullOrEmpty(e.Name) ? $"exclusion[{i}]" : e.Name!;
+            yield return new TreeNode(LocalizedText.Raw($"{baseLabel} ({TargetingHint(e.Layers)})"),
                 new OutlineRef(SelectionKind.Exclusion, i.ToString(CultureInfo.InvariantCulture)));
+        }
     }
+
+    // The exclusion tree label's targeting suffix: "all" for a null Layers filter (masks scatter on every
+    // layer, including future ones, see MapExclusion.Layers), else the comma-joined explicit layer names in
+    // list order (an empty explicit list, legal per the model, reads as an empty hint).
+    static string TargetingHint(List<string>? layers) => layers is null ? "all" : string.Join(", ", layers);
 
     IEnumerable<TreeNode> RegionNodes()
     {
@@ -1076,6 +1110,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Rows.Clear();
         _nameRow = null;
         _inspectorShapeKind = null;
+        _inspectorLayersAllOn = null;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
@@ -1170,6 +1205,29 @@ public class MapEditorScene : GameScene, IGameScene3D
         return () => current;
     }
 
+    // The inline Name row for INDEX-pinned selections (feature, exclusion): the selection key is the list
+    // index, which a rename never moves (only reorder/delete do, both remapped separately through
+    // EditorVisibility.RemapIndex/RemoveIndex), so unlike AddNameRow there is no pending re-select to queue and
+    // no `_nameRow` chord-gating hook to wire (the grid's own HasActiveEditor aggregate already covers a
+    // focused TextRow). Name is optional (MapFeature.Name / MapExclusion.Name: empty means unnamed, falling
+    // back to the index label), so clearing to blank is a legal target, not a guard-reject. Only an UNCHANGED
+    // value or a non-empty duplicate of another element's live name is rejected, mirroring the rename command's
+    // own GuardNoFeatureName/GuardNoExclusionName check (normalized non-empty, Ordinal, excluding this index),
+    // so the row rejects a collision before the command would throw.
+    void AddIndexNameRow(int index, Func<int, string> getName, Func<string, int, bool> nameExists,
+        Func<int, string, string, IEditorCommand> rename)
+    {
+        _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Name"),
+            () => getName(index),
+            v =>
+            {
+                string old = getName(index);
+                if (string.Equals(v, old, StringComparison.Ordinal)) return;   // unchanged: no command
+                if (v.Length > 0 && nameExists(v, index)) return;   // duplicate target: reject before the command throws
+                _document.Execute(rename(index, v, old));
+            }));
+    }
+
     // The per-element "Visible" toggle, bound to the visibility hidden set (Visible on == not hidden). Added to
     // every element inspector so the operator can hide a single placement / spawn / feature / exclusion / region
     // from the viewport (draws and picks) while it stays in the outline. `id` is polled through a getter so a
@@ -1224,6 +1282,8 @@ public class MapEditorScene : GameScene, IGameScene3D
 
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Type"), () => FeatureAt(index)?.Type ?? ""));
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Apply order"), () => FeatureOrderText(index)));
+        AddIndexNameRow(index, i => FeatureAt(i)?.Name ?? "", FeatureNameExists,
+            (i, newName, oldName) => new RenameFeatureCommand(i, newName, oldName));
         switch (feature)
         {
             case LakeFeatureDoc:
@@ -1285,6 +1345,17 @@ public class MapEditorScene : GameScene, IGameScene3D
         return index >= 0 && index < features.Count ? features[index] : null;
     }
 
+    // Whether `name` (already caller-normalized non-empty) is already the live name of some OTHER feature,
+    // mirroring RenameFeatureCommand's own GuardNoFeatureName guard so the Name row rejects a collision before
+    // the command would throw.
+    bool FeatureNameExists(string name, int exceptIndex)
+    {
+        List<MapFeature> features = _document.Doc.Terrain.Features;
+        for (int i = 0; i < features.Count; i++)
+            if (i != exceptIndex && string.Equals(features[i].Name, name, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
     // "N of M (last wins overlap)": the feature's 1-based fold position and the feature count, with the last-wins
     // reminder. Features fold in list order, so the last feature over an overlap dominates it (Ctrl+Up / Ctrl+Down
     // reorder the selected feature). Polled live by the inspector's read-only row, so it tracks reorders.
@@ -1301,7 +1372,65 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (index < 0 || index >= _document.Doc.Exclusions.Count) return;
         AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null,
             (newShape, oldShape) => _document.Execute(new EditExclusionShapeCommand(index, newShape, oldShape)));
+        AddIndexNameRow(index, i => ExclusionAt(i)?.Name ?? "", ExclusionNameExists,
+            (i, newName, oldName) => new RenameExclusionCommand(i, newName, oldName));
         AddVisibleRow(SelectionKind.Exclusion, () => id);   // after the shape rows so the kind ChoiceRow stays Rows[0]
+        AddExclusionLayerRows(index);
+        _inspectorLayersAllOn = ExclusionAt(index)?.Layers is null;
+    }
+
+    MapExclusion? ExclusionAt(int index)
+    {
+        List<MapExclusion> exclusions = _document.Doc.Exclusions;
+        return index >= 0 && index < exclusions.Count ? exclusions[index] : null;
+    }
+
+    // Whether `name` (already caller-normalized non-empty) is already the live name of some OTHER exclusion,
+    // mirroring RenameExclusionCommand's own GuardNoExclusionName guard so the Name row rejects a collision
+    // before the command would throw.
+    bool ExclusionNameExists(string name, int exceptIndex)
+    {
+        List<MapExclusion> exclusions = _document.Doc.Exclusions;
+        for (int i = 0; i < exclusions.Count; i++)
+            if (i != exceptIndex && string.Equals(exclusions[i].Name, name, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    // The exclusion's layer-targeting rows (locked decision 4): an "All layers" BoolRow bound to Layers == null
+    // (masks scatter on every layer, including future ones, see MapExclusion.Layers), plus one BoolRow per
+    // document scatter layer while an explicit list is in effect. Checking All ON collapses the explicit list
+    // to null. Checking it OFF materializes the FULL explicit layer list (every current layer named). The
+    // per-layer rows are HIDDEN (not merely disabled: PropertyGrid rows have no live per-row enabled hook, only
+    // a build-time row set) while All is on, reflowing into view the next chrome step once All goes off, via
+    // the same SyncShapeInspector idiom that swaps disc/rect param rows on a shape-kind conversion. Manually
+    // re-checking every layer does NOT auto-collapse back to null: only the All toggle itself produces null (an
+    // unchecked last layer legally leaves an empty explicit list, "applies to nothing", per the model). Every
+    // change routes through EditExclusionLayersCommand so it undoes/merges like any other exclusion edit.
+    void AddExclusionLayerRows(int index)
+    {
+        var layerNames = new List<string>();
+        foreach (MapScatterLayer layer in _document.Doc.ScatterLayers) layerNames.Add(layer.Name);
+
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("All layers"),
+            () => ExclusionAt(index)?.Layers is null,
+            v => _document.Execute(new EditExclusionLayersCommand(index,
+                v ? null : new List<string>(layerNames), ExclusionAt(index)?.Layers))));
+
+        if (ExclusionAt(index)?.Layers is null) return;   // All is on: no explicit list to show membership rows for
+        foreach (string name in layerNames)
+        {
+            string layerName = name;   // capture per iteration for the closures
+            _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(layerName),
+                () => ExclusionAt(index)?.Layers is { } layers && layers.Contains(layerName),
+                v =>
+                {
+                    if (ExclusionAt(index)?.Layers is not { } live) return;   // All went on elsewhere: ignore a stray toggle
+                    var next = new List<string>(live);
+                    if (v) { if (!next.Contains(layerName)) next.Add(layerName); }
+                    else next.Remove(layerName);
+                    _document.Execute(new EditExclusionLayersCommand(index, next, live));
+                }));
+        }
     }
 
     void BuildRegionInspector(string name)
@@ -1411,14 +1540,27 @@ public class MapEditorScene : GameScene, IGameScene3D
         _ => null,
     };
 
-    /// <summary>Rebuilds the inspector when the selected shape's kind no longer matches the kind the current
-    /// rows were built for (a kind-ChoiceRow conversion, or an undo / redo of one), so disc rows swap to rect
-    /// rows and back. Deferred to the chrome step so the rebuild never happens inside the grid's row iteration.
-    /// No-op while the inspector holds no shape rows. Internal so a headless test can fire the sync directly.</summary>
+    /// <summary>Rebuilds the inspector when its structural row set no longer matches what the live selection
+    /// needs: the selected shape's kind no longer matches the kind the current rows were built for (a
+    /// kind-ChoiceRow conversion, or an undo / redo of one, so disc rows swap to rect rows and back), OR the
+    /// selected exclusion's "All layers" state no longer matches what the current layer rows were built for (an
+    /// All-toggle, or an undo / redo of one, so the per-layer membership rows reflow into or out of view).
+    /// Deferred to the chrome step so the rebuild never happens inside the grid's row iteration. No-op while the
+    /// inspector holds neither shape nor exclusion-layer rows. Internal so a headless test can fire the sync
+    /// directly.</summary>
     internal void SyncShapeInspector()
     {
-        if (_inspectorShapeKind is not string built) return;
-        if (!string.Equals(ShapeKind(SelectedShape()), built, StringComparison.Ordinal)) RebuildInspector();
+        if (_inspectorShapeKind is string builtShape &&
+            !string.Equals(ShapeKind(SelectedShape()), builtShape, StringComparison.Ordinal))
+        {
+            RebuildInspector();
+            return;
+        }
+        if (_inspectorLayersAllOn is bool builtAllOn && SelectedExclusionAllOn() is bool liveAllOn &&
+            liveAllOn != builtAllOn)
+        {
+            RebuildInspector();
+        }
     }
 
     // The shape of the selected exclusion / region, or null (no shape-carrying selection, vanished element).
@@ -1432,6 +1574,16 @@ public class MapEditorScene : GameScene, IGameScene3D
             SelectionKind.Region => RegionByName(sel.Id)?.Shape,
             _ => null,
         };
+    }
+
+    // Whether the selected exclusion's Layers is currently null ("All layers" on), or null when the selection
+    // is not an exclusion (or has vanished). Compared against `_inspectorLayersAllOn` by SyncShapeInspector.
+    bool? SelectedExclusionAllOn()
+    {
+        EditorSelection sel = _document.Selection;
+        if (sel.Kind != SelectionKind.Exclusion) return null;
+        if (!int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i)) return null;
+        return ExclusionAt(i)?.Layers is null;
     }
 
     static string ShapeKind(MapShapeDoc? shape) => shape switch

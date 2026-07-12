@@ -194,6 +194,13 @@ Terrain) has no list-order semantics, so a drag attempted there is rejected as a
 outline while a drag is armed is not yet supported: the drop geometry freezes at the scroll position the
 drag started at.
 
+Both reorder paths also call `EditorVisibility.RemapIndex(kind, fromIndex, toIndex)` right alongside the
+reorder command, so a per-element hide follows the moved feature or exclusion to its new slot instead of
+staying pinned to the old one. `Delete` on a selected feature or exclusion likewise calls
+`EditorVisibility.RemoveIndex(kind, index)` (wired through `EditorToolController.OnIndexRemoved`), dropping
+the removed element's hide entry and shifting every later hidden index down by one. Undo/redo of a reorder
+or delete does not re-follow the hide (the same v1 limit the selection-follow above already documents).
+
 ## Visibility
 
 `EditorVisibility` is editor-session view state, not part of the document: it gates whole
@@ -350,6 +357,27 @@ spawns are keyed by id and regions by name, so a rename must move the selection 
 `Selection.Set` mid-keystroke would rebuild the inspector and drop the row's focus, so the re-select is
 deferred until the Name row itself loses focus. A different selection made first, an outline click or a
 viewport pick while the row is still focused, wins over the stale pending re-select and drops it.
+
+Terrain features and exclusions carry an optional `Name` too (`MapFeature.Name` / `MapExclusion.Name`, empty
+means unnamed), but they are selected by list INDEX, not by name, so their Name row uses the separate
+`MapEditorScene.AddIndexNameRow` variant: a rename routes through `RenameFeatureCommand` /
+`RenameExclusionCommand` (rejecting an unchanged or colliding non-empty target the same way, but ALLOWING a
+blank target since Name is optional there) and never touches the selection, since the index a rename targets
+never moves. The outline label falls back to the index when Name is empty: `"[i] type"` for a feature,
+`"exclusion[i]"` for an exclusion. An exclusion's label always carries a trailing targeting hint from its
+`Layers` too, `" (all)"` for a null filter or `" (trees, groundcover)"` style for an explicit one
+(`MapEditorScene.TargetingHint`), so the outline alone shows which scatter layers it masks.
+
+The exclusion inspector also gets layer-targeting rows below its Name row (`MapEditorScene.AddExclusionLayerRows`):
+an "All layers" `BoolRow` bound to `Layers == null` (masks every layer, including future ones), plus one
+`BoolRow` per document scatter layer while an explicit list is in effect. Checking All ON collapses the list
+to null. Checking it OFF materializes the full explicit layer list. The per-layer rows are hidden (not merely
+disabled, there is no live per-row enabled hook) while All is on, reflowing into view the next chrome step
+once All goes off, through the same `SyncShapeInspector` rebuild-on-mismatch idiom the shape-kind conversion
+uses. Manually re-checking every layer does NOT auto-collapse back to null: only the All toggle itself
+produces null, so an explicit list stays explicit even when it happens to name every layer. Every layer-row
+change routes through `EditExclusionLayersCommand`, which is `AffectsWorld` true (a targeting change affects
+what the streamed scatter draws).
 
 ## `DocumentChanged` unsubscribe note for custom hosts
 

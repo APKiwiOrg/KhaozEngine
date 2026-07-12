@@ -214,6 +214,14 @@ namespace KhaozEngine.Tests.MapEditor
             return null!;   // unreachable
         }
 
+        static TextRow TextRowByLabel(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row is TextRow t && t.Label.Resolve() == label) return t;
+            Assert.Fail($"no TextRow labeled '{label}' (rows: {grid.Rows.Count})");
+            return null!;   // unreachable
+        }
+
         // Drive one press-origin tap through a BoolRow's toggle cell (up, press, release), the way the pointer fires
         // a tap. Returns whether the toggle flipped this frame.
         static bool TapBool(BoolRow row)
@@ -527,6 +535,33 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(scene.Document.History.CanUndo);
         }
 
+        [Fact]
+        public void HiddenFeature_FollowsCtrlDownReorder()
+        {
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var flatten = new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(lake);
+                doc.Terrain.Features.Add(flatten);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Visibility.SetElementHidden(SelectionKind.Feature, "0", true);   // hide the lake, at index 0
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+
+            m.Input = CtrlKeyFrame(Key.Down);
+            m.Update(0.016f);   // Ctrl+Down: the lake moves 0 -> 1 (ReorderSelectedFeature, not the outline drop)
+
+            Assert.Same(lake, scene.Document.Doc.Terrain.Features[1]);
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Feature, "1"));    // the hide followed the lake
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Feature, "0"));   // the vacated slot 0 is not hidden
+        }
+
         // The visible-row index of a node in a tree (reference identity), or -1.
         static int RowOf(TreeView tree, TreeNode node)
         {
@@ -589,6 +624,40 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(SelectionKind.Feature, scene.Document.Selection.Kind);
             Assert.Equal("1", scene.Document.Selection.Id);              // selection follows the moved feature
             Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void HiddenFeature_FollowsReorder()
+        {
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var flatten = new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f };
+            var ridge = new RidgeFeatureDoc { PointX = 5f, PointZ = 5f, Height = 2f, Width = 4f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(lake);
+                doc.Terrain.Features.Add(flatten);
+                doc.Terrain.Features.Add(ridge);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            scene.Visibility.SetElementHidden(SelectionKind.Feature, "2", true);   // hide the ridge, at index 2
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);
+            TreeNode f0 = CategoryChild(outline, "Features", 0);
+            TreeNode f2 = CategoryChild(outline, "Features", 2);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, f2), RowOf(outline, f0), afterTarget: false);   // ridge -> before lake (2 to 0)
+
+            Assert.Same(ridge, scene.Document.Doc.Terrain.Features[0]);   // the ridge now folds first
+
+            // The hide followed the ridge to its new slot 0. The vacated slot 2 (now the flatten) is NOT hidden.
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Feature, "0"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Feature, "2"));
         }
 
         [Fact]
@@ -949,6 +1018,185 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "Radius"));
         }
 
+        // ---- naming + layer targeting -------------------------------------------------------------------
+
+        [Fact]
+        public void FeatureNode_ShowsNameWhenSet_IndexTypeOtherwise()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(new LakeFeatureDoc { Name = "Big Lake", CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
+                doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f });
+                return doc;
+            });
+
+            TreeNode named = CategoryChild(scene.Outline, "Features", 0);
+            TreeNode unnamed = CategoryChild(scene.Outline, "Features", 1);
+
+            Assert.Equal("Big Lake", named.Label.Resolve());
+            Assert.Equal("[1] flatten", unnamed.Label.Resolve());
+        }
+
+        [Fact]
+        public void ExclusionNode_ShowsTargetingHint()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "groundcover" });
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = null });
+                doc.Exclusions.Add(new MapExclusion
+                {
+                    Name = "no-trees",
+                    Shape = new DiscShapeDoc { Radius = 3f },
+                    Layers = new List<string> { "trees", "groundcover" },
+                });
+                return doc;
+            });
+
+            TreeNode all = CategoryChild(scene.Outline, "Exclusions", 0);
+            TreeNode named = CategoryChild(scene.Outline, "Exclusions", 1);
+
+            // Unnamed falls back to the index label. Named or not, every exclusion carries the targeting hint.
+            Assert.Equal("exclusion[0] (all)", all.Label.Resolve());
+            Assert.Equal("no-trees (trees, groundcover)", named.Label.Resolve());
+        }
+
+        [Fact]
+        public void FeatureRenameRow_ExecutesRenameCommand_SelectionStaysOnIndex()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
+                doc.Terrain.Features.Add(new FlattenFeatureDoc
+                {
+                    Name = "taken", CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f,
+                });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+            TextRow name = TextRowByLabel(scene.Inspector, "Name");
+
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("north-lake");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            // Features are index-addressed: unlike the region/placement/spawn Name row, a rename never moves the
+            // selection (it stays glued to the same list index), so there is no pending re-select to wait on.
+            Assert.Equal("north-lake", scene.Document.Doc.Terrain.Features[0].Name);
+            Assert.Equal(SelectionKind.Feature, scene.Document.Selection.Kind);
+            Assert.Equal("0", scene.Document.Selection.Id);
+            Assert.True(scene.Document.History.CanUndo);
+
+            // A collision with another feature's live name is rejected before RenameFeatureCommand's own guard
+            // would throw, so no command lands and the name is left untouched.
+            name.Input.SetText("taken");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Equal("north-lake", scene.Document.Doc.Terrain.Features[0].Name);
+
+            // Clearing to blank is a legal target (Name is optional): the feature falls back to its index label.
+            name.Input.SetText("");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Null(scene.Document.Doc.Terrain.Features[0].Name);
+        }
+
+        [Fact]
+        public void ExclusionRenameRow_ExecutesRenameCommand_SelectionStaysOnIndex()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f } });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            TextRow name = TextRowByLabel(scene.Inspector, "Name");
+
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("no-scatter-zone");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("no-scatter-zone", scene.Document.Doc.Exclusions[0].Name);
+            Assert.Equal(SelectionKind.Exclusion, scene.Document.Selection.Kind);
+            Assert.Equal("0", scene.Document.Selection.Id);
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void ExclusionLayerRows_AllToggle_NullSemantics()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "rocks" });
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = null });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+
+            // All-on (Layers null): only the All toggle shows, the per-layer membership rows are hidden.
+            Assert.Null(scene.Document.Doc.Exclusions[0].Layers);
+            Assert.DoesNotContain(scene.Inspector.Rows.OfType<BoolRow>(), b => b.Label.Resolve() == "trees");
+
+            BoolRow all = BoolRowByLabel(scene.Inspector, "All layers");
+            Assert.True(TapBool(all));   // flips All off
+            Assert.Equal(new[] { "trees", "rocks" }, scene.Document.Doc.Exclusions[0].Layers);   // materializes the full list
+            Assert.True(scene.Document.WorldRebuildPending);
+
+            // The per-layer rows reflow into view the next chrome step (the shape-kind-conversion idiom).
+            scene.OnUpdate(0.016f);
+            BoolRow trees = BoolRowByLabel(scene.Inspector, "trees");
+
+            Assert.True(TapBool(trees));   // uncheck trees: stays an explicit list, minus "trees"
+            Assert.Equal(new[] { "rocks" }, scene.Document.Doc.Exclusions[0].Layers);
+
+            // Manually re-checking every layer stays an explicit list: only the All toggle itself produces null.
+            Assert.True(TapBool(trees));
+            Assert.NotNull(scene.Document.Doc.Exclusions[0].Layers);
+            Assert.Equal(new[] { "rocks", "trees" }, scene.Document.Doc.Exclusions[0].Layers);
+        }
+
+        [Fact]
+        public void ExclusionLayerRow_TogglesMembership_WorldRebuildPending()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "rocks" });
+                doc.Exclusions.Add(new MapExclusion
+                {
+                    Shape = new DiscShapeDoc { Radius = 5f },
+                    Layers = new List<string> { "trees", "rocks" },
+                });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            Assert.False(scene.Document.WorldRebuildPending);
+
+            BoolRow trees = BoolRowByLabel(scene.Inspector, "trees");
+            Assert.True(TapBool(trees));
+
+            Assert.Equal(new[] { "rocks" }, scene.Document.Doc.Exclusions[0].Layers);
+            Assert.True(scene.Document.WorldRebuildPending);   // exclusion targeting affects the streamed scatter
+            Assert.True(scene.Document.History.CanUndo);
+
+            Assert.True(scene.Document.Undo());
+            Assert.Equal(new[] { "trees", "rocks" }, scene.Document.Doc.Exclusions[0].Layers);
+        }
+
         [Fact]
         public void RegionInspector_EditsDiscParams()
         {
@@ -1192,6 +1440,34 @@ namespace KhaozEngine.Tests.MapEditor
             // But it is still in the outline: visibility is view-only and never mutates the document.
             Assert.Contains(scene.Document.Doc.Placements, p => p.Id == "hut");
             Assert.True(OutlineListsPlacement(scene.Outline, "hut"), "hidden placement still appears in the outline");
+        }
+
+        [Fact]
+        public void HiddenExclusion_SurvivesDeleteOfEarlierIndex()
+        {
+            // Delete runs through EditorToolController.Update, which UpdateTools gates on a built Field, so this
+            // needs FieldDocScene (not the plain DocScene the other feature/exclusion tests use).
+            var scene = new FieldDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 1f } });   // index 0: about to be deleted
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 2f } });   // index 1
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 3f } });   // index 2: hidden
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Visibility.SetElementHidden(SelectionKind.Exclusion, "2", true);
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");   // select the one about to be deleted
+
+            m.Input = KeyFrame(shiftDown: false, Key.Delete);
+            m.Update(0.016f);
+
+            Assert.Equal(2, scene.Document.Doc.Exclusions.Count);   // the earlier exclusion was removed
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "1"));    // the hidden one shifted down to index 1
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "2"));   // nothing hidden at the old tail slot
         }
 
         [Fact]

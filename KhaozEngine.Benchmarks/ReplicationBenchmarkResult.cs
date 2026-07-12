@@ -34,7 +34,8 @@ public sealed class ReplicationBenchmarkResult
     /// tick) - the wire output later items must reproduce byte-for-byte.</summary>
     public required long WireBytesTotal { get; init; }
 
-    /// <summary>Mean wall-clock for one tick (movement + interest-grid rebuild + every client's <c>WriteFor</c>), milliseconds.</summary>
+    /// <summary>Mean wall-clock for one tick (movement + one shared interest-grid rebuild + one shared world capture +
+    /// every client's <c>Query</c> + <c>WriteFor</c>), milliseconds.</summary>
     public double PerTickMs => TicksMeasured <= 0 ? 0 : ElapsedMs / TicksMeasured;
 
     /// <summary>Mean bytes allocated per tick.</summary>

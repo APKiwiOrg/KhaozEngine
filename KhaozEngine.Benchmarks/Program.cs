@@ -28,7 +28,7 @@ if (Array.IndexOf(args, "--gate") >= 0)
     return;
 }
 
-// replication-hotpath jobs-1: a separate, focused run of just the AoiDeltaReplicator per-client per-tick matrix
+// replication-hotpath jobs-1: a separate, focused run of just the AoiDeltaReplicator shared per-tick matrix
 // (see RunReplicationMatrix below), for a fast baseline-vs-after comparison without the cell/entities sections.
 if (Array.IndexOf(args, "--replication") >= 0)
 {
@@ -192,19 +192,19 @@ static void RunSystemAxisGate(CultureInfo ci, bool quick)
     Console.WriteLine("GATE: build the system scheduler only if 'L3 WINS' at an entity count where the cell costs real time.");
 }
 
-// ---- Replication axis (replication-hotpath jobs-1): the real per-client AoiDeltaReplicator hot path - a populated
+// ---- Replication axis (replication-hotpath jobs-1): the real AoiDeltaReplicator hot path - a populated
 // ReplicationRegistry, NetId entities with a few replicated components, C simulated clients with AoI, movement-heavy
-// steady state (every entity moves every tick, each client acks the previous tick one tick later). The interest
-// grid is rebuilt once per CLIENT per tick, matching ShardHost.HomeInterest's cadence inside ShardedWorldServer's
-// per-slot loop. The current path re-scans and re-projects the whole world per client per tick and allocates
-// heavily - this IS the baseline later replication-hot-path items (shared per-tick AoI projection, pooled capture
-// buffers) must beat, not a polished number. ----
+// steady state (every entity moves every tick, each client acks the previous tick one tick later). The interest grid
+// is rebuilt once per tick (shared across clients), matching ShardHost.HomeInterest's per-serve-pass cadence inside
+// ShardedWorldServer, and WriteFor scans + captures the world once per tick and projects each client's delta from
+// that shared capture. The remaining per-client work is O(interest set); pooled per-component capture buffers (a
+// later replication-hot-path item) still remove the byte[]-per-component allocations. ----
 static void RunReplicationMatrix(CultureInfo ci, bool quick)
 {
     IReadOnlyList<ReplicationBenchmarkConfig> matrix = quick ? ReplicationBenchmarkMatrix.Quick() : ReplicationBenchmarkMatrix.Default();
 
     Console.WriteLine();
-    Console.WriteLine("replication axis - AoiDeltaReplicator per-client per-tick hot path (replication-hotpath jobs-1)");
+    Console.WriteLine("replication axis - AoiDeltaReplicator shared per-tick hot path (replication-hotpath jobs-1)");
     Console.WriteLine($"cores={Environment.ProcessorCount}  framework={Environment.Version}  mode={(quick ? "quick" : "full")}");
     Console.WriteLine();
 
@@ -231,8 +231,8 @@ static void RunReplicationMatrix(CultureInfo ci, bool quick)
     }
 
     Console.WriteLine();
-    Console.WriteLine("per-tick ms = movement + every client's (interest-grid rebuild + Query + WriteFor), mean over the timed ticks.");
+    Console.WriteLine("per-tick ms = movement + one shared (interest-grid rebuild + world capture) + every client's (Query + WriteFor), mean over the timed ticks.");
     Console.WriteLine("alloc B/tick = bytes allocated on this thread per tick (GC.GetAllocatedBytesForCurrentThread delta).");
     Console.WriteLine("gen0/1/2 per Kt = GC collections per 1000 ticks. wire B/tick = total bytes WriteFor returned, summed across all clients.");
-    Console.WriteLine("This is the un-optimized baseline (whole-world-per-client scan, no shared projection, no pooling) later items must beat.");
+    Console.WriteLine("This measures the shared per-tick path (one grid rebuild + one world capture per tick); pooling per-component capture buffers is the remaining win.");
 }

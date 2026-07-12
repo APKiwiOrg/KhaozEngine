@@ -27,8 +27,9 @@ public sealed class ReplicationPopulation
     /// <summary>The per-client AoI delta encoder under test. Never modified by the benchmark - only measured.</summary>
     public required AoiDeltaReplicator Replicator { get; init; }
 
-    /// <summary>The spatial hash rebuilt from fresh positions once per client per tick (mirroring
-    /// <c>ShardHost.HomeInterest</c>'s <c>CellSim.RebuildInterest</c> cadence) and queried once per client.</summary>
+    /// <summary>The spatial hash rebuilt from fresh positions once per tick, shared across clients (mirroring
+    /// <c>ShardHost.HomeInterest</c>'s per-serve-pass <c>CellSim.RebuildInterestShared</c> cadence), then queried once
+    /// per client.</summary>
     public required InterestGrid Grid { get; init; }
 
     /// <summary>Every populated entity's ECS handle, in spawn order.</summary>

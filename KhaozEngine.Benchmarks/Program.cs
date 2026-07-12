@@ -198,8 +198,9 @@ static void RunSystemAxisGate(CultureInfo ci, bool quick)
 // is rebuilt once per tick (shared across clients), matching ShardHost.HomeInterest's per-serve-pass cadence inside
 // ShardedWorldServer, and WriteFor scans + captures the world once per tick and projects each client's delta from
 // that shared capture. The win is the shared once-per-tick scan and capture, not a cheaper per-client walk: each
-// client's projection still walks the whole shared capture, filtering by its interest set. Pooled per-component
-// capture buffers (a later replication-hot-path item) still remove the byte[]-per-component allocations. ----
+// client's projection still walks the whole shared capture, filtering by its interest set. The capture writes every
+// component into one consolidated buffer with (offset, length) segments (no byte[] per component) and the delta diffs
+// and writes over spans, so there is no per-component array churn on the capture, diff, or write path. ----
 static void RunReplicationMatrix(CultureInfo ci, bool quick)
 {
     IReadOnlyList<ReplicationBenchmarkConfig> matrix = quick ? ReplicationBenchmarkMatrix.Quick() : ReplicationBenchmarkMatrix.Default();
@@ -235,5 +236,5 @@ static void RunReplicationMatrix(CultureInfo ci, bool quick)
     Console.WriteLine("per-tick ms = movement + one shared (interest-grid rebuild + world capture) + every client's (Query + WriteFor), mean over the timed ticks.");
     Console.WriteLine("alloc B/tick = bytes allocated on this thread per tick (GC.GetAllocatedBytesForCurrentThread delta).");
     Console.WriteLine("gen0/1/2 per Kt = GC collections per 1000 ticks. wire B/tick = total bytes WriteFor returned, summed across all clients.");
-    Console.WriteLine("This measures the shared per-tick path (one grid rebuild + one world capture per tick); pooling per-component capture buffers is the remaining win.");
+    Console.WriteLine("This measures the shared per-tick path (one grid rebuild + one world capture per tick). The capture writes all components into one pooled buffer with (offset, length) segments, so there is no byte[] per component.");
 }

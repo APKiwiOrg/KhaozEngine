@@ -170,7 +170,8 @@ public sealed class AoiDeltaReplicator
 
         // One shared buffer per world capture, only Replicate-channel components (owner-only included, scoped per
         // client in Project) are captured. The capture is referenced by per-client baselines for up to historyDepth
-        // ticks, so its buffer must live that long - the CaptureScratch never pools it back while it is reachable.
+        // ticks - each capture's payload buffer is a fresh array, so it is never reused while a baseline still
+        // references it.
         AoiBaseline state = captureScratch.CaptureReplicate(world, registry);
         captureByWorld[world] = state;
         WorldScanCount++;

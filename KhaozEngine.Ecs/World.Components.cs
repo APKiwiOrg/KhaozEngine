@@ -61,15 +61,22 @@ public sealed partial class World
     public bool TryGet<T>(Entity e, out T value) where T : struct, IComponent
     {
         ThrowIfInParallelSection(nameof(TryGet));
-        if (Has<T>(e))
+        int id = Reg.Id<T>();
+        if (!IsAlive(e) || !_records[e.Id].Archetype.Has(id))
         {
-            // A tag has no column to read from: presence IS the whole state, so its value is always default.
-            // Routing through Get here would look up Columns[id] and crash on the missing column.
-            value = Reg.IsTag(Reg.Id<T>()) ? default : Get<T>(e);
+            value = default;
+            return false;
+        }
+        // A tag has no column to read from: presence IS the whole state, so its value is always default.
+        // Reading Columns[id] here would look up the missing column and crash.
+        if (Reg.IsTag(id))
+        {
+            value = default;
             return true;
         }
-        value = default;
-        return false;
+        Record r = _records[e.Id];
+        value = ((Column<T>)r.Archetype.Columns[id]).Get(r.Row);
+        return true;
     }
 
     // Moves an entity to the archetype with componentTypeId added/removed: allocate a row there,

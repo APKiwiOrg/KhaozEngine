@@ -200,6 +200,13 @@ public class ReplicationDeltaTests
         repl.Capture(server);
         view.ApplyDelta(client, repl.WriteFor(0));
         Assert.False(client.Has<Marked>(c1));
+
+        // The symmetric transition: a tag newly set on an already-replicated entity must reach the client
+        // via an incremental delta carrying a zero-length payload where the component was previously absent.
+        server.Set(e2, new Marked());
+        repl.Capture(server);
+        view.ApplyDelta(client, repl.WriteFor(0));
+        Assert.True(client.Has<Marked>(c2));
     }
 
     private struct Marked : IComponent { }   // zero-field tag

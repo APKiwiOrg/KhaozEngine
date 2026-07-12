@@ -26,8 +26,8 @@ internal readonly struct Segment
 /// serialized contiguously into <see cref="Bytes"/>, and each <see cref="CapturedComponents"/> indexes it by
 /// <see cref="Segment"/>. A holder (not a bare <c>byte[]</c>) so the many per-entity <see cref="CapturedComponents"/>
 /// built during the capture scan can reference it before the final array exists, then all observe the one array set
-/// once at the end. The buffer lives exactly as long as any capture (or projected baseline) referencing it - history
-/// reachability owns its lifetime, so it is never returned to a pool while still reachable.
+/// once at the end. The buffer lives exactly as long as any capture (or projected baseline) referencing it - each
+/// capture's payload buffer is a fresh array, so it is never reused while a baseline still references it.
 /// </summary>
 internal sealed class CaptureBuffer
 {

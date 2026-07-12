@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.70.0
+
+Map editor polish round two: rotatable terrain features get a yaw ring gizmo, place and select gestures gained body-drag, and every editor keyboard chord is now Cmd-aware on macOS and gated off while an inspector or filter field holds focus.
+
+### Terrain feature yaw ring
+
+**A new rotate handle appears on the gizmo for any selected terrain feature with a rotational degree of freedom, tracking the cursor as it drags.** A ridge's ring rotates its carve direction, a rim's ring offsets its pass angles, and both read back live from the drag. A feature with no rotational parameter (an exclusion, a region, a shape with no orientation) shows no ring at all, so the gizmo only ever offers handles that do something.
+
+- **`GizmoAffordance` and `EditorToolController` (`KhaozEngine.MapEditor`).** The yaw ring is resolved per selection alongside the existing translate/scale handles and is drawn and dragged the same way.
+
+### Body drag for placement and selection
+
+**Pressing a selected or newly pressed object and moving the pointer past a small threshold now drags it, a plain tap still selects.** `EditorFrameInput` carries a new `PointerTravel` (screen-space distance since the press), and `EditorToolController.BodyDragThreshold` gates when a press turns into a drag rather than a click, matching the TreeView row-drag precedent. Gizmo handles are unchanged, this is body-drag on the object itself, not a handle.
+
+- **Place-and-adjust is one undo step.** `AddPlacementCommand` and `AddSpawnCommand` now absorb an immediately following same-id move via `TryMerge`, so press-place, hold-adjust, release-commit collapses into a single undo entry instead of two. A behavior note for anyone scripting `EditorDocument`: a placement or spawn add followed by a move on the same id merges automatically.
+- **`EditorFrameInput.PointerTravel` (`KhaozEngine.MapEditor`).** Inserted mid-constructor-parameter-list (after `pointerReleased`, before `shift`), so named-argument callers are unaffected but any positional caller passing arguments past `pointerReleased` now gets a compile error instead of a silently misbound value. Fix by naming the trailing arguments.
+
+### Cross-platform command chord
+
+**New `InputState.IsCommandDown` (Control or Super on either side) is the one cross-platform "command modifier" check, and every editor chord now uses it.** Undo, redo, save, and feature reorder fire on Cmd on macOS the same as Ctrl elsewhere. `TextEntry` also adopted it for its own paste-style chords.
+
+### Focus-gated editor chords
+
+**New `PropertyGrid.HasActiveEditor` and virtual `PropertyRow.HasActiveEditor` (default `false`) report whether an inspector field is mid-edit, and `MapEditorScene.AnyEditorFocused` ORs that with the kit-palette and spawn filter's own focus (mode-gated).** Editor chords, the bare `R` ground-snap hotkey, and the Escape tool-cancel are all suppressed while an inspector field, the kit-palette filter, or the spawn filter holds keyboard focus, so typing a name or a filter query never leaks into a document command. Escape has extra nuance under the gate: a `NumberField` mid-edit cancels only its own typed value, while a focused text or choice row (or either filter) has no Escape handling of its own, so Escape is inert there by design until focus moves elsewhere.
+
 ## 10.69.2
 
 Character rest-stability fixes in `KhaozEngine.Locomotion`. A grounded capsule at rest no longer creeps down a walkable prop slope, a capsule that stops mid-stair-climb no longer slides back or drops a step, and an angled first-step mount no longer flickers airborne at the terrain-to-prop handoff. These are behavior fixes inside the shared `CharacterMovement.Step`, byte-identical on both heads, so **no game-side change is needed to adopt them**.

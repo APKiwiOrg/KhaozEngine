@@ -3148,7 +3148,7 @@ order above, dragging a feature or exclusion row in the outline tree reorders it
 cancels an in-flight gizmo/draw gesture and returns to `Select`. Every Ctrl chord above also accepts Cmd
 (Super) in its place (`InputState.IsCommandDown` treats the two as one modifier), so the same keys work
 unmodified on a Mac. All of the chords, plus the bare R hotkey, are suppressed while an inspector field, the
-kit-palette filter, or the spawn filter holds keyboard focus (`PropertyGrid.HasActiveEditor`), so typing a
+kit-palette filter, or the spawn filter holds keyboard focus (`MapEditorScene.AnyEditorFocused`), so typing a
 name or a filter query never leaks into a document command. Escape carries extra nuance under that gate: a
 `NumberField` mid-edit cancels only its own typed value on Escape, and the suppressed tool-cancel fires on
 the following press once the field releases focus, while a focused text or choice row (or either filter) has

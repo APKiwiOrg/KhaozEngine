@@ -478,7 +478,11 @@ public sealed class EditorToolController
                         // Rotate the grab-time snapshot by the whole-gesture yaw delta, so every frame rebuilds from
                         // a fixed start and the EditFeatureCommand same-index merge coalesces the drag into one step,
                         // exactly like the move / scale feature drags. A null (unrotatable) result no-ops.
-                        ExecuteFeatureEdit(FeatureGeometry.Rotated(_dragStartFeature!, GizmoDrag.YawDelta(_drag, origin, dir)));
+                        // Negated: YawDelta is pre-signed to compose additively with Matrix4x4.CreateRotationY,
+                        // whose positive yaw turns object +X toward world -Z. FeatureGeometry.Rotated instead turns
+                        // a raw world vector the standard atan2-increasing way, +X toward world +Z, so the delta
+                        // must be un-negated here or the feature spins opposite the dragged cursor.
+                        ExecuteFeatureEdit(FeatureGeometry.Rotated(_dragStartFeature!, -GizmoDrag.YawDelta(_drag, origin, dir)));
                         break;
                 }
                 break;

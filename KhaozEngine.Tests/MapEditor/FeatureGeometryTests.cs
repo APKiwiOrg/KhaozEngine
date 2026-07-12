@@ -62,6 +62,16 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void Rotated_PasslessRim_ReturnsNull()
+        {
+            // A rim with zero passes has nothing to rotate, so it is rotationally symmetric too: null, same
+            // not-offered contract as lake / flatten (no ring, no grab, and no no-op undo entry).
+            var rim = new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 10f, OuterRadius = 14f, WallHeight = 6f };
+            Assert.Empty(rim.Passes);
+            Assert.Null(FeatureGeometry.Rotated(rim, 1f));
+        }
+
+        [Fact]
         public void EditorRidge_CreateDefault_HasNoNotchAtClickPoint()
         {
             MapFeature? feature = FeatureGeometry.CreateDefault("ridge", 10f, 20f, groundHeight: 0f);

@@ -636,13 +636,16 @@ namespace KhaozEngine.Tests.MapEditor
         public void RotatableFeature_GetsRingAffordance_OthersDoNot()
         {
             var (doc, c) = Make();
+            var rimWithPass = new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 10f, OuterRadius = 14f, WallHeight = 6f };
+            rimWithPass.Passes.Add(new RimPassDoc { AngleRadians = 0f, HalfWidth = 0.5f });
             doc.Doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, DirectionX = 1f, DirectionZ = 0f, Height = 5f, Width = 8f });   // 0
-            doc.Doc.Terrain.Features.Add(new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 10f, OuterRadius = 14f, WallHeight = 6f });        // 1
+            doc.Doc.Terrain.Features.Add(rimWithPass);                                                                                                    // 1
             doc.Doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f, Depth = 3f });                                    // 2
             doc.Doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f, TargetHeight = 0f });                          // 3
+            doc.Doc.Terrain.Features.Add(new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 10f, OuterRadius = 14f, WallHeight = 6f });        // 4, zero passes
             doc.Doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
 
-            // Ridge and rim expose an orientation -> MoveScaleRotate, and the drawn mesh set carries the ring.
+            // Ridge and a rim with at least one pass expose an orientation -> MoveScaleRotate, ring in the mesh set.
             foreach (string rotatableId in new[] { "0", "1" })
             {
                 doc.Selection.Set(SelectionKind.Feature, rotatableId);
@@ -659,6 +662,12 @@ namespace KhaozEngine.Tests.MapEditor
                 Assert.Equal(GizmoAffordance.MoveScale, a);
                 Assert.DoesNotContain(GizmoMesh.YawRing, MapEditorScene.ComputeGizmoMeshes(a));
             }
+
+            // A rim with zero passes has nothing to rotate either (rotationally symmetric too) -> MoveScale, no ring.
+            doc.Selection.Set(SelectionKind.Feature, "4");
+            GizmoAffordance passlessRim = c.TryGizmo(out _);
+            Assert.Equal(GizmoAffordance.MoveScale, passlessRim);
+            Assert.DoesNotContain(GizmoMesh.YawRing, MapEditorScene.ComputeGizmoMeshes(passlessRim));
 
             // A disc shape has no rotational field either -> MoveScale, no ring.
             doc.Selection.Set(SelectionKind.Exclusion, "0");
@@ -685,9 +694,12 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.False(c.IsDragging);
             var edited = Assert.IsType<RidgeFeatureDoc>(doc.Doc.Terrain.Features[0]);
-            // Start +X swept a quarter turn: YawDelta for a +X -> +Z-side sweep is -pi/2, so the direction lands -Z.
+            // Start +X swept a quarter turn toward +Z (the grabbed ring point moved from 45deg to 135deg, the +Z
+            // side): the ridge direction tracks the cursor and lands on +Z, not -Z. YawDelta itself is -pi/2 for
+            // this sweep (it is pre-signed for CreateRotationY), so the call site negates it before handing it to
+            // FeatureGeometry.Rotated's standard-convention rotation. See the comment at the ApplyDrag call site.
             Near(0f, edited.DirectionX);
-            Near(-1f, edited.DirectionZ);
+            Near(1f, edited.DirectionZ);
             Assert.True(doc.WorldRebuildPending);           // features affect the streamed world
             Assert.Equal(1, doc.History.UndoDepth);         // the whole ring drag is one coalesced undo step
 
@@ -696,6 +708,32 @@ namespace KhaozEngine.Tests.MapEditor
             Near(1f, restored.DirectionX);                  // undo restores the pre-drag direction exactly
             Near(0f, restored.DirectionZ);
             Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
+        public void RingDrag_RotatesRimPasses_TrackingCursor()
+        {
+            var (doc, c) = Make();
+            var rim = new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 10f, OuterRadius = 14f, WallHeight = 6f };
+            rim.Passes.Add(new RimPassDoc { AngleRadians = 0f, HalfWidth = 0.5f });
+            doc.Doc.Terrain.Features.Add(rim);
+            doc.Selection.Set(SelectionKind.Feature, "0");
+
+            // Same gesture as the ridge test: grab the ring at 45 deg, sweep to 135 deg (a quarter turn toward +Z).
+            // The rim has no single heading, so it rotates delta-only, but it must track the cursor exactly like
+            // the ridge: the pass angle lands near +pi/2, not -pi/2.
+            float d = GizmoGeometry.RingRadius * System.MathF.Sqrt(0.5f);
+            c.Update(Press(new Vector3(d, 100f, d)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(-d, 100f, d)));
+            c.Update(Release(new Vector3(-d, 100f, d)));
+
+            Assert.False(c.IsDragging);
+            var edited = Assert.IsType<RimFeatureDoc>(doc.Doc.Terrain.Features[0]);
+            Assert.Single(edited.Passes);
+            Near(System.MathF.PI / 2f, edited.Passes[0].AngleRadians);
+            Assert.True(doc.WorldRebuildPending);
+            Assert.Equal(1, doc.History.UndoDepth);
         }
 
         [Fact]

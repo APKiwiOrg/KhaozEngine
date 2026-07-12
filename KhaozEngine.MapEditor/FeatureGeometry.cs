@@ -93,8 +93,9 @@ internal static class FeatureGeometry
     /// <summary>A clone of <paramref name="start"/> rotated on the XZ plane by <paramref name="deltaRadians"/>: a
     /// ridge turns its direction unit vector (standard atan2-increasing rotation, renormalized, a degenerate zero
     /// direction left as-is), a rim adds the delta to every pass's angle (wrapped to the canonical range). Null for
-    /// lake / flatten (rotationally symmetric) and any unknown custom type, so the gizmo offers no yaw ring and a
-    /// ring grab cannot arm where there is no orientation to turn. Every other field carries over from the clone.</summary>
+    /// lake / flatten (rotationally symmetric), a rim with zero passes (also rotationally symmetric, nothing to
+    /// rotate), and any unknown custom type, so the gizmo offers no yaw ring and a ring grab cannot arm where there
+    /// is no orientation to turn. Every other field carries over from the clone.</summary>
     internal static MapFeature? Rotated(MapFeature start, float deltaRadians)
     {
         switch (start)
@@ -111,7 +112,7 @@ internal static class FeatureGeometry
                 c.DirectionZ = nz / len;
                 return c;
             }
-            case RimFeatureDoc rim:
+            case RimFeatureDoc rim when rim.Passes.Count > 0:
             {
                 var c = (RimFeatureDoc)Clone(rim);
                 foreach (RimPassDoc pass in c.Passes)

@@ -273,6 +273,9 @@ once it ships, the detail moves to `CHANGELOG.md`.
     Disable-mid-edit is untested. A sub-3px scrub also opens typing.
   - `TreeView`: the caret zone at depth above 0 is untested. `VisibleRows` returns the
     shared rebuilt list rather than a copy. `RowBounds` is never directly asserted.
+    Wheel-scrolling the tree while a drag-and-drop reorder is armed is not supported: the
+    drop geometry freezes at the scroll position the drag started at, so a long list needs
+    the target row already on screen before the drag begins.
   - `PropertyGrid`: a partial row's `BlockRegion` slivers past the clip. Out-of-range
     external values display unclamped. Wheel feel diverges from the rest of the
     `ScrollablePanel` family. Shift+Escape also cancels a focused field edit, a
@@ -294,17 +297,19 @@ once it ships, the detail moves to `CHANGELOG.md`.
   direct unit tests. `RoomMapEditor` cannot restore the outline post default on exit
   (documented, unobservable today). Custom `MapEditorScene` hosts must unsubscribe
   `DocumentChanged` themselves (documented). `BakeRegion`'s two-arg overload has a doc
-  nicety around its shadowed-discriminator caveat. The shape/feature gizmo
-  (`GizmoAffordance.MoveScale`) draws the same translate-arrows mesh as a placement's full
-  transform, so it shows an inert +Y arrow even though only translate XZ and scale are
-  draggable for a feature or a disc/rect shape (`RestrictHandle` blocks a `TranslateY`
-  grab) - a cosmetic affordance mismatch, not a functional bug. Index-keyed hides (the
-  feature and exclusion `Visible` rows key on list index) do not remap on a Ctrl+Up/Ctrl+Down
-  reorder or a Delete, so the hidden flag can end up stuck on the wrong element once the list
-  shifts under it. Renaming a placement, spawn, or region orphans its hide entry instead of
-  following it: the `Visible` row polls the live post-rename key, so the renamed element shows
-  again by default while the old-key entry lingers unreachable in `EditorVisibility`, a
-  stale-key leak rather than a correctness bug.
+  nicety around its shadowed-discriminator caveat. Index-keyed hides (the feature and
+  exclusion `Visible` rows key on list index) do not remap on a feature or exclusion
+  reorder, whether via Ctrl+Up/Ctrl+Down or an outline drag-and-drop, or on a Delete, so
+  the hidden flag can end up stuck on the wrong element once the list shifts under it.
+  Renaming a placement, spawn, or region orphans its hide entry instead of following it:
+  the `Visible` row polls the live post-rename key, so the renamed element shows again by
+  default while the old-key entry lingers unreachable in `EditorVisibility`, a stale-key
+  leak rather than a correctness bug. Scatter overrides (`MapScatterOverrideDoc`) have no
+  editor surface at all: no palette entry to place one, no inspector rows to edit its
+  shape/density/kind-mix, and no reorder command, unlike exclusions and terrain features.
+  This one matters more than a typical missing-surface gap: override order is
+  first-match-wins (document order), not a set union like exclusions, so once editing
+  ships, reordering is gameplay-significant and not merely cosmetic.
 - **Engine misc**: `RayMath`'s zero-length-ray edge is untested, and a NaN direction acts
   as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
   miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders

@@ -160,6 +160,17 @@ undo leaves the selection on the same index, which may then address a different 
 itself re-selects the moved feature's new index, which is what keeps the selection glued to it during
 ordinary use.
 
+Dragging a feature row in the outline tree is the mouse-driven equivalent of Ctrl+Up/Ctrl+Down: the
+`TreeView` drag-and-drop gesture (`OnReordered`, same-parent only) fires the same `ReorderFeatureCommand`
+through `MapEditorScene.OnOutlineReordered` and re-selects the dropped index, exactly like the keyboard
+path. Exclusion rows are also drag-reorderable in the outline, through `ReorderExclusionCommand`, but
+exclusions combine as a pure set union (see `KhaozEngine.MapDoc`), so their list order never changes what
+scatter is masked. It is `AffectsWorld` false, unlike the feature reorder, so dragging an exclusion row
+never triggers a streamed-world rebuild. Every other outline category (Placements, Spawns, Regions,
+Terrain) has no list-order semantics, so a drag attempted there is rejected as a no-op. Wheel-scrolling the
+outline while a drag is armed is not yet supported: the drop geometry freezes at the scroll position the
+drag started at.
+
 ## Visibility
 
 `EditorVisibility` is editor-session view state, not part of the document: it gates whole

@@ -105,7 +105,13 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     flag, a caller-owned `Tag`). `VisibleRows()` is the depth-first walk skipping collapsed subtrees. A tap in a
     row's caret zone (the `Indent`-wide band at its depth) toggles expansion for a node with children, a tap
     elsewhere in the row selects it (`Selected`, `OnSelected`). The wheel scrolls clamped to the content,
-    `WheelRowsPerNotch` rows per notch (default 3), and rows are scissor-clipped to `Bounds`.
+    `WheelRowsPerNotch` rows per notch (default 3), and rows are scissor-clipped to `Bounds`. A held press that
+    clears `DragThreshold` (default 6 pixels) becomes a same-parent drag-and-drop row reorder instead of a tap:
+    a valid drop fires `OnReordered(node, oldIndex, newIndex)` and `WasReordered` goes true, an insertion line
+    marks the live target, Escape aborts with no drop, and a cross-parent or off-tree release is rejected. The
+    widget only reports the move, never mutating `Roots`/`Children` itself, so the host applies it and rebuilds
+    the tree. Wheel-scrolling while a drag is armed is not supported (the drop geometry freezes at the current
+    scroll position).
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
     `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set

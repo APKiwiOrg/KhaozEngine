@@ -1276,7 +1276,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       **peter-panning** (the shadow detaches from the caster's feet). The slope bias adds extra offset on
       steeply-lit surfaces. If you see acne, raise the constant bias first, then the slope bias; if shadows float off
       their casters, lower them. A tighter `ShadowFocusRadius` (bigger texels per world unit) tolerates less bias.
-- Edge outline: `Post.Outline` (on by default) draws a depth/normal toon outline. `OutlineColor`,
+- Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a
   perspective camera (`FollowCamera3D`) the depth test is linearized to view-space distance and distance-relative,
@@ -2966,9 +2966,14 @@ tree.Draw(batch, white, font);
 ```
 
 A tap in a row's caret zone toggles a parent's `Expanded` flag, a tap elsewhere in the row selects it
-(`VisibleRows()` is the public depth-first walk both hit-testing and drawing share). `TreeView` node labels
-and `PropertyRow` labels are `LocalizedText` like every other Gui sink. `NumberField` is label-free (it
-renders only the numeric value, so it has no text sink to localize).
+(`VisibleRows()` is the public depth-first walk both hit-testing and drawing share). A held press that
+clears `DragThreshold` (default 6 pixels) becomes a same-parent drag-and-drop reorder instead of a tap.
+Releasing over a valid slot in the dragged row's own sibling list fires `OnReordered(node, oldIndex,
+newIndex)` and draws an insertion-line indicator at the target boundary while dragging. Escape aborts the
+gesture with no drop, and a cross-parent or off-tree release is rejected. The widget only reports the
+move: it never mutates `Roots` or `TreeNode.Children` itself, so the host applies the reorder and rebuilds
+the tree. `TreeView` node labels and `PropertyRow` labels are `LocalizedText` like every other Gui sink.
+`NumberField` is label-free (it renders only the numeric value, so it has no text sink to localize).
 
 **Free-fly editor camera.** `FlyCamera3D` implements `IIsoCamera3D` (a world `Position` plus `Yaw`/`Pitch`, no
 orbit target) so it drops into `Scene3D.CameraOverride` exactly like `FollowCamera3D` above, and carries the
@@ -3052,8 +3057,9 @@ ready-to-push scene, and handle the extra key in whatever outer code owns the `P
 by ray - on a terrain-only hit, falls back to an overlay pick over features/exclusions/regions, feature beats
 exclusion beats region, nearest-shape-center tiebreak within a category - then drag the transform gizmo,
 whose handle set depends on what's selected: a placement gets the full transform (translate XZ, translate Y,
-yaw ring, uniform scale), a spawn only the ground-plane translate (a marker, no other handles), and a
-feature or a disc/rect shape (exclusion or region) only translate XZ + uniform scale, no yaw ring),
+yaw ring, uniform scale), a spawn only the ground-plane translate (a marker plus visible XZ drag arrows, no
+other handles), and a feature or a disc/rect shape (exclusion or region) only translate XZ + uniform scale
+(no yaw ring, and no unusable +Y arrow like the placement gizmo draws),
 `PlacePlacement` (click ground-snaps the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps
 `SpawnArchetype`), `DrawExclusion` / `DrawRegion` (drag a disc, shift-drag a rect), `EditFeature`
 (click-places a default-parameterized feature of the list-selected `PlaceFeatureType` at the terrain hit),
@@ -3101,9 +3107,14 @@ together, a ridge's `Width`) through the same commands, coalescing the same way.
 height modifier on the height the prior feature produced), so where two features cover the same ground the
 LAST one in the list wins the overlap. Ctrl+Up / Ctrl+Down (`MapEditorScene.ReorderSelectedFeature`) move
 the selected feature through `ReorderFeatureCommand`, clamped at the list ends, and it triggers the same
-streamed-world rebuild as any other terrain-feature edit (`AffectsWorld` true). The feature inspector's
-read-only "Apply order N of M (last wins overlap)" row tracks the feature's live fold position. See the
-`KhaozEngine.MapEditor` README's "Feature apply order" section for the undo/redo selection-following caveat.
+streamed-world rebuild as any other terrain-feature edit (`AffectsWorld` true). Dragging a feature row in
+the outline tree does the same move: the `TreeView` drag-and-drop gesture fires `ReorderFeatureCommand`
+through the scene's `OnReordered` handler and the selection follows the dropped row, same as the keyboard
+path. Exclusion rows in the outline are also drag-reorderable, through `ReorderExclusionCommand`, though
+exclusion order is cosmetic only (exclusions combine as a set union, so it never changes what scatter is
+masked). The feature inspector's read-only "Apply order N of M (last wins overlap)" row tracks the
+feature's live fold position. See the `KhaozEngine.MapEditor` README's "Feature apply order" section for
+the undo/redo selection-following caveat.
 
 **Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
 bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the
@@ -3124,7 +3135,8 @@ A hidden element is neither drawn nor pickable from the viewport, but stays sele
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection, R
 snaps the selected placement to the ground (undoable, a no-op when already grounded or nothing
 placement-shaped is selected), Ctrl+Up / Ctrl+Down reorder the selected terrain feature (see Feature apply
-order above), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the
+order above, dragging a feature or exclusion row in the outline tree reorders it the same way), Escape
+cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the
 editor (pops the scene): unsaved changes arm a status-strip warning on the first press and a second
 Shift+Escape discards and exits, while any save or document mutation disarms the warning.
 

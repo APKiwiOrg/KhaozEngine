@@ -15,7 +15,7 @@ up regardless of load order. Plain `float` math throughout.
 - **`TerrainNoise`** - stateless coordinate-hash noise (`Hash2`, `ValueNoise`, `Fbm`, `Turbulence`,
   `SmoothStep`). Every function depends only on its arguments plus the seed, no `Random`.
 - **`ITerrainFeature`** - a pure, composable height modifier applied in list order. Ready-made:
-  **`LakeFeature`** (carved basin), **`RidgeFeature`** (gaussian wall with a pass gap),
+  **`LakeFeature`** (carved basin), **`RidgeFeature`** (gaussian wall, optionally pierced by a pass gap),
   **`FlattenFeature`** (levelled hub pad), **`RimFeature`** + `RimPass` (enclosing mountain wall with
   corridors out, the diegetic world border).
 - **`TerrainCollision`** - ground-follow over a field: `GroundHeight`, `GroundNormal` (feed both to

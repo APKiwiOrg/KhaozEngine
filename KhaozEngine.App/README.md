@@ -38,6 +38,56 @@ different version (upgrade or downgrade - ordinal string inequality only) preser
 settings DTO rather than a separate file; `KhaozEngine.Persistence` adds a `SettingsManager<T>.StampInstall(...)`
 convenience that resolves and saves only when changed.
 
+## AppRelaunch (clean self-restart)
+
+`AppRelaunch` forces a clean restart of the running application: it starts a fresh instance of the current
+executable, then asks the current one to shut down through its **normal** cooperative exit path (never a hard
+`Environment.Exit` that would skip save/dispose hooks). Use it for changes only a fresh boot can pick up: a
+sign-out that wiped the local save, a restored cloud save that must be loaded from scratch, or a
+restart-to-apply setting.
+
+The successor is started **before** the current app exits, carrying a predecessor-wait handshake so the fresh
+boot blocks until the old process is fully gone. That is what makes it safe when the current app writes its
+save during shutdown: the new instance never reads or overwrites a file the old one still holds.
+
+Two halves - the outgoing restart, and the incoming boot's wait:
+
+```csharp
+using KhaozEngine.App;
+
+// (1) Trigger the restart (e.g. from a sign-out handler). Wire the shutdown to your exit path:
+AppRelaunch.Restart(new RelaunchRequest
+{
+    RequestShutdown = window.Close,   // or gameApp.Quit - your normal cooperative exit
+    // Arguments / ExecutablePath / WorkingDirectory are optional; by default it reproduces
+    // the current invocation. WaitForPredecessorExit defaults to true (append the handshake).
+});
+
+// (2) At the very top of Main, before anything opens the save file:
+static int Main(string[] args)
+{
+    PredecessorWait boot = AppRelaunch.AwaitPredecessor(args);   // no-op on a normal launch
+    // boot.Arguments has the handshake token stripped - forward it into your own option parsing.
+    using var app = new MyGame(boot.Arguments);
+    app.Run();
+    return 0;
+}
+```
+
+`Restart` returns a `RelaunchResult`: `Started` (successor up, shutdown requested), or - without ever shutting
+the current app down - `ExecutableUnresolved` (`Environment.ProcessPath` was null and no override given) or
+`StartFailed` (the OS refused to launch it). It only requests shutdown when the successor actually started, so a
+failed relaunch leaves the player's session running rather than stranding them with nothing.
+
+`AwaitPredecessor` is a fast no-op when the arguments carry no handshake (every normal launch), so it is safe to
+call unconditionally. When a handshake is present it waits for the predecessor pid (default cap
+`AppRelaunch.DefaultPredecessorTimeout`, 15s), and `PredecessorWait.PredecessorExited` reports whether the old
+process was really gone before the timeout. The process operations go through `KhaozEngine.Platform.IProcessControl`,
+so the whole flow is headless-testable with a fake.
+
+This is the generalized form of the desktop auto-updater's relaunch (`KhaozEngine.Updates`); the updater keeps its
+own tuned environment (antivirus/image-race retry, elevation, relocation), so the two share the pattern, not the code.
+
 ## LocalizationManager
 
 Localization helper (absorbed from the retired `KhaozEngine.Localization` package in 9.0.0). It does

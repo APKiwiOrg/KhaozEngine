@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.71.0
+
+Clean app self-restart seam: `KhaozEngine.App.AppRelaunch` forces a fresh boot of the running executable and cooperates with the normal shutdown path, so a consumer game can restart into a clean session (sign-out save-wipe, cloud-save restore, restart-to-apply-settings) without a hard `Environment.Exit` that skips save/dispose hooks. The generalized parent-pid-wait pattern lives in a new `KhaozEngine.Platform.IProcessControl` seam.
+
+### `AppRelaunch` (KhaozEngine.App)
+
+**`AppRelaunch.Restart(RelaunchRequest)` starts a fresh instance of the current executable, then requests a clean shutdown of the running one through its own exit path (`RequestShutdown`, e.g. `AppWindow.Close` / `GameApp.Quit`), never a hard process kill.** The successor is spawned BEFORE the current app tears down, carrying a predecessor-wait handshake (`--ke-await-predecessor <pid>`) so the fresh boot blocks until the old process is fully gone. That ordering is what makes it safe when the app writes its save during shutdown: the new instance never races the file the old one still holds.
+
+- **`AppRelaunch.AwaitPredecessor(args)`** is the boot-side half, called at the top of `Main` before the app opens its save. It is a fast no-op on a normal launch. When a handshake is present it waits on the predecessor pid (default cap `DefaultPredecessorTimeout`, 15s) and returns the arguments with the token stripped (`PredecessorWait.Arguments`) plus whether the predecessor actually exited.
+- **`Restart` never strands the player.** It requests shutdown only when the successor actually started. If no executable resolves (`ExecutableUnresolved`, `Environment.ProcessPath` null and no override) or the OS refuses the launch (`StartFailed`), the current session is left running.
+- `RelaunchRequest` carries optional `Arguments` / `ExecutablePath` / `WorkingDirectory` overrides (defaults reproduce the current invocation) and `WaitForPredecessorExit` (default true, appends the handshake).
+
+### `IProcessControl` / `ProcessControl` (KhaozEngine.Platform)
+
+**New fakeable process seam: resolve the running exe/pid/args, spawn a detached instance, and wait for a pid to exit.** `ProcessControl.System` is the real implementation over `Environment` + `System.Diagnostics.Process`. `AppRelaunch` drives it through the interface, so the whole restart flow is headless-testable with a fake (see `AppRelaunchTests`). This is the generalized form of the desktop auto-updater's parent-pid-wait relaunch. The updater (`KhaozEngine.Updates`) keeps its own tuned `IUpdaterEnvironment` (antivirus / torn-image retry, elevation, relocation, and a deliberately non-truthful `IsProcessAlive` on POSIX), so it was NOT retrofitted onto the new primitive: the two share the pattern, not the code.
+
+- New dependency edge `KhaozEngine.App -> KhaozEngine.Platform` (both GPU-free foundation leaves, acyclic). No umbrella change: both are already in `Foundation`.
+
 ## 10.70.0
 
 Map editor polish round two: rotatable terrain features get a yaw ring gizmo, place and select gestures gained body-drag, and every editor keyboard chord is now Cmd-aware on macOS and gated off while an inspector or filter field holds focus.

@@ -235,7 +235,7 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
 
     // ---- scatter layers -------------------------------------------------------------------------------------
 
-    [McpServerTool(Name = "scatter_layer_add"), Description("Appends a named procedural scatter layer with no rules (rule editing is not exposed through MCP this round, add rules through the editor). The layer name must be unique in the document.")]
+    [McpServerTool(Name = "scatter_layer_add"), Description("Appends a named procedural scatter layer with no rules. Add rules afterward with scatter_rule_add. The layer name must be unique in the document.")]
     public MutationResult ScatterLayerAdd(
         [Description("Scatter layer name, unique in the document.")] string name,
         [Description("Cell hashing seed. Defaults to 1337.")] int seed = 1337,
@@ -246,7 +246,7 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("Maximum uniform scale multiplier for generated props. Must be >= scaleMin. Defaults to 1.35.")] float scaleMax = 1.35f)
         => ToolGuard.Guard(() => mutation.ScatterLayerAdd(name, seed, cellSize, jitter, maxHeight, scaleMin, scaleMax));
 
-    [McpServerTool(Name = "scatter_layer_edit"), Description("Edits a scatter layer's scalars by name, replacing only the supplied fields (a null argument leaves that field unchanged). Rules are preserved as-is.")]
+    [McpServerTool(Name = "scatter_layer_edit"), Description("Edits a scatter layer's scalars by name, replacing only the supplied fields (a null argument leaves that field unchanged). Rules are preserved as-is: edit them with scatter_rule_add/scatter_rule_edit/scatter_rule_remove.")]
     public MutationResult ScatterLayerEdit(
         [Description("Name of the scatter layer to edit.")] string name,
         [Description("New cell hashing seed. Null leaves it unchanged.")] int? seed = null,
@@ -263,11 +263,36 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("Name of the scatter layer to remove.")] string name)
         => ToolGuard.Guard(() => mutation.ScatterLayerRemove(name));
 
-    [McpServerTool(Name = "scatter_layer_rename"), Description("Renames a scatter layer, cascading the rename through every companion layer HostLayer and explicit exclusion/scatter-override layer filter that names it. The new name must be unique among scatter layers.")]
+    [McpServerTool(Name = "scatter_layer_rename"), Description("Renames a scatter layer, cascading the rename through every companion layer HostLayer and explicit exclusion/scatter-override layer filter that names it. The new name must be unique among scatter layers. The result detail reports how many references were cascaded.")]
     public MutationResult ScatterLayerRename(
         [Description("Current name of the scatter layer.")] string oldName,
         [Description("New name for the scatter layer, unique in the document.")] string newName)
         => ToolGuard.Guard(() => mutation.ScatterLayerRename(oldName, newName));
+
+    // ---- scatter rules --------------------------------------------------------------------------------------
+
+    [McpServerTool(Name = "scatter_rule_add"), Description("Appends a biome scatter rule (density and kinds) to a scatter layer. The result reports the appended rule's index.")]
+    public MutationResult ScatterRuleAdd(
+        [Description("Name of the scatter layer to add the rule to.")] string layerName,
+        [Description("Biome id the rule applies to: Meadow, Forest, Marsh, Mountains, Desert, or Snow.")] string biome,
+        [Description("Scatter density for this rule. Defaults to 0.55.")] float density = 0.55f,
+        [Description("Prop kinds to scatter, each 'id' (weight 1) or 'id:weight'. Null for none.")] string[]? kinds = null)
+        => ToolGuard.Guard(() => mutation.ScatterRuleAdd(layerName, biome, density, kinds));
+
+    [McpServerTool(Name = "scatter_rule_edit"), Description("Edits the scatter rule at the given index on a scatter layer, replacing only the supplied fields (a null argument leaves that field unchanged). At least one field must be supplied.")]
+    public MutationResult ScatterRuleEdit(
+        [Description("Name of the scatter layer the rule belongs to.")] string layerName,
+        [Description("Zero-based index of the rule to edit.")] int ruleIndex,
+        [Description("New biome id: Meadow, Forest, Marsh, Mountains, Desert, or Snow. Null leaves it unchanged.")] string? biome = null,
+        [Description("New scatter density. Null leaves it unchanged.")] float? density = null,
+        [Description("New prop kinds, each 'id' (weight 1) or 'id:weight'. Null leaves them unchanged.")] string[]? kinds = null)
+        => ToolGuard.Guard(() => mutation.ScatterRuleEdit(layerName, ruleIndex, biome, density, kinds));
+
+    [McpServerTool(Name = "scatter_rule_remove"), Description("Removes the scatter rule at the given index from a scatter layer.")]
+    public MutationResult ScatterRuleRemove(
+        [Description("Name of the scatter layer the rule belongs to.")] string layerName,
+        [Description("Zero-based index of the rule to remove.")] int ruleIndex)
+        => ToolGuard.Guard(() => mutation.ScatterRuleRemove(layerName, ruleIndex));
 
     // ---- companion layers -----------------------------------------------------------------------------------
 

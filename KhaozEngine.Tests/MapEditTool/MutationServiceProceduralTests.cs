@@ -343,6 +343,24 @@ namespace KhaozEngine.Tests.MapEditTool
         }
 
         [Fact]
+        public void ScatterLayerRename_ReferencedLayer_DetailReportsCascadedCount()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                // SampleDoc's "trees" layer is referenced by companion layer "understory" (host) and
+                // ScatterOverrides[0] (layer filter): two cascaded references.
+                MutationResult rename = mutation.ScatterLayerRename("trees", "forest");
+                Assert.Contains(", cascaded 2 reference(s)", rename.Detail);
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
         public void ScatterLayerRemove_Referenced_RejectedAndReverted()
         {
             string dir = NewTempDir();
@@ -356,6 +374,145 @@ namespace KhaozEngine.Tests.MapEditTool
                     mutation.ScatterLayerRemove("trees"));
                 Assert.Contains("Cannot remove scatter layer 'trees'", ex.Message);
                 Assert.Contains("companion layer 'understory'", ex.Message);
+
+                Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
+                Assert.Equal(dirtyBefore, session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        // ---- scatter rules --------------------------------------------------------------------------------------
+
+        [Fact]
+        public void ScatterRuleAdd_Edit_Remove_RoundTrip()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                var query = new QueryService(session);
+
+                // SampleDoc's "trees" layer already carries one rule (Marsh, index 0).
+                MutationResult add = mutation.ScatterRuleAdd("trees", "Forest", density: 0.7f, kinds: new[] { "oak:2" });
+                Assert.Equal("scatter_rule_add", add.Verb);
+                Assert.True(add.WorldChanged);
+                Assert.Equal(1, add.Index);
+
+                ScatterLayerInfo trees = query.ProceduralInfo().ScatterLayers.Single(l => l.Name == "trees");
+                Assert.Equal(2, trees.Rules.Count);
+                ScatterRuleInfo addedRule = trees.Rules[1];
+                Assert.Equal("Forest", addedRule.Biome);
+                Assert.Equal(0.7f, addedRule.Density);
+                Assert.Equal(new[] { "oak:2" }, addedRule.Kinds);
+                // The pre-existing rule at index 0 is untouched.
+                Assert.Equal("Marsh", trees.Rules[0].Biome);
+
+                MutationResult edit = mutation.ScatterRuleEdit("trees", 1, density: 0.9f);
+                Assert.Equal("scatter_rule_edit", edit.Verb);
+                Assert.Equal(1, edit.Index);
+                ScatterRuleInfo edited = query.ProceduralInfo().ScatterLayers.Single(l => l.Name == "trees").Rules[1];
+                Assert.Equal(0.9f, edited.Density);
+                // Untouched fields preserved by the read-modify pattern.
+                Assert.Equal("Forest", edited.Biome);
+                Assert.Equal(new[] { "oak:2" }, edited.Kinds);
+
+                MutationResult remove = mutation.ScatterRuleRemove("trees", 0);
+                Assert.Equal("scatter_rule_remove", remove.Verb);
+                Assert.Equal(0, remove.Index);
+                ScatterLayerInfo afterRemove = query.ProceduralInfo().ScatterLayers.Single(l => l.Name == "trees");
+                ScatterRuleInfo onlyRule = Assert.Single(afterRemove.Rules);
+                Assert.Equal("Forest", onlyRule.Biome);
+                Assert.Equal(0.9f, onlyRule.Density);
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterRuleEdit_OnlySetFieldsChange()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                var query = new QueryService(session);
+
+                mutation.ScatterRuleEdit("trees", 0, biome: "Desert");
+
+                ScatterRuleInfo edited = query.ProceduralInfo().ScatterLayers.Single(l => l.Name == "trees").Rules[0];
+                Assert.Equal("Desert", edited.Biome);
+                // Density and Kinds untouched.
+                Assert.Equal(0.35f, edited.Density);
+                Assert.Equal(new[] { "pine_a" }, edited.Kinds);
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterRuleEdit_NoParams_Throws()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                Assert.Throws<ArgumentException>(() => mutation.ScatterRuleEdit("trees", 0));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterRuleEdit_IndexOutOfRange_ThrowsArgumentException()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                ArgumentException ex = Assert.Throws<ArgumentException>(() =>
+                    mutation.ScatterRuleEdit("trees", 99, density: 0.5f));
+                Assert.Contains("out of range", ex.Message);
+
+                Assert.Throws<ArgumentException>(() => mutation.ScatterRuleRemove("trees", 99));
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterRuleAdd_UnknownLayer_ThrowsWithPreciseMessage()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                    mutation.ScatterRuleAdd("ghost-layer", "Meadow"));
+                Assert.Equal("No scatter layer named 'ghost-layer' in the document.", ex.Message);
+
+                Assert.Throws<InvalidOperationException>(() => mutation.ScatterRuleEdit("ghost-layer", 0, density: 0.5f));
+                Assert.Throws<InvalidOperationException>(() => mutation.ScatterRuleRemove("ghost-layer", 0));
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterRuleAdd_GarbageKindWeight_RejectedAndReverted()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
+                bool dirtyBefore = session.IsDirty;
+
+                ArgumentException ex = Assert.Throws<ArgumentException>(() =>
+                    mutation.ScatterRuleAdd("trees", "Meadow", kinds: new[] { "oak:notanumber" }));
+                Assert.Contains("is not a number", ex.Message);
 
                 Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
                 Assert.Equal(dirtyBefore, session.IsDirty);

@@ -94,8 +94,8 @@ public sealed record BiomeBandInfo(int Index, float? Start, float? End, string B
 public sealed record ScatterRuleInfo(string Biome, float Density, IReadOnlyList<string> Kinds);
 
 /// <summary>A named procedural scatter layer read back for <see cref="ProceduralInfo"/>, full field fidelity
-/// including its rules (rule editing itself is not exposed through MCP this round, mirroring the editor's
-/// deliberately v1-crude rule surface, but the read path always reports whatever rules the document carries).</summary>
+/// including its rules, which the <c>scatter_rule_add</c>/<c>scatter_rule_edit</c>/<c>scatter_rule_remove</c>
+/// verbs write and this read path reports back regardless of whether they were set through MCP or the GUI.</summary>
 public sealed record ScatterLayerInfo(string Name, int Seed, float CellSize, float Jitter, float? MaxHeight,
     float ScaleMin, float ScaleMax, IReadOnlyList<ScatterRuleInfo> Rules);
 

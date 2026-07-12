@@ -28,10 +28,11 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 54 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 57 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
-        /// triads plus their rename verbs, and the procedural_info read verb).</summary>
+        /// triads plus their rename verbs, and the procedural_info read verb), plus the scatter_rule
+        /// add/edit/remove triad that closes the scatter-layer-rules MCP parity gap.</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
@@ -51,6 +52,7 @@ namespace KhaozEngine.Tests.MapEditTool
             "exclusion_add", "exclusion_edit", "exclusion_remove", "exclusion_rename", "exclusion_set_layers",
             "scatter_override_add", "scatter_override_edit", "scatter_override_remove", "bake_region",
             "scatter_layer_add", "scatter_layer_edit", "scatter_layer_remove", "scatter_layer_rename",
+            "scatter_rule_add", "scatter_rule_edit", "scatter_rule_remove",
             "companion_layer_add", "companion_layer_edit", "companion_layer_remove", "companion_layer_rename",
             // Regions
             "region_add", "region_edit_shape", "region_rename", "region_remove",

@@ -70,6 +70,22 @@ public class WorldComponentTests
         Assert.False(w.TryGet<Velocity>(e, out _));
     }
 
+    // TryGet's contract is "copies out if present" with no tag carve-out, and the replication codecs
+    // (TrySerialize / CaptureInto) call it on every registered component, so a present tag must copy out
+    // its only value (default) rather than crash on the column lookup a tag doesn't have.
+    [Fact]
+    public void TryGetOnTagComponentReturnsPresenceWithoutThrowing()
+    {
+        var w = new World();
+        var tagged = w.Spawn();
+        var plain = w.Spawn();
+        w.Set(tagged, new Frozen());
+        w.Set(plain, new Position { X = 1, Y = 1 });
+
+        Assert.True(w.TryGet<Frozen>(tagged, out _));    // present tag: true, no throw
+        Assert.False(w.TryGet<Frozen>(plain, out _));    // absent tag: plain false
+    }
+
     [Fact]
     public void StaleHandleOnGetAndSetThrowsAndDoesNotTouchRecycledEntity()
     {

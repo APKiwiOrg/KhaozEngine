@@ -59,7 +59,7 @@ internal sealed class ComponentRegistry
     // metadata for a struct whose fields are only touched by generated code, so GetFields returns an empty set and
     // every real component would be misclassified as a tag (no column allocated -> the archetype/query path breaks).
     // Instead this derives tag-ness from layout + generated value equality, both of which NativeAOT preserves:
-    //   - a struct larger than one byte has fields, so it is never a tag;
+    //   - a struct larger than one byte has fields, so it is never a tag.
     //   - a one-byte struct is ambiguous (a zero-field tag and a single one-byte field both size 1), so flip the one
     //     storage byte and compare by value - a zero-field struct has no field to observe the change (stays equal =>
     //     tag), a one-byte field reflects it (becomes unequal => not a tag).

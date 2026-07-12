@@ -162,4 +162,45 @@ public class ReplicationDeltaTests
         Assert.Equal(5f, client.Get<Pos>(c).X, 4);
         Assert.Equal(10f, client.Get<Pos>(c).Y, 4);
     }
+
+    // A zero-field tag codec (zero payload bytes, presence itself is the state) must round-trip through
+    // Capture / WriteFor / ApplyDelta: presence on the tagged entity, absence on the other, and a later tag
+    // removal carried by the delta's removed-component list. This is the wire-level guard for the World.TryGet
+    // tag fix (the codecs' TrySerialize / CaptureInto call TryGet on every registered component, which used to
+    // crash on a tag's missing column).
+    [Fact]
+    public void Delta_RoundTrips_TagComponent_PresenceAndRemoval()
+    {
+        var registry = NewRegistry();
+        registry.Register<Marked>(
+            typeId: 2,
+            write: (m, bw) => { },
+            read: br => default);
+
+        var server = new World();
+        Entity e1 = server.Spawn(); server.Set(e1, new NetId(1)); server.Set(e1, new Pos { X = 1, Y = 1 });
+        Entity e2 = server.Spawn(); server.Set(e2, new NetId(2)); server.Set(e2, new Pos { X = 2, Y = 2 });
+        server.Set(e1, new Marked());
+
+        var repl = new ServerReplicator(registry);
+        var client = new World();
+        var view = new ClientReplicationView(registry);
+
+        int seq1 = repl.Capture(server);
+        view.ApplyDelta(client, repl.WriteFor(0));
+        repl.Acknowledge(0, seq1);
+
+        Assert.True(view.TryGetEntity(1, out Entity c1));
+        Assert.True(view.TryGetEntity(2, out Entity c2));
+        Assert.True(client.Has<Marked>(c1));     // presence round-tripped
+        Assert.False(client.Has<Marked>(c2));    // absence round-tripped (no leak)
+
+        // Removing the tag server-side must reach the client via the delta's removed-component list.
+        server.Remove<Marked>(e1);
+        repl.Capture(server);
+        view.ApplyDelta(client, repl.WriteFor(0));
+        Assert.False(client.Has<Marked>(c1));
+    }
+
+    private struct Marked : IComponent { }   // zero-field tag
 }

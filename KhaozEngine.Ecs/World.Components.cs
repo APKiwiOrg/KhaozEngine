@@ -56,11 +56,18 @@ public sealed partial class World
         return ref ((Column<T>)r.Archetype.Columns[id]).Get(r.Row);
     }
 
-    /// <summary>Copies out component <typeparamref name="T"/> if present.</summary>
+    /// <summary>Copies out component <typeparamref name="T"/> if present. A present zero-field tag copies out
+    /// <c>default</c> (its only value), unlike <see cref="Get{T}"/> which throws for a tag (no column to ref into).</summary>
     public bool TryGet<T>(Entity e, out T value) where T : struct, IComponent
     {
         ThrowIfInParallelSection(nameof(TryGet));
-        if (Has<T>(e)) { value = Get<T>(e); return true; }
+        if (Has<T>(e))
+        {
+            // A tag has no column to read from: presence IS the whole state, so its value is always default.
+            // Routing through Get here would look up Columns[id] and crash on the missing column.
+            value = Reg.IsTag(Reg.Id<T>()) ? default : Get<T>(e);
+            return true;
+        }
         value = default;
         return false;
     }

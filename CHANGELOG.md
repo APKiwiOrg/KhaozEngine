@@ -5,7 +5,9 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## Unreleased
+## 10.68.0
+
+Two independent fixes in one release: tangent co-pacing in the paced step-up climb so running up stairs is a smooth grade-limited glide, and the local player excluded from remote interpolation writes so a teleport no longer slides the avatar off the mark on login and self-rescue.
 
 ### Running up stairs is a smooth, paced glide
 

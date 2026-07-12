@@ -479,8 +479,8 @@ public static class CharacterMovement
                 // horizontal while the Y is held. That mismatch raced the XZ ahead of the paced height, plowing the
                 // capsule metres into the risers (sustained penetration) and strobing forward advance between a frozen 0
                 // (monotone-hold / no support) and a full-tread catch-up. Co-pacing keeps a runner gliding up smoothly at
-                // the honest grade-limited speed; a walk whose rise already fits the cap is not paced (block skipped) and
-                // is untouched.
+                // the honest grade-limited speed; a walk whose per-tick rise fits the climb cap is untouched (block
+                // skipped), while a discrete mount tick is paced (and now co-paced) even at walk speed, smoothing walk mounts too.
                 //
                 // Gated on a CONTINUOUS climb - a steep riser AHEAD within reach. A clear path ahead is a single-riser
                 // mount onto a deep tread (or the top of the run): its step-up seat is a load-bearing forward commitment

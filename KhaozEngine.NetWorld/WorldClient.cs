@@ -554,8 +554,10 @@ public sealed class WorldClient : IDisposable
             // Render remotes on a fixed delay: pick the render time interpolationDelaySeconds behind the newest snapshot
             // (which arrived at ~presentationClock), then lerp the two buffered snapshots bracketing it. Because
             // renderTime advances smoothly with the render dt - not by ramping alpha off an estimated interval - there
-            // is no phase drift, so no hold frames and no catch-up snaps at a non-integer render:tick ratio.
-            view.InterpolateAt(world, presentationClock - interpolationDelaySeconds);
+            // is no phase drift, so no hold frames and no catch-up snaps at a non-integer render:tick ratio. The LOCAL
+            // avatar (LocalNetId) is excluded: it renders from prediction, and its client-world ReplicatedPosition must
+            // stay the last-received authoritative value (the reconcile basis), not a fixed-delay interpolated one.
+            view.InterpolateAt(world, presentationClock - interpolationDelaySeconds, LocalNetId);
         if (presentationTrace is not null) RecordTraceFrame(dt);
     }
 
@@ -716,7 +718,11 @@ public sealed class WorldClient : IDisposable
         {
             // Buffer this snapshot's interpolatable state stamped at the current render-clock time. InterpolateAt then
             // renders the two samples bracketing (presentationClock - interpolationDelaySeconds) by their true stamps.
-            view.RecordInterpolationSample(presentationClock);
+            // The LOCAL avatar (localNetId) is excluded from the buffer: it renders from prediction, so its samples are
+            // wasted, and buffering-then-InterpolateAt would clobber its ReplicatedPosition (the reconcile basis read
+            // just below) with a stale fixed-delay value - the post-teleport-slide bug. A reconnect that re-ids the
+            // local player drops the new id's stale buffer inside RecordInterpolationSample.
+            view.RecordInterpolationSample(presentationClock, localNetId);
             // Remote teleport hard-cut: AFTER the post-teleport sample is buffered above, snap any remote whose
             // authoritative teleport epoch advanced this ingest to that newest sample, dropping the pre-teleport ones -
             // otherwise the buffer straddles the jump and InterpolateAt streaks the remote across the world.

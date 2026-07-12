@@ -59,11 +59,15 @@ area-of-interest deltas.
 - **`ClientReplicationView`** - apply a snapshot to a client `World`: spawn new entities, despawn gone ones,
   update the rest. Two render-smoothing paths: `Interpolate(world, alpha)` lerps registered components between the
   last two snapshots (the legacy estimate-and-ramp path), and the preferred **fixed-delay buffer** (since 9.23.0):
-  `RecordInterpolationSample(t)` stamps each applied snapshot's interpolatable bytes into a per-component timestamped
-  history, and `InterpolateAt(world, renderTime)` renders every component at `renderTime` by lerping the two buffered
-  samples bracketing it by their true timestamps (clamp to the oldest before the buffer; HOLD at the newest past it,
-  flagged via `WasHeldAtLastInterpolation(netId)`; single-sample renders that sample). This decouples presentation
-  from the tick cadence and the render fps. **`SnapInterpolationToNewest(netId)`** (since 10.67.0) drops all but the
+  `RecordInterpolationSample(t, excludeNetId?)` stamps each applied snapshot's interpolatable bytes into a per-component
+  timestamped history, and `InterpolateAt(world, renderTime, excludeNetId?)` renders every component at `renderTime` by
+  lerping the two buffered samples bracketing it by their true timestamps (clamp to the oldest before the buffer; HOLD
+  at the newest past it, flagged via `WasHeldAtLastInterpolation(netId)`; single-sample renders that sample). This
+  decouples presentation from the tick cadence and the render fps. The optional `excludeNetId` skips one entity in both
+  calls (the local, predicted avatar): it renders from prediction, so its client-world position must stay the
+  last-received authoritative value (the reconcile basis), never a fixed-delay interpolated one - passing the local net
+  id keeps a post-teleport static local player from feeding a stale basis back into reconcile. When it changes (a
+  reconnect assigns a new local id) the new id's stale buffer is dropped. **`SnapInterpolationToNewest(netId)`** (since 10.67.0) drops all but the
   newest buffered sample for one entity, so `InterpolateAt` cuts to it instead of lerping across a discontinuity - the
   netcode layer calls it when an entity teleports (keyed off its replicated teleport epoch) so a remote teleport does
   not streak across the world. An unregistered

@@ -7,6 +7,13 @@
 // tick), Replication (registry closures, shared per-tick capture, delta encode/apply), and the Ecs
 // generic component + query path - all deliberately reflection-free after the batch's items 2-4.
 //
+// The component set covers every branch of the reflection-free ECS tag classification
+// (ComponentRegistry.TagInfo<T>, the replacement for the AOT-unsafe GetFields): multi-byte structs
+// (position/velocity/health, the size > 1 shortcut), a zero-field tag (size 1, byte-flip compares
+// equal), and a single-byte-field flag (size 1, byte-flip compares unequal). The two size-1 cases are
+// the ambiguous ones only the flip + EqualityComparer disambiguation gets right under AOT, so this
+// gate proves the replacement mechanism itself, not just the paths that avoided the old bug.
+//
 // The gate is that this LINKS, RUNS, and prints the expected sentinel under
 //   dotnet publish -c Release -r <rid> (PublishAot=true)
 // on a native arm64 mac. It prints one line starting "AOT PROBE:" with the checked values and returns
@@ -19,7 +26,7 @@ using KhaozEngine.Sharding;
 const float tick = 1f / 60f;
 const int count = 3;
 
-// Registry: two built-in ids (unframed wire) + one consumer extension id (length-prefixed, skippable).
+// Registry: four built-in ids (unframed wire) + one consumer extension id (length-prefixed, skippable).
 // Register<T> closes over T statically - no reflection, no Activator - so it is AOT-clean by construction.
 var registry = new ReplicationRegistry();
 registry.Register<ProbePosition>(1,
@@ -32,6 +39,12 @@ registry.Register<ProbeVelocity>(2,
 registry.Register<ProbeHealth>(ReplicationRegistry.FirstExtensionTypeId,   // id 16: length-prefixed extension
     (h, w) => w.Write(h.Value),
     r => new ProbeHealth { Value = r.ReadInt32() });
+registry.Register<ProbeElite>(3,   // zero-field tag: zero payload bytes, presence itself is the state
+    (t, w) => { },
+    r => default);
+registry.Register<ProbeFlag>(4,    // single byte field: size 1 like the tag, but stored, not a tag
+    (f, w) => w.Write(f.Value),
+    r => new ProbeFlag { Value = r.ReadByte() });
 
 // Server: a one-cell shard host, a few owned entities (NetId 1..count) all in the same cell, plus a
 // per-tick integrate system so ticks actually mutate replicated state.
@@ -45,6 +58,10 @@ for (int i = 0; i < count; i++)
     cell.World.Set(e, new ProbePosition { X = 10f + i, Y = 10f + i });
     cell.World.Set(e, new ProbeVelocity { X = 1f + i, Y = -1f - i });
     cell.World.Set(e, new ProbeHealth { Value = 100 - i });
+    cell.World.Set(e, new ProbeFlag { Value = (byte)(i + 1) });
+    // The tag goes on even-indexed entities only, so both PRESENCE and ABSENCE must round-trip (a
+    // tag-misclassified stored component, or vice versa, would break one of the two).
+    if (i % 2 == 0) cell.World.Set(e, new ProbeElite());
     serverEntities[i] = (netId, e);
     serverCell = cell;   // one cell here, so every entity lands in the same one
 }
@@ -71,10 +88,13 @@ byte[] delta = server.WriteFor(slot: 0);
 client.ApplyDelta(clientWorld, delta);
 server.Acknowledge(slot: 0, seq);
 
-// Verify: every server entity round-tripped to the client with matching position + health.
+// Verify: every server entity round-tripped to the client with matching position, health, flag
+// (the size-1 stored component's VALUE survives), and tag presence/absence (the zero-field tag's
+// PRESENCE survives, and it never leaks onto entities that don't carry it).
 bool ok = client.Entities.Count == count;
 long lastNetId = -1;
 float lastClientX = 0f;
+int clientTags = 0;
 for (int i = 0; i < count && ok; i++)
 {
     (long netId, Entity serverEntity) = serverEntities[i];
@@ -82,14 +102,19 @@ for (int i = 0; i < count && ok; i++)
     if (!client.TryGetEntity(netId, out Entity ce)) { ok = false; break; }
     ProbePosition cp = clientWorld.Get<ProbePosition>(ce);
     ProbeHealth ch = clientWorld.Get<ProbeHealth>(ce);
+    ProbeFlag cf = clientWorld.Get<ProbeFlag>(ce);
     if (MathF.Abs(sp.X - cp.X) > 1e-4f || MathF.Abs(sp.Y - cp.Y) > 1e-4f) ok = false;
     if (ch.Value != 100 - i) ok = false;
+    if (cf.Value != (byte)(i + 1)) ok = false;
+    bool hasTag = clientWorld.Has<ProbeElite>(ce);
+    if (hasTag != (i % 2 == 0)) ok = false;   // presence AND absence both round-trip
+    if (hasTag) clientTags++;
     lastNetId = netId;
     lastClientX = cp.X;
 }
 
 Console.WriteLine(
-    $"AOT PROBE: entities={count} clientEntities={client.Entities.Count} lastNetId={lastNetId} clientX={lastClientX:F4} match={ok}");
+    $"AOT PROBE: entities={count} clientEntities={client.Entities.Count} tags={clientTags} lastNetId={lastNetId} clientX={lastClientX:F4} match={ok}");
 return ok ? 0 : 1;
 
 // ---- probe component + system types ----
@@ -102,6 +127,14 @@ struct ProbeVelocity : IComponent { public float X; public float Y; }
 
 /// <summary>Replicated health (consumer extension id 16, length-prefixed / skippable on the wire).</summary>
 struct ProbeHealth : IComponent { public int Value; }
+
+/// <summary>Zero-field replicated tag (built-in id 3, zero payload bytes). Size 1 with no fields: the
+/// TagInfo byte-flip must classify it a TAG (no column), and its wire presence must round-trip.</summary>
+struct ProbeElite : IComponent { }
+
+/// <summary>Single-byte replicated flag (built-in id 4). Size 1 WITH a field: the TagInfo byte-flip
+/// must classify it STORED (a real column), and its value must round-trip.</summary>
+struct ProbeFlag : IComponent { public byte Value; }
 
 /// <summary>Integrates <see cref="ProbePosition"/> by <see cref="ProbeVelocity"/> once per fixed tick.</summary>
 sealed class ProbeIntegrateSystem : ISystem

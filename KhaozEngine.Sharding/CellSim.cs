@@ -90,19 +90,51 @@ public sealed class CellSim
     public int Tick(float elapsedSeconds, int maxTicksPerFrame = 8) =>
         tickHost.Advance(elapsedSeconds, _ => World.Update(TickSeconds), maxTicksPerFrame);
 
+    // The serve epoch this cell's Interest grid was last rebuilt at (-1 = never), used by RebuildInterestShared to
+    // rebuild a cell's grid at most once per server serve pass. Only the shared path sets it; the unconditional
+    // RebuildInterest leaves it alone (its callers always want a fresh rebuild).
+    private long interestBuildEpoch = -1;
+
+    /// <summary>Number of times this cell's <see cref="Interest"/> grid was actually rebuilt (Clear + reinsert),
+    /// exposed for tests to prove the per-tick sharing rebuilds a served cell once, not once per client.</summary>
+    internal long InterestRebuildCount { get; private set; }
+
     /// <summary>
     /// Rebuilds this cell's <see cref="Interest"/> grid from the current positions of every entity in its world
     /// (owned <b>and</b> ghosts), read via <paramref name="accessor"/>. Call before querying AoI for a client so
-    /// the home cell's full neighbourhood (owned + border ghosts) is indexed.
+    /// the home cell's full neighbourhood (owned + border ghosts) is indexed. Always rebuilds; for the per-serve-pass
+    /// shared rebuild the sharded server drives instead, see <see cref="RebuildInterestShared"/>.
     /// </summary>
     public void RebuildInterest(CellPositionAccessor accessor)
     {
         ArgumentNullException.ThrowIfNull(accessor);
+        DoRebuildInterest(accessor);
+    }
+
+    /// <summary>
+    /// Rebuilds this cell's <see cref="Interest"/> grid only if it has not already been rebuilt at
+    /// <paramref name="serveEpoch"/> - the mechanism that amortizes the grid rebuild to once per cell per server serve
+    /// pass instead of once per client. The server passes a fresh, monotonically increasing epoch each tick, so the
+    /// first client served from this cell in a tick rebuilds and every later client that tick reuses. Because the
+    /// epoch changes every tick, any world mutation applied before the serve pass (movement, handoff, ghost sync, an
+    /// admin teleport) is always picked up on that tick's first rebuild.
+    /// </summary>
+    internal void RebuildInterestShared(CellPositionAccessor accessor, long serveEpoch)
+    {
+        ArgumentNullException.ThrowIfNull(accessor);
+        if (interestBuildEpoch == serveEpoch) return;   // already rebuilt this serve pass: reuse the grid
+        DoRebuildInterest(accessor);
+        interestBuildEpoch = serveEpoch;
+    }
+
+    private void DoRebuildInterest(CellPositionAccessor accessor)
+    {
         Interest.Clear();
         World.ForEach<NetId>((Entity e, ref NetId id) =>
         {
             if (accessor(World, e, out float x, out float y)) Interest.Insert(id.Value, x, y);
         });
+        InterestRebuildCount++;
     }
 
     /// <summary>Source cells this cell currently holds a ghost view for (may include emptied views).</summary>

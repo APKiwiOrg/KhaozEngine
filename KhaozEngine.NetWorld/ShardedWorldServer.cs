@@ -99,6 +99,13 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly AoiDeltaReplicator? deltaReplicator;
     private readonly HashSet<int> deltaCapableSlots = new();
 
+    // Monotonic per-tick serve epoch: bumped once before each tick's client-serving pass and passed to every
+    // HomeInterest / SnapshotForClient call, so each home cell rebuilds its interest grid at most once per tick
+    // (shared across every client homed there) instead of once per client. The world is fully settled by the time
+    // the serve pass runs (movement, handoffs, ghost sync, admin drains are all done), so one rebuild per tick is
+    // both correct and complete.
+    private long interestServeEpoch;
+
     private readonly Dictionary<int, long> netIdBySlot = new();
     private readonly Dictionary<int, int> lastAckBySlot = new();
     private readonly Dictionary<int, string> accountIdBySlot = new();
@@ -489,6 +496,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         // 5. Serve each client its home-cell area-of-interest, framed for the WorldClient. Delta-capable clients get a
         //    per-client AoI delta (NetId-keyed, so a boundary crossing is a component delta); others a full snapshot.
         deltaReplicator?.BeginTick();
+        long serveEpoch = ++interestServeEpoch;   // fresh each tick: each served home cell rebuilds its grid once
         foreach (int slot in slots)
         {
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
@@ -496,7 +504,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
-                (World world, HashSet<long> interest) = host.HomeInterest(slot, config.InterestRadius);
+                (World world, HashSet<long> interest) = host.HomeInterest(slot, config.InterestRadius, serveEpoch);
                 // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
                 // OwnerOnly component is served only on the client's own entity, never on another player it observes.
                 body = deltaReplicator.WriteFor(slot, world, interest, netId);
@@ -504,7 +512,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
             }
             else
             {
-                body = host.SnapshotForClient(slot, config.InterestRadius);
+                body = host.SnapshotForClient(slot, config.InterestRadius, serveEpoch);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);

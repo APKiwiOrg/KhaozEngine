@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.69.0
+
+Editor polish round: the cel-shading outline is now opt-in per consumer instead of on by default, ridge terrain carving is opt-in instead of a mandatory notch, map editor gizmos gained visible spawn-marker drag arrows and dropped an inert axis, and the Gui TreeView gained drag-and-drop row reorder that the map editor outline uses to reorder features and exclusions.
+
+### Outline defaults off (behavior-visible default flip)
+
+**`KhaozEngine.Render3D` `PixelPostProcessSettings.Outline` now defaults to `false`.** The cel-shading outline was on by default for every consumer of the pixel post-process pipeline. It is now opt-in: set `Post.Outline = true` explicitly to keep it. A consumer relying on the bare default silently loses the toon outline on upgrade. `UseSmoothPreset` is unchanged (the smooth preset never enabled the outline). All Showcase rooms and samples were re-based onto the new default, committed goldens are pinned explicit rather than re-baked against the old default, and the post pipeline's flip-parity path for the new default is covered by an on-device upright test.
+
+- **`PixelPostProcessSettings.Outline` default `true` -> `false` (`KhaozEngine.Render3D`).** Existing code that never touched `Outline` now renders without the cel outline. Existing code that explicitly set `Post.Outline = true` or `false` is unaffected either way.
+- **Showcase rooms and samples re-based (`KhaozEngine.Showcase`).** Every room that relied on the implicit default now sets `Post.Outline` explicitly so its look is unchanged after the flip.
+- **Goldens pinned explicit, not re-baked (`KhaozEngine.Tests`).** The committed GPU goldens keep testing the same rendered look by pinning `Post.Outline` explicitly in the test setup rather than re-baking pixels against the new default.
+- **On-device upright test guards the flip (`KhaozEngine.Tests`).** A new test exercises the post pipeline's flip-parity path so the new default is verified on real hardware, not just assumed from the property change.
+
+### Ridge terrain pass is opt-in
+
+**`RidgeFeatureDoc.PassWidth` default `1` -> `0`, and `passWidth <= 0` is now the documented no-pass sentinel, checked everywhere the pass gates.** A freshly placed editor ridge used to carve a notch through the wall at the click point by default. It now renders as a solid wall unless a pass is explicitly requested. Ridge direction is also now editable from the editor inspector.
+
+- **`RidgeFeature` (`KhaozEngine.Terrain`).** `passWidth <= 0` is the single documented sentinel for "no pass", gated consistently at every call site that previously assumed a pass always existed.
+- **Editor inspector (`KhaozEngine.MapEditor`).** Ridge direction is now an editable inspector field, not fixed at placement time.
+
+### Map editor gizmos
+
+- **Spawn markers draw visible XZ drag arrows (`KhaozEngine.MapEditor`).** The drag behavior already existed. It was previously undiscoverable because nothing was drawn. New `GizmoGeometry.TranslateArrowsXZ` gives spawn markers the same visible drag affordance as other draggable gizmos.
+- **Shape and feature gizmos drop the inert Y arrow (`KhaozEngine.MapEditor`).** These gizmos only ever supported XZ translation, so the vertical arrow was drawn but never functional. It is no longer drawn.
+
+### Gui TreeView drag-and-drop reorder
+
+**New same-parent row reorder in `KhaozEngine.Gui.TreeView`, adopted by the map editor outline to reorder features and exclusions by drag.**
+
+- **`TreeView.OnReordered` (`Action<TreeNode, int, int>`) (`KhaozEngine.Gui`).** Fires with `RemoveAt`/`Insert` semantics on a completed same-parent drag reorder. `WasReordered` reports whether the last interaction was a reorder. `DragThreshold` (default 6px) gates when a press-drag arms as a reorder instead of a click. Escape cancels an in-flight drag, and a moving insertion indicator shows the drop position. The drag only arms when `OnReordered` is wired, so a plain tree with no handler is completely unchanged. Wheel scroll during an armed drag is deferred until the drag ends rather than fighting the drag for the same input.
+- **`ReorderExclusionCommand` (`KhaozEngine.MapEditor`).** The map editor outline now reorders both features and exclusions by drag. `AffectsWorld` is `false` for the exclusion reorder specifically, since exclusion order is union-irrelevant and reordering them has no gameplay effect. Ctrl+Up / Ctrl+Down reordering is unchanged and still works alongside drag.
+
 ## 10.68.1
 
 Fixes a regression from 10.68.0's stair-run tangent co-pacing: a WALK-speed single-riser mount stalled at flat height on some real compound building-step proxies. The co-pace's "is a steep riser ahead" gate was a bare forward capsule sweep, so on a building whose entrance doorstep sits close under the front wall it fired on that tall back WALL a footprint behind the step, misclassified the single-riser mount as a continuous stair run, and throttled the load-bearing forward seat. At walk speed the throttled advance could not clear the riser's depenetration pushback, so the capsule buzzed at flat ground and never mounted the step (the same starvation stall the 10.66 fix removed, reintroduced through the new gate). Clean single-riser and open-stair geometry were unaffected, which is why the shipped mount and stair-feel pins stayed green.

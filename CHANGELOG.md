@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.72.0
+
+### Replication hot path, ECS parallel pooling, and a NativeAOT server gate
+
+**Shared per-tick capture plus a pooled, span-diffed delta path cut the heaviest server replication tick from 264.0 ms to 50.3 ms (5.3x) and from 332.7 MB to 26.8 MB allocated per tick (down 92 percent), wire bytes byte-identical.** Measured on the heaviest regime of the new benchmark (64 clients, 16384 entities, 4 components each), with the delta output proven byte-identical to the old per-client path in every regime by committed goldens. The batch spans replication, Sharding, and ECS, adds a `World.TryGet<T>` correctness fix that makes tag components usable in replication codecs, and gates the server capture and delta path NativeAOT-clean behind a new AOT probe. Nothing changes on the wire, the cost changes a lot.
+
+- **Shared per-tick AoI capture in `AoiDeltaReplicator`.** The world is scanned and captured ONCE per tick and that single capture is shared across every client's delta, instead of re-scanning and re-capturing per client. Output is wire byte-identical to the old per-client path in every regime, proven by committed goldens.
+- **Serve-epoch shared interest rebuild in Sharding.** `ShardHost.HomeInterest` and `SnapshotForClient` take a new OPTIONAL `serveEpoch` parameter, so a per-serve interest set is rebuilt once and reused across every client served in that epoch. `ShardedWorldServer` passes the epoch automatically. The parameter is optional, so existing callers are unaffected.
+- **Segment-based pooled capture with span diffing.** Component state is captured into pooled segments and diffed as spans, which eliminates the per-component `byte[]` churn the old capture allocated every tick.
+- **ECS buffered `ParallelForEach` pooling.** Buffered parallel iteration now uses per-arity contexts with cached delegates and a World-level command-buffer pool, so a steady-state buffered parallel call drops from 16904 bytes to 0 bytes per call (inline scheduler, 64-entity archetype). The public sink overloads stay pool-neutral: they operate on caller-owned buffers and allocate nothing on the pool.
+- **`World.TryGet<T>` contract fix.** A present zero-field tag component now returns `true` with `default(T)` instead of crashing, so tag components are usable in replication codecs. Reading a present tag through `TryGet` used to throw where a field-carrying component returned its value.
+- **NativeAOT: the server capture and delta path is AOT-clean.** Tag detection is now reflection-free, and the path is covered by a new `KhaozEngine.Server.AotProbe`. Two blockers remain and are recorded in `docs/ROADMAP.md`: ECS world JSON save/load and NetWorld persistence DTOs both need source-generated serialization before the full server is AOT-publishable. Neither blocks an AOT-published dedicated server that only serves clients over the replication path.
+- **New `ReplicationTickBenchmark`** behind a `--replication` flag, the source of the numbers above.
+
 ## 10.71.2
 
 ### Locomotion: short steps and tread lips on uneven ground now mount reliably

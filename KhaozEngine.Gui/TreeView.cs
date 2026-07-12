@@ -52,8 +52,8 @@ namespace KhaozEngine.Gui
 
         readonly List<(TreeNode Node, int Depth)> _visible = new();
 
-        // Drag-and-drop reorder state. `_dragNode` is non-null once a press clears `DragThreshold` and grabs a row;
-        // `_dragSiblings` / `_dragFromIndex` pin the sibling list and origin slot; the `_drop*` fields are the live
+        // Drag-and-drop reorder state. `_dragNode` is non-null once a press clears `DragThreshold` and grabs a row.
+        // `_dragSiblings` / `_dragFromIndex` pin the sibling list and origin slot. The `_drop*` fields are the live
         // insertion target recomputed each frame (and drawn as the insertion line). `_dragCancelled` latches an
         // Escape / disable abort so the release that ends the same gesture cannot fall through to a tap-select.
         TreeNode? _dragNode;
@@ -120,7 +120,7 @@ namespace KhaozEngine.Gui
         /// Fired when a drag-and-drop reorder commits: the dragged node moves within its parent's sibling list from
         /// <c>oldIndex</c> to <c>newIndex</c>, exactly as a <c>RemoveAt(oldIndex)</c> then <c>Insert(newIndex)</c>
         /// on that list. The widget only reports the move (it does not mutate <see cref="Roots"/> or any
-        /// <see cref="TreeNode.Children"/>); the host applies it and rebuilds the tree. Drops are same-parent only,
+        /// <see cref="TreeNode.Children"/>). The host applies it and rebuilds the tree. Drops are same-parent only,
         /// so both indices address the same sibling list. A no-op drop (<c>newIndex == oldIndex</c>), a cross-parent
         /// drop, or a release off the tree fires nothing.
         /// </summary>
@@ -157,7 +157,7 @@ namespace KhaozEngine.Gui
         /// Reserve the region on the pointer, apply wheel scrolling, run the drag-and-drop reorder gesture, and
         /// hit-test a tap for this frame. A held press whose origin is in the tree becomes a row drag once the
         /// pointer clears <see cref="DragThreshold"/> (grabbing the press-origin row, unless that press landed in a
-        /// parent's caret zone, which stays reserved for the expand toggle); a valid same-parent release fires
+        /// parent's caret zone, which stays reserved for the expand toggle). A valid same-parent release fires
         /// <see cref="OnReordered"/>, Escape or an off-tree release cancels. Otherwise a caret-zone tap toggles
         /// expansion and any other in-bounds tap selects the row. Returns true if the selection, an expansion, or a
         /// reorder changed. Ignores everything after the region reservation when disabled.
@@ -177,7 +177,7 @@ namespace KhaozEngine.Gui
             // Escape aborts an in-flight drag outright (no drop) and latches so the release cannot tap-select.
             if (_dragNode is not null && input.IsKeyDown(Key.Escape)) { AbandonDrag(); _dragCancelled = true; return false; }
 
-            // Wheel scrolls only when idle; while dragging the geometry is frozen (wheel-during-drag is deferred).
+            // Wheel scrolls only when idle. While dragging the geometry is frozen (wheel-during-drag is deferred).
             if (_dragNode is null)
             {
                 int notches = input.GetScrollIn(Bounds);

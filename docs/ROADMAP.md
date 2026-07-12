@@ -63,6 +63,15 @@ duplicated here.
   replication and persistence scoped per instance. End state for dungeons: `KhaozEngine.Dungeon` ships
   today against the far-corner same-grid model, and its dungeon-local output (one placement transform,
   no world-absolute assumptions) adopts this when it lands.
+- NativeAOT for world save/load and NetWorld persistence (recorded 2026-07-13, found by the
+  `Server.AotProbe` audit): the per-tick replication/sharding/ecs server path publishes AOT-clean, but two
+  subsystems still need reflection. `Ecs.WorldSerializer` and the non-generic `ComponentRegistry.RegisterType`
+  path it calls through use `Assembly.GetTypes()`, `Type.MakeGenericType`, `Activator.CreateInstance`, and
+  reflection-based `System.Text.Json` for world JSON save/load, fixable with a registered column-factory table
+  keyed by `Type` instead of `MakeGenericType`. `NetWorld`'s `PlayerRecord`/`WorldMetaRecord`/
+  `WorldStoreBanStore.BanDto` round-trip through reflection-based `System.Text.Json` with no
+  `JsonSerializerContext`, fixable with a source-generated context for those DTOs. Neither blocks an
+  AOT-published dedicated server that only serves clients over the replication path.
 
 ## Overworld / world content
 

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The smallest real server-tick surface: the shard host (Sharding), the per-tick capture/delta
+         replicator (Replication), and the ECS World they run over (Ecs). Simulation flows in
+         transitively via Sharding. The Server umbrella metapackage is deliberately NOT referenced:
+         it also drags NetWorld (System.Text.Json save/load), Netcode.LiteNetLib (native transport),
+         and the WorldStore backends into the AOT closure, none of which are on the capture/delta path
+         this probe gates. Keeping the reference set to the three packages the tick actually uses keeps
+         the gate honest about the replication hot path. -->
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+  </ItemGroup>
+  <!-- No rd.xml: unlike the Physics probe (Bepu's Solver.Register<T> needs Activator.CreateInstance
+       rooted), the capture/delta path is reflection-free - ReplicationRegistry.Register<T> and the ECS
+       generic component API close over T statically, so nothing here needs a runtime-type root. -->
+</Project>

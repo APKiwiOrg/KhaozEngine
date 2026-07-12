@@ -26,7 +26,6 @@ namespace KhaozEngine.Locomotion;
 /// </summary>
 public static class CharacterMovement
 {
-
     /// <summary>Horizontal-only step (no vertical physics): Y is clamped onto the ground + half-height every tick.</summary>
     /// <param name="position">Current capsule-centre world position.</param>
     /// <param name="cmd">Movement intent (camera-relative axis + run + camera yaw).</param>

@@ -5,9 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## Unreleased
-
-### Walk mounts on compound building-step geometry (10.68.0 co-pace gate fix)
+## 10.68.1
 
 Fixes a regression from 10.68.0's stair-run tangent co-pacing: a WALK-speed single-riser mount stalled at flat height on some real compound building-step proxies. The co-pace's "is a steep riser ahead" gate was a bare forward capsule sweep, so on a building whose entrance doorstep sits close under the front wall it fired on that tall back WALL a footprint behind the step, misclassified the single-riser mount as a continuous stair run, and throttled the load-bearing forward seat. At walk speed the throttled advance could not clear the riser's depenetration pushback, so the capsule buzzed at flat ground and never mounted the step (the same starvation stall the 10.66 fix removed, reintroduced through the new gate). Clean single-riser and open-stair geometry were unaffected, which is why the shipped mount and stair-feel pins stayed green.
 

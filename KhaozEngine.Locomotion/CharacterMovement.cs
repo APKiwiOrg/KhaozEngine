@@ -1016,6 +1016,9 @@ public static class CharacterMovement
         // capsule's leading surface); sample just past it and drop a ray from the top of the step-climb band.
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
         float feetY = pos.Y - t.CapsuleHalfHeight;
+        // This face-distance estimate assumes a non-embedded initial sweep. An embedded (zero-distance) sweep puts the
+        // sample ~a radius past the true face, so the tread reads clear and the throttle is skipped that tick; steady
+        // state co-pacing keeps that from persisting.
         float faceAhead = hit.Distance + capsule.Radius;
         float originY = feetY + t.StepHeight + SkinWidth;   // top of the band; reach StepHeight down to the feet plane
         foreach (float off in NextTreadProbeOffsets)

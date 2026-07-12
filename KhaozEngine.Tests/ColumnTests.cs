@@ -5,6 +5,7 @@ namespace KhaozEngine.Tests;
 
 file struct Pos : IComponent { public int X; }
 file struct Tag : IComponent { }
+file struct ByteFlag : IComponent { public byte V; }   // one 1-byte field: NOT a tag, despite sizeof == 1
 
 public class ColumnTests
 {
@@ -18,6 +19,23 @@ public class ColumnTests
         Assert.NotEqual(pos, tag);
         Assert.False(reg.IsTag(pos));
         Assert.True(reg.IsTag(tag));           // no fields => tag
+    }
+
+    // Locks the field-count classification the AOT trim suppression on ComponentRegistry.IsTagType relies on: a
+    // single-byte struct has sizeof == 1 just like a zero-field tag, so any size-based shortcut would misclassify it.
+    // It must stay a real (stored) component, so this guards against the classification silently degrading to a size
+    // check under a future AOT-motivated rewrite.
+    [Fact]
+    public void SingleByteFieldStructIsNotATag()
+    {
+        var reg = new ComponentRegistry();
+        int flag = reg.Id<ByteFlag>();
+        Assert.False(reg.IsTag(flag));         // has a field => stored, not a tag
+
+        var col = (Column<ByteFlag>)reg.CreateColumn(flag);
+        col.EnsureCapacity(1);
+        col.Set(0, new ByteFlag { V = 42 });
+        Assert.Equal(42, col.Get(0).V);        // and its value round-trips through the column
     }
 
     [Fact]

@@ -46,7 +46,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays
-  press-edge only) so text fields hold-to-repeat.
+  press-edge only) so text fields hold-to-repeat. `IsCommandDown` is true while either Ctrl key or either Super
+  (Cmd) key is held, the one cross-platform check for a "command modifier" keyboard chord (Ctrl+Z / Cmd+Z,
+  Ctrl+S / Cmd+S, and so on) so a game or editor tests one property instead of OR-ing all four keys itself.
 - `AppWindow.SetIcon(params WindowIcon[])` sets the runtime window/taskbar icon. `WindowIcon` is one already-decoded,
   tightly-packed RGBA8 image (top-left origin); pass several sizes (16/32/48...) and GLFW picks per DPI. On Windows
   it sets the title bar + Alt-Tab (`WM_SETICON`) **and** the taskbar button: GLFW only sets `WM_SETICON`, which does

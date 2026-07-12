@@ -278,8 +278,7 @@ once it ships, the detail moves to `CHANGELOG.md`.
     the target row already on screen before the drag begins.
   - `PropertyGrid`: a partial row's `BlockRegion` slivers past the clip. Out-of-range
     external values display unclamped. Wheel feel diverges from the rest of the
-    `ScrollablePanel` family. Shift+Escape also cancels a focused field edit, a
-    focus-routing case worth revisiting. `FloatRow` needs a scrub-end gesture seal:
+    `ScrollablePanel` family. `FloatRow` needs a scrub-end gesture seal:
     cross-parameter scrubs currently coalesce into one undo step. `ChoiceRow`'s open
     option list now draws in the grid's late overlay pass (above the rows below the
     selector, no longer overpainted), but still inside the grid's own scissor, so a long

@@ -119,7 +119,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     Each row polls its getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget
     (a `ChoiceRow` polls only while its list is closed, so an in-progress pick is never stomped), so external
     changes (undo, another editor) stay in sync without a change-event bus. A `ChoiceRow`'s setter fires only on
-    a real change, so re-picking the already-selected option closes the list without writing. The grid draws in
+    a real change, so re-picking the already-selected option closes the list without writing.
+    `PropertyGrid.HasActiveEditor` ORs each row's own `PropertyRow.HasActiveEditor` (`false` on the base
+    `PropertyRow`, `FloatRow` while its `NumberField` is `IsEditing`/`IsScrubbing`, `TextRow` while its
+    `TextInput.IsFocused`, `ChoiceRow` while its `Dropdown.IsOpen`), an allocation-free aggregate a host walks
+    once per frame to gate a global keyboard chord or hotkey on any row's in-progress edit generically, instead
+    of naming one specific row (`KhaozEngine.MapEditor`'s shortcut handler is the reference consumer). The grid draws in
     two passes (every row's label+editor, then a late overlay pass), so a `ChoiceRow`'s open option list draws
     ABOVE the rows below the selector rather than being overpainted by them; the list still draws inside the
     grid's own scissor, so it clips at the grid bounds. A host that needs the list to spill past the grid calls

@@ -60,14 +60,24 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 
 Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection. R snaps the
 selected placement to the ground (an undoable re-move with a null Y, a no-op when nothing placement-shaped
-is selected or the placement is already grounded), suppressed while the rename field has focus so typing
-an "R" into a name does not fire it. Ctrl+Up and Ctrl+Down reorder the selected terrain feature one step
-earlier or later in the fold order (see Feature apply order below), clamped at the list ends so a boundary
-press lands no command. Escape cancels an in-flight gizmo/draw gesture and returns to Select. Shift+Escape
-exits the editor by popping the scene off the `SceneManager`: with no unsaved changes it pops immediately,
-and with unsaved changes the first press arms a status-strip warning ("Shift+Escape again to discard and
-exit") and a second Shift+Escape discards and exits. Any Ctrl+S or any document mutation (an edit, an undo,
-a redo) disarms the warning, so a stale discard confirmation can never fire after the user resumed working.
+is selected or the placement is already grounded). Ctrl+Up and Ctrl+Down reorder the selected terrain feature
+one step earlier or later in the fold order (see Feature apply order below), clamped at the list ends so a
+boundary press lands no command. Escape cancels an in-flight gizmo/draw gesture and returns to Select. Every
+Ctrl chord above also fires on Cmd (Super): `InputState.IsCommandDown` treats the two as the same modifier,
+so the Windows/Linux chords work unmodified on a Mac. All of them, plus the bare R hotkey, are suppressed
+while an inspector field, the kit-palette filter, or the spawn filter holds keyboard focus
+(`PropertyGrid.HasActiveEditor` ORed with the two filters' own `IsFocused`, see `MapEditorScene.AnyEditorFocused`),
+so typing an "R" or a Ctrl-chord letter into a name or a filter box types instead of firing the shortcut. A
+`NumberField` mid-edit is its own case: it cancels only its own typed value on Escape, and the tool's Escape
+cancel is suppressed for that same press so the two never double-fire, picking back up on the next press once
+the field releases focus. A focused `TextRow`, `ChoiceRow`, or filter has no Escape handling of its own at
+all, so Escape is simply inert while one of those holds focus, until a pointer action elsewhere moves focus
+away. Shift+Escape is the one chord never gated by focus: it exits the editor by popping the scene off the
+`SceneManager` even from inside a focused field, since it is the one chord a user needs reachable from
+there. With no unsaved changes it pops immediately, and with unsaved changes the first press arms a
+status-strip warning ("Shift+Escape again to discard and exit") and a second Shift+Escape discards and
+exits. Any Ctrl+S or any document mutation (an edit, an undo, a redo) disarms the warning, so a stale discard
+confirmation can never fire after the user resumed working.
 The status strip leads with the active tool name and its `ModeHint` one-liner, then the undo/redo labels
 and the exit chord as a standing hint. The toolbar tab bar is mirrored back onto the live controller mode
 every frame, so a one-shot draw / bake tool returning to Select on completion (or an Escape cancel)
@@ -121,10 +131,23 @@ Exclusions, regions, and terrain features are also draggable through the transfo
 (`EditorToolController.TryGizmoTarget`/`RestrictHandle`, shared geometry helpers `ShapeGeometry`/
 `FeatureGeometry`): translate XZ moves the shape/feature center and the scale handle resizes its primary
 radius (a lake or flatten's `Radius`, a rim's `InnerRadius`/`OuterRadius` scaled together, a ridge's
-`Width`). There's no yaw ring, since none of these carry a yaw concept - only the placement gizmo draws and
-honours it. The drag snapshots the pre-drag shape/feature on grab and rewrites it from that fixed start each
-frame, routed through the same `Edit*ShapeCommand`/`EditFeatureCommand` merge as an inspector scrub, so a
-whole drag coalesces into one undo step.
+`Width`). A ridge or a rim with at least one pass also draws a yaw ring (`GizmoAffordance.MoveScaleRotate`):
+dragging it rotates the ridge's stored direction, or offsets every one of the rim's pass angles together by
+the same delta, tracking the cursor around the ring the same way the placement gizmo's ring does. A lake, a
+flatten, a passless rim, and the disc/rect shapes (exclusion or region) carry no orientation to show, so they
+keep the plain translate XZ + scale handle set with no ring at all, and none of these draw the placement
+gizmo's unusable +Y arrow either way. The drag snapshots the pre-drag shape/feature on grab and rewrites it
+from that fixed start each frame, routed through the same `Edit*ShapeCommand`/`EditFeatureCommand` merge as
+an inspector scrub, so a whole drag coalesces into one undo step.
+
+Any selected gizmo target also arms a body drag, not just placements and spawns: pressing anywhere on the
+object itself, away from every gizmo handle, and moving the pointer past
+`EditorToolController.BodyDragThreshold` (6 screen-space units, matching the outline tree's own row-drag
+threshold) drags it in XZ through the same translate-XZ path the gizmo's arrows use, starting from the
+press-time ground point (a placement or spawn moves via `MovePlacementCommand`/`MoveSpawnCommand`, a feature,
+exclusion, or region translates through the same command its gizmo arrows already use). A release below the
+threshold is a plain tap: the selection the press already made stands, and no history entry lands. The gizmo
+handles themselves are unaffected. A press that lands on a handle still grabs that handle exactly as before.
 
 **Overlay picking.** In `Select` mode, a ray that hits only the terrain (no placement or spawn) falls back
 to `OverlayPicking.Pick`, a containment test over the otherwise-invisible authoring shapes: a feature marker
@@ -221,9 +244,12 @@ GPU-free and fully unit-tested:
   were procedural. It captures the generated placements on first apply and reuses them on redo, so an
   undo/redo cycle is byte-identical.
 - `EditorToolController` is the GPU-free per-frame policy: it reads a plain `EditorFrameInput` (pick ray +
-  pointer/keyboard edges) and emits commands. Select mode picks and drives the transform-gizmo drag
-  (coalesced into one undo step, sealed on release). The place modes ground-snap a click into an Add. The
-  draw modes rubber-band a disc (drag) or rect (shift-drag) into an exclusion or an auto-named region. The
+  pointer/keyboard edges) and emits commands. Select mode picks (a press either grabs a gizmo handle or, past
+  `BodyDragThreshold` on the object's own body, arms a body drag on the same translate-XZ path) and drives
+  the transform-gizmo drag (coalesced into one undo step, sealed on release). The place modes place on the
+  press (a ground-snapped Add) and keep tracking the ground point while the pointer stays held, so the whole
+  press-hold-release gesture coalesces into that one Add's undo step. The draw modes rubber-band a disc
+  (drag) or rect (shift-drag) into an exclusion or an auto-named region. The
   bake mode drags a rect on the ground and bakes the `BakeLayer` scatter over it. The three draw tools
   (draw-exclusion, draw-region, bake-region) are one shot: a completed gesture (the release that emits the
   command) falls back to Select automatically, so the next click picks the shape rather than starting another.

@@ -3058,10 +3058,19 @@ by ray - on a terrain-only hit, falls back to an overlay pick over features/excl
 exclusion beats region, nearest-shape-center tiebreak within a category - then drag the transform gizmo,
 whose handle set depends on what's selected: a placement gets the full transform (translate XZ, translate Y,
 yaw ring, uniform scale), a spawn only the ground-plane translate (a marker plus visible XZ drag arrows, no
-other handles), and a feature or a disc/rect shape (exclusion or region) only translate XZ + uniform scale
-(no yaw ring, and no unusable +Y arrow like the placement gizmo draws),
-`PlacePlacement` (click ground-snaps the palette-selected `PlaceKind`), `PlaceSpawn` (click ground-snaps
-`SpawnArchetype`), `DrawExclusion` / `DrawRegion` (drag a disc, shift-drag a rect), `EditFeature`
+other handles), a rotatable terrain feature adds a yaw ring to translate XZ + uniform scale (a ridge, whose
+ring rotates its stored direction, or a rim with at least one pass, whose ring offsets every pass angle
+together), and every other feature or a disc/rect shape (exclusion or region) stays translate XZ + uniform
+scale with no ring at all (a lake, a flatten, a passless rim, and disc/rect shapes carry no orientation to
+show, and none of these draw the placement gizmo's unusable +Y arrow either). Pressing and holding on the
+selected object's own body, away from every handle, drags it in XZ through that same translate path once the
+pointer clears a small screen-space threshold, so a plain tap still only selects while a press-and-move
+drags. `PlacePlacement` and `PlaceSpawn` both place on the press (ground-snapping the palette-selected
+`PlaceKind` or `SpawnArchetype` and selecting the new element immediately), then keep tracking the ground
+point under the pointer for as long as it stays held, sealing the whole press-hold-release gesture into one
+undo step on release (undoing it removes the placement or spawn outright, not just its last nudge), while a
+plain click with no hold behaves exactly as before. `DrawExclusion` / `DrawRegion` (drag a disc, shift-drag a
+rect), `EditFeature`
 (click-places a default-parameterized feature of the list-selected `PlaceFeatureType` at the terrain hit),
 `BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into authored placements plus a covering
 exclusion). Four tools are one shot (`DrawExclusion`, `DrawRegion`, `BakeRegion`, `EditFeature`): a completed
@@ -3136,9 +3145,17 @@ A hidden element is neither drawn nor pickable from the viewport, but stays sele
 snaps the selected placement to the ground (undoable, a no-op when already grounded or nothing
 placement-shaped is selected), Ctrl+Up / Ctrl+Down reorder the selected terrain feature (see Feature apply
 order above, dragging a feature or exclusion row in the outline tree reorders it the same way), Escape
-cancels an in-flight gizmo/draw gesture and returns to `Select`. Shift+Escape exits the
-editor (pops the scene): unsaved changes arm a status-strip warning on the first press and a second
-Shift+Escape discards and exits, while any save or document mutation disarms the warning.
+cancels an in-flight gizmo/draw gesture and returns to `Select`. Every Ctrl chord above also accepts Cmd
+(Super) in its place (`InputState.IsCommandDown` treats the two as one modifier), so the same keys work
+unmodified on a Mac. All of the chords, plus the bare R hotkey, are suppressed while an inspector field, the
+kit-palette filter, or the spawn filter holds keyboard focus (`PropertyGrid.HasActiveEditor`), so typing a
+name or a filter query never leaks into a document command. Escape carries extra nuance under that gate: a
+`NumberField` mid-edit cancels only its own typed value on Escape, and the suppressed tool-cancel fires on
+the following press once the field releases focus, while a focused text or choice row (or either filter) has
+no Escape handling of its own, so Escape is simply inert there until a pointer action moves focus elsewhere.
+Shift+Escape is never gated: it exits the editor (pops the scene) from inside a focused field just as it does
+anywhere else. Unsaved changes arm a status-strip warning on the first press and a second Shift+Escape
+discards and exits, while any save or document mutation disarms the warning.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
 `MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A

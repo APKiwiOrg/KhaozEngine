@@ -98,6 +98,12 @@ public class MapEditorScene : GameScene, IGameScene3D
         LocalizedText.Raw("Bake"),
     };
 
+    // Pre-built gizmo mesh sets returned by ComputeGizmoMeshes, avoiding per-frame allocations.
+    static readonly GizmoMesh[] FullGizmoMeshes = new[] { GizmoMesh.TranslateArrowsFull, GizmoMesh.YawRing, GizmoMesh.ScaleHandle };
+    static readonly GizmoMesh[] MoveScaleGizmoMeshes = new[] { GizmoMesh.TranslateArrowsXZ, GizmoMesh.ScaleHandle };
+    static readonly GizmoMesh[] MarkerGizmoMeshes = new[] { GizmoMesh.SelectionMarker, GizmoMesh.TranslateArrowsXZ };
+    static readonly GizmoMesh[] NoneGizmoMeshes = Array.Empty<GizmoMesh>();
+
     Scene3D _scene = null!;
     Texture2D _white = null!;
     DpiFont _font = null!;
@@ -554,7 +560,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     /// <summary>Submits the transform-gizmo meshes for the current selection. The affordance-to-mesh-set
-    /// decision is the pure, headless-tested <see cref="ComputeGizmoMeshes"/>; only the per-entry
+    /// decision is the pure, headless-tested <see cref="ComputeGizmoMeshes"/>. Only the per-entry
     /// <see cref="MeshHandle"/> lookup and <see cref="Scene3D.DrawOverlayMesh"/> submission lives here.</summary>
     void DrawGizmo(Scene3D scene)
     {
@@ -569,17 +575,17 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>Which baked gizmo meshes <see cref="DrawGizmo"/> draws for a given affordance, in draw order.
     /// Pure (no GPU, no scene state), so the affordance-to-mesh-set decision is fully headless-testable: a spawn
     /// (<see cref="GizmoAffordance.Marker"/>) draws the selection marker plus the XZ arrows (the working
-    /// ground-plane drag is otherwise invisible); a feature / disc / rect shape
+    /// ground-plane drag is otherwise invisible). A feature / disc / rect shape
     /// (<see cref="GizmoAffordance.MoveScale"/>) draws the XZ arrows plus the scale cube, never the +Y arrow
-    /// (<c>EditorToolController.RestrictHandle</c> already blocks that handle for both); a placement
+    /// (<c>EditorToolController.RestrictHandle</c> already blocks that handle for both). A placement
     /// (<see cref="GizmoAffordance.Full"/>) keeps every handle. <see cref="DrawGizmo"/> submits the result
     /// untested.</summary>
     internal static GizmoMesh[] ComputeGizmoMeshes(GizmoAffordance affordance) => affordance switch
     {
-        GizmoAffordance.Full => new[] { GizmoMesh.TranslateArrowsFull, GizmoMesh.YawRing, GizmoMesh.ScaleHandle },
-        GizmoAffordance.MoveScale => new[] { GizmoMesh.TranslateArrowsXZ, GizmoMesh.ScaleHandle },
-        GizmoAffordance.Marker => new[] { GizmoMesh.SelectionMarker, GizmoMesh.TranslateArrowsXZ },
-        _ => Array.Empty<GizmoMesh>(),
+        GizmoAffordance.Full => FullGizmoMeshes,
+        GizmoAffordance.MoveScale => MoveScaleGizmoMeshes,
+        GizmoAffordance.Marker => MarkerGizmoMeshes,
+        _ => NoneGizmoMeshes,
     };
 
     MeshHandle MeshHandleFor(GizmoMesh mesh) => mesh switch

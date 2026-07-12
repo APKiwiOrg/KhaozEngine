@@ -2066,9 +2066,18 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         // A name-keyed layer selection whose layer was removed (its inspector remove button, or an undo) is now
         // dangling: clear it here (outside the grid's row iteration), which rebuilds the inspector to the fallback.
+        // Skip while the Name row is still focused, the same gate the pending-reselect fires on above. TextRow's
+        // setter fires per keystroke and renames the document layer immediately, but only queues a deferred
+        // reselect that lands once the row loses focus, so the selection id still holds the OLD name for the rest
+        // of a mid-rename frame. Without this gate the first keystroke of an inline rename would see the old name
+        // resolve to nothing and clear the selection, tearing down the very row the user is typing into. A real
+        // removal still clears here on the same frame, because the remove button's own tap unfocuses the row first
+        // (TextInput.Update unfocuses on a tap outside its bounds, and the grid visits the Name row before the
+        // remove-button row), so the guard cannot skip a legitimate clear forever.
         EditorSelection sel = _document.Selection;
-        if (sel.Kind == SelectionKind.ScatterLayer && ScatterLayerByName(sel.Id) is null) { _document.Selection.Clear(); return; }
-        if (sel.Kind == SelectionKind.CompanionLayer && CompanionLayerByName(sel.Id) is null) { _document.Selection.Clear(); return; }
+        bool nameRowFocused = _nameRow is not null && _nameRow.Input.IsFocused;
+        if (sel.Kind == SelectionKind.ScatterLayer && ScatterLayerByName(sel.Id) is null && !nameRowFocused) { _document.Selection.Clear(); return; }
+        if (sel.Kind == SelectionKind.CompanionLayer && CompanionLayerByName(sel.Id) is null && !nameRowFocused) { _document.Selection.Clear(); return; }
 
         if (_inspectorShapeKind is string builtShape &&
             !string.Equals(ShapeKind(SelectedShape()), builtShape, StringComparison.Ordinal))

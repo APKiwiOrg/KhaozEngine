@@ -2081,6 +2081,47 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void ScatterLayerRename_MidEditFrame_KeepsSelectionAndRow()
+        {
+            // The interactive sequence the test above never exercises: TextRow's setter fires the rename on every
+            // keystroke while the row is STILL focused (not just on blur), so a frame can land between a keystroke
+            // and the blur with the document already renamed but the row still open and the selection still on the
+            // OLD name. That frame must not tear the inspector down under the user.
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+
+            TextRow name = TextRowByLabel(scene.Inspector, "Name");
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("forest");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);   // one keystroke: setter fires, row stays focused
+
+            Assert.Equal("forest", scene.Document.Doc.ScatterLayers[0].Name);   // renamed already
+            Assert.True(name.Input.IsFocused);   // still focused, mid-edit
+
+            // Pump a frame WITHOUT blurring. The old name is now dangling (renamed away), but the row is still
+            // open: the vanished-selection guard must not clear the selection out from under the user.
+            scene.OnUpdate(0.016f);
+
+            Assert.Equal(SelectionKind.ScatterLayer, scene.Document.Selection.Kind);   // selection survived
+            Assert.Equal("trees", scene.Document.Selection.Id);   // pending re-select has not landed yet (still focused)
+            Assert.Same(name, TextRowByLabel(scene.Inspector, "Name"));   // same row instance: not torn down mid-edit
+            Assert.True(name.Input.IsFocused);   // the live editor is still focused
+
+            // Blur and pump again: the deferred re-select lands on the new name.
+            name.Input.IsFocused = false;
+            scene.OnUpdate(0.016f);
+            Assert.Equal(SelectionKind.ScatterLayer, scene.Document.Selection.Kind);
+            Assert.Equal("forest", scene.Document.Selection.Id);
+        }
+
+        [Fact]
         public void ExclusionLayerRows_FollowScatterLayerAddAndRename()
         {
             // The Task 2 review carry-forward: the exclusion inspector's layer-targeting rows capture the scatter

@@ -15,6 +15,14 @@ public sealed class SnapshotBlobWriter
 {
     private readonly List<(long netId, List<SnapshotBlobComponent> comps)> entities = new();
 
+    // Reused across repeated ToArray calls on this instance (its capacity is retained), so re-serializing a blob does
+    // not allocate a fresh stream each time. Not shared across instances or threads.
+    private readonly MemoryStream scratch = new();
+    private readonly BinaryWriter writer;
+
+    /// <summary>Creates an empty blob writer.</summary>
+    public SnapshotBlobWriter() => writer = new BinaryWriter(scratch);
+
     /// <summary>Appends an entity with its ordered component frames. Component order is preserved verbatim.</summary>
     public SnapshotBlobWriter AddEntity(long netId, IEnumerable<SnapshotBlobComponent> components)
     {
@@ -23,11 +31,12 @@ public sealed class SnapshotBlobWriter
         return this;
     }
 
-    /// <summary>Serializes the accumulated entities to a snapshot blob.</summary>
+    /// <summary>Serializes the accumulated entities to a snapshot blob. The returned array is a fresh exact-size copy
+    /// the caller owns, and the internal scratch stream is reused across calls.</summary>
     public byte[] ToArray()
     {
-        using var ms = new MemoryStream();
-        using var bw = new BinaryWriter(ms);
+        scratch.SetLength(0); // reset position + length, keep the buffer capacity for reuse
+        BinaryWriter bw = writer;
         bw.Write(entities.Count);
         foreach ((long netId, List<SnapshotBlobComponent> comps) in entities)
         {
@@ -41,6 +50,6 @@ public sealed class SnapshotBlobWriter
             bw.Write((ushort)0);   // end-of-entity terminator
         }
         bw.Flush();
-        return ms.ToArray();
+        return scratch.ToArray();
     }
 }

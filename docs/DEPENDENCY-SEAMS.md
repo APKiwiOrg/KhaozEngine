@@ -28,6 +28,22 @@ Three properties fall out of it:
 - **Pay-for-what-you-use.** Backends that pull a heavy or platform-specific dependency are **opt-in** (not in
   any umbrella metapackage) and added by id, so a consumer that does not need them does not drag them in.
 
+### Mechanically enforced
+
+These graph rules are not just prose. Headless architecture tests in `KhaozEngine.Tests` read the real
+`*.csproj` files and fail CI when an edit breaks them:
+
+- `ArchitectureTests.cs` - third-party containment (every third-party PackageReference stays in its allowlisted
+  seam/backend home, and any new one must be added to the allowlist deliberately), the layering invariants
+  (`Primitives` / `Simulation` are zero-dependency leaves, the Foundation umbrella stays GPU-free, `App` never
+  references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
+  every umbrella's transitive closure, and `Render3D` staying seams-only.
+- `GpuPublicApiTests.cs` - a reflection guard that walks the public and protected surface of `KhaozEngine.Gpu`
+  and fails if any Veldrid type leaks through it, proving the GPU seam keeps Veldrid contained.
+
+Changing a documented edge therefore means changing the matching expectation in these tests, so the graph and
+this doc cannot silently drift apart.
+
 ## Every seam in the engine
 
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
@@ -150,8 +166,10 @@ The pattern is applied at the granularity the dependency warrants:
 
 1. **Separate opt-in backend package** (the strongest split): GPU, physics, netcode transport, persistence,
    the commerce wallet. The third-party reference lives in its own package so consumers pick it explicitly.
-   Physics, netcode, worldstore, and commerce SQL backends are genuinely opt-in (excluded from umbrellas);
-   the Veldrid binding ships inside `KhaozEngine.Gpu` because rendering is not optional for a windowed game.
+   Physics, worldstore, and commerce SQL backends are genuinely opt-in (excluded from umbrellas); the Veldrid
+   binding ships inside `KhaozEngine.Gpu` because rendering is not optional for a windowed game, and the
+   LiteNetLib transport backend is deliberately bundled into the `Server` umbrella because a server needs a
+   real transport out of the box.
 2. **Seam + default + null, one package** (audio): the contract, the real OpenAL backend, and a no-op
    `Null*` backend live together. The null backend keeps audio headless-testable and lets a server run with
    no device, while still being one `add` for a game that wants sound.

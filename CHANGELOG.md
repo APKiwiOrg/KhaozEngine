@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.69.2
+
+Character rest-stability fixes in `KhaozEngine.Locomotion`. A grounded capsule at rest no longer creeps down a walkable prop slope, a capsule that stops mid-stair-climb no longer slides back or drops a step, and an angled first-step mount no longer flickers airborne at the terrain-to-prop handoff. These are behavior fixes inside the shared `CharacterMovement.Step`, byte-identical on both heads, so **no game-side change is needed to adopt them**.
+
+### Resting characters do not creep on walkable prop slopes
+
+**A grounded capsule with NO horizontal command depenetrates a WALKABLE contact vertically, dropping the correction's horizontal component.** Standing at rest on any tilted walkable physics surface (a ramped prop, a domed rock top), the swept depenetration used to push the capsule out along the full contact normal every tick, sliding it down-slope by `ResolveSlop * sin(slope)` per tick (about 0.5 m at 10 degrees over 5 seconds, worse on steeper faces). Analytic terrain never showed this because it is not in the physics world. A resting capsule below the slope gate is now static, matching terrain.
+
+- **Both depenetration passes (`CharacterMovement`).** The residual-overlap settle pass and the pre-sweep inflated depenetrate both resolve a walkable-normal correction vertically only when the capsule is grounded with no command, gated on the command bit rather than merely on being grounded. A steep (wall or riser) contact still takes the full horizontal MTV, so walking INTO a wall still pushes out horizontally, and a capsule actively running up a stair still extracts from the risers it embeds into. NaN defenses are preserved. The static-at-rest-below-the-gate behavior is the intended design (a future steep-face slide policy, if ever wanted, would branch on the non-walkable normal, noted in a comment).
+
+### Stopping on stairs does not slide back or down
+
+**A zero-command tick while grounded and elevated on a step holds XZ.** Releasing input mid-climb, the tick-0 settle depenetration used to shove the capsule backward off the riser it was mounting (about 2 m/s at walk, a 0.4 m single-tick snap at run) and settle it a step down. The monotone-forward hold now also fires on zero input under the same arming (grounded, elevated on a step, not rising ballistically), so a capsule that stops mid-climb settles vertically onto the tread it is on instead of being knocked back a riser.
+
+### First-step mounts do not flicker airborne at the handoff
+
+**The stair-climb ground-stick also holds grounded when the capsule still overlaps the step it is mounting.** Approaching a building step (a real one-sided baked proxy) at an angle, the step-up lifts the capsule a hair above terrain, its feet-down ray fan misses the narrow step, and `Grounded` flipped false for many ticks (8 to 14 out of 120 in a sweep) while the body was plainly still embedded in the step. Each such tick pops a presentation-smoothed avatar to physics. The ground-stick now also holds grounded when a static overlap remains (an honest "a step contact remains" signal the feet-ray fan cannot see through the riser), so an angled press stays grounded. It holds only the grounded FLAG, never the support height, so it cannot stall or float the paced climb, and a genuine walk off a ledge (open air, no overlap) still releases and falls (the grounded-stick ledge-release pin is unchanged).
+
+Consumer note: no game-side change is required. A game that wants the model and follow camera to read the commanded planar speed, rather than the derived position delta that wobbles through these settle passes, can separately wire the `CharacterSample` `PlanarSpeed` presentation contract (unchanged by this work).
+
+## 10.69.1
+
+Headless architecture tests in `KhaozEngine.Tests` now mechanically enforce the documented dependency-graph rules, and a reflection guard proves `KhaozEngine.Gpu` leaks no Veldrid type on its public surface. No package content changed.
+
+- **`ArchitectureTests.cs` (`KhaozEngine.Tests`).** Reads the real `*.csproj` files and fails on drift: every third-party `PackageReference` stays inside its allowlisted seam/backend home (a new one must be added to the allowlist deliberately), `Primitives` and `Simulation` stay zero-dependency leaves, the Foundation umbrella's transitive closure stays GPU-free, `App` never references `Gui`, the `ProjectReference` membership of the four umbrellas (`Foundation`/`Game2D`/`Game3D`/`Server`) is locked, opt-in backends (physics, worldstore, commerce SQL) are unreachable from any umbrella, and `Render3D` is restricted to its documented seam set.
+- **`GpuPublicApiTests.cs` (`KhaozEngine.Tests`).** A reflection guard walks the public and protected surface of `KhaozEngine.Gpu` and fails if any Veldrid type leaks through, proving the GPU seam actually contains Veldrid rather than just documenting that it should.
+- **`docs/DEPENDENCY-SEAMS.md`.** Gained a "Mechanically enforced" section pointing at the two test files above, and tightened the opt-in-backends wording: physics, worldstore, and commerce SQL backends are genuinely opt-in, while the LiteNetLib transport backend is called out as deliberately bundled into the `Server` umbrella since a server needs a real transport.
+
 ## 10.69.0
 
 Editor polish round: the cel-shading outline is now opt-in per consumer instead of on by default, ridge terrain carving is opt-in instead of a mandatory notch, map editor gizmos gained visible spawn-marker drag arrows and dropped an inert axis, and the Gui TreeView gained drag-and-drop row reorder that the map editor outline uses to reorder features and exclusions.

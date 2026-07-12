@@ -193,11 +193,22 @@ namespace KhaozEngine.Game
         /// <summary>The entity key this pose belongs to (matches <see cref="CharacterSample.Id"/>).</summary>
         public long Id { get; }
 
-        /// <summary>The world transform: <c>scale * RotationY(facingYaw) * Translation(position)</c>. The uniform
+        /// <summary>The world transform: <c>scale * RotationY(facingYaw) * Translation(renderPosition)</c>. The uniform
         /// scale is <see cref="CharacterAnimatorTuning.Scale"/> (default 1), so the consumer can draw with this
         /// matrix directly. The facing yaw assumes the asset's rest pose faces +Z; see
-        /// <see cref="CharacterAnimatorTuning.FacingYawOffset"/> for assets that do not.</summary>
+        /// <see cref="CharacterAnimatorTuning.FacingYawOffset"/> for assets that do not. The translation is the SMOOTHED
+        /// render position (see <see cref="RenderPosition"/>): the sample X/Z with the slope-glide-smoothed feet-Y, so the
+        /// drawn model glides up stairs instead of bobbing per riser.</summary>
         public Matrix4x4 World { get; }
+
+        /// <summary>The presentation position the character is DRAWN at this frame: the sample's X/Z (never smoothed, so
+        /// movement stays responsive) with the feet-Y smoothed by the slope-fed stair-glide smoother
+        /// (<see cref="CharacterAnimatorTuning.SlopeGlideRate"/>). Point a follow camera's target at THIS (not the raw
+        /// sample/predicted position) so the camera glides up and down stairs with the model instead of jolting on each
+        /// riser; the drawn model already uses it via <see cref="World"/>. On flat ground and while airborne this equals
+        /// the raw sample position (the smoother is identity there), so a consumer can target it unconditionally. Equal to
+        /// <c>World.Translation</c> by construction (the smoothed translation is baked into <see cref="World"/>).</summary>
+        public Vector3 RenderPosition => World.Translation;
 
         /// <summary>Joint-WORLD bone palette for <c>Scene3D.DrawSkinned</c> (a <c>Matrix4x4[]</c>, so it passes
         /// straight to the span-taking draw call - same type as <see cref="AnimatedCharacter.Pose"/>). Transient (see
@@ -297,6 +308,31 @@ namespace KhaozEngine.Game
         /// <see cref="LocomotionSpeedSync.DefaultMaxMultiplier"/>. Default 3.0.</summary>
         public float MaxLocomotionRate;
 
+        /// <summary>Critical-damp settle rate (radians/second) of the SLOPE-FED render-height smoother that makes a stair
+        /// climb read as a smooth glide up the stair slope instead of a per-riser bob. The paced stair-climb sim
+        /// deliberately produces a per-riser vertical sawtooth (a ~120-140 mm peak-to-peak render-Y bob at 4-9 Hz on a
+        /// 0.30/0.40 staircase - the deliberate per-riser pause, unchanged), which a plain low-pass cannot flatten without
+        /// lagging the feet on the ramp. Instead <see cref="ReplicatedCharacterAnimators.Update"/> advances a smoothed
+        /// feet-Y by <c>horizontalDelta * estimatedGrade</c> (the grade read from a short window of dY/dXZ), which tracks
+        /// the ramp line with NO lag, then critically damps that smoothed-Y toward the true feet-Y at THIS rate to correct
+        /// grade drift and settle onto real tread tops. The smoothed height is baked into <see cref="CharacterPose.World"/>
+        /// and exposed as <see cref="CharacterPose.RenderPosition"/> (point a follow camera at that).
+        /// <para>Default 5 (rad/s). Derivation: the per-riser sawtooth sits at 4-9 Hz (25-56 rad/s); a first-order response
+        /// at 5 rad/s attenuates that band to about a fifth of the raw bob (the feed-forward carries the ramp, this damping
+        /// barely responds to the fast bob) yet settles a mid-stair rest offset to a few mm in about 0.8 s. On flat ground
+        /// the grade reads ~0, the feed-forward term is off, and the damp-toward-true is a no-op from the seeded state, so
+        /// render-Y equals the true Y byte-for-byte (identity, no behaviour change). <b>Set &lt;= 0 to disable</b> the
+        /// smoother entirely (render-Y is always the true feet-Y, byte-identical to the pre-feature bridge).</para></summary>
+        public float SlopeGlideRate;
+
+        /// <summary>Render-height gap (metres) beyond which the slope-fed smoother SNAPS the smoothed feet-Y to the true
+        /// feet-Y instead of gliding - a teleport, a fall, a jump takeoff, or a ledge walk-off should be crisp, not crawl
+        /// up over a fraction of a second. Mirrors <see cref="CharacterAvatar.RenderHeightSnapDistance"/>: default 1.5,
+        /// well above any single stair riser (0.30) and below a floor-to-floor jump. The epoch teleport hard-cut standard
+        /// holds through this (an authoritative teleport is a large gap, so it snaps same-frame and is never smoothed).
+        /// Only consulted when <see cref="SlopeGlideRate"/> &gt; 0.</summary>
+        public float SlopeGlideSnapDistance;
+
         /// <summary>The <see cref="LocomotionSpeedSync"/> these fields describe, applied to brains this set
         /// constructs. Disabled unless <see cref="SyncLocomotionToSpeed"/> is set.</summary>
         public readonly LocomotionSpeedSync SpeedSync() => SyncLocomotionToSpeed
@@ -323,7 +359,15 @@ namespace KhaozEngine.Game
             SwimClipSpeed = 0f,
             MinLocomotionRate = LocomotionSpeedSync.DefaultMinMultiplier,
             MaxLocomotionRate = LocomotionSpeedSync.DefaultMaxMultiplier,
+            SlopeGlideRate = DefaultSlopeGlideRate,
+            SlopeGlideSnapDistance = DefaultSlopeGlideSnapDistance,
         };
+
+        /// <summary>Default <see cref="SlopeGlideRate"/> (rad/s): 5. See that field for the derivation.</summary>
+        public const float DefaultSlopeGlideRate = 5f;
+
+        /// <summary>Default <see cref="SlopeGlideSnapDistance"/> (metres): 1.5.</summary>
+        public const float DefaultSlopeGlideSnapDistance = 1.5f;
     }
 
     /// <summary>Owns one <see cref="AnimatedCharacter"/> per replicated entity and turns a per-frame stream of
@@ -353,7 +397,27 @@ namespace KhaozEngine.Game
             public Vector3 DispAccum;   // displacement summed within the current velocity window
             public float TimeAccum;     // elapsed time summed within the current velocity window
             public Vector3 Velocity;    // last closed-window velocity, held across zero-delta frames
+            public float SmoothedY;     // slope-glide-smoothed feet height (see the smoother in Update); seeded to true
+            public float GradeSumY;     // leaky-integrated vertical displacement (grade window numerator)
+            public float GradeSumXZ;    // leaky-integrated horizontal distance (grade window denominator)
         }
+
+        // --- Slope-fed render-height smoother constants (the two tunables live on CharacterAnimatorTuning) --------------
+        // GRADE window: the dY/dXZ ratio is read from an exponentially-weighted sliding window of this length, so it
+        // averages the per-riser sawtooth into the true mean grade. ~2 riser cadence cycles at walk (a cycle is ~0.23 s on
+        // a 0.30/0.40 stair at walk) and ~3 at run - long enough to average the bob, short enough to re-establish the
+        // grade within ~0.5 s at a stair top/bottom. Leaky (two O(1) accumulators), so no per-entity ring buffer/alloc.
+        const float GradeWindowSeconds = 0.45f;
+        // Below this |grade| (a ~3 degree slope) the feed-forward term is OFF: the bob is sub-millimetre and the
+        // damp-toward-true alone keeps flat ground byte-identical to the raw sample Y.
+        const float MinGradeForGlide = 0.05f;
+        // Clamp on the grade estimate (~56 degrees): above the 45 degree walkable-slope gate so real (even steep) stairs
+        // feed forward, while rejecting the near-zero-horizontal ratio blow-up (a paused riser tick).
+        const float MaxGrade = 1.5f;
+        // Exact |vertical velocity| above this (only when the sample carries exact movement) forces a SNAP, so a jump
+        // takeoff / fall stays crisp. A grounded paced stair climb reports ~0 (the rise is a position adjustment, not a
+        // ballistic velocity); a jump/fall reports several m/s - 2.0 sits cleanly between.
+        const float BallisticVerticalSpeed = 2.0f;
 
         readonly Func<AnimatedCharacter> _factory;
         readonly CharacterAnimatorTuning _tuning;
@@ -427,6 +491,10 @@ namespace KhaozEngine.Game
                         // (FacingYaw + FacingYawOffset), so the first frame's LerpAngle has zero delta and holds it.
                         // No explicit facing -> default 0 (the derived path turns in from travel as before).
                         Yaw = s.FacingYaw.HasValue ? s.FacingYaw.Value + _tuning.FacingYawOffset : 0f,
+                        // Seed the smoothed feet-Y at the true height so a spawn draws exactly at the sample position (no
+                        // ease-in from 0), and so flat ground stays byte-identical (the damp-toward-true is a no-op from
+                        // an already-equal state).
+                        SmoothedY = s.Position.Y,
                     };
                     _entries[s.Id] = e;
                 }
@@ -506,9 +574,55 @@ namespace KhaozEngine.Game
 
                 e.Character.Update(locomotionSpeed, grounded, verticalVelocity, swimming, dt);
 
+                // SLOPE-FED render-height smoother: turn the paced stair-climb sim's per-riser vertical sawtooth (a
+                // deliberate ~120-140 mm bob at 4-9 Hz - the sim is UNCHANGED) into a smooth glide up the stair slope,
+                // for the drawn model (baked into World below) AND a follow camera (CharacterPose.RenderPosition). A plain
+                // low-pass can't win here: attenuating a 4 Hz bob costs 15-22 cm of feet-float LAG on the ramp. Instead we
+                // FEED FORWARD from horizontal motion (which carries no sawtooth): advance SmoothedY by
+                // horizontalDelta * estimatedGrade so it tracks the ramp line with no lag, then critically damp SmoothedY
+                // toward the true feet-Y to correct grade drift and settle onto real tread tops. Guards mirror
+                // CharacterAvatar: !grounded / a ballistic vertical / a swim / a teleport-sized gap all SNAP to true so
+                // jumps, falls, ledge walk-offs, and the epoch teleport hard-cut stay crisp (never smoothed).
+                float trueFeetY = s.Position.Y;
+                if (_tuning.SlopeGlideRate > 0f && dt > 0f)
+                {
+                    Vector3 frameDelta = s.Position - e.PrevPosition;
+                    float horizontalDelta = new Vector2(frameDelta.X, frameDelta.Z).Length();
+
+                    // Grade = windowed dY / dXZ, over an exponentially-weighted sliding window (two O(1) leaky sums, no
+                    // per-entity buffer). Same decay on both sums, so a stationary entity holds its last grade (the ratio
+                    // is decay-invariant) and the numerator/denominator decay to zero together -> guarded to 0.
+                    float decay = MathF.Exp(-dt / GradeWindowSeconds);
+                    e.GradeSumY = e.GradeSumY * decay + frameDelta.Y;
+                    e.GradeSumXZ = e.GradeSumXZ * decay + horizontalDelta;
+                    float grade = e.GradeSumXZ > 1e-5f ? e.GradeSumY / e.GradeSumXZ : 0f;
+                    grade = Math.Clamp(grade, -MaxGrade, MaxGrade);
+
+                    bool ballistic = s.HasMovement && MathF.Abs(s.VerticalVelocity) > BallisticVerticalSpeed;
+                    if (swimming || !grounded || ballistic
+                        || MathF.Abs(trueFeetY - e.SmoothedY) > _tuning.SlopeGlideSnapDistance)
+                    {
+                        e.SmoothedY = trueFeetY;   // bypass / snap: crisp jumps, falls, teleports, swims
+                    }
+                    else
+                    {
+                        // Feed-forward along the estimated slope (lag-free ramp tracking); OFF below a ~3 degree grade so
+                        // flat ground stays byte-identical. Signed grade -> ascent raises, descent lowers, symmetrically.
+                        if (MathF.Abs(grade) > MinGradeForGlide && horizontalDelta > 1e-6f)
+                            e.SmoothedY += horizontalDelta * grade;
+                        // Critically damp toward the true feet-Y: corrects grade drift and settles onto real tread tops at
+                        // rest. From an already-equal state (flat ground) this is a no-op, so render-Y == true Y exactly.
+                        e.SmoothedY += (trueFeetY - e.SmoothedY) * (1f - MathF.Exp(-_tuning.SlopeGlideRate * dt));
+                    }
+                }
+                else
+                {
+                    e.SmoothedY = trueFeetY;   // smoother disabled (rate <= 0) or a priming/paused tick: draw at true
+                }
+
                 Matrix4x4 world = Matrix4x4.CreateScale(_tuning.Scale)
                                   * Matrix4x4.CreateRotationY(e.Yaw)
-                                  * Matrix4x4.CreateTranslation(s.Position);
+                                  * Matrix4x4.CreateTranslation(s.Position.X, e.SmoothedY, s.Position.Z);
                 _live.Add(new CharacterPose(s.Id, world, e.Character.Pose, e.Character.State, s.IsLocal));
 
                 e.PrevPosition = s.Position;

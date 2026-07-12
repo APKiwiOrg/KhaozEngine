@@ -84,6 +84,17 @@ turret, a mount, a player standing still and turning) a sample can carry an EXPL
 even while stationary and wins over the derived heading while moving. `FacingYawOffset` still composes.
 See `docs/USING-KHAOZENGINE.md`.
 
+The bridge also SMOOTHS the drawn feet height on stairs. The paced stair-climb sim deliberately produces a per-riser
+vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40 staircase; the sim is unchanged), which reads as
+a bumpy jolt on the model and any follow camera. Rather than low-pass the height (which would lag the feet on the ramp),
+each `Update` FEEDS FORWARD from horizontal motion: it advances a smoothed feet-Y by `horizontalDelta * estimatedGrade`
+(grade read from a short window of dY/dXZ) so it tracks the ramp line with no lag, then critically damps that toward the
+true feet-Y at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s) to correct drift and settle onto real treads. The
+smoothed height is baked into `CharacterPose.World` and exposed as **`CharacterPose.RenderPosition`** - point a follow
+camera at that (not the raw predicted position) and the model glides up stairs to match. It is identity on flat ground
+(the grade reads ~0, so render-Y equals the sample Y byte-for-byte) and SNAPS to true on a jump / fall / swim / a gap
+beyond `SlopeGlideSnapDistance` (a teleport), so those stay crisp. On by default; set `SlopeGlideRate <= 0` to disable.
+
 ### Locomotion states + clips
 
 `LocomotionState` = `Idle`/`Walk`/`Run` (ground, by speed), `Jump`/`Fall` (air, by vertical sign), and

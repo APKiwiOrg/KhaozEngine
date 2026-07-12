@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Stair climbs render as a smooth glide up the stair slope (slope-fed render smoothing in the character bridge)
+
+**`ReplicatedCharacterAnimators` now smooths the drawn feet height on stairs, so a climb reads as a glide up the stair slope instead of a per-riser bob, for the drawn model AND a follow camera, while the paced movement sim is completely unchanged.** The paced stair-climb deliberately produces a per-riser vertical sawtooth (a ~120-140 mm peak-to-peak render-Y bob at 4-9 Hz on a 0.30/0.40 staircase, measured at walk 3 / run 6, dt 1/30), the deliberate per-riser pause. A plain low-pass cannot flatten that without lagging the feet 15-22 cm on the ramp, so the bridge FEEDS FORWARD from horizontal motion instead: each `Update` advances a per-entity smoothed feet-Y by `horizontalDelta * estimatedGrade` (the grade read from a short exponentially-weighted window of dY/dXZ), which tracks the ramp line with no lag, then critically damps that smoothed-Y toward the true feet-Y to correct grade drift and settle onto real tread tops. On the synthetic measured profile this cuts the render-Y bob from ~120 mm to ~40 mm peak-to-peak (about a third) at both walk and run, and it stays monotone through the climb.
+
+- **New API.** `CharacterPose.RenderPosition` (the sample X/Z with the smoothed feet-Y, equal to `World.Translation`) - point a follow camera at this rather than the raw predicted position, and the drawn model already uses it via `World`. Two `CharacterAnimatorTuning` fields: `SlopeGlideRate` (rad/s, default 5) is the critical-damp settle rate, and `SlopeGlideSnapDistance` (m, default 1.5) is the gap beyond which the height snaps rather than glides.
+- **Identity where it must be.** On flat ground the grade reads ~0, the feed-forward term is off, and the damp-toward-true is a no-op from the seeded state, so `RenderPosition` equals the raw sample position byte-for-byte (no behaviour change vs the pre-feature bridge). A jump takeoff, a fall, a ledge walk-off, a swim, or a teleport-sized gap (beyond `SlopeGlideSnapDistance`) all SNAP to the true height same-frame, so those stay crisp and the epoch teleport hard-cut is never smoothed.
+- **On by default, allocation-free.** The grade estimate is two O(1) leaky accumulators per entity (no ring buffer). It runs on the local player and every remote (the pose-bake path is shared). Set `SlopeGlideRate <= 0` to disable it entirely (render-Y is then the raw feet-Y).
+- **Consumer note.** Target the follow camera at `CharacterPose.RenderPosition` (or an entry's smoothed position) and the model picks up the same smoothed height automatically via the pose. No other change is needed. Covered by new headless tests `StairGlideSmootherTests`.
+
 ## 10.72.0
 
 ### Replication hot path, ECS parallel pooling, and a NativeAOT server gate

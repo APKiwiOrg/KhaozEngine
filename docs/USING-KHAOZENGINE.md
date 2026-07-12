@@ -1612,6 +1612,17 @@ The set is render-free and headless-testable (owns no GPU handle, never calls `S
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
 
+The bridge smooths the drawn FEET HEIGHT on stairs so a climb reads as a glide, not a per-riser bob. A paced
+stair-climb produces a deliberate per-riser vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40
+staircase). A plain low-pass would lag the feet on the ramp, so the bridge instead feeds forward from horizontal
+motion: it advances a smoothed feet-Y by `horizontalDelta * grade` (grade from a short dY/dXZ window) to track the ramp
+line lag-free, then critically damps toward the true feet-Y at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default
+5) to settle onto real treads. The smoothed height is baked into `CharacterPose.World` and exposed as
+`CharacterPose.RenderPosition` - **point a follow camera at `p.RenderPosition`** (not the raw predicted position) so the
+camera glides with the model. It is identity on flat ground (grade ~0, so `RenderPosition == the sample position`) and
+snaps to true on a jump, fall, swim, or a gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance` (a teleport), so
+those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y).
+
 The derived velocity is averaged over a short sliding window (`CharacterAnimatorTuning.VelocityWindowSeconds`,
 default 1/30 s = one tick) rather than a single frame's delta. That matters because the position you feed
 PLATEAUS between server ticks - `ClientPrediction.RenderedState` clamps the inter-tick fraction at 1, so once

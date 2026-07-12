@@ -33,6 +33,13 @@ forward push), so that fix neither covers nor regresses it. No shipped consumer 
 consumers' stairs are convex boxes, which the tread-find fix fully covers - so it is recorded here rather than
 patched. Documented in the `ConsumerStairBaseMountTests` header.
 
+Gate the up-tilted-lip step-up on elevation above the current SUPPORT floor (props included), not analytic
+terrain alone. The lip step-up widened in the short-riser/tread-lip fix keys its near-floor gate off the
+analytic terrain height only (`StepUpEligible`), so a short lip sitting on TOP of a prop platform more than a
+StepHeight above terrain still fails the gate and dead-stalls. Pre-existing behaviour, narrowed by the widening
+rather than regressed (the near-vertical band is unaffected), but the proper fix is to track the capsule's
+current support height including props and gate against that. Documented in the `StepUpEligible` doc comment.
+
 ### 2. Visual fidelity (textures + materials)
 
 Terrain PBR splat and per-prop albedo/normal/roughness materials (`PropLoader.LoadPropWithMaterial`) have

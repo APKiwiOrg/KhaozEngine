@@ -983,23 +983,9 @@ public static class CharacterMovement
                 if (TryContactNormal(world, capsule, pos, dir, out Vector3 recovered))
                 {
                     if (recovered.Y >= cosMaxSlope) { Vector3 h = remaining; h.Y = 0f; pos += h; break; }  // walkable floor: pass horizontal
-                    // Before wall-sliding forever, try to MOUNT a lip. A SHORT tread lip / low riser creeps the
-                    // capsule tangent until the sweep here degenerates (t=0 zero normal), and the recovered face is
-                    // an up-tilted, non-walkable lip normal - a step-up candidate that the old branch never tried,
-                    // so the capsule froze tangent (penetration 0, Y never rising) on a mountable step. Attempt the
-                    // step-up from the recovered normal while grounded and eligible (same StepUpEligible gate as the
-                    // main path: a near-vertical riser anywhere, an up-tilted lip near the terrain floor); its own
-                    // up/forward/down sweeps validate a real ledge within StepHeight, so a genuine wall finds none and
-                    // falls through to the slide below unharmed. Mirrors the main-path step-up so a one-sided
-                    // doorstep/curb behaves like a solid one.
-                    if (grounded && StepUpEligible(recovered.Y, pos, t, cosMaxSlope, groundHeight) &&
-                        TryStepUp(world, capsule, pos, remaining, recovered, t, groundHeight, out Vector3 steppedLip, out float landedNyLip) &&
-                        LipLandingOk(recovered.Y, landedNyLip))
-                    {
-                        steppedUp = true; steppedFloorY = steppedLip.Y;
-                        pos = steppedLip;
-                        break;
-                    }
+                    // No step-up attempt here: TryStepUp from this flush-tangent start was tried and proven unable to
+                    // seat (its sweeps fail from tangent), so a mountable lip routes via the main-path step-up on the
+                    // re-approach tick after this step-off.
                     pos += recovered * SkinWidth;                          // step off the wall so the next sweep is clean
                     Vector3 horiz = new(remaining.X, 0f, remaining.Z);     // slide the horizontal along the wall's HORIZONTAL plane,
                     Vector3 nH = new(recovered.X, 0f, recovered.Z);        // then RE-SWEEP it (continue) so a perpendicular wall (corner) still blocks
@@ -1249,6 +1235,14 @@ public static class CharacterMovement
     // RecoverSweepRadii * radius (> 2x the contact distance) to be registered reliably.
     private const float RecoverBackRadii  = 1f;
     private const float RecoverSweepRadii = 3f;
+    // Step-up down-sweep range, as a multiple of StepHeight (sibling to RecoverSweepRadii, same Bepu half-range
+    // rationale). TryStepUp raises the pose a full StepHeight then sweeps back DOWN to settle onto the ledge, so a
+    // SHORT step's tread sits up to StepHeight below - right at HALF of a bare StepHeight range, the far portion where
+    // Bepu's triangle-mesh sweep under-reports a hit (only solid convex risers, whose sweeps report reliably, mounted;
+    // the identical one-sided mesh tread was silently dropped). Doubling the range puts every in-band ledge in the near
+    // half so the mesh tread registers; the strictly-higher-than-pos.Y guard still rejects any step-DOWN the longer
+    // reach can now touch, so the ACCEPTED band is unchanged [pos.Y, pos.Y + StepHeight] - only Bepu's reliability improves.
+    private const float StepDownSweepRangeSteps = 2f;
 
     /// <summary>Recover the contact normal Bepu withholds when a capsule sweep starts TANGENT to a one-sided mesh
     /// (it reports t=0 with a zero normal, leaving no slide plane). The capsule is pulled back along
@@ -1283,7 +1277,11 @@ public static class CharacterMovement
     /// mounted from ~ground level, the fragile case the widening targets. Well above the terrain (mid-climb on a tall
     /// stair stack) the capsule already mounts via the near-vertical contacts, so firing the extra up-tilted step-ups
     /// there is redundant and only presses a fast run deeper into the risers (the StairRunTangentPacing penetration
-    /// pin). <paramref name="cosMaxSlope"/> is the walkable slope gate; <paramref name="groundHeight"/> the analytic
+    /// pin). KNOWN LIMITATION: the up-tilted-lip near-floor gate keys off the ANALYTIC terrain height only, so a short
+    /// lip sitting on TOP of a prop platform more than a StepHeight above terrain fails the gate and still dead-stalls
+    /// (pre-existing behaviour - narrowed by this widening, not regressed; the near-vertical band above is unaffected).
+    /// The proper fix is to gate on elevation above the current SUPPORT floor including props, tracked in docs/ROADMAP.md.
+    /// <paramref name="cosMaxSlope"/> is the walkable slope gate; <paramref name="groundHeight"/> the analytic
     /// terrain sampler.</summary>
     private static bool StepUpEligible(float ny, in Vector3 pos, in MoveTuning t, float cosMaxSlope,
         Func<float, float, float> groundHeight)
@@ -1353,17 +1351,11 @@ public static class CharacterMovement
         float advanced = Vector3.Distance(new Vector3(fwd.X, 0f, fwd.Z), new Vector3(pos.X, 0f, pos.Z));
         if (advanced <= 1e-4f) return false;
 
-        // 3. Down to settle onto the ledge; must be a walkable slope strictly higher than pos. The down-sweep RANGE
-        // is ~2x StepHeight, not StepHeight: Bepu's TRIANGLE-MESH sweep under-reports a hit that lands in the far
-        // portion of the swept range (empirically it must sit within ~half - the same quirk the contact-normal
-        // recovery sweep works around with RecoverSweepRadii). The pose was raised by a full StepHeight, so a SHORT
-        // step's tread sits up to StepHeight below it - right at half of a bare StepHeight range, so a one-sided-mesh
-        // tread was silently dropped (only solid CONVEX risers, whose sweeps report reliably, mounted; the identical
-        // mesh riser stalled). Doubling the range puts every in-band ledge in the near half so the mesh tread
-        // registers. The strictly-higher-than-pos.Y guard below still rejects any step-DOWN the longer reach can now
-        // touch, so the accepted band is unchanged [pos.Y, pos.Y + StepHeight]; only Bepu's reliability improves.
+        // 3. Down to settle onto the ledge; must be a walkable slope strictly higher than pos. The down-sweep RANGE is
+        // StepDownSweepRangeSteps * StepHeight (2x, not 1x) to work around Bepu's mesh-sweep far-half under-report - see
+        // that const for the full rationale (a one-sided mesh tread sits in the far half of a bare StepHeight range).
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
-        float downRange = 2f * step + SkinWidth;
+        float downRange = StepDownSweepRangeSteps * step + SkinWidth;
         if (world.SweepCapsule(capsule, Pose.At(fwd), -Vector3.UnitY, downRange, out SweepHit downHit) &&
             downHit.Normal.Y >= cosMaxSlope)                                 // a walkable ledge the full-radius sweep found
         {

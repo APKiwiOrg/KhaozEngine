@@ -171,4 +171,67 @@ public class LipContactShortRiserTests
         Assert.True(maxUp <= maxRise + 0.01f,
             $"a tick rose {maxUp:F4} m, over the {maxRise:F4} m/tick climb budget (MaxStepClimbSpeed {t.MaxStepClimbSpeed}): the lip mount is not paced.");
     }
+
+    // Convex-box staircase mirroring the consumer's placed staircase (TestStaircase): column n spans local Z
+    // [n*tread, (n+1)*tread] and Y [-burial, (n+1)*riser], buried so its riser fronts and tread tops line up, climbing
+    // toward -Z so yaw-0 forward walks INTO it. Solid boxes (their sweeps report reliably, so any step-3 miss is the
+    // straddle geometry, not a Bepu mesh under-report) on flat analytic ground, exactly like ConsumerStairBaseMountTests.
+    static void AddBoxStairs(IPhysicsWorld world, float riser, float tread, int steps = 12, float halfW = 1.0f, float burial = 1.5f)
+    {
+        for (int n = 0; n < steps; n++)
+        {
+            float treadTop = (n + 1) * riser;
+            float halfH = (treadTop + burial) * 0.5f;
+            float centerZ = -(n * tread + tread * 0.5f);
+            world.AddStatic(new BoxShape(new Vector3(halfW, halfH, tread * 0.5f)),
+                Pose.At(new Vector3(0f, treadTop - halfH, centerZ)));
+        }
+    }
+
+    // SHALLOW-TREAD STRADDLE at the terrain-floor handoff -> the radius-less ray-fan fallback in TryStepUp is the SOLE
+    // mount path. A convex-box staircase whose tread (0.35 m) is SHALLOWER than the capsule diameter (0.8 m): approached
+    // from the flat, the base step-up raises a StepHeight and sweeps forward, and TryStepUp's full-radius down-sweep
+    // STRADDLES the shallow first tread and grazes its front edge - a steep normal step 3 rejects. At the BASE the
+    // capsule is still at terrain level, so the support probe (step 4, which carries the climb ONCE elevated on a step)
+    // is gated off and cannot start the mount. Only the radius-less ray-fan fallback (WalkableTreadUnderFeet at the
+    // forward XZ) threads a ray past the front edge onto the flat tread top and seats the first step. This is the
+    // engine-side reproduction of the consumer's placed-staircase base corner-stall.
+    //
+    // REVERT PROOF (this is a real pin): reverting ONLY the ray-fan fallback DEAD-STALLS this at the base - the capsule
+    // climbs 0.000 m at EVERY arrival phase and both speeds - while the fix climbs the whole 3.0 m staircase. The
+    // deep-tread stair suites (ConsumerStairBaseMountTests tread 0.40, SingleRiserMountTests deep tread) stay green with
+    // the fallback reverted: their down-sweep lands on the tread the fat sweep reports fine, so they never reach it.
+    [Theory]
+    [InlineData(1.00f, false)]
+    [InlineData(1.20f, false)]
+    [InlineData(1.40f, false)]
+    [InlineData(1.00f, true)]
+    [InlineData(1.20f, true)]
+    [InlineData(1.40f, true)]
+    public void ShallowTreadStaircaseBase_MountsViaRayFanFallback(float startZ, bool run)
+    {
+        const float riser = 0.25f, tread = 0.35f;   // tread 0.35 < 0.8 diameter (the straddle); riser < StepHeight 0.4
+        var t = Consumer;
+        float halfH = t.CapsuleHalfHeight;
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        AddBoxStairs(world, riser, tread);
+        world.Step(1f / 30f);
+
+        var state = new MoveState { Position = new Vector3(0f, halfH, startZ), Grounded = true };
+        var cmd = new MoveCommand(new Vector2(0f, 1f), run, cameraYaw: 0f, jump: false);
+        float Ground(float x, float z) => 0f;
+        Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
+
+        float maxY = halfH;
+        for (int i = 0; i < 200; i++)
+        {
+            state = CharacterMovement.Step(state, cmd, 1f / 30f, Ground, t, normal, world);
+            maxY = MathF.Max(maxY, state.Position.Y);
+        }
+        float climbed = maxY - halfH;
+        Assert.True(climbed > 4f * riser,
+            $"shallow-tread staircase base never mounted (startZ={startZ:F2} {(run ? "run" : "walk")}): climbed only " +
+            $"{climbed:F3} m - the full-radius down-sweep straddled the {tread:F2} m first tread and only the ray-fan " +
+            $"fallback should start the mount from the terrain floor.");
+    }
 }

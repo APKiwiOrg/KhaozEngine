@@ -51,6 +51,13 @@ mob's `Persist|Migrate`-only server state and a player's `OwnerOnly` private sta
 read-only mirror served to OTHER cells' clients). `ShardHost.SnapshotForClient` serves the **Replicate** channel
 owner-scoped to the client's own player. See `KhaozEngine.Replication.ReplicationChannels`.
 
+**Serve-epoch interest sharing (perf).** `ShardHost.HomeInterest`/`SnapshotForClient` take an optional trailing
+`serveEpoch`. Passed a value, the home cell's `InterestGrid` rebuild is shared across every call at that epoch
+(one rebuild per served cell per tick instead of once per client). Omitted (the default, `null`), each call
+rebuilds unconditionally, the contract a direct caller or test relies on right after a world mutation.
+`ShardedWorldServer.Tick` bumps a fresh epoch once per tick and passes it to both the delta and snapshot serve
+paths.
+
 Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet
 (that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,
 `KhaozEngine.Simulation`, and `KhaozEngine.Replication`.

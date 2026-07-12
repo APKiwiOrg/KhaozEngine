@@ -3,11 +3,12 @@
     <PackageId>KhaozEngine.App</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Game-agnostic app identity / runtime helpers. BuildMetadata reads AssemblyMetadata items at runtime; AppDataPaths gives a publisher-rooted OS-correct per-app data dir; ServiceLocator; LocalizationManager discovers satellite-resource cultures and sets the thread culture (absorbed from the retired KhaozEngine.Localization package in 9.0.0); IStringCatalog/ResourceStringCatalog resolve UI strings by key against the current UI culture over a ResourceManager. Pure BCL.</Description>
+    <Description>Game-agnostic app identity / runtime helpers. BuildMetadata reads AssemblyMetadata items at runtime; AppDataPaths gives a publisher-rooted OS-correct per-app data dir; ServiceLocator; LocalizationManager discovers satellite-resource cultures and sets the thread culture (absorbed from the retired KhaozEngine.Localization package in 9.0.0); IStringCatalog/ResourceStringCatalog resolve UI strings by key against the current UI culture over a ResourceManager; AppRelaunch forces a clean self-restart (spawn a fresh instance, cooperative shutdown, predecessor-pid handshake) for sign-out/cloud-restore/restart-to-apply flows. Pure BCL.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

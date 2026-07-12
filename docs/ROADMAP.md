@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.70.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.72.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -24,6 +24,21 @@ Height-gate the WalkableFloorUnderFeet support fan to accept support only near t
 step-mount cap-vs-seat discriminator stops relying on approach floors being analytic. This prevents edge cases
 where deep risers on physics floor slabs stall slow-walk mounts. No shipped geometry has this combination yet,
 but the stair tests cannot catch it since all approach floors are analytic.
+
+Open, still-unfixed: a WALK on a ONE-SIDED triangle-mesh staircase (thin riser/tread quads, no solid body)
+sticks at the base - the capsule mounts one riser then never advances, identically before and after the
+bottom-stair tread-find fix (10.71.1). It is a separate mechanism: a horizontal-advance blockage on the thin
+one-sided riser, orthogonal to the vertical-support tread-find fix (which corrects the support HEIGHT, not the
+forward push), so that fix neither covers nor regresses it. No shipped consumer geometry hits this - the
+consumers' stairs are convex boxes, which the tread-find fix fully covers - so it is recorded here rather than
+patched. Documented in the `ConsumerStairBaseMountTests` header.
+
+Gate the up-tilted-lip step-up on elevation above the current SUPPORT floor (props included), not analytic
+terrain alone. The lip step-up widened in the short-riser/tread-lip fix keys its near-floor gate off the
+analytic terrain height only (`StepUpEligible`), so a short lip sitting on TOP of a prop platform more than a
+StepHeight above terrain still fails the gate and dead-stalls. Pre-existing behaviour, narrowed by the widening
+rather than regressed (the near-vertical band is unaffected), but the proper fix is to track the capsule's
+current support height including props and gate against that. Documented in the `StepUpEligible` doc comment.
 
 ### 2. Visual fidelity (textures + materials)
 
@@ -55,6 +70,15 @@ duplicated here.
   replication and persistence scoped per instance. End state for dungeons: `KhaozEngine.Dungeon` ships
   today against the far-corner same-grid model, and its dungeon-local output (one placement transform,
   no world-absolute assumptions) adopts this when it lands.
+- NativeAOT for world save/load and NetWorld persistence (recorded 2026-07-13, found by the
+  `Server.AotProbe` audit): the per-tick replication/sharding/ecs server path publishes AOT-clean, but two
+  subsystems still need reflection. `Ecs.WorldSerializer` and the non-generic `ComponentRegistry.RegisterType`
+  path it calls through use `Assembly.GetTypes()`, `Type.MakeGenericType`, `Activator.CreateInstance`, and
+  reflection-based `System.Text.Json` for world JSON save/load, fixable with a registered column-factory table
+  keyed by `Type` instead of `MakeGenericType`. `NetWorld`'s `PlayerRecord`/`WorldMetaRecord`/
+  `WorldStoreBanStore.BanDto` round-trip through reflection-based `System.Text.Json` with no
+  `JsonSerializerContext`, fixable with a source-generated context for those DTOs. Neither blocks an
+  AOT-published dedicated server that only serves clients over the replication path.
 
 ## Overworld / world content
 

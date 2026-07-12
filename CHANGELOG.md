@@ -5,6 +5,62 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.72.0
+
+### Replication hot path, ECS parallel pooling, and a NativeAOT server gate
+
+**Shared per-tick capture plus a pooled, span-diffed delta path cut the heaviest server replication tick from 264.0 ms to 50.3 ms (5.3x) and from 332.7 MB to 26.8 MB allocated per tick (down 92 percent), wire bytes byte-identical.** Measured on the heaviest regime of the new benchmark (64 clients, 16384 entities, 4 components each), with the delta output proven byte-identical to the old per-client path in every regime by committed goldens. The batch spans replication, Sharding, and ECS, adds a `World.TryGet<T>` correctness fix that makes tag components usable in replication codecs, and gates the server capture and delta path NativeAOT-clean behind a new AOT probe. Nothing changes on the wire, the cost changes a lot.
+
+- **Shared per-tick AoI capture in `AoiDeltaReplicator`.** The world is scanned and captured ONCE per tick and that single capture is shared across every client's delta, instead of re-scanning and re-capturing per client. Output is wire byte-identical to the old per-client path in every regime, proven by committed goldens.
+- **Serve-epoch shared interest rebuild in Sharding.** `ShardHost.HomeInterest` and `SnapshotForClient` take a new OPTIONAL `serveEpoch` parameter, so a per-serve interest set is rebuilt once and reused across every client served in that epoch. `ShardedWorldServer` passes the epoch automatically. The parameter is optional, so existing callers are unaffected.
+- **Segment-based pooled capture with span diffing.** Component state is captured into pooled segments and diffed as spans, which eliminates the per-component `byte[]` churn the old capture allocated every tick.
+- **ECS buffered `ParallelForEach` pooling.** Buffered parallel iteration now uses per-arity contexts with cached delegates and a World-level command-buffer pool, so a steady-state buffered parallel call drops from 16904 bytes to 0 bytes per call (inline scheduler, 64-entity archetype). The public sink overloads stay pool-neutral: they operate on caller-owned buffers and allocate nothing on the pool.
+- **`World.TryGet<T>` contract fix.** A present zero-field tag component now returns `true` with `default(T)` instead of crashing, so tag components are usable in replication codecs. Reading a present tag through `TryGet` used to throw where a field-carrying component returned its value.
+- **NativeAOT: the server capture and delta path is AOT-clean.** Tag detection is now reflection-free, and the path is covered by a new `KhaozEngine.Server.AotProbe`. Two blockers remain and are recorded in `docs/ROADMAP.md`: ECS world JSON save/load and NetWorld persistence DTOs both need source-generated serialization before the full server is AOT-publishable. Neither blocks an AOT-published dedicated server that only serves clients over the replication path.
+- **New `ReplicationTickBenchmark`** behind a `--replication` flag, the source of the numbers above.
+
+## 10.71.2
+
+### Locomotion: short steps and tread lips on uneven ground now mount reliably
+
+**A short step or tread lip (an effective riser well under `StepHeight`) is now mounted instead of dead-stalling against it: the step-up is attempted from an up-tilted lip contact rather than wall-sliding forever, and TryStepUp's down-probe reaches the tread reliably on one-sided building/curb meshes and shallow treads; no consumer change needed.** When a capsule's rounded bottom cap grazes the top edge of a short riser, the sweep reports an up-TILTED lip normal, not a flat vertical wall face, and three behaviours in `CharacterMovement` used to leave it un-mountable: (1) the step-up precheck `|normal.Y| < 0.5` rejected the up-tilted lip outright once the effective riser dropped below ~0.18 m (normal.Y climbs past 0.5), so the capsule wall-slid forever; (2) `TryStepUp` raised the capsule a full `StepHeight` then swept back DOWN to find the tread, and for a one-sided TRIANGLE-mesh step the tread sat in the far half of that range, where Bepu's mesh sweep under-reports the hit, so only a solid convex riser mounted while the identical one-sided riser (the shape a real building/curb collision proxy bakes to) stalled; and (3) when the tread is SHALLOWER than the capsule diameter the footprint straddles it, so the full-radius down-sweep grazed the tread's front edge and reported a steep, rejected normal - the first riser of a placed staircase on rolling terrain (the consumer staircase-corner stall) dead-stalled at the base at every arrival phase.
+
+The fix, all inside `CharacterMovement` (no public API change):
+- The step-up eligibility precheck is widened from `|n.Y| < 0.5` to "not walkable, not a ceiling", so an up-tilted lip normal attempts a mount. The widened band is gated to within a `StepHeight` of the analytic terrain floor (a ground-level curb/doorstep/first step), so it does not fire mid-climb on a tall stair run and press a fast run into the risers.
+- `TryStepUp`'s down-sweep range is doubled (~2x `StepHeight`) so a short one-sided-mesh tread lands in the near half of the sweep and registers, matching the reliability a solid convex riser already had. The strictly-higher-than-start guard keeps the accepted band unchanged.
+- `TryStepUp` gains a radius-less ray-fan fallback for the down-probe: when the tread is shallower than the capsule diameter the footprint STRADDLES it, so the full-radius down-sweep grazes the tread's front edge and reports a steep, rejected normal even though a flat tread is right there (the first riser of a placed staircase on rolling terrain, whose effective riser rolls short across the width: the consumer staircase-corner stall). The ray fan reads the tread top through the clear air the way the support probe already does. Gated to a near-vertical contact at the terrain-floor handoff only, so it starts the base mount without double-seating a fast run mid-climb.
+- A lip-band step-up is committed only when it lands on a near-FLAT tread (landing normal.Y >= 0.9), so it cannot ride up a CONVEX prop flank (dome, boulder, rounded rock) whose walkable rounded top would otherwise pass the ledge test. Convex props stay blocked at their base.
+
+The `SlideSubstep` degenerate-zero-normal branch (a Bepu sweep from a touching start returns no normal) is deliberately UNCHANGED: a step-up attempt from that flush-tangent start was tried and proven unable to seat (TryStepUp's sweeps fail from tangent), so a mountable lip reached at a tangent routes via the main-path step-up on the re-approach tick after the step-off, which the fixes above make succeed.
+
+Known limitation (pre-existing, narrowed not regressed): the up-tilted-lip near-floor gate keys off the ANALYTIC terrain height only, so a short lip sitting on TOP of a prop platform more than a `StepHeight` above terrain still dead-stalls; the follow-up (gate on elevation above the current support floor, props included) is recorded in `docs/ROADMAP.md`.
+
+Applies identically to the player and to server-authoritative NPC `StepTowards` (shared collision core). Covered by new headless tests `LipContactShortRiserTests` (box + one-sided mesh, risers 0.15-0.30, approach 0/15/30 deg, walk/run, dt 1/30 + 1/60, plus a shallow-tread 0.35 m box staircase whose base mounts ONLY via the ray-fan fallback) and `WalkableSlopeNoStepUpTests` (a walkable slope attempts no step-ups); the full stair and dome-base suites stay green.
+
+## 10.71.1
+
+### Locomotion: bottom-stair mount no longer collapses to the ground below
+
+**The bottom step of a staircase now mounts cleanly at any approach speed and arrival phase (the support probe finds the tread under a straddling footprint instead of collapsing to the ground below); no consumer change needed.** At a staircase base, the capsule footprint (0.8 m across) straddles a shallow tread (0.4 m), so step 4's full-radius downward support sweep grazed the vertical riser front and both of its guards (walkable-up normal, under-footprint point) rejected the contact; groundY fell to the terrain a step below, and because that terrain sits within `GroundedEpsilon` of the partially-mounted capsule the onGround snap dropped it a whole riser back to the flat, where it bobbed and re-mounted (the sticky bottom stair). The fix drops a radius-less ray fan over the footprint when the sweep contributes no support, finds the tread the sweep cannot (a ray has no radius, so it reads the tread top through the clear air a straddling capsule sweep misses), and seats groundY on it, so the normal onGround snap lifts the capsule UP onto the tread. Scoped tightly to the base (fires only when the capsule is within `GroundedEpsilon` of the terrain, where the collapse can happen), so mid-climb and flat behaviour are untouched. The paced step-up still caps the rise, so the mount stays smooth. A `CharacterMovement` internals-only change (new private `WalkableTreadUnderFeet` fan); no public API change, no consumer change.
+
+## 10.71.0
+
+Clean app self-restart seam: `KhaozEngine.App.AppRelaunch` forces a fresh boot of the running executable and cooperates with the normal shutdown path, so a consumer game can restart into a clean session (sign-out save-wipe, cloud-save restore, restart-to-apply-settings) without a hard `Environment.Exit` that skips save/dispose hooks. The generalized parent-pid-wait pattern lives in a new `KhaozEngine.Platform.IProcessControl` seam.
+
+### `AppRelaunch` (KhaozEngine.App)
+
+**`AppRelaunch.Restart(RelaunchRequest)` starts a fresh instance of the current executable, then requests a clean shutdown of the running one through its own exit path (`RequestShutdown`, e.g. `AppWindow.Close` / `GameApp.Quit`), never a hard process kill.** The successor is spawned BEFORE the current app tears down, carrying a predecessor-wait handshake (`--ke-await-predecessor <pid>`) so the fresh boot blocks until the old process is fully gone. That ordering is what makes it safe when the app writes its save during shutdown: the new instance never races the file the old one still holds.
+
+- **`AppRelaunch.AwaitPredecessor(args)`** is the boot-side half, called at the top of `Main` before the app opens its save. It is a fast no-op on a normal launch. When a handshake is present it waits on the predecessor pid (default cap `DefaultPredecessorTimeout`, 15s) and returns the arguments with the token stripped (`PredecessorWait.Arguments`) plus whether the predecessor actually exited.
+- **`Restart` never strands the player.** It requests shutdown only when the successor actually started. If no executable resolves (`ExecutableUnresolved`, `Environment.ProcessPath` null and no override) or the OS refuses the launch (`StartFailed`), the current session is left running.
+- `RelaunchRequest` carries optional `Arguments` / `ExecutablePath` / `WorkingDirectory` overrides (defaults reproduce the current invocation) and `WaitForPredecessorExit` (default true, appends the handshake).
+
+### `IProcessControl` / `ProcessControl` (KhaozEngine.Platform)
+
+**New fakeable process seam: resolve the running exe/pid/args, spawn a detached instance, and wait for a pid to exit.** `ProcessControl.System` is the real implementation over `Environment` + `System.Diagnostics.Process`. `AppRelaunch` drives it through the interface, so the whole restart flow is headless-testable with a fake (see `AppRelaunchTests`). This is the generalized form of the desktop auto-updater's parent-pid-wait relaunch. The updater (`KhaozEngine.Updates`) keeps its own tuned `IUpdaterEnvironment` (antivirus / torn-image retry, elevation, relocation, and a deliberately non-truthful `IsProcessAlive` on POSIX), so it was NOT retrofitted onto the new primitive: the two share the pattern, not the code.
+
+- New dependency edge `KhaozEngine.App -> KhaozEngine.Platform` (both GPU-free foundation leaves, acyclic). No umbrella change: both are already in `Foundation`.
+
 ## 10.70.0
 
 Map editor polish round two: rotatable terrain features get a yaw ring gizmo, place and select gestures gained body-drag, and every editor keyboard chord is now Cmd-aware on macOS and gated off while an inspector or filter field holds focus.

@@ -90,14 +90,11 @@ public sealed class ReplicationRegistry
 
         void Deserialize(World w, Entity e, BinaryReader br) => w.Set(e, read(br));
 
-        byte[]? CaptureData(World w, Entity e)
+        bool CaptureInto(World w, Entity e, BinaryWriter bw)
         {
-            if (!w.TryGet<T>(e, out T v)) return null;
-            using var ms = new MemoryStream();
-            using var bw = new BinaryWriter(ms);
-            write(v, bw);
-            bw.Flush();
-            return ms.ToArray();
+            if (!w.TryGet<T>(e, out T v)) return false;
+            write(v, bw);   // raw payload, no type id: framing is applied by the delta/snapshot writer
+            return true;
         }
 
         void RemoveComponent(World w, Entity e) => w.Remove<T>(e);
@@ -113,7 +110,7 @@ public sealed class ReplicationRegistry
             };
         }
 
-        var codec = new ComponentCodec(typeId, lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, CaptureData, RemoveComponent);
+        var codec = new ComponentCodec(typeId, lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, CaptureInto, RemoveComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -130,7 +127,7 @@ internal sealed class ComponentCodec
     public ComponentCodec(ushort typeId, bool lengthPrefixed, ReplicationChannels channels,
         Func<World, Entity, BinaryWriter, bool> trySerialize,
         Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
-        Func<World, Entity, byte[]?> captureData, Action<World, Entity> removeComponent)
+        Func<World, Entity, BinaryWriter, bool> captureInto, Action<World, Entity> removeComponent)
     {
         TypeId = typeId;
         LengthPrefixed = lengthPrefixed;
@@ -138,7 +135,7 @@ internal sealed class ComponentCodec
         TrySerialize = trySerialize;
         Deserialize = deserialize;
         LerpFromBytes = lerpFromBytes;
-        CaptureData = captureData;
+        CaptureInto = captureInto;
         RemoveComponent = removeComponent;
     }
 
@@ -177,8 +174,10 @@ internal sealed class ComponentCodec
     /// <summary>Reads the component data and sets it on the entity.</summary>
     public Action<World, Entity, BinaryReader> Deserialize { get; }
 
-    /// <summary>Returns just the component's data bytes (no type id) if present, else null. Used for delta capture.</summary>
-    public Func<World, Entity, byte[]?> CaptureData { get; }
+    /// <summary>Writes just the component's raw payload bytes (no type id, no length prefix) to the writer and returns
+    /// true if the entity has the component, else writes nothing and returns false. Used for delta capture into the
+    /// shared per-tick capture buffer.</summary>
+    public Func<World, Entity, BinaryWriter, bool> CaptureInto { get; }
 
     /// <summary>Removes the component from the entity (for delta-applied component removals).</summary>
     public Action<World, Entity> RemoveComponent { get; }

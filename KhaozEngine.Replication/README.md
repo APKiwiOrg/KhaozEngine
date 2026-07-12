@@ -53,7 +53,9 @@ area-of-interest deltas.
   The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), so
   `ClientReplicationView.ApplyDelta` decodes both. Keyed by `NetId` (not by owning cell), so a seamless cell handoff
   reads as a component delta, never a despawn+respawn. This is what `WorldServer`/`ShardedWorldServer`/`MmoServer`
-  serve on the live path (see `KhaozEngine.NetWorld`).
+  serve on the live path (see `KhaozEngine.NetWorld`). `WriteFor` captures the whole world once per tick, shared
+  across every client served from that world (not once per client), into one pooled buffer, so allocation drops
+  sharply at high client counts while the wire stays byte-identical.
 - **`InterestGrid`** - a spatial-hash area-of-interest query (`Insert` / `Query(center, radius)`) used to compute a
   client's interest set for `WriteFiltered` / `AoiDeltaReplicator.WriteFor`.
 - **`ClientReplicationView`** - apply a snapshot to a client `World`: spawn new entities, despawn gone ones,

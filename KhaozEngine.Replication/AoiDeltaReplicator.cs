@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
-using Comps = System.Collections.Generic.Dictionary<ushort, byte[]>;
-using AoiBaseline = System.Collections.Generic.Dictionary<long, System.Collections.Generic.Dictionary<ushort, byte[]>>;
+using Comps = KhaozEngine.Replication.CapturedComponents;
+using AoiBaseline = System.Collections.Generic.Dictionary<long, KhaozEngine.Replication.CapturedComponents>;
 
 namespace KhaozEngine.Replication;
 
@@ -30,6 +30,7 @@ public sealed class AoiDeltaReplicator
 {
     private readonly ReplicationRegistry registry;
     private readonly int historyDepth;
+    private readonly bool hasOwnerScopedCodec;
     private int currentSeq;
 
     // Per slot: the AoI-scoped state the client has acknowledged (netId -> components) and its seq. This is "what
@@ -41,18 +42,48 @@ public sealed class AoiDeltaReplicator
     private readonly Dictionary<int, Dictionary<int, AoiBaseline>> pendingBySlot = new();
     private readonly Dictionary<int, Queue<int>> pendingOrderBySlot = new();
 
+    // Shared per-tick capture: the whole-world Replicate-channel snapshot (netId -> components), captured ONCE per
+    // distinct world per seq and projected per client in WriteFor. Keyed by World because the sharded server serves
+    // different clients from different home-cell worlds within one tick. The non-sharded server passes one world, so
+    // this collapses to a single capture per tick. captureSeq marks which seq the cache belongs to (cleared lazily on
+    // the first WriteFor of a new seq, so BeginTick stays a cheap seq bump).
+    private readonly Dictionary<World, AoiBaseline> captureByWorld = new();
+    private int captureSeq;
+
+    // Single-threaded per instance (one server tick thread): the capture scratch consolidates each world capture into
+    // one buffer, and the wire scratch (stream + reused changed/removed lists) builds each client's delta without a
+    // per-call allocation beyond the returned wire array and the retained projection. No locking.
+    private readonly CaptureScratch captureScratch = new();
+    private readonly MemoryStream wireStream = new();
+    private readonly BinaryWriter wireWriter;
+    private readonly List<long> scratchRemoved = new();
+    private readonly List<long> scratchChanged = new();
+
+    // Test seam: how many world scans the shared capture has actually run (one per distinct world per tick). A tick
+    // that serves C clients from one world scans once, not C times - what this whole change buys.
+    internal long WorldScanCount { get; private set; }
+
     public AoiDeltaReplicator(ReplicationRegistry registry, int historyDepth = 32)
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         if (historyDepth <= 0) throw new ArgumentOutOfRangeException(nameof(historyDepth), historyDepth, "must be positive");
         this.historyDepth = historyDepth;
+        wireWriter = new BinaryWriter(wireStream);
+        // Whether any registered component is owner-scoped. If none is, every client projects to the exact same
+        // Replicate-channel state, so WriteFor can reference the shared capture's component dictionaries directly
+        // (they are immutable once captured) instead of building a filtered per-client copy - byte-identical, fewer
+        // allocations. Mirrors ServerReplicator's fast path.
+        foreach (ComponentCodec codec in registry.Ordered)
+            if ((codec.Channels & ReplicationChannels.OwnerOnly) != 0) { hasOwnerScopedCodec = true; break; }
     }
 
     /// <summary>The latest snapshot sequence (0 before the first <see cref="BeginTick"/>).</summary>
     public int CurrentSeq => currentSeq;
 
     /// <summary>Opens a new snapshot sequence for this server tick. Call once per tick, before the per-client
-    /// <see cref="WriteFor"/> pass. Returns the new seq (the value a client acks after applying this tick's delta).</summary>
+    /// <see cref="WriteFor"/> pass. Returns the new seq (the value a client acks after applying this tick's delta).
+    /// The shared per-tick capture is invalidated lazily on the first <see cref="WriteFor"/> of the new seq, so this
+    /// stays a cheap sequence bump.</summary>
     public int BeginTick() => ++currentSeq;
 
     /// <summary>
@@ -60,58 +91,57 @@ public sealed class AoiDeltaReplicator
     /// <paramref name="world"/> whose <see cref="NetId"/> is in <paramref name="interestSet"/>. Full snapshot
     /// (baseline -1) until the client acks. Must be called after <see cref="BeginTick"/>. This is the client-serving
     /// (<see cref="ReplicationChannels.Replicate"/>) path, so only replicated components are captured, and an
-    /// <see cref="ReplicationChannels.OwnerOnly"/> component is captured only for the entity whose net id equals
+    /// <see cref="ReplicationChannels.OwnerOnly"/> component is served only to the entity whose net id equals
     /// <paramref name="ownerNetId"/> (this slot's own player). Because the per-slot baseline stores exactly what was
-    /// captured for THIS slot, owner-only visibility falls out of the delta diff automatically.
+    /// projected for THIS slot, owner-only visibility falls out of the delta diff automatically.
     /// </summary>
+    /// <remarks>
+    /// The world is scanned and captured ONCE per <paramref name="world"/> per tick (the first <see cref="WriteFor"/>
+    /// after a <see cref="BeginTick"/> that sees it), shared across every client served from that world. The win is
+    /// that shared once-per-tick scan and capture, not a cheaper per-client walk: <see cref="Project"/> still walks
+    /// the whole shared capture for every client, filtering by <paramref name="interestSet"/> and owner scope, which
+    /// is required to keep the changed-entity wire order identical to the pre-share per-client capture. The wire is
+    /// byte-identical to capturing per client.
+    /// </remarks>
     public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null)
     {
         if (world is null) throw new ArgumentNullException(nameof(world));
         if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
         if (currentSeq == 0) throw new InvalidOperationException("Call BeginTick before WriteFor.");
 
-        // Capture the in-AoI entities that exist in this world (netId -> components), reusing the codec capture.
-        // Filter to the Replicate channel (owner-scoped), so this slot's baseline holds only what it was actually
-        // sent - an OwnerOnly component on another player's entity is never captured, so it can never leak here.
-        var projected = new AoiBaseline();
-        world.ForEach<NetId>((Entity e, ref NetId id) =>
-        {
-            if (!interestSet.Contains(id.Value)) return;
-            var comps = new Comps();
-            foreach (ComponentCodec codec in registry.Ordered)
-            {
-                if (!codec.ShouldWrite(ReplicationChannels.Replicate, id.Value, ownerNetId)) continue;
-                byte[]? data = codec.CaptureData(world, e);
-                if (data is not null) comps[codec.TypeId] = data;
-            }
-            projected[id.Value] = comps;
-        });
+        // Project the shared whole-world capture down to what THIS client is entitled to: the in-AoI entities, with
+        // each entity's components filtered to the Replicate channel owner-scoped to this slot. An OwnerOnly component
+        // on another player's entity is stripped here (never sent), so this slot's baseline holds only what it was
+        // actually sent and owner-only visibility falls out of the diff.
+        AoiBaseline capture = CaptureFor(world);
+        AoiBaseline projected = Project(capture, interestSet, ownerNetId);
 
         AoiBaseline? baseline = ackedBaselineBySlot.GetValueOrDefault(slot);
         int baselineSeq = baseline is null ? -1 : ackedSeqBySlot[slot];
 
-        using var ms = new MemoryStream();
-        using var bw = new BinaryWriter(ms);
+        wireStream.SetLength(0); // reset the reused wire scratch, keep its capacity
+        BinaryWriter bw = wireWriter;
         bw.Write(baselineSeq);
         bw.Write(currentSeq);
 
         // Removed: the client knew it (baseline) but it is gone from the interest set (left AoI or despawned).
-        var removed = new List<long>();
+        // Reused scratch lists, cleared per call.
+        scratchRemoved.Clear();
         if (baseline is not null)
             foreach (long netId in baseline.Keys)
-                if (!projected.ContainsKey(netId)) removed.Add(netId);
-        bw.Write(removed.Count);
-        foreach (long netId in removed) bw.Write(netId);
+                if (!projected.ContainsKey(netId)) scratchRemoved.Add(netId);
+        bw.Write(scratchRemoved.Count);
+        foreach (long netId in scratchRemoved) bw.Write(netId);
 
         // New (entered) or changed (stayed + component delta).
-        var changed = new List<long>();
+        scratchChanged.Clear();
         foreach (long netId in projected.Keys)
         {
-            if (baseline is null || !baseline.ContainsKey(netId)) { changed.Add(netId); continue; }
-            if (DeltaEncoding.EntityChanged(baseline[netId], projected[netId])) changed.Add(netId);
+            if (baseline is null || !baseline.ContainsKey(netId)) { scratchChanged.Add(netId); continue; }
+            if (DeltaEncoding.EntityChanged(baseline[netId], projected[netId])) scratchChanged.Add(netId);
         }
-        bw.Write(changed.Count);
-        foreach (long netId in changed)
+        bw.Write(scratchChanged.Count);
+        foreach (long netId in scratchChanged)
         {
             bool isNew = baseline is null || !baseline.ContainsKey(netId);
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);
@@ -119,7 +149,59 @@ public sealed class AoiDeltaReplicator
 
         bw.Flush();
         RecordPending(slot, currentSeq, projected);
-        return ms.ToArray();
+        return wireStream.ToArray(); // fresh exact-size array, the caller owns it
+    }
+
+    /// <summary>
+    /// The shared whole-world capture for <paramref name="world"/> at the current seq: every <see cref="NetId"/>
+    /// entity's <see cref="ReplicationChannels.Replicate"/>-channel components (owner-only ones included, keyed under
+    /// their entity, to be scoped per client in <see cref="Project"/>). Captured once per world per tick and reused by
+    /// every later <see cref="WriteFor"/> in the same tick. Insertion order is the world's <c>ForEach</c> order, which
+    /// the per-client projection preserves so the changed-entity wire order is unchanged.
+    /// </summary>
+    private AoiBaseline CaptureFor(World world)
+    {
+        if (captureSeq != currentSeq)
+        {
+            captureByWorld.Clear();   // a new tick: the previous tick's captures are stale, drop them
+            captureSeq = currentSeq;
+        }
+        if (captureByWorld.TryGetValue(world, out AoiBaseline? cached)) return cached;
+
+        // One shared buffer per world capture, only Replicate-channel components (owner-only included, scoped per
+        // client in Project) are captured. The capture is referenced by per-client baselines for up to historyDepth
+        // ticks - each capture's payload buffer is a fresh array, so it is never reused while a baseline still
+        // references it.
+        AoiBaseline state = captureScratch.CaptureReplicate(world, registry);
+        captureByWorld[world] = state;
+        WorldScanCount++;
+        return state;
+    }
+
+    /// <summary>
+    /// Projects the shared <paramref name="capture"/> down to one client: keeps only entities in
+    /// <paramref name="interestSet"/> and, per entity, only the components this slot may see (an
+    /// <see cref="ReplicationChannels.OwnerOnly"/> component only when its net id equals <paramref name="ownerNetId"/>).
+    /// Entities are visited in the capture's insertion order (the world <c>ForEach</c> order) so the resulting
+    /// baseline - and thus the changed-entity order on the wire - matches the pre-share per-client capture exactly.
+    /// When no registered component is owner-scoped, each in-AoI entity's captured component set is referenced
+    /// directly (it is immutable and identical for every client), avoiding a per-client copy.
+    /// </summary>
+    private AoiBaseline Project(AoiBaseline capture, IReadOnlySet<long> interestSet, long? ownerNetId)
+    {
+        var projected = new AoiBaseline();
+        foreach (KeyValuePair<long, Comps> entity in capture)
+        {
+            long netId = entity.Key;
+            if (!interestSet.Contains(netId)) continue;
+            if (!hasOwnerScopedCodec)
+            {
+                projected[netId] = entity.Value;   // shared, immutable: no owner scoping to apply, so no copy needed
+                continue;
+            }
+            projected[netId] = CaptureProjection.OwnerScope(entity.Value, registry, netId, ownerNetId);
+        }
+        return projected;
     }
 
     /// <summary>Records that <paramref name="slot"/> applied up to <paramref name="seq"/>, advancing its AoI baseline

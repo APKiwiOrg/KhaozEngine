@@ -36,3 +36,9 @@ Deliberately NOT included (add these explicitly if you need them):
 
 A contracts-only project that just needs the wire types should reference
 `KhaozEngine.Netcode.Abstractions` directly instead of this umbrella.
+
+**NativeAOT.** The umbrella's per-tick surface (`Sharding` + `Replication` + `Ecs`) publishes clean under
+`PublishAot`, gated by the dev-only `KhaozEngine.Server.AotProbe` project (not part of this umbrella, not
+packed). `NetWorld`'s JSON persistence (`PlayerRecord`, `WorldMetaRecord`, the ban store) and `Ecs`'s
+`WorldSerializer` world save/load are not AOT-safe yet (reflection-based `System.Text.Json` and
+`Activator.CreateInstance`). Neither is on the client-serving tick path.

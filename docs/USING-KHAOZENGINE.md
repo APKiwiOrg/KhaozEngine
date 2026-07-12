@@ -3571,6 +3571,14 @@ sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-t
 `KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` lives in
 `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
+**Zero-field "tag" components.** A component struct with no fields is stored with no column (presence on the
+entity is its whole state). `Get<T>` still throws for a tag (there is no column to ref into), but `TryGet<T>`
+copies out `default` for a present tag instead of throwing, so `if (world.TryGet(e, out MyTag _))` is the normal
+way to test for one. Tag detection on the generic `Add/Set/Has/TryGet<T>` path is reflection-free (it derives
+tag-ness from struct layout, not `Type.GetFields`), so registering a new component type never touches
+reflection and stays NativeAOT-safe. The non-generic `WorldSerializer`/save-load registration path is the one
+exception (already reflection-based for other reasons, see [NativeAOT (server tick path)](#nativeaot-server-tick-path)).
+
 ### `[ComponentId]` and save-format stability (policy)
 
 `WorldSerializer` keys each component in a save by `[ComponentId("...")]` if present, else by `Type.FullName`.
@@ -4027,6 +4035,60 @@ AppInstallStampResult stamp = settingsManager.StampInstall(
 
 Then the About screen reads `settings.Install` and renders `UpdatedAtUtc.ToLocalTime()`. Without Persistence,
 call `AppInstallStamp.Resolve(...)` directly over whatever the game already persists.
+
+---
+
+## Clean self-restart (`KhaozEngine.App.AppRelaunch`)
+
+Some changes only a fresh boot can pick up: signing out wipes the local save and the app must reboot into a
+clean session, a restored cloud save must be loaded from scratch, or a setting only takes effect at startup.
+`AppRelaunch` forces that restart cleanly: it starts a fresh instance of the running executable, then asks the
+current one to shut down through its **normal** cooperative exit path. It never calls `Environment.Exit`, so the
+save/dispose hooks that run when the window closes still run.
+
+The successor is started **before** the current app exits, carrying a predecessor-wait handshake so the fresh
+boot blocks until the old process is fully gone. That ordering is the point: when the current app writes its save
+during shutdown, the new instance must not read or overwrite that file mid-write. The successor waits on the old
+pid, so it never races the file handle.
+
+Two halves. The outgoing restart (wire `RequestShutdown` to your cooperative exit - `AppWindow.Close` or
+`GameApp.Quit`):
+
+```csharp
+using KhaozEngine.App;
+
+// e.g. from a sign-out handler, after the local save has been wiped:
+RelaunchResult result = AppRelaunch.Restart(new RelaunchRequest
+{
+    RequestShutdown = Quit,   // GameApp.Quit / window.Close - runs save+dispose as the loop unwinds
+    // Optional: Arguments (override the successor's args), ExecutablePath, WorkingDirectory.
+    // WaitForPredecessorExit defaults to true (append the handshake).
+});
+// result: Started, or - without shutting the current app down - ExecutableUnresolved / StartFailed.
+```
+
+And the incoming boot, at the very top of `Main`, before anything opens the save:
+
+```csharp
+static int Main(string[] args)
+{
+    // No-op on a normal launch; when relaunched, blocks until the predecessor exits (default cap 15s).
+    PredecessorWait boot = AppRelaunch.AwaitPredecessor(args);
+    // boot.Arguments has the engine handshake token stripped - forward it into your own parsing.
+    // boot.PredecessorExited is false only if the wait timed out with the old process still alive.
+    using var app = new MyGame(boot.Arguments);
+    app.Run();
+    return 0;
+}
+```
+
+`Restart` requests shutdown only when the successor actually started, so `ExecutableUnresolved` (no
+`Environment.ProcessPath` and no override) or `StartFailed` (the OS refused the launch) leave the current session
+running rather than strand the player. `AwaitPredecessor` is a fast no-op without a handshake, so call it
+unconditionally. Process operations go through `KhaozEngine.Platform.IProcessControl`, so the flow is
+headless-testable with a fake - pass an `IProcessControl` to either method. This is the generalized form of the
+desktop auto-updater's parent-pid-wait relaunch (`KhaozEngine.Updates`); the updater keeps its own tuned
+environment (antivirus/image-race retry, elevation, relocation), so the two share the pattern, not the code.
 
 ---
 
@@ -4722,6 +4784,12 @@ world.ParallelForEach<Health>((Entity e, ref Health h, EntityCommandBuffer cmd) 
 }, new ThreadPoolJobScheduler());
 ```
 
+`World.ParallelForEach` (the buffered overload above) rents each worker chunk's `EntityCommandBuffer` from an
+internal pool and returns it after playback, so a steady-state buffered pass allocates no buffers. The
+lower-level `Query.ParallelForEach(action, scheduler, sink)` overload (you supply your own
+`List<EntityCommandBuffer>` sink) is pool-neutral: it hands you freshly allocated, caller-owned buffers instead,
+so external sink use never drains the World's internal pool.
+
 **`AccessSet` - the read/write declaration model.** `Access.Read<T>()` / `Access.Write<T>()` build an immutable
 declaration of which components a unit of work reads vs writes; `a.ConflictsWith(b)` is true iff one writes a type the
 other touches (write-write or read-write; two readers never conflict). `ParallelForEach`'s own safety is the runtime
@@ -4852,6 +4920,14 @@ aoi.Acknowledge(slot, ackedSeq);                      // aoi.Forget(slot) on dis
 
 The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), and the
 baseline is keyed by `NetId`, so a seamless cell handoff reads as a component delta, never a despawn+respawn.
+
+**Shared per-tick capture (perf).** `WriteFor` builds its whole-world Replicate-channel capture once per `world`
+per tick, the first time any client's `WriteFor` runs after `BeginTick`, then every later `WriteFor` on the same
+world in that tick reuses it. A sharded server serving several clients from the same home cell therefore scans
+that cell once, not once per client. The caveat: the capture is a snapshot taken at that first `WriteFor` call,
+so a world mutation applied between it and a later `WriteFor` in the same tick is not seen by that later call.
+Do all world mutation (movement, handoffs, ghost sync, admin drains) before the per-client serve pass and call
+`WriteFor` only after, the order `ShardedWorldServer.Tick` already follows.
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 
@@ -5605,6 +5681,13 @@ cell **re-binds automatically** (it is derived from the current owner); the new 
 player's surroundings as ghosts, so the client's view is continuous across the crossing (nothing in-interest
 disappears then reappears).
 
+**Serve-epoch interest sharing (perf).** `HomeInterest` / `SnapshotForClient` take an optional trailing
+`serveEpoch`. Passed a value, the home cell's `InterestGrid` rebuild is shared across every call at that epoch,
+so a tick serving several clients from the same home cell reindexes it once instead of once per client. Omit it
+(the default, `null`) for the unconditional per-call rebuild that direct callers and tests rely on, since a call
+made right after a world mutation must see a fresh grid. `ShardedWorldServer.Tick` bumps a fresh epoch once per
+tick and passes it to both the delta (`HomeInterest`) and snapshot (`SnapshotForClient`) serve paths.
+
 **Reference dedicated server (Phase 3E).** `MmoServerSample` wires the whole stack into a runnable headless
 server: a multi-cell `ShardHost` driven over the `NetServer` session layer (any `INetTransport` - LiteNetLib in
 production, `LoopbackTransport` in tests), per-client home-cell AoI serving, `RemoteCommandQueue` input, and
@@ -5614,6 +5697,28 @@ join/leave + client input, `Tick(dt)` steps one authoritative frame (apply input
 connects and walks across cell boundaries. The `ICellLink` seam is finalized with the in-process impl shipped and
 a documented network-impl contract (route by target `CellCoord`, kind-scoped FIFO `Drain`, reliable delivery) for
 an infra implementation to drop in.
+
+### NativeAOT (server tick path)
+
+The server-side per-tick surface - `KhaozEngine.Sharding` (`ShardHost`/`CellSim`), `KhaozEngine.Replication` (the
+capture/delta encode/apply path), and `KhaozEngine.Ecs` (the generic component/query API) - publishes clean under
+`PublishAot`, gated by `KhaozEngine.Server.AotProbe`: a small dev-only probe project (not packed, not in any
+umbrella) that drives a real `ShardHost` + `AoiDeltaReplicator`/`ServerReplicator` tick loop, checks it against a
+JIT run, then publishes and runs the same program as a native binary. Run it yourself with
+`dotnet publish KhaozEngine.Server.AotProbe/KhaozEngine.Server.AotProbe.csproj -c Release -r <rid>`.
+
+Two subsystems on the server side are NOT NativeAOT-safe yet, both off the client-serving tick path:
+
+- **ECS world JSON save/load.** `WorldSerializer.Save`/`Load` and the non-generic `ComponentRegistry.RegisterType`
+  path they call through use `Assembly.GetTypes()`, `Type.MakeGenericType`, `Activator.CreateInstance`, and
+  reflection-based `System.Text.Json`. Only world-file save/load reaches this. The per-tick replication path never
+  calls it.
+- **NetWorld persistence DTOs.** `PlayerRecord`, `WorldMetaRecord`, and `WorldStoreBanStore.BanDto` round-trip
+  through reflection-based `System.Text.Json` (`JsonSerializer.Serialize`/`Deserialize<T>` with no
+  `JsonSerializerContext`). This is the durable-storage blob format, not the client wire.
+
+Both need a design change to go AOT-clean (see [ROADMAP.md](ROADMAP.md)). Neither blocks an AOT-published
+dedicated server that only serves clients over the replication path.
 
 ---
 

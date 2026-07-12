@@ -10,8 +10,9 @@ using KhaozEngine.Simulation;
 // "one hot cell" section below ticks that cell with its hot system fanning entity rows across cores via
 // World.ParallelForEach (the cell axis can't help a single cell). Run with:
 //   dotnet run --project KhaozEngine.Benchmarks -c Release
-//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --quick     (fast smoke: small N, few ticks)
-//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate      (jobs-3 system-scheduler GATE evaluation)
+//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --quick        (fast smoke: small N, few ticks)
+//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate         (jobs-3 system-scheduler GATE evaluation)
+//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --replication  (replication-hotpath jobs-1 matrix only)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
 
 bool quick = Array.IndexOf(args, "--quick") >= 0;
@@ -24,6 +25,14 @@ CultureInfo ci = CultureInfo.InvariantCulture;
 if (Array.IndexOf(args, "--gate") >= 0)
 {
     RunSystemAxisGate(ci, quick);
+    return;
+}
+
+// replication-hotpath jobs-1: a separate, focused run of just the AoiDeltaReplicator shared per-tick matrix
+// (see RunReplicationMatrix below), for a fast baseline-vs-after comparison without the cell/entities sections.
+if (Array.IndexOf(args, "--replication") >= 0)
+{
+    RunReplicationMatrix(ci, quick);
     return;
 }
 
@@ -126,6 +135,8 @@ Console.WriteLine();
 Console.WriteLine("index ns/lookup stays ~constant as N grows (O(1) dictionary hit); scan ns/lookup grows ~linearly with N.");
 Console.WriteLine("The per-tick cost is that x (players + NPCs), so the index turns an O(pop x entities) quadratic into O(pop).");
 
+RunReplicationMatrix(ci, quick);
+
 // A lighter matrix for a quick smoke: same three shapes, smaller N and fewer ticks so a run is sub-second.
 static IReadOnlyList<BenchmarkConfig> QuickMatrix()
 {
@@ -179,4 +190,51 @@ static void RunSystemAxisGate(CultureInfo ci, bool quick)
     Console.WriteLine("T_l3ceil = most optimistic overlap of the single-threaded systems (list-schedule of measured");
     Console.WriteLine("           solo costs honouring the AccessSet conflict graph on all cores) - the best layer 3 alone.");
     Console.WriteLine("GATE: build the system scheduler only if 'L3 WINS' at an entity count where the cell costs real time.");
+}
+
+// ---- Replication axis (replication-hotpath jobs-1): the real AoiDeltaReplicator hot path - a populated
+// ReplicationRegistry, NetId entities with a few replicated components, C simulated clients with AoI, movement-heavy
+// steady state (every entity moves every tick, each client acks the previous tick one tick later). The interest grid
+// is rebuilt once per tick (shared across clients), matching ShardHost.HomeInterest's per-serve-pass cadence inside
+// ShardedWorldServer, and WriteFor scans + captures the world once per tick and projects each client's delta from
+// that shared capture. The win is the shared once-per-tick scan and capture, not a cheaper per-client walk: each
+// client's projection still walks the whole shared capture, filtering by its interest set. The capture writes every
+// component into one consolidated buffer with (offset, length) segments (no byte[] per component) and the delta diffs
+// and writes over spans, so there is no per-component array churn on the capture, diff, or write path. ----
+static void RunReplicationMatrix(CultureInfo ci, bool quick)
+{
+    IReadOnlyList<ReplicationBenchmarkConfig> matrix = quick ? ReplicationBenchmarkMatrix.Quick() : ReplicationBenchmarkMatrix.Default();
+
+    Console.WriteLine();
+    Console.WriteLine("replication axis - AoiDeltaReplicator shared per-tick hot path (replication-hotpath jobs-1)");
+    Console.WriteLine($"cores={Environment.ProcessorCount}  framework={Environment.Version}  mode={(quick ? "quick" : "full")}");
+    Console.WriteLine();
+
+    // Column layout: regime | C | E | comp | per-tick ms | alloc B/tick | gen0/Kt | gen1/Kt | gen2/Kt | wire B/tick
+    const string rhdr = "{0,-20} {1,4} {2,7} {3,5} {4,12} {5,15} {6,9} {7,9} {8,9} {9,15}";
+    Console.WriteLine(string.Format(ci, rhdr,
+        "regime", "C", "E", "comp", "per-tick ms", "alloc B/tick", "gen0/Kt", "gen1/Kt", "gen2/Kt", "wire B/tick"));
+    Console.WriteLine(new string('-', 20 + 4 + 7 + 5 + 12 + 15 + 9 + 9 + 9 + 15 + 9));
+
+    foreach (ReplicationBenchmarkConfig config in matrix)
+    {
+        ReplicationBenchmarkResult r = ReplicationTickBenchmark.Run(config);
+        Console.WriteLine(string.Format(ci, rhdr,
+            config.Name,
+            config.ClientCount,
+            config.EntityCount,
+            config.ComponentsPerEntity,
+            r.PerTickMs.ToString("F3", ci),
+            r.AllocBytesPerTick.ToString("N0", ci),
+            r.Gen0PerKTicks.ToString("F1", ci),
+            r.Gen1PerKTicks.ToString("F1", ci),
+            r.Gen2PerKTicks.ToString("F1", ci),
+            r.WireBytesPerTick.ToString("N0", ci)));
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("per-tick ms = movement + one shared (interest-grid rebuild + world capture) + every client's (Query + WriteFor), mean over the timed ticks.");
+    Console.WriteLine("alloc B/tick = bytes allocated on this thread per tick (GC.GetAllocatedBytesForCurrentThread delta).");
+    Console.WriteLine("gen0/1/2 per Kt = GC collections per 1000 ticks. wire B/tick = total bytes WriteFor returned, summed across all clients.");
+    Console.WriteLine("This measures the shared per-tick path (one grid rebuild + one world capture per tick). The capture writes all components into one pooled buffer with (offset, length) segments, so there is no byte[] per component.");
 }

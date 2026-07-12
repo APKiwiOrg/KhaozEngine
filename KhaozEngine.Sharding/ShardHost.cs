@@ -398,9 +398,9 @@ public sealed class ShardHost
     /// <see cref="ReplicationChannels.OwnerOnly"/> component reaches this client only on its own player entity, never
     /// on another player it observes.
     /// </summary>
-    public byte[] SnapshotForClient(int slot, float interestRadius)
+    public byte[] SnapshotForClient(int slot, float interestRadius, long? serveEpoch = null)
     {
-        (World world, HashSet<long> interest) = HomeInterest(slot, interestRadius);
+        (World world, HashSet<long> interest) = HomeInterest(slot, interestRadius, serveEpoch);
         // HomeInterest validated the binding, so the slot's player net id is present: it is this client's owner id.
         long ownerNetId = clientPlayerNetId[slot];
         return SnapshotWriter.WriteFiltered(world, registry, interest, ReplicationChannels.Replicate, ownerNetId);
@@ -416,7 +416,7 @@ public sealed class ShardHost
     /// <see cref="SnapshotForClient"/>: requires a position accessor, a bound client with an owned, positioned player,
     /// and <paramref name="interestRadius"/> in <c>[0, OverlapMargin]</c>.
     /// </summary>
-    public (World world, HashSet<long> interest) HomeInterest(int slot, float interestRadius)
+    public (World world, HashSet<long> interest) HomeInterest(int slot, float interestRadius, long? serveEpoch = null)
     {
         if (positionAccessor is null)
             throw new InvalidOperationException("HomeInterest requires a position accessor.");
@@ -432,7 +432,11 @@ public sealed class ShardHost
         if (!positionAccessor(home.World, player, out float px, out float py))
             throw new InvalidOperationException($"Client {slot}'s player {playerNetId} has no position.");
 
-        home.RebuildInterest(positionAccessor);
+        // Rebuild the home cell's interest grid. When the caller passes a serve epoch (the sharded server's per-tick
+        // serve pass), the rebuild is shared: the cell is reindexed once per tick even when several clients home to
+        // it. Without an epoch the grid is rebuilt unconditionally (the standalone / direct-call contract).
+        if (serveEpoch is long epoch) home.RebuildInterestShared(positionAccessor, epoch);
+        else home.RebuildInterest(positionAccessor);
         HashSet<long> interest = home.Interest.Query(px, py, interestRadius);
         return (home.World, interest);
     }

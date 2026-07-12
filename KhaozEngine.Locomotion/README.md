@@ -31,7 +31,11 @@ optional slope gate via a ground-normal delegate):
   capsule up onto the step rather than push it back off. The fan counts only a support that sits genuinely below the
   feet (a hit closer than the skin depth is the feet embedded in a solid riser box, not resting on it, and is
   rejected), so a solid building or doorway riser reads unsupported and mounts too, not just a one-sided tread gap
-  (10.67.0). Monotone either way, so it starts cleanly from the flat floor at any
+  (10.67.0). At a staircase **base**, where the terrain sits within a step of the tread, a footprint that straddles a
+  tread shallower than the capsule diameter can make the downward support sweep miss the tread entirely (it grazes the
+  vertical riser front); when that happens the same radius-less ray fan finds the tread the sweep cannot and seats the
+  support on it, so the bottom step mounts cleanly at any approach speed and arrival phase instead of collapsing a
+  whole riser back to the ground below and bobbing there. Monotone either way, so it starts cleanly from the flat floor at any
   angle/speed instead of vibrating on the first riser - a stair climbs like a ramp. A per-riser backward shove during
   a paced climb is also caught by a monotone-forward hold (grounded climb ticks only, a jump takeoff is never held).
   A low curb whose rise fits one tick's budget

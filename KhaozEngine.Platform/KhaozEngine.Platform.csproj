@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Platform</PackageId>
     <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Game-agnostic native platform interop. Cross-platform clipboard get/set (text + image): text via a registered window/GLFW provider (wired by KhaozEngine.Windowing.AppWindow, the working Windows/Linux/macOS text path) with a macOS NSPasteboard fallback, plus Windows GDI (images) and an optional reflection-resolved mobile bridge. Pure BCL P/Invoke, no MonoGame dependency.</Description>
+    <Description>Game-agnostic native platform interop. Cross-platform clipboard get/set (text + image): text via a registered window/GLFW provider (wired by KhaozEngine.Windowing.AppWindow, the working Windows/Linux/macOS text path) with a macOS NSPasteboard fallback, plus Windows GDI (images) and an optional reflection-resolved mobile bridge. Pure BCL P/Invoke, no MonoGame dependency. IProcessControl/ProcessControl is the fakeable process seam (resolve the running exe/pid/args, spawn a detached instance, wait for a pid to exit) behind KhaozEngine.App's AppRelaunch self-restart.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

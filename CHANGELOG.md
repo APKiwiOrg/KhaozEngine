@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Locomotion: short steps and tread lips on uneven ground now mount reliably
+
+**A short step or tread lip (an effective riser well under `StepHeight`) is now mounted instead of dead-stalling against it: the step-up is attempted from an up-tilted lip contact rather than wall-sliding forever, and TryStepUp's down-probe reaches the tread reliably on one-sided building/curb meshes; no consumer change needed.** When a capsule's rounded bottom cap grazes the top edge of a short riser, the sweep reports an up-TILTED lip normal, not a flat vertical wall face, and two behaviours in `CharacterMovement` used to leave it un-mountable: (1) the `SlideSubstep` degenerate-zero-normal branch (a Bepu sweep from a touching start returns no normal) recovered a normal only for a wall-SLIDE and never attempted a step-up, so the capsule froze tangent (penetration 0, Y never rising); and (2) the step-up precheck `|normal.Y| < 0.5` rejected the up-tilted lip outright once the effective riser dropped below ~0.18 m (normal.Y climbs past 0.5). A third, quieter cause: `TryStepUp` raised the capsule a full `StepHeight` then swept back DOWN to find the tread, and for a one-sided TRIANGLE-mesh step the tread sat in the far half of that range, where Bepu's mesh sweep under-reports the hit, so only a solid convex riser mounted while the identical one-sided riser (the shape a real building/curb collision proxy bakes to) stalled.
+
+The fix, all inside `CharacterMovement` (no public API change):
+- The degenerate-zero-normal branch now attempts a step-up from the recovered lip normal before falling through to the wall-slide. `TryStepUp` self-validates via its up/forward/down sweeps, so a true wall finds no ledge and slides as before.
+- The step-up eligibility precheck is widened from `|n.Y| < 0.5` to "not walkable, not a ceiling", so an up-tilted lip normal attempts a mount. The widened band is gated to within a `StepHeight` of the analytic terrain floor (a ground-level curb/doorstep/first step), so it does not fire mid-climb on a tall stair run and press a fast run into the risers.
+- `TryStepUp`'s down-sweep range is doubled (~2x `StepHeight`) so a short one-sided-mesh tread lands in the near half of the sweep and registers, matching the reliability a solid convex riser already had. The strictly-higher-than-start guard keeps the accepted band unchanged.
+- `TryStepUp` gains a radius-less ray-fan fallback for the down-probe: when the tread is shallower than the capsule diameter the footprint STRADDLES it, so the full-radius down-sweep grazes the tread's front edge and reports a steep, rejected normal even though a flat tread is right there (the first riser of a placed staircase on rolling terrain, whose effective riser rolls short across the width: the consumer staircase-corner stall). The ray fan reads the tread top through the clear air the way the support probe already does. Gated to a near-vertical contact at the terrain-floor handoff only, so it starts the base mount without double-seating a fast run mid-climb.
+- A lip-band step-up is committed only when it lands on a near-FLAT tread (landing normal.Y >= 0.9), so it cannot ride up a CONVEX prop flank (dome, boulder, rounded rock) whose walkable rounded top would otherwise pass the ledge test. Convex props stay blocked at their base.
+
+Applies identically to the player and to server-authoritative NPC `StepTowards` (shared collision core). Covered by new headless tests `LipContactShortRiserTests` (box + one-sided mesh, risers 0.15-0.30, approach 0/15/30 deg, walk/run, dt 1/30 + 1/60) and `WalkableSlopeNoStepUpTests` (a walkable slope attempts no step-ups); the full stair and dome-base suites stay green.
+
 ## 10.71.1
 
 ### Locomotion: bottom-stair mount no longer collapses to the ground below

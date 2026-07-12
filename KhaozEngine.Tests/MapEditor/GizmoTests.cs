@@ -303,6 +303,20 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void MoveScaleRotateAffordance_HasYawRingButNoVerticalArrow()
+        {
+            // A rotatable terrain feature (ridge or rim) draws the XZ arrows, the yaw ring, and the scale cube,
+            // but never the +Y arrow (RestrictHandle blocks the vertical handle for every feature). This is the
+            // one affordance distinct from Full that offers a ring.
+            GizmoMesh[] meshes = MapEditorScene.ComputeGizmoMeshes(GizmoAffordance.MoveScaleRotate);
+
+            Assert.Contains(GizmoMesh.TranslateArrowsXZ, meshes);
+            Assert.Contains(GizmoMesh.YawRing, meshes);
+            Assert.Contains(GizmoMesh.ScaleHandle, meshes);
+            Assert.DoesNotContain(GizmoMesh.TranslateArrowsFull, meshes);
+        }
+
+        [Fact]
         public void FullAffordance_StillHasTheVerticalArrowAndYawRing()
         {
             // A placement keeps the full transform: translate (all three axes), yaw, and scale. Unchanged by

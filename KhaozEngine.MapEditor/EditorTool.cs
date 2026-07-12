@@ -86,8 +86,13 @@ internal enum GizmoAffordance
     /// <summary>The selection marker plus the XZ translate arrows, no yaw / scale (a spawn: only its ground-plane
     /// position is draggable).</summary>
     Marker,
-    /// <summary>Translate arrows plus the scale cube, no yaw ring (a feature or a disc / rect shape).</summary>
+    /// <summary>Translate arrows plus the scale cube, no yaw ring (a rotationally symmetric feature such as a lake
+    /// or flatten, or a disc / rect shape).</summary>
     MoveScale,
+    /// <summary>Translate arrows, yaw ring, and scale cube, but no vertical arrow (a rotatable terrain feature: a
+    /// ridge turns its direction vector, a rim offsets its pass angles). Distinct from <see cref="Full"/>, which
+    /// also carries the +Y arrow a placement needs.</summary>
+    MoveScaleRotate,
     /// <summary>The full transform: translate arrows, yaw ring, and scale cube (a placement).</summary>
     Full,
 }
@@ -285,9 +290,9 @@ public sealed class EditorToolController
     void BeginGestureOrSelect(in EditorFrameInput input)
     {
         if (TryGizmoTarget(out Vector3 gizmoPos, out SelectionKind kind, out string id,
-                out float? startY, out float startYaw, out float startScale))
+                out float? startY, out float startYaw, out float startScale, out bool rotatable))
         {
-            GizmoDrag.GizmoHandle handle = RestrictHandle(kind,
+            GizmoDrag.GizmoHandle handle = RestrictHandle(kind, rotatable,
                 GizmoDrag.HitTest(gizmoPos, GizmoScale, input.RayOrigin, input.RayDirection));
 
             if (handle != GizmoDrag.GizmoHandle.None)
@@ -331,12 +336,18 @@ public sealed class EditorToolController
     }
 
     // Which gizmo handle a selection kind honours: a placement takes every handle, a spawn only the ground-plane
-    // translate (no yaw / scale in its model), and a feature / exclusion / region only translate + scale (their
-    // XZ center moves and their primary radius resizes, with no yaw concept, so the yaw ring is suppressed).
-    static GizmoDrag.GizmoHandle RestrictHandle(SelectionKind kind, GizmoDrag.GizmoHandle handle) => kind switch
+    // translate (no yaw / scale in its model), an exclusion / region only translate + scale (their XZ center moves
+    // and their primary radius resizes, with no yaw concept). A feature also takes translate + scale, plus the yaw
+    // ring ONLY when it is rotatable (a ridge or rim). The rotatable fact is threaded in from TryGizmoTarget, the
+    // same source the affordance decision reads, so the drawn ring and this pickable handle can never disagree.
+    static GizmoDrag.GizmoHandle RestrictHandle(SelectionKind kind, bool featureRotatable, GizmoDrag.GizmoHandle handle) => kind switch
     {
         SelectionKind.Spawn => handle == GizmoDrag.GizmoHandle.TranslateXZ ? handle : GizmoDrag.GizmoHandle.None,
-        SelectionKind.Feature or SelectionKind.Exclusion or SelectionKind.Region =>
+        SelectionKind.Feature =>
+            handle is GizmoDrag.GizmoHandle.TranslateXZ or GizmoDrag.GizmoHandle.Scale
+                || (featureRotatable && handle == GizmoDrag.GizmoHandle.YawRing)
+                ? handle : GizmoDrag.GizmoHandle.None,
+        SelectionKind.Exclusion or SelectionKind.Region =>
             handle is GizmoDrag.GizmoHandle.TranslateXZ or GizmoDrag.GizmoHandle.Scale
                 ? handle : GizmoDrag.GizmoHandle.None,
         _ => handle,
@@ -347,9 +358,9 @@ public sealed class EditorToolController
     // spawns, features, and disc / rect shapes sit their gizmo at the element center on the ground. Placement Y
     // respects the stored ground-snap mode.
     bool TryGizmoTarget(out Vector3 pos, out SelectionKind kind, out string id,
-        out float? startY, out float startYaw, out float startScale)
+        out float? startY, out float startYaw, out float startScale, out bool rotatable)
     {
-        pos = default; kind = SelectionKind.None; id = ""; startY = null; startYaw = 0f; startScale = 1f;
+        pos = default; kind = SelectionKind.None; id = ""; startY = null; startYaw = 0f; startScale = 1f; rotatable = false;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
@@ -364,6 +375,12 @@ public sealed class EditorToolController
             case SelectionKind.Feature when FeatureAt(sel.Id) is { } f && FeatureGeometry.TryCenter(f, out float fx, out float fz):
                 pos = new Vector3(fx, Field!.SampleHeight(fx, fz), fz);
                 kind = SelectionKind.Feature; id = sel.Id;
+                rotatable = FeatureGeometry.Rotated(f, 0f) is not null;
+                // The ring gesture's absolute start yaw differs by feature. A ridge exposes a real orientation (its
+                // direction vector), so the start yaw is that direction's angle and the ring tracks the ridge's real
+                // heading. A rim has no single heading, it rotates by offsetting every pass angle from wherever they
+                // sit, so its gesture is delta-only and the start yaw stays 0. A symmetric feature is not rotatable.
+                startYaw = f is RidgeFeatureDoc ridge ? MathF.Atan2(ridge.DirectionZ, ridge.DirectionX) : 0f;
                 return true;
             case SelectionKind.Exclusion when ExclusionShape(sel.Id) is { } ex
                     && ShapeGeometry.IsGizmoEditable(ex) && ShapeGeometry.TryCenter(ex, out float ecx, out float ecz):
@@ -387,13 +404,16 @@ public sealed class EditorToolController
     {
         pos = default;
         if (Field is null) return GizmoAffordance.None;
-        if (!TryGizmoTarget(out pos, out SelectionKind kind, out _, out _, out _, out _))
+        if (!TryGizmoTarget(out pos, out SelectionKind kind, out _, out _, out _, out _, out bool rotatable))
             return GizmoAffordance.None;
         return kind switch
         {
             SelectionKind.Placement => GizmoAffordance.Full,
             SelectionKind.Spawn => GizmoAffordance.Marker,
-            _ => GizmoAffordance.MoveScale,   // feature / disc / rect shape: translate + scale, no yaw ring
+            // A rotatable feature (ridge / rim) adds the yaw ring, drawn from the same rotatable fact RestrictHandle
+            // gates the pickable ring on. A symmetric feature or a disc / rect shape stays translate + scale.
+            SelectionKind.Feature => rotatable ? GizmoAffordance.MoveScaleRotate : GizmoAffordance.MoveScale,
+            _ => GizmoAffordance.MoveScale,
         };
     }
 
@@ -446,10 +466,20 @@ public sealed class EditorToolController
                 }
                 break;
             case GizmoDrag.GizmoHandle.YawRing:
-                if (_dragKind == SelectionKind.Placement)
+                switch (_dragKind)
                 {
-                    float newYaw = _drag.ObjectStartYaw + GizmoDrag.YawDelta(_drag, origin, dir);
-                    _document.Execute(new RotatePlacementCommand(_dragId, newYaw));
+                    case SelectionKind.Placement:
+                    {
+                        float newYaw = _drag.ObjectStartYaw + GizmoDrag.YawDelta(_drag, origin, dir);
+                        _document.Execute(new RotatePlacementCommand(_dragId, newYaw));
+                        break;
+                    }
+                    case SelectionKind.Feature:
+                        // Rotate the grab-time snapshot by the whole-gesture yaw delta, so every frame rebuilds from
+                        // a fixed start and the EditFeatureCommand same-index merge coalesces the drag into one step,
+                        // exactly like the move / scale feature drags. A null (unrotatable) result no-ops.
+                        ExecuteFeatureEdit(FeatureGeometry.Rotated(_dragStartFeature!, GizmoDrag.YawDelta(_drag, origin, dir)));
+                        break;
                 }
                 break;
             case GizmoDrag.GizmoHandle.Scale:

@@ -90,6 +90,41 @@ internal static class FeatureGeometry
         }
     }
 
+    /// <summary>A clone of <paramref name="start"/> rotated on the XZ plane by <paramref name="deltaRadians"/>: a
+    /// ridge turns its direction unit vector (standard atan2-increasing rotation, renormalized, a degenerate zero
+    /// direction left as-is), a rim adds the delta to every pass's angle (wrapped to the canonical range). Null for
+    /// lake / flatten (rotationally symmetric) and any unknown custom type, so the gizmo offers no yaw ring and a
+    /// ring grab cannot arm where there is no orientation to turn. Every other field carries over from the clone.</summary>
+    internal static MapFeature? Rotated(MapFeature start, float deltaRadians)
+    {
+        switch (start)
+        {
+            case RidgeFeatureDoc r:
+            {
+                var c = (RidgeFeatureDoc)Clone(r);
+                float cos = MathF.Cos(deltaRadians), sin = MathF.Sin(deltaRadians);
+                float nx = r.DirectionX * cos - r.DirectionZ * sin;
+                float nz = r.DirectionX * sin + r.DirectionZ * cos;
+                float len = MathF.Sqrt(nx * nx + nz * nz);
+                if (len < 1e-6f) return c;   // degenerate zero direction: nothing to rotate, keep the clone's carried value
+                c.DirectionX = nx / len;
+                c.DirectionZ = nz / len;
+                return c;
+            }
+            case RimFeatureDoc rim:
+            {
+                var c = (RimFeatureDoc)Clone(rim);
+                foreach (RimPassDoc pass in c.Passes)
+                    pass.AngleRadians = WrapToPi(pass.AngleRadians + deltaRadians);
+                return c;
+            }
+            default: return null;
+        }
+    }
+
+    // Shortest signed wrap of an angle to (-pi, pi], the same idiom GizmoDrag uses so a rotated pass angle stays canonical.
+    static float WrapToPi(float a) => MathF.Atan2(MathF.Sin(a), MathF.Cos(a));
+
     /// <summary>A default-parameterized feature of <paramref name="type"/> centered at (<paramref name="x"/>,
     /// <paramref name="z"/>), for the click-place tool: a lake (r10, d3), a flatten (r10, target at
     /// <paramref name="groundHeight"/>), a ridge through the point, or a rim centered there. Null for a type

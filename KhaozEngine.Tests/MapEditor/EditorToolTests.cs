@@ -630,6 +630,90 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(1, doc.History.UndoDepth);
         }
 
+        // ---- yaw ring on rotatable features ----------------------------------------------------------------
+
+        [Fact]
+        public void RotatableFeature_GetsRingAffordance_OthersDoNot()
+        {
+            var (doc, c) = Make();
+            doc.Doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, DirectionX = 1f, DirectionZ = 0f, Height = 5f, Width = 8f });   // 0
+            doc.Doc.Terrain.Features.Add(new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 10f, OuterRadius = 14f, WallHeight = 6f });        // 1
+            doc.Doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f, Depth = 3f });                                    // 2
+            doc.Doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f, TargetHeight = 0f });                          // 3
+            doc.Doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+
+            // Ridge and rim expose an orientation -> MoveScaleRotate, and the drawn mesh set carries the ring.
+            foreach (string rotatableId in new[] { "0", "1" })
+            {
+                doc.Selection.Set(SelectionKind.Feature, rotatableId);
+                GizmoAffordance a = c.TryGizmo(out _);
+                Assert.Equal(GizmoAffordance.MoveScaleRotate, a);
+                Assert.Contains(GizmoMesh.YawRing, MapEditorScene.ComputeGizmoMeshes(a));
+            }
+
+            // Lake and flatten are rotationally symmetric -> MoveScale, no ring in the mesh set.
+            foreach (string symmetricId in new[] { "2", "3" })
+            {
+                doc.Selection.Set(SelectionKind.Feature, symmetricId);
+                GizmoAffordance a = c.TryGizmo(out _);
+                Assert.Equal(GizmoAffordance.MoveScale, a);
+                Assert.DoesNotContain(GizmoMesh.YawRing, MapEditorScene.ComputeGizmoMeshes(a));
+            }
+
+            // A disc shape has no rotational field either -> MoveScale, no ring.
+            doc.Selection.Set(SelectionKind.Exclusion, "0");
+            GizmoAffordance ex = c.TryGizmo(out _);
+            Assert.Equal(GizmoAffordance.MoveScale, ex);
+            Assert.DoesNotContain(GizmoMesh.YawRing, MapEditorScene.ComputeGizmoMeshes(ex));
+        }
+
+        [Fact]
+        public void RingDrag_RotatesRidge_OneUndoStep()
+        {
+            var (doc, c) = Make();
+            var ridge = new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, DirectionX = 1f, DirectionZ = 0f, Height = 5f, Width = 8f };
+            doc.Doc.Terrain.Features.Add(ridge);
+            doc.Selection.Set(SelectionKind.Feature, "0");
+
+            // Grab the yaw ring at radius 1 (45 degrees, clear of the arrow boxes and the corner cube), then sweep
+            // the ground hit to 135 degrees and release. The ridge's direction turns by the swept angle.
+            float d = GizmoGeometry.RingRadius * System.MathF.Sqrt(0.5f);   // ~0.707: on the ring band at 45 deg
+            c.Update(Press(new Vector3(d, 100f, d)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(-d, 100f, d)));      // sweep to 135 deg
+            c.Update(Release(new Vector3(-d, 100f, d)));
+
+            Assert.False(c.IsDragging);
+            var edited = Assert.IsType<RidgeFeatureDoc>(doc.Doc.Terrain.Features[0]);
+            // Start +X swept a quarter turn: YawDelta for a +X -> +Z-side sweep is -pi/2, so the direction lands -Z.
+            Near(0f, edited.DirectionX);
+            Near(-1f, edited.DirectionZ);
+            Assert.True(doc.WorldRebuildPending);           // features affect the streamed world
+            Assert.Equal(1, doc.History.UndoDepth);         // the whole ring drag is one coalesced undo step
+
+            Assert.True(doc.Undo());
+            var restored = Assert.IsType<RidgeFeatureDoc>(doc.Doc.Terrain.Features[0]);
+            Near(1f, restored.DirectionX);                  // undo restores the pre-drag direction exactly
+            Near(0f, restored.DirectionZ);
+            Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
+        public void RingDrag_OnLake_CannotArm()
+        {
+            var (doc, c) = Make();
+            doc.Doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f, Depth = 3f });
+            doc.Selection.Set(SelectionKind.Feature, "0");
+
+            // A ray at the ring band over a rotationally symmetric feature: RestrictHandle strips the yaw ring, so
+            // no gesture arms and no rotate command runs.
+            float d = GizmoGeometry.RingRadius * System.MathF.Sqrt(0.5f);
+            c.Update(Press(new Vector3(d, 100f, d)));
+
+            Assert.False(c.IsDragging);
+            Assert.False(doc.History.CanUndo);              // nothing rotated
+        }
+
         [Fact]
         public void FeatureDelete_RemovesSelected()
         {

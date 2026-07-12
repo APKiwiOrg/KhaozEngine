@@ -100,6 +100,7 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // Pre-built gizmo mesh sets returned by ComputeGizmoMeshes, avoiding per-frame allocations.
     static readonly GizmoMesh[] FullGizmoMeshes = new[] { GizmoMesh.TranslateArrowsFull, GizmoMesh.YawRing, GizmoMesh.ScaleHandle };
+    static readonly GizmoMesh[] MoveScaleRotateGizmoMeshes = new[] { GizmoMesh.TranslateArrowsXZ, GizmoMesh.YawRing, GizmoMesh.ScaleHandle };
     static readonly GizmoMesh[] MoveScaleGizmoMeshes = new[] { GizmoMesh.TranslateArrowsXZ, GizmoMesh.ScaleHandle };
     static readonly GizmoMesh[] MarkerGizmoMeshes = new[] { GizmoMesh.SelectionMarker, GizmoMesh.TranslateArrowsXZ };
     static readonly GizmoMesh[] NoneGizmoMeshes = Array.Empty<GizmoMesh>();
@@ -577,12 +578,14 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// (<see cref="GizmoAffordance.Marker"/>) draws the selection marker plus the XZ arrows (the working
     /// ground-plane drag is otherwise invisible). A feature / disc / rect shape
     /// (<see cref="GizmoAffordance.MoveScale"/>) draws the XZ arrows plus the scale cube, never the +Y arrow
-    /// (<c>EditorToolController.RestrictHandle</c> already blocks that handle for both). A placement
-    /// (<see cref="GizmoAffordance.Full"/>) keeps every handle. <see cref="DrawGizmo"/> submits the result
-    /// untested.</summary>
+    /// (<c>EditorToolController.RestrictHandle</c> already blocks that handle for both). A rotatable feature, a
+    /// ridge or rim (<see cref="GizmoAffordance.MoveScaleRotate"/>), adds the yaw ring between them, still with no
+    /// +Y arrow. A placement (<see cref="GizmoAffordance.Full"/>) keeps every handle. <see cref="DrawGizmo"/>
+    /// submits the result untested.</summary>
     internal static GizmoMesh[] ComputeGizmoMeshes(GizmoAffordance affordance) => affordance switch
     {
         GizmoAffordance.Full => FullGizmoMeshes,
+        GizmoAffordance.MoveScaleRotate => MoveScaleRotateGizmoMeshes,
         GizmoAffordance.MoveScale => MoveScaleGizmoMeshes,
         GizmoAffordance.Marker => MarkerGizmoMeshes,
         _ => NoneGizmoMeshes,

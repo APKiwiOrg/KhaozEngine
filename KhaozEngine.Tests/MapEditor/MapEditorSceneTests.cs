@@ -504,6 +504,100 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(scene.Document.History.CanUndo);
         }
 
+        // The visible-row index of a node in a tree (reference identity), or -1.
+        static int RowOf(TreeView tree, TreeNode node)
+        {
+            var rows = tree.VisibleRows();
+            for (int i = 0; i < rows.Count; i++)
+                if (ReferenceEquals(rows[i].Node, node)) return i;
+            return -1;
+        }
+
+        // The child at `childIndex` under the outline category labelled `label`.
+        static TreeNode CategoryChild(TreeView tree, string label, int childIndex)
+        {
+            foreach (TreeNode root in tree.Roots)
+                if (root.Label.Resolve() == label) return root.Children[childIndex];
+            throw new Xunit.Sdk.XunitException($"no outline category '{label}'");
+        }
+
+        // Drive a real drag on a TreeView: press the source row's label, drag onto the target row's upper/lower
+        // half, release. Mirrors the pointer's press-move-release sequence so the widget's own gesture runs.
+        static void DragTreeRow(TreeView tree, InputManager input, int fromRow, int toRow, bool afterTarget)
+        {
+            Rect src = tree.RowBounds(fromRow);
+            var press = new Vector2(src.X + src.Width * 0.5f, src.Y + src.Height * 0.5f);
+            Rect dst = tree.RowBounds(toRow);
+            var move = new Vector2(press.X, dst.Y + dst.Height * (afterTarget ? 0.75f : 0.25f));
+            input.Update(MouseFrame(press, leftDown: false)); tree.Update(input);
+            input.Update(MouseFrame(press, leftDown: true)); tree.Update(input);
+            input.Update(MouseFrame(move, leftDown: true)); tree.Update(input);
+            input.Update(MouseFrame(move, leftDown: false)); tree.Update(input);
+        }
+
+        [Fact]
+        public void OutlineDrop_ReordersFeature_AndSelectionFollows()
+        {
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var flatten = new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f };
+            var ridge = new RidgeFeatureDoc { PointX = 5f, PointZ = 5f, Height = 2f, Width = 4f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(lake);
+                doc.Terrain.Features.Add(flatten);
+                doc.Terrain.Features.Add(ridge);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);   // tall enough for every outline row
+            TreeNode f0 = CategoryChild(outline, "Features", 0);
+            TreeNode f1 = CategoryChild(outline, "Features", 1);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, f0), RowOf(outline, f1), afterTarget: true);   // lake -> after flatten
+
+            Assert.Same(flatten, scene.Document.Doc.Terrain.Features[0]);
+            Assert.Same(lake, scene.Document.Doc.Terrain.Features[1]);   // lake now folds after flatten
+            Assert.Same(ridge, scene.Document.Doc.Terrain.Features[2]);
+            Assert.Equal(SelectionKind.Feature, scene.Document.Selection.Kind);
+            Assert.Equal("1", scene.Document.Selection.Id);              // selection follows the moved feature
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void OutlineDrop_OnPlacementsCategory_IsNoOp()
+        {
+            var p0 = new MapPlacement { Id = "p0", Kind = "rock", X = 0f, Z = 0f };
+            var p1 = new MapPlacement { Id = "p1", Kind = "tree", X = 5f, Z = 5f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(p0);
+                doc.Placements.Add(p1);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);
+            TreeNode c0 = CategoryChild(outline, "Placements", 0);
+            TreeNode c1 = CategoryChild(outline, "Placements", 1);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, c0), RowOf(outline, c1), afterTarget: true);
+
+            // Placements carry no reorder semantics: the drop is dropped, the document and undo stack untouched.
+            Assert.Same(p0, scene.Document.Doc.Placements[0]);
+            Assert.Same(p1, scene.Document.Doc.Placements[1]);
+            Assert.False(scene.Document.History.CanUndo);
+            Assert.False(scene.Document.WorldRebuildPending);
+        }
+
         [Fact]
         public void CtrlDown_AtEnd_IsNoOp()
         {

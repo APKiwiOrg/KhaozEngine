@@ -871,3 +871,49 @@ public sealed class ReorderFeatureCommand : EditorCommand
         doc.Terrain.Features.Insert(to, feature);
     }
 }
+
+/// <summary>Moves a scatter exclusion from one list position to another. Unlike <see cref="ReorderFeatureCommand"/>,
+/// this does NOT affect the streamed world, so <see cref="AffectsWorld"/> stays false: exclusions combine as a pure
+/// set union (a scatter candidate is masked when it falls inside ANY exclusion), so the list ORDER never changes
+/// which ground is excluded. Marking it true would force a full viewport world rebuild on every reorder for a
+/// change the scatter cannot observe. Both indices
+/// are range-guarded (non-negative in the constructor, in-range against the live list at apply time, each with a
+/// precise <see cref="ArgumentOutOfRangeException"/>). <see cref="Revert"/> moves it back (self-inverse), and it
+/// never coalesces (no merge).</summary>
+public sealed class ReorderExclusionCommand : EditorCommand
+{
+    readonly int _fromIndex;
+    readonly int _toIndex;
+
+    /// <summary>Creates the command moving the exclusion at <paramref name="fromIndex"/> to
+    /// <paramref name="toIndex"/> in the exclusion list. Both must be non-negative.</summary>
+    public ReorderExclusionCommand(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0) throw new ArgumentOutOfRangeException(nameof(fromIndex), fromIndex, "Exclusion index must be non-negative.");
+        if (toIndex < 0) throw new ArgumentOutOfRangeException(nameof(toIndex), toIndex, "Exclusion index must be non-negative.");
+        _fromIndex = fromIndex;
+        _toIndex = toIndex;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Reorder exclusion";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => Move(doc, _toIndex, _fromIndex);
+
+    // A list move (remove at `from`, re-insert at `to`), its own inverse. Range-guards both endpoints against the
+    // live list up front so a bad index is a precise ArgumentOutOfRangeException, not an opaque list throw.
+    static void Move(MapDocument doc, int from, int to)
+    {
+        int count = doc.Exclusions.Count;
+        if (from >= count) throw new ArgumentOutOfRangeException(nameof(from), from, $"Exclusion index is out of range (count {count}).");
+        if (to >= count) throw new ArgumentOutOfRangeException(nameof(to), to, $"Exclusion index is out of range (count {count}).");
+        MapExclusion exclusion = doc.Exclusions[from];
+        doc.Exclusions.RemoveAt(from);
+        doc.Exclusions.Insert(to, exclusion);
+    }
+}

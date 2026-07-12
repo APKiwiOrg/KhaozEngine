@@ -635,6 +635,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _outline = new TreeView(default) { RowHeight = 22f };
         _inspector = new PropertyGrid(default);
         _outline.OnSelected = OnOutlineSelected;
+        _outline.OnReordered = OnOutlineReordered;
 
         _paletteFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter kits...") };
         _paletteTree = new TreeView(default) { RowHeight = 22f };
@@ -822,6 +823,29 @@ public class MapEditorScene : GameScene, IGameScene3D
     void OnOutlineSelected(TreeNode node)
     {
         if (node.Tag is OutlineRef r) _document.Selection.Set(r.Kind, r.Id);
+    }
+
+    // A drag-and-drop reorder inside the outline. Same-parent drops are the only ones the TreeView reports, and
+    // only two categories carry list-order semantics: Features fold in list order (last wins overlaps) and
+    // Exclusions have order-free semantics but still expose a reorder for a stable authored layout. Both map to
+    // their index-based command with the selection following the moved row (the ReorderSelectedFeature idiom).
+    // Every other category (Placements, Spawns, Regions, Terrain) has no reorder, so its drop is a no-op.
+    void OnOutlineReordered(TreeNode node, int fromIndex, int toIndex)
+    {
+        if (node.Tag is not OutlineRef r) return;
+        switch (r.Kind)
+        {
+            case SelectionKind.Feature:
+                _document.Execute(new ReorderFeatureCommand(fromIndex, toIndex));
+                _document.Selection.Set(SelectionKind.Feature, toIndex.ToString(CultureInfo.InvariantCulture));
+                break;
+            case SelectionKind.Exclusion:
+                _document.Execute(new ReorderExclusionCommand(fromIndex, toIndex));
+                _document.Selection.Set(SelectionKind.Exclusion, toIndex.ToString(CultureInfo.InvariantCulture));
+                break;
+            default:
+                break;   // no list-order semantics for this category: drop rejected
+        }
     }
 
     // ---- palette + spawn-list wiring ---------------------------------------------------------------------

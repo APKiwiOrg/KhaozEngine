@@ -218,6 +218,42 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void ReorderExclusionCommand_RoundTrips_AndDoesNotForceWorldRebuild()
+        {
+            var doc = Sample();
+            doc.Exclusions.Clear();
+            var e0 = new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } };
+            var e1 = new MapExclusion { Shape = new DiscShapeDoc { CenterX = 9f, CenterZ = 9f, Radius = 3f } };
+            doc.Exclusions.Add(e0);
+            doc.Exclusions.Add(e1);
+            string before = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new ReorderExclusionCommand(0, 1));   // move e0 to the end
+            Assert.Same(e1, doc.Exclusions[0]);
+            Assert.Same(e0, doc.Exclusions[1]);
+            // Exclusions combine as a pure union, so their order never changes the scatter: no world rebuild.
+            Assert.False(ed.WorldRebuildPending);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));                 // byte-identical restore (deep equality)
+            Assert.False(ed.WorldRebuildPending);            // undo of a non-world command leaves it false too
+        }
+
+        [Fact]
+        public void ReorderExclusionCommand_RangeGuardsIndexes()
+        {
+            var doc = Sample();
+            doc.Exclusions.Clear();
+            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => new ReorderExclusionCommand(-1, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new ReorderExclusionCommand(0, -2));
+            // A valid-looking index that overruns the live list is caught precisely at apply time.
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new ReorderExclusionCommand(0, 5)));
+        }
+
+        [Fact]
         public void ReorderChangesTerrainWinner()
         {
             // A lake and a flatten cover the same ground. Terrain features fold in list order, so whichever folds

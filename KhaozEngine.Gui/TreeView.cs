@@ -52,6 +52,19 @@ namespace KhaozEngine.Gui
 
         readonly List<(TreeNode Node, int Depth)> _visible = new();
 
+        // Drag-and-drop reorder state. `_dragNode` is non-null once a press clears `DragThreshold` and grabs a row;
+        // `_dragSiblings` / `_dragFromIndex` pin the sibling list and origin slot; the `_drop*` fields are the live
+        // insertion target recomputed each frame (and drawn as the insertion line). `_dragCancelled` latches an
+        // Escape / disable abort so the release that ends the same gesture cannot fall through to a tap-select.
+        TreeNode? _dragNode;
+        List<TreeNode>? _dragSiblings;
+        int _dragFromIndex;
+        int _dropIndex;
+        int _dropRow;
+        bool _dropAfter;
+        bool _dropValid;
+        bool _dragCancelled;
+
         /// <summary>The view rect the caller owns. Rows lay out downward from its top edge, offset by <see cref="ScrollOffset"/>.</summary>
         public Rect Bounds;
 
@@ -93,8 +106,25 @@ namespace KhaozEngine.Gui
         /// <summary>True on the frame a caret-zone tap toggled a parent node's expansion.</summary>
         public bool WasExpansionChanged { get; private set; }
 
+        /// <summary>True on the frame a drag-and-drop reorder committed (a valid same-parent drop that moved the row).</summary>
+        public bool WasReordered { get; private set; }
+
+        /// <summary>Pixels the pointer must travel from the press origin before a held press becomes a row drag
+        /// rather than a tap. Below this the gesture is still a tap (select or caret toggle). Default 6.</summary>
+        public float DragThreshold { get; set; } = 6f;
+
         /// <summary>Fired when a body tap selects a node, after <see cref="Selected"/> is updated.</summary>
         public Action<TreeNode>? OnSelected;
+
+        /// <summary>
+        /// Fired when a drag-and-drop reorder commits: the dragged node moves within its parent's sibling list from
+        /// <c>oldIndex</c> to <c>newIndex</c>, exactly as a <c>RemoveAt(oldIndex)</c> then <c>Insert(newIndex)</c>
+        /// on that list. The widget only reports the move (it does not mutate <see cref="Roots"/> or any
+        /// <see cref="TreeNode.Children"/>); the host applies it and rebuilds the tree. Drops are same-parent only,
+        /// so both indices address the same sibling list. A no-op drop (<c>newIndex == oldIndex</c>), a cross-parent
+        /// drop, or a release off the tree fires nothing.
+        /// </summary>
+        public Action<TreeNode, int, int>? OnReordered;
 
         /// <summary>Create a tree view over the given screen rect. Add nodes via <see cref="Roots"/>.</summary>
         public TreeView(Rect bounds) { Bounds = bounds; }
@@ -124,33 +154,66 @@ namespace KhaozEngine.Gui
             new(Bounds.X, Bounds.Y + visibleIndex * RowHeight - ScrollOffset, Bounds.Width, RowHeight);
 
         /// <summary>
-        /// Reserve the region on the pointer, apply wheel scrolling, and hit-test a tap for this frame. A caret-zone
-        /// tap on a node with children toggles its expansion, any other in-bounds tap selects the row under it. Returns
-        /// true if the selection or an expansion changed. Ignores everything after the region reservation when disabled.
+        /// Reserve the region on the pointer, apply wheel scrolling, run the drag-and-drop reorder gesture, and
+        /// hit-test a tap for this frame. A held press whose origin is in the tree becomes a row drag once the
+        /// pointer clears <see cref="DragThreshold"/> (grabbing the press-origin row, unless that press landed in a
+        /// parent's caret zone, which stays reserved for the expand toggle); a valid same-parent release fires
+        /// <see cref="OnReordered"/>, Escape or an off-tree release cancels. Otherwise a caret-zone tap toggles
+        /// expansion and any other in-bounds tap selects the row. Returns true if the selection, an expansion, or a
+        /// reorder changed. Ignores everything after the region reservation when disabled.
         /// </summary>
         public bool Update(InputManager input)
         {
             WasSelectionChanged = false;
             WasExpansionChanged = false;
+            WasReordered = false;
             input.BlockInputRegion(Bounds);
-            if (!Enabled) return false;
+            if (!Enabled) { _dragCancelled = _dragNode is not null; AbandonDrag(); return false; }
 
             IReadOnlyList<(TreeNode Node, int Depth)> rows = VisibleRows();
 
-            int notches = input.GetScrollIn(Bounds);
-            if (notches != 0)
+            if (input.IsPointerJustPressed) _dragCancelled = false;   // a fresh gesture clears the abort latch
+
+            // Escape aborts an in-flight drag outright (no drop) and latches so the release cannot tap-select.
+            if (_dragNode is not null && input.IsKeyDown(Key.Escape)) { AbandonDrag(); _dragCancelled = true; return false; }
+
+            // Wheel scrolls only when idle; while dragging the geometry is frozen (wheel-during-drag is deferred).
+            if (_dragNode is null)
             {
-                float max = MathF.Max(0f, rows.Count * RowHeight - Bounds.Height);
-                ScrollOffset = Math.Clamp(ScrollOffset - notches * RowHeight * WheelRowsPerNotch, 0f, max);
+                int notches = input.GetScrollIn(Bounds);
+                if (notches != 0)
+                {
+                    float max = MathF.Max(0f, rows.Count * RowHeight - Bounds.Height);
+                    ScrollOffset = Math.Clamp(ScrollOffset - notches * RowHeight * WheelRowsPerNotch, 0f, max);
+                }
             }
 
-            // A tap must land inside the view to hit a row, which also drops taps in the band a scrolled-away row
-            // would occupy past the clipped edge (the release fails Bounds.Contains there).
-            if (input.IsTapIn(Bounds))
+            // A held press whose origin is in the tree is a (potential) drag, never a tap: arm and track it here,
+            // committing nothing until release.
+            if (input.IsDragStartIn(Bounds)) { TrackDrag(input, rows); return false; }
+
+            // Release of an armed drag: the release position is the authoritative drop slot, so an off-tree or
+            // cross-parent release cancels and a valid slot that actually moves the row fires OnReordered.
+            if (input.IsPointerJustReleased && _dragNode is not null)
+            {
+                ComputeDrop(input.PointerPosition, rows);
+                if (_dropValid && _dropIndex != _dragFromIndex)
+                {
+                    OnReordered?.Invoke(_dragNode, _dragFromIndex, _dropIndex);
+                    WasReordered = true;
+                }
+                AbandonDrag();
+                return WasReordered;
+            }
+
+            // Idle tap: the caret-vs-body split. Must land inside the view to hit a row, which also drops taps in
+            // the band a scrolled-away row would occupy past the clipped edge (the release fails Bounds.Contains
+            // there). Suppressed for the rest of a gesture that Escape aborted.
+            if (!_dragCancelled && input.IsTapIn(Bounds))
             {
                 Vector2 pos = input.PointerPosition;
-                int i = (int)MathF.Floor((pos.Y - Bounds.Y + ScrollOffset) / RowHeight);
-                if (i >= 0 && i < rows.Count)
+                int i = RowAt(pos.Y, rows.Count);
+                if (i >= 0)
                 {
                     (TreeNode node, int depth) = rows[i];
                     float caretStart = Bounds.X + depth * Indent;
@@ -168,7 +231,91 @@ namespace KhaozEngine.Gui
                 }
             }
 
-            return WasSelectionChanged || WasExpansionChanged;
+            return WasSelectionChanged || WasExpansionChanged || WasReordered;
+        }
+
+        // The visible-row index at design-space Y, or -1 when it falls outside the row range (scrolled/clipped away).
+        int RowAt(float y, int count)
+        {
+            int i = (int)MathF.Floor((y - Bounds.Y + ScrollOffset) / RowHeight);
+            return (i >= 0 && i < count) ? i : -1;
+        }
+
+        // Arm the drag once the pointer clears the threshold (grabbing the press-origin row, unless that press
+        // began in a parent's caret zone), then recompute the live drop slot from the current pointer.
+        void TrackDrag(InputManager input, IReadOnlyList<(TreeNode Node, int Depth)> rows)
+        {
+            Vector2 pos = input.PointerPosition;
+            Vector2 origin = input.PressOrigin;
+
+            if (_dragNode is null)
+            {
+                if ((pos - origin).Length() < DragThreshold) return;
+                int srcRow = RowAt(origin.Y, rows.Count);
+                if (srcRow < 0) return;
+                (TreeNode node, int depth) = rows[srcRow];
+                float caretStart = Bounds.X + depth * Indent;
+                if (node.Children.Count > 0 && origin.X >= caretStart && origin.X < caretStart + Indent) return;   // caret gesture, not a drag
+                if (!TryFindSiblings(node, out List<TreeNode>? siblings, out _dragFromIndex)) return;
+                _dragSiblings = siblings;
+                _dragNode = node;
+            }
+
+            ComputeDrop(pos, rows);
+        }
+
+        // The insertion slot for the current pointer, constrained to the dragged node's own sibling list (the
+        // same-parent rule). Sets `_dropValid` false when the pointer is off the tree or over a non-sibling row.
+        void ComputeDrop(Vector2 pos, IReadOnlyList<(TreeNode Node, int Depth)> rows)
+        {
+            _dropValid = false;
+            if (!Bounds.Contains(pos)) return;
+            int over = RowAt(pos.Y, rows.Count);
+            if (over < 0) return;
+
+            int sib = _dragSiblings!.IndexOf(rows[over].Node);
+            if (sib < 0) return;   // over a row in a different parent: reject (indicator hidden)
+
+            Rect r = RowBounds(over);
+            bool after = pos.Y - r.Y >= RowHeight * 0.5f;
+            int raw = sib + (after ? 1 : 0);
+            // Translate the raw slot in the original list to the RemoveAt(from)+Insert(to) target: any slot past
+            // the dragged node shifts down one once it is pulled out.
+            _dropIndex = raw > _dragFromIndex ? raw - 1 : raw;
+            _dropRow = over;
+            _dropAfter = after;
+            _dropValid = true;
+        }
+
+        // Locate the sibling list a node lives in (its parent's Children, or Roots for a top-level node) and its
+        // index there. Depth-first over the same walk the layout uses.
+        bool TryFindSiblings(TreeNode node, out List<TreeNode>? siblings, out int index)
+        {
+            index = Roots.IndexOf(node);
+            if (index >= 0) { siblings = Roots; return true; }
+            foreach (TreeNode root in Roots)
+                if (FindInChildren(root, node, out siblings, out index)) return true;
+            siblings = null;
+            index = -1;
+            return false;
+        }
+
+        static bool FindInChildren(TreeNode parent, TreeNode target, out List<TreeNode>? siblings, out int index)
+        {
+            index = parent.Children.IndexOf(target);
+            if (index >= 0) { siblings = parent.Children; return true; }
+            foreach (TreeNode child in parent.Children)
+                if (FindInChildren(child, target, out siblings, out index)) return true;
+            siblings = null;
+            index = -1;
+            return false;
+        }
+
+        void AbandonDrag()
+        {
+            _dragNode = null;
+            _dragSiblings = null;
+            _dropValid = false;
         }
 
         /// <summary>
@@ -201,6 +348,16 @@ namespace KhaozEngine.Gui
                 float ty = row.Y + (RowHeight - font.LineHeight) * 0.5f;
                 batch.DrawString(font, node.Label.Resolve(), new Vector2(MathF.Floor(tx), MathF.Floor(ty)),
                     (Color)GuiDraw.WithOpacity(Style.Text, Opacity));
+            }
+
+            // The drag insertion line: a thin bar at the boundary of the target row (its bottom edge when dropping
+            // after, its top edge when before). Only shown for a valid same-parent target.
+            if (_dragNode is not null && _dropValid)
+            {
+                Rect target = RowBounds(_dropRow);
+                float y = _dropAfter ? target.Bottom : target.Y;
+                GuiDraw.Fill(batch, white, new Rect(Bounds.X, y - 1f, Bounds.Width, 2f),
+                    GuiDraw.WithOpacity(Style.Text, Opacity));
             }
             batch.ClearScissor();
         }

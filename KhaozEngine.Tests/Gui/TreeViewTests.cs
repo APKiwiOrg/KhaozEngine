@@ -188,5 +188,120 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(a.Expanded);
             Assert.False(tree.WasExpansionChanged);
         }
+
+        // ---- drag-and-drop row reorder ------------------------------------------------------------------
+
+        // A frame carrying an optional held key set alongside the mouse (the reorder drag needs Escape mid-press).
+        static InputState KeyMouseFrame(Vector2 pos, bool down, HashSet<Key>? keys = null)
+        {
+            var mb = new HashSet<MouseButton>();
+            if (down) mb.Add(MouseButton.Left);
+            return new InputState(keys ?? new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                mb, new HashSet<MouseButton>(), pos, Vector2.Zero, 0f, 960, 540);
+        }
+
+        static void Step(TreeView tree, InputManager input, Vector2 pos, bool down, HashSet<Key>? keys = null)
+        {
+            input.Update(KeyMouseFrame(pos, down, keys));
+            tree.Update(input);
+        }
+
+        // The centre of visible row `i`, well past the caret column so a press there grabs the label (not the caret).
+        static Vector2 RowLabel(TreeView tree, int i)
+        {
+            Rect r = tree.RowBounds(i);
+            return new Vector2(r.X + r.Width * 0.5f, r.Y + r.Height * 0.5f);
+        }
+
+        [Fact]
+        public void TreeView_DragRow_FiresOnReordered_WithinParent()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+            a.Expanded = true;                       // rows: A(0), A1(1), A2(2), B(3)
+            TreeNode a1 = a.Children[0], a2 = a.Children[1];
+
+            TreeNode? dragged = null;
+            int from = -1, to = -1, fired = 0;
+            tree.OnReordered = (n, f, t) => { dragged = n; from = f; to = t; fired++; };
+
+            var input = new InputManager();
+            Rect a2Row = tree.RowBounds(2);
+            var release = new Vector2(a2Row.X + a2Row.Width * 0.5f, a2Row.Y + a2Row.Height * 0.75f);   // A2's lower half
+
+            Step(tree, input, RowLabel(tree, 1), down: false);   // hover A1
+            Step(tree, input, RowLabel(tree, 1), down: true);    // press A1's label
+            Step(tree, input, release, down: true);              // drag down past A2's midline (arms + tracks)
+            Step(tree, input, release, down: false);             // release
+
+            Assert.Equal(1, fired);
+            Assert.Same(a1, dragged);
+            Assert.Equal(0, from);                   // A1's index within A's children
+            Assert.Equal(1, to);                     // moved to A2's slot (RemoveAt(0) then Insert(1))
+            Assert.True(tree.WasReordered);
+        }
+
+        [Fact]
+        public void TreeView_DragAcrossParents_IsRejected()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+            a.Expanded = true;                       // rows: A(0), A1(1), A2(2), B(3)
+
+            int fired = 0;
+            tree.OnReordered = (_, _, _) => fired++;
+
+            var input = new InputManager();
+            Step(tree, input, RowLabel(tree, 1), down: false);   // hover A1 (child of A)
+            Step(tree, input, RowLabel(tree, 1), down: true);    // press A1
+            Step(tree, input, RowLabel(tree, 3), down: true);    // drag onto B, a root (different parent)
+            Step(tree, input, RowLabel(tree, 3), down: false);   // release over B
+
+            Assert.Equal(0, fired);                  // cross-parent drop is a no-op
+            Assert.False(tree.WasReordered);
+            Assert.Null(tree.Selected);              // no stray selection from the aborted gesture
+        }
+
+        [Fact]
+        public void TreeView_CaretClick_StillTogglesDuringDragIdle()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+
+            int reordered = 0;
+            tree.OnReordered = (_, _, _) => reordered++;
+
+            var input = new InputManager();
+            Tap(tree, input, new Vector2(8, 12));    // caret-zone tap on A (a plain press-origin tap, no drag)
+
+            Assert.True(a.Expanded);                 // expansion toggle intact under the drag code path
+            Assert.True(tree.WasExpansionChanged);
+            Assert.False(tree.WasReordered);
+            Assert.Equal(0, reordered);
+        }
+
+        [Fact]
+        public void TreeView_EscapeCancelsDrag()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+            a.Expanded = true;                       // rows: A(0), A1(1), A2(2), B(3)
+
+            int fired = 0;
+            tree.OnReordered = (_, _, _) => fired++;
+
+            var input = new InputManager();
+            var esc = new HashSet<Key> { Key.Escape };
+
+            Step(tree, input, RowLabel(tree, 1), down: false);   // hover A1
+            Step(tree, input, RowLabel(tree, 1), down: true);    // press A1
+            Step(tree, input, RowLabel(tree, 2), down: true);    // drag down (arms)
+            Step(tree, input, RowLabel(tree, 2), down: true, esc);   // Escape while held: abort
+            Step(tree, input, RowLabel(tree, 2), down: false);   // release after the abort
+
+            Assert.Equal(0, fired);                  // aborted drag fires nothing
+            Assert.False(tree.WasReordered);
+            Assert.Null(tree.Selected);              // and the post-abort release does not select A2
+        }
     }
 }

@@ -271,6 +271,49 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(5f, val, 3);                          // reverted, NOT committed to 9
         }
 
+        // The aggregate query a host (MapEditorScene's shortcut handler) polls to decide whether a keyboard chord
+        // belongs to a focused inspector field instead of a global hotkey. True while ANY row owns a live edit
+        // gesture: a FloatRow typing or scrubbing, a TextRow focused, or a ChoiceRow's list open. Each row type is
+        // exercised independently so the aggregate is proven to OR across all three, not just report one row.
+        [Fact]
+        public void PropertyGrid_HasActiveEditor_TracksFloatTextChoiceRows()
+        {
+            float val = 5f;
+            string id = "a";
+            string kind = "disc";
+            var grid = new PropertyGrid(Area);
+            var floatRow = new FloatRow(LocalizedText.Raw("V"), () => val, v => val = v, min: 0f, max: 100f);
+            var textRow = new TextRow(LocalizedText.Raw("Id"), () => id, v => id = v);
+            var choiceRow = new ChoiceRow(LocalizedText.Raw("Kind"), new[] { "disc", "rect" }, () => kind, v => kind = v);
+            grid.Rows.Add(floatRow);   // row 0: y 0..28
+            grid.Rows.Add(textRow);    // row 1: y 32..60
+            grid.Rows.Add(choiceRow);  // row 2: y 64..92
+
+            Assert.False(grid.HasActiveEditor);   // nothing focused/editing/open yet
+
+            var input = new InputManager();
+            Tap(input, grid, new Vector2(200, 14));            // row 0: tap enters typing mode
+            Assert.True(floatRow.Field.IsEditing);
+            Assert.True(grid.HasActiveEditor);
+
+            floatRow.Field.CancelEdit();
+            Assert.False(grid.HasActiveEditor);                // back to none active
+
+            Tap(input, grid, new Vector2(200, 46));            // row 1: tap focuses the text field
+            Assert.True(textRow.Input.IsFocused);
+            Assert.True(grid.HasActiveEditor);
+
+            textRow.Input.Unfocus();
+            Assert.False(grid.HasActiveEditor);
+
+            Tap(input, grid, new Vector2(200, 78));            // row 2: tap opens the dropdown
+            Assert.True(choiceRow.Dropdown.IsOpen);
+            Assert.True(grid.HasActiveEditor);
+
+            choiceRow.Dropdown.Close();
+            Assert.False(grid.HasActiveEditor);
+        }
+
         // ---- ChoiceRow: a Dropdown over string options with get/set delegates on the selected option string. ----
 
         // Row 0's editor cell is x 135..300, y 0..28 (LabelFraction 0.45 of 300). The dropdown trigger fills the

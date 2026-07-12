@@ -237,6 +237,17 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void TextEntry_PasteChord_WorksViaHelper()
+        {
+            // The paste gate now routes through InputState.IsCommandDown (shared with MapEditorScene's chords),
+            // which counts all four modifier keys, not just the Left variants exercised above. Right Control and
+            // Right Super must paste too, so the refactor did not narrow the chord's key coverage.
+            using var _ = new FakeClipboard("XY");
+            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.RightControl })));
+            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.RightSuper })));
+        }
+
+        [Fact]
         public void Paste_does_not_also_type_a_v()
         {
             // The paste chord consumes the V press: only the clipboard text lands, never a literal 'v'.

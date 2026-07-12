@@ -110,5 +110,26 @@ namespace KhaozEngine.Tests.Windowing
             Assert.True(s.WasTyped(Key.A));
             Assert.False(s.WasRepeated(Key.A));
         }
+
+        // A snapshot with a single key held, everything else empty.
+        static InputState WithKeyDown(Key key) => new(
+            down: new HashSet<Key> { key }, pressed: new HashSet<Key>(), released: new HashSet<Key>(),
+            mouseDown: new HashSet<MouseButton>(), mousePressed: new HashSet<MouseButton>(),
+            mousePosition: Vector2.Zero, mouseDelta: Vector2.Zero, scrollDelta: 0, width: 800, height: 600);
+
+        [Fact]
+        public void IsCommandDown_CtrlAndSuperBothCount()
+        {
+            // All four physical modifier keys count as the cross-platform "command" gate, each held alone.
+            Assert.True(WithKeyDown(Key.LeftControl).IsCommandDown);
+            Assert.True(WithKeyDown(Key.RightControl).IsCommandDown);
+            Assert.True(WithKeyDown(Key.LeftSuper).IsCommandDown);
+            Assert.True(WithKeyDown(Key.RightSuper).IsCommandDown);
+
+            // Shift and a plain letter are not command modifiers.
+            Assert.False(WithKeyDown(Key.LeftShift).IsCommandDown);
+            Assert.False(WithKeyDown(Key.A).IsCommandDown);
+            Assert.False(InputState.Empty.IsCommandDown);
+        }
     }
 }

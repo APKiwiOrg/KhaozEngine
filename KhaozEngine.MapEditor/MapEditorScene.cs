@@ -715,14 +715,23 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         InputState s = Manager!.Input;
         bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
+        // Shift+Escape is the exit chord (HandleExitChord). It deliberately stays global here, even while an
+        // inspector field is focused: it is the one chord a user needs to be able to reach FROM inside a field
+        // (leave the editor), and the field's own bare-Escape cancel (NumberField/TextInput) never watches the
+        // Shift-modified form, so the two can never compete for the same keypress.
         if (shift && s.WasPressed(Key.Escape)) { HandleExitChord(); return; }
-        bool ctrl = s.IsDown(Key.LeftControl) || s.IsDown(Key.RightControl);
+
+        // Every other chord below, plus the bare R hotkey, belongs to a focused inspector field over the document:
+        // Ctrl+Z inside a focused NumberField should undo the field's own typed digit (TextEntry already blocks
+        // the literal keystroke), not pop a document command, and R should type into a focused name field instead
+        // of snapping the selection to the ground. This aggregate query replaces the old ad hoc `_nameRow`-only
+        // guard, so every row type (Float/Text/Choice) blocks chords, not just the rename row.
+        if (_inspector.HasActiveEditor) return;
+
+        bool ctrl = s.IsCommandDown;
         if (!ctrl)
         {
-            // R snaps the selected placement to the ground. It is a bare key, so suppress it while the rename
-            // field has focus (the user is typing an 'R' into a name, not asking for a snap).
-            if (s.WasPressed(Key.R) && (_nameRow is null || !_nameRow.Input.IsFocused))
-                SnapSelectedPlacementToGround();
+            if (s.WasPressed(Key.R)) SnapSelectedPlacementToGround();
             return;
         }
         if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
@@ -1476,9 +1485,14 @@ public class MapEditorScene : GameScene, IGameScene3D
             pointerTravel: travel,
             shift: shift,
             deletePressed: s.WasPressed(Key.Delete),
-            // Shift+Escape is the exit chord (HandleExitChord), so it never doubles as the tool gesture
-            // cancel. Escape alone stays the cancel edge.
-            escapePressed: s.WasPressed(Key.Escape) && !shift,
+            // Shift+Escape is the exit chord (HandleExitChord), so it never doubles as the tool gesture cancel.
+            // An inspector field mid-edit also owns a bare Escape this frame (NumberField/TextInput cancel their
+            // own edit on it, in UpdateWidgets which runs AFTER this UpdateTools step), so the tool-cancel edge is
+            // suppressed too while HasActiveEditor is true: without this, one Escape both closed the field AND
+            // cancelled the active tool gesture (the ledgered double-fire). The field's own cancel still fires
+            // this same frame, only the tool side is held off. Once the field closes, HasActiveEditor goes false
+            // and the very next Escape cancels the tool as normal.
+            escapePressed: s.WasPressed(Key.Escape) && !shift && !_inspector.HasActiveEditor,
             dt: dt);
     }
 

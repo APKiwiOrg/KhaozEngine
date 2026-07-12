@@ -54,6 +54,15 @@ namespace KhaozEngine.Gui
 
         /// <summary>Grid hook: push the grid's fade into this row's child widget before it draws. No-op by default.</summary>
         internal virtual void ApplyOpacity(float opacity) { }
+
+        /// <summary>
+        /// True while this row owns an in-progress edit gesture (typing, scrubbing, or an open picker) that a
+        /// global keyboard chord or hotkey must not interrupt. <see cref="PropertyGrid.HasActiveEditor"/> ORs this
+        /// across every row, so a host (e.g. the map editor's shortcut handler) can gate chords on any focused
+        /// inspector field generically instead of naming one specific row. False by default: a row with no live
+        /// gesture (a toggle, a read-only display) never blocks a chord.
+        /// </summary>
+        public virtual bool HasActiveEditor => false;
     }
 
     /// <summary>Float property backed by get/set delegates, edited with a <see cref="NumberField"/>.</summary>
@@ -99,6 +108,9 @@ namespace KhaozEngine.Gui
 
         /// <inheritdoc/>
         public override void Deactivate() => Field.CancelEdit();
+
+        /// <inheritdoc/>
+        public override bool HasActiveEditor => Field.IsEditing || Field.IsScrubbing;
 
         /// <inheritdoc/>
         public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
@@ -197,6 +209,9 @@ namespace KhaozEngine.Gui
         public override void Deactivate() => Input.Unfocus();
 
         /// <inheritdoc/>
+        public override bool HasActiveEditor => Input.IsFocused;
+
+        /// <inheritdoc/>
         public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect)
         {
             Input.Bounds = editorRect;
@@ -262,6 +277,9 @@ namespace KhaozEngine.Gui
 
         /// <inheritdoc/>
         public override void Deactivate() => Dropdown.Close();
+
+        /// <inheritdoc/>
+        public override bool HasActiveEditor => Dropdown.IsOpen;
 
         /// <summary>
         /// Draw the trigger only. The open option list is drawn separately in <see cref="DrawOverlay"/>, which the
@@ -402,6 +420,23 @@ namespace KhaozEngine.Gui
 
         /// <summary>True on the frame any row changed its bound value (mirrors the widget <c>WasChanged</c> idiom).</summary>
         public bool WasChanged { get; private set; }
+
+        /// <summary>
+        /// True while ANY row owns an in-progress edit gesture: a <see cref="FloatRow"/> typing or scrubbing, a
+        /// <see cref="TextRow"/> focused, or a <see cref="ChoiceRow"/>'s dropdown open. ORs <see
+        /// cref="PropertyRow.HasActiveEditor"/> across <see cref="Rows"/> by walking the live row objects (cheap,
+        /// no allocation), independent of whether <see cref="Update"/> ran this frame - a host reads this to gate a
+        /// global keyboard chord or single-key hotkey on any focused inspector field, not one hardcoded row.
+        /// </summary>
+        public bool HasActiveEditor
+        {
+            get
+            {
+                foreach (PropertyRow row in Rows)
+                    if (row.HasActiveEditor) return true;
+                return false;
+            }
+        }
 
         /// <summary>Create a grid over the given screen rect. Add rows via <see cref="Rows"/>.</summary>
         public PropertyGrid(Rect bounds) { Bounds = bounds; }

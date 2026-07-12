@@ -106,6 +106,15 @@ namespace KhaozEngine.Windowing
         public bool WasTyped(Key key) => KeysPressed.Contains(key) || KeysRepeated.Contains(key);
         /// <summary>True only on the frame <paramref name="key"/> went up.</summary>
         public bool WasReleased(Key key) => KeysReleased.Contains(key);
+        /// <summary>
+        /// True while a "command" modifier is held: Ctrl (Left/RightControl) OR Super/Cmd (Left/RightSuper), on
+        /// EVERY platform, no OS branching. The single cross-platform gate every shortcut chord reads (undo/redo,
+        /// save, reorder, paste), so a Windows/Linux user's Ctrl and a macOS user's Cmd trigger the same chords
+        /// with one check. A Windows user pressing Super+Z is a curiosity, not a hazard, so counting Super
+        /// everywhere is a deliberate simplification, not a per-OS feature.
+        /// </summary>
+        public bool IsCommandDown => IsDown(Key.LeftControl) || IsDown(Key.RightControl)
+            || IsDown(Key.LeftSuper) || IsDown(Key.RightSuper);
         public bool IsDown(MouseButton button) => MouseDown.Contains(button);
         public bool WasPressed(MouseButton button) => MousePressed.Contains(button);
     }

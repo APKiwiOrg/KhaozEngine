@@ -34,11 +34,12 @@ namespace KhaozEngine.Gui
             if (input.WasTyped(Key.Backspace) && current.Length > 0)
                 current = current[..^1];
 
-            // Ctrl/Super held = a shortcut chord (Ctrl+V / Cmd+V paste, etc.), not text entry.
-            // Don't type the printable key (Backspace above still works); Shift is a text modifier, not a chord.
-            // This gate runs before the printable loop, so it also blocks repeat ticks (no machine-gunning a chord key).
-            if (input.IsDown(Key.LeftControl) || input.IsDown(Key.RightControl)
-                || input.IsDown(Key.LeftSuper) || input.IsDown(Key.RightSuper))
+            // Ctrl/Super held = a shortcut chord (Ctrl+V / Cmd+V paste, etc.), not text entry. IsCommandDown is the
+            // shared cross-platform gate (also used by MapEditorScene's shortcuts), so this and every other chord
+            // agree on which keys count. Don't type the printable key (Backspace above still works). Shift is a
+            // text modifier, not a chord. This gate runs before the printable loop, so it also blocks repeat ticks
+            // (no machine-gunning a chord key).
+            if (input.IsCommandDown)
             {
                 // Ctrl/Cmd+V pastes the clipboard (filtered + length-capped, same path as typed chars). Fires on the
                 // V press edge only, so holding the chord doesn't paste again on every OS auto-repeat tick.

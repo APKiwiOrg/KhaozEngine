@@ -165,6 +165,16 @@ namespace KhaozEngine.Tests.MapEditor
                 Vector2.Zero, Vector2.Zero, 0, 960, 540);
         }
 
+        // A keyboard frame with Super (Cmd) held instead of Ctrl: same idiom as CtrlKeyFrame, so a test can prove
+        // the scene's chords fire identically off IsCommandDown's other modifier key.
+        static InputState SuperKeyFrame(params Key[] pressed)
+        {
+            var down = new HashSet<Key>(pressed) { Key.LeftSuper };
+            return new InputState(down, new HashSet<Key>(pressed), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0, 960, 540);
+        }
+
         static MapSpawn NewSpawn(string id) => new MapSpawn { Id = id, ArchetypeId = "wolf", X = 1f, Z = 1f };
 
         static FloatRow FloatRowByLabel(PropertyGrid grid, string label)
@@ -173,6 +183,19 @@ namespace KhaozEngine.Tests.MapEditor
                 if (row is FloatRow f && f.Label.Resolve() == label) return f;
             Assert.Fail($"no FloatRow labeled '{label}' (rows: {grid.Rows.Count})");
             return null!;   // unreachable
+        }
+
+        // Taps a FloatRow's NumberField into typing mode (press+release at the same point inside its editor cell,
+        // the TapToEdit idiom from NumberFieldTests/PropertyGridTests), so a test can put a specific inspector
+        // field into an active-edit state headlessly without wiring up the grid's own scene-driven Update path.
+        static void BeginEditing(FloatRow row)
+        {
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            var at = new Vector2(100f, 14f);
+            ui.Update(MouseFrame(at, leftDown: false)); row.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(at, leftDown: true)); row.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(at, leftDown: false)); row.Update(cell, ui, 0.016f);
         }
 
         static ReadOnlyRow ReadOnlyRowByLabel(PropertyGrid grid, string label)
@@ -671,6 +694,126 @@ namespace KhaozEngine.Tests.MapEditor
 
             // Already grounded (null Y): no empty command lands on the undo stack.
             Assert.Null(scene.Document.Doc.Placements[0].Y);
+            Assert.False(scene.Document.History.CanUndo);
+        }
+
+        // ---- Cmd-aware chords + focused-field gating ------------------------------------------------------
+
+        [Fact]
+        public void Chords_FireWithCtrl_AndWithSuper()
+        {
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));
+            scene.Document.Execute(new AddSpawnCommand(NewSpawn("s2")));
+            Assert.Equal(2, scene.Document.Doc.Spawns.Count);
+
+            m.Input = CtrlKeyFrame(Key.Z);
+            m.Update(0.016f);
+            Assert.Single(scene.Document.Doc.Spawns);      // Ctrl+Z undid s2
+
+            m.Input = SuperKeyFrame(Key.Z);
+            m.Update(0.016f);
+            Assert.Empty(scene.Document.Doc.Spawns);       // Cmd+Z (Super) undid s1 too
+        }
+
+        [Fact]
+        public void Chords_DoNotFire_WhileFieldFocused()
+        {
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+            scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));
+            Assert.True(scene.Document.History.CanUndo);
+
+            FloatRow radius = FloatRowByLabel(scene.Inspector, "Radius");
+            BeginEditing(radius);
+            Assert.True(radius.Field.IsEditing);   // precondition: the row owns an active edit
+
+            m.Input = CtrlKeyFrame(Key.Z);
+            m.Update(0.016f);
+
+            // The field owns this Escape/chord frame: Ctrl+Z must not reach the document, and the field's own
+            // in-progress edit is left completely untouched (not even implicitly cancelled).
+            Assert.True(scene.Document.History.CanUndo);
+            Assert.True(radius.Field.IsEditing);
+        }
+
+        [Fact]
+        public void Escape_WhileEditing_CancelsFieldOnly_NotTool()
+        {
+            var scene = new FieldDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 3f, Z = 4f, Y = null });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            scene.Controller.Mode = EditorToolMode.PlacePlacement;   // a mode Escape would normally cancel to Select
+
+            FloatRow x = FloatRowByLabel(scene.Inspector, "X");
+            BeginEditing(x);
+            Assert.True(x.Field.IsEditing);
+
+            m.Input = KeyFrame(shiftDown: false, Key.Escape);
+            m.Update(0.016f);
+
+            // Escape belonged to the field this frame: BuildFrameInput suppresses the tool-cancel edge while the
+            // inspector has an active editor, so the tool mode is untouched (the ledgered double-fire is fixed).
+            Assert.Equal(EditorToolMode.PlacePlacement, scene.Controller.Mode);
+
+            // The live grid (UiViewport-driven) is what would normally run the field's own Escape->CancelEdit path
+            // this same frame. This headless suite drives PropertyRows directly (no UiViewport), so close the edit
+            // the same way the grid's cull path does, then confirm a clean-state Escape cancels the tool as usual.
+            x.Field.CancelEdit();
+            Assert.False(x.Field.IsEditing);
+
+            m.Input = KeyFrame(shiftDown: false, Key.Escape);
+            m.Update(0.016f);
+
+            Assert.Equal(EditorToolMode.Select, scene.Controller.Mode);
+        }
+
+        [Fact]
+        public void BareR_UsesAggregateGuard()
+        {
+            // R while a FloatRow (not the rename row) is focused must not snap - the old guard only checked
+            // _nameRow, so this pins the generalization to the aggregate PropertyGrid.HasActiveEditor query.
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 3f, Z = 4f, Y = 12f });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            FloatRow xRow = FloatRowByLabel(scene.Inspector, "X");
+            BeginEditing(xRow);
+            Assert.True(xRow.Field.IsEditing);
+
+            m.Input = KeyFrame(shiftDown: false, Key.R);
+            m.Update(0.016f);
+
+            // Still airborne: R did not snap while the X field was focused, and no command landed on the stack.
+            Assert.NotNull(scene.Document.Doc.Placements[0].Y);
             Assert.False(scene.Document.History.CanUndo);
         }
 

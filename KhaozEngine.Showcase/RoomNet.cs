@@ -220,10 +220,8 @@ namespace KhaozEngine.Showcase
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
 
-            // Outline post-process starts OFF in this room too (this room has no key binding to toggle it back on,
-            // unlike Room3D's O key), matching Room3D's pattern: OnExit restores the shared PixelPostProcessSettings
-            // default (on) for the menu / other rooms.
-            _scene.Post.Outline = false;
+            // Outline post-process is off here by the engine default and this room never toggles it, so there is
+            // nothing to force on enter or reset on exit.
 
             // Prime the loopback connection: pump both ends a few ticks so the handshake completes before the
             // first rendered frame (otherwise the first several frames would show the pre-join empty snapshot).
@@ -358,11 +356,6 @@ namespace KhaozEngine.Showcase
             _chunks.Clear();
 
             _scene.CameraOverride = null;
-
-            // Reset the Post field this room's OnEnter mutated, back to PixelPostProcessSettings's own default
-            // (Post has no setter, it is a shared instance owned by Scene3D, so the field is reset individually
-            // rather than reassigning the property), matching Room3D's OnExit.
-            _scene.Post.Outline = true;
 
             _field = null!;
             _terrain = null!;

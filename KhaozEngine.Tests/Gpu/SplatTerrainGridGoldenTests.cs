@@ -43,6 +43,8 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     var mat = scene.LoadTerrainMaterial(TerrainMaterialPresets.Procedural(32));
                     h = scene.LoadTerrainChunk(chunk, mat);
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Camera.Frame(new Vector3(16f, 1f, 16f), new Vector3(16f, 26f, 16.4f));
                 },
                 drawFrame: scene => scene.DrawTerrainChunk(h));
@@ -66,6 +68,8 @@ namespace KhaozEngine.Tests.Gpu
             return Render3DSnapshot.Capture(W, H,
                 setup: scene =>
                 {
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     var mat = scene.LoadTerrainMaterial(material);
                     foreach (var r in regions)
                     {

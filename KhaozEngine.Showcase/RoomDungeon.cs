@@ -173,12 +173,9 @@ namespace KhaozEngine.Showcase
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
 
-            // Outline post-process starts OFF in this room too, matching Room3D/RoomNet/the map editor: without
-            // this the shared PixelPostProcessSettings default (on) would bleed through whenever the dungeon
-            // room is entered without having visited Room3D first, showing the stylized cel/outline look instead
-            // of the plain lit dungeon. Press O to toggle it back on (see OnUpdate); OnExit restores the shared
-            // default for the menu / other rooms.
-            _scene.Post.Outline = false;
+            // Outline post-process starts OFF here by the engine default, so the dungeon shows the plain lit look
+            // rather than the stylized cel/outline one. Press O to toggle it on (see OnUpdate); OnExit resets it
+            // back to that default for the menu / other rooms.
 
             // Step the physics world once so Bepu's broad phase is current before the first rendered frame,
             // matching Room3D's post-load priming step.
@@ -260,10 +257,10 @@ namespace KhaozEngine.Showcase
 
             _scene.CameraOverride = null;
 
-            // Reset the Post field this room's OnEnter/OnUpdate mutated, back to PixelPostProcessSettings's own
+            // Reset the Post field this room's OnUpdate can mutate, back to PixelPostProcessSettings's own
             // default (Post has no setter, it is a shared instance owned by Scene3D, so the field is reset
             // individually rather than reassigning the property), matching Room3D's OnExit.
-            _scene.Post.Outline = true;
+            _scene.Post.Outline = false;
 
             _physics = null!;
             _avatar = null;

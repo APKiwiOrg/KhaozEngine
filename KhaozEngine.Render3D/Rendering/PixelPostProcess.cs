@@ -273,11 +273,16 @@ namespace KhaozEngine.Render3D.Rendering
 
             // Bug A: each fullscreen post pass flips vertically; the on-screen orientation depends on the parity of
             // (quantize + outline + bloom-composite + fxaa). The blit cancels it so EVERY config is upright: flip
-            // the sampled V iff the number of preceding post passes is EVEN. The default (outline on, quantize off,
-            // bloom off, fxaa off) has 1 preceding pass (odd) => no flip => byte-identical to the committed
-            // outline-on goldens. Bloom contributes exactly ONE net pass to this count (the composite pass that
-            // writes back into the main ping chain) - the bright-pass + separable blur are an off-chain branch (see
-            // BloomCompositeFrag's fixed internal un-flip) and do not themselves add to the main chain's parity.
+            // the sampled V iff the number of preceding post passes is EVEN. This rule is fully generic in the pass
+            // count - it does not assume any particular default. The engine default (outline OFF, quantize off,
+            // bloom off, fxaa off) has 0 preceding passes (even) => flipV=1: the blit un-flips the single scene
+            // render so the bare-default frame is upright (the same even-parity branch bloom-on already exercises).
+            // That outline-off default path is guarded on-device by DefaultPost_RendersUprightWithoutOutline and by
+            // Golden3D_OutlineToggle_DoesNotFlip's outline-off branch. Pinning outline ON (as the committed 3D
+            // goldens now do explicitly) restores 1 preceding pass (odd) => no flip => byte-identical to those
+            // outline-on reference PNGs. Bloom contributes exactly ONE net pass to this count (the composite pass
+            // that writes back into the main ping chain) - the bright-pass + separable blur are an off-chain branch
+            // (see BloomCompositeFrag's fixed internal un-flip) and do not themselves add to the main chain's parity.
             // This rule depends only on the settings, matching Run's pass sequence exactly.
             int precedingPasses = (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0) + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
             float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;

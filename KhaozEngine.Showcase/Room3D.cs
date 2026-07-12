@@ -210,9 +210,8 @@ namespace KhaozEngine.Showcase
             _camController = new FollowCameraController(_camera);
             _scene.CameraOverride = _camera;
 
-            // Outline post-process starts OFF in this room (press O to toggle it on); OnExit restores the shared
-            // PixelPostProcessSettings default (on) for the menu / other rooms.
-            _scene.Post.Outline = false;
+            // Outline post-process starts OFF here by the engine default (press O to toggle it on). OnExit resets it
+            // back to that default so a toggle does not bleed into the menu / other rooms.
 
             // A hand-placed visible platform box in the clearing so there is something to look at.
             const float platformHeight = 1.0f;
@@ -478,7 +477,7 @@ namespace KhaozEngine.Showcase
             // individually rather than reassigning the property).
             var post = _scene.Post;
             post.RenderScale = RenderScale.FixedInternal;
-            post.Outline = true;
+            post.Outline = false;
             post.OutlineDepthThreshold = 0.2f;
             post.OutlineNormalThreshold = 0.45f;
             post.Starfield = true;

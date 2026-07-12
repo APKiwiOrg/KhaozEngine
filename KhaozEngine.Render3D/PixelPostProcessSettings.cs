@@ -98,8 +98,9 @@ namespace KhaozEngine.Render3D
         public bool Quantize = false;
         /// <summary>4x4 Bayer ordered dither applied with quantization (retro).</summary>
         public bool Dither = false;
-        /// <summary>Depth/normal discontinuity edge outline (stylized).</summary>
-        public bool Outline = true;
+        /// <summary>Depth/normal discontinuity edge outline (stylized cel look). Off by default engine-wide - the
+        /// toon outline is opt-in. Consumers that want it set this true (or drive it from a settings toggle).</summary>
+        public bool Outline = false;
         /// <summary>Procedural starfield in the background (assumes a dark space background).</summary>
         public bool Starfield = true;
 

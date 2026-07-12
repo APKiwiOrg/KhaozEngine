@@ -33,6 +33,8 @@ namespace KhaozEngine.Tests.Gpu
                     floor = scene.LoadMesh(MeshPrimitives.Tile(6f, 0.1f));
                     sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
                     box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     // Fixed framing of an asymmetric region so an orientation flip moves content visibly.
                     scene.Camera.Frame(new Vector3(0.4f, 0.4f, -0.2f), new Vector3(5f, 3f, 5f));
                 },
@@ -68,6 +70,8 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     floor = scene.LoadMesh(MeshPrimitives.Tile(6f, 0.1f));
                     box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     // Same fixed asymmetric framing as the line golden so a flip moves content visibly.
                     scene.Camera.Frame(new Vector3(0.4f, 0.4f, -0.2f), new Vector3(5f, 3f, 5f));
                 },
@@ -103,6 +107,8 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     floor = scene.LoadMesh(MeshPrimitives.Tile(8f, 0.1f));
                     box = scene.LoadMesh(MeshPrimitives.Box(0.9f));
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Camera.Frame(new Vector3(0.4f, 0.4f, -0.2f), new Vector3(6f, 4f, 6f));
                 },
                 drawFrame: scene =>
@@ -166,6 +172,8 @@ namespace KhaozEngine.Tests.Gpu
                     boxHi = scene.LoadMesh(MeshPrimitives.Box(0.7f));
                     sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
                     scene.Post.Starfield = false;                 // flat ground so the blobs read cleanly
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
                     scene.Post.Quality.Shadows.Mode = ShadowMode.Blob;
                     scene.Camera.Frame(new Vector3(0.2f, 0.3f, 0f), new Vector3(6f, 4.5f, 6f));
@@ -212,6 +220,8 @@ namespace KhaozEngine.Tests.Gpu
                     tallBox = scene.LoadMesh(MeshPrimitives.Box(1.4f));
                     sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
                     scene.Post.Starfield = false;
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
                     scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
                     // A tight focus so the map packs texels onto this small scene (crisp shadows at 480x320).
@@ -258,6 +268,8 @@ namespace KhaozEngine.Tests.Gpu
                     tallBox = scene.LoadMesh(MeshPrimitives.Box(1.4f));
                     sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
                     scene.Post.Starfield = false;
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     // Sky ON: gradient + sun disc. The sun direction defaults to the key light below.
                     scene.Post.Sky.Enabled = true;
                     scene.Post.Sky.HorizonColor = new Color(0.66f, 0.72f, 0.80f, 1f);
@@ -335,6 +347,8 @@ namespace KhaozEngine.Tests.Gpu
                     shelf = scene.LoadMesh(MeshPrimitives.Tile(4f, 0.1f));
                     beach = scene.LoadMesh(MeshPrimitives.Box(1.2f));
                     scene.Post.Starfield = false;
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
                     // Sky ON so the water's fresnel horizon tint has the same cohesive sky-derived look the brief
                     // asks for (water borrows the sky's palette by default; harmonized in WaterSettings' own
@@ -434,6 +448,8 @@ namespace KhaozEngine.Tests.Gpu
                     box = scene.LoadMesh(MeshPrimitives.Box(1.1f));
                     sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.55f));
                     scene.Post.Starfield = false;
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
                     scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
                     scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
@@ -515,6 +531,8 @@ namespace KhaozEngine.Tests.Gpu
                     Assert.NotEqual(default, fallback);
 
                     plane = scene.LoadMesh(MeshPrimitives.Plane(3f, 3f), tex);
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     // Fixed top-ish framing so the checker fills the view deterministically.
                     scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(2.6f, 4.2f, 2.6f));
                 },
@@ -548,6 +566,8 @@ namespace KhaozEngine.Tests.Gpu
                     box = scene.LoadMesh(MeshPrimitives.Box(1.4f));
                     tex = scene.LoadTexture(sheet, 2, 1);
                     scene.Post.Starfield = false;   // keep the background flat so occlusion reads clearly
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
                     fwd = scene.Camera.Forward;
                 },
@@ -580,6 +600,8 @@ namespace KhaozEngine.Tests.Gpu
                 setup: scene =>
                 {
                     scene.Post.Starfield = false;   // flat background so the composite reads cleanly
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Post.BackgroundColor = new Color(0.06f, 0.07f, 0.10f, 1f);
                     scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
                     fwd = scene.Camera.Forward;
@@ -614,6 +636,8 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     box = scene.LoadMesh(MeshPrimitives.Box(1.2f));
                     scene.Post.Starfield = false;   // flat background so the occlusion + glow read clearly
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
                     scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
                     scene.EffectTimeSeconds = 0f;   // static frame => deterministic golden (no pulse/scroll)
                 },
@@ -649,6 +673,9 @@ namespace KhaozEngine.Tests.Gpu
                     sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.55f));
                     scene.Post.Starfield = false;                    // flat dark background - bloom must not wash it
                     scene.Post.BackgroundColor = new Color(0.03f, 0.03f, 0.05f, 1f);
+                    // Baked with outline on; pinned explicit when the engine default flipped to off. Outline + bloom
+                    // = 2 preceding passes (even), the same flipV=1 parity branch as before the default flip.
+                    scene.Post.Outline = true;
                     scene.Post.Bloom.Enabled = true;                 // default knobs otherwise (Threshold/Knee/Intensity/Radius)
                     scene.Camera.Frame(Vector3.Zero, new Vector3(4.5f, 4.5f, 4.5f));
                     scene.EffectTimeSeconds = 0f;                    // static frame => deterministic golden (no beam pulse/scroll)
@@ -998,6 +1025,55 @@ namespace KhaozEngine.Tests.Gpu
             // The bright red sphere sits high => the top third is redder than the bottom in BOTH configs (upright).
             Assert.True(TopMinusBottom(true) > 0.02f, "outline-on is upside down");
             Assert.True(TopMinusBottom(false) > 0.02f, "outline-off is upside down (Bug A)");
+        }
+
+        // Honest guard for the Bug A parity landmine on the OUTLINE-OFF default path. Renders a vertically
+        // asymmetric scene with BARE default settings (outline now off engine-wide => zero preceding post passes,
+        // the even-parity flipV=1 blit branch). Asserts (a) the render has real structure (bright sphere vs dark
+        // background, not a flat fill) and (b) it is UPRIGHT: a bright red sphere placed high in world space lands
+        // in the top half of the image. A default whose pass count flipped the frame would fail (b).
+        [GpuFact]
+        public void DefaultPost_RendersUprightWithoutOutline()
+        {
+            MeshHandle floor = default, sphere = default;
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.8f));
+                    // No Post settings touched: the bare engine default (outline off) is exactly what we guard.
+                    scene.Camera.Frame(new Vector3(0, 0.5f, 0), new Vector3(6f, 5f, 6f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.Identity);
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(0, 3f, 0),
+                        new Color(1f, 0.1f, 0.1f, 1f), Material.Glowing(new Color(1f, 0.1f, 0.1f, 1f)));
+                },
+                frames: 2);
+
+            // (a) Structural non-uniformity: the bright sphere vs dark background gives a wide luminance spread,
+            // proving the frame actually rendered scene content and is not a uniform clear.
+            double lo = double.MaxValue, hi = double.MinValue;
+            for (int i = 0; i < rgba.Length; i += 4)
+            {
+                double lum = (0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2]) / 255.0;
+                if (lum < lo) lo = lum;
+                if (lum > hi) hi = lum;
+            }
+            Assert.True(hi - lo > 0.25, "default render is near-uniform (no scene structure)");
+
+            // (b) Upright: "redness" = R - G isolates the high red sphere from the pale floor and dark bg. The
+            // sphere sits high in the world, so the top third must be redder than the bottom third.
+            double top = 0, bot = 0; int nt = 0, nb = 0;
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    double redness = (rgba[i] - rgba[i + 1]) / 255.0;
+                    if (y < H / 3) { top += redness; nt++; } else if (y >= 2 * H / 3) { bot += redness; nb++; }
+                }
+            Assert.True(top / nt - bot / nb > 0.02, "default render is upside down (Bug A, outline-off path)");
         }
 
         // Perspective-camera outline: locks the corrected stable outline (Fix C linearized relative depth) AND

@@ -200,6 +200,71 @@ public class ClientReplicationBufferTests
         Assert.Equal(2f, client.Get<Pos>(c).X, 4);
     }
 
+    // Writes a 2-entity snapshot (a "local" id and a "remote" id at the given X) into the client via the view, then
+    // records a fixed-delay sample stamped at t with excludeNetId excluded from interpolation.
+    private static void PushPair(ClientReplicationView view, World client, World server,
+        Entity local, Entity remote, float localX, float remoteX, double t, long excludeNetId)
+    {
+        server.Set(local, new Pos { X = localX, Y = 0f });
+        server.Set(remote, new Pos { X = remoteX, Y = 0f });
+        view.Apply(client, SnapshotWriter.Write(server, NewRegistry()));
+        view.RecordInterpolationSample(t, excludeNetId);
+    }
+
+    [Fact]
+    public void Excluded_local_entity_keeps_its_authoritative_position_while_remotes_interpolate()
+    {
+        // The local (predicted) avatar is excluded from the fixed-delay buffer: its client-world position must stay the
+        // last-RECEIVED authoritative value (the reconcile basis), never a delayed interpolated one. Remotes are
+        // untouched by the exclusion - the regression pin that the fix does not break remote smoothing.
+        var registry = NewRegistry();
+        var client = new World();
+        var view = new ClientReplicationView(registry);
+        var server = new World();
+        Entity local = server.Spawn(); server.Set(local, new NetId(100));
+        Entity remote = server.Spawn(); server.Set(remote, new NetId(200));
+
+        PushPair(view, client, server, local, remote, localX: 0f, remoteX: 0f, t: 1.00, excludeNetId: 100);
+        PushPair(view, client, server, local, remote, localX: 10f, remoteX: 10f, t: 1.10, excludeNetId: 100);
+
+        view.InterpolateAt(client, 1.05, excludeNetId: 100);   // midway between the two samples, local excluded
+
+        Assert.True(view.TryGetEntity(100, out Entity cl));
+        Assert.True(view.TryGetEntity(200, out Entity cr));
+        Assert.Equal(5f, client.Get<Pos>(cr).X, 4);    // remote interpolates to the 50% bracket midpoint
+        Assert.Equal(10f, client.Get<Pos>(cl).X, 4);   // local held at the last-applied authoritative value, not lerped
+    }
+
+    [Fact]
+    public void A_reconnect_that_re_ids_the_local_player_swaps_which_entity_is_excluded()
+    {
+        // A mid-session reconnect can assign a new local net id. When the excluded id changes, the old id becomes an
+        // ordinary interpolated remote again and the new id is excluded (its stale buffer, held from when it was a
+        // remote, is dropped). Observed via behaviour: after the swap the old id interpolates, the new id is pinned.
+        var registry = NewRegistry();
+        var client = new World();
+        var view = new ClientReplicationView(registry);
+        var server = new World();
+        Entity e100 = server.Spawn(); server.Set(e100, new NetId(100));
+        Entity e200 = server.Spawn(); server.Set(e200, new NetId(200));
+
+        // Session 1: local id = 100 (excluded); 200 is a remote and accumulates buffer samples.
+        PushPair(view, client, server, e100, e200, 0f, 0f, t: 1.00, excludeNetId: 100);
+        PushPair(view, client, server, e100, e200, 10f, 10f, t: 1.10, excludeNetId: 100);
+
+        // Reconnect re-ids the local player to 200. The excluded id changes 100 -> 200: 200's stale buffer is dropped
+        // and 200 is excluded from here on, while 100 becomes an interpolated remote (its fresh samples start now).
+        PushPair(view, client, server, e100, e200, 20f, 20f, t: 1.20, excludeNetId: 200);
+        PushPair(view, client, server, e100, e200, 30f, 30f, t: 1.30, excludeNetId: 200);
+
+        view.InterpolateAt(client, 1.25, excludeNetId: 200);   // midway between the t=1.20 and t=1.30 samples
+
+        Assert.True(view.TryGetEntity(100, out Entity c100));
+        Assert.True(view.TryGetEntity(200, out Entity c200));
+        Assert.Equal(25f, client.Get<Pos>(c100).X, 4);   // 100 is a remote now: interpolates 20 -> 30 across the bracket
+        Assert.Equal(30f, client.Get<Pos>(c200).X, 4);   // 200 is the new local: excluded, pinned to the applied value
+    }
+
     [Fact]
     public void InterpolateAt_a_single_sample_renders_that_sample()
     {

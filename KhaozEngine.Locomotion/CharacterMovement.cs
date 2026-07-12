@@ -473,6 +473,45 @@ public static class CharacterMovement
             }
             if (paced)
             {
+                // TANGENT CO-PACE. The rise is throttled from the support's desired rise (pos.Y - start) down to the
+                // climb cap (allowedRise = MaxStepClimbSpeed*dt). Scale the committed HORIZONTAL advance so the capsule
+                // travels ALONG the stair surface at ~MaxStepClimbSpeed/grade instead of committing the full (run-speed)
+                // horizontal while the Y is held. That mismatch raced the XZ ahead of the paced height, plowing the
+                // capsule metres into the risers (sustained penetration) and strobing forward advance between a frozen 0
+                // (monotone-hold / no support) and a full-tread catch-up. Co-pacing keeps a runner gliding up smoothly at
+                // the honest grade-limited speed; a walk whose per-tick rise fits the climb cap is untouched (block
+                // skipped), while a discrete mount tick is paced (and now co-paced) even at walk speed, smoothing walk mounts too.
+                //
+                // Gated on a CONTINUOUS climb - a MOUNTABLE next riser AHEAD within reach (NextRiserAhead). Anything
+                // else is a single-riser seat that MUST keep its full forward commitment: a clear path ahead (a deep
+                // tread or the top of the run), OR a steep face ahead that is NOT a climbable riser - a building's tall
+                // back WALL a footprint behind the doorstep, or an overhang. Throttling any of those re-embeds the
+                // load-bearing seat's footprint and re-creates the slow-walk mount stall (the 10.66 stall on a clear
+                // tread; the 10.68 stall on a compound doorstep whose bare steep-face test misread the wall behind it
+                // as a riser). NextRiserAhead confirms a mountable, strictly-higher tread with the same step-up probe
+                // the mount uses, so it is geometry-robust where a support-under-the-feet probe is not (analytic
+                // terrain in front of a placed staircase is invisible to a downward ray) and cannot misread a wall as
+                // a riser.
+                float desiredRise = pos.Y - s.Position.Y;
+                float allowedRise = climbCap - s.Position.Y;
+                float hx = pos.X - s.Position.X, hz = pos.Z - s.Position.Z;
+                float hLen = MathF.Sqrt(hx * hx + hz * hz);
+                if (desiredRise > allowedRise && allowedRise > 0f && hLen > 1e-6f &&
+                    NextRiserAhead(world, capsule, pos, new Vector2(hx, hz), t))
+                {
+                    // The horizontal the co-pace permits: the tangent for the actual grade (allowedRise/grade), but with
+                    // a floor of allowedRise/MaxClimbGrade so a DISCRETE whole-riser step-up (desiredRise = a full riser,
+                    // hLen a fraction of a tread) cannot inflate the apparent grade and throttle the advance to a crawl
+                    // (which stalled the first-riser mount). MaxClimbGrade is the steepest grade paced to the exact
+                    // surface tangent; a steeper stair advances a touch faster than the surface (bounded sub-tread lead
+                    // the depenetrate/support pass absorbs), which is safe, where under-advancing would float the capsule
+                    // off the surface and drop it.
+                    float tangent = allowedRise / desiredRise;                 // exact tangent throttle (small if inflated)
+                    float floor = allowedRise / (MaxClimbGrade * hLen);        // grade floor: horiz >= allowedRise/MaxClimbGrade
+                    float throttle = MathF.Min(1f, MathF.Max(tangent, floor));
+                    pos.X = s.Position.X + hx * throttle;
+                    pos.Z = s.Position.Z + hz * throttle;
+                }
                 // Cap the vertical RISE to MaxStepClimbSpeed (the smooth, steady ascent) and hold the movement state
                 // grounded through the paced climb: the real support (the tread the step-up mounted) sits ABOVE this
                 // committed height, so the capsule is resting on the step run, not airborne - forcing grounded here
@@ -732,6 +771,13 @@ public static class CharacterMovement
     private const float FloorProbeReach = 0.5f;
     // Contact counts as a wall/riser (step-up candidate) rather than a floor/ceiling when |normal.Y| is small.
     private const float StepUpNormalY = 0.5f;
+    // Tangent co-pace grade floor (step 4b): the steepest stair grade (rise/run) paced to the EXACT surface tangent.
+    // On a steeper stair the co-paced horizontal advances a touch faster than the surface rises - a bounded, sub-tread
+    // lead the depenetrate/support pass absorbs - which is the safe side; under-advancing would float the capsule off
+    // the surface between mounts and drop it. It also floors the throttle so a discrete whole-riser step-up cannot
+    // inflate the apparent grade and crawl the mount to a stall. ~37 deg; below the 45 deg default slope gate so a
+    // normal ramp is never in this regime, and near the 0.30/0.40 dungeon/consumer stair grade (0.75) it wires.
+    private const float MaxClimbGrade = 0.72f;
     // Depenetration-to-clearance passes before each sweep: push the capsule out of any prop/wall overlap to a small
     // positive clearance so the sweep starts provably outside and yields a REAL contact normal (Bepu reports a
     // useless t=0 zero-normal from a touching start). A few passes clear an inner corner (two simultaneous contacts).
@@ -912,6 +958,80 @@ public static class CharacterMovement
                 // that pose reads unsupported and the discriminator commits the probe's landed seat instead.
                 hit.Distance >= SkinWidth &&
                 hit.Normal.Y >= cosMaxSlope - 1e-4f)
+                return true;
+        }
+        return false;
+    }
+
+    // Tangent co-pace next-riser probe (step 4b, NextRiserAhead). Just BEYOND a steep face ahead, sample the floor at
+    // these forward offsets past the face plane, looking for the mountable tread on top. Each stays within a seatable
+    // tread's depth (>= a footprint), so at least one lands cleanly on the next tread of any stair steep enough to be
+    // paced; on a solid back wall every sample falls INSIDE the wall body and is rejected as embedded (below). A small
+    // spread (not one magic offset) is robust to the exact face position across dt/radius/grade.
+    private static readonly float[] NextTreadProbeOffsets = { 0.05f, 0.15f, 0.25f };
+    // A found tread counts as "the NEXT riser" only if it sits at least this far ABOVE the current feet - excludes the
+    // same-level deep tread a single riser seats onto (and the flat top of a run), which must NOT co-pace.
+    private const float NextRiserMinRise = 0.02f;
+
+    /// <summary>True when a MOUNTABLE next stair riser - a steep face with a walkable tread on top, strictly higher and
+    /// within <see cref="MoveTuning.StepHeight"/> - sits within about one capsule radius directly ahead of
+    /// <paramref name="pos"/> along the horizontal travel direction <paramref name="dirXZ"/>. This is the "am I on a
+    /// CONTINUOUS run that KEEPS climbing" test the tangent co-pace gates on: a mountable riser ahead means the climb
+    /// keeps going (co-pace the horizontal so a runner glides up at the honest grade-limited speed); anything else -
+    /// a clear path (a single-riser seat onto a deep tread, or the top of the run) OR a steep face that is NOT a
+    /// climbable riser (a building's back WALL close behind the doorstep, or an overhang) - must NOT be throttled, so
+    /// the load-bearing forward seat clears its depenetration pushback and the mount completes.
+    ///
+    /// Two-stage. First a capsule SWEEP asks "is there a steep obstacle in FRONT" (a sweep, not a downward ray, so it
+    /// reads the same for an analytic-terrain approach as for a physics floor; a walkable RAMP ahead is not a riser and
+    /// reads clear). Then, crucially, a downward RAY fan just BEYOND that face verifies it is a RISER I will climb NEXT
+    /// and not a wall: a mountable riser has a walkable tread on top (free space above it), strictly higher than the
+    /// feet and within StepHeight, so a ray dropped from the top of the step-climb band lands on that tread through
+    /// clear air. A tall back WALL (or an overhang) is SOLID through that band, so the ray ORIGIN is embedded in it and
+    /// Bepu returns a zero-distance hit - rejected exactly like <see cref="WalkableFloorUnderFeet"/> rejects an
+    /// embedded feet-fan hit. RAYS (not the capsule sweep <see cref="TryStepUp"/> uses) are essential: a fast RUN races
+    /// its footprint embedded into the riser it is mounting, and a capsule sweep from that overlapping start degenerates
+    /// (t=0), which would disable the co-pace on exactly the ticks it must smooth. A ray dropped from clear air above
+    /// the next tread has no such degeneracy.
+    ///
+    /// This is the 10.68 regression fix: the original bare steep-face test fired on the tall wall a footprint behind a
+    /// compound doorstep and throttled the single-riser mount into a flat-height stall. The tread-on-top check leaves a
+    /// genuine stair (whose next riser IS a mountable, higher tread through clear air) co-pacing, so run-up-stairs
+    /// smoothness is untouched, while a wall/overhang/deep-tread reads false and the mount keeps its full seat.
+    /// Deterministic (fixed Bepu sweep + a fixed ray fan along fixed directions).</summary>
+    private static bool NextRiserAhead(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector2 dirXZ, in MoveTuning t)
+    {
+        float lenSq = dirXZ.LengthSquared();
+        if (lenSq <= 1e-12f) return false;
+        Vector2 d = dirXZ / MathF.Sqrt(lenSq);
+        var dir = new Vector3(d.X, 0f, d.Y);
+        // One radius of reach catches the immediate next riser of any stair steep enough to be paced (its tread is
+        // within a footprint); a deeper tread (a shallower, unpaced stair) reads clear, which is correct.
+        float reach = capsule.Radius;
+        if (!world.SweepCapsule(capsule, Pose.At(pos), dir, reach, out SweepHit hit)) return false;   // clear ahead
+        bool steep = hit.Normal.LengthSquared() <= 1e-12f                                              // one-sided face, or
+                     || Vector3.Normalize(hit.Normal).Y < MathF.Cos(t.MaxSlopeRadians);                // a steep (non-walkable) face
+        if (!steep) return false;                                                                      // a walkable ramp is not a riser
+        // Verify a MOUNTABLE tread on top of that face. The face plane sits at pos + dir*(hit.Distance + radius) (the
+        // capsule's leading surface); sample just past it and drop a ray from the top of the step-climb band.
+        float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
+        float feetY = pos.Y - t.CapsuleHalfHeight;
+        // This face-distance estimate assumes a non-embedded initial sweep. An embedded (zero-distance) sweep puts the
+        // sample ~a radius past the true face, so the tread reads clear and the throttle is skipped that tick; steady
+        // state co-pacing keeps that from persisting.
+        float faceAhead = hit.Distance + capsule.Radius;
+        float originY = feetY + t.StepHeight + SkinWidth;   // top of the band; reach StepHeight down to the feet plane
+        foreach (float off in NextTreadProbeOffsets)
+        {
+            Vector3 sample = pos + dir * (faceAhead + off);
+            var origin = new Vector3(sample.X, originY, sample.Z);
+            if (!world.Raycast(origin, -Vector3.UnitY, t.StepHeight + SkinWidth, out RayHit rh)) continue;
+            // Reject an embedded origin: distance < SkinWidth means the sample sits INSIDE a solid (the back wall), not
+            // on a tread with clear air above it. (Bepu reports a zero-distance up-normal hit from inside a body.)
+            if (rh.Distance < SkinWidth) continue;
+            if (rh.Normal.Y < cosMaxSlope - 1e-4f) continue;                     // not a walkable tread (a sloped face)
+            float treadY = originY - rh.Distance;
+            if (treadY > feetY + NextRiserMinRise)                              // a NEXT step UP, not the same-level tread
                 return true;
         }
         return false;

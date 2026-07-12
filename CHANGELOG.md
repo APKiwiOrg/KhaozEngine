@@ -5,6 +5,51 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.68.1
+
+Fixes a regression from 10.68.0's stair-run tangent co-pacing: a WALK-speed single-riser mount stalled at flat height on some real compound building-step proxies. The co-pace's "is a steep riser ahead" gate was a bare forward capsule sweep, so on a building whose entrance doorstep sits close under the front wall it fired on that tall back WALL a footprint behind the step, misclassified the single-riser mount as a continuous stair run, and throttled the load-bearing forward seat. At walk speed the throttled advance could not clear the riser's depenetration pushback, so the capsule buzzed at flat ground and never mounted the step (the same starvation stall the 10.66 fix removed, reintroduced through the new gate). Clean single-riser and open-stair geometry were unaffected, which is why the shipped mount and stair-feel pins stayed green.
+
+- **The co-pace gate now requires a MOUNTABLE tread on top of the face, not just a steep face ahead (`KhaozEngine.Locomotion`).** `CharacterMovement`'s `SteepFaceAhead` is replaced by `NextRiserAhead`: after the forward sweep finds a steep face, a downward ray fan just BEYOND the face verifies it is a riser I will climb next by checking for a walkable tread, strictly higher than the feet and within `StepHeight`, reached through clear air. A genuine stair's next riser has such a tread (co-pace continues, so the run-up-stairs glide is untouched). A tall back wall or an overhang is SOLID through that band, so the ray origin is embedded and rejected, and a single-riser seat onto a same-level deep tread (or the top of a run) reads as no rise: both keep their full forward commitment and the mount completes.
+- **Rays, not a capsule sweep, do the verification (`KhaozEngine.Locomotion`).** A fast run races its footprint embedded into the riser it is mounting, and a capsule sweep from that overlapping start degenerates (t=0), which would disable the co-pace on exactly the ticks it must smooth. A downward ray dropped from clear air above the next tread has no such degeneracy, so the steep-stair run pins hold while the compound doorstep mounts.
+- **Headless coverage (`KhaozEngine.Tests`).** New `CompoundBuildingStepMountTests` drives two real baked compound-box building proxies (`house_1_proxy.coll`, a 0.25 m doorstep with the hall wall close behind it, and `house_2_proxy.coll`, a 0.32 m doorstep under a building wing) at the consumer tuning (walk 3, radius 0.4, 40 deg slope, 1.5x scale) with the exact approach poses that surfaced the stall: each walks in and mounts the step monotonically instead of buzzing at flat height. The 10.68.0 `StairRunTangentPacingTests` (all 37, including the run-smoothness pins), `SingleRiserMountTests`, `InnDoorStepMountTests`, and the dungeon stair-feel pins all stay green.
+
+## 10.68.0
+
+Two independent fixes in one release: tangent co-pacing in the paced step-up climb so running up stairs is a smooth grade-limited glide, and the local player excluded from remote interpolation writes so a teleport no longer slides the avatar off the mark on login and self-rescue.
+
+### Running up stairs is a smooth, paced glide
+
+Running UP a staircase at run speed used to stutter. The paced step-climb caps the per-tick VERTICAL rise at `MaxStepClimbSpeed`, which implicitly caps forward stair speed at `MaxStepClimbSpeed / grade`. A walk stays under that cap and climbs smoothly, but a run exceeds it, and the excess became a freeze/jump stutter: the capsule's XZ raced ahead of the held-down height, strobing forward advance between a frozen 0 and a full-tread catch-up, plowing sustained roughly metre-deep penetration into the risers, lurching about 0.8 m forward on the first mount, and (on an angled approach) wagging the derived facing with big lateral jumps. Client and server compute the identical stutter, and it is timestep-independent. Now a runner glides up at the honest grade-limited speed, so running up stairs is a smooth, slightly-slowed glide and stairs cap sprint speed the way a real staircase does.
+
+- **Tangent co-pace in the step-up climb (`KhaozEngine.Locomotion`).** When the paced step-climb throttles the per-tick rise to `MaxStepClimbSpeed * dt`, `CharacterMovement` now scales the committed HORIZONTAL advance by the same throttle, so the capsule travels ALONG the stair surface (at about `MaxStepClimbSpeed / grade`) instead of committing the full run-speed horizontal while the height is held. That removed the race-ahead: no sustained riser penetration (down from ~1.2 m to under ~0.13 m), no 0-then-full-tread forward strobe, no ~0.8 m first-mount lurch, no angled-approach facing wag. A walk whose per-tick rise fits the climb cap is untouched; discrete mount ticks are paced (and now co-paced) even at walk speed, which also smooths walk mounts.
+- **Grade-floored so a discrete riser cannot over-throttle (`KhaozEngine.Locomotion`).** The co-paced horizontal is floored at `MaxStepClimbSpeed * dt / MaxClimbGrade`: a step-up mounts a whole riser in one probe, and that discrete rise would otherwise inflate the apparent grade and crawl the advance to a stall (the 10.66 slow-walk stall). `MaxClimbGrade` (0.72, a new internal constant) is the steepest grade paced to the exact surface tangent. A steeper stair advances a bounded sub-tread lead the existing depenetrate/support pass absorbs, which is the safe side (under-advancing would float the capsule off the surface and drop it).
+- **Gated on a continuous run so a single-riser mount keeps its seat (`KhaozEngine.Locomotion`).** The co-pace fires only when a steep riser sits within a footprint AHEAD (a continuous climb). A clear path ahead is a single-riser mount onto a deep tread (or the top of the run), whose forward seat is a load-bearing commitment that must NOT be throttled. The new `SteepFaceAhead` probe is a forward capsule sweep, so it reads the same for a placed staircase on ANALYTIC terrain as for a physics floor, and it cannot misread a fast climb's embedded footprint as unsupported and disable itself the way an under-the-feet support probe does.
+- **No animator change was needed.** The existing `AnimatedCharacter` state debounce already absorbs the paced climb's brief per-riser pauses, so the locomotion clip never strobes to Idle at run on stairs. Verified rather than assumed: a new headless test drives the real animator on the stair and pins the clip state never resolving Idle mid-climb.
+- **Headless coverage (`KhaozEngine.Tests`).** New `StairRunTangentPacingTests` on a long 0.30/0.40 box staircase (mirroring a consumer stair on an analytic approach), parametrized over dt {1/30, 1/60}, radius {0.3, 0.4}, and walk/run, plus a steeper 0.38/0.44 grade: no freeze-then-catch-up strobe, penetration under 0.15 m on every climbing tick, the clip never resolves Idle, the angled per-tick lateral bounded, and no first-mount lurch while still reaching the top. The 10.66/10.67 single-riser and inn-door mount pins and the existing stair-feel pins all stay green.
+### Local player excluded from remote interpolation (post-teleport slide fix)
+
+The local player's reconcile basis is the client world's `ReplicatedPosition` (the last-received authoritative value),
+but `WorldClient.AdvancePresentation` ran the fixed-delay remote interpolator over EVERY interpolatable entity,
+including the local player, writing a delayed presentation value into that same `ReplicatedPosition`. The local avatar
+renders from prediction, never from that buffer, so the write was pure pollution. Steady movement masked it (the delta
+stream re-sends the changing position each tick and overwrites the stale value). After an epoch teleport the entity
+goes static at the destination, the delta stops carrying the unchanged position, and for ~`InterpolationDelayTicks` the
+interpolator wrote a stale pre-teleport-blended value back into `ReplicatedPosition`; the reconcile read that as its
+basis, the error sat under `HardSnapDistance`, and the avatar glided ~10% of the teleport distance off the mark over
+~1 s. It bit on login for returning players (spawn -> saved position) and on self-rescue.
+
+- **`ClientReplicationView.RecordInterpolationSample` / `InterpolateAt` gained an optional `excludeNetId`
+  (`KhaozEngine.Replication`).** Both default to excluding nothing (unchanged for every existing caller and the
+  Interpolate/buffer tests), and skip the one excluded entity when set. When the excluded id changes across calls (a
+  reconnect assigns a new local id) the new id's stale sample history is dropped, so a later un-exclude cannot lerp
+  across it.
+- **`WorldClient` passes the local net id into both (`KhaozEngine.NetWorld`).** The local avatar is no longer buffered
+  or interpolated, so its client-world `ReplicatedPosition` always holds the authoritative last-received value that
+  reconcile reads as its basis. Wasted per-frame interpolation work for the local entity is also gone.
+
+Consumer note: no change needed - the fix is automatic for any client with `InterpolateRemotes` set (the default). It
+removes the post-teleport slide seen on login and self-rescue for returning players.
+
 ## 10.67.0
 
 Three independent changes in one release: teleport + screen-transitions hardening (a 10.65 follow-up, with one breaking-but-unadopted `CharDissolve` constructor change), an optional server-authoritative facing seam on the replicated-character animator, and a locomotion fix so a solid single riser mounts at any walk speed.

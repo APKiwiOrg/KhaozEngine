@@ -27,6 +27,13 @@ public sealed class ClientReplicationView
     // A remote whose most recent InterpolateAt clamped at the newest sample (renderTime ran past the buffer): a
     // genuine snapshot starvation "hold". Diagnostics read it via WasHeldAtLastInterpolation; recomputed per InterpolateAt.
     private readonly HashSet<long> heldNetIds = new();
+    // The net id currently excluded from fixed-delay interpolation (the local, predicted avatar). It renders from
+    // prediction, so its interpolation samples are wasted work; more importantly its client-world ReplicatedPosition
+    // must stay the last-RECEIVED authoritative value (the reconcile basis), never a presentation-interpolated one, or
+    // a post-teleport static entity feeds a stale pre-teleport basis back into the reconcile. Tracked so a CHANGE (a
+    // reconnect assigning a new local id) drops the new id's stale buffer. Null = exclude nothing (the default; other
+    // consumers pass no id). Kept in sync from RecordInterpolationSample, whose caller owns the local id per ingest.
+    private long? excludedFromInterpolation;
 
     public ClientReplicationView(ReplicationRegistry registry)
     {
@@ -314,6 +321,16 @@ public sealed class ClientReplicationView
         foreach ((long netId, ushort typeId) key in keys) sampleHistory.Remove(key);
     }
 
+    // Drops ONLY the fixed-delay interpolation history for one net id (leaves the current/previous double-buffer that
+    // feeds the legacy Interpolate). Used when the interpolation-excluded id changes: the newly-excluded local id's
+    // stale samples (buffered while it was a remote, pre-reconnect) are cleared so a later un-exclude cannot lerp them.
+    private void RemoveSampleHistory(long netIdToRemove)
+    {
+        var keys = new List<(long netId, ushort typeId)>();
+        foreach ((long netId, ushort typeId) key in sampleHistory.Keys) if (key.netId == netIdToRemove) keys.Add(key);
+        foreach ((long netId, ushort typeId) key in keys) sampleHistory.Remove(key);
+    }
+
     /// <summary>
     /// Writes interpolated values (<c>lerp(previous, current, alpha)</c>) for every interpolatable component
     /// that has both a previous and current snapshot. <paramref name="alpha"/> is the render fraction in [0,1].
@@ -338,11 +355,23 @@ public sealed class ClientReplicationView
     /// snapshot/delta, right after the apply. Stamps must be non-decreasing; a stamp at or before the last recorded
     /// one overwrites it (so a burst of snapshots ingested without an intervening clock advance collapses to a single
     /// sample rather than a zero-width bracket).
+    /// <para><paramref name="excludeNetId"/> (the local, predicted avatar) is never buffered: it renders from
+    /// prediction, so its samples are wasted work AND buffering-then-<see cref="InterpolateAt"/> would clobber its
+    /// client-world replicated position (the reconcile basis) with a stale fixed-delay value. When it CHANGES across
+    /// calls (a reconnect assigns a new local id) the new id's stale sample history is dropped, so a later un-exclude
+    /// of that id cannot lerp across the gap. Pass <c>null</c> (the default) to buffer everything.</para>
     /// </summary>
-    public void RecordInterpolationSample(double timeSeconds)
+    public void RecordInterpolationSample(double timeSeconds, long? excludeNetId = null)
     {
+        if (excludeNetId != excludedFromInterpolation)
+        {
+            // The excluded id changed (first ingest, or a reconnect re-id): drop the newly-excluded id's stale buffer.
+            if (excludeNetId is long changed) RemoveSampleHistory(changed);
+            excludedFromInterpolation = excludeNetId;
+        }
         foreach (KeyValuePair<(long netId, ushort typeId), byte[]> kv in currentBytes)
         {
+            if (excludeNetId is long ex && kv.Key.netId == ex) continue;   // local avatar: predicted, never interpolated
             if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || codec.LerpFromBytes is null) continue;
             if (!sampleHistory.TryGetValue(kv.Key, out List<(double t, byte[] bytes)>? hist))
                 sampleHistory[kv.Key] = hist = new List<(double t, byte[] bytes)>();
@@ -366,12 +395,18 @@ public sealed class ClientReplicationView
     /// <see cref="WasHeldAtLastInterpolation"/>). A single-sample component renders that sample. Idempotent for a
     /// given <paramref name="renderTime"/>. Feed a monotonically increasing render time: samples strictly below the
     /// lower bracket are pruned each call, so the history stays bounded to what is still reachable.
+    /// <para><paramref name="excludeNetId"/> (the local, predicted avatar) is skipped: it renders from prediction and
+    /// its replicated position must stay the last-received authoritative value (see <see cref="RecordInterpolationSample"/>).
+    /// In steady state that id has no buffered history anyway (it was never recorded); the skip also covers the frame
+    /// right after a reconnect re-id, before the next record purges its stale buffer. Pass <c>null</c> to interpolate
+    /// everything.</para>
     /// </summary>
-    public void InterpolateAt(World world, double renderTime)
+    public void InterpolateAt(World world, double renderTime, long? excludeNetId = null)
     {
         heldNetIds.Clear();
         foreach (KeyValuePair<(long netId, ushort typeId), List<(double t, byte[] bytes)>> kv in sampleHistory)
         {
+            if (excludeNetId is long ex && kv.Key.netId == ex) continue;   // local avatar: predicted, never interpolated
             List<(double t, byte[] bytes)> hist = kv.Value;
             if (hist.Count == 0) continue;
             if (!entityByNetId.TryGetValue(kv.Key.netId, out Entity e) || !world.IsAlive(e)) continue;

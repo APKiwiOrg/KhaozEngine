@@ -40,6 +40,14 @@
          mount: a walking capsule must climb this single solid door step, not buzz at flat height. Only the SOLID
          (convex-box) proxy reproduces it - a one-sided mesh riser has no solid under the tread to embed the feet. -->
     <None Include="Physics/Fixtures/inn_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Two REAL baked Ruinborne house proxies (compounds of solid convex boxes) whose doorstep sits close under a
+         wall/wing: house_1 (0.25 m step, approached -Z with a wall behind the step) and house_2 (0.32 m step under a
+         building wing, approached +Z). The regression fixtures for the 10.68.0 stair-run tangent co-pace gate
+         misfiring on compound geometry: SteepFaceAhead's forward sweep hits the wall/wing behind the doorstep, the
+         single-riser mount is misclassified as a continuous stair run, and the throttled seat stalls at flat height.
+         The clean inn/single-riser fixtures have a clear path behind the step so they do not cover this. -->
+    <None Include="Physics/Fixtures/house_1_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Physics/Fixtures/house_2_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
     <!-- A pre-10.0.0 (9.x) cell-persistence blob: one non-player entity (a ReplicatedPosition at (10,0,20)) under a
          32-bit NetId 5, wrapped [magic][schemaVersion=1]. The real-save fixture the 10.0.0 NetId-widening migration
          (NetIdBlobMigration.WidenV1ToV2) is tested against, so the forward-migration path can never silently rot. -->

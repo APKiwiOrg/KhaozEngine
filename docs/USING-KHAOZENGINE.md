@@ -3146,9 +3146,25 @@ the undo/redo selection-following caveat.
 
 **Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
 bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the
-scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with an editable
-`WaterLevel` float row routed through `EditTerrainCommand` (forces the scatter rebuild, since scatter skips
-underwater candidates) plus read-only seed and biome-count rows.
+scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with all seven
+terrain scalars editable (WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency,
+DetailOctaves), each routed through the widened `EditTerrainCommand` (nullable per-field, only-set-fields
+apply, per-field merge coalesces a scrub), plus a read-only Biomes count. Biome bands are edited from the
+`Biomes` outline category, not the terrain inspector, see Procedural setup below.
+
+**Procedural setup.** The outline gains three more categories: `Biomes` (a sibling of `Terrain`), `Scatter
+Layers`, and `Companion Layers`, each ending in a `[+ add ...]` action node that appends a default element
+and selects it. Biome bands (index-keyed, no reorder) get a Biome `ChoiceRow`, nullable Start/End edges (a
+`FloatRow` paired with an "<edge> open" `BoolRow`, mirroring the exclusion All-layers null gate), and
+BaseHeight/HillAmplitude scalars. Scatter layers (name-keyed, inline-renamable) get their scalars plus a
+per-rule editor: a Biome choice, a Density scalar, and a comma-separated `"id:weight"` Kinds text row per
+rule, with add/remove rows. Companion layers (name-keyed) get a HostLayer chooser over the document's live
+scatter-layer names, their own scalars, and HostKinds/Kinds text rows. Renaming a scatter layer cascades the
+new name into every companion HostLayer and explicit exclusion/override layer filter that names it
+(`RenameScatterLayerCommand`). Removing one that is still referenced is rejected before it mutates anything,
+surfaced in the status strip. Companion-layer rename and remove need no cascade or reject, since nothing else
+references a companion layer by name. See the `KhaozEngine.MapEditor` README's "Procedural setup editing"
+section for the full mechanics.
 
 **Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates six
 `VisibilityGroup`s (placements, spawns, water, exclusions, regions, feature markers), named scatter layers,
@@ -3186,11 +3202,20 @@ itself from `IsDirty`.
 **Renaming.** The placement, spawn, and region inspectors lead with an inline-editable Name row. Committing
 a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`, or
 `RenameRegionCommand`, rejecting a blank, unchanged, or colliding target, and the selection follows the
-renamed key once the row loses focus.
+renamed key once the row loses focus. Terrain features and exclusions carry an optional `Name` too (empty
+means unnamed), but stay selected by list index rather than by name, so their Name row allows a blank target
+and never moves the selection on a rename. An unnamed feature's outline label falls back to `"[i] type"`,
+an unnamed exclusion's to `"exclusion[i]"`, and an exclusion's label always carries a trailing targeting
+hint from its `Layers` (`" (all)"` for a null filter, `" (trees, groundcover)"` style for an explicit one).
+The exclusion inspector also gets layer-targeting rows below its Name row: an "All layers" `BoolRow` bound
+to `Layers == null` (masks every layer, including future ones) plus one `BoolRow` per document scatter
+layer while an explicit list is in effect. Checking All on collapses the list to null, checking it off
+materializes the full explicit list, and manually re-checking every layer by hand does NOT auto-collapse
+back to null, only the All toggle itself produces the null "applies to everything" filter.
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
 semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
-mechanics, and the bake-region and rename mechanics in full.
+mechanics, the procedural setup editing mechanics, and the bake-region and rename mechanics in full.
 
 ---
 
@@ -3215,18 +3240,26 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (39 tools).**
+**Verb surface (57 tools).**
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
-| Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder` |
-| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region` |
+| Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
+| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
 | Renders | `render_topdown`, `render_view` |
+
+Biome bands and scatter/companion layers are closed-shape types, so they cross the wire as typed flat
+parameters (not json), with `kinds`/`hostKinds` as `"id"` / `"id:weight"` string lists.
+`scatter_layer_rename` cascades through every companion HostLayer and explicit layer filter that names
+it, and its result detail reports how many references were cascaded. Scatter layer rules (per-biome
+density and kinds) are editable through the `scatter_rule_add`/`scatter_rule_edit`/`scatter_rule_remove`
+triad, index-addressed against the named layer's rule list. `procedural_info` reads the full
+terrain/band/layer setup back at full field fidelity, including rules however they were set.
 
 `render_topdown` and `render_view` are the only two that need a GPU (`Render3DSnapshot.Capture`, the
 engine's one public headless render entry), and return a PNG `ImageContentBlock` directly, no files

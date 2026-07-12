@@ -31,17 +31,17 @@ internal static class FeatureGeometry
     {
         LakeFeatureDoc l => new LakeFeatureDoc
         {
-            CenterX = l.CenterX, CenterZ = l.CenterZ, Radius = l.Radius, Depth = l.Depth,
+            Name = l.Name, CenterX = l.CenterX, CenterZ = l.CenterZ, Radius = l.Radius, Depth = l.Depth,
             InnerFraction = l.InnerFraction, OuterFraction = l.OuterFraction,
         },
         FlattenFeatureDoc f => new FlattenFeatureDoc
         {
-            CenterX = f.CenterX, CenterZ = f.CenterZ, Radius = f.Radius,
+            Name = f.Name, CenterX = f.CenterX, CenterZ = f.CenterZ, Radius = f.Radius,
             TargetHeight = f.TargetHeight, Blend = f.Blend,
         },
         RidgeFeatureDoc r => new RidgeFeatureDoc
         {
-            PointX = r.PointX, PointZ = r.PointZ, DirectionX = r.DirectionX, DirectionZ = r.DirectionZ,
+            Name = r.Name, PointX = r.PointX, PointZ = r.PointZ, DirectionX = r.DirectionX, DirectionZ = r.DirectionZ,
             Height = r.Height, Width = r.Width, PassAlong = r.PassAlong, PassWidth = r.PassWidth,
         },
         RimFeatureDoc rim => CloneRim(rim),
@@ -52,7 +52,7 @@ internal static class FeatureGeometry
     {
         var clone = new RimFeatureDoc
         {
-            CenterX = r.CenterX, CenterZ = r.CenterZ, InnerRadius = r.InnerRadius, OuterRadius = r.OuterRadius,
+            Name = r.Name, CenterX = r.CenterX, CenterZ = r.CenterZ, InnerRadius = r.InnerRadius, OuterRadius = r.OuterRadius,
             WallHeight = r.WallHeight, Ruggedness = r.Ruggedness, Seed = r.Seed, CrestFrequency = r.CrestFrequency,
         };
         foreach (RimPassDoc pass in r.Passes)

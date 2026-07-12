@@ -194,6 +194,13 @@ Terrain) has no list-order semantics, so a drag attempted there is rejected as a
 outline while a drag is armed is not yet supported: the drop geometry freezes at the scroll position the
 drag started at.
 
+Both reorder paths also call `EditorVisibility.RemapIndex(kind, fromIndex, toIndex)` right alongside the
+reorder command, so a per-element hide follows the moved feature or exclusion to its new slot instead of
+staying pinned to the old one. `Delete` on a selected feature or exclusion likewise calls
+`EditorVisibility.RemoveIndex(kind, index)` (wired through `EditorToolController.OnIndexRemoved`), dropping
+the removed element's hide entry and shifting every later hidden index down by one. Undo/redo of a reorder
+or delete does not re-follow the hide (the same v1 limit the selection-follow above already documents).
+
 ## Visibility
 
 `EditorVisibility` is editor-session view state, not part of the document: it gates whole
@@ -233,9 +240,12 @@ GPU-free and fully unit-tested:
   to one undo step).
 - `EditorCommands` are the reversible edits over the document model (placements, spawns, exclusions,
   regions, terrain features, terrain globals). Commands are the only mutation path, so undo is total by
-  construction. `EditTerrainCommand` carries the terrain-wide globals (v1: the water level, scrub-coalesced).
-  `ReorderFeatureCommand` moves a terrain feature within the list (see Feature apply order above). It never
-  coalesces, so each reorder is its own undo step.
+  construction. `EditTerrainCommand` carries all seven terrain-wide scalars as nullable fields (WaterLevel,
+  Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency, DetailOctaves): a caller passes only
+  the fields it is changing, each field merges independently on a same-command follow-up (a scrub coalesces
+  into one undo step per field, not per command), and the `MutationService` seed-only special case collapsed
+  into this one widened command. `ReorderFeatureCommand` moves a terrain feature within the list (see Feature
+  apply order above). It never coalesces, so each reorder is its own undo step.
 - `EditorVisibility` is the GPU-free, headless-tested editor-session view state described in Visibility
   above: visibility groups, scatter-layer toggles, and per-element hides. It never touches the document, so
   visibility carries no dirty flag and no undo/redo of its own.
@@ -303,8 +313,11 @@ rebuild the streamed world. The water SURFACE itself is separate: `ViewportWorld
 the water pass is depth-tested against the terrain and its shore-fade drives the alpha to zero at the
 waterline, so a level below all terrain renders nothing at negligible cost. Deriving the plane live means the
 surface tracks a water-level edit immediately, ahead of the scatter rebuild. The terrain root in the outline
-(a `SelectionKind.Terrain` node) selects into an inspector with the editable water level plus read-only seed
-and biome count.
+(a `SelectionKind.Terrain` node) selects into an inspector with all seven terrain scalars editable
+(`BuildTerrainInspector`: WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency,
+DetailOctaves, with Seed and DetailOctaves scrubbed as whole steps and rounded to an int on write), plus a read-only Biomes
+count. Biome bands themselves are edited via the Biomes outline category, not the terrain inspector, see
+Procedural setup editing below.
 
 `MapEditorScene.OnUpdate` runs, in order, `UpdateCamera` -> `UpdateTools` -> `CheckWorldRebuild` ->
 `UpdateChrome` -> `UpdateStreaming`. `CheckWorldRebuild` is what actually calls `ViewportWorld.Rebuild`
@@ -350,6 +363,92 @@ spawns are keyed by id and regions by name, so a rename must move the selection 
 `Selection.Set` mid-keystroke would rebuild the inspector and drop the row's focus, so the re-select is
 deferred until the Name row itself loses focus. A different selection made first, an outline click or a
 viewport pick while the row is still focused, wins over the stale pending re-select and drops it.
+
+Terrain features and exclusions carry an optional `Name` too (`MapFeature.Name` / `MapExclusion.Name`, empty
+means unnamed), but they are selected by list INDEX, not by name, so their Name row uses the separate
+`MapEditorScene.AddIndexNameRow` variant: a rename routes through `RenameFeatureCommand` /
+`RenameExclusionCommand` (rejecting an unchanged or colliding non-empty target the same way, but ALLOWING a
+blank target since Name is optional there) and never touches the selection, since the index a rename targets
+never moves. The outline label falls back to the index when Name is empty: `"[i] type"` for a feature,
+`"exclusion[i]"` for an exclusion. An exclusion's label always carries a trailing targeting hint from its
+`Layers` too, `" (all)"` for a null filter or `" (trees, groundcover)"` style for an explicit one
+(`MapEditorScene.TargetingHint`), so the outline alone shows which scatter layers it masks.
+
+The exclusion inspector also gets layer-targeting rows below its Name row (`MapEditorScene.AddExclusionLayerRows`):
+an "All layers" `BoolRow` bound to `Layers == null` (masks every layer, including future ones), plus one
+`BoolRow` per document scatter layer while an explicit list is in effect. Checking All ON collapses the list
+to null. Checking it OFF materializes the full explicit layer list. The per-layer rows are hidden (not merely
+disabled, there is no live per-row enabled hook) while All is on, reflowing into view the next chrome step
+once All goes off, through the same `SyncShapeInspector` rebuild-on-mismatch idiom the shape-kind conversion
+uses. Manually re-checking every layer does NOT auto-collapse back to null: only the All toggle itself
+produces null, so an explicit list stays explicit even when it happens to name every layer. Every layer-row
+change routes through `EditExclusionLayersCommand`, which is `AffectsWorld` true (a targeting change affects
+what the streamed scatter draws).
+
+## Procedural setup editing
+
+The outline gains three categories alongside the existing six roots (`RebuildOutline`): `Biomes` (a sibling
+of `Terrain`, not nested under it), `Scatter Layers`, and `Companion Layers`. Each lists its elements as
+selectable nodes plus a trailing synthetic `[+ add ...]` action node (`OutlineActionKind.AddBiomeBand` /
+`AddScatterLayer` / `AddCompanionLayer`, `MapEditorScene.RunOutlineAction`): tapping it appends a
+default-valued element, seals the gesture, and selects the new element immediately, the same
+select-on-add idiom the placement/spawn/feature tools use. A new scatter or companion layer gets an
+auto-generated name (`GenerateLayerName`, the smallest `"layer-N"` / `"companion-N"` not already live). A
+new companion layer also defaults its `HostLayer` to the document's first scatter layer when one exists, so
+it validates without an extra step (with none yet, `HostLayer` stays empty until the operator adds a layer
+and picks it through the HostLayer chooser below).
+
+**Biome bands** (`SelectionKind.BiomeBand`, index-keyed, no reorder command) select into an inspector with a
+`Biome` `ChoiceRow` over the `BiomeId` enum names, then the nullable `Start`/`End` edges and the `BaseHeight`/
+`HillAmplitude` scalars. Each nullable edge is a `FloatRow` for the concrete value paired with an "<edge>
+open" `BoolRow` that toggles the null state (open = null = unbounded), mirroring the exclusion "All layers"
+null-gate: both rows are always present (no reflow), and editing the `FloatRow` closes an open edge to that
+value. Every edit is a whole-value edit through `EditBiomeBandCommand` (clone the live band, change one
+field, same-index merge coalesces a scrub). Bands carry no name and draw nothing in the viewport, so there
+is no Name row and no Visible row on a band's inspector.
+
+**Scatter layers** (`SelectionKind.ScatterLayer`, name-keyed like placements/spawns/regions) select into an
+inspector with an inline-rename Name row, then the layer scalars (Seed, CellSize, Jitter, ScaleMin/ScaleMax,
+a nullable MaxHeight via the same open-edge `BoolRow` idiom), then the per-rule surface: each rule in
+`MapScatterLayer.Rules` gets a Biome `ChoiceRow`, a Density `FloatRow`, and a `TextRow` for Kinds as a
+comma-separated `"id:weight"` list (`ParseKinds`/`FormatKinds`, the same convention `ke-mapedit` uses), plus
+a `[- remove rule N]` action row, with a trailing `[+ add rule]` and a `[- remove layer]` action row. Every
+scalar and rule edit is a whole-value edit through `EditScatterLayerCommand` (deep-clone the live layer so a
+nested `Rules`/`Kinds` mutation never touches the captured old value), same-name merge coalesces a scrub. A
+rule add or remove seals its own gesture and reflows the per-rule rows through the deferred
+`_inspectorRuleCount` sync (never a rebuild mid grid-iteration, the same idiom as the staleness sync below).
+Renaming a scatter layer routes through `RenameScatterLayerCommand`, which CASCADES the new name into every
+companion layer's `HostLayer` and every exclusion/scatter-override explicit layer filter that names it, so a
+rename never orphans a reference (a null "all layers" filter is untouched, since it names no layer). The
+editor separately follows the rename with `EditorVisibility.RenameLayer` for the visibility key, since that
+is view-only session state, not part of the document. `[- remove layer]` routes through
+`RemoveScatterLayerCommand`, which REJECTS a removal that would orphan a companion host or an explicit layer
+filter, throwing before it mutates anything (`RemoveScatterLayerFromInspector` catches the
+`InvalidOperationException` and surfaces its message in the status strip, leaving the document untouched).
+
+**Companion layers** (`SelectionKind.CompanionLayer`, name-keyed) select into an inspector with an
+inline-rename Name row, a `HostLayer` `ChoiceRow` over the document's live scatter-layer names (falling back
+to a `ReadOnlyRow` only when there are no scatter layers and no host set yet, so the dropdown never silently
+drops an out-of-set value), the Seed/CountMin/CountMax/RadiusMin/RadiusMax/ScaleMin/ScaleMax scalars and a
+nullable MaxHeight, `HostKinds` (a plain id list `TextRow`) and `Kinds` (an `"id:weight"` list `TextRow`,
+same `ParseKinds` convention), then a `[- remove companion]` action row. Every edit is a whole-value edit
+through `EditCompanionLayerCommand` (deep clone). Renaming a companion layer through
+`RenameCompanionLayerCommand` does NOT cascade, unlike a scatter-layer rename: nothing else references a
+companion layer by name, so it just renames the one layer. Removing one likewise needs no reject guard.
+
+**Staleness triggers.** The exclusion inspector's layer-targeting rows (above) and the companion inspector's
+`HostLayer` chooser both enumerate the document's live scatter-layer names at inspector-build time
+(`_inspectorScatterNames`), so either would go stale if the scatter-layer set changed while that inspector
+stayed selected. `UpdateChrome` compares the captured snapshot against the live set every chrome step and
+rebuilds the inspector on a mismatch (add, remove, or rename of a scatter layer), the same deferred
+rebuild-on-mismatch idiom `SyncShapeInspector` uses for a shape-kind conversion. The scatter-layer
+inspector's own rule rows use the analogous `_inspectorRuleCount` check so a rule add/remove reflows without
+a mid-iteration rebuild.
+
+The add, edit, and remove commands above are `AffectsWorld` true (they change terrain shape or scatter inputs), triggering the same
+streamed-world rebuild path described in Rebuild semantics above, including the one-frame inspector-scrub lag
+that section documents. The two rename commands (for scatter layers and companions) are deliberately `AffectsWorld` false,
+since a rename is byte-identical to streamed output and requires no rebuild.
 
 ## `DocumentChanged` unsubscribe note for custom hosts
 

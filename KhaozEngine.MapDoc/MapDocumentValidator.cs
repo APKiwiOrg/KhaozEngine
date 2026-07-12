@@ -42,10 +42,13 @@ public static class MapDocumentValidator
             if (layer.CountMax < layer.CountMin) errors.Add($"companion layer '{layer.Name}': countMax must be >= countMin.");
         }
 
+        var exclusionNames = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < doc.Exclusions.Count; i++)
         {
             MapExclusion e = doc.Exclusions[i];
             if (e.Shape is null) errors.Add($"exclusions[{i}]: shape is required.");
+            if (!string.IsNullOrEmpty(e.Name) && !exclusionNames.Add(e.Name))
+                errors.Add($"duplicate exclusion name '{e.Name}'.");
             CheckLayerRefs(e.Layers, layerNames, $"exclusions[{i}]", errors);
         }
 
@@ -82,10 +85,13 @@ public static class MapDocumentValidator
             if (r.Shape is null) errors.Add($"region '{r.Name}': shape is required.");
         }
 
+        var featureNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapFeature f in doc.Terrain.Features)
         {
             if (!registry.TryGetFeatureDocType(f.Type, out _))
                 errors.Add($"terrain feature type '{f.Type}' is not registered on the MapDocRegistry.");
+            if (!string.IsNullOrEmpty(f.Name) && !featureNames.Add(f.Name))
+                errors.Add($"duplicate terrain feature name '{f.Name}'.");
         }
 
         return errors;

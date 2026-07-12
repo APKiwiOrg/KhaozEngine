@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
@@ -106,6 +107,27 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(ed.History.CanUndo);
             Assert.Contains(doc.Regions, r => r.Name == "town");     // source name intact
             Assert.Single(doc.Regions, r => r.Name == "village");    // target still unique: no clone
+        }
+
+        [Fact]
+        public void RenameRegion_NowMerges()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // The ledgered per-keystroke-undo wart: before the TryMerge retrofit, each keystroke pushed its own
+            // undo step. Successive renames of the same region (each one's old name matching the prior new name,
+            // the same-name-pair chain a per-keystroke commit produces) now coalesce into one undo step.
+            ed.Execute(new RenameRegionCommand("town", "t"));
+            ed.Execute(new RenameRegionCommand("t", "to"));
+            ed.Execute(new RenameRegionCommand("to", "town2"));
+            Assert.Equal(1, ed.History.UndoDepth);
+            Assert.Contains(doc.Regions, r => r.Name == "town2");
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
         }
 
         [Fact]
@@ -440,6 +462,62 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void RenameFeature_RoundTrip_MergesScrubs()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Applies and reverts: round trip is deep-equal. Features are index-addressed (no independent id),
+            // unlike RenamePlacementCommand's id-keyed variant.
+            ed.Execute(new RenameFeatureCommand(0, "north-lake", ""));
+            Assert.Equal("north-lake", doc.Terrain.Features[0].Name);
+            Assert.False(ed.WorldRebuildPending);   // renaming does not change terrain shape
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+
+            // Successive renames of the same index coalesce (a text field committed on every keystroke stays
+            // one undo step, the EditFeatureCommand scrub-coalescing idiom).
+            ed.Execute(new RenameFeatureCommand(0, "n", ""));
+            ed.Execute(new RenameFeatureCommand(0, "no", "n"));
+            ed.Execute(new RenameFeatureCommand(0, "north", "no"));
+            Assert.Equal("north", doc.Terrain.Features[0].Name);
+            Assert.Equal(1, ed.History.UndoDepth);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void RenameFeatureCommand_GuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Terrain.Features[0].Name = "north-lake";
+            doc.Terrain.Features[1].Name = "south-flat";
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Guards duplicates: renaming feature 1 onto feature 0's name throws before mutating anything, and
+            // leaves no undo step (the RenameRegionCommand guard idiom, ported to the index-addressed
+            // feature/exclusion rename commands).
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameFeatureCommand(1, "north-lake", "south-flat")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));   // document untouched, byte for byte
+
+            // Renaming a feature to its OWN current name stays legal: the duplicate scan excludes the renaming
+            // feature's own index.
+            ed.Execute(new RenameFeatureCommand(0, "north-lake", "north-lake"));
+            Assert.Equal("north-lake", doc.Terrain.Features[0].Name);
+
+            // Clearing a name to empty stays legal even with another already-unnamed feature present: a null or
+            // empty name never collides, it carries no key to clash on.
+            doc.Terrain.Features[1].Name = null;
+            ed.Execute(new RenameFeatureCommand(0, "", "north-lake"));
+            Assert.Null(doc.Terrain.Features[0].Name);
+        }
+
+        [Fact]
         public void EditTerrainCommand_AppliesRevertsAndMerges()
         {
             var doc = Sample();
@@ -505,6 +583,101 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Same(original, doc.Exclusions[0].Shape);
             Assert.False(ed.History.CanUndo);
             Assert.Equal(before, Save(doc));
+        }
+
+        [Fact]
+        public void RenameExclusion_RoundTrip()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Exclusions are index-addressed (no independent id), the same idiom as RenameFeatureCommand.
+            ed.Execute(new RenameExclusionCommand(0, "market-clearing", ""));
+            Assert.Equal("market-clearing", doc.Exclusions[0].Name);
+            Assert.False(ed.WorldRebuildPending);   // renaming does not change scatter inputs
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void RenameExclusionCommand_GuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.Exclusions[0].Name = "market-clearing";
+            doc.Exclusions.Add(new MapExclusion { Name = "second-yard", Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 1f, Radius = 5f } });
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Guards duplicates: renaming exclusion 1 onto exclusion 0's name throws before mutating anything,
+            // and leaves no undo step (the RenameRegionCommand guard idiom, ported to the index-addressed
+            // feature/exclusion rename commands).
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameExclusionCommand(1, "market-clearing", "second-yard")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));   // document untouched, byte for byte
+
+            // Renaming an exclusion to its OWN current name stays legal: the duplicate scan excludes the
+            // renaming exclusion's own index.
+            ed.Execute(new RenameExclusionCommand(0, "market-clearing", "market-clearing"));
+            Assert.Equal("market-clearing", doc.Exclusions[0].Name);
+
+            // Clearing a name to empty stays legal even with another already-unnamed exclusion present: a null
+            // or empty name never collides, it carries no key to clash on.
+            doc.Exclusions[1].Name = null;
+            ed.Execute(new RenameExclusionCommand(0, "", "market-clearing"));
+            Assert.Null(doc.Exclusions[0].Name);
+        }
+
+        [Fact]
+        public void EditExclusionLayers_RoundTrip_AffectsWorld_UnknownLayerRejected()
+        {
+            var doc = Sample();
+            List<string>? original = doc.Exclusions[0].Layers;   // null in SampleDoc: applies to every layer
+            string before = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditExclusionLayersCommand(0, new List<string> { "trees" }, original));
+            Assert.Equal(new List<string> { "trees" }, doc.Exclusions[0].Layers);
+            Assert.True(ed.WorldRebuildPending);   // targeting changes scatter output
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+
+            // A second edit of the same index coalesces (checkbox-drag coalescing).
+            ed.Execute(new EditExclusionLayersCommand(0, new List<string> { "trees" }, original));
+            ed.Execute(new EditExclusionLayersCommand(0, null, new List<string> { "trees" }));
+            Assert.Null(doc.Exclusions[0].Layers);
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+
+            // An unknown layer name is not rejected by the command itself: the standard document validator on
+            // save catches it, the same invariant every other layer-filter field already relies on.
+            ed.Execute(new EditExclusionLayersCommand(0, new List<string> { "nope" }, original));
+            Assert.Throws<MapDocumentException>(() => Save(doc));
+        }
+
+        [Fact]
+        public void EditExclusionLayersCommand_ConstructorCopiesLists_NoAliasing()
+        {
+            var doc = Sample();
+            var newLayers = new List<string> { "trees" };
+            var oldLayers = new List<string> { "rocks" };
+            var cmd = new EditExclusionLayersCommand(0, newLayers, oldLayers);
+
+            // Mutate the caller's own lists after construction: if the command captured them by reference (not
+            // a copy), both Apply and Revert would observe this mutation instead of the value at construction.
+            newLayers.Add("mutated-new");
+            oldLayers.Add("mutated-old");
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(cmd);
+            Assert.Equal(new List<string> { "trees" }, doc.Exclusions[0].Layers);   // construction-time value
+
+            Assert.True(ed.Undo());
+            Assert.Equal(new List<string> { "rocks" }, doc.Exclusions[0].Layers);   // construction-time old value
         }
 
         [Fact]
@@ -685,6 +858,357 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(ed.Selection.IsEmpty);
             Assert.Equal(SelectionKind.None, ed.Selection.Kind);
             Assert.NotNull(ed.Registry);
+        }
+
+        // ---- terrain scalars (widened EditTerrainCommand) ----------------------------------------------
+
+        [Fact]
+        public void EditTerrain_AllScalars_ApplyRevertMerge()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            MapTerrain t = doc.Terrain;
+            float w0 = t.WaterLevel;
+            int s0 = t.Seed;
+            float bb0 = t.BiomeBlend, gf0 = t.GentleFrequency, ga0 = t.GentleAmplitude, df0 = t.DetailFrequency;
+            int oct0 = t.DetailOctaves;
+
+            // Each scalar applies independently and reverts to its prior value, and a command that sets ONE
+            // scalar leaves every other scalar untouched (only-set-fields apply).
+            ed.Execute(new EditTerrainCommand(newBiomeBlend: 42f, oldBiomeBlend: bb0));
+            Assert.Equal(42f, t.BiomeBlend);
+            Assert.Equal(w0, t.WaterLevel);   // only-set: water not touched
+            Assert.Equal(s0, t.Seed);         // only-set: seed not touched
+            Assert.Equal(gf0, t.GentleFrequency);
+            Assert.Equal(ga0, t.GentleAmplitude);
+            Assert.Equal(df0, t.DetailFrequency);
+            Assert.Equal(oct0, t.DetailOctaves);
+            Assert.True(ed.WorldRebuildPending);   // AffectsWorld
+            ed.SealGesture();
+
+            ed.Execute(new EditTerrainCommand(newSeed: 555, oldSeed: s0));
+            Assert.Equal(555, t.Seed);
+            Assert.Equal(42f, t.BiomeBlend);   // the prior set field stands
+            ed.SealGesture();
+
+            ed.Execute(new EditTerrainCommand(newGentleFrequency: 0.5f, oldGentleFrequency: gf0));
+            Assert.Equal(0.5f, t.GentleFrequency);
+            ed.SealGesture();
+            ed.Execute(new EditTerrainCommand(newGentleAmplitude: 9f, oldGentleAmplitude: ga0));
+            Assert.Equal(9f, t.GentleAmplitude);
+            ed.SealGesture();
+            ed.Execute(new EditTerrainCommand(newDetailFrequency: 0.09f, oldDetailFrequency: df0));
+            Assert.Equal(0.09f, t.DetailFrequency);
+            ed.SealGesture();
+            ed.Execute(new EditTerrainCommand(newDetailOctaves: 7, oldDetailOctaves: oct0));
+            Assert.Equal(7, t.DetailOctaves);
+        }
+
+        [Fact]
+        public void EditTerrain_ScrubMerge_SameField_FirstOldLastNew()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            float w0 = doc.Terrain.WaterLevel;
+
+            // Two water edits of the same gesture coalesce: the level moves to the last value, but a single undo
+            // reverts the whole scrub to the first old (no barrier between them).
+            ed.Execute(new EditTerrainCommand(newWaterLevel: 1f, oldWaterLevel: w0));
+            ed.Execute(new EditTerrainCommand(newWaterLevel: 2f, oldWaterLevel: 1f));
+            Assert.Equal(2f, doc.Terrain.WaterLevel);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(w0, doc.Terrain.WaterLevel);   // first-old wins the revert
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void EditTerrain_Merge_UnionOfDifferentFields_EachOldFromFirstSetter()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            float w0 = doc.Terrain.WaterLevel;
+            int s0 = doc.Terrain.Seed;
+
+            // A water-only edit and a seed-only edit of the same gesture coalesce into ONE step carrying BOTH
+            // fields. One undo reverts both, each to the old captured by the FIRST command that set that field.
+            ed.Execute(new EditTerrainCommand(newWaterLevel: 3f, oldWaterLevel: w0));
+            ed.Execute(new EditTerrainCommand(newSeed: 88, oldSeed: s0));
+            Assert.Equal(3f, doc.Terrain.WaterLevel);
+            Assert.Equal(88, doc.Terrain.Seed);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(w0, doc.Terrain.WaterLevel);   // union revert restores water
+            Assert.Equal(s0, doc.Terrain.Seed);         // and seed, each from its own first-setter old
+            Assert.False(ed.History.CanUndo);
+
+            // Re-scrubbing water after the seed already merged keeps water's FIRST old (w0), not the seed edit's.
+            var ed2 = new EditorDocument(Sample());
+            float w1 = ed2.Doc.Terrain.WaterLevel;
+            ed2.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: w1));
+            ed2.Execute(new EditTerrainCommand(newSeed: 12, oldSeed: ed2.Doc.Terrain.Seed));
+            ed2.Execute(new EditTerrainCommand(newWaterLevel: 6f, oldWaterLevel: 5f));
+            Assert.True(ed2.Undo());
+            Assert.Equal(w1, ed2.Doc.Terrain.WaterLevel);   // still the first-ever water old, not 5
+        }
+
+        // ---- biome bands -------------------------------------------------------------------------------
+
+        [Fact]
+        public void BiomeBand_AddEditRemove_RoundTrip_AffectsWorld()
+        {
+            var band = new MapBiomeBand
+            {
+                Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Forest, BaseHeight = 3f, HillAmplitude = 5f,
+            };
+            AssertRoundTrip(Sample(), new AddBiomeBandCommand(band));
+
+            // Add is world-affecting (band shape feeds the terrain field).
+            var ed = new EditorDocument(Sample());
+            ed.Execute(new AddBiomeBandCommand(new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Snow }));
+            Assert.True(ed.WorldRebuildPending);
+
+            // Whole-value edit of an existing band round-trips, is world-affecting, and same-index edits merge.
+            var doc = Sample();
+            doc.Terrain.Biomes.Clear();
+            var original = new MapBiomeBand { Start = null, End = 10f, Biome = KhaozEngine.Terrain.BiomeId.Meadow };
+            doc.Terrain.Biomes.Add(original);
+            var ed2 = new EditorDocument(doc);
+            var v1 = new MapBiomeBand { Start = 1f, End = 10f, Biome = KhaozEngine.Terrain.BiomeId.Marsh };
+            var v2 = new MapBiomeBand { Start = 2f, End = 10f, Biome = KhaozEngine.Terrain.BiomeId.Marsh };
+            ed2.Execute(new EditBiomeBandCommand(0, v1, original));
+            Assert.True(ed2.WorldRebuildPending);
+            ed2.Execute(new EditBiomeBandCommand(0, v2, v1));   // same index, same gesture: coalesces
+            Assert.Same(v2, doc.Terrain.Biomes[0]);
+            Assert.True(ed2.Undo());                            // one undo reverts the whole scrub
+            Assert.Same(original, doc.Terrain.Biomes[0]);
+            Assert.False(ed2.History.CanUndo);
+
+            // Remove round-trips (restores at the same index).
+            var doc3 = Sample();
+            doc3.Terrain.Biomes.Clear();
+            var a = new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Meadow };
+            var b = new MapBiomeBand { Biome = KhaozEngine.Terrain.BiomeId.Desert };
+            doc3.Terrain.Biomes.Add(a);
+            doc3.Terrain.Biomes.Add(b);
+            var ed3 = new EditorDocument(doc3);
+            ed3.Execute(new RemoveBiomeBandCommand(0));
+            Assert.Single(doc3.Terrain.Biomes);
+            Assert.Same(b, doc3.Terrain.Biomes[0]);
+            Assert.True(ed3.Undo());
+            Assert.Same(a, doc3.Terrain.Biomes[0]);   // back at index 0, not appended
+        }
+
+        [Fact]
+        public void RemoveBiomeBand_OutOfRange_Throws()
+        {
+            var doc = Sample();
+            int count = doc.Terrain.Biomes.Count;
+            var ed = new EditorDocument(doc);
+            Assert.Throws<ArgumentException>(() => ed.Execute(new RemoveBiomeBandCommand(count)));
+        }
+
+        // ---- scatter + companion layers ----------------------------------------------------------------
+
+        static MapScatterLayer Layer(string name) => new MapScatterLayer
+        {
+            Name = name, Seed = 7, CellSize = 4f, ScaleMin = 0.5f, ScaleMax = 1.5f,
+            Rules = { new MapBiomeScatterRule { Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
+                Kinds = { new MapPropKind { Id = "oak", Weight = 2f } } } },
+        };
+
+        [Fact]
+        public void ScatterLayer_AddEditRemove_RoundTrip_AffectsWorld()
+        {
+            // Add a fresh, unreferenced layer round-trips (deep-equal after undo).
+            AssertRoundTrip(Sample(), new AddScatterLayerCommand(Layer("grass")));
+
+            var edAdd = new EditorDocument(Sample());
+            edAdd.Execute(new AddScatterLayerCommand(Layer("grass")));
+            Assert.True(edAdd.WorldRebuildPending);   // scatter layers feed the streamed prop field
+
+            // Whole-value edit of an existing layer (a new value carrying the same name) round-trips, affects the
+            // world, and same-name edits coalesce into one undo step.
+            var doc = Sample();
+            MapScatterLayer live = doc.ScatterLayers[0];   // "trees"
+            var v1 = new MapScatterLayer { Name = "trees", CellSize = 6f };
+            var v2 = new MapScatterLayer { Name = "trees", CellSize = 7f };
+            var ed2 = new EditorDocument(doc);
+            ed2.Execute(new EditScatterLayerCommand("trees", v1, live));
+            Assert.True(ed2.WorldRebuildPending);
+            Assert.Same(v1, doc.ScatterLayers[0]);
+            ed2.Execute(new EditScatterLayerCommand("trees", v2, v1));   // same name, same gesture: coalesces
+            Assert.Same(v2, doc.ScatterLayers[0]);
+            Assert.True(ed2.Undo());
+            Assert.Same(live, doc.ScatterLayers[0]);
+            Assert.False(ed2.History.CanUndo);
+
+            // Remove of an UNREFERENCED layer round-trips (restores at the same index, not appended).
+            var doc3 = Sample();
+            doc3.ScatterLayers.Add(Layer("grass"));   // index 1, referenced by nothing
+            var ed3 = new EditorDocument(doc3);
+            ed3.Execute(new RemoveScatterLayerCommand("grass"));
+            Assert.True(ed3.WorldRebuildPending);
+            Assert.Single(doc3.ScatterLayers);
+            Assert.True(ed3.Undo());
+            Assert.Equal(2, doc3.ScatterLayers.Count);
+            Assert.Equal("grass", doc3.ScatterLayers[1].Name);
+        }
+
+        [Fact]
+        public void EditScatterLayerCommand_WholeValueSwap_OldValueIntactOnUndo()
+        {
+            // The command swaps whole values, so a nested-list change on the applied value leaves the captured old
+            // value intact for undo (the deep-clone discipline that builds the new value lives in the editor scene).
+            var doc = Sample();
+            MapScatterLayer live = doc.ScatterLayers[0];
+            int liveRuleCount = live.Rules.Count;
+            var clone = new MapScatterLayer { Name = "trees", Seed = live.Seed, CellSize = live.CellSize };
+            foreach (MapBiomeScatterRule r in live.Rules)
+                clone.Rules.Add(new MapBiomeScatterRule { Biome = r.Biome, Density = r.Density });
+            clone.Rules.Add(new MapBiomeScatterRule { Biome = KhaozEngine.Terrain.BiomeId.Forest, Density = 0.9f });
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditScatterLayerCommand("trees", clone, live));
+            Assert.Equal(liveRuleCount + 1, doc.ScatterLayers[0].Rules.Count);
+            Assert.True(ed.Undo());
+            Assert.Equal(liveRuleCount, doc.ScatterLayers[0].Rules.Count);   // old value untouched
+        }
+
+        [Fact]
+        public void ScatterLayerRemove_ReferencedByCompanion_RejectedAndReverted()
+        {
+            // SampleDoc's "trees" is hosted by companion "understory" AND named by scatterOverride[0]'s filter.
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Removing a referenced scatter layer throws BEFORE it mutates, listing the referencing elements, and
+            // lands no undo step: the document is untouched (rejected-and-reverted via the reject-before-mutate
+            // guard, the standard validate-revert invariant rendered as a precise up-front reject).
+            var ex = Assert.Throws<InvalidOperationException>(() => ed.Execute(new RemoveScatterLayerCommand("trees")));
+            Assert.Contains("trees", ex.Message);
+            Assert.Contains("understory", ex.Message);   // the companion host reference is surfaced
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));              // untouched, byte for byte
+
+            // Clearing the references makes the same removal succeed and round-trip.
+            doc.CompanionLayers.Clear();
+            doc.ScatterOverrides.Clear();
+            ed.Execute(new RemoveScatterLayerCommand("trees"));
+            Assert.Empty(doc.ScatterLayers);
+            Assert.True(ed.Undo());
+            Assert.Single(doc.ScatterLayers);
+        }
+
+        [Fact]
+        public void ScatterLayerRename_CascadesToReferences()
+        {
+            // Locked decision 10: a scatter-layer rename CASCADES through every reference (companion host, explicit
+            // exclusion / override filters) so the document stays valid and no reference is silently orphaned. (The
+            // brief's earlier "refs do not auto-follow" framing was superseded by the cascade decision, which is
+            // lossless and friendly: the reference follows the layer rather than the rename being blocked.)
+            var doc = Sample();
+            doc.Exclusions[0].Layers = new List<string> { "trees" };   // an explicit exclusion filter to cascade too
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            ed.Execute(new RenameScatterLayerCommand("trees", "forest"));
+            Assert.Equal("forest", doc.ScatterLayers[0].Name);
+            Assert.Equal("forest", doc.CompanionLayers[0].HostLayer);           // companion host followed
+            Assert.Equal(new[] { "forest" }, doc.Exclusions[0].Layers);         // exclusion filter followed
+            Assert.Equal(new[] { "forest" }, doc.ScatterOverrides[0].Layers);   // override filter followed
+            Assert.False(ed.WorldRebuildPending);                              // refs still resolve to the same layer
+            Assert.Empty(MapDocumentValidator.Validate(doc, MapDocRegistry.CreateDefault()));   // stays valid
+
+            // Revert reverses the whole cascade, byte for byte.
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+
+            // The target name must be unique: renaming onto an existing layer's name throws before mutating.
+            doc.ScatterLayers.Add(new MapScatterLayer { Name = "meadow-scatter" });
+            string before2 = Save(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameScatterLayerCommand("trees", "meadow-scatter")));
+            Assert.Equal(before2, Save(doc));
+        }
+
+        [Fact]
+        public void ScatterLayerRename_ChainedMerges()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            ed.Execute(new RenameScatterLayerCommand("trees", "a"));
+            ed.Execute(new RenameScatterLayerCommand("a", "b"));   // chained: coalesces into the first
+            Assert.Equal("b", doc.ScatterLayers[0].Name);
+            Assert.Equal("b", doc.CompanionLayers[0].HostLayer);
+            Assert.True(ed.Undo());
+            Assert.Equal("trees", doc.ScatterLayers[0].Name);   // one undo reverses the whole chain
+            Assert.Equal("trees", doc.CompanionLayers[0].HostLayer);
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void CompanionLayer_AddEditRemove_HostLayerValidated()
+        {
+            // Add a companion round-trips and affects the world.
+            var comp = new MapCompanionLayer { Name = "canopy", HostLayer = "trees", HostKinds = { "pine_a" },
+                Kinds = { new MapPropKind { Id = "vine", Weight = 1f } } };
+            AssertRoundTrip(Sample(), new AddCompanionLayerCommand(comp));
+
+            var edAdd = new EditorDocument(Sample());
+            edAdd.Execute(new AddCompanionLayerCommand(new MapCompanionLayer { Name = "canopy", HostLayer = "trees" }));
+            Assert.True(edAdd.WorldRebuildPending);
+
+            // Whole-value edit round-trips + same-name merge.
+            var doc = Sample();
+            MapCompanionLayer live = doc.CompanionLayers[0];   // "understory"
+            var w1 = new MapCompanionLayer { Name = "understory", HostLayer = "trees", CountMin = 2, CountMax = 6 };
+            var w2 = new MapCompanionLayer { Name = "understory", HostLayer = "trees", CountMin = 2, CountMax = 8 };
+            var ed2 = new EditorDocument(doc);
+            ed2.Execute(new EditCompanionLayerCommand("understory", w1, live));
+            ed2.Execute(new EditCompanionLayerCommand("understory", w2, w1));
+            Assert.Same(w2, doc.CompanionLayers[0]);
+            Assert.True(ed2.Undo());
+            Assert.Same(live, doc.CompanionLayers[0]);
+
+            // A bogus HostLayer is caught by the standard validator on save: the editor's chooser only offers real
+            // scatter layers, but a scripted edit relies on this net (the exclusion-layer-filter invariant).
+            var doc3 = Sample();
+            var ed3 = new EditorDocument(doc3);
+            var bad = new MapCompanionLayer { Name = "understory", HostLayer = "nope" };
+            ed3.Execute(new EditCompanionLayerCommand("understory", bad, doc3.CompanionLayers[0]));
+            Assert.Throws<MapDocumentException>(() => Save(doc3));
+
+            // Remove round-trips (restores at the same index).
+            var doc4 = Sample();
+            var ed4 = new EditorDocument(doc4);
+            ed4.Execute(new RemoveCompanionLayerCommand("understory"));
+            Assert.True(ed4.WorldRebuildPending);
+            Assert.Empty(doc4.CompanionLayers);
+            Assert.True(ed4.Undo());
+            Assert.Single(doc4.CompanionLayers);
+        }
+
+        [Fact]
+        public void RenameCompanionLayerCommand_GuardsDuplicates_AndMerges()
+        {
+            var doc = Sample();
+            doc.CompanionLayers.Add(new MapCompanionLayer { Name = "canopy", HostLayer = "trees" });
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Renaming "understory" onto "canopy" throws before mutating, leaving no undo step.
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameCompanionLayerCommand("understory", "canopy")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));
+
+            // A chained rename coalesces (no cascade: nothing references a companion by name).
+            ed.Execute(new RenameCompanionLayerCommand("understory", "u1"));
+            ed.Execute(new RenameCompanionLayerCommand("u1", "u2"));
+            Assert.Equal("u2", doc.CompanionLayers[0].Name);
+            Assert.False(ed.WorldRebuildPending);   // a companion rename changes nothing streamed
+            Assert.True(ed.Undo());
+            Assert.Equal("understory", doc.CompanionLayers[0].Name);
         }
     }
 }

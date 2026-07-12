@@ -54,5 +54,63 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(v.IsElementVisible(SelectionKind.Terrain, ""));
             Assert.False(EditorVisibility.TryGroupFor(SelectionKind.Terrain, out _));
         }
+
+        [Fact]
+        public void RemapIndex_ShiftsHideAcrossReorder_BothDirections()
+        {
+            // Moving LATER (from < to): list [A,B,C,D], Move(0, 2) -> [B,C,A,D]. A follows to slot 2, B and C
+            // (the shifted-through range) each step down one, D (outside the range) is untouched.
+            var later = new EditorVisibility();
+            later.SetElementHidden(SelectionKind.Feature, "0", true);   // A: the moved element
+            later.SetElementHidden(SelectionKind.Feature, "1", true);   // B: shifted-through range
+            later.SetElementHidden(SelectionKind.Feature, "3", true);   // D: outside the range
+            later.SetElementHidden(SelectionKind.Exclusion, "0", true); // a different kind: must not be touched
+
+            later.RemapIndex(SelectionKind.Feature, fromIndex: 0, toIndex: 2);
+
+            Assert.True(later.IsElementHidden(SelectionKind.Feature, "0"));    // B, shifted down from 1
+            Assert.False(later.IsElementHidden(SelectionKind.Feature, "1"));   // C, shifted down from 2, was never hidden
+            Assert.True(later.IsElementHidden(SelectionKind.Feature, "2"));    // A, the moved element, still hidden
+            Assert.True(later.IsElementHidden(SelectionKind.Feature, "3"));    // D, outside the range, untouched
+            Assert.True(later.IsElementHidden(SelectionKind.Exclusion, "0")); // untouched: a different kind's key
+
+            // Moving EARLIER (from > to): list [A,B,C,D], Move(3, 1) -> [A,D,B,C]. D follows to slot 1, B and C
+            // (the shifted-through range) each step up one, A (outside the range) is untouched.
+            var earlier = new EditorVisibility();
+            earlier.SetElementHidden(SelectionKind.Feature, "0", true);   // A: outside the range
+            earlier.SetElementHidden(SelectionKind.Feature, "1", true);   // B: shifted-through range
+            earlier.SetElementHidden(SelectionKind.Feature, "3", true);   // D: the moved element
+
+            earlier.RemapIndex(SelectionKind.Feature, fromIndex: 3, toIndex: 1);
+
+            Assert.True(earlier.IsElementHidden(SelectionKind.Feature, "0"));    // A, untouched
+            Assert.True(earlier.IsElementHidden(SelectionKind.Feature, "1"));    // D, the moved element, now at 1
+            Assert.True(earlier.IsElementHidden(SelectionKind.Feature, "2"));    // B, shifted up from 1
+            Assert.False(earlier.IsElementHidden(SelectionKind.Feature, "3"));   // C, shifted up from 2, was never hidden
+
+            // Equal indices: a documented no-op, nothing in the hidden set moves.
+            var noop = new EditorVisibility();
+            noop.SetElementHidden(SelectionKind.Feature, "1", true);
+            noop.RemapIndex(SelectionKind.Feature, fromIndex: 1, toIndex: 1);
+            Assert.True(noop.IsElementHidden(SelectionKind.Feature, "1"));
+        }
+
+        [Fact]
+        public void RemoveIndex_DropsRemovedEntryAndShiftsLaterHidesDown()
+        {
+            var v = new EditorVisibility();
+            v.SetElementHidden(SelectionKind.Exclusion, "0", true);   // earlier: untouched
+            v.SetElementHidden(SelectionKind.Exclusion, "1", true);   // the removed element itself
+            v.SetElementHidden(SelectionKind.Exclusion, "3", true);   // later: shifts down to 2
+            v.SetElementHidden(SelectionKind.Feature, "1", true);     // a different kind: must not be touched
+
+            v.RemoveIndex(SelectionKind.Exclusion, 1);
+
+            Assert.True(v.IsElementHidden(SelectionKind.Exclusion, "0"));     // untouched
+            Assert.False(v.IsElementHidden(SelectionKind.Exclusion, "1"));    // now holds the old index 2, never hidden
+            Assert.True(v.IsElementHidden(SelectionKind.Exclusion, "2"));     // was 3, shifted down by one
+            Assert.False(v.IsElementHidden(SelectionKind.Exclusion, "3"));    // nothing hidden at the old tail slot
+            Assert.True(v.IsElementHidden(SelectionKind.Feature, "1"));       // untouched: a different kind's key
+        }
     }
 }

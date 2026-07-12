@@ -74,3 +74,41 @@ public sealed record MutationResult(string Verb, string Detail, bool WorldChange
 /// of those baked placements (each <c>baked-&lt;layer&gt;-N</c>), and whether a covering exclusion was added to
 /// stop the frozen props from being re-scattered on top of themselves.</summary>
 public sealed record BakeResult(string Layer, int BakedCount, IReadOnlyList<string> BakedIds, bool ExclusionAdded);
+
+/// <summary>The terrain globals: the water level and noise seed plus the biome-blend and gentle/detail noise
+/// scalars the widened <c>terrain_edit</c> verb now carries.</summary>
+public sealed record TerrainInfo(int Seed, float WaterLevel, float BiomeBlend, float GentleFrequency,
+    float GentleAmplitude, float DetailFrequency, int DetailOctaves);
+
+/// <summary>One terrain biome band read back for <see cref="ProceduralInfo"/>. <see cref="Index"/> is the band's
+/// list position (bands are index-addressed, the same key <c>biome_band_edit</c>/<c>biome_band_remove</c> take).
+/// <see cref="Start"/>/<see cref="End"/> null means an open (unbounded) edge. <see cref="Biome"/> is the
+/// <see cref="KhaozEngine.Terrain.BiomeId"/> name (for example "Meadow"), the same spelling
+/// <c>biome_band_add</c>/<c>biome_band_edit</c> accept.</summary>
+public sealed record BiomeBandInfo(int Index, float? Start, float? End, string Biome, float BaseHeight,
+    float HillAmplitude);
+
+/// <summary>One biome scatter rule read back inside a <see cref="ScatterLayerInfo"/>. <see cref="Kinds"/> is a
+/// list of <c>"id"</c> (weight 1) / <c>"id:weight"</c> entries, the same convention the mutation verbs' kinds
+/// parameters parse with <c>ParseKinds</c>.</summary>
+public sealed record ScatterRuleInfo(string Biome, float Density, IReadOnlyList<string> Kinds);
+
+/// <summary>A named procedural scatter layer read back for <see cref="ProceduralInfo"/>, full field fidelity
+/// including its rules, which the <c>scatter_rule_add</c>/<c>scatter_rule_edit</c>/<c>scatter_rule_remove</c>
+/// verbs write and this read path reports back regardless of whether they were set through MCP or the GUI.</summary>
+public sealed record ScatterLayerInfo(string Name, int Seed, float CellSize, float Jitter, float? MaxHeight,
+    float ScaleMin, float ScaleMax, IReadOnlyList<ScatterRuleInfo> Rules);
+
+/// <summary>A named companion layer read back for <see cref="ProceduralInfo"/>, full field fidelity.
+/// <see cref="HostKinds"/> is a plain id list (companion hosts carry no weights), <see cref="Kinds"/> is the
+/// <c>"id"</c> / <c>"id:weight"</c> convention.</summary>
+public sealed record CompanionLayerInfo(string Name, string HostLayer, int Seed, IReadOnlyList<string> HostKinds,
+    IReadOnlyList<string> Kinds, int CountMin, int CountMax, float RadiusMin, float RadiusMax,
+    float ScaleMin, float ScaleMax, float? MaxHeight);
+
+/// <summary>The full procedural setup of the open document: terrain scalars, biome bands, scatter layers (with
+/// their rules and kinds), and companion layers. This is the MCP read path for everything the Task 1-4 GUI
+/// surface can write (<c>terrain_edit</c>, the biome band triad, and the scatter/companion layer triads),
+/// so an agent can inspect the current procedural setup without re-deriving it from raw document JSON.</summary>
+public sealed record ProceduralInfo(TerrainInfo Terrain, IReadOnlyList<BiomeBandInfo> Bands,
+    IReadOnlyList<ScatterLayerInfo> ScatterLayers, IReadOnlyList<CompanionLayerInfo> CompanionLayers);

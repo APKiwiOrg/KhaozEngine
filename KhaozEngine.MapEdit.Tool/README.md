@@ -83,16 +83,16 @@ query, mutation) runs on a machine with no display or graphics device. A render 
 headless GPU device fails with a precise `McpException` naming the selected backend, instead of hanging
 or crashing the process.
 
-## Verb surface (39 tools)
+## Verb surface (57 tools)
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
-| Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder` |
-| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region` |
+| Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
+| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
 | Renders | `render_topdown`, `render_view` |
 
@@ -101,7 +101,22 @@ the structural checks pass. `bake_region` freezes a scatter layer's procedural o
 into authored placements (`baked-<layer>-N`, an explicit ground Y, tagged `baked`) plus a covering
 exclusion scoped to that layer, so a designer can hand-tune what was procedural. `render_topdown` and
 `render_view` return a PNG `ImageContentBlock` directly, no files written, preceded by a text block
-naming the framing so the client can map pixels back to world coordinates.
+naming the framing so the client can map pixels back to world coordinates. `procedural_info` reads back
+the full terrain/biome-band/scatter-layer/companion-layer setup at full field fidelity, the read
+counterpart to `terrain_edit` and the biome band and scatter/companion layer verbs below.
+
+Biome bands and scatter/companion layers are closed-shape types (not open unions like features and
+shapes), so they cross the wire as typed flat parameters instead of json: `biome_band_add`/
+`biome_band_edit` take `start`/`end`/`biome`/`baseHeight`/`hillAmplitude` directly, and
+`scatter_layer_add`/`scatter_layer_edit`/`companion_layer_add`/`companion_layer_edit` take their scalars
+directly with `kinds`/`hostKinds` as string lists in the `"id"` (weight 1) / `"id:weight"` convention.
+`scatter_layer_rename` cascades the rename through every companion layer's HostLayer and explicit
+exclusion/scatter-override layer filter that names it, so nothing is left pointing at a stale name, and
+its result detail reports how many references were cascaded when that count is greater than zero.
+Scatter layer rules (per-biome density and kinds) are editable through the `scatter_rule_add`/
+`scatter_rule_edit`/`scatter_rule_remove` triad, index-addressed against the named layer's Rules list
+the same way the biome band and terrain feature verbs address their own lists. `procedural_info` reports
+rules at full fidelity regardless of whether they were set through MCP or the GUI.
 
 Every mutation returns what changed. An exception from a lower layer (`MapDocumentException`,
 `InvalidOperationException`, `ArgumentException`) reaches the client with its original, precise message

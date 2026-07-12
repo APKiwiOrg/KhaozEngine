@@ -71,6 +71,24 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Null(FeatureGeometry.Rotated(rim, 1f));
         }
 
+        // ---- Clone: Name must carry over for every built-in type ---------------------------------------
+
+        [Fact]
+        public void FeatureClone_CopiesName()
+        {
+            var lake = new LakeFeatureDoc { Name = "north-lake", CenterX = 1f, CenterZ = 2f, Radius = 3f, Depth = 4f };
+            Assert.Equal("north-lake", FeatureGeometry.Clone(lake).Name);
+
+            var flatten = new FlattenFeatureDoc { Name = "plaza", CenterX = 1f, CenterZ = 2f, Radius = 3f, TargetHeight = 1f };
+            Assert.Equal("plaza", FeatureGeometry.Clone(flatten).Name);
+
+            var ridge = new RidgeFeatureDoc { Name = "wall", PointX = 1f, PointZ = 2f, Height = 3f, Width = 4f };
+            Assert.Equal("wall", FeatureGeometry.Clone(ridge).Name);
+
+            var rim = new RimFeatureDoc { Name = "crater", CenterX = 1f, CenterZ = 2f, InnerRadius = 3f, OuterRadius = 4f, WallHeight = 5f };
+            Assert.Equal("crater", FeatureGeometry.Clone(rim).Name);
+        }
+
         [Fact]
         public void EditorRidge_CreateDefault_HasNoNotchAtClickPoint()
         {

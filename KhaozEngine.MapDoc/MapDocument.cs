@@ -116,6 +116,11 @@ public sealed class MapCompanionLayer
 /// <summary>A region kept free of procedural scatter. Null Layers = applies to every scatter layer.</summary>
 public sealed class MapExclusion
 {
+    /// <summary>Optional display name, unique among exclusions when set (validator-enforced). Null or empty
+    /// means unnamed, and the editor falls back to an index-based label ("exclusion[i]"). Serialized only when
+    /// set: the document's global WhenWritingNull option omits a null Name, so an unnamed exclusion does not
+    /// bloat every document with an empty name key.</summary>
+    public string? Name { get; set; }
     public MapShapeDoc? Shape { get; set; }
     public List<string>? Layers { get; set; }
 }

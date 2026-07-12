@@ -114,6 +114,7 @@
         "required": ["shape"],
         "additionalProperties": false,
         "properties": {
+          "name": { "type": ["string", "null"] },
           "shape": { "$ref": "#/$defs/shape" },
           "layers": { "type": ["array", "null"], "items": { "type": "string" } }
         }

@@ -8,8 +8,9 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEdit;
 
-/// <summary>Mutates the session's open document: placements, spawns, regions, terrain globals, terrain features,
-/// exclusions, scatter overrides, and region bake. Command-backed mutations route through
+/// <summary>Mutates the session's open document: placements, spawns, regions, terrain globals, terrain features
+/// and biome bands, exclusions, scatter overrides, scatter and companion layers, and region bake. Command-backed
+/// mutations route through
 /// <see cref="Apply(EditorCommand, string, string)"/> (or its factory overload,
 /// <see cref="Apply(Func{MapDocument, MapDocRegistry, EditorCommand}, string, Func{EditorCommand, string}, bool)"/>,
 /// for verbs that need a document read to build the command): apply the <see cref="EditorCommand"/>, validate the
@@ -282,41 +283,362 @@ public sealed class MutationService(MapEditSession session)
 
     // ---- terrain globals ------------------------------------------------------------------------------------
 
-    /// <summary>Edits the terrain globals: the water level (via <see cref="EditTerrainCommand"/>) and/or the noise
-    /// seed (a direct field edit, since no command carries it). At least one must be supplied. Both are applied,
-    /// validated once, and reverted together on failure inside a single world-affecting mutation, so a rejected
-    /// edit restores both to their prior values and the cached field is rebuilt only on success. The water command
-    /// is applied first, then the seed, matching the "globals" ordering the engine command was named for.</summary>
-    public MutationResult TerrainEdit(float? waterLevel = null, int? seed = null)
+    /// <summary>Edits the terrain globals: the water level, the noise seed, the biome-edge blend distance, and
+    /// the gentle/detail noise scalars, all carried by the widened <see cref="EditTerrainCommand"/> (only the
+    /// supplied fields are applied and reverted). At least one must be supplied. The one command is applied,
+    /// validated once, and reverted on failure inside a single world-affecting mutation, so a rejected edit
+    /// restores every touched field to its prior value and the cached field is rebuilt only on success.</summary>
+    public MutationResult TerrainEdit(float? waterLevel = null, int? seed = null, float? biomeBlend = null,
+        float? gentleFrequency = null, float? gentleAmplitude = null, float? detailFrequency = null,
+        int? detailOctaves = null)
     {
-        if (waterLevel is null && seed is null)
-            throw new ArgumentException("terrain_edit needs at least one of waterLevel or seed.");
+        if (waterLevel is null && seed is null && biomeBlend is null && gentleFrequency is null &&
+            gentleAmplitude is null && detailFrequency is null && detailOctaves is null)
+            throw new ArgumentException("terrain_edit needs at least one field to change.");
 
         return session.Mutate((doc, registry) =>
         {
-            int oldSeed = doc.Terrain.Seed;
-            EditTerrainCommand? waterCommand = null;
-
-            if (waterLevel is float newWater)
-            {
-                waterCommand = new EditTerrainCommand(newWater, doc.Terrain.WaterLevel);
-                waterCommand.Apply(doc);
-            }
-            if (seed is int newSeed) doc.Terrain.Seed = newSeed;
+            MapTerrain t = doc.Terrain;
+            // One widened command carries whichever fields were supplied (only-set-fields apply), so each scalar
+            // reverts independently on a validation failure.
+            var command = new EditTerrainCommand(
+                newWaterLevel: waterLevel, oldWaterLevel: waterLevel is null ? null : t.WaterLevel,
+                newSeed: seed, oldSeed: seed is null ? null : t.Seed,
+                newBiomeBlend: biomeBlend, oldBiomeBlend: biomeBlend is null ? null : t.BiomeBlend,
+                newGentleFrequency: gentleFrequency, oldGentleFrequency: gentleFrequency is null ? null : t.GentleFrequency,
+                newGentleAmplitude: gentleAmplitude, oldGentleAmplitude: gentleAmplitude is null ? null : t.GentleAmplitude,
+                newDetailFrequency: detailFrequency, oldDetailFrequency: detailFrequency is null ? null : t.DetailFrequency,
+                newDetailOctaves: detailOctaves, oldDetailOctaves: detailOctaves is null ? null : t.DetailOctaves);
+            command.Apply(doc);
 
             IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
             if (errors.Count > 0)
             {
-                if (seed is not null) doc.Terrain.Seed = oldSeed;
-                waterCommand?.Revert(doc);
+                command.Revert(doc);
                 throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
             }
 
-            var parts = new List<string>(2);
+            var parts = new List<string>(7);
             if (waterLevel is float w) parts.Add($"water level {w.ToString("F2", CultureInfo.InvariantCulture)}");
             if (seed is int s) parts.Add($"seed {s.ToString(CultureInfo.InvariantCulture)}");
+            if (biomeBlend is float bb) parts.Add($"biome blend {bb.ToString("F2", CultureInfo.InvariantCulture)}");
+            if (gentleFrequency is float gf) parts.Add($"gentle frequency {gf.ToString("F3", CultureInfo.InvariantCulture)}");
+            if (gentleAmplitude is float ga) parts.Add($"gentle amplitude {ga.ToString("F2", CultureInfo.InvariantCulture)}");
+            if (detailFrequency is float df) parts.Add($"detail frequency {df.ToString("F3", CultureInfo.InvariantCulture)}");
+            if (detailOctaves is int oct) parts.Add($"detail octaves {oct.ToString(CultureInfo.InvariantCulture)}");
             return new MutationResult("terrain_edit", "set " + string.Join(" and ", parts), WorldChanged: true);
         }, worldChanged: true);
+    }
+
+    // ---- terrain biome bands (terrain-shape affecting) -------------------------------------------------------
+
+    /// <summary>Appends a terrain biome band (an elevation-range biome slice). The result reports the appended
+    /// index (bands are index-addressed, the same key <see cref="BiomeBandEdit"/>/<see cref="BiomeBandRemove"/>
+    /// take). Affects the streamed world (bands feed biome selection and height shaping).</summary>
+    public MutationResult BiomeBandAdd(float? start = null, float? end = null, string biome = "Meadow",
+        float baseHeight = 0f, float hillAmplitude = 0f)
+    {
+        BiomeId parsedBiome = ParseBiome(biome);
+        int addedIndex = -1;
+        MutationResult result = Apply((doc, _) =>
+        {
+            addedIndex = doc.Terrain.Biomes.Count;   // appended at the current tail
+            var band = new MapBiomeBand
+            {
+                Start = start, End = end, Biome = parsedBiome, BaseHeight = baseHeight, HillAmplitude = hillAmplitude,
+            };
+            return new AddBiomeBandCommand(band);
+        }, "biome_band_add", _ => $"added {biome} biome band at index {addedIndex}", worldChanged: true);
+        return result with { Index = addedIndex };
+    }
+
+    /// <summary>Replaces the terrain biome band at <paramref name="index"/> with a new whole value: every field
+    /// must be supplied (there is no partial-field "leave unchanged" here, unlike the scatter/companion layer
+    /// edits), matching how the editor's inspector always writes the whole band on a scrub. The index is
+    /// range-checked at this service layer up front, since <see cref="EditBiomeBandCommand"/> itself indexes the
+    /// live list with no guard of its own. Affects the streamed world.</summary>
+    public MutationResult BiomeBandEdit(int index, float? start, float? end, string biome, float baseHeight,
+        float hillAmplitude)
+    {
+        BiomeId parsedBiome = ParseBiome(biome);
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Terrain.Biomes.Count, "biome band", nameof(index));
+            MapBiomeBand old = doc.Terrain.Biomes[index];
+            var newValue = new MapBiomeBand
+            {
+                Start = start, End = end, Biome = parsedBiome, BaseHeight = baseHeight, HillAmplitude = hillAmplitude,
+            };
+            return new EditBiomeBandCommand(index, newValue, old);
+        }, "biome_band_edit", _ => $"edited biome band at index {index}", worldChanged: true);
+        return result with { Index = index };
+    }
+
+    /// <summary>Removes the terrain biome band at <paramref name="index"/> (range-checked up front, matching
+    /// <see cref="RemoveBiomeBandCommand"/>'s own guard for a consistent message). Affects the streamed
+    /// world.</summary>
+    public MutationResult BiomeBandRemove(int index)
+    {
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Terrain.Biomes.Count, "biome band", nameof(index));
+            return new RemoveBiomeBandCommand(index);
+        }, "biome_band_remove", _ => $"removed biome band at index {index}", worldChanged: true);
+        return result with { Index = index };
+    }
+
+    // ---- scatter layers (terrain-scatter affecting) ------------------------------------------------------------
+
+    /// <summary>Appends a named procedural scatter layer with no rules. Per-rule editing goes through the
+    /// <see cref="ScatterRuleAdd"/>/<see cref="ScatterRuleEdit"/>/<see cref="ScatterRuleRemove"/> triad once the
+    /// layer exists. The layer name must be unique in the document, rejected inside
+    /// <see cref="AddScatterLayerCommand.Apply"/> before it mutates. Affects the streamed world.</summary>
+    public MutationResult ScatterLayerAdd(string name, int seed = 1337, float cellSize = 4.5f, float jitter = 1.6f,
+        float? maxHeight = null, float scaleMin = 0.8f, float scaleMax = 1.35f)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var layer = new MapScatterLayer
+        {
+            Name = name, Seed = seed, CellSize = cellSize, Jitter = jitter, MaxHeight = maxHeight,
+            ScaleMin = scaleMin, ScaleMax = scaleMax,
+        };
+        return Apply(new AddScatterLayerCommand(layer), "scatter_layer_add", $"added scatter layer '{name}'");
+    }
+
+    /// <summary>Edits a scatter layer's scalars by name, replacing only the supplied fields (a null argument
+    /// leaves that field unchanged, the read-modify pattern the editor's per-field rows use). Rules are always
+    /// carried through unchanged here: edit them with the <see cref="ScatterRuleAdd"/>/<see cref="ScatterRuleEdit"/>/
+    /// <see cref="ScatterRuleRemove"/> triad instead. <paramref name="clearMaxHeight"/> forces MaxHeight back to
+    /// unset (no height cap), taking precedence over <paramref name="maxHeight"/>, since a single nullable float
+    /// parameter cannot otherwise distinguish "leave unchanged" from "clear to null". The whole edited value is
+    /// deep-cloned so the command's new and old values never alias the same nested Rules list. Affects the
+    /// streamed world.</summary>
+    public MutationResult ScatterLayerEdit(string name, int? seed = null, float? cellSize = null,
+        float? jitter = null, float? maxHeight = null, bool clearMaxHeight = false, float? scaleMin = null,
+        float? scaleMax = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        return Apply((doc, _) =>
+        {
+            MapScatterLayer old = doc.ScatterLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No scatter layer named '{name}' in the document.");
+            var newValue = new MapScatterLayer
+            {
+                Name = old.Name,
+                Seed = seed ?? old.Seed,
+                CellSize = cellSize ?? old.CellSize,
+                Jitter = jitter ?? old.Jitter,
+                MaxHeight = clearMaxHeight ? null : (maxHeight ?? old.MaxHeight),
+                ScaleMin = scaleMin ?? old.ScaleMin,
+                ScaleMax = scaleMax ?? old.ScaleMax,
+                Rules = CloneRules(old.Rules),
+            };
+            return new EditScatterLayerCommand(name, newValue, old);
+        }, "scatter_layer_edit", _ => $"edited scatter layer '{name}'", worldChanged: true);
+    }
+
+    /// <summary>Removes the scatter layer named <paramref name="name"/>. Rejected inside
+    /// <see cref="RemoveScatterLayerCommand.Apply"/> before it mutates when a companion layer's HostLayer, or an
+    /// exclusion/scatter-override explicit layer filter, still names it: the rejection message lists every
+    /// referencing element. Affects the streamed world.</summary>
+    public MutationResult ScatterLayerRemove(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return Apply(new RemoveScatterLayerCommand(name), "scatter_layer_remove", $"removed scatter layer '{name}'");
+    }
+
+    /// <summary>Renames a scatter layer, cascading the rename through every companion layer's HostLayer and every
+    /// exclusion/scatter-override explicit layer filter that names it (<see cref="RenameScatterLayerCommand"/>),
+    /// so the document stays valid and no reference is silently orphaned. The target name must be unique among
+    /// scatter layers, rejected before it mutates. Renaming keeps the same props streaming, so it does not affect
+    /// the streamed world. The cascaded reference count is recounted up front (inside the factory, under the same
+    /// lock the command's own apply runs in) and appended to <see cref="MutationResult.Detail"/> when positive, so
+    /// the caller sees at a glance whether the rename touched anything besides the layer itself.</summary>
+    public MutationResult ScatterLayerRename(string oldName, string newName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+
+        int cascadedRefs = 0;
+        MutationResult result = Apply((doc, _) =>
+        {
+            cascadedRefs = CountScatterLayerReferences(doc, oldName);
+            return new RenameScatterLayerCommand(oldName, newName);
+        }, "scatter_layer_rename", _ =>
+        {
+            string detail = $"renamed scatter layer '{oldName}' to '{newName}'";
+            return cascadedRefs > 0 ? detail + $", cascaded {cascadedRefs} reference(s)" : detail;
+        }, worldChanged: false);
+        return result with { Id = newName };
+    }
+
+    // ---- scatter layer rules (terrain-scatter affecting) ---------------------------------------------------
+
+    /// <summary>Appends a biome scatter rule to the named scatter layer, the write path for the per-biome
+    /// density/kind rows the editor's rule surface edits. Reads the layer by name, deep-clones its Rules
+    /// (<see cref="CloneRules"/>) with the new rule appended, and replaces the whole layer value through
+    /// <see cref="EditScatterLayerCommand"/>, the same whole-value-edit path <see cref="ScatterLayerEdit"/>
+    /// uses. The result reports the appended rule's index (rules are index-addressed, the same key
+    /// <see cref="ScatterRuleEdit"/>/<see cref="ScatterRuleRemove"/> take). An unknown layer name throws before
+    /// anything mutates. Affects the streamed world.</summary>
+    public MutationResult ScatterRuleAdd(string layerName, string biome, float density = 0.55f,
+        IReadOnlyList<string>? kinds = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerName);
+        BiomeId parsedBiome = ParseBiome(biome);
+        List<MapPropKind> parsedKinds = kinds is null ? new List<MapPropKind>() : ParseKinds(kinds);
+
+        int addedIndex = -1;
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapScatterLayer old = FindScatterLayer(doc, layerName);
+            List<MapBiomeScatterRule> newRules = CloneRules(old.Rules);
+            newRules.Add(new MapBiomeScatterRule { Biome = parsedBiome, Density = density, Kinds = parsedKinds });
+            addedIndex = newRules.Count - 1;
+            return new EditScatterLayerCommand(layerName, WithRules(old, newRules), old);
+        }, "scatter_rule_add", _ => $"added {biome} scatter rule to layer '{layerName}' at index {addedIndex}",
+            worldChanged: true);
+        return result with { Index = addedIndex };
+    }
+
+    /// <summary>Edits the scatter rule at <paramref name="ruleIndex"/> on the named scatter layer, replacing only
+    /// the supplied fields (a null argument leaves that field unchanged, the same read-modify pattern
+    /// <see cref="ScatterLayerEdit"/> uses for the layer's own scalars). At least one of
+    /// <paramref name="biome"/>/<paramref name="density"/>/<paramref name="kinds"/> must be supplied. The index is
+    /// range-checked against the layer's live Rules count up front. Routes through
+    /// <see cref="EditScatterLayerCommand"/> the same way <see cref="ScatterRuleAdd"/> does. Affects the streamed
+    /// world.</summary>
+    public MutationResult ScatterRuleEdit(string layerName, int ruleIndex, string? biome = null,
+        float? density = null, IReadOnlyList<string>? kinds = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerName);
+        if (biome is null && density is null && kinds is null)
+            throw new ArgumentException("scatter_rule_edit needs at least one field to change.");
+        BiomeId? parsedBiome = biome is null ? null : ParseBiome(biome);
+
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapScatterLayer old = FindScatterLayer(doc, layerName);
+            RequireIndexInRange(ruleIndex, old.Rules.Count, "scatter rule", nameof(ruleIndex));
+
+            List<MapBiomeScatterRule> newRules = CloneRules(old.Rules);
+            MapBiomeScatterRule oldRule = old.Rules[ruleIndex];
+            newRules[ruleIndex] = new MapBiomeScatterRule
+            {
+                Biome = parsedBiome ?? oldRule.Biome,
+                Density = density ?? oldRule.Density,
+                Kinds = kinds is null ? CloneKinds(oldRule.Kinds) : ParseKinds(kinds),
+            };
+            return new EditScatterLayerCommand(layerName, WithRules(old, newRules), old);
+        }, "scatter_rule_edit", _ => $"edited scatter rule {ruleIndex} on layer '{layerName}'", worldChanged: true);
+        return result with { Index = ruleIndex };
+    }
+
+    /// <summary>Removes the scatter rule at <paramref name="ruleIndex"/> from the named scatter layer
+    /// (range-checked up front). Routes through <see cref="EditScatterLayerCommand"/> the same way
+    /// <see cref="ScatterRuleAdd"/> does. Affects the streamed world.</summary>
+    public MutationResult ScatterRuleRemove(string layerName, int ruleIndex)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerName);
+
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapScatterLayer old = FindScatterLayer(doc, layerName);
+            RequireIndexInRange(ruleIndex, old.Rules.Count, "scatter rule", nameof(ruleIndex));
+
+            List<MapBiomeScatterRule> newRules = CloneRules(old.Rules);
+            newRules.RemoveAt(ruleIndex);
+            return new EditScatterLayerCommand(layerName, WithRules(old, newRules), old);
+        }, "scatter_rule_remove", _ => $"removed scatter rule {ruleIndex} from layer '{layerName}'",
+            worldChanged: true);
+        return result with { Index = ruleIndex };
+    }
+
+    // ---- companion layers (terrain-scatter affecting) ----------------------------------------------------------
+
+    /// <summary>Appends a named companion layer ringing hosts from a scatter layer. The layer name must be unique
+    /// in the document, rejected inside <see cref="AddCompanionLayerCommand.Apply"/> before it mutates.
+    /// <paramref name="hostLayer"/> naming an unknown scatter layer is not rejected there: the standard document
+    /// validator at the choke point catches it (the same invariant the editor's HostLayer chooser relies on
+    /// live, but MCP has no live chooser, so a bad name surfaces as a validation rejection instead).
+    /// <paramref name="kinds"/> entries parse as <c>"id"</c> (weight 1) or <c>"id:weight"</c>. Affects the
+    /// streamed world.</summary>
+    public MutationResult CompanionLayerAdd(string name, string hostLayer, int seed = 1337,
+        IReadOnlyList<string>? hostKinds = null, IReadOnlyList<string>? kinds = null,
+        int countMin = 2, int countMax = 4, float radiusMin = 0.6f, float radiusMax = 1.8f,
+        float scaleMin = 0.7f, float scaleMax = 1.1f, float? maxHeight = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostLayer);
+
+        var layer = new MapCompanionLayer
+        {
+            Name = name, HostLayer = hostLayer, Seed = seed,
+            HostKinds = hostKinds is null ? new List<string>() : new List<string>(hostKinds),
+            Kinds = kinds is null ? new List<MapPropKind>() : ParseKinds(kinds),
+            CountMin = countMin, CountMax = countMax, RadiusMin = radiusMin, RadiusMax = radiusMax,
+            ScaleMin = scaleMin, ScaleMax = scaleMax, MaxHeight = maxHeight,
+        };
+        return Apply(new AddCompanionLayerCommand(layer), "companion_layer_add", $"added companion layer '{name}'");
+    }
+
+    /// <summary>Edits a companion layer by name, replacing only the supplied fields (a null argument leaves that
+    /// field unchanged, the read-modify pattern the editor's per-field rows use). <paramref name="clearMaxHeight"/>
+    /// forces MaxHeight back to unset, taking precedence over <paramref name="maxHeight"/>, the same idiom
+    /// <see cref="ScatterLayerEdit"/> uses. The whole edited value is deep-cloned so the command's new and old
+    /// values never alias the same nested Kinds list. Affects the streamed world.</summary>
+    public MutationResult CompanionLayerEdit(string name, string? hostLayer = null, int? seed = null,
+        IReadOnlyList<string>? hostKinds = null, IReadOnlyList<string>? kinds = null,
+        int? countMin = null, int? countMax = null, float? radiusMin = null, float? radiusMax = null,
+        float? scaleMin = null, float? scaleMax = null, float? maxHeight = null, bool clearMaxHeight = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        return Apply((doc, _) =>
+        {
+            MapCompanionLayer old = doc.CompanionLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No companion layer named '{name}' in the document.");
+            var newValue = new MapCompanionLayer
+            {
+                Name = old.Name,
+                HostLayer = hostLayer ?? old.HostLayer,
+                Seed = seed ?? old.Seed,
+                HostKinds = hostKinds is null ? new List<string>(old.HostKinds) : new List<string>(hostKinds),
+                Kinds = kinds is null ? CloneKinds(old.Kinds) : ParseKinds(kinds),
+                CountMin = countMin ?? old.CountMin,
+                CountMax = countMax ?? old.CountMax,
+                RadiusMin = radiusMin ?? old.RadiusMin,
+                RadiusMax = radiusMax ?? old.RadiusMax,
+                ScaleMin = scaleMin ?? old.ScaleMin,
+                ScaleMax = scaleMax ?? old.ScaleMax,
+                MaxHeight = clearMaxHeight ? null : (maxHeight ?? old.MaxHeight),
+            };
+            return new EditCompanionLayerCommand(name, newValue, old);
+        }, "companion_layer_edit", _ => $"edited companion layer '{name}'", worldChanged: true);
+    }
+
+    /// <summary>Removes the companion layer named <paramref name="name"/>. Nothing else in the document
+    /// references a companion layer by name, so unlike <see cref="ScatterLayerRemove"/> there is no
+    /// referenced-removal to reject. Affects the streamed world.</summary>
+    public MutationResult CompanionLayerRemove(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return Apply(new RemoveCompanionLayerCommand(name), "companion_layer_remove", $"removed companion layer '{name}'");
+    }
+
+    /// <summary>Renames a companion layer. Nothing references a companion layer by name (they are leaf
+    /// consumers), so unlike <see cref="ScatterLayerRename"/> there is no cascade. The target name must be
+    /// unique among companion layers, rejected before it mutates. Renaming changes nothing streamed, so it does
+    /// not affect the world.</summary>
+    public MutationResult CompanionLayerRename(string oldName, string newName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+        MutationResult result = Apply(new RenameCompanionLayerCommand(oldName, newName), "companion_layer_rename",
+            $"renamed companion layer '{oldName}' to '{newName}'");
+        return result with { Id = newName };
     }
 
     // ---- terrain features (terrain-shape affecting) ---------------------------------------------------------
@@ -386,6 +708,22 @@ public sealed class MutationService(MapEditSession session)
         return result with { Index = toIndex };
     }
 
+    /// <summary>Renames the terrain feature at <paramref name="index"/> (range-checked up front). Empty clears
+    /// the name back to unnamed. The target name must be unique among named features, validated inside
+    /// <see cref="RenameFeatureCommand.Apply"/> (rejected before it mutates, so a rejected rename leaves the
+    /// document unchanged). Renaming does not change terrain shape, so it does not affect the streamed world.</summary>
+    public MutationResult FeatureRename(int index, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Terrain.Features.Count, "feature", nameof(index));
+            string oldName = doc.Terrain.Features[index].Name ?? "";
+            return new RenameFeatureCommand(index, name, oldName);
+        }, "feature_rename", _ => $"renamed feature at index {index} to '{name}'", worldChanged: false);
+        return result with { Index = index };
+    }
+
     // ---- exclusions (scatter-input affecting) ---------------------------------------------------------------
 
     /// <summary>Appends a scatter exclusion whose shape is parsed from <paramref name="shapeJson"/>, optionally
@@ -431,6 +769,43 @@ public sealed class MutationService(MapEditSession session)
             RequireIndexInRange(index, doc.Exclusions.Count, "exclusion", nameof(index));
             return new RemoveExclusionCommand(index);
         }, "exclusion_remove", _ => $"removed exclusion at index {index}", worldChanged: true);
+        return result with { Index = index };
+    }
+
+    /// <summary>Renames the exclusion at <paramref name="index"/> (range-checked up front). Empty clears the name
+    /// back to unnamed. The target name must be unique among named exclusions, validated inside
+    /// <see cref="RenameExclusionCommand.Apply"/> (rejected before it mutates, so a rejected rename leaves the
+    /// document unchanged). Renaming does not change the exclusion's shape or layer filter, so it does not affect
+    /// the streamed world.</summary>
+    public MutationResult ExclusionRename(int index, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Exclusions.Count, "exclusion", nameof(index));
+            string oldName = doc.Exclusions[index].Name ?? "";
+            return new RenameExclusionCommand(index, name, oldName);
+        }, "exclusion_rename", _ => $"renamed exclusion at index {index} to '{name}'", worldChanged: false);
+        return result with { Index = index };
+    }
+
+    /// <summary>Replaces the layer filter of the exclusion at <paramref name="index"/> (range-checked up front).
+    /// Null <paramref name="layers"/> applies the exclusion to every scatter layer including any added later, an
+    /// exact document semantic <see cref="EditExclusionLayersCommand"/> preserves: passing an empty list is
+    /// different from passing null (empty means the exclusion applies to nothing, legal per the model). An
+    /// unknown layer name is not rejected here: the standard document validator at the choke point catches it on
+    /// save, the same invariant every other layer-filter verb already relies on. Affects the streamed world
+    /// (targeting changes scatter output).</summary>
+    public MutationResult ExclusionSetLayers(int index, IReadOnlyList<string>? layers = null)
+    {
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Exclusions.Count, "exclusion", nameof(index));
+            List<string>? oldLayers = doc.Exclusions[index].Layers;
+            return new EditExclusionLayersCommand(index, layers?.ToList(), oldLayers);
+        }, "exclusion_set_layers",
+            _ => $"set exclusion {index} layers to " + (layers is null ? "all" : "[" + string.Join(", ", layers) + "]"),
+            worldChanged: true);
         return result with { Index = index };
     }
 
@@ -597,6 +972,71 @@ public sealed class MutationService(MapEditSession session)
             result.Add(new MapPropKind { Id = id, Weight = weight });
         }
         return result;
+    }
+
+    /// <summary>Parses a biome name (case-insensitive) into a <see cref="BiomeId"/>. Throws
+    /// <see cref="ArgumentException"/> naming every valid value when <paramref name="biome"/> does not match
+    /// one.</summary>
+    static BiomeId ParseBiome(string biome)
+    {
+        if (Enum.TryParse(biome, ignoreCase: true, out BiomeId parsed)) return parsed;
+        throw new ArgumentException(
+            $"biome '{biome}' is not a recognized BiomeId. Valid values: {string.Join(", ", Enum.GetNames<BiomeId>())}.",
+            nameof(biome));
+    }
+
+    /// <summary>Deep-clones a scatter kind list (each <see cref="MapPropKind"/> copied, not shared), the
+    /// whole-value-edit copy discipline <see cref="EditScatterLayerCommand"/>/<see cref="EditCompanionLayerCommand"/>
+    /// require so a caller's edited copy never aliases the command's captured old value.</summary>
+    static List<MapPropKind> CloneKinds(IReadOnlyList<MapPropKind> kinds)
+    {
+        var result = new List<MapPropKind>(kinds.Count);
+        foreach (MapPropKind k in kinds) result.Add(new MapPropKind { Id = k.Id, Weight = k.Weight });
+        return result;
+    }
+
+    /// <summary>Deep-clones a scatter layer's rule list (each rule's nested Kinds list cloned too), the same
+    /// aliasing-safety discipline as <see cref="CloneKinds"/>.</summary>
+    static List<MapBiomeScatterRule> CloneRules(List<MapBiomeScatterRule> rules)
+    {
+        var result = new List<MapBiomeScatterRule>(rules.Count);
+        foreach (MapBiomeScatterRule r in rules)
+            result.Add(new MapBiomeScatterRule { Biome = r.Biome, Density = r.Density, Kinds = CloneKinds(r.Kinds) });
+        return result;
+    }
+
+    /// <summary>Finds the scatter layer named <paramref name="name"/>, throwing the same precise message
+    /// <see cref="ScatterLayerEdit"/> uses when no layer carries that name.</summary>
+    static MapScatterLayer FindScatterLayer(MapDocument doc, string name) =>
+        doc.ScatterLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException($"No scatter layer named '{name}' in the document.");
+
+    /// <summary>Builds a fresh <see cref="MapScatterLayer"/> carrying <paramref name="old"/>'s scalars and
+    /// <paramref name="rules"/> as its Rules, the whole-value copy the <see cref="ScatterRuleAdd"/>/
+    /// <see cref="ScatterRuleEdit"/>/<see cref="ScatterRuleRemove"/> triad hands to
+    /// <see cref="EditScatterLayerCommand"/> so its new and old values never alias the same nested list.</summary>
+    static MapScatterLayer WithRules(MapScatterLayer old, List<MapBiomeScatterRule> rules) => new()
+    {
+        Name = old.Name, Seed = old.Seed, CellSize = old.CellSize, Jitter = old.Jitter,
+        MaxHeight = old.MaxHeight, ScaleMin = old.ScaleMin, ScaleMax = old.ScaleMax, Rules = rules,
+    };
+
+    /// <summary>Counts the document elements that reference the scatter layer named <paramref name="name"/>: a
+    /// companion layer hosting it, or an exclusion/scatter-override whose explicit layer filter names it (a null
+    /// "all layers" filter is not a named reference and is not counted). Mirrors the counting logic
+    /// <see cref="RemoveScatterLayerCommand"/>'s own reference scan uses for its rejection message (that scan is
+    /// private to <c>KhaozEngine.MapEditor</c>, so this recounts rather than calling it), so
+    /// <see cref="ScatterLayerRename"/> can report how many references its cascade retargeted.</summary>
+    static int CountScatterLayerReferences(MapDocument doc, string name)
+    {
+        int count = 0;
+        foreach (MapCompanionLayer c in doc.CompanionLayers)
+            if (string.Equals(c.HostLayer, name, StringComparison.Ordinal)) count++;
+        foreach (MapExclusion e in doc.Exclusions)
+            if (e.Layers is { } ls && ls.Contains(name)) count++;
+        foreach (MapScatterOverrideDoc o in doc.ScatterOverrides)
+            if (o.Layers is { } ls && ls.Contains(name)) count++;
+        return count;
     }
 
     // ---- id generation ---------------------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace KhaozEngine.MapEditor;
 
@@ -59,6 +60,23 @@ public sealed class EditorVisibility
         _layers[name] = visible;
     }
 
+    /// <summary>Moves the visibility override for a renamed scatter layer from <paramref name="from"/> to
+    /// <paramref name="to"/>, so a hidden layer stays hidden across a rename (the layer keys visibility by name).
+    /// A no-op when the layer had no explicit override (it defaulted to visible under either name, so nothing to
+    /// carry) or when the names match. The editor calls this alongside a <see cref="RenameScatterLayerCommand"/>
+    /// so the Layers visibility panel and the streamed-world filter both follow the rename. Undo/redo of the
+    /// rename does NOT re-follow the override (the same v1 residual as the reorder-hide remap), since visibility
+    /// is view-only and never part of the reversible document.</summary>
+    public void RenameLayer(string from, string to)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+        if (string.Equals(from, to, StringComparison.Ordinal)) return;
+        if (!_layers.TryGetValue(from, out bool visible)) return;
+        _layers.Remove(from);
+        _layers[to] = visible;
+    }
+
     /// <summary>Whether the individual element (<paramref name="kind"/>, <paramref name="id"/>) is hidden,
     /// independent of its group. The key is the pair, so the same id under two kinds is two distinct elements.</summary>
     public bool IsElementHidden(SelectionKind kind, string id) => _hidden.Contains((kind, id ?? ""));
@@ -95,5 +113,65 @@ public sealed class EditorVisibility
             case SelectionKind.Feature: group = VisibilityGroup.FeatureMarkers; return true;
             default: group = default; return false;
         }
+    }
+
+    /// <summary>Shifts per-element hides across a list reorder of <paramref name="kind"/> (feature or exclusion,
+    /// the two index-keyed kinds): the moved element's own hide (if any) follows it from
+    /// <paramref name="fromIndex"/> to <paramref name="toIndex"/>, and every OTHER hidden index inside the
+    /// shifted-through range moves one slot to make room, exactly mirroring the RemoveAt(from) + Insert(to) list
+    /// move the reorder commands themselves perform (<see cref="ReorderFeatureCommand"/> /
+    /// <see cref="ReorderExclusionCommand"/>), so a hide stays glued to the ELEMENT rather than the slot. Handles
+    /// both drag directions (from below to, or from above to) and is a no-op when the indices are equal. Call
+    /// this from the two reorder paths (the outline drop handler and the Ctrl+Up/Down single-step reorder)
+    /// alongside the reorder command itself. Undo/redo of a reorder does NOT re-follow the element (the same v1
+    /// limit the reorder commands' own selection-follow already documents), and that residual is deferred to the
+    /// ledger, not fixed here.</summary>
+    public void RemapIndex(SelectionKind kind, int fromIndex, int toIndex)
+    {
+        if (fromIndex == toIndex) return;
+
+        List<(int OldIndex, int NewIndex)> moves = new();
+        foreach ((SelectionKind Kind, string Id) key in _hidden)
+        {
+            if (key.Kind != kind) continue;
+            if (!int.TryParse(key.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) continue;
+            int moved = MoveIndex(index, fromIndex, toIndex);
+            if (moved != index) moves.Add((index, moved));
+        }
+        // Two passes (remove every old key, THEN add every new key): an interleaved remove+add per move can drop
+        // an entry when one move's new index is the same string key as another move's not-yet-processed old
+        // index (the hash set cannot tell the two apart), silently losing a hide.
+        foreach ((int oldIndex, int _) in moves) _hidden.Remove((kind, oldIndex.ToString(CultureInfo.InvariantCulture)));
+        foreach ((int _, int newIndex) in moves) _hidden.Add((kind, newIndex.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>Drops the hide entry for the element removed at <paramref name="index"/> of <paramref name="kind"/>
+    /// (if it was hidden) and shifts every later hidden index of that kind down by one, mirroring the list's own
+    /// RemoveAt(index) shift, so a hide stays glued to the surviving elements' identities. Call this from a
+    /// feature/exclusion delete path alongside the remove command itself. Undo of the delete does NOT restore the
+    /// dropped hide (the same v1 residual as <see cref="RemapIndex"/>, deferred to the ledger).</summary>
+    public void RemoveIndex(SelectionKind kind, int index)
+    {
+        _hidden.Remove((kind, index.ToString(CultureInfo.InvariantCulture)));
+
+        List<(int OldIndex, int NewIndex)> moves = new();
+        foreach ((SelectionKind Kind, string Id) key in _hidden)
+        {
+            if (key.Kind != kind) continue;
+            if (!int.TryParse(key.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i)) continue;
+            if (i > index) moves.Add((i, i - 1));
+        }
+        foreach ((int oldIndex, int _) in moves) _hidden.Remove((kind, oldIndex.ToString(CultureInfo.InvariantCulture)));
+        foreach ((int _, int newIndex) in moves) _hidden.Add((kind, newIndex.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    // The RemoveAt(from) + Insert(to) list-move remap for a single index, the same formula the reorder commands
+    // apply to the list itself: the moved element lands at `to`, everything strictly between the two endpoints
+    // shifts one slot toward `from` to make room, and everything else is untouched.
+    static int MoveIndex(int index, int from, int to)
+    {
+        if (index == from) return to;
+        if (from < to) return index > from && index <= to ? index - 1 : index;
+        return index >= to && index < from ? index + 1 : index;
     }
 }

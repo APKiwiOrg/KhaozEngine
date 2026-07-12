@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEdit;
 using KhaozEngine.MapEdit.Tools;
+using KhaozEngine.Terrain;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -27,24 +28,32 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 39 verb names, spelled exactly as the plan header's verb table, including the two render
-        /// verbs added in Task 6.</summary>
+        /// <summary>All 57 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
+        /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
+        /// triads plus their rename verbs, and the procedural_info read verb), plus the scatter_rule
+        /// add/edit/remove triad that closes the scatter-layer-rules MCP parity gap.</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
             "map_open", "map_create", "map_save", "map_validate", "map_summary",
             // Query
             "ground_height", "is_walkable", "placements_in_rect", "scatter_preview_in_rect", "find_flat_area",
+            "procedural_info",
             // Placements
             "placement_add", "placement_move", "placement_rotate", "placement_scale", "placement_rename",
             "placement_remove",
             // Spawns
             "spawn_add", "spawn_move", "spawn_set_enabled", "spawn_rename", "spawn_remove",
             // Terrain
-            "terrain_edit", "feature_add", "feature_edit", "feature_remove", "feature_reorder",
+            "terrain_edit", "feature_add", "feature_edit", "feature_remove", "feature_reorder", "feature_rename",
+            "biome_band_add", "biome_band_edit", "biome_band_remove",
             // Scatter
-            "exclusion_add", "exclusion_edit", "exclusion_remove", "scatter_override_add", "scatter_override_edit",
-            "scatter_override_remove", "bake_region",
+            "exclusion_add", "exclusion_edit", "exclusion_remove", "exclusion_rename", "exclusion_set_layers",
+            "scatter_override_add", "scatter_override_edit", "scatter_override_remove", "bake_region",
+            "scatter_layer_add", "scatter_layer_edit", "scatter_layer_remove", "scatter_layer_rename",
+            "scatter_rule_add", "scatter_rule_edit", "scatter_rule_remove",
+            "companion_layer_add", "companion_layer_edit", "companion_layer_remove", "companion_layer_rename",
             // Regions
             "region_add", "region_edit_shape", "region_rename", "region_remove",
             // Renders
@@ -148,6 +157,45 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal("hut", added.Kind);
                 Assert.Equal(12f, added.X);
                 Assert.Equal(-3.5f, added.Z);
+                Assert.True(session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public async Task BiomeBandAdd_ThroughMcp_AppendsBandAndReportsIndex()
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            string dir = NewTempDir();
+            try
+            {
+                string path = Path.Combine(dir, "zone.map.json");
+                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
+
+                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+
+                await harness.Client.CallToolAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+
+                CallToolResult result = await harness.Client.CallToolAsync("biome_band_add",
+                    new Dictionary<string, object?>
+                    {
+                        ["biome"] = "Desert", ["baseHeight"] = 4.0, ["hillAmplitude"] = 0.5,
+                    },
+                    cancellationToken: cts.Token);
+                Assert.NotEqual(true, result.IsError);
+
+                MutationResult mutation = Deserialize<MutationResult>(result);
+                Assert.Equal("biome_band_add", mutation.Verb);
+                Assert.True(mutation.WorldChanged);
+                // SampleDoc already carries one band (index 0), so the MCP call appends at index 1.
+                Assert.Equal(1, mutation.Index);
+
+                var session = harness.Services.GetRequiredService<MapEditSession>();
+                MapBiomeBand added = session.WithDocument((doc, _) => doc.Terrain.Biomes[1]);
+                Assert.Equal(BiomeId.Desert, added.Biome);
+                Assert.Equal(4f, added.BaseHeight);
+                Assert.Equal(0.5f, added.HillAmplitude);
                 Assert.True(session.IsDirty);
             }
             finally { Directory.Delete(dir, recursive: true); }

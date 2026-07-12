@@ -818,6 +818,58 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void Chords_DoNotFire_WhileFilterFocused()
+        {
+            // Ctrl+Z while the kit-palette filter is focused must not undo - the filter is a focusable editor
+            // outside the inspector's aggregate query, so AnyEditorFocused must catch it too, not just the grid.
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));
+            Assert.True(scene.Document.History.CanUndo);
+
+            scene.Controller.Mode = EditorToolMode.PlacePlacement;   // the mode that shows the kit palette filter
+            scene.PaletteFilter.Focus();
+            Assert.True(scene.PaletteFilter.IsFocused);   // precondition: the filter owns focus
+
+            m.Input = CtrlKeyFrame(Key.Z);
+            m.Update(0.016f);
+
+            // The filter owns this chord frame: Ctrl+Z must not reach the document.
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void BareR_DoesNotSnap_WhileFilterFocused()
+        {
+            // R while the kit-palette filter is focused must not snap the selected placement to ground - typing a
+            // kit name that contains "r" (e.g. "oak tree") would otherwise fire the ground-snap hotkey mid-keystroke.
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 3f, Z = 4f, Y = 12f });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            scene.Controller.Mode = EditorToolMode.PlacePlacement;   // the mode that shows the kit palette filter
+            scene.PaletteFilter.Focus();
+            Assert.True(scene.PaletteFilter.IsFocused);   // precondition: the filter owns focus
+
+            m.Input = KeyFrame(shiftDown: false, Key.R);
+            m.Update(0.016f);
+
+            // Still airborne: R did not snap while the filter was focused, and no command landed on the stack.
+            Assert.NotNull(scene.Document.Doc.Placements[0].Y);
+            Assert.False(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
         public void TerrainNode_InspectorEditsWaterLevel_TriggersRebuild()
         {
             var scene = PushDocScene(() =>

@@ -711,22 +711,37 @@ public class MapEditorScene : GameScene, IGameScene3D
     // Whether the bottom-left panel exists at all this frame (one of its three contents is active).
     bool BottomPanelVisible => SpawnMode || KitPaletteVisible || FeatureMode;
 
+    /// <summary>True while ANY focusable editor the scene owns has keyboard focus: the inspector's aggregate
+    /// query, OR the kit-palette filter (only while <see cref="KitPaletteVisible"/>), OR the spawn filter
+    /// (only while <see cref="SpawnMode"/>). Mode-gated rather than a raw <c>IsFocused</c> OR, because a
+    /// hidden filter can retain stale focus: <see cref="TextInput.Unfocus"/> only runs inside the filter's
+    /// own <c>Update</c>, and <see cref="UpdateWidgets"/> only calls that for the mode's currently-visible
+    /// filter, so switching tools away from a focused filter leaves its <c>IsFocused</c> field stuck true.
+    /// Gating on the same visibility condition that drives the filter's <c>Update</c> call keeps a hidden
+    /// field's stale focus from blocking shortcuts in a different tool mode.</summary>
+    bool AnyEditorFocused => _inspector.HasActiveEditor
+        || (KitPaletteVisible && _paletteFilter.IsFocused)
+        || (SpawnMode && _spawnFilter.IsFocused);
+
     void HandleShortcuts()
     {
         InputState s = Manager!.Input;
         bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
         // Shift+Escape is the exit chord (HandleExitChord). It deliberately stays global here, even while an
-        // inspector field is focused: it is the one chord a user needs to be able to reach FROM inside a field
-        // (leave the editor), and the field's own bare-Escape cancel (NumberField/TextInput) never watches the
-        // Shift-modified form, so the two can never compete for the same keypress.
+        // inspector field or a filter is focused: it is the one chord a user needs to be able to reach FROM
+        // inside a field (leave the editor). NumberField's own bare-Escape cancel never watches the
+        // Shift-modified form, and TextInput (both the inspector's TextRow and the palette/spawn filters) has
+        // no Escape handling of its own at all, so neither can ever compete with this chord for the same
+        // keypress.
         if (shift && s.WasPressed(Key.Escape)) { HandleExitChord(); return; }
 
-        // Every other chord below, plus the bare R hotkey, belongs to a focused inspector field over the document:
+        // Every other chord below, plus the bare R hotkey, belongs to a focused editor over the document:
         // Ctrl+Z inside a focused NumberField should undo the field's own typed digit (TextEntry already blocks
-        // the literal keystroke), not pop a document command, and R should type into a focused name field instead
-        // of snapping the selection to the ground. This aggregate query replaces the old ad hoc `_nameRow`-only
-        // guard, so every row type (Float/Text/Choice) blocks chords, not just the rename row.
-        if (_inspector.HasActiveEditor) return;
+        // the literal keystroke), not pop a document command, and R should type into a focused name field or
+        // filter instead of snapping the selection to the ground. This aggregate query replaces the old ad hoc
+        // `_nameRow`-only guard, so every row type (Float/Text/Choice) AND the kit-palette/spawn filters block
+        // chords, not just the rename row.
+        if (AnyEditorFocused) return;
 
         bool ctrl = s.IsCommandDown;
         if (!ctrl)
@@ -1486,13 +1501,16 @@ public class MapEditorScene : GameScene, IGameScene3D
             shift: shift,
             deletePressed: s.WasPressed(Key.Delete),
             // Shift+Escape is the exit chord (HandleExitChord), so it never doubles as the tool gesture cancel.
-            // An inspector field mid-edit also owns a bare Escape this frame (NumberField/TextInput cancel their
-            // own edit on it, in UpdateWidgets which runs AFTER this UpdateTools step), so the tool-cancel edge is
-            // suppressed too while HasActiveEditor is true: without this, one Escape both closed the field AND
-            // cancelled the active tool gesture (the ledgered double-fire). The field's own cancel still fires
-            // this same frame, only the tool side is held off. Once the field closes, HasActiveEditor goes false
-            // and the very next Escape cancels the tool as normal.
-            escapePressed: s.WasPressed(Key.Escape) && !shift && !_inspector.HasActiveEditor,
+            // A focused editor (inspector field or the palette/spawn filter) also owns a bare Escape this
+            // frame, so the tool-cancel edge is suppressed too while AnyEditorFocused is true: without this,
+            // one Escape would cancel the active tool gesture right out from under a field mid-edit. Only
+            // NumberField actually self-cancels on Escape (CancelEdit, in UpdateWidgets which runs AFTER this
+            // UpdateTools step). TextInput (TextRow and both filters) and ChoiceRow's Dropdown (pointer-only
+            // here, no keyboard nav wired in) have no Escape handling of their own, so for those fields Escape
+            // is simply inert while they hold focus, and that is accepted behavior, not a bug: such a field
+            // only loses focus from a pointer action (a tap outside its bounds), and only then does the very
+            // next Escape cancel the tool as normal.
+            escapePressed: s.WasPressed(Key.Escape) && !shift && !AnyEditorFocused,
             dt: dt);
     }
 

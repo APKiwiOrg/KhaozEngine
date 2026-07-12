@@ -197,8 +197,9 @@ static void RunSystemAxisGate(CultureInfo ci, bool quick)
 // steady state (every entity moves every tick, each client acks the previous tick one tick later). The interest grid
 // is rebuilt once per tick (shared across clients), matching ShardHost.HomeInterest's per-serve-pass cadence inside
 // ShardedWorldServer, and WriteFor scans + captures the world once per tick and projects each client's delta from
-// that shared capture. The remaining per-client work is O(interest set); pooled per-component capture buffers (a
-// later replication-hot-path item) still remove the byte[]-per-component allocations. ----
+// that shared capture. The win is the shared once-per-tick scan and capture, not a cheaper per-client walk: each
+// client's projection still walks the whole shared capture, filtering by its interest set. Pooled per-component
+// capture buffers (a later replication-hot-path item) still remove the byte[]-per-component allocations. ----
 static void RunReplicationMatrix(CultureInfo ci, bool quick)
 {
     IReadOnlyList<ReplicationBenchmarkConfig> matrix = quick ? ReplicationBenchmarkMatrix.Quick() : ReplicationBenchmarkMatrix.Default();

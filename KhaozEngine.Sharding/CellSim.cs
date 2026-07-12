@@ -91,7 +91,7 @@ public sealed class CellSim
         tickHost.Advance(elapsedSeconds, _ => World.Update(TickSeconds), maxTicksPerFrame);
 
     // The serve epoch this cell's Interest grid was last rebuilt at (-1 = never), used by RebuildInterestShared to
-    // rebuild a cell's grid at most once per server serve pass. Only the shared path sets it; the unconditional
+    // rebuild a cell's grid at most once per server serve pass. Only the shared path sets it. The unconditional
     // RebuildInterest leaves it alone (its callers always want a fresh rebuild).
     private long interestBuildEpoch = -1;
 
@@ -102,7 +102,7 @@ public sealed class CellSim
     /// <summary>
     /// Rebuilds this cell's <see cref="Interest"/> grid from the current positions of every entity in its world
     /// (owned <b>and</b> ghosts), read via <paramref name="accessor"/>. Call before querying AoI for a client so
-    /// the home cell's full neighbourhood (owned + border ghosts) is indexed. Always rebuilds; for the per-serve-pass
+    /// the home cell's full neighbourhood (owned + border ghosts) is indexed. Always rebuilds. For the per-serve-pass
     /// shared rebuild the sharded server drives instead, see <see cref="RebuildInterestShared"/>.
     /// </summary>
     public void RebuildInterest(CellPositionAccessor accessor)

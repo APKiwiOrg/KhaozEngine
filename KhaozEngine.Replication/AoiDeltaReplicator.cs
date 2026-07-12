@@ -44,7 +44,7 @@ public sealed class AoiDeltaReplicator
 
     // Shared per-tick capture: the whole-world Replicate-channel snapshot (netId -> components), captured ONCE per
     // distinct world per seq and projected per client in WriteFor. Keyed by World because the sharded server serves
-    // different clients from different home-cell worlds within one tick; the non-sharded server passes one world, so
+    // different clients from different home-cell worlds within one tick. The non-sharded server passes one world, so
     // this collapses to a single capture per tick. captureSeq marks which seq the cache belongs to (cleared lazily on
     // the first WriteFor of a new seq, so BeginTick stays a cheap seq bump).
     private readonly Dictionary<World, AoiBaseline> captureByWorld = new();
@@ -87,10 +87,11 @@ public sealed class AoiDeltaReplicator
     /// </summary>
     /// <remarks>
     /// The world is scanned and captured ONCE per <paramref name="world"/> per tick (the first <see cref="WriteFor"/>
-    /// after a <see cref="BeginTick"/> that sees it), shared across every client served from that world. Each client's
-    /// call then only projects the shared capture down to its own <paramref name="interestSet"/> and owner scope, so
-    /// per-client work is O(interest set), not a fresh whole-world scan. The wire is byte-identical to capturing
-    /// per client.
+    /// after a <see cref="BeginTick"/> that sees it), shared across every client served from that world. The win is
+    /// that shared once-per-tick scan and capture, not a cheaper per-client walk: <see cref="Project"/> still walks
+    /// the whole shared capture for every client, filtering by <paramref name="interestSet"/> and owner scope, which
+    /// is required to keep the changed-entity wire order identical to the pre-share per-client capture. The wire is
+    /// byte-identical to capturing per client.
     /// </remarks>
     public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null)
     {

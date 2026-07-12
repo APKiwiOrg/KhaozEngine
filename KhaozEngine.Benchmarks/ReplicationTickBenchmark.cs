@@ -15,11 +15,12 @@ namespace KhaozEngine.Benchmarks;
 /// mirrors production after the interest-sharing change: <c>ShardedWorldServer.Tick</c> passes one serve epoch, so
 /// <c>ShardHost.HomeInterest</c> rebuilds each home cell's grid once per tick (shared across clients), and
 /// <c>WriteFor</c> scans + captures the world once per tick and projects each client's delta from that shared
-/// capture. So the timed loop measures the shared path: one grid rebuild and one world capture per tick, then
-/// O(interest set) per client. Each client acknowledges the PREVIOUS tick's snapshot at the start of the current one
-/// (a simulated 1-tick RTT), so once past the always-full first tick the timed loop measures the steady-state
-/// delta-from-last-ack path. <see cref="AoiDeltaReplicator"/> and <see cref="InterestGrid"/> are never modified here
-/// - only measured.
+/// capture. So the timed loop measures the shared path: one grid rebuild and one world capture per tick, then each
+/// client's <c>WriteFor</c> projecting its delta from that shared capture (still a walk of the whole capture
+/// filtered by the client's interest set, not a fresh per-client world scan). Each client acknowledges the PREVIOUS
+/// tick's snapshot at the start of the current one (a simulated 1-tick RTT), so once past the always-full first
+/// tick the timed loop measures the steady-state delta-from-last-ack path. <see cref="AoiDeltaReplicator"/> and
+/// <see cref="InterestGrid"/> are never modified here - only measured.
 /// </summary>
 public static class ReplicationTickBenchmark
 {
@@ -151,9 +152,10 @@ public static class ReplicationTickBenchmark
     /// production's cadence after the interest-sharing change (<c>ShardedWorldServer.Tick</c> passes one serve epoch,
     /// so <c>ShardHost.HomeInterest</c> rebuilds each home cell's grid once per tick, shared by every client), and
     /// <c>WriteFor</c> now scans + captures the world once per tick and projects each client's delta from that shared
-    /// capture. So this loop measures the shared path: one grid rebuild and one world capture per tick, then O(interest
-    /// set) per client. Returns the new seq (the caller passes it back in as <paramref name="prevSeq"/> on the NEXT
-    /// call) and this tick's total wire bytes via <paramref name="wireBytes"/>.
+    /// capture. So this loop measures the shared path: one grid rebuild and one world capture per tick, then each
+    /// client's projection walking that shared capture, filtered by its own interest set. Returns the new seq (the
+    /// caller passes it back in as <paramref name="prevSeq"/> on the NEXT call) and this tick's total wire bytes via
+    /// <paramref name="wireBytes"/>.
     /// </summary>
     private static int RunOneTick(ReplicationPopulation pop, ReplicationBenchmarkConfig config, int prevSeq, out long wireBytes)
     {

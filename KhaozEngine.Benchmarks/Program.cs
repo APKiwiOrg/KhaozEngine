@@ -194,10 +194,11 @@ static void RunSystemAxisGate(CultureInfo ci, bool quick)
 
 // ---- Replication axis (replication-hotpath jobs-1): the real per-client AoiDeltaReplicator hot path - a populated
 // ReplicationRegistry, NetId entities with a few replicated components, C simulated clients with AoI, movement-heavy
-// steady state (every entity moves every tick, each client acks the previous tick one tick later). The current
-// AoiDeltaReplicator re-scans the whole world per client per tick and allocates heavily - this IS the baseline
-// later replication-hot-path items (shared per-tick AoI projection, pooled capture buffers) must beat, not a
-// polished number. ----
+// steady state (every entity moves every tick, each client acks the previous tick one tick later). The interest
+// grid is rebuilt once per CLIENT per tick, matching ShardHost.HomeInterest's cadence inside ShardedWorldServer's
+// per-slot loop. The current path re-scans and re-projects the whole world per client per tick and allocates
+// heavily - this IS the baseline later replication-hot-path items (shared per-tick AoI projection, pooled capture
+// buffers) must beat, not a polished number. ----
 static void RunReplicationMatrix(CultureInfo ci, bool quick)
 {
     IReadOnlyList<ReplicationBenchmarkConfig> matrix = quick ? ReplicationBenchmarkMatrix.Quick() : ReplicationBenchmarkMatrix.Default();
@@ -230,7 +231,7 @@ static void RunReplicationMatrix(CultureInfo ci, bool quick)
     }
 
     Console.WriteLine();
-    Console.WriteLine("per-tick ms = movement + interest-grid rebuild + every client's WriteFor, mean over the timed ticks.");
+    Console.WriteLine("per-tick ms = movement + every client's (interest-grid rebuild + Query + WriteFor), mean over the timed ticks.");
     Console.WriteLine("alloc B/tick = bytes allocated on this thread per tick (GC.GetAllocatedBytesForCurrentThread delta).");
     Console.WriteLine("gen0/1/2 per Kt = GC collections per 1000 ticks. wire B/tick = total bytes WriteFor returned, summed across all clients.");
     Console.WriteLine("This is the un-optimized baseline (whole-world-per-client scan, no shared projection, no pooling) later items must beat.");

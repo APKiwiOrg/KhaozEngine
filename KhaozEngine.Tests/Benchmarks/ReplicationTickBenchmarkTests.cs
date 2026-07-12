@@ -11,8 +11,10 @@ namespace KhaozEngine.Tests.Benchmarks;
 /// unit-tested (wall-clock and allocation counts are observational, run via <c>dotnet run</c>) - what is asserted
 /// here is the harness's deterministic and structural behaviour, and that it actually drives the real
 /// <see cref="AoiDeltaReplicator"/> per-client hot path (interest set, full-then-delta, ack promotion) rather than
-/// a stand-in.
+/// a stand-in. Joins the AllocSensitive collection because <c>Run</c>'s allocation figure reads
+/// <c>GC.GetAllocatedBytesForCurrentThread</c>, which must not race the GC-churning parallel tests.
 /// </summary>
+[Collection("AllocSensitive")]
 public class ReplicationTickBenchmarkTests
 {
     private static ReplicationBenchmarkConfig SmallConfig(int clients = 3, int entities = 10, int componentsPerEntity = 1,
@@ -113,7 +115,9 @@ public class ReplicationTickBenchmarkTests
         Assert.True(result.PerTickMs >= 0.0);
         Assert.True(result.WireBytesTotal > 0);
         Assert.True(result.WireBytesPerTick > 0);
-        Assert.True(result.AllocatedBytes >= 0);
+        // The un-optimized hot path allocates on every tick (interest HashSet per Query, byte[] per WriteFor,
+        // per-component capture buffers), so a zero reading would mean the measurement window missed the loop.
+        Assert.True(result.AllocatedBytes > 0, "expected the replication hot path to allocate during the timed loop");
     }
 
     [Fact]

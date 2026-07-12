@@ -10,12 +10,16 @@ namespace KhaozEngine.Benchmarks;
 /// <summary>
 /// Builds a populated <see cref="World"/> + <see cref="ReplicationRegistry"/> + <see cref="AoiDeltaReplicator"/> +
 /// <see cref="InterestGrid"/> from a <see cref="ReplicationBenchmarkConfig"/>, and times the real per-client
-/// replication hot path: rebuild the interest grid from freshly-moved positions, <c>BeginTick</c>, then one
-/// <c>InterestGrid.Query</c> + <c>AoiDeltaReplicator.WriteFor</c> per simulated client - exactly how
-/// <c>ShardedWorldServer.Tick</c> drives them. Each client acknowledges the PREVIOUS tick's snapshot at the start
-/// of the current one (a simulated 1-tick RTT), so once past the always-full first tick the timed loop measures
-/// the steady-state delta-from-last-ack path: the hot path later replication-hot-path items must improve.
-/// <see cref="AoiDeltaReplicator"/> and <see cref="InterestGrid"/> are never modified here - only measured.
+/// replication hot path: <c>BeginTick</c>, then PER CLIENT a full interest-grid rebuild (Clear + reinsert of
+/// every freshly-moved position) followed by one <c>InterestGrid.Query</c> +
+/// <c>AoiDeltaReplicator.WriteFor</c>. The per-client rebuild cadence mirrors production:
+/// <c>ShardedWorldServer.Tick</c>'s per-slot loop calls <c>ShardHost.HomeInterest</c>, which calls
+/// <c>CellSim.RebuildInterest</c> before every <c>Query</c> - once per client, not once per tick - so the
+/// rebuild's O(C * E) scaling is part of what this baseline measures. Each client acknowledges the PREVIOUS
+/// tick's snapshot at the start of the current one (a simulated 1-tick RTT), so once past the always-full first
+/// tick the timed loop measures the steady-state delta-from-last-ack path: the hot path later
+/// replication-hot-path items must improve. <see cref="AoiDeltaReplicator"/> and <see cref="InterestGrid"/> are
+/// never modified here - only measured.
 /// </summary>
 public static class ReplicationTickBenchmark
 {
@@ -141,10 +145,14 @@ public static class ReplicationTickBenchmark
 
     /// <summary>
     /// One server tick of the replication hot path: ack the previous tick's snapshot (simulated 1-tick RTT), move
-    /// every entity by its seeded velocity, rebuild <see cref="ReplicationPopulation.Grid"/> from the fresh
-    /// positions, open a new snapshot seq, then one <c>InterestGrid.Query</c> + <c>AoiDeltaReplicator.WriteFor</c>
-    /// per client. Returns the new seq (the caller passes it back in as <paramref name="prevSeq"/> on the NEXT
-    /// call) and this tick's total wire bytes via <paramref name="wireBytes"/>.
+    /// every entity by its seeded velocity, open a new snapshot seq, then PER CLIENT rebuild
+    /// <see cref="ReplicationPopulation.Grid"/> from the fresh positions (Clear + full reinsert) and run one
+    /// <c>InterestGrid.Query</c> + <c>AoiDeltaReplicator.WriteFor</c>. The per-client rebuild mirrors
+    /// production's cadence (<c>ShardHost.HomeInterest</c> calls <c>CellSim.RebuildInterest</c> inside
+    /// <c>ShardedWorldServer</c>'s per-slot loop, before every <c>Query</c>), so the rebuild's C-scaling cost is
+    /// measured, not amortized away. Returns the new seq (the caller passes it back in as
+    /// <paramref name="prevSeq"/> on the NEXT call) and this tick's total wire bytes via
+    /// <paramref name="wireBytes"/>.
     /// </summary>
     private static int RunOneTick(ReplicationPopulation pop, ReplicationBenchmarkConfig config, int prevSeq, out long wireBytes)
     {
@@ -159,13 +167,14 @@ public static class ReplicationTickBenchmark
             pos.Y += pop.VelY[i] * config.MoveStep;
         }
 
-        pop.Grid.Clear();
-        pop.World.ForEach(pop.InsertIntoGrid);
-
         int seq = pop.Replicator.BeginTick();
         wireBytes = 0;
         foreach (ClientAoi c in pop.Clients)
         {
+            // Production rebuilds the grid once per CLIENT, not once per tick (HomeInterest -> RebuildInterest
+            // runs inside the per-slot loop), so the baseline must pay that full-reinsert cost per client too.
+            pop.Grid.Clear();
+            pop.World.ForEach(pop.InsertIntoGrid);
             HashSet<long> interestSet = pop.Grid.Query(c.Cx, c.Cy, c.Radius);
             byte[] body = pop.Replicator.WriteFor(c.Slot, pop.World, interestSet);
             wireBytes += body.Length;

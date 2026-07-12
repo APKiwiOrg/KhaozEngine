@@ -27,7 +27,8 @@ public sealed class ReplicationPopulation
     /// <summary>The per-client AoI delta encoder under test. Never modified by the benchmark - only measured.</summary>
     public required AoiDeltaReplicator Replicator { get; init; }
 
-    /// <summary>The spatial hash rebuilt from fresh positions every tick and queried once per client.</summary>
+    /// <summary>The spatial hash rebuilt from fresh positions once per client per tick (mirroring
+    /// <c>ShardHost.HomeInterest</c>'s <c>CellSim.RebuildInterest</c> cadence) and queried once per client.</summary>
     public required InterestGrid Grid { get; init; }
 
     /// <summary>Every populated entity's ECS handle, in spawn order.</summary>
@@ -47,9 +48,9 @@ public sealed class ReplicationPopulation
 
     /// <summary>
     /// Hoisted <see cref="World.ForEach{T1,T2}"/> delegate that inserts every entity's current position into
-    /// <see cref="Grid"/>, built once in <see cref="ReplicationTickBenchmark.Build"/> and reused every tick so the
-    /// interest-grid rebuild step itself never allocates a closure (the measured allocation is the replication hot
-    /// path's, not the benchmark harness's own driving code).
+    /// <see cref="Grid"/>, built once in <see cref="ReplicationTickBenchmark.Build"/> and reused on every rebuild
+    /// so the interest-grid rebuild step itself never allocates a closure (the measured allocation is the
+    /// replication hot path's, not the benchmark harness's own driving code).
     /// </summary>
     public required RefAction<NetId, ReplPosition> InsertIntoGrid { get; init; }
 }

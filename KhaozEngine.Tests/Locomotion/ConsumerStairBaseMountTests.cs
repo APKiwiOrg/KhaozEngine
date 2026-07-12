@@ -119,6 +119,77 @@ public class ConsumerStairBaseMountTests
         return r;
     }
 
+    // Walk DOWN off the base step: seat the capsule on tread 1 (centre resting on the first tread top) and command
+    // movement OFF the front edge (+Z, away from the stairs). Captures the per-tick capsule-centre Y so a descent can
+    // be checked for a prompt drop to the flat AND for the absence of a re-seat back onto the tread.
+    static List<(float Z, float Y)> DriveDescent(float startZ)
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        AddStairs(world);
+        world.Step(Dt);
+
+        var t = Consumer;
+        float halfH = t.CapsuleHalfHeight;
+        float tread1Y = Riser + halfH;   // capsule centre seated on tread 1 top (0.30 + 0.9)
+        var state = new MoveState { Position = new Vector3(0f, tread1Y, startZ), Grounded = true };
+        // Forward (0,1) at yaw 0 is -Z INTO the stairs, so (0,-1) walks +Z OFF the front edge, down onto the flat.
+        var cmd = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
+        float Ground(float x, float z) => 0f;
+        Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
+
+        var path = new List<(float Z, float Y)>();
+        for (int i = 0; i < 40; i++)
+        {
+            state = CharacterMovement.Step(state, cmd, Dt, Ground, t, normal, world);
+            path.Add((state.Position.Z, state.Position.Y));
+        }
+        return path;
+    }
+
+    // Descent regression for the fan-ring vs sweep-gate window: walking OFF the front of the base step must DROP to the
+    // flat and stay there, NOT get re-seated back up onto the tread by the tread-find fan. The fan's outer ring is 0.95 R
+    // - deliberately just past the downward sweep's 0.9 R UnderFootprint reach (the ~0.02 m window that lets a partial
+    // MOUNT's leading arc catch the tread). A ring widened to >= 1.0 R would reach a full radius back and re-grab the
+    // tread being STEPPED OFF, stalling the descent; this pins that it does not. Start well inside tread 1 so a couple of
+    // on-tread ticks precede the walk-off.
+    [Theory]
+    [InlineData(-0.30f)]
+    [InlineData(-0.25f)]
+    [InlineData(-0.20f)]
+    [InlineData(-0.15f)]
+    public void WalksDownOffBaseStep_DropsToFlat_NotReseated(float startZ)
+    {
+        var t = Consumer;
+        float halfH = t.CapsuleHalfHeight;
+        float radius = CharacterMovement.CapsuleFor(t).Radius;
+        float flatY = halfH;                 // capsule centre resting on the flat ground (Y = 0 + halfH)
+        float treadLevel = Riser + halfH;    // capsule centre seated on the tread top
+        // Tread 1 spans Z in [-Tread, 0]; its front edge is Z=0. The support sweep's UnderFootprint gate holds the tread
+        // until the centre is ~0.9 R past the edge, and the 0.95 R fan extends the legit catch to ~0.95 R past it, so once
+        // the centre has walked a FULL radius past the front edge the capsule can no longer be legitimately supported by
+        // tread 1 and MUST be dropping/dropped. A fan ring widened to >= 1.0 R reaches a full radius back and keeps the
+        // capsule re-seated up there past this line - which is exactly the descent-stall this guards.
+        float clearedEdge = radius;          // centre Z at/after which tread-1 support is no longer legitimate
+        List<(float Z, float Y)> path = DriveDescent(startZ);
+        string dump = string.Join(" ", path.ConvertAll(p => $"(z{p.Z:F2},y{p.Y:F2})"));
+
+        // Started on the tread: the capsule sat at the tread top before walking off (else the scenario is void).
+        Assert.Contains(path, p => p.Y >= treadLevel - 0.05f);
+
+        // Reaches the flat: the capsule settles on the ground below the step by the end of the walk-off.
+        Assert.True(path[^1].Y <= flatY + 0.02f,
+            $"descent from startZ={startZ:F2} did not reach the flat: final Y {path[^1].Y:F3}, expected ~{flatY:F3} ({dump}).");
+
+        // The guard: once the centre has cleared the front edge by a full radius, the capsule must be on the flat, NOT
+        // still lifted up on the tread it stepped off. A too-wide fan ring (>= 1.0 R) re-grabs the departing tread and
+        // holds the capsule up here, stalling the descent; the shipped 0.95 R ring does not.
+        foreach ((float z, float y) in path)
+            if (z >= clearedEdge)
+                Assert.True(y <= flatY + 0.05f,
+                    $"descent from startZ={startZ:F2} was RE-SEATED onto the tread at Z={z:F2} (a full radius past the " +
+                    $"front edge): Y {y:F3} still near the tread top {treadLevel:F3} - the fan re-grabbed the departing tread ({dump}).");
+    }
+
     // 61 arrival phases (startZ 1.00..1.60, 0.01 steps) x walk/run. The named reference phases (walk 1.13; run 1.34,
     // 1.14, 1.36, 1.16 - the investigation's worst collapse offsets) fall inside this sweep.
     public static IEnumerable<object[]> Phases()

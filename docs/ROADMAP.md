@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.70.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.71.1** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -24,6 +24,14 @@ Height-gate the WalkableFloorUnderFeet support fan to accept support only near t
 step-mount cap-vs-seat discriminator stops relying on approach floors being analytic. This prevents edge cases
 where deep risers on physics floor slabs stall slow-walk mounts. No shipped geometry has this combination yet,
 but the stair tests cannot catch it since all approach floors are analytic.
+
+Open, still-unfixed: a WALK on a ONE-SIDED triangle-mesh staircase (thin riser/tread quads, no solid body)
+sticks at the base - the capsule mounts one riser then never advances, identically before and after the
+bottom-stair tread-find fix (10.71.1). It is a separate mechanism: a horizontal-advance blockage on the thin
+one-sided riser, orthogonal to the vertical-support tread-find fix (which corrects the support HEIGHT, not the
+forward push), so that fix neither covers nor regresses it. No shipped consumer geometry hits this - the
+consumers' stairs are convex boxes, which the tread-find fix fully covers - so it is recorded here rather than
+patched. Documented in the `ConsumerStairBaseMountTests` header.
 
 ### 2. Visual fidelity (textures + materials)
 

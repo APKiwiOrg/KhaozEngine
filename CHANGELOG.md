@@ -5,11 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## Unreleased
+## 10.71.1
 
 ### Locomotion: bottom-stair mount no longer collapses to the ground below
 
 **The bottom step of a staircase now mounts cleanly at any approach speed and arrival phase (the support probe finds the tread under a straddling footprint instead of collapsing to the ground below); no consumer change needed.** At a staircase base, the capsule footprint (0.8 m across) straddles a shallow tread (0.4 m), so step 4's full-radius downward support sweep grazed the vertical riser front and both of its guards (walkable-up normal, under-footprint point) rejected the contact; groundY fell to the terrain a step below, and because that terrain sits within `GroundedEpsilon` of the partially-mounted capsule the onGround snap dropped it a whole riser back to the flat, where it bobbed and re-mounted (the sticky bottom stair). The fix drops a radius-less ray fan over the footprint when the sweep contributes no support, finds the tread the sweep cannot (a ray has no radius, so it reads the tread top through the clear air a straddling capsule sweep misses), and seats groundY on it, so the normal onGround snap lifts the capsule UP onto the tread. Scoped tightly to the base (fires only when the capsule is within `GroundedEpsilon` of the terrain, where the collapse can happen), so mid-climb and flat behaviour are untouched. The paced step-up still caps the rise, so the mount stays smooth. A `CharacterMovement` internals-only change (new private `WalkableTreadUnderFeet` fan); no public API change, no consumer change.
+
+## 10.71.0
+
+Clean app self-restart seam: `KhaozEngine.App.AppRelaunch` forces a fresh boot of the running executable and cooperates with the normal shutdown path, so a consumer game can restart into a clean session (sign-out save-wipe, cloud-save restore, restart-to-apply-settings) without a hard `Environment.Exit` that skips save/dispose hooks. The generalized parent-pid-wait pattern lives in a new `KhaozEngine.Platform.IProcessControl` seam.
+
+### `AppRelaunch` (KhaozEngine.App)
+
+**`AppRelaunch.Restart(RelaunchRequest)` starts a fresh instance of the current executable, then requests a clean shutdown of the running one through its own exit path (`RequestShutdown`, e.g. `AppWindow.Close` / `GameApp.Quit`), never a hard process kill.** The successor is spawned BEFORE the current app tears down, carrying a predecessor-wait handshake (`--ke-await-predecessor <pid>`) so the fresh boot blocks until the old process is fully gone. That ordering is what makes it safe when the app writes its save during shutdown: the new instance never races the file the old one still holds.
+
+- **`AppRelaunch.AwaitPredecessor(args)`** is the boot-side half, called at the top of `Main` before the app opens its save. It is a fast no-op on a normal launch. When a handshake is present it waits on the predecessor pid (default cap `DefaultPredecessorTimeout`, 15s) and returns the arguments with the token stripped (`PredecessorWait.Arguments`) plus whether the predecessor actually exited.
+- **`Restart` never strands the player.** It requests shutdown only when the successor actually started. If no executable resolves (`ExecutableUnresolved`, `Environment.ProcessPath` null and no override) or the OS refuses the launch (`StartFailed`), the current session is left running.
+- `RelaunchRequest` carries optional `Arguments` / `ExecutablePath` / `WorkingDirectory` overrides (defaults reproduce the current invocation) and `WaitForPredecessorExit` (default true, appends the handshake).
+
+### `IProcessControl` / `ProcessControl` (KhaozEngine.Platform)
+
+**New fakeable process seam: resolve the running exe/pid/args, spawn a detached instance, and wait for a pid to exit.** `ProcessControl.System` is the real implementation over `Environment` + `System.Diagnostics.Process`. `AppRelaunch` drives it through the interface, so the whole restart flow is headless-testable with a fake (see `AppRelaunchTests`). This is the generalized form of the desktop auto-updater's parent-pid-wait relaunch. The updater (`KhaozEngine.Updates`) keeps its own tuned `IUpdaterEnvironment` (antivirus / torn-image retry, elevation, relocation, and a deliberately non-truthful `IsProcessAlive` on POSIX), so it was NOT retrofitted onto the new primitive: the two share the pattern, not the code.
+
+- New dependency edge `KhaozEngine.App -> KhaozEngine.Platform` (both GPU-free foundation leaves, acyclic). No umbrella change: both are already in `Foundation`.
 
 ## 10.70.0
 

@@ -1113,6 +1113,10 @@ public static class CharacterMovement
 
     private static Vector2[] BuildTreadFanOffsets()
     {
+        // The 0.95 R outer ring deliberately sits just PAST the downward sweep's 0.9 R UnderFootprint reach: that ~0.02 m
+        // window (0.95 R - 0.9 R = 0.05 R = 0.02 m at radius 0.4) is exactly what lets a partial mount's LEADING arc find
+        // the tread the sweep's gate rejects. Do NOT widen it blind - a ring >= 1.0 R would reach a full radius back and
+        // re-grab a tread the capsule is STEPPING OFF (the descent regression in ConsumerStairBaseMountTests guards this).
         ReadOnlySpan<float> rings = stackalloc float[] { 0.65f, 0.95f };
         var offsets = new Vector2[1 + rings.Length * 8];
         offsets[0] = Vector2.Zero;

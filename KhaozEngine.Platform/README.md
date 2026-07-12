@@ -94,6 +94,36 @@ directly: `GameApp` calls `AppWindow.TryAttachParentConsole` (a windowing-layer 
 and a bare `AppWindow` host gets it from the constructor; opt out with `GameAppOptions.SuppressParentConsoleAttach`.
 `HasConsole` returns `true` off Windows (there is no Windows-subsystem/no-console case to guard there).
 
+## Process control (self-relaunch seam)
+
+`IProcessControl` is the fakeable OS-process seam behind `KhaozEngine.App.AppRelaunch`'s cooperative self-restart.
+It exposes just what a relaunch needs: the running process's own identity, a detached spawn, and a wait for a
+process to exit.
+
+```csharp
+using KhaozEngine.Platform;
+
+IProcessControl pc = ProcessControl.System;
+
+string? exe = pc.CurrentExecutablePath;                 // Environment.ProcessPath (null if unresolvable)
+int pid     = pc.CurrentProcessId;                      // Environment.ProcessId
+var args    = pc.CurrentCommandLineArguments;           // launch args, excluding the executable
+
+pc.StartDetached(new ProcessStartRequest                // fire-and-forget: the child outlives this process
+{
+    FileName = exe!,
+    Arguments = new[] { "--profile", "dev" },           // each a separate argv entry, no shell quoting
+});
+
+bool gone = pc.WaitForProcessExit(pid, timeoutMilliseconds: 15000);  // true = exited (or already gone)
+```
+
+`ProcessControl.System` is the real implementation (`Environment` + `System.Diagnostics.Process`); pass any
+`IProcessControl` to `AppRelaunch` to fake the whole flow in a test. This is the generalized parent-pid-wait
+pattern the desktop auto-updater (`KhaozEngine.Updates`) uses to keep a freshly-started successor from racing a
+file the predecessor still holds; the updater keeps its own tuned environment seam, so the two share the pattern,
+not the code. See `KhaozEngine.App`'s README for the `AppRelaunch` orchestration on top.
+
 ## Clipboard
 
 `Clipboard` is a cross-platform clipboard facade. Each call tries the platform backends in order and

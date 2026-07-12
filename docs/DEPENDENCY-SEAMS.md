@@ -127,8 +127,8 @@ KhaozEngine.Game2D/Game3D -> KhaozEngine.Localization.Analyzers   (packed depend
                                                                    analyzer is applied in the consumer's build)
 ```
 
-`App` is a pure-BCL foundation package (it only references `Diagnostics`) and never references `Gui`, so the
-new `Gui -> App` edge introduces no cycle. `KhaozEngine.Localization.Analyzers` is a `netstandard2.0` Roslyn
+`App` is a pure-BCL foundation package (it references only `Diagnostics` and `Platform`, both GPU-free leaves)
+and never references `Gui`, so the new `Gui -> App` edge introduces no cycle. `KhaozEngine.Localization.Analyzers` is a `netstandard2.0` Roslyn
 analyzer with no runtime dependency; it ships its assembly under `analyzers/dotnet/cs` and flows to a game only
 through the `Game2D`/`Game3D` umbrellas (a project that references neither never sees it). The marker attributes
 it reads (`LocalizationExemptAttribute`, `LocalizationStringSinkAttribute`) live in `App`, so the analyzer keys
@@ -143,6 +143,27 @@ KhaozEngine.Localization.TestKit -> KhaozEngine.App   (reads StringId.Key to ext
 `KhaozEngine.Localization.TestKit` is a coverage-test helper a game references from its **test project**. It is in
 no umbrella (a runtime build never pulls it) and references `App` only to read `StringId`, so the edge is acyclic
 and carries no weight into shipped game code.
+
+## Self-relaunch seam: process control
+
+Cooperative self-restart (`KhaozEngine.App.AppRelaunch`) adds one edge, acyclic:
+
+```
+KhaozEngine.App -> KhaozEngine.Platform   (IProcessControl: resolve the running exe/pid/args, spawn a
+                                           detached instance, wait for a pid to exit)
+```
+
+`Platform` is a zero-ProjectReference leaf (pure BCL P/Invoke), so `App -> Platform` cannot cycle and keeps
+`App` GPU-free. The process operations are behind `IProcessControl` (the seam) so the relaunch orchestration
+is headless-testable against a fake; `ProcessControl.System` is the real one.
+
+This is the generalized form of the desktop auto-updater's parent-pid-wait relaunch. The updater
+(`KhaozEngine.Updates`) keeps its own `IUpdaterEnvironment` with tuned, updater-specific behaviour (antivirus /
+torn-image retry, elevation, relocation, and a deliberately non-truthful `IsProcessAlive` on POSIX), so it was
+NOT retrofitted onto `IProcessControl` - the two share the *pattern* (start a successor, have it wait on the
+predecessor's pid so it never races the file the predecessor writes during shutdown), not the code. Collapsing
+part of the updater's env onto the new primitive would split its process ops across two homes for no real gain,
+so they stay separate.
 
 ## Design-viewport seam: device-pixel snapping
 

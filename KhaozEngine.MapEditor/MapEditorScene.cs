@@ -172,6 +172,22 @@ public class MapEditorScene : GameScene, IGameScene3D
     // or out of view: see SyncShapeInspector.
     bool? _inspectorLayersAllOn;
 
+    // The scatter-layer name list the CURRENT inspector's rows depend on, captured at build time, or null when
+    // the inspector holds no scatter-name-dependent rows. The exclusion inspector's per-layer targeting rows and
+    // the companion inspector's HostLayer chooser both enumerate the live scatter layers, so those rows go stale
+    // when a scatter layer is added / removed / renamed while an exclusion or companion is selected. SyncShapeInspector
+    // compares this snapshot against the live names each chrome step and rebuilds on a mismatch, so the rows never
+    // show a stale layer set (the Task 2 review carry-forward). Order-sensitive: a rename reorders nothing, but a
+    // straight sequence compare is enough since the outline and rows enumerate the same list order.
+    List<string>? _inspectorScatterNames;
+
+    // The scatter layer's Rules count the CURRENT scatter-layer inspector built its per-rule rows for, or null
+    // when the inspector is not a scatter-layer inspector. Adding / removing a rule (the crude v1 rule buttons)
+    // changes the count without changing the selection, so SyncShapeInspector rebuilds the inspector on a mismatch
+    // to reflow the per-rule rows (the same deferred-rebuild discipline as the exclusion layer-row reflow, so no
+    // rebuild ever runs inside the grid's row iteration).
+    int? _inspectorRuleCount;
+
     /// <summary>Wires the render surface, the shared white pixel and UI font, and the editor options, then returns
     /// this for chaining (the Room3D Init-injection pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
     public MapEditorScene Init(Scene3D scene, Texture2D white, DpiFont font, MapEditorOptions options)
@@ -879,6 +895,38 @@ public class MapEditorScene : GameScene, IGameScene3D
                 int added = _document.Doc.Terrain.Biomes.Count - 1;
                 _document.Selection.Set(SelectionKind.BiomeBand, added.ToString(CultureInfo.InvariantCulture));
                 break;
+            case OutlineActionKind.AddScatterLayer:
+            {
+                string name = GenerateLayerName("layer-", LiveScatterNames());
+                _document.Execute(new AddScatterLayerCommand(new MapScatterLayer { Name = name }));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.ScatterLayer, name);
+                break;
+            }
+            case OutlineActionKind.AddCompanionLayer:
+            {
+                string name = GenerateLayerName("companion-", LiveCompanionNames());
+                // Default the host to the first scatter layer if one exists, so the new companion validates on
+                // save without an extra step. With no scatter layers yet, HostLayer stays empty (invalid until the
+                // operator adds a scatter layer and picks it, a dev-tooling edge the HostLayer chooser handles).
+                string host = _document.Doc.ScatterLayers.Count > 0 ? _document.Doc.ScatterLayers[0].Name : "";
+                _document.Execute(new AddCompanionLayerCommand(new MapCompanionLayer { Name = name, HostLayer = host }));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.CompanionLayer, name);
+                break;
+            }
+        }
+    }
+
+    // The smallest N >= 1 such that `prefix` + N is not already a live layer name (the ke-mapedit GenerateId
+    // approach), so a freshly added layer gets a unique, immediately renameable placeholder name.
+    static string GenerateLayerName(string prefix, IReadOnlyCollection<string> existing)
+    {
+        var taken = new HashSet<string>(existing, StringComparer.Ordinal);
+        for (int n = 1; ; n++)
+        {
+            string candidate = prefix + n.ToString(CultureInfo.InvariantCulture);
+            if (!taken.Contains(candidate)) return candidate;
         }
     }
 
@@ -1058,6 +1106,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         _outline.Roots.Add(Category("Spawns", SpawnNodes()));
         _outline.Roots.Add(Category("Features", FeatureNodes()));
         _outline.Roots.Add(Category("Exclusions", ExclusionNodes()));
+        _outline.Roots.Add(Category("Scatter Layers", ScatterLayerNodes()));
+        _outline.Roots.Add(Category("Companion Layers", CompanionLayerNodes()));
         _outline.Roots.Add(Category("Regions", RegionNodes()));
     }
 
@@ -1147,12 +1197,36 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     static string BandEdge(float? edge) => edge is float v ? v.ToString(CultureInfo.InvariantCulture) : "*";
 
+    // The Scatter Layers category's children: one selectable node per layer (label = its unique name), then a
+    // trailing "[+ add layer]" ACTION node. Scatter layers have no viewport geometry, so the outline is their only
+    // selection surface, and the add action is the only add affordance. The action node's Tag is an OutlineAction
+    // (not an OutlineRef), so OnOutlineSelected runs the add instead of selecting.
+    IEnumerable<TreeNode> ScatterLayerNodes()
+    {
+        foreach (MapScatterLayer layer in _document.Doc.ScatterLayers)
+            yield return new TreeNode(LocalizedText.Raw(layer.Name), new OutlineRef(SelectionKind.ScatterLayer, layer.Name));
+        yield return new TreeNode(LocalizedText.Raw("[+ add layer]"), new OutlineAction(OutlineActionKind.AddScatterLayer));
+    }
+
+    // The Companion Layers category's children: one selectable node per layer (label = "name (host <host>)", so
+    // the outline surfaces which scatter layer a companion rings without opening the inspector), then a trailing
+    // "[+ add companion]" ACTION node.
+    IEnumerable<TreeNode> CompanionLayerNodes()
+    {
+        foreach (MapCompanionLayer layer in _document.Doc.CompanionLayers)
+            yield return new TreeNode(LocalizedText.Raw($"{layer.Name} (host {layer.HostLayer})"),
+                new OutlineRef(SelectionKind.CompanionLayer, layer.Name));
+        yield return new TreeNode(LocalizedText.Raw("[+ add companion]"), new OutlineAction(OutlineActionKind.AddCompanionLayer));
+    }
+
     void RebuildInspector()
     {
         _inspector.Rows.Clear();
         _nameRow = null;
         _inspectorShapeKind = null;
         _inspectorLayersAllOn = null;
+        _inspectorScatterNames = null;
+        _inspectorRuleCount = null;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
@@ -1163,6 +1237,8 @@ public class MapEditorScene : GameScene, IGameScene3D
             case SelectionKind.Exclusion: BuildExclusionInspector(sel.Id); break;
             case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
             case SelectionKind.BiomeBand: BuildBiomeBandInspector(sel.Id); break;
+            case SelectionKind.ScatterLayer: BuildScatterLayerInspector(sel.Id); break;
+            case SelectionKind.CompanionLayer: BuildCompanionLayerInspector(sel.Id); break;
             default: BuildLayersInspector(); break;   // nothing selected: the visibility Layers panel
         }
     }
@@ -1446,6 +1522,10 @@ public class MapEditorScene : GameScene, IGameScene3D
         AddVisibleRow(SelectionKind.Exclusion, () => id);   // after the shape rows so the kind ChoiceRow stays Rows[0]
         AddExclusionLayerRows(index);
         _inspectorLayersAllOn = ExclusionAt(index)?.Layers is null;
+        // Capture the scatter-layer name set the targeting rows were built from, so SyncShapeInspector rebuilds
+        // these rows when a scatter layer is added / removed / renamed while this exclusion stays selected (the
+        // Task 2 review carry-forward: the per-layer rows must never show a stale scatter-layer set).
+        _inspectorScatterNames = LiveScatterNames();
     }
 
     MapExclusion? ExclusionAt(int index)
@@ -1589,6 +1669,294 @@ public class MapEditorScene : GameScene, IGameScene3D
             v => EditBand(index, b => apply(b, v))));
     }
 
+    // ---- scatter + companion layer inspectors --------------------------------------------------------------
+
+    // The scatter-layer inspector: an inline-rename Name row (scatter layers are name-keyed, so a rename re-points
+    // the selection AND remaps the visibility key), the layer scalars, a nullable MaxHeight (the band open-edge
+    // idiom), then the per-rule surface (v1-crude, decision 11): each rule shows a Biome choice, a Density scalar,
+    // a "id:weight" Kinds text row, and a remove button, with a trailing add-rule button and a remove-layer button.
+    // Every scalar / rule edit is a WHOLE-VALUE edit routed through EditScatterLayerCommand (deep-clone the live
+    // layer, change the one field, keep the live layer as the command's old value), whose same-name merge coalesces
+    // a scrub into one undo step. A rule add / remove seals its own gesture and reflows the rows through the
+    // deferred `_inspectorRuleCount` sync (never a rebuild inside the grid's row iteration).
+    void BuildScatterLayerInspector(string name)
+    {
+        if (ScatterLayerByName(name) is not { } layer) return;
+        Func<string> cur = AddNameRow(SelectionKind.ScatterLayer, name,
+            v => ScatterLayerByName(v) is not null,
+            (oldName, newName) => { _visibility.RenameLayer(oldName, newName); return new RenameScatterLayerCommand(oldName, newName); });
+
+        AddScatterFloatRow(cur, "Seed", l => l.Seed, (l, v) => l.Seed = (int)MathF.Round(v), dragScale: 1f, decimals: 0);
+        AddScatterFloatRow(cur, "CellSize", l => l.CellSize, (l, v) => l.CellSize = v, min: 0.01f);
+        AddScatterFloatRow(cur, "Jitter", l => l.Jitter, (l, v) => l.Jitter = v, min: 0f);
+        AddScatterFloatRow(cur, "ScaleMin", l => l.ScaleMin, (l, v) => l.ScaleMin = v, min: 0f);
+        AddScatterFloatRow(cur, "ScaleMax", l => l.ScaleMax, (l, v) => l.ScaleMax = v, min: 0f);
+        AddScatterFloatRow(cur, "MaxHeight", l => l.MaxHeight ?? 0f, (l, v) => l.MaxHeight = v);
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("MaxHeight unset"),
+            () => ScatterLayerByName(cur())?.MaxHeight is null,
+            v => EditScatterLayer(cur(), l => l.MaxHeight = v ? null : (l.MaxHeight ?? 0f))));
+
+        for (int r = 0; r < layer.Rules.Count; r++)
+        {
+            int ri = r;   // capture per iteration for the closures
+            _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw($"Rule {ri} biome"), BiomeChoices,
+                () => (RuleAt(cur(), ri)?.Biome ?? BiomeId.Meadow).ToString(),
+                v => { if (Enum.TryParse(v, out BiomeId biome)) EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Biome = biome; }); }));
+            _inspector.Rows.Add(new FloatRow(LocalizedText.Raw($"Rule {ri} density"),
+                () => RuleAt(cur(), ri)?.Density ?? 0f,
+                v => EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Density = v; }), min: 0f));
+            _inspector.Rows.Add(new TextRow(LocalizedText.Raw($"Rule {ri} kinds"),
+                () => RuleAt(cur(), ri) is { } rule ? FormatKinds(rule.Kinds) : "",
+                v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Kinds = kinds; }); },
+                maxLength: 256));
+            AddActionRow($"[- remove rule {ri}]",
+                () => { EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules.RemoveAt(ri); }); _document.SealGesture(); });
+        }
+        AddActionRow("[+ add rule]",
+            () => { EditScatterLayer(cur(), l => l.Rules.Add(new MapBiomeScatterRule())); _document.SealGesture(); });
+        AddActionRow("[- remove layer]", () => RemoveScatterLayerFromInspector(cur()));
+
+        _inspectorRuleCount = layer.Rules.Count;   // reflow the per-rule rows when a rule is added / removed
+    }
+
+    // The companion-layer inspector: an inline-rename Name row, a HostLayer chooser (the live scatter-layer names,
+    // so an invalid host cannot be picked through the GUI), the count / radius / scale scalars, HostKinds (plain id
+    // list) and Kinds ("id:weight" list) text rows, and a nullable MaxHeight, then a remove button. Every edit is a
+    // WHOLE-VALUE edit through EditCompanionLayerCommand (deep clone). The HostLayer chooser depends on the live
+    // scatter-layer set, so `_inspectorScatterNames` is captured for the deferred refresh when a scatter layer is
+    // added / removed / renamed while this companion stays selected.
+    void BuildCompanionLayerInspector(string name)
+    {
+        if (CompanionLayerByName(name) is not { } companion) return;
+        Func<string> cur = AddNameRow(SelectionKind.CompanionLayer, name,
+            v => CompanionLayerByName(v) is not null,
+            (oldName, newName) => new RenameCompanionLayerCommand(oldName, newName));
+
+        // Always offer at least the current host as an option (even if it is somehow not among the live scatter
+        // layers), so the dropdown never silently drops an out-of-set value. Fall back to a read-only row only when
+        // there is nothing at all to choose (no scatter layers and an empty host).
+        List<string> hostOptions = LiveScatterNames();
+        string liveHost = companion.HostLayer;
+        if (liveHost.Length > 0 && !hostOptions.Contains(liveHost)) hostOptions.Add(liveHost);
+        if (hostOptions.Count > 0)
+            _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("HostLayer"), hostOptions.ToArray(),
+                () => CompanionLayerByName(cur())?.HostLayer ?? "",
+                v => EditCompanionLayer(cur(), l => l.HostLayer = v)));
+        else
+            _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("HostLayer"),
+                () => (CompanionLayerByName(cur())?.HostLayer ?? "") is { Length: > 0 } h ? h : "(no scatter layers)"));
+
+        AddCompanionFloatRow(cur, "Seed", l => l.Seed, (l, v) => l.Seed = (int)MathF.Round(v), dragScale: 1f, decimals: 0);
+        _inspector.Rows.Add(new TextRow(LocalizedText.Raw("HostKinds"),
+            () => CompanionLayerByName(cur()) is { } l ? FormatIds(l.HostKinds) : "",
+            v => EditCompanionLayer(cur(), l => l.HostKinds = ParseIds(v)), maxLength: 256));
+        _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Kinds"),
+            () => CompanionLayerByName(cur()) is { } l ? FormatKinds(l.Kinds) : "",
+            v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditCompanionLayer(cur(), l => l.Kinds = kinds); }, maxLength: 256));
+        AddCompanionFloatRow(cur, "CountMin", l => l.CountMin, (l, v) => l.CountMin = (int)MathF.Round(v), min: 0f, dragScale: 1f, decimals: 0);
+        AddCompanionFloatRow(cur, "CountMax", l => l.CountMax, (l, v) => l.CountMax = (int)MathF.Round(v), min: 0f, dragScale: 1f, decimals: 0);
+        AddCompanionFloatRow(cur, "RadiusMin", l => l.RadiusMin, (l, v) => l.RadiusMin = v, min: 0f);
+        AddCompanionFloatRow(cur, "RadiusMax", l => l.RadiusMax, (l, v) => l.RadiusMax = v, min: 0f);
+        AddCompanionFloatRow(cur, "ScaleMin", l => l.ScaleMin, (l, v) => l.ScaleMin = v, min: 0f);
+        AddCompanionFloatRow(cur, "ScaleMax", l => l.ScaleMax, (l, v) => l.ScaleMax = v, min: 0f);
+        AddCompanionFloatRow(cur, "MaxHeight", l => l.MaxHeight ?? 0f, (l, v) => l.MaxHeight = v);
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("MaxHeight unset"),
+            () => CompanionLayerByName(cur())?.MaxHeight is null,
+            v => EditCompanionLayer(cur(), l => l.MaxHeight = v ? null : (l.MaxHeight ?? 0f))));
+        AddActionRow("[- remove companion]", () => RemoveCompanionLayerFromInspector(cur()));
+
+        _inspectorScatterNames = LiveScatterNames();   // the HostLayer chooser enumerates scatter names: refresh on a change
+    }
+
+    // One scrubbed scalar of the scatter layer named by `name()` (the AddBandFloatRow idiom): get reads the LIVE
+    // layer, set clones deeply and writes the one field through EditScatterLayer.
+    void AddScatterFloatRow(Func<string> name, string label, Func<MapScatterLayer, float> get,
+        Action<MapScatterLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+            () => ScatterLayerByName(name()) is { } l ? get(l) : 0f,
+            v => EditScatterLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals));
+    }
+
+    void AddCompanionFloatRow(Func<string> name, string label, Func<MapCompanionLayer, float> get,
+        Action<MapCompanionLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
+    {
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+            () => CompanionLayerByName(name()) is { } l ? get(l) : 0f,
+            v => EditCompanionLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals));
+    }
+
+    // A "button" row: no PropertyGrid button widget exists, so a BoolRow whose value is always read as off doubles
+    // as one. Tapping flips it on, which runs `action` once. The getter re-reads off next frame (and a deferred
+    // rebuild recreates the row), so it never stays pressed. Used for the crude rule / layer add-remove affordances.
+    void AddActionRow(string label, Action action)
+    {
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(label), () => false, v => { if (v) action(); }));
+    }
+
+    // Removes the scatter layer from its inspector's remove button, surfacing a referenced-removal rejection in the
+    // status strip (the command throws before mutating, so the document is untouched). The vanished-selection sync
+    // clears the now-dangling name-keyed selection at the next chrome step, safely outside the grid iteration.
+    void RemoveScatterLayerFromInspector(string name)
+    {
+        try
+        {
+            _document.Execute(new RemoveScatterLayerCommand(name));
+            _document.SealGesture();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _statusText = ex.Message;   // referenced-removal rejection: surface it, leave the document unchanged
+        }
+    }
+
+    void RemoveCompanionLayerFromInspector(string name)
+    {
+        if (CompanionLayerByName(name) is null) return;
+        _document.Execute(new RemoveCompanionLayerCommand(name));
+        _document.SealGesture();
+    }
+
+    // A whole-value scatter-layer edit: deep-clone the live layer, apply `mutate` to the clone (so a nested Rules /
+    // Kinds change never touches the live instance the command keeps as its old value), then route (clone, live)
+    // through EditScatterLayerCommand (same-name merge coalesces a scrub). No-op when the layer has vanished.
+    void EditScatterLayer(string name, Action<MapScatterLayer> mutate)
+    {
+        if (ScatterLayerByName(name) is not { } live) return;
+        MapScatterLayer clone = CloneScatterLayer(live);
+        mutate(clone);
+        _document.Execute(new EditScatterLayerCommand(name, clone, live));
+    }
+
+    void EditCompanionLayer(string name, Action<MapCompanionLayer> mutate)
+    {
+        if (CompanionLayerByName(name) is not { } live) return;
+        MapCompanionLayer clone = CloneCompanionLayer(live);
+        mutate(clone);
+        _document.Execute(new EditCompanionLayerCommand(name, clone, live));
+    }
+
+    MapScatterLayer? ScatterLayerByName(string name)
+    {
+        foreach (MapScatterLayer l in _document.Doc.ScatterLayers)
+            if (string.Equals(l.Name, name, StringComparison.Ordinal)) return l;
+        return null;
+    }
+
+    MapCompanionLayer? CompanionLayerByName(string name)
+    {
+        foreach (MapCompanionLayer l in _document.Doc.CompanionLayers)
+            if (string.Equals(l.Name, name, StringComparison.Ordinal)) return l;
+        return null;
+    }
+
+    static MapBiomeScatterRule? RuleAt(MapScatterLayer? layer, int index) =>
+        layer is not null && index >= 0 && index < layer.Rules.Count ? layer.Rules[index] : null;
+
+    MapBiomeScatterRule? RuleAt(string name, int index) => RuleAt(ScatterLayerByName(name), index);
+
+    // The live scatter / companion layer names in document order, snapshotted into a fresh list (used both for the
+    // deferred staleness compare and for unique-name generation).
+    List<string> LiveScatterNames()
+    {
+        var names = new List<string>(_document.Doc.ScatterLayers.Count);
+        foreach (MapScatterLayer l in _document.Doc.ScatterLayers) names.Add(l.Name);
+        return names;
+    }
+
+    List<string> LiveCompanionNames()
+    {
+        var names = new List<string>(_document.Doc.CompanionLayers.Count);
+        foreach (MapCompanionLayer l in _document.Doc.CompanionLayers) names.Add(l.Name);
+        return names;
+    }
+
+    // Deep clones (the whole-value-edit copy discipline): a scatter / companion layer is a mutable class with
+    // nested lists (Rules -> Kinds, HostKinds, Kinds), so a shallow copy would share those lists and let a scrub of
+    // the clone mutate the live instance the command captured as its old value. Every nested list is rebuilt.
+    static MapPropKind CloneKind(MapPropKind k) => new MapPropKind { Id = k.Id, Weight = k.Weight };
+
+    static MapBiomeScatterRule CloneRule(MapBiomeScatterRule r)
+    {
+        var kinds = new List<MapPropKind>(r.Kinds.Count);
+        foreach (MapPropKind k in r.Kinds) kinds.Add(CloneKind(k));
+        return new MapBiomeScatterRule { Biome = r.Biome, Density = r.Density, Kinds = kinds };
+    }
+
+    static MapScatterLayer CloneScatterLayer(MapScatterLayer l)
+    {
+        var rules = new List<MapBiomeScatterRule>(l.Rules.Count);
+        foreach (MapBiomeScatterRule r in l.Rules) rules.Add(CloneRule(r));
+        return new MapScatterLayer
+        {
+            Name = l.Name, Seed = l.Seed, CellSize = l.CellSize, Jitter = l.Jitter, MaxHeight = l.MaxHeight,
+            ScaleMin = l.ScaleMin, ScaleMax = l.ScaleMax, Rules = rules,
+        };
+    }
+
+    static MapCompanionLayer CloneCompanionLayer(MapCompanionLayer l)
+    {
+        var kinds = new List<MapPropKind>(l.Kinds.Count);
+        foreach (MapPropKind k in l.Kinds) kinds.Add(CloneKind(k));
+        return new MapCompanionLayer
+        {
+            Name = l.Name, HostLayer = l.HostLayer, Seed = l.Seed, HostKinds = new List<string>(l.HostKinds),
+            Kinds = kinds, CountMin = l.CountMin, CountMax = l.CountMax, RadiusMin = l.RadiusMin,
+            RadiusMax = l.RadiusMax, ScaleMin = l.ScaleMin, ScaleMax = l.ScaleMax, MaxHeight = l.MaxHeight,
+        };
+    }
+
+    // Formats a scatter kind list as the comma-separated "id" / "id:weight" text the Kinds rows edit: a unit weight
+    // renders as the bare id, any other weight as "id:weight" (invariant culture). Round-trips through TryParseKinds.
+    static string FormatKinds(IReadOnlyList<MapPropKind> kinds)
+    {
+        var parts = new List<string>(kinds.Count);
+        foreach (MapPropKind k in kinds)
+            parts.Add(k.Weight == 1f ? k.Id : string.Create(CultureInfo.InvariantCulture, $"{k.Id}:{k.Weight}"));
+        return string.Join(", ", parts);
+    }
+
+    // Parses the comma-separated "id" / "id:weight" Kinds text exactly as the ke-mapedit MutationService.ParseKinds
+    // does (split on the LAST colon, id before, weight after with the invariant culture, default weight 1). Returns
+    // false on any garbage entry (an empty id, or a non-numeric weight) WITHOUT mutating, so the caller keeps the
+    // old value and executes no command. Empty / whitespace-only segments are tolerated (skipped), so a trailing
+    // comma while typing is not garbage. An entirely empty string parses to an empty kind list (legal per the model).
+    static bool TryParseKinds(string text, out List<MapPropKind> kinds)
+    {
+        kinds = new List<MapPropKind>();
+        foreach (string raw in text.Split(','))
+        {
+            string entry = raw.Trim();
+            if (entry.Length == 0) continue;
+            int colon = entry.LastIndexOf(':');
+            string id = (colon < 0 ? entry : entry[..colon]).Trim();
+            if (id.Length == 0) return false;
+            float weight = 1f;
+            if (colon >= 0)
+            {
+                string weightText = entry[(colon + 1)..].Trim();
+                if (!float.TryParse(weightText, NumberStyles.Float, CultureInfo.InvariantCulture, out weight)) return false;
+            }
+            kinds.Add(new MapPropKind { Id = id, Weight = weight });
+        }
+        return true;
+    }
+
+    // Formats / parses a plain comma-separated id list (companion HostKinds, which carry no weights). Parsing never
+    // fails (any non-empty trimmed segment is a valid id), so the HostKinds row always commits.
+    static string FormatIds(IReadOnlyList<string> ids) => string.Join(", ", ids);
+
+    static List<string> ParseIds(string text)
+    {
+        var result = new List<string>();
+        foreach (string raw in text.Split(','))
+        {
+            string entry = raw.Trim();
+            if (entry.Length > 0) result.Add(entry);
+        }
+        return result;
+    }
+
     /// <summary>The shape-kind options the inspector's kind selector offers. Polygon is read-only v1 (no
     /// conversion in or out), so it is not an option: a polygon shape shows a read-only kind row instead.</summary>
     static readonly string[] ShapeKindChoices = { "disc", "rect" };
@@ -1696,6 +2064,12 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// directly.</summary>
     internal void SyncShapeInspector()
     {
+        // A name-keyed layer selection whose layer was removed (its inspector remove button, or an undo) is now
+        // dangling: clear it here (outside the grid's row iteration), which rebuilds the inspector to the fallback.
+        EditorSelection sel = _document.Selection;
+        if (sel.Kind == SelectionKind.ScatterLayer && ScatterLayerByName(sel.Id) is null) { _document.Selection.Clear(); return; }
+        if (sel.Kind == SelectionKind.CompanionLayer && CompanionLayerByName(sel.Id) is null) { _document.Selection.Clear(); return; }
+
         if (_inspectorShapeKind is string builtShape &&
             !string.Equals(ShapeKind(SelectedShape()), builtShape, StringComparison.Ordinal))
         {
@@ -1706,7 +2080,42 @@ public class MapEditorScene : GameScene, IGameScene3D
             liveAllOn != builtAllOn)
         {
             RebuildInspector();
+            return;
         }
+        // The scatter-layer name set the current inspector's rows depend on (an exclusion's targeting rows, a
+        // companion's HostLayer chooser) changed under it: rebuild so the rows never show a stale layer set (add,
+        // remove, or rename of a scatter layer while an exclusion / companion stays selected).
+        if (_inspectorScatterNames is { } builtNames && !ScatterNamesUnchanged(builtNames))
+        {
+            RebuildInspector();
+            return;
+        }
+        // A rule was added to / removed from the selected scatter layer (the crude rule buttons), changing the row
+        // count without changing the selection: rebuild to reflow the per-rule rows.
+        if (_inspectorRuleCount is int builtRules && SelectedScatterRuleCount() is int liveRules && liveRules != builtRules)
+        {
+            RebuildInspector();
+        }
+    }
+
+    // Whether the live scatter-layer names still equal the snapshot the current inspector was built from (same
+    // count, same names in order). A difference means a scatter layer was added, removed, or renamed.
+    bool ScatterNamesUnchanged(List<string> built)
+    {
+        List<MapScatterLayer> live = _document.Doc.ScatterLayers;
+        if (built.Count != live.Count) return false;
+        for (int i = 0; i < live.Count; i++)
+            if (!string.Equals(built[i], live[i].Name, StringComparison.Ordinal)) return false;
+        return true;
+    }
+
+    // The selected scatter layer's Rules count, or null when the selection is not a live scatter layer. Compared
+    // against `_inspectorRuleCount` so a rule add / remove reflows the per-rule rows.
+    int? SelectedScatterRuleCount()
+    {
+        EditorSelection sel = _document.Selection;
+        if (sel.Kind != SelectionKind.ScatterLayer) return null;
+        return ScatterLayerByName(sel.Id)?.Rules.Count;
     }
 
     // The shape of the selected exclusion / region, or null (no shape-carrying selection, vanished element).
@@ -1883,7 +2292,7 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // Which side effect a synthetic outline ACTION node runs when tapped (a node with no document element behind
     // it, e.g. an add affordance). Distinct from OutlineRef so OnOutlineSelected can tell the two apart.
-    enum OutlineActionKind { AddBiomeBand }
+    enum OutlineActionKind { AddBiomeBand, AddScatterLayer, AddCompanionLayer }
 
     // Identity payload on a synthetic outline action row (e.g. "[+ add band]"): the action to run on tap. Carried
     // in TreeNode.Tag in place of an OutlineRef, so the tap runs the action instead of setting a selection.

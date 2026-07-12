@@ -1876,5 +1876,293 @@ namespace KhaozEngine.Tests.MapEditor
             Near(a.Height, b.Height);      // same strip height, just relocated
             Near(a.Width, b.Width);
         }
+
+        // ---- scatter + companion layer editing ----------------------------------------------------------
+
+        static DocScene ScatterScene() => PushDocScene(() =>
+        {
+            MapDocument doc = ValidDoc();
+            doc.ScatterLayers.Add(new MapScatterLayer
+            {
+                Name = "trees", Seed = 11, CellSize = 5f,
+                Rules = { new MapBiomeScatterRule
+                {
+                    Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
+                    Kinds = { new MapPropKind { Id = "oak", Weight = 1f } },
+                } },
+            });
+            return doc;
+        });
+
+        [Fact]
+        public void ScatterLayersCategory_InOutline_SelectableEditable()
+        {
+            var scene = ScatterScene();
+
+            // A Scatter Layers category sits in the outline, one node per layer (label = name) plus a trailing add.
+            TreeNode layer0 = CategoryChild(scene.Outline, "Scatter Layers", 0);
+            Assert.Equal("trees", layer0.Label.Resolve());
+            TreeNode add = CategoryChild(scene.Outline, "Scatter Layers", 1);
+            Assert.Equal("[+ add layer]", add.Label.Resolve());
+
+            // Selecting the layer builds the editable inspector: Name, scalars, and the per-rule surface.
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            Assert.NotNull(TextRowByLabel(scene.Inspector, "Name"));             // an inline-rename row is present
+            Assert.NotNull(TextRowByLabel(scene.Inspector, "Rule 0 kinds"));     // the crude id:weight text row
+            Assert.Equal(5f, FloatRowByLabel(scene.Inspector, "CellSize").Field.Value);   // scalars init from the layer
+            Assert.Equal(0.4f, FloatRowByLabel(scene.Inspector, "Rule 0 density").Field.Value);
+            var biome = Assert.IsType<ChoiceRow>(RowByLabel(scene.Inspector, "Rule 0 biome"));
+            Assert.Equal("Meadow", biome.Selected);
+        }
+
+        [Fact]
+        public void ScatterLayer_AddViaOutlineAction_AppendsAndSelects()
+        {
+            var scene = ScatterScene();
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 800f);
+            TreeNode addNode = CategoryChild(outline, "Scatter Layers", 1);
+
+            var input = new InputManager();
+            TapTree(outline, input, RowCenter(outline, addNode));
+
+            // A layer with a generated unique name was appended and selected straight into its inspector.
+            Assert.Equal(2, scene.Document.Doc.ScatterLayers.Count);
+            Assert.Equal("layer-1", scene.Document.Doc.ScatterLayers[1].Name);
+            Assert.Equal(SelectionKind.ScatterLayer, scene.Document.Selection.Kind);
+            Assert.Equal("layer-1", scene.Document.Selection.Id);
+            Assert.True(scene.Document.WorldRebuildPending);
+        }
+
+        [Fact]
+        public void CompanionLayer_AddViaOutlineAction_HostDefaultsToFirstScatter()
+        {
+            var scene = ScatterScene();
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 800f);
+            TreeNode addNode = CategoryChild(outline, "Companion Layers", 0);   // no companions yet, so [+ add] is first
+            Assert.Equal("[+ add companion]", addNode.Label.Resolve());
+
+            var input = new InputManager();
+            TapTree(outline, input, RowCenter(outline, addNode));
+
+            Assert.Single(scene.Document.Doc.CompanionLayers);
+            MapCompanionLayer added = scene.Document.Doc.CompanionLayers[0];
+            Assert.Equal("companion-1", added.Name);
+            Assert.Equal("trees", added.HostLayer);   // defaulted to the first scatter layer, so it validates on save
+            Assert.Equal(SelectionKind.CompanionLayer, scene.Document.Selection.Kind);
+        }
+
+        [Fact]
+        public void RuleAddRemove_RoundTrip()
+        {
+            var scene = ScatterScene();
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            Assert.Single(scene.Document.Doc.ScatterLayers[0].Rules);
+
+            // "[+ add rule]" is a button row (a BoolRow read as always-off): tapping it appends a rule.
+            Assert.True(TapBool(BoolRowByLabel(scene.Inspector, "[+ add rule]")));
+            Assert.Equal(2, scene.Document.Doc.ScatterLayers[0].Rules.Count);
+            scene.OnUpdate(0.016f);   // the per-rule rows reflow through the deferred sync
+            Assert.NotNull(RowByLabel(scene.Inspector, "Rule 1 density"));
+
+            // "[- remove rule 0]" removes the first rule.
+            Assert.True(TapBool(BoolRowByLabel(scene.Inspector, "[- remove rule 0]")));
+            Assert.Single(scene.Document.Doc.ScatterLayers[0].Rules);
+            scene.OnUpdate(0.016f);
+
+            // Each button sealed its own gesture, so undo peels them back one at a time.
+            Assert.True(scene.Document.Undo());
+            Assert.Equal(2, scene.Document.Doc.ScatterLayers[0].Rules.Count);
+            Assert.True(scene.Document.Undo());
+            Assert.Single(scene.Document.Doc.ScatterLayers[0].Rules);
+        }
+
+        [Fact]
+        public void KindsTextRow_ParsesIdWeight_RejectsGarbage()
+        {
+            var scene = ScatterScene();
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            TextRow kinds = TextRowByLabel(scene.Inspector, "Rule 0 kinds");
+
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            kinds.Input.IsFocused = true;
+
+            // A valid "id" / "id:weight" list parses (unit weight from the bare id, an explicit weight from the pair).
+            kinds.Input.SetText("oak:2, pine");
+            kinds.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            List<MapPropKind> parsed = scene.Document.Doc.ScatterLayers[0].Rules[0].Kinds;
+            Assert.Equal(2, parsed.Count);
+            Assert.Equal("oak", parsed[0].Id);
+            Assert.Equal(2f, parsed[0].Weight);
+            Assert.Equal("pine", parsed[1].Id);
+            Assert.Equal(1f, parsed[1].Weight);
+
+            // Garbage (a non-numeric weight) is rejected: no command runs and the old value is kept.
+            kinds.Input.SetText("oak:abc");
+            kinds.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Equal(2, scene.Document.Doc.ScatterLayers[0].Rules[0].Kinds.Count);   // unchanged
+            Assert.Equal("oak", scene.Document.Doc.ScatterLayers[0].Rules[0].Kinds[0].Id);
+        }
+
+        [Fact]
+        public void ScatterLayerInspector_DensityScrub_DeepCloneUndo()
+        {
+            // Proves the scene's whole-value edit DEEP-clones the layer: scrubbing a nested rule field then undoing
+            // must restore the original value. A shallow clone would share the Rules list, so the captured old value
+            // would be mutated too and undo would leave the scrubbed value behind.
+            var scene = ScatterScene();
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            FloatRow density = FloatRowByLabel(scene.Inspector, "Rule 0 density");
+
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false)); density.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true)); density.Update(cell, ui, 0.016f);   // grab origin
+            ui.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true)); density.Update(cell, ui, 0.016f);   // +100px * 0.01 = +1.0
+            Near(1.4f, scene.Document.Doc.ScatterLayers[0].Rules[0].Density);
+
+            Assert.True(scene.Document.Undo());
+            Near(0.4f, scene.Document.Doc.ScatterLayers[0].Rules[0].Density);   // old value intact: the clone did not alias it
+        }
+
+        [Fact]
+        public void LayerVisibilityToggle_FollowsRename()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                return doc;
+            });
+            scene.Visibility.SetLayer("trees", false);   // hide the layer's props
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+
+            TextRow name = TextRowByLabel(scene.Inspector, "Name");
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("forest");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("forest", scene.Document.Doc.ScatterLayers[0].Name);
+            Assert.False(scene.Visibility.GetLayer("forest"));   // the hide followed the rename to the new key
+            Assert.True(scene.Visibility.GetLayer("trees"));      // the old key defaults back to visible
+        }
+
+        [Fact]
+        public void ScatterLayerRename_ViaNameRow_CascadesAndSelectionFollows()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.CompanionLayers.Add(new MapCompanionLayer { Name = "understory", HostLayer = "trees" });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+
+            TextRow name = TextRowByLabel(scene.Inspector, "Name");
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("forest");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("forest", scene.Document.Doc.ScatterLayers[0].Name);
+            Assert.Equal("forest", scene.Document.Doc.CompanionLayers[0].HostLayer);   // cascade retargeted the host
+
+            // The name-keyed selection follows the rename once the row loses focus (the pending re-select).
+            name.Input.IsFocused = false;
+            scene.OnUpdate(0.016f);
+            Assert.Equal(SelectionKind.ScatterLayer, scene.Document.Selection.Kind);
+            Assert.Equal("forest", scene.Document.Selection.Id);
+        }
+
+        [Fact]
+        public void ExclusionLayerRows_FollowScatterLayerAddAndRename()
+        {
+            // The Task 2 review carry-forward: the exclusion inspector's layer-targeting rows capture the scatter
+            // layer set at build time, so adding / renaming a scatter layer while the exclusion stays selected must
+            // refresh those rows (never show a stale set).
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.Exclusions.Add(new MapExclusion
+                {
+                    Shape = new DiscShapeDoc { Radius = 5f },
+                    Layers = new List<string> { "trees" },   // explicit, so the per-layer rows show
+                });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "trees"));
+            Assert.DoesNotContain(scene.Inspector.Rows.OfType<BoolRow>(), b => b.Label.Resolve() == "rocks");
+
+            // Add a scatter layer while the exclusion stays selected: the new layer appears as a targeting row.
+            scene.Document.Execute(new AddScatterLayerCommand(new MapScatterLayer { Name = "rocks" }));
+            scene.OnUpdate(0.016f);
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "rocks"));
+
+            // Rename a scatter layer while the exclusion stays selected: the row relabels (and the cascade retargets
+            // the exclusion's own filter, so it stays valid rather than dangling on the old name).
+            scene.Document.Execute(new RenameScatterLayerCommand("trees", "forest"));
+            scene.OnUpdate(0.016f);
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "forest"));
+            Assert.DoesNotContain(scene.Inspector.Rows.OfType<BoolRow>(), b => b.Label.Resolve() == "trees");
+            Assert.Equal(new[] { "forest" }, scene.Document.Doc.Exclusions[0].Layers);
+        }
+
+        [Fact]
+        public void RemoveReferencedScatterLayer_ViaInspector_SurfacesStatus()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.CompanionLayers.Add(new MapCompanionLayer { Name = "understory", HostLayer = "trees" });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+
+            // The inspector's remove button rejects a referenced removal: the layer stays and the message surfaces.
+            Assert.True(TapBool(BoolRowByLabel(scene.Inspector, "[- remove layer]")));
+            Assert.Single(scene.Document.Doc.ScatterLayers);
+            Assert.Contains("understory", scene.StatusText);
+            Assert.False(scene.Document.History.CanUndo);   // rejected before mutating: no undo step
+
+            // An unreferenced companion removes cleanly from its own inspector button.
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+            Assert.True(TapBool(BoolRowByLabel(scene.Inspector, "[- remove companion]")));
+            Assert.Empty(scene.Document.Doc.CompanionLayers);
+        }
+
+        [Fact]
+        public void CompanionInspector_HostLayerChooser_OffersLiveScatterLayers()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "rocks" });
+                doc.CompanionLayers.Add(new MapCompanionLayer { Name = "understory", HostLayer = "trees" });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+
+            var host = Assert.IsType<ChoiceRow>(RowByLabel(scene.Inspector, "HostLayer"));
+            Assert.Equal("trees", host.Selected);   // the chooser reflects the live host, drawn from the scatter set
+        }
+
+        // The first PropertyRow with the given label (any row type), or a failing assert.
+        static PropertyRow RowByLabel(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row.Label.Resolve() == label) return row;
+            Assert.Fail($"no row labeled '{label}' (rows: {grid.Rows.Count})");
+            return null!;   // unreachable
+        }
     }
 }

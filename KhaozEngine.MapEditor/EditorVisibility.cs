@@ -60,6 +60,23 @@ public sealed class EditorVisibility
         _layers[name] = visible;
     }
 
+    /// <summary>Moves the visibility override for a renamed scatter layer from <paramref name="from"/> to
+    /// <paramref name="to"/>, so a hidden layer stays hidden across a rename (the layer keys visibility by name).
+    /// A no-op when the layer had no explicit override (it defaulted to visible under either name, so nothing to
+    /// carry) or when the names match. The editor calls this alongside a <see cref="RenameScatterLayerCommand"/>
+    /// so the Layers visibility panel and the streamed-world filter both follow the rename. Undo/redo of the
+    /// rename does NOT re-follow the override (the same v1 residual as the reorder-hide remap), since visibility
+    /// is view-only and never part of the reversible document.</summary>
+    public void RenameLayer(string from, string to)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+        if (string.Equals(from, to, StringComparison.Ordinal)) return;
+        if (!_layers.TryGetValue(from, out bool visible)) return;
+        _layers.Remove(from);
+        _layers[to] = visible;
+    }
+
     /// <summary>Whether the individual element (<paramref name="kind"/>, <paramref name="id"/>) is hidden,
     /// independent of its group. The key is the pair, so the same id under two kinds is two distinct elements.</summary>
     public bool IsElementHidden(SelectionKind kind, string id) => _hidden.Contains((kind, id ?? ""));

@@ -28,6 +28,14 @@ public enum SelectionKind
     /// Outline-only: bands have no viewport geometry, so they are never picked or gizmo-dragged and carry no
     /// visibility toggle. Index-keyed like <see cref="Feature"/> and <see cref="Exclusion"/>.</summary>
     BiomeBand,
+    /// <summary>A named procedural scatter layer, keyed by its unique name. Outline-only: scatter layers have no
+    /// viewport geometry, so they are never picked or gizmo-dragged. Name-keyed (not index-keyed) because layer
+    /// names are already unique-required by the validator, so a rename re-points the selection to the new name
+    /// (the region-rename precedent) rather than the selection being tied to a shifting list index.</summary>
+    ScatterLayer,
+    /// <summary>A named companion layer (props ringing a scatter layer's hosts), keyed by its unique name.
+    /// Outline-only and name-keyed for the same reasons as <see cref="ScatterLayer"/>.</summary>
+    CompanionLayer,
 }
 
 /// <summary>What is selected in the editor, by kind plus stable id (placement id, spawn id, feature index

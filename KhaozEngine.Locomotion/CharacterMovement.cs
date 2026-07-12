@@ -241,7 +241,7 @@ public static class CharacterMovement
         }
         else
         {
-            pos = SweptMove(world, capsule, start, target, t, s.Grounded, restHold, out steppedUp, out steppedFloorY);
+            pos = SweptMove(world, capsule, start, target, t, s.Grounded, restHold, groundHeight, out steppedUp, out steppedFloorY);
 
             // Settle pass: residual-overlap depenetration (rarely fires now; the swept move starts known-outside).
             const int ResolveIterations = 6;
@@ -850,8 +850,25 @@ public static class CharacterMovement
     // beyond it the slide must not cancel gravity. > StepHeight + SkinWidth (a step you could mount still counts as
     // supported) and < body height (so it is a feet-local probe, not a whole-body one).
     private const float FloorProbeReach = 0.5f;
-    // Contact counts as a wall/riser (step-up candidate) rather than a floor/ceiling when |normal.Y| is small.
+    // Step-up eligibility floor: a contact whose normal.Y is BELOW -StepUpNormalY points sharply DOWN (a ceiling /
+    // overhang / eave) and is never a step - reject it so pressing up into one spends no probe sweeps. The UPPER
+    // bound is the walkable slope gate, not a constant: a contact is only a step-up candidate once it has already
+    // failed the walkable test (a walkable normal is SUPPORT, handled above, not a face). The old symmetric
+    // |normal.Y| < 0.5 precheck was too tight on the top edge: a SHORT riser / tread LIP grazed by the capsule's
+    // bottom cap reports an up-TILTED normal (measured normal.Y ~0.5-0.75 at effective risers <= ~0.18 m), which the
+    // 0.5 cap rejected outright, so a real mountable lip on uneven ground never even attempted a step-up. TryStepUp's
+    // own up/forward/down sweeps are the real gate (a true wall finds no ledge within StepHeight and falls through to
+    // the slide), so widening the precheck to "not walkable, not a ceiling" only lets genuine lips through.
     private const float StepUpNormalY = 0.5f;
+    // Flat-tread gate for a LIP-band step-up (a contact normal in [StepUpNormalY, cosMaxSlope), the widened band). Such
+    // a step-up is committed ONLY when it lands on a near-FLAT surface (ledge normal.Y at or above this), i.e. a real
+    // stair tread / curb / doorstep top. A CONVEX prop flank (dome, boulder, rounded rock) whose flank normal happens
+    // to fall in the lip band also passes TryStepUp's own walkable-ledge test - its rounded top is walkable - so the
+    // capsule used to climb the prop from its base (the Capsule_BlockedAtDomeBase invariant). A sphere/curve never
+    // presents a dead-flat landing under the footprint (its landing normal tilts, ~0.85 on the dome), while a real
+    // step's tread is ~1.0, so this cleanly separates a mountable step from a prop flank. Only gates the WIDENED band;
+    // the classic near-vertical (|n.Y| < StepUpNormalY) step-up is unchanged (a tread of any walkable slope mounts).
+    private const float LipLandingFlatNormalY = 0.9f;
     // Tangent co-pace grade floor (step 4b): the steepest stair grade (rise/run) paced to the EXACT surface tangent.
     // On a steeper stair the co-paced horizontal advances a touch faster than the surface rises - a bounded, sub-tread
     // lead the depenetrate/support pass absorbs - which is the safe side; under-advancing would float the capsule off
@@ -870,7 +887,7 @@ public static class CharacterMovement
     /// fast jump never crosses a face. Deterministic (Bepu Sweep is deterministic single-threaded; the substep
     /// count is a deterministic length).</summary>
     private static Vector3 SweptMove(IPhysicsWorld world, CapsuleShape capsule, Vector3 start, Vector3 target,
-        in MoveTuning t, bool grounded, bool restHold, out bool steppedUp, out float steppedFloorY)
+        in MoveTuning t, bool grounded, bool restHold, Func<float, float, float> groundHeight, out bool steppedUp, out float steppedFloorY)
     {
         steppedUp = false; steppedFloorY = 0f;
         Vector3 full = target - start;
@@ -885,7 +902,7 @@ public static class CharacterMovement
         Vector3 pos = start;
         for (int i = 0; i < substeps; i++)
         {
-            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded, restHold, out bool stepped, out float floorY);
+            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded, restHold, groundHeight, out bool stepped, out float floorY);
             if (stepped) { steppedUp = true; steppedFloorY = floorY; }
         }
         return pos;
@@ -897,7 +914,7 @@ public static class CharacterMovement
     /// steps up over a low ledge or projects the remainder onto the contact plane (slide), iterating to resolve
     /// inner corners.</summary>
     private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 delta,
-        in MoveTuning t, bool grounded, bool restHold, out bool steppedUp, out float steppedFloorY)
+        in MoveTuning t, bool grounded, bool restHold, Func<float, float, float> groundHeight, out bool steppedUp, out float steppedFloorY)
     {
         steppedUp = false; steppedFloorY = 0f;
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
@@ -966,6 +983,9 @@ public static class CharacterMovement
                 if (TryContactNormal(world, capsule, pos, dir, out Vector3 recovered))
                 {
                     if (recovered.Y >= cosMaxSlope) { Vector3 h = remaining; h.Y = 0f; pos += h; break; }  // walkable floor: pass horizontal
+                    // No step-up attempt here: TryStepUp from this flush-tangent start was tried and proven unable to
+                    // seat (its sweeps fail from tangent), so a mountable lip routes via the main-path step-up on the
+                    // re-approach tick after this step-off.
                     pos += recovered * SkinWidth;                          // step off the wall so the next sweep is clean
                     Vector3 horiz = new(remaining.X, 0f, remaining.Z);     // slide the horizontal along the wall's HORIZONTAL plane,
                     Vector3 nH = new(recovered.X, 0f, recovered.Z);        // then RE-SWEEP it (continue) so a perpendicular wall (corner) still blocks
@@ -987,10 +1007,14 @@ public static class CharacterMovement
                 break;
             }
 
-            // Step-up: only while grounded, only over a near-vertical contact (a riser/wall), only on the
-            // horizontal remainder. Climbs a stair tread; a real wall has no ledge within StepHeight so it slides.
-            if (grounded && MathF.Abs(n.Y) < StepUpNormalY &&
-                TryStepUp(world, capsule, pos, remaining, n, t, out Vector3 stepped))
+            // Step-up: only while grounded, over an eligible NON-walkable contact (a wall / riser / up-tilted tread
+            // lip), on the horizontal remainder. A near-vertical riser is eligible anywhere; an up-tilted LIP - which
+            // the old |n.Y| < 0.5 cap wrongly rejected on very short risers - is eligible near the terrain floor (see
+            // StepUpEligible). TryStepUp self-validates via its up/forward/down sweeps, so a real wall finds no ledge
+            // within StepHeight and slides. Climbs a stair tread / curb / doorstep lip.
+            if (grounded && StepUpEligible(n.Y, pos, t, cosMaxSlope, groundHeight) &&
+                TryStepUp(world, capsule, pos, remaining, n, t, groundHeight, out Vector3 stepped, out float landedNy) &&
+                LipLandingOk(n.Y, landedNy))
             {
                 steppedUp = true; steppedFloorY = stepped.Y;
                 pos = stepped;
@@ -1211,6 +1235,14 @@ public static class CharacterMovement
     // RecoverSweepRadii * radius (> 2x the contact distance) to be registered reliably.
     private const float RecoverBackRadii  = 1f;
     private const float RecoverSweepRadii = 3f;
+    // Step-up down-sweep range, as a multiple of StepHeight (sibling to RecoverSweepRadii, same Bepu half-range
+    // rationale). TryStepUp raises the pose a full StepHeight then sweeps back DOWN to settle onto the ledge, so a
+    // SHORT step's tread sits up to StepHeight below - right at HALF of a bare StepHeight range, the far portion where
+    // Bepu's triangle-mesh sweep under-reports a hit (only solid convex risers, whose sweeps report reliably, mounted;
+    // the identical one-sided mesh tread was silently dropped). Doubling the range puts every in-band ledge in the near
+    // half so the mesh tread registers; the strictly-higher-than-pos.Y guard still rejects any step-DOWN the longer
+    // reach can now touch, so the ACCEPTED band is unchanged [pos.Y, pos.Y + StepHeight] - only Bepu's reliability improves.
+    private const float StepDownSweepRangeSteps = 2f;
 
     /// <summary>Recover the contact normal Bepu withholds when a capsule sweep starts TANGENT to a one-sided mesh
     /// (it reports t=0 with a zero normal, leaving no slide plane). The capsule is pulled back along
@@ -1235,14 +1267,53 @@ public static class CharacterMovement
         return false;
     }
 
+    /// <summary>Whether a NON-walkable contact normal (the walkable case is handled before this is consulted) is a
+    /// step-up candidate worth probing. A sharply-DOWN ceiling/overhang normal (<c>n.Y &lt;= -<see cref="StepUpNormalY"/></c>)
+    /// or a walkable one (<c>n.Y &gt;= cosMaxSlope</c>) is never a step. A NEAR-VERTICAL riser/wall
+    /// (<c>|n.Y| &lt; StepUpNormalY</c>) is a candidate ANYWHERE - the unchanged classic gate. An UP-TILTED tread LIP
+    /// (<c>n.Y</c> in <c>[StepUpNormalY, cosMaxSlope)</c>), which a capsule's rounded bottom cap grazes on a short
+    /// riser and which the old <c>|n.Y| &lt; 0.5</c> cap rejected outright, is a candidate only when the capsule sits
+    /// within a <see cref="MoveTuning.StepHeight"/> of the analytic terrain floor: a short step / curb / doorstep
+    /// mounted from ~ground level, the fragile case the widening targets. Well above the terrain (mid-climb on a tall
+    /// stair stack) the capsule already mounts via the near-vertical contacts, so firing the extra up-tilted step-ups
+    /// there is redundant and only presses a fast run deeper into the risers (the StairRunTangentPacing penetration
+    /// pin). KNOWN LIMITATION: the up-tilted-lip near-floor gate keys off the ANALYTIC terrain height only, so a short
+    /// lip sitting on TOP of a prop platform more than a StepHeight above terrain fails the gate and still dead-stalls
+    /// (pre-existing behaviour - narrowed by this widening, not regressed; the near-vertical band above is unaffected).
+    /// The proper fix is to gate on elevation above the current SUPPORT floor including props, tracked in docs/ROADMAP.md.
+    /// <paramref name="cosMaxSlope"/> is the walkable slope gate; <paramref name="groundHeight"/> the analytic
+    /// terrain sampler.</summary>
+    private static bool StepUpEligible(float ny, in Vector3 pos, in MoveTuning t, float cosMaxSlope,
+        Func<float, float, float> groundHeight)
+    {
+        if (ny <= -StepUpNormalY || ny >= cosMaxSlope) return false;   // a ceiling/overhang, or walkable support: never a step
+        if (ny < StepUpNormalY) return true;                           // a near-vertical riser/wall: a candidate anywhere
+        float terrainCentreY = groundHeight(pos.X, pos.Z) + t.CapsuleHalfHeight;
+        return pos.Y <= terrainCentreY + t.StepHeight + SkinWidth;     // an up-tilted lip: only near the terrain floor
+    }
+
+    /// <summary>Gate a step-up that PASSED <see cref="TryStepUp"/> by the surface it landed on. A near-vertical
+    /// contact (<paramref name="contactNy"/> below <see cref="StepUpNormalY"/> - the classic band) is always accepted:
+    /// its behaviour is unchanged. An UP-TILTED lip-band contact (the widened band) is accepted only when it settles
+    /// on a near-FLAT tread (<paramref name="landedNy"/> at or above <see cref="LipLandingFlatNormalY"/>) - a real
+    /// stair/curb/doorstep top. This is what keeps the widened band from riding up a CONVEX prop flank (dome, rounded
+    /// rock): the prop's rounded top is walkable enough to pass TryStepUp, but the landing under the footprint is
+    /// tilted, not flat, so the capsule is left to slide/block at the base (the Capsule_BlockedAtDomeBase invariant)
+    /// instead of climbing it.</summary>
+    private static bool LipLandingOk(float contactNy, float landedNy)
+        => contactNy < StepUpNormalY || landedNy >= LipLandingFlatNormalY;
+
     /// <summary>Classic up/forward/down step probe over the horizontal remainder: sweep up by
     /// <see cref="MoveTuning.StepHeight"/> (headroom), sweep forward, sweep down; accept only if it lands on a
     /// walkable-slope ledge strictly higher than the start (a stair tread/curb). A vertical wall has no such ledge
-    /// within StepHeight, so this returns false and the caller slides. Returns the stepped capsule centre.</summary>
+    /// within StepHeight, so this returns false and the caller slides. Returns the stepped capsule centre and, in
+    /// <paramref name="landedNormalY"/>, the up-component of the ledge surface it settled on (1 = a dead-flat tread;
+    /// lower = a slope), so the caller can insist a lip-band step-up land on a genuine flat tread and not ride a
+    /// convex prop flank.</summary>
     private static bool TryStepUp(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 remaining,
-        in Vector3 contactNormal, in MoveTuning t, out Vector3 stepped)
+        in Vector3 contactNormal, in MoveTuning t, Func<float, float, float> groundHeight, out Vector3 stepped, out float landedNormalY)
     {
-        stepped = pos;
+        stepped = pos; landedNormalY = 0f;
         Vector3 horiz = new(remaining.X, 0f, remaining.Z);
         float horizLen = horiz.Length();
         if (horizLen <= 1e-6f) return false;
@@ -1280,14 +1351,50 @@ public static class CharacterMovement
         float advanced = Vector3.Distance(new Vector3(fwd.X, 0f, fwd.Z), new Vector3(pos.X, 0f, pos.Z));
         if (advanced <= 1e-4f) return false;
 
-        // 3. Down by StepHeight to settle onto the ledge; must be walkable slope and strictly higher than pos.
-        if (!world.SweepCapsule(capsule, Pose.At(fwd), -Vector3.UnitY, step + SkinWidth, out SweepHit downHit))
-            return false;
-        if (downHit.Normal.Y < MathF.Cos(t.MaxSlopeRadians)) return false;   // too steep to stand on
-        Vector3 landed = fwd; landed.Y -= MathF.Max(0f, downHit.Distance - SkinWidth);
-        if (landed.Y <= pos.Y + 1e-4f) return false;                        // did not actually rise
-        stepped = landed;
-        return true;
+        // 3. Down to settle onto the ledge; must be a walkable slope strictly higher than pos. The down-sweep RANGE is
+        // StepDownSweepRangeSteps * StepHeight (2x, not 1x) to work around Bepu's mesh-sweep far-half under-report - see
+        // that const for the full rationale (a one-sided mesh tread sits in the far half of a bare StepHeight range).
+        float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
+        float downRange = StepDownSweepRangeSteps * step + SkinWidth;
+        if (world.SweepCapsule(capsule, Pose.At(fwd), -Vector3.UnitY, downRange, out SweepHit downHit) &&
+            downHit.Normal.Y >= cosMaxSlope)                                 // a walkable ledge the full-radius sweep found
+        {
+            Vector3 landed = fwd; landed.Y -= MathF.Max(0f, downHit.Distance - SkinWidth);
+            if (landed.Y > pos.Y + 1e-4f)                                    // and strictly higher than the start
+            {
+                stepped = landed;
+                landedNormalY = downHit.Normal.Y;
+                return true;
+            }
+        }
+
+        // Shallow-tread fallback (near-vertical risers, at the terrain-floor handoff only). When the tread is shallower
+        // than the capsule diameter, the footprint STRADDLES it and the full-radius down-sweep above grazes the tread's
+        // FRONT edge, returning a steep, rejected normal - so the mount is refused even though a flat tread is right
+        // there (the first riser of a placed staircase on rolling terrain, whose effective riser rolls short across the
+        // width: the consumer corner-stall). This is the same straddling-footprint miss the SUPPORT probe solves with a
+        // radius-less ray fan; do the same here. Read the tread top with WalkableTreadUnderFeet cast at the FORWARD XZ
+        // from the ORIGINAL feet level (so the step band [feet, feet+StepHeight] spans the tread), and mount onto it.
+        // Two guards keep it tight:
+        //   - NEAR-VERTICAL contact only (|n.Y| < StepUpNormalY): the up-tilted LIP band is left to the sweep +
+        //     flat-landing gate, which is what keeps a convex prop flank (whose rounded top a ray fan reads as a tread)
+        //     from being climbed from its base; and
+        //   - near the TERRAIN FLOOR only (the base handoff). Once elevated on a step RUN the support probe's own
+        //     tread-find (step 4) already carries the climb, so firing this too would double-seat a fast run FORWARD
+        //     into the risers (a deep-penetration steep-run regression). At the base the capsule sits at terrain level
+        //     and the support probe is gated off (not yet on a step), so this is the only path that starts the mount.
+        // A true wall has no tread in the band, so the fan finds nothing and the caller slides.
+        float terrainCentreY = groundHeight(pos.X, pos.Z) + t.CapsuleHalfHeight;
+        bool nearFloor = pos.Y <= terrainCentreY + step + SkinWidth;
+        if (MathF.Abs(contactNormal.Y) < StepUpNormalY && nearFloor &&
+            WalkableTreadUnderFeet(world, capsule, new Vector3(fwd.X, pos.Y, fwd.Z), t, out float treadCentreY) &&
+            treadCentreY > pos.Y + 1e-4f && treadCentreY <= pos.Y + step + SkinWidth)
+        {
+            stepped = new Vector3(fwd.X, treadCentreY, fwd.Z);
+            landedNormalY = 1f;   // the ray fan accepts only a walkable tread; the near-vertical band skips the flat-landing gate
+            return true;
+        }
+        return false;
     }
 
     // Desired world XZ position after applying the resolved horizontal move (unit direction + speed fraction) and the

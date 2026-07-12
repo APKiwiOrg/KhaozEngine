@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.71.1** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.71.2** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -32,6 +32,13 @@ one-sided riser, orthogonal to the vertical-support tread-find fix (which correc
 forward push), so that fix neither covers nor regresses it. No shipped consumer geometry hits this - the
 consumers' stairs are convex boxes, which the tread-find fix fully covers - so it is recorded here rather than
 patched. Documented in the `ConsumerStairBaseMountTests` header.
+
+Gate the up-tilted-lip step-up on elevation above the current SUPPORT floor (props included), not analytic
+terrain alone. The lip step-up widened in the short-riser/tread-lip fix keys its near-floor gate off the
+analytic terrain height only (`StepUpEligible`), so a short lip sitting on TOP of a prop platform more than a
+StepHeight above terrain still fails the gate and dead-stalls. Pre-existing behaviour, narrowed by the widening
+rather than regressed (the near-vertical band is unaffected), but the proper fix is to track the capsule's
+current support height including props and gate against that. Documented in the `StepUpEligible` doc comment.
 
 ### 2. Visual fidelity (textures + materials)
 

@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
-using Comps = System.Collections.Generic.Dictionary<ushort, byte[]>;
-using AoiBaseline = System.Collections.Generic.Dictionary<long, System.Collections.Generic.Dictionary<ushort, byte[]>>;
+using Comps = KhaozEngine.Replication.CapturedComponents;
+using AoiBaseline = System.Collections.Generic.Dictionary<long, KhaozEngine.Replication.CapturedComponents>;
 
 namespace KhaozEngine.Replication;
 
@@ -50,6 +50,15 @@ public sealed class AoiDeltaReplicator
     private readonly Dictionary<World, AoiBaseline> captureByWorld = new();
     private int captureSeq;
 
+    // Single-threaded per instance (one server tick thread): the capture scratch consolidates each world capture into
+    // one buffer, and the wire scratch (stream + reused changed/removed lists) builds each client's delta without a
+    // per-call allocation beyond the returned wire array and the retained projection. No locking.
+    private readonly CaptureScratch captureScratch = new();
+    private readonly MemoryStream wireStream = new();
+    private readonly BinaryWriter wireWriter;
+    private readonly List<long> scratchRemoved = new();
+    private readonly List<long> scratchChanged = new();
+
     // Test seam: how many world scans the shared capture has actually run (one per distinct world per tick). A tick
     // that serves C clients from one world scans once, not C times - what this whole change buys.
     internal long WorldScanCount { get; private set; }
@@ -59,6 +68,7 @@ public sealed class AoiDeltaReplicator
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         if (historyDepth <= 0) throw new ArgumentOutOfRangeException(nameof(historyDepth), historyDepth, "must be positive");
         this.historyDepth = historyDepth;
+        wireWriter = new BinaryWriter(wireStream);
         // Whether any registered component is owner-scoped. If none is, every client projects to the exact same
         // Replicate-channel state, so WriteFor can reference the shared capture's component dictionaries directly
         // (they are immutable once captured) instead of building a filtered per-client copy - byte-identical, fewer
@@ -109,28 +119,29 @@ public sealed class AoiDeltaReplicator
         AoiBaseline? baseline = ackedBaselineBySlot.GetValueOrDefault(slot);
         int baselineSeq = baseline is null ? -1 : ackedSeqBySlot[slot];
 
-        using var ms = new MemoryStream();
-        using var bw = new BinaryWriter(ms);
+        wireStream.SetLength(0); // reset the reused wire scratch, keep its capacity
+        BinaryWriter bw = wireWriter;
         bw.Write(baselineSeq);
         bw.Write(currentSeq);
 
         // Removed: the client knew it (baseline) but it is gone from the interest set (left AoI or despawned).
-        var removed = new List<long>();
+        // Reused scratch lists, cleared per call.
+        scratchRemoved.Clear();
         if (baseline is not null)
             foreach (long netId in baseline.Keys)
-                if (!projected.ContainsKey(netId)) removed.Add(netId);
-        bw.Write(removed.Count);
-        foreach (long netId in removed) bw.Write(netId);
+                if (!projected.ContainsKey(netId)) scratchRemoved.Add(netId);
+        bw.Write(scratchRemoved.Count);
+        foreach (long netId in scratchRemoved) bw.Write(netId);
 
         // New (entered) or changed (stayed + component delta).
-        var changed = new List<long>();
+        scratchChanged.Clear();
         foreach (long netId in projected.Keys)
         {
-            if (baseline is null || !baseline.ContainsKey(netId)) { changed.Add(netId); continue; }
-            if (DeltaEncoding.EntityChanged(baseline[netId], projected[netId])) changed.Add(netId);
+            if (baseline is null || !baseline.ContainsKey(netId)) { scratchChanged.Add(netId); continue; }
+            if (DeltaEncoding.EntityChanged(baseline[netId], projected[netId])) scratchChanged.Add(netId);
         }
-        bw.Write(changed.Count);
-        foreach (long netId in changed)
+        bw.Write(scratchChanged.Count);
+        foreach (long netId in scratchChanged)
         {
             bool isNew = baseline is null || !baseline.ContainsKey(netId);
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);
@@ -138,7 +149,7 @@ public sealed class AoiDeltaReplicator
 
         bw.Flush();
         RecordPending(slot, currentSeq, projected);
-        return ms.ToArray();
+        return wireStream.ToArray(); // fresh exact-size array, the caller owns it
     }
 
     /// <summary>
@@ -157,20 +168,10 @@ public sealed class AoiDeltaReplicator
         }
         if (captureByWorld.TryGetValue(world, out AoiBaseline? cached)) return cached;
 
-        var state = new AoiBaseline();
-        world.ForEach<NetId>((Entity e, ref NetId id) =>
-        {
-            var comps = new Comps();
-            foreach (ComponentCodec codec in registry.Ordered)
-            {
-                // Client-serving path: only Replicate-channel components ever reach a client. Owner-only components
-                // carry Replicate, so they are captured here and stripped per non-owning client in Project.
-                if ((codec.Channels & ReplicationChannels.Replicate) == 0) continue;
-                byte[]? data = codec.CaptureData(world, e);
-                if (data is not null) comps[codec.TypeId] = data;
-            }
-            state[id.Value] = comps;
-        });
+        // One shared buffer per world capture, only Replicate-channel components (owner-only included, scoped per
+        // client in Project) are captured. The capture is referenced by per-client baselines for up to historyDepth
+        // ticks, so its buffer must live that long - the CaptureScratch never pools it back while it is reachable.
+        AoiBaseline state = captureScratch.CaptureReplicate(world, registry);
         captureByWorld[world] = state;
         WorldScanCount++;
         return state;
@@ -182,7 +183,7 @@ public sealed class AoiDeltaReplicator
     /// <see cref="ReplicationChannels.OwnerOnly"/> component only when its net id equals <paramref name="ownerNetId"/>).
     /// Entities are visited in the capture's insertion order (the world <c>ForEach</c> order) so the resulting
     /// baseline - and thus the changed-entity order on the wire - matches the pre-share per-client capture exactly.
-    /// When no registered component is owner-scoped, each in-AoI entity's captured component dictionary is referenced
+    /// When no registered component is owner-scoped, each in-AoI entity's captured component set is referenced
     /// directly (it is immutable and identical for every client), avoiding a per-client copy.
     /// </summary>
     private AoiBaseline Project(AoiBaseline capture, IReadOnlySet<long> interestSet, long? ownerNetId)
@@ -197,12 +198,7 @@ public sealed class AoiDeltaReplicator
                 projected[netId] = entity.Value;   // shared, immutable: no owner scoping to apply, so no copy needed
                 continue;
             }
-            var comps = new Comps(entity.Value.Count);
-            foreach (KeyValuePair<ushort, byte[]> comp in entity.Value)
-                if (registry.TryGet(comp.Key, out ComponentCodec codec)
-                    && codec.ShouldWrite(ReplicationChannels.Replicate, netId, ownerNetId))
-                    comps[comp.Key] = comp.Value;
-            projected[netId] = comps;
+            projected[netId] = CaptureProjection.OwnerScope(entity.Value, registry, netId, ownerNetId);
         }
         return projected;
     }

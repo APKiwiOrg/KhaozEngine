@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using KhaozEngine.Ecs;
-using CapturedState = System.Collections.Generic.Dictionary<long, System.Collections.Generic.Dictionary<ushort, byte[]>>;
+using CapturedState = System.Collections.Generic.Dictionary<long, KhaozEngine.Replication.CapturedComponents>;
 
 namespace KhaozEngine.Replication;
 
@@ -47,11 +47,22 @@ public sealed class ServerReplicator
     private readonly Queue<int> seqOrder = new();
     private int currentSeq;
 
+    // Single-threaded per instance (one server tick thread): the capture scratch and the wire scratch below are reused
+    // across ticks and clients with no locking. The capture scratch consolidates each snapshot into one buffer. The
+    // wire scratch (stream + reused changed/removed lists) builds each client's delta without a per-call allocation
+    // beyond the returned wire array.
+    private readonly CaptureScratch captureScratch = new();
+    private readonly MemoryStream wireStream = new();
+    private readonly BinaryWriter wireWriter;
+    private readonly List<long> scratchRemoved = new();
+    private readonly List<long> scratchChanged = new();
+
     public ServerReplicator(ReplicationRegistry registry, int historyDepth = 32)
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         if (historyDepth <= 0) throw new ArgumentOutOfRangeException(nameof(historyDepth), historyDepth, "must be positive");
         this.historyDepth = historyDepth;
+        wireWriter = new BinaryWriter(wireStream);
         // Whether any registered component is owner-scoped. If none is, the shared capture is already the same for
         // every client, so WriteFor can skip per-client projection entirely and stay allocation-free + byte-identical.
         foreach (ComponentCodec codec in registry.Ordered)
@@ -69,20 +80,10 @@ public sealed class ServerReplicator
     /// </summary>
     public int Capture(World world)
     {
-        var state = new CapturedState();
-        world.ForEach<NetId>((Entity e, ref NetId id) =>
-        {
-            var comps = new Dictionary<ushort, byte[]>();
-            foreach (ComponentCodec codec in registry.Ordered)
-            {
-                // Client-serving path: only Replicate-channel components ever go on the wire. Owner-only components
-                // are captured here too (they carry Replicate) and stripped per non-owning client in WriteFor.
-                if ((codec.Channels & ReplicationChannels.Replicate) == 0) continue;
-                byte[]? data = codec.CaptureData(world, e);
-                if (data is not null) comps[codec.TypeId] = data;
-            }
-            state[id.Value] = comps;
-        });
+        // One shared buffer for the whole snapshot, owner-only components are captured here (they carry Replicate) and
+        // stripped per non-owning client in WriteFor. The capture stays in history for historyDepth ticks, so its
+        // buffer must live that long - the CaptureScratch never returns it to a pool while it is reachable.
+        CapturedState state = captureScratch.CaptureReplicate(world, registry);
 
         currentSeq++;
         history[currentSeq] = state;
@@ -119,35 +120,35 @@ public sealed class ServerReplicator
         CapturedState current = Project(history[currentSeq], ownerNetId);
         CapturedState? baseline = rawBaseline is null ? null : Project(rawBaseline, ownerNetId);
 
-        using var ms = new MemoryStream();
-        using var bw = new BinaryWriter(ms);
+        wireStream.SetLength(0); // reset the reused wire scratch, keep its capacity
+        BinaryWriter bw = wireWriter;
         bw.Write(baselineSeq);
         bw.Write(currentSeq);
 
-        // Removed entities: present in the baseline, gone from current.
-        var removed = new List<long>();
+        // Removed entities: present in the baseline, gone from current. Reused scratch lists, cleared per call.
+        scratchRemoved.Clear();
         if (baseline is not null)
             foreach (long netId in baseline.Keys)
-                if (!current.ContainsKey(netId)) removed.Add(netId);
-        bw.Write(removed.Count);
-        foreach (long netId in removed) bw.Write(netId);
+                if (!current.ContainsKey(netId)) scratchRemoved.Add(netId);
+        bw.Write(scratchRemoved.Count);
+        foreach (long netId in scratchRemoved) bw.Write(netId);
 
         // New or changed entities.
-        var changed = new List<long>();
+        scratchChanged.Clear();
         foreach (long netId in current.Keys)
         {
-            if (baseline is null || !baseline.ContainsKey(netId)) { changed.Add(netId); continue; }
-            if (DeltaEncoding.EntityChanged(baseline[netId], current[netId])) changed.Add(netId);
+            if (baseline is null || !baseline.ContainsKey(netId)) { scratchChanged.Add(netId); continue; }
+            if (DeltaEncoding.EntityChanged(baseline[netId], current[netId])) scratchChanged.Add(netId);
         }
-        bw.Write(changed.Count);
-        foreach (long netId in changed)
+        bw.Write(scratchChanged.Count);
+        foreach (long netId in scratchChanged)
         {
             bool isNew = baseline is null || !baseline.ContainsKey(netId);
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], current[netId]);
         }
 
         bw.Flush();
-        return ms.ToArray();
+        return wireStream.ToArray(); // fresh exact-size array, the caller owns it
     }
 
     /// <summary>
@@ -163,16 +164,8 @@ public sealed class ServerReplicator
         if (!hasOwnerScopedCodec) return raw; // nothing owner-scoped: the shared capture is already per-client-correct
 
         var projected = new CapturedState(raw.Count);
-        foreach (KeyValuePair<long, Dictionary<ushort, byte[]>> entity in raw)
-        {
-            long netId = entity.Key;
-            var comps = new Dictionary<ushort, byte[]>(entity.Value.Count);
-            foreach (KeyValuePair<ushort, byte[]> comp in entity.Value)
-                if (registry.TryGet(comp.Key, out ComponentCodec codec)
-                    && codec.ShouldWrite(ReplicationChannels.Replicate, netId, ownerNetId))
-                    comps[comp.Key] = comp.Value;
-            projected[netId] = comps;
-        }
+        foreach (KeyValuePair<long, CapturedComponents> entity in raw)
+            projected[entity.Key] = CaptureProjection.OwnerScope(entity.Value, registry, entity.Key, ownerNetId);
         return projected;
     }
 }

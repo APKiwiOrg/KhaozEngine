@@ -135,7 +135,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);
@@ -149,7 +149,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);
@@ -163,7 +163,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);
@@ -178,7 +178,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);

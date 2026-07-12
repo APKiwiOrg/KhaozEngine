@@ -15,6 +15,8 @@ file struct Counter : IComponent { public int N; }
 /// <item>the non-buffered and buffered parallel passes allocate nothing per call in steady state (the per-arity
 /// chunk context and its Body delegate are cached on the pooled Query, the buffers and sink list are pooled),</item>
 /// <item>the World EntityCommandBuffer pool reuses buffers across buffered calls,</item>
+/// <item>the public caller-supplied-sink Query overload is pool-neutral (fresh caller-owned buffers, so
+/// external use cannot drain the World pool),</item>
 /// <item>a buffered pass whose action throws drops its dirty buffers instead of returning them to the pool, and</item>
 /// <item>repeated buffered passes that reuse the pool stay bit-for-bit equal to the sequential reference.</item>
 /// </list>
@@ -109,6 +111,25 @@ public class ParallelForEachPoolingTests
 
         w.ParallelForEach(noop, sched);
         Assert.Equal(afterFirst, w._ecbPool.Count);   // an identical pass rented every buffer from the pool, allocated none
+    }
+
+    [Fact]
+    public void PublicSinkOverload_IsPoolNeutral()
+    {
+        var w = BuildCounterWorld(64);
+        var sched = new SingleThreadedJobScheduler();
+
+        // Warm the World pool via the World overload so there are pooled buffers to (wrongly) drain.
+        w.ParallelForEach<Counter>((Entity _, ref Counter _, EntityCommandBuffer _) => { }, sched);
+        int pooled = w._ecbPool.Count;
+        Assert.True(pooled > 0);
+
+        // The public caller-supplied-sink overload hands out fresh caller-owned buffers: an external caller never
+        // returns them, so drawing them from the pool would silently drain it. The pool count must not move.
+        var sink = new List<EntityCommandBuffer>();
+        w.Query().ParallelForEach<Counter>((Entity _, ref Counter _, EntityCommandBuffer _) => { }, sched, sink);
+        Assert.True(sink.Count > 0);
+        Assert.Equal(pooled, w._ecbPool.Count);
     }
 
     [Fact]

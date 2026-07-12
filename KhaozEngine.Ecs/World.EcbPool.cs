@@ -4,12 +4,14 @@ namespace KhaozEngine.Ecs;
 
 public sealed partial class World
 {
-    // Calling-thread-only pool of EntityCommandBuffers reused across buffered ParallelForEach calls, replacing the
-    // per-call allocation of a fresh EntityCommandBuffer[] plus k new buffers per archetype. Buffered
-    // Query.ParallelForEach rents k buffers per archetype (before scheduler.For, on the calling thread) via RentEcb.
-    // World returns each after its Playback (Playback leaves the buffer clean via its own finally). A plain Stack is
-    // safe because every Rent/Return happens on the calling thread - worker chunks only record into an
-    // already-rented buffer, they never touch the pool. Internal so the pooling tests can observe reuse via Count.
+    // Calling-thread-only pool of EntityCommandBuffers reused across World's buffered ParallelForEach calls,
+    // replacing the per-call allocation of a fresh EntityCommandBuffer[] plus k new buffers per archetype. The
+    // internal Query.ParallelForEachPooled variants rent k buffers per archetype (before scheduler.For, on the
+    // calling thread) via RentEcb, and World returns each after its Playback (Playback leaves the buffer clean via
+    // its own finally). The rent/return lifecycle is closed within World, so the pool cannot drain: the public
+    // Query sink overloads allocate fresh caller-owned buffers and never touch it. A plain Stack is safe because
+    // every Rent/Return happens on the calling thread - worker chunks only record into an already-rented buffer,
+    // they never touch the pool. Internal so the pooling tests can observe reuse via Count.
     internal readonly Stack<EntityCommandBuffer> _ecbPool = new();
 
     // Pool of sink lists so a buffered ParallelForEach that re-enters during playback (a Defer action running

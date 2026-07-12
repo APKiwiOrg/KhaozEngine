@@ -43,14 +43,15 @@ public sealed partial class Query
         return Math.Min(n, Environment.ProcessorCount * 4);
     }
 
-    // Rents k command buffers from the World pool into the reused scratch array (grown on demand). Replaces the old
-    // NewBuffers, which allocated a fresh EntityCommandBuffer[k] plus k new buffers per archetype per call. The
-    // buffers are appended to the sink by the caller and returned to the World pool after playback, so a
-    // steady-state buffered pass allocates nothing here.
-    private EntityCommandBuffer[] RentBuffers(int k)
+    // Fills the reused scratch array (grown on demand) with k command buffers and returns it. Pooled (the internal
+    // World-playback path) rents from the World pool, and World returns each buffer after playback, so a
+    // steady-state pooled pass allocates nothing here. Non-pooled (the public caller-supplied-sink path) allocates
+    // fresh caller-owned buffers exactly like the pre-pooling implementation, so external sink use never drains the
+    // World pool. The array itself is pure scratch: its buffers are copied into the sink each archetype.
+    private EntityCommandBuffer[] GetBuffers(int k, bool pooled)
     {
         if (_ecbScratch.Length < k) _ecbScratch = new EntityCommandBuffer[k];
-        for (int i = 0; i < k; i++) _ecbScratch[i] = _world.RentEcb();
+        for (int i = 0; i < k; i++) _ecbScratch[i] = pooled ? _world.RentEcb() : new EntityCommandBuffer();
         return _ecbScratch;
     }
 
@@ -237,13 +238,28 @@ public sealed partial class Query
         }
     }
 
-    // ---- Buffered variants: each chunk gets its own EntityCommandBuffer (rented from the World pool). The buffers
-    // are appended to `sink` in archetype-then-chunk order so World plays them back in row order after the section =
-    // identical to a sequential ForEach + one ECB. World returns each buffer to the pool after playback. A caller
-    // that supplies its own `sink` (the public overload) and never routes it through World's playback simply leaves
-    // those buffers unpooled - the GC reclaims them, there is no leak. ----
+    // ---- Buffered variants: each chunk gets its own EntityCommandBuffer, appended to `sink` in
+    // archetype-then-chunk order so playing them back in that order = identical to a sequential ForEach + one ECB.
+    // Two buffer sources, split so external callers cannot drain the World pool: the internal Pooled variants
+    // (World's buffered overloads route through them) rent from the World pool and World returns each buffer after
+    // playback, while the public sink overloads allocate fresh caller-owned buffers exactly like the pre-pooling
+    // implementation, keeping them pool-neutral. ----
 
+    /// <summary>Buffered parallel iteration into a caller-supplied sink: each chunk records into its own
+    /// <see cref="EntityCommandBuffer"/>, appended to <paramref name="sink"/> in archetype-then-chunk order.
+    /// The buffers are freshly allocated and caller-owned (never drawn from the World's internal pool, so
+    /// external use cannot drain it). Play them back in sink order for results identical to a sequential
+    /// ForEach recording into one buffer.</summary>
     public void ParallelForEach<T1>(RefBufferAction<T1> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: false);
+
+    // World's buffered overloads route here: buffers come from the World pool and return to it after playback.
+    internal void ParallelForEachPooled<T1>(RefBufferAction<T1> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: true);
+
+    private void ParallelForEachBuffered<T1>(RefBufferAction<T1> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink, bool pooled)
         where T1 : struct, IComponent
     {
         int id1 = _world.Reg.Id<T1>();
@@ -257,13 +273,27 @@ public sealed partial class Query
             ctx.Ents = a.Entities;
             ctx.D1 = ((Column<T1>)a.Columns[id1]).Data;
             ctx.N = n; int k = ChunkCount(n); ctx.K = k;
-            EntityCommandBuffer[] ecbs = RentBuffers(k); ctx.Ecbs = ecbs;
+            EntityCommandBuffer[] ecbs = GetBuffers(k, pooled); ctx.Ecbs = ecbs;
             scheduler.For(k, ctx.Body);
             for (int i = 0; i < k; i++) sink.Add(ecbs[i]);
         }
     }
 
+    /// <summary>Buffered parallel iteration into a caller-supplied sink: each chunk records into its own
+    /// <see cref="EntityCommandBuffer"/>, appended to <paramref name="sink"/> in archetype-then-chunk order.
+    /// The buffers are freshly allocated and caller-owned (never drawn from the World's internal pool, so
+    /// external use cannot drain it). Play them back in sink order for results identical to a sequential
+    /// ForEach recording into one buffer.</summary>
     public void ParallelForEach<T1, T2>(RefBufferAction<T1, T2> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent where T2 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: false);
+
+    // World's buffered overloads route here: buffers come from the World pool and return to it after playback.
+    internal void ParallelForEachPooled<T1, T2>(RefBufferAction<T1, T2> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent where T2 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: true);
+
+    private void ParallelForEachBuffered<T1, T2>(RefBufferAction<T1, T2> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink, bool pooled)
         where T1 : struct, IComponent where T2 : struct, IComponent
     {
         int id1 = _world.Reg.Id<T1>(), id2 = _world.Reg.Id<T2>();
@@ -278,13 +308,27 @@ public sealed partial class Query
             ctx.D1 = ((Column<T1>)a.Columns[id1]).Data;
             ctx.D2 = ((Column<T2>)a.Columns[id2]).Data;
             ctx.N = n; int k = ChunkCount(n); ctx.K = k;
-            EntityCommandBuffer[] ecbs = RentBuffers(k); ctx.Ecbs = ecbs;
+            EntityCommandBuffer[] ecbs = GetBuffers(k, pooled); ctx.Ecbs = ecbs;
             scheduler.For(k, ctx.Body);
             for (int i = 0; i < k; i++) sink.Add(ecbs[i]);
         }
     }
 
+    /// <summary>Buffered parallel iteration into a caller-supplied sink: each chunk records into its own
+    /// <see cref="EntityCommandBuffer"/>, appended to <paramref name="sink"/> in archetype-then-chunk order.
+    /// The buffers are freshly allocated and caller-owned (never drawn from the World's internal pool, so
+    /// external use cannot drain it). Play them back in sink order for results identical to a sequential
+    /// ForEach recording into one buffer.</summary>
     public void ParallelForEach<T1, T2, T3>(RefBufferAction<T1, T2, T3> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: false);
+
+    // World's buffered overloads route here: buffers come from the World pool and return to it after playback.
+    internal void ParallelForEachPooled<T1, T2, T3>(RefBufferAction<T1, T2, T3> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: true);
+
+    private void ParallelForEachBuffered<T1, T2, T3>(RefBufferAction<T1, T2, T3> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink, bool pooled)
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
     {
         int id1 = _world.Reg.Id<T1>(), id2 = _world.Reg.Id<T2>(), id3 = _world.Reg.Id<T3>();
@@ -300,13 +344,29 @@ public sealed partial class Query
             ctx.D2 = ((Column<T2>)a.Columns[id2]).Data;
             ctx.D3 = ((Column<T3>)a.Columns[id3]).Data;
             ctx.N = n; int k = ChunkCount(n); ctx.K = k;
-            EntityCommandBuffer[] ecbs = RentBuffers(k); ctx.Ecbs = ecbs;
+            EntityCommandBuffer[] ecbs = GetBuffers(k, pooled); ctx.Ecbs = ecbs;
             scheduler.For(k, ctx.Body);
             for (int i = 0; i < k; i++) sink.Add(ecbs[i]);
         }
     }
 
+    /// <summary>Buffered parallel iteration into a caller-supplied sink: each chunk records into its own
+    /// <see cref="EntityCommandBuffer"/>, appended to <paramref name="sink"/> in archetype-then-chunk order.
+    /// The buffers are freshly allocated and caller-owned (never drawn from the World's internal pool, so
+    /// external use cannot drain it). Play them back in sink order for results identical to a sequential
+    /// ForEach recording into one buffer.</summary>
     public void ParallelForEach<T1, T2, T3, T4>(RefBufferAction<T1, T2, T3, T4> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
+        where T4 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: false);
+
+    // World's buffered overloads route here: buffers come from the World pool and return to it after playback.
+    internal void ParallelForEachPooled<T1, T2, T3, T4>(RefBufferAction<T1, T2, T3, T4> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink)
+        where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
+        where T4 : struct, IComponent
+        => ParallelForEachBuffered(action, scheduler, sink, pooled: true);
+
+    private void ParallelForEachBuffered<T1, T2, T3, T4>(RefBufferAction<T1, T2, T3, T4> action, IJobScheduler scheduler, List<EntityCommandBuffer> sink, bool pooled)
         where T1 : struct, IComponent where T2 : struct, IComponent where T3 : struct, IComponent
         where T4 : struct, IComponent
     {
@@ -324,7 +384,7 @@ public sealed partial class Query
             ctx.D3 = ((Column<T3>)a.Columns[id3]).Data;
             ctx.D4 = ((Column<T4>)a.Columns[id4]).Data;
             ctx.N = n; int k = ChunkCount(n); ctx.K = k;
-            EntityCommandBuffer[] ecbs = RentBuffers(k); ctx.Ecbs = ecbs;
+            EntityCommandBuffer[] ecbs = GetBuffers(k, pooled); ctx.Ecbs = ecbs;
             scheduler.For(k, ctx.Body);
             for (int i = 0; i < k; i++) sink.Add(ecbs[i]);
         }

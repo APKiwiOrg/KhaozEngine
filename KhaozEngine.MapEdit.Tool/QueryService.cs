@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
@@ -8,8 +9,9 @@ using KhaozEngine.Terrain;
 namespace KhaozEngine.MapEdit;
 
 /// <summary>Read-only world queries over the session's open document: ground sampling, walkability, rect scans
-/// over placements/spawns and a scatter layer preview, and a brute-force flat-area search. Every query reads
-/// through <see cref="MapEditSession.Field()"/> and <see cref="MapEditSession.WithDocument{T}"/>. None mutate.</summary>
+/// over placements/spawns and a scatter layer preview, a brute-force flat-area search, and the full procedural
+/// setup read (<see cref="ProceduralInfo"/>). Every query reads through <see cref="MapEditSession.Field()"/> and
+/// <see cref="MapEditSession.WithDocument{T}"/>. None mutate.</summary>
 public sealed class QueryService(MapEditSession session)
 {
     /// <summary>Ground height, slope, and water depth at a single world point. <c>SlopeDegrees</c> is the angle
@@ -175,4 +177,50 @@ public sealed class QueryService(MapEditSession session)
     }
 
     static float SlopeDegrees(Vector3 normal) => MathF.Acos(Math.Clamp(normal.Y, 0f, 1f)) * 180f / MathF.PI;
+
+    /// <summary>Reads the full procedural setup of the open document: terrain scalars, biome bands (in list
+    /// order, <see cref="BiomeBandInfo.Index"/> is the list position), scatter layers with their rules, and
+    /// companion layers, all at full field fidelity. This is the MCP read counterpart to <c>terrain_edit</c>, the
+    /// biome band triad, and the scatter/companion layer triads: nothing here mutates or samples the terrain
+    /// field, it only reflects the document.</summary>
+    public ProceduralInfo ProceduralInfo()
+    {
+        return session.WithDocument((doc, _) =>
+        {
+            MapTerrain t = doc.Terrain;
+            var terrain = new TerrainInfo(t.Seed, t.WaterLevel, t.BiomeBlend, t.GentleFrequency, t.GentleAmplitude,
+                t.DetailFrequency, t.DetailOctaves);
+
+            var bands = new List<BiomeBandInfo>(t.Biomes.Count);
+            for (int i = 0; i < t.Biomes.Count; i++)
+            {
+                MapBiomeBand b = t.Biomes[i];
+                bands.Add(new BiomeBandInfo(i, b.Start, b.End, b.Biome.ToString(), b.BaseHeight, b.HillAmplitude));
+            }
+
+            ScatterLayerInfo[] scatterLayers = doc.ScatterLayers.Select(l => new ScatterLayerInfo(
+                l.Name, l.Seed, l.CellSize, l.Jitter, l.MaxHeight, l.ScaleMin, l.ScaleMax,
+                l.Rules.Select(r => new ScatterRuleInfo(r.Biome.ToString(), r.Density, FormatKinds(r.Kinds))).ToArray()))
+                .ToArray();
+
+            CompanionLayerInfo[] companionLayers = doc.CompanionLayers.Select(l => new CompanionLayerInfo(
+                l.Name, l.HostLayer, l.Seed, l.HostKinds.ToArray(), FormatKinds(l.Kinds),
+                l.CountMin, l.CountMax, l.RadiusMin, l.RadiusMax, l.ScaleMin, l.ScaleMax, l.MaxHeight))
+                .ToArray();
+
+            return new ProceduralInfo(terrain, bands, scatterLayers, companionLayers);
+        });
+    }
+
+    /// <summary>Formats a scatter kind list as one <c>"id"</c> (weight 1) / <c>"id:weight"</c> (invariant culture)
+    /// entry per kind, the read-side mirror of <see cref="MutationService.ScatterLayerAdd"/>'s and
+    /// <see cref="MutationService.CompanionLayerAdd"/>'s <c>ParseKinds</c> convention, so a caller can round-trip
+    /// a kinds list read from here straight back into a mutation verb's kinds argument.</summary>
+    static List<string> FormatKinds(IReadOnlyList<MapPropKind> kinds)
+    {
+        var result = new List<string>(kinds.Count);
+        foreach (MapPropKind k in kinds)
+            result.Add(k.Weight == 1f ? k.Id : string.Create(CultureInfo.InvariantCulture, $"{k.Id}:{k.Weight}"));
+        return result;
+    }
 }

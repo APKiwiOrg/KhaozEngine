@@ -4,10 +4,10 @@ using ModelContextProtocol.Server;
 namespace KhaozEngine.MapEdit.Tools;
 
 /// <summary>Read-only world queries over the open document: ground sampling, walkability, rect scans over
-/// placements and spawns, a scatter layer preview, and a brute-force flat-area search. Every method is a thin
-/// wrapper that delegates to <see cref="QueryService"/> through <see cref="ToolGuard.Guard{T}"/>. Coordinates are
-/// the engine's world frame: X and Z span the ground plane and Y is up, all lengths in meters, angles in
-/// degrees.</summary>
+/// placements and spawns, a scatter layer preview, a brute-force flat-area search, and the full procedural setup
+/// (terrain scalars, biome bands, scatter layers, companion layers). Every method is a thin wrapper that
+/// delegates to <see cref="QueryService"/> through <see cref="ToolGuard.Guard{T}"/>. Coordinates are the engine's
+/// world frame: X and Z span the ground plane and Y is up, all lengths in meters, angles in degrees.</summary>
 [McpServerToolType]
 public sealed class QueryTools(QueryService query)
 {
@@ -54,4 +54,8 @@ public sealed class QueryTools(QueryService query)
         [Description("When true, every sampled point must be above water. Defaults to true.")] bool aboveWater = true,
         [Description("Maximum number of flat spots to return. Defaults to 5.")] int maxResults = 5)
         => ToolGuard.Guard(() => query.FindFlatArea(radius, maxSlopeDegrees, maxHeightSpread, minX, minZ, maxX, maxZ, aboveWater, maxResults));
+
+    [McpServerTool(Name = "procedural_info"), Description("Reads the full procedural setup of the open document: terrain scalars, biome bands, scatter layers (with their rules and kinds), and companion layers, at full field fidelity. The read counterpart to terrain_edit, the biome band triad, and the scatter/companion layer triads.")]
+    public ProceduralInfo ProceduralInfo()
+        => ToolGuard.Guard(query.ProceduralInfo);
 }

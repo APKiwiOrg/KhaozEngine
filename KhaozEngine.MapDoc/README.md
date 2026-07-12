@@ -9,15 +9,21 @@ git-committed in the game repo. GPU-free.
 
 A map document (`MapDocument`) has:
 
-- **`terrain`** - seed, water level, biome bands, and an ordered list of parametric features (`lake`,
-  `flatten`, `ridge`, `rim` built in), resolved through an extensible `MapDocRegistry` so a game can add
-  its own without an engine change.
+- **`terrain`** - seed, water level, biome blend, gentle/detail noise frequency and amplitude, biome
+  bands, and an ordered list of parametric features (`lake`, `flatten`, `ridge`, `rim` built in),
+  resolved through an extensible `MapDocRegistry` so a game can add its own without an engine change.
+  A feature carries an optional `Name` (`MapFeature.Name`, default empty, unique when non-empty within
+  the features list): the base feature type is open in the schema (only `type` is required), so no
+  schema change was needed to add it.
 - **`scatterLayers`** - named procedural scatter layers (cell size, jitter, per-biome density and weighted
   kind mix), one per prop type (trees, rocks, ...).
 - **`companionLayers`** - named layers that ring hosts from a scatter layer with small foliage (ferns
   around trees).
 - **`exclusions`** (`MapExclusion`) - shapes (disc/rect/polygon) kept free of scatter, optionally scoped to
-  specific layers. Builds into `ScatterConfig.Exclusions`.
+  specific layers via `Layers` (null means every layer, an explicit list names only those). Builds into
+  `ScatterConfig.Exclusions`. Carries an optional `Name` too (default empty, unique when non-empty),
+  added to the closed exclusions item schema as `"name": {"type": ["string", "null"]}` since exclusions,
+  unlike features, are a closed structure.
 - **`scatterOverrides`** (`MapScatterOverrideDoc`) - shapes that tweak scatter density and/or kind mix
   inside a region, first matching override (document order) wins. Builds into `ScatterConfig.Overrides`.
 - **`placements`** - authored props/buildings: stable id, kind, position (Y optional, ground-snapped if

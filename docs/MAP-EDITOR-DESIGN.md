@@ -284,8 +284,6 @@ once it ships, the detail moves to `CHANGELOG.md`.
     selector, no longer overpainted), but still inside the grid's own scissor, so a long
     list clips at the grid bounds. A host needing the list to spill past the grid has to
     call `Dropdown.DrawOverlay` itself after the grid's `Draw`.
-  - `RenameRegionCommand` needs a `TryMerge`. Typed renames today land one undo step per
-    keystroke.
 - **Editor UX**: sibling-focus drop after a rename, defer the pending re-select while any
   inspector row is focused. Stale exit-chord warning text lingers after disarm. Status-line
   length can overflow the strip, no truncation yet. Default `PlaceKind` pre-arm changed to
@@ -295,18 +293,37 @@ once it ships, the detail moves to `CHANGELOG.md`.
   channels, a slight hue shift. Feature-selection highlight lacks direct unit tests.
   Custom `MapEditorScene` hosts must unsubscribe `DocumentChanged` themselves (documented). `BakeRegion`'s two-arg overload has a doc
   nicety around its shadowed-discriminator caveat. Index-keyed hides (the feature and
-  exclusion `Visible` rows key on list index) do not remap on a feature or exclusion
-  reorder, whether via Ctrl+Up/Ctrl+Down or an outline drag-and-drop, or on a Delete, so
-  the hidden flag can end up stuck on the wrong element once the list shifts under it.
-  Renaming a placement, spawn, or region orphans its hide entry instead of following it:
-  the `Visible` row polls the live post-rename key, so the renamed element shows again by
-  default while the old-key entry lingers unreachable in `EditorVisibility`, a stale-key
-  leak rather than a correctness bug. Scatter overrides (`MapScatterOverrideDoc`) have no
-  editor surface at all: no palette entry to place one, no inspector rows to edit its
-  shape/density/kind-mix, and no reorder command, unlike exclusions and terrain features.
-  This one matters more than a typical missing-surface gap: override order is
-  first-match-wins (document order), not a set union like exclusions, so once editing
-  ships, reordering is gameplay-significant and not merely cosmetic.
+  exclusion `Visible` rows key on list index) now remap on a live feature or exclusion
+  reorder or delete, whether via Ctrl+Up/Ctrl+Down, an outline drag-and-drop, or Delete
+  (`EditorVisibility.RemapIndex`/`RemoveIndex`, wired to both reorder paths and the delete
+  path). The residual: undo and redo of a reorder or a delete do not re-follow the hide, so
+  a hidden flag can still end up on the wrong element after an undo/redo cycle even though
+  it now tracks correctly through ordinary live editing. Renaming a placement, spawn, or
+  region orphans its hide entry instead of following it: the `Visible` row polls the live
+  post-rename key, so the renamed element shows again by default while the old-key entry
+  lingers unreachable in `EditorVisibility`, a stale-key leak rather than a correctness bug.
+  Scatter overrides (`MapScatterOverrideDoc`) have no editor surface at all: no palette
+  entry to place one, no inspector rows to edit its shape/density/kind-mix, and no reorder
+  command, unlike exclusions and terrain features. This one matters more than a typical
+  missing-surface gap: override order is first-match-wins (document order), not a set union
+  like exclusions, so once editing ships, reordering is gameplay-significant and not merely
+  cosmetic. Scatter-layer rule editing and companion `HostKinds`/`Kinds` editing are
+  deliberately v1-crude (a carve-out taken at design time): a rule is a Biome choice plus a
+  Density scalar plus a comma-separated `"id:weight"` text row parsed with the same
+  `ParseKinds` convention `ke-mapedit` uses, rather than a per-kind row with its own weight
+  editor. A richer kinds editor (per-kind rows, drag-to-reweight, a picker over the known
+  prop ids) is future work once the crude text row proves cramped in practice. Feature,
+  exclusion, scatter-layer, and companion-layer selection stays index- or name-keyed off the
+  live document rather than a stable synthetic id: fine at v1 scale, but a bigger redesign
+  (a persistent id independent of list position or display name) is deferred, the same
+  design gap decision 1 already flagged for feature/exclusion naming. Scatter-layer rule
+  add/remove/edit all go through the single whole-value `EditScatterLayerCommand` (clone the
+  layer, mutate the clone, replace the whole value) rather than dedicated per-rule commands
+  (`AddScatterRuleCommand`, and so on): simpler and consistent with the whole-value idiom
+  used everywhere else in this program, and fine at the current few-rules-per-layer scale,
+  but it does mean a rule add/remove undo step reverts the WHOLE layer value, not just the
+  one rule, which would matter more if a layer ever grew a large rule list edited by
+  multiple hands.
 - **Engine misc**: `RayMath`'s zero-length-ray edge is untested, and a NaN direction acts
   as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
   miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders

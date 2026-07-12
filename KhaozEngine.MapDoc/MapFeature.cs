@@ -44,7 +44,10 @@ public sealed class FlattenFeatureDoc : MapFeature
     internal FlattenFeature Build() => new(CenterX, CenterZ, Radius, TargetHeight, Blend);
 }
 
-/// <summary>DTO for <see cref="RidgeFeature"/>.</summary>
+/// <summary>DTO for <see cref="RidgeFeature"/>. <see cref="PassWidth"/> defaults to 0 (no pass, a solid wall): a
+/// bare ridge with no pass configured must not carve a dip anywhere along its own crest, and 0 is the documented
+/// <see cref="RidgeFeature"/> no-pass sentinel. Set a positive <see cref="PassWidth"/> to open a gated corridor
+/// at <see cref="PassAlong"/>.</summary>
 public sealed class RidgeFeatureDoc : MapFeature
 {
     public override string Type => "ridge";
@@ -55,7 +58,7 @@ public sealed class RidgeFeatureDoc : MapFeature
     public float Height { get; set; }
     public float Width { get; set; } = 1f;
     public float PassAlong { get; set; }
-    public float PassWidth { get; set; } = 1f;
+    public float PassWidth { get; set; }
 
     internal RidgeFeature Build() =>
         new(new Vector2(PointX, PointZ), new Vector2(DirectionX, DirectionZ), Height, Width, PassAlong, PassWidth);

@@ -458,6 +458,23 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void RidgeInspector_ExposesDirectionRows()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, Height = 5f, Width = 10f });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+
+            // Direction was previously not exposed, leaving the ridge's heading fixed at the DTO default.
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "DirectionX"));
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "DirectionZ"));
+        }
+
+        [Fact]
         public void CtrlDown_MovesSelectedFeatureAndSelectionFollows()
         {
             var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };

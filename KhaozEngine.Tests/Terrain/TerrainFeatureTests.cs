@@ -31,6 +31,27 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void Ridge_PassWidthZero_IsSolidWall()
+        {
+            // passWidth <= 0 is the documented no-pass sentinel: the gate is 1 everywhere along the line,
+            // so even the point that would have been the pass centre (along=0) sits at the full crest.
+            var ridge = new RidgeFeature(Vector2.Zero, new Vector2(1f, 0f), height: 30f, width: 4f, passAlong: 0f, passWidth: 0f);
+            float atWouldBePass = ridge.Apply(0f, 0f, 0f);
+            float onWall = ridge.Apply(40f, 0f, 0f);
+            Assert.Equal(30f, atWouldBePass, 3);
+            Assert.Equal(30f, onWall, 3);
+        }
+
+        [Fact]
+        public void Ridge_ExplicitPass_StillCarves()
+        {
+            // PassWidth > 0 preserves the existing gated behavior (mirrors Ridge_raises_along_the_line_but_dips_at_the_pass).
+            var ridge = new RidgeFeature(Vector2.Zero, new Vector2(1f, 0f), height: 30f, width: 4f, passAlong: 0f, passWidth: 10f);
+            float atPass = ridge.Apply(0f, 0f, 0f);
+            Assert.True(atPass < 5f);
+        }
+
+        [Fact]
         public void Flatten_levels_its_region_to_target()
         {
             var flat = new FlattenFeature(0f, 0f, 10f, targetHeight: 5f);

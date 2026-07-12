@@ -73,6 +73,23 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Fact]
+        public void RidgeDoc_Defaults_RoundTripAsSolidWall()
+        {
+            // A bare ridge (no PassWidth set) round-trips at the 0f DTO default: no pass, a solid wall.
+            var doc = new MapDocument { Id = "ridge-test", Bounds = new MapBounds { MinX = -50f, MinZ = -50f, MaxX = 50f, MaxZ = 50f } };
+            doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, Height = 12f, Width = 4f });
+
+            string json = MapDocumentFile.SaveText(doc);
+            var back = MapDocumentFile.LoadText(json);
+
+            var ridgeDoc = Assert.IsType<RidgeFeatureDoc>(back.Terrain.Features[0]);
+            Assert.Equal(0f, ridgeDoc.PassWidth);
+
+            var ridge = ridgeDoc.Build();
+            Assert.Equal(12f, ridge.Apply(0f, 0f, 0f), 3);   // gate-free: full crest right at the point
+        }
+
+        [Fact]
         public void PolygonShape_SaveLoadRoundTripsExactly()
         {
             var doc = SampleDoc();

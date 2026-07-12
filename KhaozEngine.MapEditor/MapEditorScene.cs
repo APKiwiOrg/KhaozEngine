@@ -1178,6 +1178,8 @@ public class MapEditorScene : GameScene, IGameScene3D
             case RidgeFeatureDoc:
                 AddFeatureRow<RidgeFeatureDoc>(index, "PointX", f => f.PointX, (f, v) => f.PointX = v);
                 AddFeatureRow<RidgeFeatureDoc>(index, "PointZ", f => f.PointZ, (f, v) => f.PointZ = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "DirectionX", f => f.DirectionX, (f, v) => f.DirectionX = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "DirectionZ", f => f.DirectionZ, (f, v) => f.DirectionZ = v);
                 AddFeatureRow<RidgeFeatureDoc>(index, "Height", f => f.Height, (f, v) => f.Height = v);
                 AddFeatureRow<RidgeFeatureDoc>(index, "Width", f => f.Width, (f, v) => f.Width = v);
                 AddFeatureRow<RidgeFeatureDoc>(index, "PassAlong", f => f.PassAlong, (f, v) => f.PassAlong = v);

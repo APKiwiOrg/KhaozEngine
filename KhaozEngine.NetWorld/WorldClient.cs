@@ -123,6 +123,7 @@ public sealed class WorldClient : IDisposable
     // so observers cut too - matching the local prediction hard-cut. The local owner's epoch is handled by prediction.
     private readonly Dictionary<long, uint> lastTeleportEpochByEntity = new();
     private readonly List<long> teleportEpochPruneScratch = new();   // reused per-ingest to prune departed entities
+    private readonly List<long> remoteTeleports = new();             // remotes hard-cut this Poll (surfaced via RemoteTeleports)
 
     // Presentation trace (debug diagnostic; null unless PresentationTraceEnabled). Records per-frame internal signals.
     private readonly PresentationTrace? presentationTrace;
@@ -314,6 +315,22 @@ public sealed class WorldClient : IDisposable
     /// lands (the initial join placement bumps it to 1).</summary>
     public uint LocalTeleportEpoch { get; private set; }
 
+    /// <summary>The net ids of REMOTE entities whose authoritative teleport landed during the most recent
+    /// <see cref="Poll"/> (an advance of their replicated <see cref="MovementState.TeleportEpoch"/> - admin move,
+    /// self-rescue, fast-travel). Refreshed (cleared, then refilled) each <see cref="Poll"/>, so read it right after
+    /// polling; it accumulates across multiple ingests within one poll and survives multiple teleports. Empty on a
+    /// normal frame.
+    ///
+    /// A consumer driving <c>ReplicatedCharacterAnimators</c> for remotes wires this to the render-height hard-cut:
+    /// after <see cref="Poll"/>, call <c>animators.SnapRenderHeight(id)</c> for each id here, so a remote's SHORT
+    /// teleport (a vertical gap under the smoother's snap distance) cuts crisply instead of gliding. The remote's
+    /// interpolation buffer is already hard-cut internally on the same epoch advance; this list only surfaces WHICH
+    /// remotes cut so a cosmetic layer (render-height smoother, a spawn puff) can match. Only remotes are listed - the
+    /// local owner's teleport is surfaced by <see cref="LocalTeleported"/> / <see cref="LocalTeleportEpoch"/> instead.
+    /// Populated only while <see cref="WorldClientConfig.InterpolateRemotes"/> is enabled, since the remote teleport
+    /// epochs are tracked on the interpolation-flush path.</summary>
+    public IReadOnlyList<long> RemoteTeleports => remoteTeleports;
+
     /// <summary>The debug per-frame presentation trace, or null unless <see cref="WorldClientConfig.PresentationTraceEnabled"/>
     /// was set. When enabled it accrues one row per rendered entity per <see cref="AdvancePresentation"/> (the render
     /// clock, interpolation delay, render time, seconds-since-snapshot, arrival marks, local reconcile-error, and the
@@ -356,6 +373,8 @@ public sealed class WorldClient : IDisposable
     /// disable it for that call.</summary>
     public void Poll(float dt = 0f)
     {
+        remoteTeleports.Clear();   // reflects only THIS poll's remote teleports; refilled by FlushTeleportedRemotes below
+
         // Waiting out a backoff delay between attempts: count down, then start the next attempt.
         if (awaitingBackoff)
         {
@@ -760,10 +779,11 @@ public sealed class WorldClient : IDisposable
 
     // Snap any REMOTE whose replicated MovementState.TeleportEpoch advanced this ingest to the newest interpolation
     // sample (dropping the pre-teleport samples), so a remote teleport renders as a hard cut instead of a streak across
-    // the world. The local owner (localNetId) is skipped: its teleport is handled by prediction, and it renders from
-    // prediction, not this interpolation buffer. First observation of an entity just records its epoch (no flush; its
-    // buffer has a single sample anyway). Departed entities are pruned so the map stays bounded. Only called when
-    // interpolateRemotes is set (without interpolation a remote already snaps to the latest snapshot each frame).
+    // the world, and record its id in remoteTeleports so a cosmetic layer (surfaced via RemoteTeleports) can cut too.
+    // The local owner (localNetId) is skipped: its teleport is handled by prediction, and it renders from prediction,
+    // not this interpolation buffer. First observation of an entity just records its epoch (no flush; its buffer has a
+    // single sample anyway). Departed entities are pruned so the map stays bounded. Only called when interpolateRemotes
+    // is set (without interpolation a remote already snaps to the latest snapshot each frame).
     private void FlushTeleportedRemotes(long localNetId)
     {
         foreach (KeyValuePair<long, Entity> kv in view.Entities)
@@ -772,7 +792,10 @@ public sealed class WorldClient : IDisposable
             if (id == localNetId) continue;
             uint epoch = world.TryGet(kv.Value, out MovementState ms) ? ms.TeleportEpoch : 0u;
             if (lastTeleportEpochByEntity.TryGetValue(id, out uint prev) && epoch != prev)
+            {
                 view.SnapInterpolationToNewest(id);
+                remoteTeleports.Add(id);   // surface the hard cut so a cosmetic layer (RemoteTeleports) can match it
+            }
             lastTeleportEpochByEntity[id] = epoch;
         }
 

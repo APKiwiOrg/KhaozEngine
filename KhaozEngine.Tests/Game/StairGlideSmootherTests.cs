@@ -108,6 +108,23 @@ namespace KhaozEngine.Tests.Game
             return (float)(max - min);
         }
 
+        // Mean |vals - trueRamp| over [lo,hi), where trueRamp is the least-squares line fit through the TRUE feet
+        // positions (pts.X vs pts.Y). This isolates how far the smoothed height sits from the ideal climb ramp - the
+        // feed-forward LAG - independent of the deliberate per-riser sawtooth (which is symmetric about that same ramp).
+        static float MeanAbsLagFromTrueRamp(IReadOnlyList<Vector3> pts, IReadOnlyList<float> vals, int lo, int hi)
+        {
+            int n = hi - lo;
+            double mx = 0, my = 0;
+            for (int i = lo; i < hi; i++) { mx += pts[i].X; my += pts[i].Y; }
+            mx /= n; my /= n;
+            double sxx = 0, sxy = 0;
+            for (int i = lo; i < hi; i++) { double dx = pts[i].X - mx; sxx += dx * dx; sxy += dx * (pts[i].Y - my); }
+            double slope = sxy / sxx, icpt = my - slope * mx;   // the TRUE feet ramp line
+            double sum = 0;
+            for (int i = lo; i < hi; i++) sum += Math.Abs(vals[i] - (slope * pts[i].X + icpt));
+            return (float)(sum / n);
+        }
+
         [Theory]
         [InlineData(Walk)]
         [InlineData(Run)]
@@ -128,6 +145,14 @@ namespace KhaozEngine.Tests.Game
             Assert.True(rawPp > 0.09f, $"the synthetic raw stair bob should be a real sawtooth (got {rawPp * 1000:F0} mm)");
             Assert.True(smPp < 0.050f, $"speed {speed}: smoothed render-Y bob {smPp * 1000:F1} mm should be under 50 mm (raw {rawPp * 1000:F0} mm)");
             Assert.True(smPp < 0.5f * rawPp, $"speed {speed}: smoothed {smPp * 1000:F1} mm should be well under half the raw {rawPp * 1000:F0} mm");
+
+            // LAG assertion - this is what pins the FEED-FORWARD specifically, not just the smoothness. The feed-forward
+            // rides the true climb ramp, so the mean distance from render-Y to that ramp line is under 10 mm (~9 mm).
+            // A plain low-pass CANNOT get here: damping the 4-9 Hz bob hard enough to hit the p2p bound above lags a
+            // rising signal, so the feet sit ~90 mm BELOW the ramp on a moving climb (measured ~91 mm at 5 rad/s with
+            // grade forced to 0). The 20 mm bound sits cleanly between the two, so this goes RED if feed-forward is cut.
+            float meanLag = MeanAbsLagFromTrueRamp(stream, smY, lo, hi);
+            Assert.True(meanLag < 0.020f, $"speed {speed}: mean render-Y lag off the true ramp {meanLag * 1000:F1} mm should be under 20 mm (feed-forward ~9 mm; a plain low-pass ~91 mm)");
 
             // Monotone while climbing: the drawn height never dips during the ascent (no downward pop).
             float worstDrop = 0f;
@@ -222,6 +247,57 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Fact]
+        public void ShortTeleport_GlidesWithoutReset_CutsWithSnapRenderHeight()
+        {
+            // A SHORT teleport (a vertical gap UNDER SlopeGlideSnapDistance) is height-identical to a stair riser, so the
+            // gap snap never fires and the smoother GLIDES it - the hole SnapRenderHeight closes. Called before the
+            // destination frame (as a consumer wires it to the netcode teleport epoch), it hard-cuts that frame instead.
+            const float dest = 1.0f;   // 1.0 m < 1.5 m snap distance: a short blink, indistinguishable from a riser by height
+
+            // Without the reset: the destination frame glides, so render-Y is still well below the true height.
+            var noReset = NewAnimators();
+            var x = 0f;
+            for (int i = 0; i < 30; i++) { x += Walk * Dt; noReset.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk) }, Dt); }
+            x += Walk * Dt;
+            noReset.Update(new[] { Ground(new Vector3(x, dest, 0f), Walk) }, Dt);
+            Assert.True(noReset.Live[0].RenderPosition.Y < dest - 0.3f,
+                $"a short teleport should GLIDE without the reset (render-Y {noReset.Live[0].RenderPosition.Y:F3} m, true {dest} m)");
+
+            // With SnapRenderHeight before the same destination frame: hard-cut to the true height same-frame.
+            var reset = NewAnimators();
+            x = 0f;
+            for (int i = 0; i < 30; i++) { x += Walk * Dt; reset.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk) }, Dt); }
+            x += Walk * Dt;
+            reset.SnapRenderHeight(1);   // consumer wires this to WorldClient.LocalTeleportEpoch / RemoteTeleports
+            reset.Update(new[] { Ground(new Vector3(x, dest, 0f), Walk) }, Dt);
+            Assert.Equal(dest, reset.Live[0].RenderPosition.Y, 5);   // cut, no glide
+        }
+
+        [Fact]
+        public void SnapRenderHeight_UnknownId_IsNoOp()
+        {
+            // No-op for an id that was never sampled (not yet tracked, or dropped on disconnect): no throw, no effect.
+            var a = NewAnimators();
+            a.SnapRenderHeight(999);
+            a.Update(new[] { Ground(new Vector3(0f, 0f, 0f), Walk) }, Dt);
+            Assert.Single(a.Live);
+        }
+
+        [Fact]
+        public void SnapRenderHeight_IsOneShot_ClimbAfterASnapStillGlides()
+        {
+            // The reset applies to exactly the next Update; it does not disable the smoother. After a snapped teleport
+            // a subsequent stair climb glides again (SmoothedY tracks the ramp, not the raw sawtooth).
+            var a = NewAnimators();
+            a.SnapRenderHeight(1);   // pending, but there is no entry yet -> no-op; the first Update just seeds
+            List<Vector3> stream = StairStream(Walk);
+            int lo = stream.Count * 15 / 100, hi = stream.Count * 85 / 100;
+            float[] smY = DriveRenderY(a, stream, Walk);
+            float smPp = RampResidualPeakToPeak(stream, smY, lo, hi);
+            Assert.True(smPp < 0.050f, $"the climb after a snap should still glide (bob {smPp * 1000:F1} mm, want < 50 mm)");
+        }
+
+        [Fact]
         public void Airborne_JumpArc_BypassesSmoothing_TracksTrueExactly()
         {
             // A genuine jump/fall (!grounded) bypasses the smoother: the drawn height is the physics height EXACTLY every
@@ -284,19 +360,6 @@ namespace KhaozEngine.Tests.Game
                 a.Update(new[] { new CharacterSample(1, new Vector3(x, h, 0f), isLocal: false, grounded: false, verticalVelocity: 0.3f, planarSpeed: Walk, swimming: true) }, Dt);
                 Assert.Equal(h, a.Live[0].RenderPosition.Y, 5);
             }
-        }
-    }
-
-    // Small helper so a test can start from a partial tuning literal and fill the rest with the documented defaults
-    // (only SlopeGlideRate/SlopeGlideSnapDistance need overriding in these tests, but the derivation fields must be sane).
-    internal static class TuningTestExtensions
-    {
-        public static CharacterAnimatorTuning WithDefaults(this CharacterAnimatorTuning partial)
-        {
-            CharacterAnimatorTuning t = CharacterAnimatorTuning.Default;
-            t.SlopeGlideRate = partial.SlopeGlideRate;
-            t.SlopeGlideSnapDistance = partial.SlopeGlideSnapDistance > 0f ? partial.SlopeGlideSnapDistance : t.SlopeGlideSnapDistance;
-            return t;
         }
     }
 }

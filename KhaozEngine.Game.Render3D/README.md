@@ -91,9 +91,13 @@ each `Update` FEEDS FORWARD from horizontal motion: it advances a smoothed feet-
 (grade read from a short window of dY/dXZ) so it tracks the ramp line with no lag, then critically damps that toward the
 true feet-Y at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s) to correct drift and settle onto real treads. The
 smoothed height is baked into `CharacterPose.World` and exposed as **`CharacterPose.RenderPosition`** - point a follow
-camera at that (not the raw predicted position) and the model glides up stairs to match. It is identity on flat ground
-(the grade reads ~0, so render-Y equals the sample Y byte-for-byte) and SNAPS to true on a jump / fall / swim / a gap
-beyond `SlopeGlideSnapDistance` (a teleport), so those stay crisp. On by default; set `SlopeGlideRate <= 0` to disable.
+camera at that (not the raw predicted position) and the model glides up stairs to match. It is byte-identity on FLAT
+ground (grade ~0, so render-Y equals the sample Y byte-for-byte) and NEAR-identity on a smooth continuous slope (it
+tracks the already-smooth true Y within a hair, not byte-identical), and SNAPS to true on a jump / fall / swim / a LARGE
+gap beyond `SlopeGlideSnapDistance`, so those stay crisp. A SHORT teleport under that gap is height-identical to a stair
+riser, so cut it with **`SnapRenderHeight(id)`** wired to the netcode teleport epoch (`WorldClient.LocalTeleportEpoch` /
+`LocalTeleported` for the local player, `WorldClient.RemoteTeleports` for remotes). On by default; set
+`SlopeGlideRate <= 0` to disable.
 
 ### Locomotion states + clips
 

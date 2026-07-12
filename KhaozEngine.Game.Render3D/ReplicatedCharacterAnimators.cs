@@ -326,11 +326,13 @@ namespace KhaozEngine.Game
         public float SlopeGlideRate;
 
         /// <summary>Render-height gap (metres) beyond which the slope-fed smoother SNAPS the smoothed feet-Y to the true
-        /// feet-Y instead of gliding - a teleport, a fall, a jump takeoff, or a ledge walk-off should be crisp, not crawl
-        /// up over a fraction of a second. Mirrors <see cref="CharacterAvatar.RenderHeightSnapDistance"/>: default 1.5,
-        /// well above any single stair riser (0.30) and below a floor-to-floor jump. The epoch teleport hard-cut standard
-        /// holds through this (an authoritative teleport is a large gap, so it snaps same-frame and is never smoothed).
-        /// Only consulted when <see cref="SlopeGlideRate"/> &gt; 0.</summary>
+        /// feet-Y instead of gliding - a fall, a jump takeoff, a ledge walk-off, or a LARGE teleport should be crisp, not
+        /// crawl up over a fraction of a second. Mirrors <see cref="CharacterAvatar.RenderHeightSnapDistance"/>: default
+        /// 1.5, well above any single stair riser (0.30) and below a floor-to-floor jump. A teleport whose vertical gap
+        /// exceeds this snaps same-frame automatically; a SHORT teleport under it is height-identical to a stair riser,
+        /// so the hard cut for those comes from <see cref="ReplicatedCharacterAnimators.SnapRenderHeight"/> (the consumer
+        /// hook wired to the netcode teleport epoch), not this gap. Only consulted when
+        /// <see cref="SlopeGlideRate"/> &gt; 0.</summary>
         public float SlopeGlideSnapDistance;
 
         /// <summary>The <see cref="LocomotionSpeedSync"/> these fields describe, applied to brains this set
@@ -400,6 +402,7 @@ namespace KhaozEngine.Game
             public float SmoothedY;     // slope-glide-smoothed feet height (see the smoother in Update); seeded to true
             public float GradeSumY;     // leaky-integrated vertical displacement (grade window numerator)
             public float GradeSumXZ;    // leaky-integrated horizontal distance (grade window denominator)
+            public bool SnapPending;    // a consumer called SnapRenderHeight: hard-cut the render height next Update
         }
 
         // --- Slope-fed render-height smoother constants (the two tunables live on CharacterAnimatorTuning) --------------
@@ -466,6 +469,27 @@ namespace KhaozEngine.Game
         /// simulation or netcode.</summary>
         public AnimatedCharacter? BrainFor(long id) => _entries.TryGetValue(id, out Entry? e) ? e.Character : null;
 
+        /// <summary>Hard-cut the render height for entity <paramref name="id"/> on its NEXT <see cref="Update"/>: the
+        /// slope-glide smoother snaps the drawn feet-Y straight to the true feet-Y and restarts its grade + velocity
+        /// windows from the destination, instead of gliding. No-op if <paramref name="id"/> is not tracked (it has not
+        /// been sampled yet, or was dropped on disconnect).
+        ///
+        /// <para>This is the consumer hook for an AUTHORITATIVE TELEPORT (a teleport-epoch advance: admin move,
+        /// self-rescue, fast-travel, respawn). The smoother's built-in gap snap only guarantees a hard cut when the
+        /// vertical jump exceeds <see cref="CharacterAnimatorTuning.SlopeGlideSnapDistance"/> (1.5 m); a SHORT teleport
+        /// under that distance is indistinguishable from a stair riser by height alone and would otherwise glide - no
+        /// height heuristic can tell the two apart, so the consumer's teleport signal is the only reliable source.
+        /// Wire it to the teleport signal the netcode already raises: for the LOCAL player call it when
+        /// <c>WorldClient.LocalTeleportEpoch</c> advances (or from the <c>WorldClient.LocalTeleported</c> event); for
+        /// REMOTES call it for each id in <c>WorldClient.RemoteTeleports</c> right after <c>WorldClient.Poll</c>. With
+        /// that wiring EVERY teleport is an exact hard cut at any gap size; without it, only gaps above the snap
+        /// distance cut. Call it any time before the next <see cref="Update"/> (order-independent - it defers the snap
+        /// to that Update, so whether the destination position has been sampled yet does not matter).</para></summary>
+        public void SnapRenderHeight(long id)
+        {
+            if (_entries.TryGetValue(id, out Entry? e)) e.SnapPending = true;
+        }
+
         /// <summary>Advance every tracked character one frame from this frame's samples. Call once per render frame.</summary>
         public void Update(IReadOnlyList<CharacterSample> samples, float dt)
         {
@@ -497,6 +521,26 @@ namespace KhaozEngine.Game
                         SmoothedY = s.Position.Y,
                     };
                     _entries[s.Id] = e;
+                }
+
+                // A consumer signalled an authoritative teleport for this id (SnapRenderHeight, wired to the netcode
+                // teleport epoch): hard-cut the render height to the destination and restart the derivation from it, so
+                // a SHORT blink under SlopeGlideSnapDistance cuts crisply instead of gliding (no height heuristic can
+                // tell a short teleport from a stair riser - the consumer's signal is the only reliable source). Treat
+                // the destination exactly like a fresh observation: seed SmoothedY at the true feet-Y, drop the stale
+                // velocity + grade windows, and clear HasPrev so this frame derives no motion (and no feed-forward)
+                // from the teleport delta. Cleared here; applies to exactly this one Update.
+                if (e.SnapPending)
+                {
+                    e.SnapPending = false;
+                    e.PrevPosition = s.Position;
+                    e.HasPrev = false;
+                    e.SmoothedY = s.Position.Y;
+                    e.DispAccum = Vector3.Zero;
+                    e.TimeAccum = 0f;
+                    e.Velocity = Vector3.Zero;
+                    e.GradeSumY = 0f;
+                    e.GradeSumXZ = 0f;
                 }
 
                 // Derive velocity over a short time WINDOW, not a single frame. The rendered position PLATEAUS
@@ -582,7 +626,10 @@ namespace KhaozEngine.Game
                 // horizontalDelta * estimatedGrade so it tracks the ramp line with no lag, then critically damp SmoothedY
                 // toward the true feet-Y to correct grade drift and settle onto real tread tops. Guards mirror
                 // CharacterAvatar: !grounded / a ballistic vertical / a swim / a teleport-sized gap all SNAP to true so
-                // jumps, falls, ledge walk-offs, and the epoch teleport hard-cut stay crisp (never smoothed).
+                // jumps, falls, and ledge walk-offs stay crisp (never smoothed). A LARGE teleport (gap over the snap
+                // distance) hard-cuts here automatically; a SHORT teleport under the snap distance is height-identical
+                // to a stair riser and is cut only when the consumer calls SnapRenderHeight (the SnapPending path above),
+                // which the netcode teleport epoch drives - see that method.
                 float trueFeetY = s.Position.Y;
                 if (_tuning.SlopeGlideRate > 0f && dt > 0f)
                 {

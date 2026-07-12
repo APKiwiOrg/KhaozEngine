@@ -140,6 +140,15 @@ Also here, unchanged:
   `KhaozEngine.Gpu.ShaderValidation` (10.17.0) mean a future seam gets single-sourced lighting and device-free
   validation for consumer-authored shaders for free.
 
+- `CharacterAvatar` render-height smoother: same short-teleport gap-only limitation as the
+  `ReplicatedCharacterAnimators` slope-glide smoother. A teleport whose vertical gap exceeds
+  `RenderHeightSnapDistance` (1.5 m) hard-cuts; a SHORT teleport under that gap is height-identical to a stair
+  riser, so `_renderY` glides it instead of cutting. `ReplicatedCharacterAnimators` closed its version of this
+  with the `SnapRenderHeight(id)` reset hook (wired to the netcode teleport epoch); `CharacterAvatar` has no
+  equivalent reset yet. Add a `SnapRenderHeight()` (or teleport-aware `Update` overload) when a single-avatar
+  consumer needs crisp short teleports - not fixed now because `CharacterAvatar`'s owner drives the controller
+  directly (it can seed `_renderY` on a teleport itself), so there is no live consumer pull.
+
 ## Cross-platform reach
 
 - Mobile: iOS / Android platform layers (lifecycle, touch, packaging, store submission). Silk.NET is the

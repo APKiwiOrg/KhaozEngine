@@ -1619,9 +1619,17 @@ motion: it advances a smoothed feet-Y by `horizontalDelta * grade` (grade from a
 line lag-free, then critically damps toward the true feet-Y at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default
 5) to settle onto real treads. The smoothed height is baked into `CharacterPose.World` and exposed as
 `CharacterPose.RenderPosition` - **point a follow camera at `p.RenderPosition`** (not the raw predicted position) so the
-camera glides with the model. It is identity on flat ground (grade ~0, so `RenderPosition == the sample position`) and
-snaps to true on a jump, fall, swim, or a gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance` (a teleport), so
-those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y).
+camera glides with the model. It is byte-identity on FLAT ground (grade ~0, so `RenderPosition == the sample position`)
+and near-identity on a smooth continuous slope (it tracks the already-smooth true Y within a hair, not byte-identical),
+and snaps to true on a jump, fall, swim, or a LARGE gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance`, so those
+stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y).
+
+A teleport whose vertical gap exceeds `SlopeGlideSnapDistance` (1.5 m) hard-cuts automatically, but a SHORT teleport
+under that gap is height-identical to a stair riser - no height heuristic can tell the two apart. For crisp cuts on
+those, call **`animators.SnapRenderHeight(id)`** on a teleport-epoch advance: the netcode already raises the signal, so
+wire the local player to `WorldClient.LocalTeleportEpoch` (or the `LocalTeleported` event) and remotes to
+`WorldClient.RemoteTeleports` (the remote ids that teleported this `Poll`), then warp the follow camera the same frame.
+Wired, every teleport is an exact hard cut at any gap; unwired, only gaps over the snap distance cut.
 
 The derived velocity is averaged over a short sliding window (`CharacterAnimatorTuning.VelocityWindowSeconds`,
 default 1/30 s = one tick) rather than a single frame's delta. That matters because the position you feed

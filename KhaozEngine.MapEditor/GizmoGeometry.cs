@@ -76,6 +76,19 @@ public static class GizmoGeometry
         return new GltfMesh(v.ToArray(), i.ToArray());
     }
 
+    /// <summary>The two ground-plane translate arrows only: +X red and +Z blue, no +Y arrow. Every affordance
+    /// that draws this mesh (a spawn's marker-plus-drag, or a feature / disc / rect shape's move + scale) has its
+    /// vertical handle blocked by <c>EditorToolController.RestrictHandle</c>, so the mesh never offers a handle
+    /// the drag policy refuses.</summary>
+    public static GltfMesh TranslateArrowsXZ()
+    {
+        var v = new List<ModelVertex>();
+        var i = new List<uint>();
+        EmitArrow(v, i, Matrix4x4.CreateRotationZ(-MathF.PI / 2f), AxisXColor); // canonical +Y arrow rotated onto +X
+        EmitArrow(v, i, Matrix4x4.CreateRotationX(MathF.PI / 2f), AxisZColor);  // rotated onto +Z
+        return new GltfMesh(v.ToArray(), i.ToArray());
+    }
+
     /// <summary>A flat, double-sided annulus in the ground plane (y = 0) at <see cref="RingRadius"/>, spanning the
     /// pick band width, with <see cref="YawColor"/> baked into every vertex.</summary>
     public static GltfMesh YawRing()

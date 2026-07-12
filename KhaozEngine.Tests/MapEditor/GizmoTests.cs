@@ -41,6 +41,25 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void TranslateArrowsXZ_HasOnlyXAndZColors_NoYArrow()
+        {
+            GltfMesh mesh = GizmoGeometry.TranslateArrowsXZ();
+
+            Assert.NotEmpty(mesh.Vertices);
+            Assert.True(mesh.Indices32.Length > 0);
+            Assert.Equal(0, mesh.Indices32.Length % 3);          // whole triangles
+            Assert.All(mesh.Indices32, i => Assert.True(i < mesh.Vertices.Length));
+
+            Vector4[] colors = mesh.Vertices.Select(v => v.Color).Distinct().ToArray();
+            // Only the two ground-plane axis colors: X red, Z blue. No Y (green): the vertical handle is
+            // RestrictHandle-blocked for every affordance that draws this mesh, so the mesh never offers it.
+            Assert.Equal(2, colors.Length);
+            Assert.Contains(GizmoGeometry.AxisXColor, colors);
+            Assert.Contains(GizmoGeometry.AxisZColor, colors);
+            Assert.DoesNotContain(GizmoGeometry.AxisYColor, colors);
+        }
+
+        [Fact]
         public void YawRing_IsNonEmptyAndYawColored()
         {
             GltfMesh mesh = GizmoGeometry.YawRing();
@@ -254,6 +273,52 @@ namespace KhaozEngine.Tests.MapEditor
             float factor = GizmoDrag.ScaleFactor(g, origin, Down);
             Near(2f, factor);
             Assert.Equal(factor, GizmoDrag.ScaleFactor(g, origin, Down)); // purity
+        }
+
+        // ---- affordance -> mesh list: pure, headless-testable (mirrors MapEditorScene.ComputeOverlayDrawList;
+        // only the per-entry MeshHandle lookup and DrawOverlayMesh submission in DrawGizmo is untested GPU work) --
+
+        [Fact]
+        public void SpawnSelection_DrawsTranslateArrows()
+        {
+            // A spawn's affordance is Marker: before this round it drew only the selection pyramid, so the
+            // working ground-plane drag had no visible handle. It must now also draw the XZ arrows.
+            GizmoMesh[] meshes = MapEditorScene.ComputeGizmoMeshes(GizmoAffordance.Marker);
+
+            Assert.Contains(GizmoMesh.SelectionMarker, meshes);
+            Assert.Contains(GizmoMesh.TranslateArrowsXZ, meshes);
+            Assert.DoesNotContain(GizmoMesh.TranslateArrowsFull, meshes);
+        }
+
+        [Fact]
+        public void MoveScaleAffordance_HasNoYArrow()
+        {
+            // A feature / disc / rect shape's affordance is MoveScale: RestrictHandle already blocks its Y
+            // handle, so the mesh must stop offering one (the ledgered inert +Y arrow).
+            GizmoMesh[] meshes = MapEditorScene.ComputeGizmoMeshes(GizmoAffordance.MoveScale);
+
+            Assert.Contains(GizmoMesh.TranslateArrowsXZ, meshes);
+            Assert.Contains(GizmoMesh.ScaleHandle, meshes);
+            Assert.DoesNotContain(GizmoMesh.TranslateArrowsFull, meshes);
+        }
+
+        [Fact]
+        public void FullAffordance_StillHasTheVerticalArrowAndYawRing()
+        {
+            // A placement keeps the full transform: translate (all three axes), yaw, and scale. Unchanged by
+            // this round.
+            GizmoMesh[] meshes = MapEditorScene.ComputeGizmoMeshes(GizmoAffordance.Full);
+
+            Assert.Contains(GizmoMesh.TranslateArrowsFull, meshes);
+            Assert.Contains(GizmoMesh.YawRing, meshes);
+            Assert.Contains(GizmoMesh.ScaleHandle, meshes);
+            Assert.DoesNotContain(GizmoMesh.TranslateArrowsXZ, meshes);
+        }
+
+        [Fact]
+        public void NoneAffordance_DrawsNothing()
+        {
+            Assert.Empty(MapEditorScene.ComputeGizmoMeshes(GizmoAffordance.None));
         }
     }
 }

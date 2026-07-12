@@ -83,7 +83,8 @@ internal enum GizmoAffordance
     /// <summary>No gizmo (nothing selected, or a selection with no draggable transform: terrain, a polygon shape,
     /// an unknown feature type).</summary>
     None,
-    /// <summary>A selection marker only, no draggable handles (a spawn: the ground-plane drag is invisible).</summary>
+    /// <summary>The selection marker plus the XZ translate arrows, no yaw / scale (a spawn: only its ground-plane
+    /// position is draggable).</summary>
     Marker,
     /// <summary>Translate arrows plus the scale cube, no yaw ring (a feature or a disc / rect shape).</summary>
     MoveScale,

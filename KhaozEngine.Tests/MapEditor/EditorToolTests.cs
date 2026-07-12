@@ -230,6 +230,40 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void SelectDrag_MovesSelectedSpawn_MergesIntoOneUndoStep()
+        {
+            var (doc, c) = Make();
+            var s = new MapSpawn { Id = "s1", ArchetypeId = "wolf", X = 0f, Z = 0f };
+            doc.Doc.Spawns.Add(s);
+
+            // Select via pick: nothing is selected yet, so the first press falls through to EditorPicking rather
+            // than the gizmo (there is no gizmo without a selection).
+            c.Update(Press(new Vector3(0f, 100f, 0f)));
+            Assert.Equal(SelectionKind.Spawn, doc.Selection.Kind);
+            Assert.Equal("s1", doc.Selection.Id);
+            Assert.False(c.IsDragging);
+
+            // Now the spawn is selected, its gizmo (Marker affordance) sits at its position and draws the XZ
+            // arrows: press on the +X ground arrow (x in [0, 1.2]) and drag the ground hit out along +X.
+            // TranslateXZ is the only handle a spawn honours (RestrictHandle blocks Y / yaw / scale), matching
+            // what the newly-visible arrows offer.
+            c.Update(Press(new Vector3(0.6f, 100f, 0f)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(2.6f, 100f, 0f)));   // ground hit moves +2 -> X = 2
+            c.Update(Drag(new Vector3(5.6f, 100f, 0f)));   // ground hit moves +5 -> X = 5
+            c.Update(Release(new Vector3(5.6f, 100f, 0f)));
+
+            Assert.False(c.IsDragging);
+            Near(5f, s.X);
+            Near(0f, s.Z);
+            Assert.Equal(1, doc.History.UndoDepth);   // the whole drag coalesces into one MoveSpawnCommand step
+
+            Assert.True(doc.Undo());
+            Near(0f, s.X);                            // undo restores the pre-drag position
+            Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
         public void SelectDrag_SeparateDrags_AreSeparateUndoSteps()
         {
             var (doc, c) = Make();

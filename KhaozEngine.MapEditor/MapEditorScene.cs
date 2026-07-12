@@ -110,7 +110,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     FlyCamera3D _camera = null!;
     FlyCameraController _camController = null!;
 
-    MeshHandle _translateArrows, _yawRing, _scaleHandle, _selectionMarker;
+    MeshHandle _translateArrows, _translateArrowsXZ, _yawRing, _scaleHandle, _selectionMarker;
 
     readonly InputManager _ui = new();
     TabBar _toolbar = null!;
@@ -277,6 +277,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _controller.Field = _viewport.Field;
 
         _translateArrows = _scene.LoadMesh(GizmoGeometry.TranslateArrows());
+        _translateArrowsXZ = _scene.LoadMesh(GizmoGeometry.TranslateArrowsXZ());
         _yawRing = _scene.LoadMesh(GizmoGeometry.YawRing());
         _scaleHandle = _scene.LoadMesh(GizmoGeometry.ScaleHandle());
         _selectionMarker = _scene.LoadMesh(GizmoGeometry.SelectionMarker());
@@ -291,6 +292,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _scene.CameraOverride = null;
         _viewport.Dispose();
         _scene.UnloadMesh(_translateArrows);
+        _scene.UnloadMesh(_translateArrowsXZ);
         _scene.UnloadMesh(_yawRing);
         _scene.UnloadMesh(_scaleHandle);
         _scene.UnloadMesh(_selectionMarker);
@@ -551,31 +553,44 @@ public class MapEditorScene : GameScene, IGameScene3D
             new Color(0.85f, 0.87f, 0.92f, 1f));
     }
 
+    /// <summary>Submits the transform-gizmo meshes for the current selection. The affordance-to-mesh-set
+    /// decision is the pure, headless-tested <see cref="ComputeGizmoMeshes"/>; only the per-entry
+    /// <see cref="MeshHandle"/> lookup and <see cref="Scene3D.DrawOverlayMesh"/> submission lives here.</summary>
     void DrawGizmo(Scene3D scene)
     {
         GizmoAffordance affordance = _controller.TryGizmo(out Vector3 pos);
         if (affordance == GizmoAffordance.None) return;
         float s = GizmoScaleFor(pos);
         Matrix4x4 world = Matrix4x4.CreateScale(s) * Matrix4x4.CreateTranslation(pos);
-        switch (affordance)
-        {
-            case GizmoAffordance.Full:
-                scene.DrawOverlayMesh(_translateArrows, world);
-                scene.DrawOverlayMesh(_yawRing, world);
-                scene.DrawOverlayMesh(_scaleHandle, world);
-                break;
-            case GizmoAffordance.MoveScale:
-                // Feature / disc / rect shape: translate + scale, no yaw ring (there is no yaw concept).
-                scene.DrawOverlayMesh(_translateArrows, world);
-                scene.DrawOverlayMesh(_scaleHandle, world);
-                break;
-            case GizmoAffordance.Marker:
-                scene.DrawOverlayMesh(_selectionMarker, world);
-                break;
-            default:
-                break;
-        }
+        foreach (GizmoMesh mesh in ComputeGizmoMeshes(affordance))
+            scene.DrawOverlayMesh(MeshHandleFor(mesh), world);
     }
+
+    /// <summary>Which baked gizmo meshes <see cref="DrawGizmo"/> draws for a given affordance, in draw order.
+    /// Pure (no GPU, no scene state), so the affordance-to-mesh-set decision is fully headless-testable: a spawn
+    /// (<see cref="GizmoAffordance.Marker"/>) draws the selection marker plus the XZ arrows (the working
+    /// ground-plane drag is otherwise invisible); a feature / disc / rect shape
+    /// (<see cref="GizmoAffordance.MoveScale"/>) draws the XZ arrows plus the scale cube, never the +Y arrow
+    /// (<c>EditorToolController.RestrictHandle</c> already blocks that handle for both); a placement
+    /// (<see cref="GizmoAffordance.Full"/>) keeps every handle. <see cref="DrawGizmo"/> submits the result
+    /// untested.</summary>
+    internal static GizmoMesh[] ComputeGizmoMeshes(GizmoAffordance affordance) => affordance switch
+    {
+        GizmoAffordance.Full => new[] { GizmoMesh.TranslateArrowsFull, GizmoMesh.YawRing, GizmoMesh.ScaleHandle },
+        GizmoAffordance.MoveScale => new[] { GizmoMesh.TranslateArrowsXZ, GizmoMesh.ScaleHandle },
+        GizmoAffordance.Marker => new[] { GizmoMesh.SelectionMarker, GizmoMesh.TranslateArrowsXZ },
+        _ => Array.Empty<GizmoMesh>(),
+    };
+
+    MeshHandle MeshHandleFor(GizmoMesh mesh) => mesh switch
+    {
+        GizmoMesh.TranslateArrowsFull => _translateArrows,
+        GizmoMesh.TranslateArrowsXZ => _translateArrowsXZ,
+        GizmoMesh.YawRing => _yawRing,
+        GizmoMesh.ScaleHandle => _scaleHandle,
+        GizmoMesh.SelectionMarker => _selectionMarker,
+        _ => throw new ArgumentOutOfRangeException(nameof(mesh), mesh, null),
+    };
 
     void DrawPalette(SpriteBatch batch, SpriteFont font, Rect bounds)
     {
@@ -1518,6 +1533,23 @@ public class MapEditorScene : GameScene, IGameScene3D
             Palette = palette; Status = status; Viewport = viewport;
         }
     }
+}
+
+/// <summary>Which baked transform-gizmo mesh a <see cref="MapEditorScene.ComputeGizmoMeshes"/> entry draws, keyed
+/// to the mesh handles loaded once in <see cref="MapEditorScene.BuildWorld"/>.</summary>
+internal enum GizmoMesh
+{
+    /// <summary>The three-axis translate arrows (X, Y, Z): a placement's full transform.</summary>
+    TranslateArrowsFull,
+    /// <summary>The two ground-plane translate arrows (X, Z) only, no vertical handle: a spawn's marker drag, or
+    /// a feature / disc / rect shape's move.</summary>
+    TranslateArrowsXZ,
+    /// <summary>The flat yaw ring.</summary>
+    YawRing,
+    /// <summary>The corner scale cube.</summary>
+    ScaleHandle,
+    /// <summary>The selection marker pyramid.</summary>
+    SelectionMarker,
 }
 
 /// <summary>Which document collection a viewport <see cref="OverlayDraw"/> came from. Drives its base fill color

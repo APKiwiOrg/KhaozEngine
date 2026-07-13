@@ -59,6 +59,7 @@ public sealed class PlayerMovementSystem : ISystem
                 TimeSinceGrounded = ms.TimeSinceGrounded,
                 JumpBufferRemaining = ms.JumpBufferRemaining,
                 Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
+                ClimbRateEwma = ms.ClimbRateEwma,   // carry the sim-local ascent EWMA IN so the exported signal converges
             };
             state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
 
@@ -68,6 +69,11 @@ public sealed class PlayerMovementSystem : ISystem
             ms.TimeSinceGrounded = state.TimeSinceGrounded;
             ms.JumpBufferRemaining = state.JumpBufferRemaining;
             ms.Swimming = state.Swimming;   // write the swim flag back OUT so it replicates (TryGetPlayerState + remotes)
+            ms.ClimbRateEwma = state.ClimbRateEwma;   // persist the sim-local ascent EWMA tick-to-tick (rides no wire)
+            // Write the quantized step-climb rate OUT so it replicates to remotes (the glide signal). The single-World
+            // WorldServer does this via MovementState.From per tick; the sharded per-cell step must do it here or a remote
+            // on a sharded server never sees a climb (ClimbRateQ stays at its spawn value of 0).
+            ms.ClimbRateQ = MovementState.QuantizeClimbRate(state.ClimbRate);
         });
     }
 }

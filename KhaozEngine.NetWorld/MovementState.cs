@@ -50,6 +50,23 @@ public struct MovementState : IComponent
     /// <see cref="WireGenerationAuthenticator"/>.</summary>
     public sbyte ClimbRateQ;
 
+    /// <summary>SIM-LOCAL ascent-EWMA storage (NOT replicated, NOT migrated): the sharded head's per-entity, tick-to-tick
+    /// slot for <see cref="KhaozEngine.Locomotion.MoveState.ClimbRateEwma"/> (the exponentially-weighted moving average of
+    /// the actually-applied per-tick rise over a paced stair run). It exists ONLY because the sharded per-cell step
+    /// (<see cref="PlayerMovementSystem"/>) reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from this
+    /// component every tick (unlike the single-<see cref="World"/> <see cref="WorldServer"/>, which keeps the full
+    /// <see cref="PlayerMoveState"/> per slot), so without a persistence slot the ascent EWMA would restart from 0 every
+    /// tick and the exported <see cref="ClimbRateQ"/> would never converge to the achieved rise. It is DELIBERATELY absent
+    /// from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it rides no wire (both heads derive it
+    /// deterministically from the identical <see cref="KhaozEngine.Locomotion.CharacterMovement"/> step, so replicating it
+    /// is redundant and would only widen the built-in wire) and is not part of the
+    /// <see cref="KhaozEngine.Replication.ReplicationChannels.Migrate"/> capture, so it
+    /// RESETS to 0 across a shard handoff (the entity is reconstructed via the codec, not copied wholesale) - an acceptable
+    /// few-tick re-converge transient at a cell crossing, since the wire <see cref="ClimbRateQ"/> itself survives the
+    /// crossing. Set at spawn/teleport to 0 via <see cref="From"/> (a fresh climb state). <c>default</c> is 0
+    /// (byte-identical to a pre-feature state). The single-<see cref="World"/> head never reads this field.</summary>
+    public float ClimbRateEwma;
+
     /// <summary>Fixed wire scale for <see cref="ClimbRateQ"/> (m/s per quantum unit): 0.05, giving +/-6.35 m/s over an
     /// <see cref="sbyte"/> at 0.05 m/s resolution. Consumer-agnostic (independent of any consumer's
     /// <see cref="KhaozEngine.Locomotion.MoveTuning.MaxStepClimbSpeed"/>), so the codec round-trips the same for every game.</summary>

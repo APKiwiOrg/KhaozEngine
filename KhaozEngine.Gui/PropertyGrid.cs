@@ -15,18 +15,37 @@ namespace KhaozEngine.Gui
     /// </summary>
     public abstract class PropertyRow
     {
-        /// <summary>Build a row with a resolved-at-draw label. The default <see cref="Height"/> is 28.</summary>
-        protected PropertyRow(LocalizedText label)
+        /// <summary>Build a row with a resolved-at-draw label and an optional tooltip <paramref name="description"/>.
+        /// The default <see cref="Height"/> is 28.</summary>
+        protected PropertyRow(LocalizedText label, LocalizedText? description = null)
         {
             Label = label;
+            Description = description;
             Height = 28f;
         }
 
         /// <summary>The (lazily resolved) row label. Re-resolves on every draw, so a locale switch takes effect next frame.</summary>
         public LocalizedText Label { get; }
 
+        /// <summary>
+        /// Optional tooltip text for this row, shown by a host-owned <c>Tooltip</c> anchored to
+        /// <see cref="PropertyGrid.RowLabelBounds(int)"/> while <see cref="PropertyGrid.HoveredRow"/> is this row.
+        /// Null (the default) means no tooltip. Settable at construction or later, raw text is fine here since this
+        /// is developer tooling, not player-facing copy.
+        /// </summary>
+        public LocalizedText? Description { get; set; }
+
         /// <summary>Row height in pixels. Default 28.</summary>
         public float Height { get; protected set; }
+
+        /// <summary>
+        /// True for a label-only row that spans the grid's full width with no distinct editor cell (a
+        /// <see cref="HeaderRow"/> group divider). The grid skips the label/editor column split for a spanning row:
+        /// its editor cell (<see cref="PropertyGrid.RowEditorBounds"/>) already covers the whole row width, and its
+        /// label draws across that same full band instead of the narrower label column. False (the normal
+        /// label+editor split) for every other row.
+        /// </summary>
+        public virtual bool SpansFullWidth => false;
 
         /// <summary>
         /// Sync the getter, run the child widget over <paramref name="editorRect"/> (the right-hand cell this frame),
@@ -56,6 +75,14 @@ namespace KhaozEngine.Gui
         internal virtual void ApplyOpacity(float opacity) { }
 
         /// <summary>
+        /// Grid hook: push <see cref="PropertyGrid.EditorStyle"/> into this row's child widget (its <c>Style</c>
+        /// field), run every <see cref="PropertyGrid.Update"/> so a row added after the grid is built still picks
+        /// up the current style on its next frame. No-op by default: a row with no styled inner widget (
+        /// <see cref="ReadOnlyRow"/>, <see cref="HeaderRow"/>) ignores it.
+        /// </summary>
+        internal virtual void ApplyEditorStyle(GuiStyle style) { }
+
+        /// <summary>
         /// True while this row owns an in-progress edit gesture (typing, scrubbing, or an open picker) that a
         /// global keyboard chord or hotkey must not interrupt. <see cref="PropertyGrid.HasActiveEditor"/> ORs this
         /// across every row, so a host (e.g. the map editor's shortcut handler) can gate chords on any focused
@@ -75,10 +102,12 @@ namespace KhaozEngine.Gui
         public NumberField Field { get; }
 
         /// <summary>Build a float row. <paramref name="min"/>/<paramref name="max"/>/<paramref name="dragScale"/>/
-        /// <paramref name="decimals"/> configure the <see cref="Field"/>.</summary>
+        /// <paramref name="decimals"/> configure the <see cref="Field"/>. <paramref name="description"/> is an
+        /// optional tooltip.</summary>
         public FloatRow(LocalizedText label, Func<float> get, Action<float> set,
-            float min = float.MinValue, float max = float.MaxValue, float dragScale = 0.01f, int decimals = 2)
-            : base(label)
+            float min = float.MinValue, float max = float.MaxValue, float dragScale = 0.01f, int decimals = 2,
+            LocalizedText? description = null)
+            : base(label, description)
         {
             _get = get;
             _set = set;
@@ -120,6 +149,8 @@ namespace KhaozEngine.Gui
         }
 
         internal override void ApplyOpacity(float opacity) => Field.Opacity = opacity;
+
+        internal override void ApplyEditorStyle(GuiStyle style) => Field.Style = style;
     }
 
     /// <summary>Bool property backed by get/set delegates, edited with a <see cref="Gui.Toggle"/>.</summary>
@@ -131,8 +162,10 @@ namespace KhaozEngine.Gui
         /// <summary>The switch, exposed for style/inspection. Its bounds are driven by the grid each frame.</summary>
         public Toggle Toggle { get; }
 
-        /// <summary>Build a bool row over the given get/set delegates.</summary>
-        public BoolRow(LocalizedText label, Func<bool> get, Action<bool> set) : base(label)
+        /// <summary>Build a bool row over the given get/set delegates. <paramref name="description"/> is an
+        /// optional tooltip.</summary>
+        public BoolRow(LocalizedText label, Func<bool> get, Action<bool> set, LocalizedText? description = null)
+            : base(label, description)
         {
             _get = get;
             _set = set;
@@ -160,6 +193,8 @@ namespace KhaozEngine.Gui
         }
 
         internal override void ApplyOpacity(float opacity) => Toggle.Opacity = opacity;
+
+        internal override void ApplyEditorStyle(GuiStyle style) => Toggle.Style = style;
     }
 
     /// <summary>
@@ -174,8 +209,10 @@ namespace KhaozEngine.Gui
         /// <summary>The text field, exposed for style/inspection. Its bounds are driven by the grid each frame.</summary>
         public TextInput Input { get; }
 
-        /// <summary>Build a text row over the given get/set delegates, capped at <paramref name="maxLength"/>.</summary>
-        public TextRow(LocalizedText label, Func<string> get, Action<string> set, int maxLength = 64) : base(label)
+        /// <summary>Build a text row over the given get/set delegates, capped at <paramref name="maxLength"/>.
+        /// <paramref name="description"/> is an optional tooltip.</summary>
+        public TextRow(LocalizedText label, Func<string> get, Action<string> set, int maxLength = 64,
+            LocalizedText? description = null) : base(label, description)
         {
             _get = get;
             _set = set;
@@ -220,6 +257,8 @@ namespace KhaozEngine.Gui
         }
 
         internal override void ApplyOpacity(float opacity) => Input.Opacity = opacity;
+
+        internal override void ApplyEditorStyle(GuiStyle style) => Input.Style = style;
     }
 
     /// <summary>
@@ -244,9 +283,11 @@ namespace KhaozEngine.Gui
         /// Build a choice row over the given options and get/set delegates. <paramref name="options"/> must be
         /// non-empty (the underlying <see cref="Gui.Dropdown"/> requires at least one option); the initial selection
         /// is the option matching <paramref name="get"/>, or the first option when the value matches none.
+        /// <paramref name="description"/> is an optional tooltip.
         /// </summary>
-        public ChoiceRow(LocalizedText label, IReadOnlyList<string> options, Func<string> get, Action<string> set)
-            : base(label)
+        public ChoiceRow(LocalizedText label, IReadOnlyList<string> options, Func<string> get, Action<string> set,
+            LocalizedText? description = null)
+            : base(label, description)
         {
             _get = get;
             _set = set;
@@ -307,6 +348,8 @@ namespace KhaozEngine.Gui
 
         internal override void ApplyOpacity(float opacity) => Dropdown.Opacity = opacity;
 
+        internal override void ApplyEditorStyle(GuiStyle style) => Dropdown.Style = style;
+
         // Point the dropdown at the option matching `value`. An unknown external value leaves the selection where
         // it is (the dropdown always shows a real option).
         void SelectOption(string value)
@@ -316,7 +359,8 @@ namespace KhaozEngine.Gui
         }
     }
 
-    /// <summary>Read-only display row: a label plus a polled value string (coordinates, counts). Ignores input.</summary>
+    /// <summary>Read-only display row: a label plus a polled value string (coordinates, counts). Ignores input.
+    /// Has no styled inner widget, so it ignores <see cref="PropertyGrid.EditorStyle"/>.</summary>
     public sealed class ReadOnlyRow : PropertyRow
     {
         readonly Func<string> _getDisplay;
@@ -328,8 +372,10 @@ namespace KhaozEngine.Gui
         /// <summary>The value string polled on the last <see cref="Update"/>. Exposed for hosts and tests to read.</summary>
         public string Display { get; private set; } = "";
 
-        /// <summary>Build a read-only row over a display getter.</summary>
-        public ReadOnlyRow(LocalizedText label, Func<string> getDisplay) : base(label)
+        /// <summary>Build a read-only row over a display getter. <paramref name="description"/> is an optional
+        /// tooltip.</summary>
+        public ReadOnlyRow(LocalizedText label, Func<string> getDisplay, LocalizedText? description = null)
+            : base(label, description)
         {
             _getDisplay = getDisplay;
         }
@@ -357,6 +403,34 @@ namespace KhaozEngine.Gui
 
         // Left pad of the value text inside the editor cell.
         const float LabelPad = 6f;
+    }
+
+    /// <summary>
+    /// A label-only group-divider row spanning the grid's full width, with no editor cell (<see
+    /// cref="SpansFullWidth"/> is true). Used to break a long inspector into named sections ("Water", "Noise",
+    /// "Transform", ...). The grid draws a distinct background band behind its label (see
+    /// <see cref="PropertyGrid.Draw"/>), so <see cref="Draw"/> itself has nothing left to do. It owns no interactive
+    /// widget: <see cref="Update"/> is a no-op that never changes a bound value, and it inherits
+    /// <see cref="PropertyRow.HasActiveEditor"/> (false) and <see cref="PropertyRow.Deactivate"/> (no-op) unchanged
+    /// from the base, since there is no live gesture to ever close.
+    /// </summary>
+    public sealed class HeaderRow : PropertyRow
+    {
+        /// <summary>Build a full-width group-divider row. <paramref name="description"/> is an optional tooltip for
+        /// the header itself (e.g. explaining what the section below it covers).</summary>
+        public HeaderRow(LocalizedText label, LocalizedText? description = null) : base(label, description)
+        {
+            Height = 24f;
+        }
+
+        /// <inheritdoc/>
+        public override bool SpansFullWidth => true;
+
+        /// <inheritdoc/>
+        public override bool Update(Rect editorRect, InputManager input, float dt) => false;
+
+        /// <inheritdoc/>
+        public override void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, Rect editorRect) { }
     }
 
     /// <summary>
@@ -418,6 +492,41 @@ namespace KhaozEngine.Gui
         /// <summary>Colour of the row labels, captured from the ambient theme at construction.</summary>
         public Vector4 LabelColor = GuiTheme.Default.Text;
 
+        /// <summary>Background colour of a <see cref="HeaderRow"/>'s full-width band, drawn behind its label so a
+        /// group divider reads as a distinct strip inside a long inspector. Defaults to the ambient theme's surface
+        /// colour, a host tunes it to match its own panel palette.</summary>
+        public Vector4 HeaderBandColor = GuiTheme.Default.Surface;
+
+        GuiStyle _editorStyle = GuiStyle.Default;
+
+        /// <summary>
+        /// The <see cref="GuiStyle"/> pushed into every row's inner widget (a <see cref="FloatRow"/>'s
+        /// <see cref="NumberField"/>, a <see cref="BoolRow"/>'s <see cref="Toggle"/>, a <see cref="TextRow"/>'s
+        /// <see cref="TextInput"/>, a <see cref="ChoiceRow"/>'s <see cref="Dropdown"/>) so a host wanting
+        /// <see cref="GuiStyle.Modern"/> chrome across a whole inspector sets this once instead of restyling every
+        /// row it adds. Applied immediately to the current <see cref="Rows"/> on set, and reapplied every
+        /// <see cref="Update"/> so a row added later still picks it up on its next frame. <see cref="ReadOnlyRow"/>
+        /// and <see cref="HeaderRow"/> have no styled inner widget and ignore it. Default <see cref="GuiStyle.Default"/>.
+        /// </summary>
+        public GuiStyle EditorStyle
+        {
+            get => _editorStyle;
+            set
+            {
+                _editorStyle = value;
+                foreach (PropertyRow row in Rows) row.ApplyEditorStyle(value);
+            }
+        }
+
+        /// <summary>
+        /// The row under the pointer as of the last <see cref="Update"/>, tracked across a row's FULL band (its
+        /// label column and editor cell together, not just the narrower <see cref="RowEditorBounds"/>), or null
+        /// when nothing is hovered: no pointer frame has run yet, the pointer sits outside <see cref="Bounds"/>, or
+        /// it falls in the gap between rows. A host anchors a tooltip to <see cref="RowLabelBounds(int)"/> of this
+        /// row's index, reading <see cref="PropertyRow.Description"/> for the text.
+        /// </summary>
+        public PropertyRow? HoveredRow { get; private set; }
+
         /// <summary>True on the frame any row changed its bound value (mirrors the widget <c>WasChanged</c> idiom).</summary>
         public bool WasChanged { get; private set; }
 
@@ -458,31 +567,46 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// The editor cell of row <paramref name="rowIndex"/> this frame: pure arithmetic from <see cref="Bounds"/>,
         /// the prior rows' heights + <see cref="RowSpacing"/>, <see cref="LabelFraction"/>, and
-        /// <see cref="ScrollOffset"/>. May lie outside <see cref="Bounds"/> when scrolled. Public for tests and hosts.
+        /// <see cref="ScrollOffset"/>. May lie outside <see cref="Bounds"/> when scrolled. A row with
+        /// <see cref="PropertyRow.SpansFullWidth"/> (a <see cref="HeaderRow"/>) has no distinct editor cell, so this
+        /// returns its FULL row band instead (<see cref="Bounds"/>.X, full <see cref="Bounds"/>.Width). Public for
+        /// tests and hosts.
         /// </summary>
         public Rect RowEditorBounds(int rowIndex)
         {
             float y = Bounds.Y - ScrollOffset;
             for (int i = 0; i < rowIndex; i++) y += Rows[i].Height + RowSpacing;
+            PropertyRow row = Rows[rowIndex];
+            if (row.SpansFullWidth) return new Rect(Bounds.X, y, Bounds.Width, row.Height);
             float x = Bounds.X + Bounds.Width * LabelFraction;
             float w = Bounds.Width * (1f - LabelFraction);
-            return new Rect(x, y, w, Rows[rowIndex].Height);
+            return new Rect(x, y, w, row.Height);
         }
+
+        /// <summary>
+        /// The label cell (left column) of row <paramref name="rowIndex"/> this frame, sharing its editor cell's
+        /// Y/Height (see <see cref="RowEditorBounds"/>). A spanning row (<see cref="PropertyRow.SpansFullWidth"/>)
+        /// has no separate editor cell to split against, so its label IS the full row band. Public for tests and
+        /// hosts (e.g. anchoring a tooltip to the hovered row's label).
+        /// </summary>
+        public Rect RowLabelBounds(int rowIndex) => RowLabelBounds(rowIndex, RowEditorBounds(rowIndex));
 
         // The label cell (left column) of row `rowIndex` this frame, sharing the editor cell's Y/Height.
         Rect RowLabelBounds(int rowIndex, Rect editorCell) =>
-            new(Bounds.X, editorCell.Y, Bounds.Width * LabelFraction, editorCell.Height);
+            Rows[rowIndex].SpansFullWidth
+                ? editorCell
+                : new Rect(Bounds.X, editorCell.Y, Bounds.Width * LabelFraction, editorCell.Height);
 
         /// <summary>
-        /// Reserve the region on the pointer, apply wheel scrolling (clamped), then run each in-view row so it can
-        /// poll its getter and process input. Rows fully outside <see cref="Bounds"/> are skipped. Returns
-        /// <see cref="WasChanged"/> - true when any row changed its bound value this frame.
+        /// Reserve the region on the pointer, apply wheel scrolling (clamped), track <see cref="HoveredRow"/>, then
+        /// run each in-view row so it can poll its getter and process input. Rows fully outside <see cref="Bounds"/>
+        /// are skipped. Returns <see cref="WasChanged"/> - true when any row changed its bound value this frame.
         /// </summary>
         public bool Update(InputManager input, float dt)
         {
             WasChanged = false;
             input.BlockInputRegion(Bounds);
-            if (!Enabled) return false;
+            if (!Enabled) { HoveredRow = null; return false; }
 
             // Wheel scroll while the pointer is over the grid, clamped to the content. One notch moves
             // WheelRowsPerNotch rows (via the average row height), matching the TreeView feel side by side.
@@ -490,11 +614,27 @@ namespace KhaozEngine.Gui
             if (notches != 0) ScrollOffset -= notches * AverageRowHeight() * WheelRowsPerNotch;
             ScrollOffset = Math.Clamp(ScrollOffset, 0f, MaxScroll);
 
+            // The row under the pointer this frame, tracked across a row's FULL band (label column + editor cell
+            // together), not the narrower RowEditorBounds alone - a hover over either half counts. Null whenever
+            // the pointer sits outside Bounds entirely (an out-of-view row's band can never overlap a Bounds-local
+            // pointer position, so no extra guard is needed for the scrolled-away case).
+            Vector2 pointerPos = input.Pointer.Position;
+            bool pointerInGrid = Bounds.Contains(pointerPos);
+            PropertyRow? hovered = null;
+
             _ranThisFrame.Clear();
             for (int i = 0; i < Rows.Count; i++)
             {
                 Rect cell = RowEditorBounds(i);
                 PropertyRow row = Rows[i];
+                row.ApplyEditorStyle(EditorStyle);
+
+                if (pointerInGrid)
+                {
+                    var band = new Rect(Bounds.X, cell.Y, Bounds.Width, cell.Height);
+                    if (band.Contains(pointerPos)) hovered = row;
+                }
+
                 // Skip rows scrolled fully out of view: do not run their child widget, so it neither hit-tests
                 // off-view geometry nor reserves an off-view region (block-region pollution). A row that ran last
                 // frame but is culled now is Deactivated once as it leaves, so a focused/open editor cannot keep
@@ -507,6 +647,7 @@ namespace KhaozEngine.Gui
                 if (row.Update(cell, input, dt)) WasChanged = true;
                 _ranThisFrame.Add(row);
             }
+            HoveredRow = hovered;
             // This frame's in-view rows become next frame's reference set (swap, no allocation).
             (_ranLastFrame, _ranThisFrame) = (_ranThisFrame, _ranLastFrame);
             return WasChanged;
@@ -571,6 +712,25 @@ namespace KhaozEngine.Gui
                     // Late overlay pass: an open dropdown list, drawn after every row so the rows below it no longer
                     // overpaint it. No-op for a row with no pop-up content.
                     row.DrawOverlay(batch, white, font, cell);
+                    continue;
+                }
+
+                if (row.SpansFullWidth)
+                {
+                    // A HeaderRow-style spanning row: a distinct background band across the FULL row width (styled
+                    // via GuiStyle.FillStyled so GuiStyle.Modern's CornerRadius/shadow/gradient apply), with its
+                    // label drawn over that same band instead of the narrower label column - there is no separate
+                    // editor cell to split against.
+                    GuiDraw.FillStyled(batch, white, cell, EditorStyle,
+                        GuiDraw.WithOpacity(HeaderBandColor, Opacity), GuiDraw.WithOpacity(EditorStyle.Border, Opacity));
+                    string spanText = GuiDraw.TruncateWithEllipsis(row.Label.Resolve(), cell.Width - LabelPad * 2f,
+                        s => font.Measure(s).X);
+                    Vector2 spanPos = GuiDraw.AlignedTextPos(cell, font.Measure(spanText), font.LineHeight, GuiAlign.Left, 1f, LabelPad);
+                    batch.DrawString(font, spanText, new Vector2(MathF.Floor(spanPos.X), MathF.Floor(spanPos.Y)),
+                        (Color)GuiDraw.WithOpacity(LabelColor, Opacity));
+
+                    row.ApplyOpacity(Opacity);
+                    row.Draw(batch, white, font, cell);
                     continue;
                 }
 

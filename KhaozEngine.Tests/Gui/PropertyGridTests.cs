@@ -488,5 +488,148 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(3f * tree.RowHeight, tree.ScrollOffset, 3);   // 3 * 24 = 72
             Assert.Equal(3f * 28f, grid.ScrollOffset, 3);             // 3 * 28 = 84
         }
+
+        // ---- HeaderRow: a label-only row spanning the grid's full width, no editor cell. ----
+
+        [Fact]
+        public void HeaderRow_SpansFullWidth_NoEditorCell()
+        {
+            var grid = new PropertyGrid(Area);   // Area (0,0,300,150), LabelFraction default 0.45
+            var header = new HeaderRow(LocalizedText.Raw("Group"));
+            grid.Rows.Add(header);                                                        // row 0
+            grid.Rows.Add(new FloatRow(LocalizedText.Raw("A"), () => 0f, _ => { }));       // row 1
+
+            Assert.True(header.SpansFullWidth);
+            Assert.Equal(24f, header.Height, 3);
+
+            // No distinct editor cell: the "editor" band for a spanning row is the FULL row width, not the
+            // (1 - LabelFraction) slice a normal row's editor cell gets.
+            Rect cell = grid.RowEditorBounds(0);
+            Assert.Equal(0f, cell.X, 3);
+            Assert.Equal(300f, cell.Width, 3);
+
+            // Its label bounds coincide with that same full band: there is no separate label column to split.
+            Rect label = grid.RowLabelBounds(0);
+            Assert.Equal(cell.X, label.X, 3);
+            Assert.Equal(cell.Width, label.Width, 3);
+
+            // A sibling non-spanning row right below it still gets the normal label/editor split.
+            Rect siblingCell = grid.RowEditorBounds(1);
+            Assert.Equal(300f * 0.45f, siblingCell.X, 3);
+
+            // A header owns no interactive widget: a tap on its band never reports a change.
+            var input = new InputManager();
+            Tap(input, grid, new Vector2(150, 12));   // inside the header's band (row 0, y 0..24)
+            Assert.False(grid.WasChanged);
+
+            // Never has an active editor. Deactivate is the inherited no-op (does not throw).
+            Assert.False(header.HasActiveEditor);
+            header.Deactivate();
+        }
+
+        // ---- PropertyGrid.HoveredRow: tracks the pointer across a row's FULL band (label + editor together). ----
+
+        [Fact]
+        public void HoveredRow_TracksPointer_NullOutside()
+        {
+            var grid = new PropertyGrid(Area);   // Area (0,0,300,150)
+            var rowA = new FloatRow(LocalizedText.Raw("A"), () => 0f, _ => { });   // row 0: y 0..28
+            var rowB = new BoolRow(LocalizedText.Raw("B"), () => false, _ => { }); // row 1: y 32..60
+            grid.Rows.Add(rowA);
+            grid.Rows.Add(rowB);
+
+            Assert.Null(grid.HoveredRow);   // no frame run yet
+
+            var input = new InputManager();
+
+            // Over row 0's LABEL column (left of the label/editor split) still counts: the hover band is the
+            // row's full width, not just RowEditorBounds.
+            Step(input, grid, new Vector2(10, 14), false);
+            Assert.Same(rowA, grid.HoveredRow);
+
+            // Over row 0's editor cell too.
+            Step(input, grid, new Vector2(200, 14), false);
+            Assert.Same(rowA, grid.HoveredRow);
+
+            // Over row 1.
+            Step(input, grid, new Vector2(200, 46), false);
+            Assert.Same(rowB, grid.HoveredRow);
+
+            // In the inter-row gap (y 28..32, the 4px RowSpacing): no row's band covers it.
+            Step(input, grid, new Vector2(200, 30), false);
+            Assert.Null(grid.HoveredRow);
+
+            // Outside the grid bounds entirely.
+            Step(input, grid, new Vector2(400, 300), false);
+            Assert.Null(grid.HoveredRow);
+        }
+
+        // ---- PropertyGrid.RowLabelBounds(int): the public label-cell accessor. ----
+
+        [Fact]
+        public void RowLabelBounds_MatchesLabelFraction()
+        {
+            var grid = new PropertyGrid(Area);   // Area width 300, LabelFraction default 0.45
+            grid.Rows.Add(new FloatRow(LocalizedText.Raw("A"), () => 0f, _ => { }));
+            grid.Rows.Add(new FloatRow(LocalizedText.Raw("B"), () => 0f, _ => { }));
+
+            Rect label0 = grid.RowLabelBounds(0);
+            Rect editor0 = grid.RowEditorBounds(0);
+            Assert.Equal(0f, label0.X, 3);
+            Assert.Equal(300f * 0.45f, label0.Width, 3);
+            Assert.Equal(editor0.Y, label0.Y, 3);
+            Assert.Equal(editor0.Height, label0.Height, 3);
+            // The label ends exactly where the editor cell begins: no gap, no overlap.
+            Assert.Equal(editor0.X, label0.X + label0.Width, 3);
+
+            // The same relationship holds for a lower row.
+            Rect label1 = grid.RowLabelBounds(1);
+            Rect editor1 = grid.RowEditorBounds(1);
+            Assert.Equal(editor1.Y, label1.Y, 3);
+            Assert.Equal(300f * 0.45f, label1.Width, 3);
+
+            // A non-default LabelFraction still holds the relationship.
+            grid.LabelFraction = 0.3f;
+            Rect label2 = grid.RowLabelBounds(0);
+            Assert.Equal(300f * 0.3f, label2.Width, 3);
+        }
+
+        // ---- PropertyGrid.EditorStyle: pushed into every row's inner widget. ----
+
+        [Fact]
+        public void EditorStyle_AppliesToRowWidgets()
+        {
+            var grid = new PropertyGrid(Area);
+            var floatRow = new FloatRow(LocalizedText.Raw("F"), () => 0f, _ => { });
+            var boolRow = new BoolRow(LocalizedText.Raw("B"), () => false, _ => { });
+            var textRow = new TextRow(LocalizedText.Raw("T"), () => "", _ => { });
+            var choiceRow = new ChoiceRow(LocalizedText.Raw("C"), new[] { "a", "b" }, () => "a", _ => { });
+            var readOnlyRow = new ReadOnlyRow(LocalizedText.Raw("R"), () => "-");
+            var header = new HeaderRow(LocalizedText.Raw("H"));
+            grid.Rows.Add(floatRow);
+            grid.Rows.Add(boolRow);
+            grid.Rows.Add(textRow);
+            grid.Rows.Add(choiceRow);
+            grid.Rows.Add(readOnlyRow);   // no styled widget: must not throw when EditorStyle is applied
+            grid.Rows.Add(header);        // same
+
+            // Default: every row's widget already carries GuiStyle.Default (its own field default).
+            Assert.Equal(GuiStyle.Default.CornerRadius, floatRow.Field.Style.CornerRadius, 3);
+
+            var input = new InputManager();
+            grid.EditorStyle = GuiStyle.Modern;   // set AFTER the rows are added
+
+            Assert.Equal(GuiStyle.Modern.CornerRadius, floatRow.Field.Style.CornerRadius, 3);
+            Assert.Equal(GuiStyle.Modern.CornerRadius, boolRow.Toggle.Style.CornerRadius, 3);
+            Assert.Equal(GuiStyle.Modern.CornerRadius, textRow.Input.Style.CornerRadius, 3);
+            Assert.Equal(GuiStyle.Modern.CornerRadius, choiceRow.Dropdown.Style.CornerRadius, 3);
+
+            // A row added AFTER EditorStyle is set also picks it up, on its next Update, without a fresh assignment.
+            var laterRow = new FloatRow(LocalizedText.Raw("L"), () => 0f, _ => { });
+            grid.Rows.Add(laterRow);
+            Assert.Equal(GuiStyle.Default.CornerRadius, laterRow.Field.Style.CornerRadius, 3);   // fresh widget default
+            Step(input, grid, new Vector2(400, 300), false);
+            Assert.Equal(GuiStyle.Modern.CornerRadius, laterRow.Field.Style.CornerRadius, 3);
+        }
     }
 }

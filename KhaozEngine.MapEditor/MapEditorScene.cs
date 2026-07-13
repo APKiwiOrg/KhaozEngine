@@ -892,7 +892,15 @@ public class MapEditorScene : GameScene, IGameScene3D
             _outline.Selected = null;
             return;
         }
-        var target = new OutlineRef(sel.Kind, sel.Id);
+        // Mid-rename, every keystroke executes a rename command that rebuilds the outline (OnDocumentChanged)
+        // while the actual re-select is still deferred (_pendingSelectId, fired once the row loses focus, see
+        // UpdateChrome). Selection.Id therefore still holds the OLD key for the rest of that frame, which would
+        // resolve to nothing in the freshly rebuilt tree and drop the highlight for the whole edit. Resolve
+        // against the pending NEW key instead so the highlight follows the row being renamed live. The kind check
+        // guards a pending re-select left over for a DIFFERENT selection kind (OnSelectionChanged clears it on any
+        // real kind/id mismatch, so this should never see one, but costs nothing to assert here too).
+        string id = _pendingSelectId is string pending && _pendingSelectKind == sel.Kind ? pending : sel.Id;
+        var target = new OutlineRef(sel.Kind, id);
         TreeNode? node = _outline.FindByTag(tag => tag is OutlineRef r && r.Equals(target));
         _outline.Selected = node;
         if (node is not null) _outline.ScrollTo(node);
@@ -1367,10 +1375,13 @@ public class MapEditorScene : GameScene, IGameScene3D
             {
                 if (string.IsNullOrWhiteSpace(v) || string.Equals(v, current, StringComparison.Ordinal)) return;
                 if (exists(v) || !exists(current)) return;   // collision or vanished
-                _document.Execute(rename(current, v));
-                current = v;
+                // Set the pending key BEFORE executing the rename: Execute fires DocumentChanged synchronously,
+                // which rebuilds the outline and calls SyncOutlineSelection on the spot, and that read needs the
+                // NEW key already in place to resolve the freshly rebuilt tree (see SyncOutlineSelection).
                 _pendingSelectKind = kind;
                 _pendingSelectId = v;
+                _document.Execute(rename(current, v));
+                current = v;
             });
         _nameRow = row;
         _inspector.Rows.Add(row);

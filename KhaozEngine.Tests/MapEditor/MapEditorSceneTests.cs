@@ -1551,6 +1551,38 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("spawn-1-renamed", scene.Document.Selection.Id);   // selection followed the new id
         }
 
+        [Fact]
+        public void MidRename_OutlineHighlightPersists()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop" });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+
+            // Type a single character into the rename row: focus the field, replace its buffer with the OLD key
+            // plus one appended character, then run one row Update so the TextChanged write-through fires the
+            // setter (RenamePlacementCommand). That rebuilds the outline via OnDocumentChanged while the row is
+            // still focused, i.e. before the deferred re-select (_pendingSelectId, see UpdateChrome) ever fires,
+            // which is exactly the frame the outline highlight used to drop on.
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            row.Input.IsFocused = true;
+            row.Input.SetText("huts");
+            row.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("huts", scene.Document.Doc.Placements[0].Id);
+            Assert.True(row.Input.IsFocused);   // still typing: the deferred re-select has NOT fired yet
+
+            TreeNode? selected = scene.Outline.Selected;
+            Assert.NotNull(selected);
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "huts"), selected!.Tag);
+        }
+
         // ---- visibility layers ---------------------------------------------------------------------------
 
         [Fact]

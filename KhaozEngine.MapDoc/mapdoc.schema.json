@@ -168,6 +168,22 @@
         }
       }
     },
+    "playerSpawns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "x", "z"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "x": { "type": "number" },
+          "z": { "type": "number" },
+          "yaw": { "type": "number" },
+          "enabled": { "type": "boolean" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
     "regions": {
       "type": "array",
       "items": {

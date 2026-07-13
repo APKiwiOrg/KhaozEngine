@@ -29,6 +29,9 @@ A map document (`MapDocument`) has:
 - **`placements`** - authored props/buildings: stable id, kind, position (Y optional, ground-snapped if
   absent), yaw, scale, tags.
 - **`spawns`** - NPC spawn markers (archetype id, position, enabled flag, tags), interpreted by the game.
+- **`playerSpawns`** - player start markers (stable id, position, yaw, enabled flag, tags). No archetype:
+  which start a game uses at runtime is game code's concern. Games read `doc.PlayerSpawns` directly, the
+  same way they read `spawns` (no `MapRuntime` builder).
 - **`regions`** - named, tagged shapes for quest areas, safe zones, triggers, interpreted by the game.
 - **`terrainOverrides`** - reserved for a future sculpt/delta layer. Must be absent or null in format
   version 1, the validator rejects anything else, so sculpting lands later as a version bump, not a break.
@@ -41,7 +44,7 @@ it, and `MapDocumentSchema.WriteTo(path)` materializes it into a game's data dir
 validator.
 
 Every closed structure (the document root, `bounds`, `terrain`, scatter layers, companion layers,
-placements, spawns, regions, exclusions, overrides, and each concrete shape) sets
+placements, spawns, player spawns, regions, exclusions, overrides, and each concrete shape) sets
 `additionalProperties: false`, so an unknown field anywhere on them fails validation. The one exception
 is deliberate: a `terrain.features` item only requires its `type` discriminator, because the feature
 union is registry-open (`MapDocRegistry.RegisterFeature`), and locking its fields to the built-in set

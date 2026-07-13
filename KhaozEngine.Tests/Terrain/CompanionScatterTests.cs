@@ -146,6 +146,81 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void GenerateCompanions_PopulatedHostKinds_StillFilters()
+        {
+            // A non-empty HostKinds keeps exact ordinal filtering: only hosts whose Id is listed spawn companions.
+            TerrainField f = FlatField();
+            CompanionConfig c = Comp();   // HostKinds = { "pine_a" }
+
+            var pine = new PropPlacement("pine_a", 5f, 0f, 7f, 1f, 0f, 0);
+            var rock = new PropPlacement("rock_a", 5f, 0f, 7f, 1f, 0f, 0);
+
+            Assert.NotEmpty(PropScatter.GenerateCompanions(f, new[] { pine }, c));
+            Assert.Empty(PropScatter.GenerateCompanions(f, new[] { rock }, c));
+
+            // A mixed host set spawns companions for the listed kind only, none for the unlisted kind.
+            var mixedRock = new PropPlacement("rock_a", 20f, 0f, 20f, 1f, 0f, 0);
+            var mixed = PropScatter.GenerateCompanions(f, new[] { pine, mixedRock }, c);
+            Assert.NotEmpty(mixed);
+            // Every companion rings the pine host (near 5,7), never the rock host (near 20,20).
+            foreach (PropPlacement p in mixed)
+            {
+                float dPine = MathF.Sqrt((p.X - pine.X) * (p.X - pine.X) + (p.Z - pine.Z) * (p.Z - pine.Z));
+                Assert.InRange(dPine, c.RadiusMin - 1e-3f, c.RadiusMax + 1e-3f);
+            }
+        }
+
+        [Fact]
+        public void GenerateCompanions_EmptyHostKinds_MatchesAllHosts()
+        {
+            // Empty (or absent) HostKinds means EVERY host placement matches, so companions ring both a "pine_a"
+            // and a "rock_a" host that a populated { "pine_a" } filter would have split.
+            TerrainField f = FlatField();
+            CompanionConfig all = Comp();
+            all.HostKinds = Array.Empty<string>();
+
+            var pine = new PropPlacement("pine_a", 5f, 0f, 7f, 1f, 0f, 0);
+            var rock = new PropPlacement("rock_a", 20f, 0f, 20f, 1f, 0f, 0);
+
+            Assert.NotEmpty(PropScatter.GenerateCompanions(f, new[] { pine }, all));
+            Assert.NotEmpty(PropScatter.GenerateCompanions(f, new[] { rock }, all));
+
+            // Both host kinds contribute in a mixed set: some companions ring pine, some ring rock.
+            var mixed = PropScatter.GenerateCompanions(f, new[] { pine, rock }, all);
+            Assert.NotEmpty(mixed);
+            bool nearPine = mixed.Any(p => MathF.Sqrt((p.X - pine.X) * (p.X - pine.X) + (p.Z - pine.Z) * (p.Z - pine.Z)) <= c(all));
+            bool nearRock = mixed.Any(p => MathF.Sqrt((p.X - rock.X) * (p.X - rock.X) + (p.Z - rock.Z) * (p.Z - rock.Z)) <= c(all));
+            Assert.True(nearPine, "empty HostKinds should ring the pine host");
+            Assert.True(nearRock, "empty HostKinds should ring the rock host");
+
+            static float c(CompanionConfig cfg) => cfg.RadiusMax + 1e-3f;
+        }
+
+        [Fact]
+        public void GenerateCompanions_EmptyHostKinds_IsTilingInvariant()
+        {
+            // Chunk-order independence must hold on the empty-HostKinds "match all" path too: the union over a
+            // tiling of the hosts equals the whole-area result (streaming safety), same as the filtered path.
+            TerrainField f = FlatField();
+            ScatterConfig hostCfg = TreeHosts();
+            CompanionConfig c = Comp();
+            c.HostKinds = Array.Empty<string>();
+
+            var whole = PropScatter.GenerateCompanions(f,
+                PropScatter.Generate(f, hostCfg, new RectArea(-50, -50, 50, 50)), c);
+
+            var q1 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(-50, -50, 0, 0)), c);
+            var q2 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(0, -50, 50, 0)), c);
+            var q3 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(-50, 0, 0, 50)), c);
+            var q4 = PropScatter.GenerateCompanions(f, PropScatter.Generate(f, hostCfg, new RectArea(0, 0, 50, 50)), c);
+
+            var union = q1.Concat(q2).Concat(q3).Concat(q4).ToList();
+            Assert.NotEmpty(whole);
+            Assert.Equal(whole.Count, union.Count);
+            Assert.Equal(whole.Select(Key).OrderBy(s => s).ToList(), union.Select(Key).OrderBy(s => s).ToList());
+        }
+
+        [Fact]
         public void GenerateCompanions_KindsAreFromTheConfig()
         {
             TerrainField f = FlatField();

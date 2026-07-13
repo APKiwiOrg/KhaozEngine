@@ -164,6 +164,131 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Single(doc.Spawns, s => s.Id == "bear-1");
         }
 
+        // ---- player spawns (mirror the NPC spawn family) ----------------------------------------------
+
+        [Fact]
+        public void AddPlayerSpawn_RoundTrips() =>
+            AssertRoundTrip(Sample(), new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = "start", X = 4f, Z = 9f, Yaw = 0.5f }));
+
+        [Fact]
+        public void RemovePlayerSpawn_RoundTrips()
+        {
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 3f, Z = 3f });
+            AssertRoundTrip(doc, new RemovePlayerSpawnCommand("start"));
+        }
+
+        [Fact]
+        public void MovePlayerSpawn_RoundTrips()
+        {
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 3f, Z = 3f });
+            AssertRoundTrip(doc, new MovePlayerSpawnCommand("start", 50f, 60f));
+        }
+
+        [Fact]
+        public void SetPlayerSpawnEnabled_RoundTrips()
+        {
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 3f, Z = 3f });
+            AssertRoundTrip(doc, new SetPlayerSpawnEnabledCommand("start", false));
+        }
+
+        [Fact]
+        public void RenamePlayerSpawnCommand_AppliesRevertsAndGuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 4f, Z = 9f });
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "rally", X = 1f, Z = 1f });
+
+            AssertRoundTrip(doc, new RenamePlayerSpawnCommand("start", "start-2"));
+
+            var ed = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenamePlayerSpawnCommand("start", "rally")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Contains(doc.PlayerSpawns, s => s.Id == "start");
+            Assert.Single(doc.PlayerSpawns, s => s.Id == "rally");
+        }
+
+        [Fact]
+        public void AddPlayerSpawn_AbsorbsFollowingMove_OneUndoRemovesIt()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = "dropped", X = 1f, Z = 1f }));
+            ed.Execute(new MovePlayerSpawnCommand("dropped", 5f, 6f));
+            ed.Execute(new MovePlayerSpawnCommand("dropped", 9f, 2f));
+
+            Assert.Equal(1, ed.History.UndoDepth);
+            MapPlayerSpawn placed = doc.PlayerSpawns.First(s => s.Id == "dropped");
+            Assert.Equal(9f, placed.X);
+            Assert.Equal(2f, placed.Z);
+
+            Assert.True(ed.Undo());
+            Assert.DoesNotContain(doc.PlayerSpawns, s => s.Id == "dropped");
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void MovePlayerSpawn_MergesSameId()
+        {
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 20f, Z = 5f });
+            var ed = new EditorDocument(doc);
+            ed.Execute(new MovePlayerSpawnCommand("start", 1f, 1f));
+            ed.Execute(new MovePlayerSpawnCommand("start", 2f, 2f));
+            Assert.Equal(2f, doc.PlayerSpawns.First(s => s.Id == "start").X);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(20f, doc.PlayerSpawns.First(s => s.Id == "start").X);
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void AddPlayerSpawn_DeepCopiesTags_NoCallerAliasing()
+        {
+            // Round-5 aliasing guard: the command deep-copies the incoming spawn (fresh Tags list) at construction,
+            // so mutating the caller's object or list afterward cannot leak into the document.
+            var doc = Sample();
+            var tags = new List<string> { "a" };
+            var spawn = new MapPlayerSpawn { Id = "start", X = 1f, Z = 1f, Tags = tags };
+            var cmd = new AddPlayerSpawnCommand(spawn);
+
+            tags.Add("b");
+            spawn.X = 999f;
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(cmd);
+            MapPlayerSpawn added = doc.PlayerSpawns.First(s => s.Id == "start");
+            Assert.Equal(1f, added.X);
+            Assert.Equal(new[] { "a" }, added.Tags);
+        }
+
+        [Fact]
+        public void PlayerSpawnCommands_RoundTrip_MoveMerges_RenameGuarded()
+        {
+            // Round-trip: Add mutates the document, then undoes to a byte-identical serialized form.
+            AssertRoundTrip(Sample(), new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = "start", X = 4f, Z = 9f, Yaw = 0.5f }));
+
+            // Move coalescing: two same-id moves collapse to one undo step whose undo restores the origin.
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 20f, Z = 5f });
+            var ed = new EditorDocument(doc);
+            ed.Execute(new MovePlayerSpawnCommand("start", 1f, 1f));
+            ed.Execute(new MovePlayerSpawnCommand("start", 2f, 2f));
+            Assert.Equal(1, ed.History.UndoDepth);
+            Assert.Equal(2f, doc.PlayerSpawns.First(s => s.Id == "start").X);
+
+            // Rename guard: renaming onto an existing id throws in Apply and lands no undo step.
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "rally", X = 0f, Z = 0f });
+            var ed2 = new EditorDocument(doc);
+            Assert.Throws<InvalidOperationException>(() => ed2.Execute(new RenamePlayerSpawnCommand("start", "rally")));
+            Assert.False(ed2.History.CanUndo);
+        }
+
         [Fact]
         public void EditFeature_RoundTrips()
         {

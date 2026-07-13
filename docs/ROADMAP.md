@@ -33,6 +33,15 @@ forward push), so that fix neither covers nor regresses it. No shipped consumer 
 consumers' stairs are convex boxes, which the tread-find fix fully covers - so it is recorded here rather than
 patched. Documented in the `ConsumerStairBaseMountTests` header.
 
+SurfaceGradeAhead complex-geometry robustness (stair-glide signal, deferred). The continuous-run detection that gates
+the climb signal reads the local grade from a small forward ray fan (`SurfaceGradeAhead`). On a clean box/convex
+staircase it is stable, but on complex geometry near the run - railings, corner posts, a balustrade, an adjacent wall
+lip - a probe ray can graze a non-tread surface and flip the detection off for a tick, which flickers the signal and
+can make the render glide disengage/re-engage (a brief hitch). No shipped consumer stair has this (the consumer
+`TestStaircase` and dungeon stairs are convex boxes with clear approaches), so it is recorded here rather than
+hardened now. When it matters, options are a more robust surface classifier (reject rays whose hit normal or height is
+inconsistent with the run) or a short hysteresis on the run-detected flag so a one-tick probe miss does not drop it.
+
 Gate the up-tilted-lip step-up on elevation above the current SUPPORT floor (props included), not analytic
 terrain alone. The lip step-up widened in the short-riser/tread-lip fix keys its near-floor gate off the
 analytic terrain height only (`StepUpEligible`), so a short lip sitting on TOP of a prop platform more than a

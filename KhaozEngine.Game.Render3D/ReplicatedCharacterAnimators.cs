@@ -415,7 +415,16 @@ namespace KhaozEngine.Game
             public Vector3 Velocity;    // last closed-window velocity, held across zero-delta frames
             public float SmoothedY;     // signal-gated render-glide feet height (see the smoother in Update); seeded to true
             public bool SnapPending;    // a consumer called SnapRenderHeight: hard-cut the render height next Update
+            public bool AscendGliding;  // the ASCENT climb feed-forward (or its disengage ease) was active last Update.
+                                        // Gates the disengage ease to an ascent crest ONLY: a fall never sets it (falls
+                                        // render raw), and a DESCENT sets it false (ClimbRate < 0), so the descent's
+                                        // ClimbRate==0 flicker ticks hard-cut and track the drop instead of easing.
         }
+
+        // The disengage ease (climb -> grounded-flat) snaps exact and ends once the residual falls below this: 1 mm is
+        // sub-perceptual (well under a millimetre per frame at the settle tail), so the ease terminates cleanly rather
+        // than chasing an asymptote onto flat ground.
+        const float SettleEpsilon = 0.001f;
 
         readonly Func<AnimatedCharacter> _factory;
         readonly CharacterAnimatorTuning _tuning;
@@ -626,21 +635,52 @@ namespace KhaozEngine.Game
                 // byte-identical (ClimbRate == 0 -> raw -> render-Y == true feet-Y exactly, from the seeded state).
                 float trueFeetY = s.Position.Y;
                 bool climbing = s.ClimbRate != 0f;   // the sim's fact: 0 = not on a step climb (position-only samples read 0)
-                if (_tuning.SlopeGlideRate <= 0f || dt <= 0f || snapped || !climbing
+                float glideStep = 1f - MathF.Exp(-_tuning.SlopeGlideRate * dt);
+                if (_tuning.SlopeGlideRate <= 0f || dt <= 0f || snapped
                     || MathF.Abs(trueFeetY - e.SmoothedY) > _tuning.SlopeGlideSnapDistance)
                 {
-                    // Disabled / a teleport cut this frame / not climbing / a gap larger than a riser-and-a-half: render
-                    // raw. Correct by construction for every non-climb case (falls, jumps, teleports, platforms).
+                    // Disabled / a teleport cut this frame / a gap larger than the snap distance: render raw (hard cut).
                     e.SmoothedY = trueFeetY;
+                    e.AscendGliding = false;
+                }
+                else if (climbing)
+                {
+                    // Lag-free feed-forward at the EXACT sim rate (signed: ascent raises, descent lowers), then critically
+                    // damp toward the true feet-Y. The ascent ClimbRate is now the EWMA of the ACHIEVED per-tick rise
+                    // (CharacterMovement step 4b), so it converges to the true climb rate and this feed-forward/damp
+                    // equilibrium sits ON the true feet (~0 hover) instead of a half-riser above - no persistent stair
+                    // float, and no hover left to snap when the signal cuts to 0 at the top.
+                    e.SmoothedY += s.ClimbRate * dt;
+                    e.SmoothedY += (trueFeetY - e.SmoothedY) * glideStep;
+                    e.AscendGliding = s.ClimbRate > 0f;   // ascent arms the crest ease; descent does not (see below)
+                }
+                else if (e.AscendGliding && grounded && locomotionSpeed > 0f)
+                {
+                    // DISENGAGE EASE (ASCENT crest -> grounded-flat while STILL MOVING). The signal just cut to 0 at the top
+                    // of a climb, but the drawn feet can still carry the last per-riser hover (~1-2 cm at the disengage
+                    // phase). Ease it onto the true feet with the SAME critical damp instead of hard-cutting that residual in
+                    // a single frame - that one-frame drop is the crest snap. Tightly gated so nothing else changes:
+                    //  - `AscendGliding` means an ASCENT was gliding last frame, so it is scoped to the ascent crest (the
+                    //    only place the snap occurs). A DESCENT does NOT arm it (ClimbRate < 0), so the descent's
+                    //    ClimbRate==0 flicker ticks (a full riser drop the sim reads as "not on a run" for a tick) hard-cut
+                    //    and TRACK the drop, exactly as before - no descent regression.
+                    //  - a FALL renders raw and never arms it, so it can never enter here even on its grounded landing tick;
+                    //    the fall-sink stays impossible by construction.
+                    //  - a mid-stair STOP (locomotionSpeed 0) hard-cuts, so the feet sit on the true tread immediately (no
+                    //    post-stop float).
+                    // Once the residual eases below SettleEpsilon, snap exact and disarm, so it cannot leave a sub-perceptual
+                    // offset running onto flat ground (and genuinely flat ground never climbs, so it never arms - flat-ground
+                    // identity holds).
+                    e.SmoothedY += (trueFeetY - e.SmoothedY) * glideStep;
+                    if (MathF.Abs(trueFeetY - e.SmoothedY) <= SettleEpsilon) { e.SmoothedY = trueFeetY; e.AscendGliding = false; }
                 }
                 else
                 {
-                    // Lag-free feed-forward at the EXACT sim rate (signed: ascent raises, descent lowers), then critically
-                    // damp toward the true feet-Y. Because the feed-forward is the sim's own smooth rate, the damp only
-                    // absorbs quantization drift and the remote interpolation-vs-quantized-rate mismatch - not a per-riser
-                    // sawtooth - and settles a mid-stair rest offset onto the true tread in ~0.8 s.
-                    e.SmoothedY += s.ClimbRate * dt;
-                    e.SmoothedY += (trueFeetY - e.SmoothedY) * (1f - MathF.Exp(-_tuning.SlopeGlideRate * dt));
+                    // Not climbing, and either stopped, airborne, descending-flicker, or already settled: render raw (hard
+                    // cut). Correct by construction for a fall, jump, teleport, prop platform, elevator, swim, mid-stair
+                    // stop, or a descent's between-riser tick.
+                    e.SmoothedY = trueFeetY;
+                    e.AscendGliding = false;
                 }
 
                 Matrix4x4 world = Matrix4x4.CreateScale(_tuning.Scale)

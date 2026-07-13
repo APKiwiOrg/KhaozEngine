@@ -80,11 +80,13 @@ public class ClimbSignalTests
     }
 
     [Fact]
-    public void AscentClimbRate_SaturatesMaxStepClimbSpeed_OnARun_NeverExceedsIt()
+    public void AscentClimbRate_ConvergesToAchievedRiseRate_BelowTheCap_NeverExceedsIt()
     {
-        // The ascent climb rate is the honest even rate min(commandedForward * grade, MaxStepClimbSpeed): a RUN (6 m/s)
-        // on a 0.30/0.40 stair (grade 0.75) wants 4.5 m/s, so it SATURATES the MaxStepClimbSpeed cap (3.5) and never
-        // exceeds it - the paced ceiling. The signal is the vertical rate the render glide feeds forward.
+        // The ascent climb rate is an EWMA of the ACTUALLY-APPLIED per-tick rise, so it converges to the sim's TRUE
+        // emergent climb rate - which on a co-paced run is BELOW the MaxStepClimbSpeed cap (a run wants 4.5 m/s on the
+        // 0.30/0.40 stair but the footprint-limited co-pace only achieves ~2.9-3.1 m/s). It must (a) never exceed the
+        // cap (the co-pace bounds each tick's applied rise) and (b) TRACK the achieved rise rate, not overstate it to
+        // the cap - overstating it is exactly the half-riser render hover this feature removed.
         MoveTuning t = Tuning();
         using IPhysicsWorld world = new BepuPhysicsWorld();
         AddStairs(world, Riser, Tread, 33);
@@ -93,16 +95,32 @@ public class ClimbSignalTests
         var cmd = new MoveCommand(new Vector2(0f, 1f), run: true, cameraYaw: 0f, jump: false);
         float Ground(float x, float z) => 0f;
         Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
-        float maxSeen = 0f;
+        float halfH = t.CapsuleHalfHeight;
+        float loY = halfH + 2f * Riser + 0.05f, hiY = Riser * 33 + halfH - 0.05f;
+        float sumSignal = 0f, sumAchieved = 0f; int n = 0; float maxSeen = 0f;
         for (int i = 0; i < 200; i++)
         {
+            float yBefore = state.Position.Y;
+            bool onRamp = state.Position.Y > loY && state.Position.Y < hiY;
             state = CharacterMovement.Step(state, cmd, Dt, Ground, t, normal, world);
             Assert.True(state.ClimbRate <= t.MaxStepClimbSpeed + 1e-4f,
                 $"ascent ClimbRate {state.ClimbRate} exceeded the MaxStepClimbSpeed cap {t.MaxStepClimbSpeed}");
-            maxSeen = MathF.Max(maxSeen, state.ClimbRate);
+            if (onRamp && state.Grounded && state.ClimbRate > 0f)
+            {
+                sumSignal += state.ClimbRate;
+                sumAchieved += (state.Position.Y - yBefore) / Dt;   // the rate the feet ACTUALLY rose this tick
+                maxSeen = MathF.Max(maxSeen, state.ClimbRate);
+                n++;
+            }
         }
-        Assert.True(maxSeen >= t.MaxStepClimbSpeed - 0.1f,
-            $"a run up the stair should saturate the paced cap {t.MaxStepClimbSpeed}, but peaked at {maxSeen}");
+        Assert.True(n > 20, $"too few in-band climb samples ({n})");
+        float meanSignal = sumSignal / n, meanAchieved = sumAchieved / n;
+        // Converges to the achieved rate (the whole point): the mean signal tracks the mean achieved rise within a
+        // quarter m/s, and sits clearly BELOW the cap (no saturation-overstatement).
+        Assert.True(MathF.Abs(meanSignal - meanAchieved) < 0.25f,
+            $"signal {meanSignal:F3} should track the achieved rise rate {meanAchieved:F3} (converged EWMA), not overstate it");
+        Assert.True(meanSignal < t.MaxStepClimbSpeed - 0.2f,
+            $"a co-paced run's signal {meanSignal:F3} should sit below the cap {t.MaxStepClimbSpeed} (it no longer saturates it)");
     }
 
     // ---- Descent: stepping off a raised platform stamps a negative rate ----
@@ -251,6 +269,91 @@ public class ClimbSignalTests
         }
         Assert.True(state.Position.Y > 0.30f + halfH - 0.05f, $"should have mounted the single riser (Y {state.Position.Y:F3})");
         Assert.True(positive == 0, $"a single-riser seat stamped {positive} positive ClimbRate ticks (should be a raw mount, not a glide)");
+    }
+
+    // ---- Fall purity: the applied-rise EWMA never accumulates during a ballistic tick ----
+    [Fact]
+    public void BallisticFall_EwmaNeverAccumulates_AndClimbRateStaysZero()
+    {
+        // The ascent signal is an EWMA of the applied rise, carried on MoveState.ClimbRateEwma, updated ONLY on a
+        // continuous-run tick - which requires being grounded on a step run. A ballistic fall is never that, so the EWMA
+        // must stay exactly 0 through the whole arc (never seeding or accumulating a rise), and ClimbRate stays 0. This
+        // is the by-construction guarantee behind the fall-sink fix: a fall can never masquerade as a climb.
+        MoveTuning t = Tuning();
+        var state = new MoveState { Position = new Vector3(0f, 5f + t.CapsuleHalfHeight, 0f), Grounded = false, VerticalVelocity = 0f };
+        var idle = new MoveCommand(new Vector2(0f, 0f), run: false, cameraYaw: 0f, jump: false);
+        float Ground(float x, float z) => 0f;
+        for (int i = 0; i < 120; i++)
+        {
+            state = CharacterMovement.Step(state, idle, Dt, Ground, t);
+            Assert.Equal(0f, state.ClimbRate, 6);
+            Assert.Equal(0f, state.ClimbRateEwma, 6);   // the EWMA never woke up during the fall
+        }
+        Assert.True(state.Grounded, "should have landed");
+        Assert.Equal(0f, state.ClimbRateEwma, 6);       // and it is still 0 on the landing tick
+    }
+
+    [Fact]
+    public void JumpArcOverAStair_KeepsEwmaZero_ThroughTheBallisticRise()
+    {
+        // A jump is a ballistic RISE (vVel > 0) - the co-pace/EWMA block is gated on vVel <= 0, so it is skipped every
+        // ballistic tick. The EWMA (and ClimbRate) stay 0 through the whole jump arc even directly over the staircase,
+        // so a jump is never read as a climb.
+        MoveTuning t = Tuning();
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        AddStairs(world, Riser, Tread, 33);
+        world.Step(Dt);
+        float Ground(float x, float z) => 0f;
+        Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
+        var state = new MoveState { Position = new Vector3(0f, t.CapsuleHalfHeight, 1.0f), Grounded = true };
+        var jump = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: true);
+        state = CharacterMovement.Step(state, jump, Dt, Ground, t, normal, world);
+        var fwd = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);
+        int ballisticTicks = 0;
+        for (int i = 0; i < 40 && state.VerticalVelocity > 0f; i++)
+        {
+            Assert.Equal(0f, state.ClimbRateEwma, 6);
+            Assert.Equal(0f, state.ClimbRate, 6);
+            state = CharacterMovement.Step(state, fwd, Dt, Ground, t, normal, world);
+            ballisticTicks++;
+        }
+        Assert.True(ballisticTicks > 2, "expected a real ballistic rise to sample");
+    }
+
+    // ---- Determinism: two identical runs produce identical ClimbRate streams ----
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ClimbRateStream_IsDeterministic_AcrossIdenticalRuns(bool run)
+    {
+        // Both the local prediction and the authoritative server run this exact code; the EWMA update is deterministic
+        // float math over the fixed dt, so two identical runs must produce bit-identical ClimbRate (and EWMA) streams -
+        // the guarantee that prediction and every remote agree by construction.
+        static (float[] cr, float[] ewma) Run(bool run)
+        {
+            MoveTuning t = Tuning();
+            using IPhysicsWorld world = new BepuPhysicsWorld();
+            AddStairs(world, Riser, Tread, 33);
+            world.Step(Dt);
+            float Ground(float x, float z) => 0f;
+            Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
+            var state = new MoveState { Position = new Vector3(0f, t.CapsuleHalfHeight, 1.0f), Grounded = true };
+            var cmd = new MoveCommand(new Vector2(0f, 1f), run, cameraYaw: 0f, jump: false);
+            var cr = new float[240]; var ew = new float[240];
+            for (int i = 0; i < 240; i++)
+            {
+                state = CharacterMovement.Step(state, cmd, Dt, Ground, t, normal, world);
+                cr[i] = state.ClimbRate; ew[i] = state.ClimbRateEwma;
+            }
+            return (cr, ew);
+        }
+        var (crA, ewA) = Run(run);
+        var (crB, ewB) = Run(run);
+        for (int i = 0; i < crA.Length; i++)
+        {
+            Assert.Equal(BitConverter.SingleToInt32Bits(crA[i]), BitConverter.SingleToInt32Bits(crB[i]));
+            Assert.Equal(BitConverter.SingleToInt32Bits(ewA[i]), BitConverter.SingleToInt32Bits(ewB[i]));
+        }
     }
 
     // ---- Wire quantization round-trip (MovementState.ClimbRateQ) ----

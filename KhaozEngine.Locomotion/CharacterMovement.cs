@@ -190,10 +190,16 @@ public static class CharacterMovement
         CapsuleShape capsule = CapsuleFor(t);
         float halfH = t.CapsuleHalfHeight;
 
-        // Signed step-climb signal (E1): stamped +MaxStepClimbSpeed on a paced continuous-run ascent co-pace tick, a
-        // clamped negative on a step-down grounded-hold, 0 otherwise. It is the fact the presentation smoother reads
-        // instead of estimating climb from position deltas. Default 0 = not on a step climb.
+        // Signed step-climb signal (E1/E4): the vertical rate the presentation smoother reads instead of estimating
+        // climb from position deltas. On a detected continuous paced run it is stamped from `climbEwma` (the smoothed
+        // ACHIEVED rise rate, below); on a discrete step-down grounded-hold it is a clamped negative; 0 otherwise.
+        // Default 0 = not on a step climb.
         float climbRate = 0f;
+        // EWMA of the actually-applied per-tick climb RATE over a run (carried on MoveState.ClimbRateEwma). Default 0 =
+        // reset (not on a run), so a fall / jump / flat / single-riser never accumulates into it. Updated ONLY on a
+        // continuous-run tick (step 4b), where ClimbRate is then stamped from it, so the exported signal converges to
+        // the sim's true emergent rise rate and the render glide's hover/crest offset settles to ~0.
+        float climbEwma = 0f;
 
         // A grounded capsule with NO horizontal command this tick is AT REST: its walkable-contact depenetration must
         // resolve vertically only, so it cannot creep down a tilted walkable prop surface (see the depenetration
@@ -498,12 +504,15 @@ public static class CharacterMovement
                 grounded = true;
                 tSinceGround = 0f;
                 if (vVel < 0f) vVel = 0f;
-                // Descent climb signal (E1): stamp the (negative) seated drop rate, clamped to the paced descent rate
-                // -MaxStepClimbSpeed, so the smoother glides the stepped descent instead of hard-cutting it. A drop
-                // within GroundedEpsilon never reaches here (the onGround stick catches it), so a sub-perceptible
-                // micro-step-down leaves ClimbRate at 0 - the honest dead-zone, reinforced by the wire quantum. Guard
-                // the divide so a degenerate dt=0 tick cannot inject a non-finite rate.
-                climbRate = dt > 0f ? MathF.Max(-t.MaxStepClimbSpeed, -(stepDrop / dt)) : 0f;
+                // Descent climb signal (E1): stamp the (negative) seated drop rate so the smoother glides the stepped
+                // descent instead of hard-cutting it. Clamped through the SINGLE descent-signal authority
+                // MaxDescentSignalRate (the wire-safe bound), taking the MIN with the gentler MaxStepClimbSpeed pacing
+                // rate: a discrete doorstep eases down at the pacing rate, and the MIN also keeps a fast-pacing consumer
+                // (MaxStepClimbSpeed > the wire range) inside the wire. A drop within GroundedEpsilon never reaches here
+                // (the onGround stick catches it), so a sub-perceptible micro-step-down leaves ClimbRate at 0 - the
+                // honest dead-zone, reinforced by the wire quantum. Guard the divide so a degenerate dt=0 tick cannot
+                // inject a non-finite rate.
+                climbRate = dt > 0f ? MathF.Max(-MathF.Min(t.MaxStepClimbSpeed, MaxDescentSignalRate), -(stepDrop / dt)) : 0f;
             }
         }
 
@@ -610,27 +619,6 @@ public static class CharacterMovement
                     }
                 }
             }
-            if (continuousRun)
-            {
-                // CONTINUOUS CLIMB SIGNAL (§E4), SIGNED. Stamp the honest even climb rate sign(grade) * min(commandedForward
-                // * |grade|, MaxStepClimbSpeed) - the paced ceiling caps a fast run (run 6 on a 0.75 grade -> +3.5 m/s), a
-                // walk under the cap reads its commanded rate; a descent reads the negative of the same - on EVERY tick of
-                // a run (ascent OR descent), so the render glide (§E3) has a continuous signal to feed forward and flatten
-                // the per-riser Y bob, instead of the intermittent paced-mount / step-down-hold stamps E1 gives (which
-                // chatter). This is SIGNAL ONLY: it never touches the authoritative position. The even-FORWARD feel change
-                // the design also scoped for E4 is deliberately NOT applied - evening the forward requires advancing a
-                // depenetration-held tick PAST the swept collision into the solid stair risers, which breaks the
-                // bounded-penetration invariant (StairRunTangentPacingTests); the authoritative forward is therefore left
-                // to the co-pace below, unchanged. See docs/design/2026-07-13-stair-glide-signal-redesign.md.
-                float absGrade = Math.Clamp(MathF.Abs(runGrade), MinPacedGrade, MaxPacedGrade);
-                float rate = intLen / dt * absGrade;   // commanded forward * grade = the surface climb/descent rate
-                // ASCENT is paced (capped at MaxStepClimbSpeed - the step-up ceiling); DESCENT is not paced by that
-                // ceiling (the step-down-hold does not throttle the drop rate), so it reads its full surface rate, only
-                // bounded by the wire quantum range so it always round-trips. Understating a fast run-descent by the
-                // ascent cap left a residual bob the render glide could not track.
-                if (runGrade >= 0f) climbRate = MathF.Min(rate, t.MaxStepClimbSpeed);
-                else climbRate = -MathF.Min(rate, MaxDescentSignalRate);
-            }
             if (paced)
             {
                 // TANGENT CO-PACE (unchanged authoritative motion). The rise is throttled from the support's desired rise
@@ -661,6 +649,53 @@ public static class CharacterMovement
                 tSinceGround = 0f;
                 if (vVel < 0f) vVel = 0f;
             }
+
+            // CONTINUOUS CLIMB SIGNAL (§E4), stamped AFTER the co-pace above has COMMITTED pos.Y for this tick. The two
+            // directions are NOT symmetric, because the authoritative FORWARD is not:
+            //   - ASCENT forward is CO-PACED (throttled along the stair tangent, step 4b), so commanded-forward * grade
+            //     OVERSTATES the footprint-limited emergent rise (a sub-cap walk commands ~2.2 m/s but climbs ~1.34; a
+            //     run commands the 3.5 cap but climbs ~2.94). Feeding that overstated rate to the render glide (§E3)
+            //     parked the drawn feet at the feed-forward/damp equilibrium (signal - achieved) / SlopeGlideRate ABOVE
+            //     the true feet - a persistent half-riser hover, plus a crest snap when it cut to 0. So the ASCENT signal
+            //     is instead an EWMA of the rate the capsule ACTUALLY rose ((pos.Y - s.Position.Y) / dt): it converges to
+            //     the true rate BY CONSTRUCTION (the signal IS what the feet did), so the equilibrium offset -> ~0 at
+            //     both walk and run. The co-pace caps every in-run tick's rise at MaxStepClimbSpeed * dt, so this
+            //     applied-rate source is bounded and smooth-able, and the EWMA is <= the cap (no clamp needed).
+            //   - DESCENT forward is NOT throttled (the step-down-hold does not co-pace), so commanded-forward * grade
+            //     already EQUALS the achieved descent rate - descent never had the hover bug. It KEEPS commanded * grade,
+            //     which is smooth by construction; the applied-rise EWMA does NOT fit a descent (the un-paced step-down
+            //     delivers the drop in full-riser bursts the EWMA cannot flatten without a long lag). Bounded by the
+            //     single MaxDescentSignalRate authority so it round-trips the wire.
+            // SIGNAL ONLY: neither branch touches the authoritative position (pos.Y is byte-identical to 10.74.1). The
+            // EWMA resets to 0 off a run (climbEwma default) and updates only here, so a fall / jump / flat / single
+            // riser never accumulates into it - the fall-sink stays correct by construction. Both heads run this
+            // identical deterministic update, so their signals agree.
+            if (continuousRun && runGrade >= 0f)
+            {
+                float appliedRate = dt > 0f ? (pos.Y - s.Position.Y) / dt : 0f;
+                // SEED the EWMA on the FIRST tick of a run (to a fraction of the first sample) instead of warming it from
+                // 0. A run engages at the flat -> stairs handoff where the render height is exactly the true feet
+                // (ClimbRate was 0, rendered raw); the true feet then START rising, so a 0-warmed signal fed forward lags
+                // the render ~(achieved / SlopeGlideRate) BELOW the feet for a full time-constant - a run-start foot-sink
+                // into the steps. Seeding lifts the feed-forward to match the rise from tick one; the FRACTION keeps a
+                // walk (whose first tick is often a full mount at the cap) from over-floating. The reset writes
+                // ClimbRateEwma to exactly 0, and an in-run ASCENT EWMA never returns to exactly 0, so `== 0` uniquely
+                // marks the run's first tick - deterministic on both heads. Fall-purity is untouched: this only runs on a
+                // continuous-run tick, so a fall never seeds or accumulates.
+                float alpha = 1f - MathF.Exp(-ClimbSignalSmoothingRate * dt);
+                climbEwma = s.ClimbRateEwma == 0f
+                    ? ClimbSignalSeedFraction * appliedRate
+                    : s.ClimbRateEwma + alpha * (appliedRate - s.ClimbRateEwma);
+                climbRate = MathF.Max(0f, climbEwma);   // ascent is non-negative
+            }
+            else if (continuousRun)
+            {
+                // DESCENT: unchanged commanded-forward * grade (climbEwma stays 0, so the EWMA resets across an
+                // ascent -> descent transition).
+                float absGrade = Math.Clamp(-runGrade, MinPacedGrade, MaxPacedGrade);
+                float rate = intLen / dt * absGrade;
+                climbRate = -MathF.Min(rate, MaxDescentSignalRate);
+            }
         }
 
         // 5. Jump after contact (UNCHANGED): grounded or within coyote-time, consume both windows.
@@ -680,11 +715,13 @@ public static class CharacterMovement
             TimeSinceGrounded = tSinceGround,
             JumpBufferRemaining = jumpBuffer,
             ClimbRate = climbRate,
+            ClimbRateEwma = climbEwma,
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
         // past every clamp and replicate; hold the last good state instead of propagating a poisoned position.
-        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) && float.IsFinite(result.ClimbRate)
+        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
+               float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma)
             ? result : state;
     }
 
@@ -936,15 +973,39 @@ public static class CharacterMovement
     // inflate the apparent grade and crawl the mount to a stall. ~37 deg; below the 45 deg default slope gate so a
     // normal ramp is never in this regime, and near the 0.30/0.40 dungeon/consumer stair grade (0.75) it wires.
     private const float MaxClimbGrade = 0.72f;
-    // Even-tangent delivery (§E4) clamps the NextRiserAhead grade estimate into a sane band before deriving the forward
-    // cap (MaxStepClimbSpeed/grade) and the climb rate (commanded*grade). A too-small grade would let the forward race
-    // far past the risers (the estimate can under-read on an embedded-footprint run); a too-large one would crawl the
-    // advance. [0.3, 2.0] brackets every real stair (a 0.30/0.40 stair is 0.75) while bounding a bad sample.
+    // Grade band (rise/run) for the continuous-run detection + the DESCENT signal (§E4). MinPacedGrade is the detection
+    // floor: a SurfaceGradeAhead reading below it is too shallow to be a stair run, so the climb signal stays off (an
+    // ordinary ramp is never in this regime; a 0.30/0.40 dungeon/consumer stair is 0.75, well above). MaxPacedGrade
+    // caps the grade before the descent signal derives commanded-forward * grade, bounding a bad SurfaceGradeAhead
+    // sample. [0.3, 2.0] brackets every real stair. (ASCENT no longer reads the grade for its magnitude - it is the
+    // smoothed applied rise, climbEwma - so only descent uses MaxPacedGrade.)
     private const float MinPacedGrade = 0.3f;
     private const float MaxPacedGrade = 2.0f;
-    // Upper bound on the DESCENT climb-signal magnitude (m/s). Descent is not paced by MaxStepClimbSpeed, so it reads its
-    // full surface rate; this only keeps the signal inside the quantized wire range (+/-6.35 m/s) so it round-trips.
+    // THE single descent-signal-magnitude authority (m/s): the maximum |ClimbRate| a descent may export, sized to stay
+    // inside the quantized wire range (+/-6.35 m/s) so it always round-trips. A continuous run-descent reads its full
+    // co-paced surface rate up to here (it is NOT paced by MaxStepClimbSpeed - understating a fast run-descent left a
+    // residual bob the glide could not track). The discrete single-step-down (step 4a-down) deliberately rides the
+    // gentler MaxStepClimbSpeed pacing rate under this same ceiling (a doorstep eases down, it does not snap), so both
+    // descent paths clamp through this one authority (the step-down via a MIN with the pacing rate) rather than two.
     private const float MaxDescentSignalRate = 6.0f;
+    // EWMA smoothing rate (1/s) for the exported climb SIGNAL (step 4b): ClimbRate is an exponentially-weighted moving
+    // average of the actually-applied per-tick rise rate over a paced run, so it converges to the sim's TRUE emergent
+    // rate and the render-glide equilibrium offset (signal - achieved)/SlopeGlideRate settles to ~0 (no half-riser
+    // hover). The window (time constant 1/rate) is DERIVED from the riser cadence: the applied rise arrives in a
+    // per-riser burst (~1 riser every ~7 ticks at a sub-cap walk - the sparser cadence, ~3 ticks at a capped run), so
+    // the average must span roughly one walk cadence (~0.23 s at 30 Hz) to flatten the burst into a steady rate the
+    // feed-forward can ride without chattering. 5/s (tau 0.20 s, ~6 ticks) sits just under one walk cadence: enough to
+    // smooth the burst, quick enough to keep the run-start transient short. alpha = 1 - exp(-rate*dt) is a deterministic
+    // function of the fixed dt, so both heads agree exactly.
+    private const float ClimbSignalSmoothingRate = 5.0f;
+    // Fraction of the FIRST in-run applied-rate sample used to SEED the EWMA (vs warming it from 0). The first tick of a
+    // run is usually a paced MOUNT at the cap (~MaxStepClimbSpeed), which overstates a sub-cap walk's achieved rate,
+    // while warming from 0 leaves the feed-forward too low and sinks the render below the feet for a full time-constant
+    // at a run (the worse artifact - feet clipping the steps). Seeding to 0.7 of the first sample lands the initial
+    // signal between the mount spike and the achieved rate, so neither a walk over-floats nor a run under-sinks at the
+    // handoff while the EWMA converges over the next ~tau. It only shifts the first run tick; every later tick is the
+    // plain EWMA. Deterministic, and still updated ONLY on a run tick, so fall-purity is untouched.
+    private const float ClimbSignalSeedFraction = 0.7f;
     // Depenetration-to-clearance passes before each sweep: push the capsule out of any prop/wall overlap to a small
     // positive clearance so the sweep starts provably outside and yields a REAL contact normal (Bepu reports a
     // useless t=0 zero-normal from a touching start). A few passes clear an inner corner (two simultaneous contacts).

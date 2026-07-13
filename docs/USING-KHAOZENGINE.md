@@ -1619,7 +1619,10 @@ staircase). The glide is SIGNAL-DRIVEN: it engages iff the sample carries a non-
 signed step-climb rate the SIMULATION exports - `MoveState.ClimbRate`, surfaced on `EntityRenderState.ClimbRate`; the
 bridge no longer ESTIMATES climb state from position deltas). When climbing it feeds that exact rate forward
 (`SmoothedY += ClimbRate * dt`, lag-free) and critically damps toward the true feet-Y at
-`CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default 5) to settle onto real treads. A fall, jump, teleport, prop
+`CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default 5) to settle onto real treads. The exported ascent rate is the
+sim's SMOOTHED ACHIEVED rise (not the commanded rate), so the drawn feet track the true feet with ~0 sustained hover,
+and when an ascent signal cuts to 0 at a crest the bridge eases the last sub-perceptual residual onto the top tread (no
+one-frame snap) while a mid-stair STOP, a fall, or a descent between-riser tick still hard-cut. A fall, jump, teleport, prop
 platform, or elevator is never stamped with a climb rate (`ClimbRate == 0`), so it takes the raw branch BY CONSTRUCTION
 - render-Y is the true feet-Y, nothing to carry past the floor at touchdown (a ballistic fall can never bury a landing
 character below the floor). The smoothed height is baked into `CharacterPose.World` and exposed as

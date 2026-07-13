@@ -51,4 +51,17 @@ public struct MoveState
     /// is 0 (a non-climber, byte-identical to a pre-feature state). Replicated quantized as <c>MovementState.ClimbRateQ</c>
     /// in NetWorld so remotes glide on the same signal the local owner does.</summary>
     public float ClimbRate;
+
+    /// <summary>SIM-LOCAL smoothing state (NOT replicated): the exponentially-weighted moving average of the
+    /// actually-applied per-tick climb RATE (<c>(pos.Y - prevY) / dt</c>) over a continuous paced stair run, in m/s.
+    /// <see cref="ClimbRate"/> is stamped FROM this on a run tick, so the exported signal converges to the sim's own
+    /// TRUE emergent rise rate (footprint-limited, co-paced) instead of the commanded rate - which is what drives the
+    /// render-glide feed-forward/damp equilibrium offset to ~0 (a converged signal means render height == true feet on
+    /// average, no half-riser hover and no crest snap). Updated ONLY on a detected continuous-run tick and reset to 0
+    /// otherwise, so a fall / jump / flat / single-riser never accumulates into it (the fall-sink stays correct by
+    /// construction). It is carried tick-to-tick like <see cref="VerticalVelocity"/> but rides no wire: MoveState is
+    /// sim-local and only the derived <see cref="ClimbRate"/> (as <c>MovementState.ClimbRateQ</c>) replicates, and both
+    /// heads run the same deterministic update so their EWMA - and therefore the stamped signal - agree by construction.
+    /// <c>default</c> is 0 (byte-identical to a pre-feature state).</summary>
+    public float ClimbRateEwma;
 }

@@ -11,9 +11,12 @@ namespace KhaozEngine.Tests.Locomotion;
 
 // E1 (signal-driven stair glide): CharacterMovement.Step exports a signed step-climb rate (MoveState.ClimbRate) that is
 // the SINGLE source of truth for "am I climbing" the presentation smoother reads - no more estimating climb state from
-// position deltas. These pin the sign of the signal on the real Bepu box staircase (positive through a continuous
-// ascent, negative through a stepped descent, exactly 0 on flat / jump / fall / a lone single-riser seat) and the wire
-// quantization round-trip (MovementState.ClimbRateQ).
+// position deltas. These pin the sign of the signal on the real Bepu box staircase (positive through a CONTINUOUS
+// ascent, exactly 0 on flat / jump / fall / a lone single-riser seat) and the wire quantization round-trip
+// (MovementState.ClimbRateQ). An ISOLATED single step-down is NOT a continuous run, so it does NOT export a ClimbRate:
+// the continuous glide renders a one-tick single raw (it would pop), so an isolated step exports the DISCRETE-STEP
+// impulse (MoveState.StepDeltaY, E5) instead, which a decaying mesh offset eases (see StepOffsetSmoothingTests). A
+// CONTINUOUS run-descent (many risers) still exports a negative ClimbRate through step 4b's descent branch.
 public class ClimbSignalTests
 {
     static MoveTuning Tuning() => MoveTuning.Default with { WalkSpeed = 3f, RunSpeed = 6f, CapsuleRadius = 0.4f };
@@ -123,10 +126,15 @@ public class ClimbSignalTests
             $"a co-paced run's signal {meanSignal:F3} should sit below the cap {t.MaxStepClimbSpeed} (it no longer saturates it)");
     }
 
-    // ---- Descent: stepping off a raised platform stamps a negative rate ----
+    // ---- Descent: an ISOLATED step-down stamps the DISCRETE-STEP impulse (StepDeltaY < 0), NOT a continuous ClimbRate ----
     [Fact]
-    public void SteppedDescent_StampsNegativeClimbRate_NeverPositive()
+    public void IsolatedStepDown_StampsNegativeStepDelta_AndZeroClimbRate()
     {
+        // Stepping off a lone raised platform is an ISOLATED step-down (flat ground beyond, no continuous grade), so it is
+        // NOT a continuous run: it exports the DISCRETE-STEP impulse StepDeltaY (the seated drop, negative) and leaves
+        // ClimbRate at 0. The continuous glide would render a single one-tick drop RAW (it snaps the next tick, the pop);
+        // the mesh-offset layer eases StepDeltaY instead. A run-descent (many risers) still exports ClimbRate - that is the
+        // continuous signal pinned by StairGlideRealisticStreamTests' down cases.
         MoveTuning t = Tuning();
         float halfH = t.CapsuleHalfHeight;
         using IPhysicsWorld world = new BepuPhysicsWorld();
@@ -140,40 +148,18 @@ public class ClimbSignalTests
         // Start on the platform, walk +Z (Move.Y = -1 => forward +Z) toward and off the front edge.
         var state = new MoveState { Position = new Vector3(0f, top + halfH, -1.0f), Grounded = true };
         var cmd = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
-        int negative = 0, positive = 0;
-        bool sawStepDown = false;
-        for (int i = 0; i < 60; i++)
-        {
-            float yBefore = state.Position.Y;
-            state = CharacterMovement.Step(state, cmd, Dt, Ground, t, normal, world);
-            if (state.ClimbRate < 0f) { negative++; sawStepDown = true; }
-            if (state.ClimbRate > 0f) positive++;
-        }
-        Assert.True(sawStepDown, "expected the step-down grounded-hold to stamp a negative ClimbRate");
-        Assert.True(positive == 0, $"a descent stamped {positive} positive (ascending) ClimbRate ticks");
-        // The magnitude is clamped to the paced descent rate.
-    }
-
-    [Fact]
-    public void SteppedDescent_ClampsToMaxStepClimbSpeed()
-    {
-        MoveTuning t = Tuning();
-        float halfH = t.CapsuleHalfHeight;
-        using IPhysicsWorld world = new BepuPhysicsWorld();
-        const float top = 0.35f;
-        world.AddStatic(new BoxShape(new Vector3(20f, top * 0.5f, 6f)), Pose.At(new Vector3(0f, top * 0.5f, -6f)));
-        world.Step(Dt);
-        float Ground(float x, float z) => 0f;
-        Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
-        var state = new MoveState { Position = new Vector3(0f, top + halfH, -1.0f), Grounded = true };
-        var cmd = new MoveCommand(new Vector2(0f, -1f), run: false, cameraYaw: 0f, jump: false);
+        int climbTicks = 0; bool sawStepDownImpulse = false; float worstDrop = 0f;
         for (int i = 0; i < 60; i++)
         {
             state = CharacterMovement.Step(state, cmd, Dt, Ground, t, normal, world);
-            // -(stepDrop/dt) with stepDrop 0.35 and dt 1/30 is -10.5, clamped to -MaxStepClimbSpeed.
-            Assert.True(state.ClimbRate >= -t.MaxStepClimbSpeed - 1e-4f,
-                $"descent ClimbRate {state.ClimbRate} exceeded the -MaxStepClimbSpeed clamp");
+            if (state.ClimbRate != 0f) climbTicks++;
+            if (state.StepDeltaY < 0f) { sawStepDownImpulse = true; worstDrop = MathF.Min(worstDrop, state.StepDeltaY); }
         }
+        Assert.True(sawStepDownImpulse, "expected the isolated step-down grounded-hold to stamp a negative StepDeltaY impulse");
+        Assert.True(climbTicks == 0, $"an isolated step-down stamped {climbTicks} continuous ClimbRate ticks (should ride StepDeltaY, not ClimbRate)");
+        // The impulse is the seated drop, naturally bounded by StepHeight (0.40) - no wire clamp needed (it rides no wire).
+        Assert.True(worstDrop >= -t.StepHeight - 1e-3f, $"step-down impulse {worstDrop:F3} exceeded StepHeight {t.StepHeight}");
+        Assert.True(worstDrop < -0.05f, $"the step-down impulse {worstDrop:F3} should be a real ~0.35 m drop, not a micro-step");
     }
 
     // ---- Zero cases: flat, jump, fall, a lone single-riser seat ----

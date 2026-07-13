@@ -92,13 +92,13 @@ public class StairDescentGroundedHoldTests
     }
 
     // End-to-end: feed the 0.40 m step-down through the SIGNAL-GATED render glide at 120 fps. Assert the render never
-    // SINKS below the true feet - the fall-sink guarantee holds for a grounded step-down too, because the sim stamps a
-    // NEGATIVE ClimbRate (never a stale positive one that would carry the feet DOWN through the floor). NB the deleted
-    // estimator windowed an isolated step-down into a sub-30 mm ease; the signal-driven glide CANNOT window a single
-    // one-tick drop (an isolated 0.40 m drop at 30 Hz is ~12 m/s, past the quantized wire range), so it eases the part it
-    // can and settles onto the true tread. A CONTINUOUS stepped descent (many risers) DOES glide smoothly - that is the
-    // continuous ClimbRate signal, pinned by StairGlideRealisticStreamTests' down cases. This pins the property that
-    // matters here: the drawn feet never dip BELOW the true feet on the way down (no under-floor sink).
+    // SINKS below the true feet - the fall-sink guarantee holds for a grounded step-down too. An ISOLATED step-down is not
+    // a continuous run, so the sim leaves ClimbRate 0 (it exports the DISCRETE-STEP impulse StepDeltaY instead, which the
+    // separate mesh-offset layer eases - see StepOffsetSmoothingTests). With ClimbRate 0 the continuous glide renders the
+    // drop RAW (no glide, nothing carried past the floor), so the render tracks the true feet exactly and cannot sink. A
+    // CONTINUOUS stepped descent (many risers) DOES glide smoothly on the continuous ClimbRate signal, pinned by
+    // StairGlideRealisticStreamTests' down cases. This sample does not feed StepCumulativeY, so the mesh-offset layer is
+    // inert here; it pins the property that matters: the drawn feet never dip BELOW the true feet on the way down.
     [Fact]
     public void StepDown_0p40_RenderNeverSinksBelowTrue_At120fps()
     {

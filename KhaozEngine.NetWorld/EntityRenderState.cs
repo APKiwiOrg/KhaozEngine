@@ -38,6 +38,11 @@ public readonly struct EntityRenderState
     }
 
     public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate)
+        : this(id, position, isLocal, displayName, grounded, verticalVelocity, swimming, climbRate, 0f)
+    {
+    }
+
+    public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate, float stepCumulativeY)
     {
         Id = id;
         Position = position;
@@ -47,6 +52,7 @@ public readonly struct EntityRenderState
         VerticalVelocity = verticalVelocity;
         Swimming = swimming;
         ClimbRate = climbRate;
+        StepCumulativeY = stepCumulativeY;
     }
 
     /// <summary>The entity's network identity (stable server/client).</summary>
@@ -83,4 +89,12 @@ public readonly struct EntityRenderState
     /// stair slope from the sim's own fact instead of estimating climb state from a position delta. 0 (the default when
     /// a remote has no replicated movement yet) reads as not-climbing, so the smoother renders raw.</summary>
     public float ClimbRate { get; }
+
+    /// <summary>The LOCAL player's client-local, session-monotonic running sum of DISCRETE-STEP vertical impulses (from
+    /// <c>ClientPrediction.StepCumulativeY</c>): a mesh smoother DIFFS it across frames to ease an isolated step-up/step-down
+    /// the continuous glide (<see cref="ClimbRate"/>) renders raw. Feed it into
+    /// <c>KhaozEngine.Game.CharacterSample.StepCumulativeY</c>. Always 0 for REMOTES (the discrete-step impulse rides no
+    /// wire - a remote's single step is softened by its existing 2-tick position interpolation), so a remote accumulates no
+    /// mesh offset. 0 on a position-only sample too.</summary>
+    public float StepCumulativeY { get; }
 }

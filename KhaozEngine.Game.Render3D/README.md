@@ -102,6 +102,18 @@ riser, so cut it with **`SnapRenderHeight(id)`** wired to the netcode teleport e
 `LocalTeleported` for the local player, `WorldClient.RemoteTeleports` for remotes). On by default; set
 `SlopeGlideRate <= 0` to disable.
 
+A separate UE-style step-event MESH smoother eases an ISOLATED step (a doorstep, a curb, the first riser of a run, an
+isolated step-down) that the continuous glide renders raw (`ClimbRate == 0`) and so pops. The sim exports each committed
+step impulse (`MoveState.StepDeltaY`); the local client accumulates it EXACTLY ONCE per predicted tick into
+`ClientPrediction.StepCumulativeY` (never re-counted on a reconcile replay), surfaced on `CharacterSample.StepCumulativeY`;
+the bridge diffs it to detect a step, FREEZES the mesh at its previous drawn height, and decays that freeze offset
+(subtracted from the drawn feet) exponentially at **`CharacterAnimatorTuning.StepSmoothingRate`** (1/s, default 30 -
+~120 ms to sub-perceptual). The mesh starts at the pre-step height and eases to the true feet. The freeze (not a raw-impulse
+add) absorbs the inter-tick-interpolation phase mismatch so the mesh never overshoots past the pre-step. Composes with the
+glide by construction (the sim stamps EITHER `ClimbRate` OR `StepDeltaY` per tick, never both). Local-only (0 on remotes,
+whose singles ride position interpolation); a teleport / `SnapRenderHeight` / a gap over `SlopeGlideSnapDistance` zeroes it;
+`StepSmoothingRate <= 0` disables it.
+
 ### Locomotion states + clips
 
 `LocomotionState` = `Idle`/`Walk`/`Run` (ground, by speed), `Jump`/`Fall` (air, by vertical sign), and

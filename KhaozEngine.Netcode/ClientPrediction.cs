@@ -58,6 +58,17 @@ public sealed class ClientPrediction<TState, TCommand>
     // not mistaken for movement: a consumer HUD/audio/locomotion gets a clean steady value under lag instead of the
     // wobble from differencing RenderedState.Position (which carries the decaying reconciliation render offset).
     private float predictedHorizontalSpeed;
+    // A client-local, session-monotonic running sum of the DISCRETE-STEP impulses the sim committed on the PREDICTED
+    // (real forward) ticks: incremented in Predict by predictedState.StepDeltaY (positive for an isolated step-up seat /
+    // the first riser of a run, negative for a step-down seat), and NEVER touched by Reconcile. A render-side mesh
+    // smoother DIFFS it frame-to-frame to detect each new isolated step exactly once and fold it into a render-time-
+    // decaying vertical MESH offset (UE-style step-event smoothing - the continuous stair glide renders such singles
+    // raw, so they would otherwise pop). Keying the accumulation to the Predict boundary is precisely what makes it
+    // EXACTLY-ONCE across reconciliation: a reconcile replays the pending command window (re-running Step, re-committing
+    // the same StepDeltaY) but does NOT add to this sum, so a step is counted once when its command is first predicted
+    // and never re-counted on a replay. It grows only on real discrete steps (occasional doorsteps/curbs; a continuous
+    // climb exports ClimbRate and leaves StepDeltaY 0), so float precision stays ample over any realistic session.
+    private float stepCumulativeY;
     // The last authoritative teleport epoch observed in Reconcile. An advance forces an unconditional hard cut,
     // independent of HardSnapDistance (see IPredictedState.TeleportEpoch). Captured on (re)seed so the seed's own
     // epoch is never mistaken for an in-session advance.
@@ -84,6 +95,18 @@ public sealed class ClientPrediction<TState, TCommand>
     /// <see cref="Predict"/>, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>.
     /// </summary>
     public float PredictedHorizontalSpeed => predictedHorizontalSpeed;
+
+    /// <summary>
+    /// The client-local, session-monotonic running sum of DISCRETE-STEP vertical impulses committed on the predicted
+    /// ticks (see <see cref="IPredictedState{TSelf}.StepDeltaY"/>): a step-up seat / first riser adds its rise, a
+    /// step-down seat subtracts its drop. A render-side mesh smoother DIFFS this across frames to pick up each new
+    /// isolated step EXACTLY ONCE and ease it with a render-time-decaying vertical offset (the continuous stair glide
+    /// renders such singles raw, so they would otherwise pop as a mini-teleport). Incremented only on the commanded
+    /// <see cref="Predict"/> path and NEVER on a reconciliation replay, so replaying the pending window across a step tick
+    /// does not double-count it. Zero until the first step, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>
+    /// (paired with the teleport signal a consumer uses to re-baseline the smoother, so a reset is never read as a step).
+    /// </summary>
+    public float StepCumulativeY => stepCumulativeY;
 
     /// <summary>
     /// The state to draw: the predicted position (planar AND vertical) eased from the previous tick toward the
@@ -117,6 +140,7 @@ public sealed class ClientPrediction<TState, TCommand>
         verticalRenderOffset = 0f;
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
+        stepCumulativeY = 0f;
         nextSeq = 0;
         // Capture the seed epoch (so it is not re-counted as an in-session advance) and arm the join teleport signal.
         lastTeleportEpoch = initialState.TeleportEpoch;
@@ -146,6 +170,7 @@ public sealed class ClientPrediction<TState, TCommand>
         verticalRenderOffset = 0f;
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
+        stepCumulativeY = 0f;
         // nextSeq intentionally preserved (monotonic across the reconnect); pendingCommands intentionally kept
         // (the following Reconcile drops acked / replays unacked against the new server's ack).
         // Capture the reseed epoch and arm the teleport signal so the reconnect placement fires it exactly once.
@@ -163,6 +188,11 @@ public sealed class ClientPrediction<TState, TCommand>
         previousPredictedVertical = predictedState.Vertical;
         secondsSinceLastPredict = 0f;
         predictedState = simulator.Step(predictedState, command, settings.TickSeconds);
+        // Fold this tick's discrete-step impulse into the step-smoothing accumulator, EXACTLY ONCE per real forward tick.
+        // Reconcile deliberately never touches stepCumulativeY, so replaying the pending window (which re-runs Step and
+        // re-commits the same StepDeltaY) never re-counts a step. StepDeltaY is 0 on all but a discrete-step commit tick,
+        // so this is a no-op on almost every tick.
+        stepCumulativeY += predictedState.StepDeltaY;
         // Planar speed for this tick: the distance the predicted position actually moved (after the simulator's
         // collision clamp) over the tick duration. IPredictedState.Position is planar, so this is horizontal for free.
         Vector2 step = predictedState.Position - previousPredictedPosition;

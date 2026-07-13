@@ -1598,8 +1598,9 @@ foreach (EntityRenderState e in client.Snapshot())
     samples.Add(e.IsLocal
         // Local player: also pass the EXACT planar speed so idle/walk/run is driven off the clean commanded
         // speed, not finite-differenced from the render position (no walk<->idle flicker on a decel-to-stop).
-        // Pass e.ClimbRate LAST so the stair glide drives off the sim's exported climb signal, not a position estimate.
-        ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming, e.ClimbRate)
+        // Pass e.ClimbRate so the stair glide drives off the sim's exported climb signal, and e.StepCumulativeY LAST so
+        // the discrete-step mesh smoother eases an isolated doorstep/curb the glide renders raw (local-only; 0 on remotes).
+        ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming, e.ClimbRate, e.StepCumulativeY)
         : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming, e.ClimbRate));
 }
 animators.Update(samples, dt);
@@ -1631,6 +1632,26 @@ camera glides with the model. It is byte-identity on FLAT ground (`ClimbRate == 
 position`), and renders raw on a jump, fall, swim, or a LARGE gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance`,
 so those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y). Feed the sim's
 `ClimbRate` through your sample loop (see `e.ClimbRate` above); a position-only sample reads 0 (no glide).
+
+An ISOLATED step (a building doorstep, a curb, the first riser of a run before the continuous signal engages, or an
+isolated step-down) is NOT a continuous run, so the sim leaves `ClimbRate == 0` and the glide above renders it RAW - the
+sim commits the whole rise/drop in one or a few paced ticks and the drawn feet POP it (a mini-teleport). A dedicated
+UE-style MESH-smoothing layer eases those: the sim exports each committed isolated-step impulse (`MoveState.StepDeltaY`,
+signed), the local client accumulates it into `ClientPrediction.StepCumulativeY` EXACTLY ONCE per predicted tick (never
+re-counted on a reconciliation replay), and the bridge DIFFS that (surfaced on `EntityRenderState.StepCumulativeY` ->
+`CharacterSample.StepCumulativeY`) to DETECT each step, FREEZES the mesh at its previous drawn height, and decays that
+freeze offset (subtracted from the drawn feet) exponentially to zero at `CharacterAnimatorTuning.StepSmoothingRate` (1/s,
+default 30 - a ~0.2 m doorstep eases sub-perceptually in ~120 ms). So the mesh starts at the pre-step height and eases
+up/down to the true feet. It FREEZES rather than adding the raw impulse because the sim commits the step at a tick
+boundary while the sample feet-Y is the inter-tick-INTERPOLATED render position (only part way through the step just
+after the commit); adding the full impulse there would overshoot past the pre-step - the freeze absorbs that phase
+mismatch so the mesh never overshoots. It composes with the continuous
+glide by construction: the sim stamps EITHER a `ClimbRate` OR a `StepDeltaY` per tick (never both), so a continuous run
+leaves the offset untouched (it just decays) and a run's first-riser offset decays out as the glide takes over. It is
+LOCAL-only (the impulse rides no wire; a remote's single step is softened by its 2-tick position interpolation, so
+`StepCumulativeY` is 0 for remotes), a teleport / `SnapRenderHeight` / a gap over `SlopeGlideSnapDistance` zeroes it, and
+`StepSmoothingRate <= 0` disables it (isolated steps render raw). Feed `e.StepCumulativeY` as the last argument of the
+local player's `CharacterSample` (see `e.ClimbRate` above); remotes and position-only samples read 0.
 
 A teleport whose vertical gap exceeds `SlopeGlideSnapDistance` (1.5 m) hard-cuts automatically, but a SHORT teleport
 under that gap is height-identical to a stair riser - no height heuristic can tell the two apart. For crisp cuts on

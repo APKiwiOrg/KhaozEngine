@@ -27,6 +27,17 @@ public interface IPredictedState<TSelf>
     /// </summary>
     uint TeleportEpoch => 0;
 
+    /// <summary>
+    /// The signed vertical delta a DISCRETE step committed on THIS predicted tick (positive = an isolated step-up seat or
+    /// the first riser of a run; negative = an isolated step-down seat; 0 = not a discrete step this tick). It is a per-tick
+    /// EVENT, read by <see cref="ClientPrediction{TState,TCommand}.Predict"/> exactly once per real forward tick and folded
+    /// into a client-side render-time-decaying mesh offset (UE-style step-event mesh smoothing). <see cref="ClientPrediction{TState,TCommand}.Reconcile"/>
+    /// never reads it, so a reconciliation replay of the pending window never re-counts the step (exactly-once by
+    /// construction). Defaults to 0 for states with no discrete-step concept, so an ordinary predicted state accumulates no
+    /// mesh offset and behaves exactly as before.
+    /// </summary>
+    float StepDeltaY => 0f;
+
     /// <summary>Returns a copy of this state with the planar <paramref name="position"/> applied (vertical unchanged).</summary>
     TSelf WithPosition(Vector2 position);
 

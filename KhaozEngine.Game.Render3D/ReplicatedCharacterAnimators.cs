@@ -29,7 +29,7 @@ namespace KhaozEngine.Game
         // Full-field constructor (private) backing WithFacingYaw: copies every field and overrides the facing yaw.
         // Keeping it private avoids a public 11-arg overload; the public constructors below stay the documented surface.
         CharacterSample(long id, Vector3 position, bool isLocal, bool hasMovement, bool grounded, float verticalVelocity,
-            bool swimming, float climbRate, bool hasPlanarSpeed, float planarSpeed, float? facingYaw)
+            bool swimming, float climbRate, bool hasPlanarSpeed, float planarSpeed, float? facingYaw, float stepCumulativeY)
         {
             Id = id;
             Position = position;
@@ -42,6 +42,7 @@ namespace KhaozEngine.Game
             HasPlanarSpeed = hasPlanarSpeed;
             PlanarSpeed = planarSpeed;
             FacingYaw = facingYaw;
+            StepCumulativeY = stepCumulativeY;
         }
 
         /// <summary>Position-only sample: speed, vertical velocity, grounded, and swimming are all derived from the
@@ -60,6 +61,7 @@ namespace KhaozEngine.Game
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = null;
+            StepCumulativeY = 0f;
         }
 
         /// <summary>Sample with exact movement (the local player, or any entity whose replicated <c>MovementState</c>
@@ -67,7 +69,7 @@ namespace KhaozEngine.Game
         /// <see cref="ClimbRate"/> are used as given instead of being derived. <paramref name="swimming"/> and
         /// <paramref name="climbRate"/> default to the non-swimming / not-climbing values so a pre-swim / pre-glide
         /// caller is unchanged.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, bool swimming = false, float climbRate = 0f)
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, bool swimming = false, float climbRate = 0f, float stepCumulativeY = 0f)
         {
             Id = id;
             Position = position;
@@ -80,6 +82,7 @@ namespace KhaozEngine.Game
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = null;
+            StepCumulativeY = stepCumulativeY;
         }
 
         /// <summary>Fullest sample (the local player): exact <see cref="Grounded"/>, <see cref="VerticalVelocity"/>,
@@ -89,8 +92,11 @@ namespace KhaozEngine.Game
         /// it is computed only on the prediction's commanded path, so it does not carry the reconciliation render offset
         /// and does not strobe walk&lt;-&gt;idle when the player decelerates to a stop (where the rendered position, even
         /// after the C1 smoothing fix, settles with a tiny residual sag). Facing still follows the derived heading
-        /// (planar speed is magnitude-only). A negative value is treated as zero.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed, bool swimming = false, float climbRate = 0f)
+        /// (planar speed is magnitude-only). A negative value is treated as zero. <paramref name="stepCumulativeY"/> is the
+        /// local player's discrete-step accumulator (<c>ClientPrediction.StepCumulativeY</c> via
+        /// <c>EntityRenderState.StepCumulativeY</c>); the bridge diffs it to ease an isolated step the continuous glide
+        /// renders raw. Defaults to 0 (no mesh offset), so a caller that never supplies it is unchanged.</summary>
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed, bool swimming = false, float climbRate = 0f, float stepCumulativeY = 0f)
         {
             Id = id;
             Position = position;
@@ -103,6 +109,7 @@ namespace KhaozEngine.Game
             HasPlanarSpeed = true;
             PlanarSpeed = planarSpeed;
             FacingYaw = null;
+            StepCumulativeY = stepCumulativeY;
         }
 
         /// <summary>Position + EXPLICIT facing sample: the position drives the derived planar speed / air state as the
@@ -125,6 +132,7 @@ namespace KhaozEngine.Game
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = facingYaw;
+            StepCumulativeY = 0f;
         }
 
         /// <summary>Stable per-entity key (e.g. <c>NetId.Value</c>, 64-bit since 10.0.0). Identifies the brain across frames.</summary>
@@ -180,12 +188,21 @@ namespace KhaozEngine.Game
         /// yaw the game replicates for the entity (e.g. a per-entity facing component on a server-owned NPC).</summary>
         public float? FacingYaw { get; }
 
+        /// <summary>The local player's discrete-step accumulator (only meaningful when <see cref="HasMovement"/> and
+        /// <see cref="IsLocal"/>): the session-monotonic running sum of committed isolated-step vertical impulses (from
+        /// <c>ClientPrediction.StepCumulativeY</c> via <c>EntityRenderState.StepCumulativeY</c>). The bridge DIFFS it
+        /// frame-to-frame to pick up each new isolated step-up/step-down EXACTLY ONCE and ease it with a render-time-
+        /// decaying MESH offset (<see cref="CharacterAnimatorTuning.StepSmoothingRate"/>), softening the mini-teleport pop
+        /// the continuous glide (which renders such singles raw) leaves. 0 on remotes (their singles are softened by
+        /// position interpolation) and on every position-only sample, so no offset accumulates there.</summary>
+        public float StepCumulativeY { get; }
+
         /// <summary>Returns a copy of this sample carrying an explicit <paramref name="facingYaw"/> (world radians about
         /// +Y, 0 faces +Z), preserving every other field. The orthogonal way to add server-authoritative facing to ANY
         /// sample shape - position-only, exact-movement, or the fullest exact-speed sample - since facing is independent
         /// of the movement/speed/swim data. <see cref="CharacterAnimatorTuning.FacingYawOffset"/> still composes on top.</summary>
         public CharacterSample WithFacingYaw(float facingYaw) =>
-            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, ClimbRate, HasPlanarSpeed, PlanarSpeed, facingYaw);
+            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, ClimbRate, HasPlanarSpeed, PlanarSpeed, facingYaw, StepCumulativeY);
     }
 
     /// <summary>A draw-ready character produced by <see cref="ReplicatedCharacterAnimators.Update"/>: the world
@@ -346,8 +363,34 @@ namespace KhaozEngine.Game
         /// exceeds this snaps same-frame automatically; a SHORT teleport under it is height-identical to a stair riser,
         /// so the hard cut for those comes from <see cref="ReplicatedCharacterAnimators.SnapRenderHeight"/> (the consumer
         /// hook wired to the netcode teleport epoch), not this gap. Only consulted when
-        /// <see cref="SlopeGlideRate"/> &gt; 0.</summary>
+        /// <see cref="SlopeGlideRate"/> &gt; 0. Also the safety bound on the DISCRETE-STEP mesh offset: a per-frame
+        /// step-cumulative jump larger than this is not a real step (a teleport / reconnect re-baseline slipped through),
+        /// so the mesh offset hard-cuts instead of easing it.</summary>
         public float SlopeGlideSnapDistance;
+
+        /// <summary>Exponential decay rate (1/second) of the DISCRETE-STEP MESH offset - the UE-style step-event smoothing
+        /// that eases an ISOLATED step (a building doorstep, a curb, the first riser of a run before the continuous climb
+        /// signal engages, or an isolated step-down) the continuous <see cref="SlopeGlideRate"/> glide declines. The sim
+        /// commits such a step's full rise/drop in one (or a few) tick(s) and, because it exports no continuous climb rate
+        /// for a single riser (<see cref="CharacterSample.ClimbRate"/> == 0), the glide renders it RAW - so the drawn feet
+        /// pop the whole step in one frame (a mini-teleport). This layer instead FREEZES the mesh at its previous drawn
+        /// height on the step tick (from the sim's exported per-tick step impulse <see cref="CharacterSample.StepCumulativeY"/>,
+        /// diffed to detect a step exactly once) and decays that freeze offset to zero: the mesh starts at the pre-step
+        /// height and eases up (or down) to the true feet. The freeze (rather than adding the raw impulse) absorbs the
+        /// inter-tick-interpolation phase mismatch, so the mesh never overshoots past the pre-step (see the smoother in
+        /// <see cref="ReplicatedCharacterAnimators.Update"/>).
+        /// <para>Default 30 (1/s). Derivation: the freeze offset decays as <c>offset(t) = offset0 * e^(-rate*t)</c> (frame-
+        /// rate independent). At <c>rate = 30</c>, a typical ~0.2 m doorstep decays to sub-perceptual (~5 mm,
+        /// <c>0.2 * e^(-30*0.12) ~= 5 mm</c>) by ~120 ms and a MAX riser (~0.35 m) by ~140 ms, while the half-life
+        /// <c>ln2/30 ~= 23 ms</c> keeps the ease a smooth soft settle rather than a lag. Gentler than a fast-settle rate
+        /// (40+/s) so the ease reads as smoothing, not a quick catch-up; a slower rate trades a longer tail for an even
+        /// softer leading edge, a taste call best confirmed in-game. It composes with the continuous glide by construction:
+        /// the sim stamps EITHER a continuous ClimbRate OR a discrete step impulse per tick (never both), so a continuous
+        /// run leaves this offset untouched (it just decays), and the first riser's offset decays out as the glide takes
+        /// over. A teleport (<see cref="ReplicatedCharacterAnimators.SnapRenderHeight"/>) or a step cumulative jump beyond
+        /// <see cref="SlopeGlideSnapDistance"/> zeroes it (hard cut). <b>Set &lt;= 0 to disable</b> the step smoothing
+        /// (isolated steps render raw, byte-identical to the pre-feature bridge).</para></summary>
+        public float StepSmoothingRate;
 
         /// <summary>The <see cref="LocomotionSpeedSync"/> these fields describe, applied to brains this set
         /// constructs. Disabled unless <see cref="SyncLocomotionToSpeed"/> is set.</summary>
@@ -377,6 +420,7 @@ namespace KhaozEngine.Game
             MaxLocomotionRate = LocomotionSpeedSync.DefaultMaxMultiplier,
             SlopeGlideRate = DefaultSlopeGlideRate,
             SlopeGlideSnapDistance = DefaultSlopeGlideSnapDistance,
+            StepSmoothingRate = DefaultStepSmoothingRate,
         };
 
         /// <summary>Default <see cref="SlopeGlideRate"/> (rad/s): 5. See that field for the derivation.</summary>
@@ -384,6 +428,9 @@ namespace KhaozEngine.Game
 
         /// <summary>Default <see cref="SlopeGlideSnapDistance"/> (metres): 1.5.</summary>
         public const float DefaultSlopeGlideSnapDistance = 1.5f;
+
+        /// <summary>Default <see cref="StepSmoothingRate"/> (1/s): 30. See that field for the derivation.</summary>
+        public const float DefaultStepSmoothingRate = 30f;
     }
 
     /// <summary>Owns one <see cref="AnimatedCharacter"/> per replicated entity and turns a per-frame stream of
@@ -419,6 +466,15 @@ namespace KhaozEngine.Game
                                         // Gates the disengage ease to an ascent crest ONLY: a fall never sets it (falls
                                         // render raw), and a DESCENT sets it false (ClimbRate < 0), so the descent's
                                         // ClimbRate==0 flicker ticks hard-cut and track the drop instead of easing.
+            public float StepOffset;    // DISCRETE-STEP mesh offset (metres, SUBTRACTED from the drawn feet): the UE-style
+                                        // step-event smoother's decaying vertical offset that eases an isolated step the
+                                        // continuous glide rendered raw. Positive = mesh drawn BELOW the true feet (a
+                                        // step-up, easing up); negative = above (a step-down, easing down). Decays to 0.
+                                        // Re-anchored (frozen) on a detected step so the mesh holds at its previous drawn
+                                        // height and eases, never overshooting past the pre-step (see the smoother).
+            public float LastStepCumulative;   // last CharacterSample.StepCumulativeY consumed: the step-detect baseline.
+                                        // Seeded to the first sample (no session-history dump) and re-synced on a teleport.
+            public float PrevDrawnY;    // the previous frame's DRAWN feet-Y: the height the step freeze holds the mesh at.
         }
 
         // The disengage ease (climb -> grounded-flat) snaps exact and ends once the residual falls below this: 1 mm is
@@ -523,6 +579,11 @@ namespace KhaozEngine.Game
                         // ease-in from 0), and so flat ground stays byte-identical (the damp-toward-true is a no-op from
                         // an already-equal state).
                         SmoothedY = s.Position.Y,
+                        // Seed the discrete-step diff baseline at the first sample's cumulative so a spawn does NOT dump the
+                        // whole session's accumulated step sum into the mesh offset (StepOffset defaults 0 - no ease-in),
+                        // and seed the freeze reference at the spawn feet so the first frame is identity.
+                        LastStepCumulative = s.StepCumulativeY,
+                        PrevDrawnY = s.Position.Y,
                     };
                     _entries[s.Id] = e;
                 }
@@ -546,6 +607,13 @@ namespace KhaozEngine.Game
                     e.DispAccum = Vector3.Zero;
                     e.TimeAccum = 0f;
                     e.Velocity = Vector3.Zero;
+                    // Zero the discrete-step mesh offset, re-sync its diff baseline to the destination cumulative, and reset
+                    // the freeze reference to the destination feet, so a teleport is an exact hard cut: the cumulative reset
+                    // a teleport/reconnect carries (Reset/Reseed zero ClientPrediction.StepCumulativeY) is absorbed here,
+                    // never read as a spurious step next frame.
+                    e.StepOffset = 0f;
+                    e.LastStepCumulative = s.StepCumulativeY;
+                    e.PrevDrawnY = s.Position.Y;
                 }
 
                 // Derive velocity over a short time WINDOW, not a single frame. The rendered position PLATEAUS
@@ -683,9 +751,50 @@ namespace KhaozEngine.Game
                     e.AscendGliding = false;
                 }
 
+                // DISCRETE-STEP mesh offset (UE-style step-event smoothing): ease an ISOLATED step the continuous glide
+                // above rendered raw (its signal ClimbRate == 0, so SmoothedY just tracked the true feet and would pop the
+                // step). The sim exports each committed isolated-step impulse as a session-monotonic running sum
+                // (CharacterSample.StepCumulativeY, from the local predictor); DIFF it to DETECT each new step EXACTLY ONCE
+                // (the predictor increments it only on the Predict boundary, never on a reconcile replay - the diff inherits
+                // that exactly-once). On a detected step, FREEZE the mesh at its previous drawn height (re-anchor the offset
+                // to SmoothedY - PrevDrawnY) and then decay that offset to 0 in render time (offset *= e^(-rate*dt),
+                // frame-rate independent), so the mesh holds where it was and eases to the new true feet.
+                //
+                // Why FREEZE, not accumulate the raw impulse: the SIM commits the step at a tick boundary (the cumulative
+                // jumps fully), but the sample feet-Y is the INTER-TICK-INTERPOLATED render position, which is only PART
+                // way through the step on the frames right after the commit. Adding the full impulse to that mid-interp
+                // height OVERSHOOTS - a step-up sinks the mesh BELOW the pre-step floor, a step-down bumps it ABOVE the
+                // pre-step - a reversal that reads worse than the pop. Freezing at the last drawn height absorbs that
+                // interp/commit phase mismatch exactly (the bridge has no inter-tick fraction to interpolate the offset
+                // with), so the mesh never crosses the pre-step height: it stays between the pre-step and the true feet
+                // and eases monotonically. Composes with the glide by construction (the sim stamps EITHER a ClimbRate OR a
+                // step impulse per tick, never both), so a continuous run leaves the cumulative unchanged (the offset just
+                // decays) and a run's first-riser offset decays out as the glide takes over. Inert for remotes /
+                // position-only samples (StepCumulativeY stays 0, so no step is ever detected). A cumulative jump beyond the
+                // snap distance is a teleport re-baseline that slipped the SnapPending re-sync, not a step -> hard-cut. On a
+                // `snapped` frame the SnapPending block above already zeroed the offset and re-synced the baseline + freeze
+                // reference, so no step is detected and it renders raw.
+                float stepDelta = s.StepCumulativeY - e.LastStepCumulative;
+                e.LastStepCumulative = s.StepCumulativeY;
+                float drawnFeetY = e.SmoothedY;
+                if (_tuning.StepSmoothingRate > 0f)
+                {
+                    if (dt > 0f) e.StepOffset *= MathF.Exp(-_tuning.StepSmoothingRate * dt);   // age the ease toward 0
+                    if (stepDelta != 0f)
+                    {
+                        // A new discrete step: re-anchor so the mesh holds at its previous drawn height (freeze), UNLESS the
+                        // jump is too large to be a real step (a teleport re-baseline) - then hard-cut instead.
+                        e.StepOffset = MathF.Abs(stepDelta) <= _tuning.SlopeGlideSnapDistance ? e.SmoothedY - e.PrevDrawnY : 0f;
+                    }
+                    e.StepOffset = Math.Clamp(e.StepOffset, -_tuning.SlopeGlideSnapDistance, _tuning.SlopeGlideSnapDistance);
+                    drawnFeetY = e.SmoothedY - e.StepOffset;
+                }
+                else e.StepOffset = 0f;
+                e.PrevDrawnY = drawnFeetY;
+
                 Matrix4x4 world = Matrix4x4.CreateScale(_tuning.Scale)
                                   * Matrix4x4.CreateRotationY(e.Yaw)
-                                  * Matrix4x4.CreateTranslation(s.Position.X, e.SmoothedY, s.Position.Z);
+                                  * Matrix4x4.CreateTranslation(s.Position.X, drawnFeetY, s.Position.Z);
                 _live.Add(new CharacterPose(s.Id, world, e.Character.Pose, e.Character.State, s.IsLocal));
 
                 e.PrevPosition = s.Position;

@@ -213,3 +213,16 @@ Also here, unchanged:
 - Nullwake camera convergence: Nullwake's `OreField.RefToScreen` is a non-uniform scale into a screen sub-rect,
   not `Camera2D`. Converging would need sub-viewport + non-uniform-scale support in the engine camera, else it
   stays game-specific.
+
+## Explicitly last priority (deferred by design)
+
+- **Per-foot ray-probe IK in the animation bridge.** The AAA richness layer OVER the smooth root the presentation
+  smoothers already produce (the signal-driven stair glide + the UE-style discrete-step mesh offset): per-foot
+  downward ray probes that place each ankle on the TRUE geometry under it, offset the pelvis toward the LOWER
+  foot so the hips sit level on a slope/stair, and LOCK a planted foot through its stance phase (no sliding).
+  Reusable across all KE games and needs NO per-stair clips - the ground query drives the pose. **Deferred by
+  design until the current smoothing layers are validated in prod.** Foot IK refines where each foot LANDS; the
+  glide + step-offset already fix how the ROOT reads on stairs and steps, and stacking foot IK before that root
+  motion is proven in the field would tune two coupled layers against a moving target. Lowest priority: schedule
+  it only once the root-motion smoothing is confirmed good in a shipped build, then it is a self-contained bridge
+  upgrade (a new `CharacterAnimatorTuning` block + a ground-probe delegate), not a rework of anything below it.

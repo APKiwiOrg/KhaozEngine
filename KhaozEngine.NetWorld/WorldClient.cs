@@ -616,6 +616,7 @@ public sealed class WorldClient : IDisposable
             float verticalVelocity;
             bool swimming;
             float climbRate;
+            float stepCumulativeY = 0f;
             if (isLocal)
             {
                 // The local avatar's exact movement state is the predicted/reconciled state.
@@ -625,6 +626,10 @@ public sealed class WorldClient : IDisposable
                 verticalVelocity = rs.VerticalVelocity;
                 swimming = rs.Swimming;
                 climbRate = rs.Move.ClimbRate;   // local: the exact predicted step-climb rate (un-quantized)
+                // The local step-smoothing accumulator (rides no wire): a mesh smoother diffs it to ease isolated steps
+                // the continuous glide renders raw. Read from the predictor (not the rendered state, whose Move.StepDeltaY
+                // is a per-tick event, not the running sum). Remotes leave it 0 (their singles ride position interpolation).
+                stepCumulativeY = prediction.StepCumulativeY;
             }
             else
             {
@@ -644,7 +649,7 @@ public sealed class WorldClient : IDisposable
                 climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY));
         }
         return list;
     }

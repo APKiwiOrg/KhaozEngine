@@ -201,6 +201,19 @@ public static class CharacterMovement
         // the sim's true emergent rise rate and the render glide's hover/crest offset settles to ~0.
         float climbEwma = 0f;
 
+        // DISCRETE-STEP mesh-offset impulse (E5, MoveState.StepDeltaY): the signed vertical delta an ISOLATED step commits
+        // this tick - a step the CONTINUOUS climb signal declines (a one-off riser leaves climbRate 0). Captured at the two
+        // discrete commit sites (the step-DOWN grounded-hold below records stepDownDeltaY; the step-UP seat is read from the
+        // committed rise) and stamped at the END of step 4b, MUTUALLY EXCLUSIVE with climbRate: exported only when this tick
+        // is NOT part of a continuous run (climbRate == 0), so the glide and the mesh offset never double-apply. Default 0 =
+        // not a discrete step this tick.
+        float stepDeltaY = 0f;
+        bool stepDownSeated = false;   // the step-down grounded-hold (step 4a-down) seated a riser down this tick
+        float stepDownDeltaY = 0f;     // its signed drop (pos.Y - startY, negative), the mesh-offset feed for a descent
+        bool stepUpRose = false;       // the step-up mechanism raised the capsule this tick (a discrete mount OR a paced
+                                       // step-rise tick above terrain) - the whole committed rise feeds the mesh offset,
+                                       // not only the initial steppedUp mount (a doorstep paces up over a couple ticks)
+
         // A grounded capsule with NO horizontal command this tick is AT REST: its walkable-contact depenetration must
         // resolve vertically only, so it cannot creep down a tilted walkable prop surface (see the depenetration
         // passes). Gated on the command bit, not just grounded, because a fast run-climb is also grounded but needs
@@ -504,15 +517,18 @@ public static class CharacterMovement
                 grounded = true;
                 tSinceGround = 0f;
                 if (vVel < 0f) vVel = 0f;
-                // Descent climb signal (E1): stamp the (negative) seated drop rate so the smoother glides the stepped
-                // descent instead of hard-cutting it. Clamped through the SINGLE descent-signal authority
-                // MaxDescentSignalRate (the wire-safe bound), taking the MIN with the gentler MaxStepClimbSpeed pacing
-                // rate: a discrete doorstep eases down at the pacing rate, and the MIN also keeps a fast-pacing consumer
-                // (MaxStepClimbSpeed > the wire range) inside the wire. A drop within GroundedEpsilon never reaches here
-                // (the onGround stick catches it), so a sub-perceptible micro-step-down leaves ClimbRate at 0 - the
-                // honest dead-zone, reinforced by the wire quantum. Guard the divide so a degenerate dt=0 tick cannot
-                // inject a non-finite rate.
-                climbRate = dt > 0f ? MathF.Max(-MathF.Min(t.MaxStepClimbSpeed, MaxDescentSignalRate), -(stepDrop / dt)) : 0f;
+                // Discrete step-DOWN (E5): this is an ISOLATED step-down - a doorstep-sized drop between GroundedEpsilon
+                // (0.30) and StepHeight (0.40) the onGround stick did not catch. Record its seated drop as the DISCRETE-STEP
+                // impulse, NOT a continuous ClimbRate. An isolated one-tick drop is a step the CONTINUOUS glide cannot
+                // smooth: its signal-gated glide renders raw the very next tick (ClimbRate back to 0), snapping the drop -
+                // the "very glitchy going down" pop - whereas the mesh-offset layer, decaying in render time, carries it.
+                // So climbRate stays 0 here and the drop rides StepDeltaY. A CONTINUOUS run descent instead reports its
+                // rate through step 4b's descent branch (which sets climbRate != 0 and so, via the discrete stamp's gate
+                // below, suppresses this candidate), keeping a real descent staircase on its continuous signal. A drop
+                // within GroundedEpsilon never reaches here (the onGround stick catches it), so a sub-perceptible
+                // micro-step-down leaves BOTH signals 0 - the honest dead-zone.
+                stepDownSeated = true;
+                stepDownDeltaY = pos.Y - s.Position.Y;   // = -stepDrop (negative): the seated drop the mesh offset eases
             }
         }
 
@@ -553,6 +569,12 @@ public static class CharacterMovement
             // across the final seating tick too (see below), so that tick cannot lurch the capsule the full probe
             // advance forward.
             bool paced = pos.Y > climbCap;
+            // The step-up mechanism is raising the capsule this tick when a discrete riser mounted (steppedUp) OR the
+            // paced cap is actively throttling a step/prop rise (paced). Records the WHOLE step-up (a doorstep paces up
+            // over a couple ticks, steppedUp only on the first), for the discrete-step mesh-offset stamp below. On a
+            // continuous run this is also true, but the stamp there is suppressed by the climbRate != 0 gate.
+            bool stepRoseNow = steppedUp || paced;
+            if (stepRoseNow) stepUpRose = true;
 
             // CONTINUOUS-CLIMB detection (§E4), for the CLIMB SIGNAL only (no authoritative-motion effect). Grounded and
             // ELEVATED on a step, with a commanded move and a genuine stair GRADE ahead (SurfaceGradeAhead, measured
@@ -698,6 +720,25 @@ public static class CharacterMovement
             }
         }
 
+        // DISCRETE-STEP mesh-offset stamp (E5), MUTUALLY EXCLUSIVE with the continuous climb signal. When this tick is NOT
+        // part of a continuous run - climbRate is still 0 (neither the ascent EWMA nor the descent-grade branch of step 4b
+        // fired) - export the committed vertical delta of a DISCRETE step so a client-side mesh smoother can ease the
+        // isolated riser the continuous glide declines. A continuous run leaves climbRate != 0, so nothing is stamped here
+        // (the glide already owns that smoothing - no double-apply). Two discrete sources:
+        //   - step-DOWN: the grounded-hold (step 4a-down) seated a riser down this tick (stepDownSeated) -> its signed drop.
+        //   - step-UP: a discrete riser was mounted this tick (steppedUp) while grounded and not rising ballistically ->
+        //     the committed rise (MathF.Max(0, .) so a fall-onto-a-step, a net drop, cannot masquerade as a step-up). This
+        //     ALSO fires on the FIRST riser of a run, before the continuous signal engages (climbRate still 0 there), so a
+        //     run ENTRY is softened too and then hands off to the glide as the signal comes up and this offset decays out.
+        // A fall / jump never reaches here as a step (a jump rises ballistically so steppedUp+grounded+vVel<=0 is false, and
+        // a plain landing has s.Grounded == false so the step-down hold never armed), so a landing is not a step event and
+        // the fall-sink cannot recur through this layer.
+        if (climbRate == 0f)
+        {
+            if (stepDownSeated) stepDeltaY = stepDownDeltaY;
+            else if (stepUpRose && grounded && vVel <= 0f) stepDeltaY = MathF.Max(0f, pos.Y - s.Position.Y);
+        }
+
         // 5. Jump after contact (UNCHANGED): grounded or within coyote-time, consume both windows.
         if (jumpRequested && (grounded || tSinceGround <= t.CoyoteTime))
         {
@@ -716,12 +757,14 @@ public static class CharacterMovement
             JumpBufferRemaining = jumpBuffer,
             ClimbRate = climbRate,
             ClimbRateEwma = climbEwma,
+            StepDeltaY = stepDeltaY,
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
         // past every clamp and replicate; hold the last good state instead of propagating a poisoned position.
         return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
-               float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma)
+               float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma) &&
+               float.IsFinite(result.StepDeltaY)
             ? result : state;
     }
 

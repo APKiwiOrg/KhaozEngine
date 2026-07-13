@@ -44,6 +44,11 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     /// <summary>The vertical axis (height) carried through render smoothing, so a jump/fall eases on screen.</summary>
     readonly float IPredictedState<PlayerMoveState>.Vertical => Move.Position.Y;
 
+    /// <summary>The discrete-step impulse this predicted tick committed (<see cref="MoveState.StepDeltaY"/>): the signed
+    /// vertical delta of an isolated step the continuous glide declines, read once per Predict into the client mesh
+    /// smoother. Sim-local (rides no wire); 0 on every non-step tick.</summary>
+    readonly float IPredictedState<PlayerMoveState>.StepDeltaY => Move.StepDeltaY;
+
     /// <summary>Returns a copy with the planar (XZ) position replaced; Y and the vertical state are preserved.</summary>
     public readonly PlayerMoveState WithPosition(Vector2 position)
     {

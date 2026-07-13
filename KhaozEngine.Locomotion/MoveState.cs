@@ -64,4 +64,23 @@ public struct MoveState
     /// heads run the same deterministic update so their EWMA - and therefore the stamped signal - agree by construction.
     /// <c>default</c> is 0 (byte-identical to a pre-feature state).</summary>
     public float ClimbRateEwma;
+
+    /// <summary>SIM-LOCAL discrete-step impulse (NOT replicated): the vertical delta a DISCRETE step committed THIS tick,
+    /// signed (positive = an isolated step-UP seat / the first riser of a run before the continuous climb signal engages;
+    /// negative = an isolated step-DOWN grounded-hold seat; exactly 0 on every other tick). It is the authoritative FACT a
+    /// mesh smoother reads to ease an isolated step the CONTINUOUS glide declines: the continuous glide
+    /// (<see cref="ClimbRate"/>) renders raw whenever its signal is 0, so a one-tick isolated riser pops (a mini-teleport)
+    /// unless a decaying MESH offset carries it. This field is that offset's feed: a client-side layer accumulates it into
+    /// a render-time-decaying vertical offset subtracted from the drawn feet (UE-style step-event mesh smoothing).
+    /// <para>MUTUALLY EXCLUSIVE with <see cref="ClimbRate"/> per tick: a CONTINUOUS run exports <see cref="ClimbRate"/> and
+    /// leaves this 0 (the glide owns the smoothing, so the step-offset must not double-apply); a DISCRETE step exports this
+    /// and leaves <see cref="ClimbRate"/> 0 (the glide renders raw and the mesh offset does the easing). Only the
+    /// <c>steppedUp</c> seat and the step-down grounded-hold export it: a fall, a jump, a swim, a teleport, a terrain
+    /// slope, and a flat tick all leave it 0, so a landing is never a step event (the fall-sink stays correct by
+    /// construction).</para>
+    /// It is zeroed every tick (<c>default</c> is 0) and set only on a commit tick, so it is a per-tick EVENT, not carried
+    /// state. It rides NO wire (remotes soften a single step through their existing 2-tick position interpolation): only
+    /// the local owner reads it, at the client-prediction Predict boundary (exactly-once per real tick, never re-counted on
+    /// a reconciliation replay). <c>default</c> 0 is byte-identical to a pre-feature state.</summary>
+    public float StepDeltaY;
 }

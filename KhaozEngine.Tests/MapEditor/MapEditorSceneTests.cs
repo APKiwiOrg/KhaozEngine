@@ -84,6 +84,26 @@ namespace KhaozEngine.Tests.MapEditor
             protected override IReadOnlyDictionary<string, string> PaletteKindCategories() => _categories;
         }
 
+        // A bare scene with no behaviour, pushed BENEATH the editor so a QuitEditor Pop has somewhere to land
+        // (Manager.Count == 2), exercising decision 1's "pop when a scene sits beneath it" branch.
+        sealed class StubScene : GameScene { }
+
+        // Drives a fixed downward viewport pick every tool step (ignoring Manager.Input), so a test can prove the
+        // exit dialog's open gate suppresses the tool step: while the dialog is open OnUpdate never calls UpdateTools,
+        // so this pick never runs. The FieldDocScene flat-field idiom otherwise.
+        sealed class PickOnToolsScene : MapEditorScene
+        {
+            readonly Func<MapDocument> _factory;
+            public PickOnToolsScene(Func<MapDocument> factory) => _factory = factory;
+            protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+            protected override void BuildWorld() => Controller.Field =
+                new KhaozEngine.Terrain.TerrainField(new KhaozEngine.Terrain.TerrainConfig { GentleAmplitude = 0f });
+            protected override void TeardownWorld() { }
+            protected override void UpdateTools(float dt) => Controller.Update(
+                new EditorFrameInput(new Vector3(0f, 100f, 0f), new Vector3(0f, -1f, 0f),
+                    pointerPressed: true, pointerDown: true, dt: dt));
+        }
+
         static PaletteScene PushPaletteScene(IReadOnlyDictionary<string, string> categories, params string[] spawns)
         {
             var scene = new PaletteScene(categories);
@@ -386,29 +406,17 @@ namespace KhaozEngine.Tests.MapEditor
             scene.OnUpdate(0.016f);   // never entered: built flag false, no throw
         }
 
-        // ---- Shift+Escape exit chord -----------------------------------------------------------------------
-        // The scene is pushed onto a REAL SceneManager (the file's standard idiom), so a pop is observable
-        // directly: Manager.Pop() queued during Update is applied at the end of the pass, and m.Count drops to
-        // zero. No WantsExit flag is needed.
+        // ---- Shift+Escape exit dialog (decisions 1 + 3) ----------------------------------------------------
+        // The _exitArmed double-press flow was DELETED. Shift+Escape now opens a scene-owned PopupPanel modal.
+        // These pins REPLACE the three old _exitArmed tests (ShiftEscape_CleanDocument_Pops,
+        // ShiftEscape_DirtyDocument_ArmsThenPops, ShiftEscape_ArmedThenSave_Disarms). The scene is pushed onto a
+        // REAL SceneManager (the file's standard idiom): a Manager.Pop() queued during Update applies at the end of
+        // the pass, and RequestQuit (decision 1) fires only when the editor is the bottom scene (Count == 1).
 
         [Fact]
-        public void ShiftEscape_CleanDocument_Pops()
+        public void ShiftEsc_OpensExitDialog_DirtyShowsFourActions()
         {
-            var scene = new SpyScene();
-            scene.Init(null!, null!, null!, new MapEditorOptions());
-            var m = new SceneManager();
-            m.Push(scene);
-
-            m.Input = KeyFrame(shiftDown: true, Key.Escape);
-            m.Update(0.016f);
-
-            Assert.Equal(0, m.Count);   // clean document: popped immediately, no warning step
-        }
-
-        [Fact]
-        public void ShiftEscape_DirtyDocument_ArmsThenPops()
-        {
-            var scene = new SpyScene();
+            var scene = new DocScene(() => ValidDoc());
             scene.Init(null!, null!, null!, new MapEditorOptions());
             var m = new SceneManager();
             m.Push(scene);
@@ -418,44 +426,247 @@ namespace KhaozEngine.Tests.MapEditor
             m.Input = KeyFrame(shiftDown: true, Key.Escape);
             m.Update(0.016f);
 
-            Assert.Equal(1, m.Count);   // first press only arms
-            Assert.True(scene.ExitArmed);
-            Assert.Contains("unsaved", scene.StatusText, StringComparison.OrdinalIgnoreCase);
-
-            m.Update(0.016f);           // second consecutive Shift+Escape press
-
-            Assert.Equal(0, m.Count);   // armed: discards and pops
+            Assert.NotNull(scene.ExitDialog);
+            Assert.Equal(1, m.Count);   // opening the dialog never pops
+            var actions = scene.ExitDialog!.FooterButtons;
+            Assert.Equal(4, actions.Count);
+            Assert.Equal("Save and Close", actions[0].Label.Resolve());   // index 0 = default (Enter, green)
+            Assert.Equal("Save", actions[1].Label.Resolve());
+            Assert.Equal("Discard", actions[2].Label.Resolve());
+            Assert.Equal("Cancel", actions[3].Label.Resolve());           // last = Esc target (CancelIndex default)
         }
 
         [Fact]
-        public void ShiftEscape_ArmedThenSave_Disarms()
+        public void ExitDialog_CleanShowsCloseCancelOnly()
+        {
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+            Assert.False(scene.Document.IsDirty);
+
+            m.Input = KeyFrame(shiftDown: true, Key.Escape);
+            m.Update(0.016f);
+
+            Assert.NotNull(scene.ExitDialog);
+            var actions = scene.ExitDialog!.FooterButtons;
+            Assert.Equal(2, actions.Count);
+            Assert.Equal("Close", actions[0].Label.Resolve());
+            Assert.Equal("Cancel", actions[1].Label.Resolve());
+        }
+
+        [Fact]
+        public void ExitDialog_SaveAndClose_SavesThenQuits()
         {
             string path = TempPath();
-            var scene = new SpyScene();
-            scene.Init(null!, null!, null!, new MapEditorOptions { DocumentPath = path });
+            bool quit = false;
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions { DocumentPath = path, RequestQuit = () => quit = true });
             var m = new SceneManager();
             try
             {
                 m.Push(scene);
                 scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));   // dirty
+                Assert.True(scene.Document.IsDirty);
 
-                m.Input = KeyFrame(shiftDown: true, Key.Escape);
+                m.Input = KeyFrame(shiftDown: true, Key.Escape);   // open the dirty dialog
                 m.Update(0.016f);
-                Assert.True(scene.ExitArmed);
+                Assert.NotNull(scene.ExitDialog);
 
-                scene.SaveDocument();                    // Ctrl+S path: disarms (and cleans)
-                Assert.False(scene.ExitArmed);
+                m.Input = KeyFrame(shiftDown: false, Key.Enter);   // Enter = index 0 = Save and Close
+                m.Update(0.016f);
 
-                scene.Document.Execute(new AddSpawnCommand(NewSpawn("s2")));   // dirty again
-                m.Update(0.016f);                        // Shift+Escape after the disarm
-
-                Assert.Equal(1, m.Count);                // re-arms instead of popping
-                Assert.True(scene.ExitArmed);
-
-                scene.Document.Execute(new AddSpawnCommand(NewSpawn("s3")));   // any mutation disarms too
-                Assert.False(scene.ExitArmed);
+                Assert.True(File.Exists(path));         // saved
+                Assert.False(scene.Document.IsDirty);   // MarkSaved cleared dirty
+                Assert.True(quit);                      // quit fired (Count == 1, RequestQuit set)
+                Assert.Null(scene.ExitDialog);          // dialog dismissed
             }
             finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        [Fact]
+        public void ExitDialog_SaveFailure_AbortsClose()
+        {
+            bool quit = false;
+            var scene = new DocScene(() => ValidDoc());
+            // No DocumentPath set: SaveDocument fails ("No document path set"), so Save and Close must abort.
+            scene.Init(null!, null!, null!, new MapEditorOptions { RequestQuit = () => quit = true });
+            var m = new SceneManager();
+            m.Push(scene);
+            scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));   // dirty
+            Assert.True(scene.Document.IsDirty);
+
+            m.Input = KeyFrame(shiftDown: true, Key.Escape);   // open the dirty dialog
+            m.Update(0.016f);
+            Assert.NotNull(scene.ExitDialog);
+
+            m.Input = KeyFrame(shiftDown: false, Key.Enter);   // Enter = Save and Close, but the save fails
+            m.Update(0.016f);
+
+            Assert.NotNull(scene.ExitDialog);          // dialog stays open on save failure
+            Assert.False(quit);                        // never quit
+            Assert.True(scene.Document.IsDirty);       // still unsaved
+            Assert.Contains("path", scene.StatusText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void ExitDialog_CloseWithoutSaving_QuitsDirty()
+        {
+            string path = TempPath();
+            bool quit = false;
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions { DocumentPath = path, RequestQuit = () => quit = true });
+            var m = new SceneManager();
+            try
+            {
+                m.Push(scene);
+                scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));   // dirty
+                Assert.True(scene.Document.IsDirty);
+
+                m.Input = KeyFrame(shiftDown: true, Key.Escape);   // open the dirty dialog
+                m.Update(0.016f);
+                Assert.NotNull(scene.ExitDialog);
+
+                scene.ExitDialog!.FooterButtons[2].OnClick!.Invoke();   // Discard (index 2), the real button callback
+
+                Assert.True(quit);                    // quit without saving
+                Assert.True(scene.Document.IsDirty);  // never saved
+                Assert.False(File.Exists(path));      // nothing written
+                Assert.Null(scene.ExitDialog);        // dismissed
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        [Fact]
+        public void ExitDialog_EscCancels_EditorInputBlockedWhileOpen()
+        {
+            var scene = new PickOnToolsScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f, Y = null });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));   // something undoable on the stack
+            Assert.True(scene.Document.History.CanUndo);
+
+            m.Input = KeyFrame(shiftDown: true, Key.Escape);   // open the dialog (this frame's pick is reset below)
+            m.Update(0.016f);
+            Assert.NotNull(scene.ExitDialog);
+            scene.Document.Selection.Clear();                  // reset the open-frame pick
+
+            // While the dialog is open: a Cmd+Z chord does not undo, and the tool step never runs (no pick).
+            m.Input = SuperKeyFrame(Key.Z);
+            m.Update(0.016f);
+            Assert.True(scene.Document.History.CanUndo);                       // chord suppressed
+            Assert.Equal(SelectionKind.None, scene.Document.Selection.Kind);   // tool step suppressed
+
+            // Esc dismisses the dialog (Cancel), and the Esc frame does nothing else to the editor.
+            m.Input = KeyFrame(shiftDown: false, Key.Escape);
+            m.Update(0.016f);
+            Assert.Null(scene.ExitDialog);
+
+            // Input flows again: the tool step picks the hut and a Cmd+Z now undoes.
+            m.Input = SuperKeyFrame(Key.Z);
+            m.Update(0.016f);
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);   // picked
+            Assert.Empty(scene.Document.Doc.Spawns);                                // undid s1
+        }
+
+        [Fact]
+        public void QuitEditor_PopsWhenSceneBeneath_RequestQuitWhenBottom()
+        {
+            // Bottom scene (Count == 1) + RequestQuit set: Close invokes RequestQuit, never pops.
+            {
+                bool quit = false;
+                var scene = new DocScene(() => ValidDoc());
+                scene.Init(null!, null!, null!, new MapEditorOptions { RequestQuit = () => quit = true });
+                var m = new SceneManager();
+                m.Push(scene);
+
+                m.Input = KeyFrame(shiftDown: true, Key.Escape);   // open the clean dialog
+                m.Update(0.016f);
+                m.Input = KeyFrame(shiftDown: false, Key.Enter);   // Enter = index 0 = Close
+                m.Update(0.016f);
+
+                Assert.True(quit);          // RequestQuit fired
+                Assert.Equal(1, m.Count);   // and the scene was NOT popped
+            }
+
+            // A scene sits beneath the editor (Count == 2): Close pops back to it even with RequestQuit set.
+            {
+                bool quit = false;
+                var scene = new DocScene(() => ValidDoc());
+                scene.Init(null!, null!, null!, new MapEditorOptions { RequestQuit = () => quit = true });
+                var m = new SceneManager();
+                m.Push(new StubScene());
+                m.Push(scene);
+                Assert.Equal(2, m.Count);
+
+                m.Input = KeyFrame(shiftDown: true, Key.Escape);   // open the clean dialog
+                m.Update(0.016f);
+                m.Input = KeyFrame(shiftDown: false, Key.Enter);   // Enter = index 0 = Close
+                m.Update(0.016f);
+
+                Assert.False(quit);         // RequestQuit not fired: a scene sits beneath
+                Assert.Equal(1, m.Count);   // popped back to the scene beneath
+            }
+        }
+
+        // ---- toolbar save button + camera suppression (decisions 4 + 5) -----------------------------------
+
+        [Fact]
+        public void SaveButton_InToolbar_ClickSaves_LabelTracksDirty()
+        {
+            string path = TempPath();
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions { DocumentPath = path });
+            var m = new SceneManager();
+            try
+            {
+                m.Push(scene);
+
+                m.Input = InputState.Empty;
+                m.Update(0.016f);                                   // syncs the label headless (outside the UiViewport guard)
+                Assert.Equal("Save", scene.SaveButton.Resolved);   // clean
+
+                scene.Document.Execute(new AddSpawnCommand(NewSpawn("s1")));   // dirty
+                m.Update(0.016f);
+                Assert.Equal("Save*", scene.SaveButton.Resolved);
+
+                // A press-origin tap on the button fires SaveDocument (its OnClick).
+                var ui = new InputManager();
+                scene.SaveButton.Bounds = new Rect(0f, 0f, 96f, 28f);
+                var at = new Vector2(48f, 14f);
+                ui.Update(MouseFrame(at, leftDown: false)); scene.SaveButton.Update(ui.Pointer);
+                ui.Update(MouseFrame(at, leftDown: true)); scene.SaveButton.Update(ui.Pointer);
+                ui.Update(MouseFrame(at, leftDown: false)); scene.SaveButton.Update(ui.Pointer);
+
+                Assert.True(File.Exists(path));
+                Assert.False(scene.Document.IsDirty);
+
+                m.Update(0.016f);   // label re-syncs to clean after the save
+                Assert.Equal("Save", scene.SaveButton.Resolved);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        [Fact]
+        public void CommandHeld_SuppressesCameraMovement()
+        {
+            var scene = new SpyScene();   // real UpdateCamera, device work skipped
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            Vector3 before = scene.Camera.Position;
+            m.Input = SuperKeyFrame(Key.D);   // Cmd+D held: without the guard the fly camera nudges +right one frame
+            m.Update(0.016f);
+
+            Assert.Equal(before, scene.Camera.Position);   // decision 5: the camera step is skipped while a command modifier is down
         }
 
         // ---- inspector bindings --------------------------------------------------------------------------

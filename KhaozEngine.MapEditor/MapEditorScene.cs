@@ -24,6 +24,13 @@ public sealed class MapEditorOptions
     /// <summary>The map document file to load on enter and save back to on Ctrl+S. Empty starts a blank document.</summary>
     public string DocumentPath = "";
 
+    /// <summary>How the editor leaves when it is the bottom scene on the stack (nothing to pop back to). The head
+    /// wires this to its own quit path (a <c>GameApp3D</c> subclass calling the protected <c>GameApp.Quit()</c>),
+    /// since a scene never touches window APIs directly. Null (the default) means the editor only ever pops: with
+    /// no <see cref="RequestQuit"/> and no scene beneath, the exit dialog's Close leaves an empty stack (a blank
+    /// screen), so a head that pushes the editor as its only scene should set this.</summary>
+    public Action? RequestQuit;
+
     /// <summary>Asset manifests parsed into the kit palette and the picking heights.</summary>
     public List<string> ManifestPaths = new();
 
@@ -49,8 +56,11 @@ public sealed class MapEditorOptions
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
 /// it wires a <see cref="ViewportWorld"/> + fly camera + <see cref="EditorToolController"/> together with the Gui
 /// chrome (toolbar tab bar, tree outline, property-grid inspector, kit palette, status strip) and the undo / redo
-/// / save hotkeys, over one <see cref="EditorDocument"/>. Shift+Escape is the exit chord: it pops the scene,
-/// arming a discard warning first when the document has unsaved changes (Escape alone stays the gesture cancel).
+/// / save hotkeys, over one <see cref="EditorDocument"/>. Shift+Escape opens the modal exit dialog (a scene-owned
+/// <see cref="PopupPanel"/>): a dirty document offers Save and Close / Save / Discard / Cancel, a clean one just
+/// Close / Cancel, and while it is open every other editor chord, tool pick, and camera step is suppressed
+/// (Escape alone stays the gesture cancel when the dialog is closed). Leaving the editor goes through
+/// <see cref="MapEditorOptions.RequestQuit"/> when the editor is the bottom scene, otherwise it pops.
 /// Developer tooling, so the whole class is
 /// <see cref="LocalizationExemptAttribute">localization-exempt</see>.
 /// <para>The GPU-touching work lives behind the <see cref="BuildWorld"/> / <see cref="TeardownWorld"/> /
@@ -63,6 +73,12 @@ public class MapEditorScene : GameScene, IGameScene3D
 {
     /// <summary>Toolbar height in points.</summary>
     const float ToolbarHeight = 40f;
+    /// <summary>Width in points reserved at the right end of the toolbar for the Save button (decision 4).</summary>
+    const float SaveButtonWidth = 96f;
+    /// <summary>Height in points of the toolbar Save button (inset vertically within <see cref="ToolbarHeight"/>).</summary>
+    const float SaveButtonHeight = 28f;
+    /// <summary>Gap in points between the tab bar, the Save button, and the toolbar's right edge.</summary>
+    const float ToolbarGap = 6f;
     /// <summary>Left side-panel width in points (the outline / palette column).</summary>
     const float OutlinePanelWidth = 260f;
     /// <summary>Right side-panel width in points (the inspector column). Wider than <see cref="OutlinePanelWidth"/>
@@ -164,9 +180,16 @@ public class MapEditorScene : GameScene, IGameScene3D
     bool _built;
     string _statusText = "";
 
-    // Shift+Escape exit chord state: with unsaved changes the first press only ARMS the discard warning
-    // (status-strip message) and the next Shift+Escape pops. Any save or document mutation disarms it.
-    bool _exitArmed;
+    // The modal exit dialog (decision 3), non-null only while it is open. Shift+Escape builds a fresh one keyed to
+    // the current dirty state. Its footer-button callbacks save / quit / dismiss. While non-null it is drawn last
+    // (over the tooltip) and updated FIRST each frame, and OnUpdate gates every other editor step off it, so the
+    // editor beneath is frozen behind the scrim.
+    PopupPanel? _exitDialog;
+
+    // The toolbar Save button (decision 4), at the right end of the strip after the tab bar. Its label carries the
+    // dirty marker ("Save*" dirty, "Save" clean), re-synced every chrome step (outside the UiViewport guard, so it
+    // tracks the document even headless), and its click fires SaveDocument.
+    Button _saveButton = null!;
 
     // Inline-rename bookkeeping, shared by the region / placement / spawn inspectors: those selections are keyed
     // by name (region) or id (placement, spawn), so after a rename the selection must follow the new key. The
@@ -262,9 +285,17 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// for tests.</summary>
     internal TreeView FeatureList => _featureList;
 
-    /// <summary>True while the Shift+Escape discard warning is armed (dirty document, one chord press in).
-    /// Exposed for tests.</summary>
-    internal bool ExitArmed => _exitArmed;
+    /// <summary>The modal exit dialog while it is open, or null when it is closed. Exposed for tests (assert the
+    /// footer actions per dirty state, or fire one directly).</summary>
+    internal PopupPanel? ExitDialog => _exitDialog;
+
+    /// <summary>The toolbar Save button, or null before <see cref="OnEnter"/>. Exposed for tests (its label tracks
+    /// the dirty flag and its click saves).</summary>
+    internal Button SaveButton => _saveButton;
+
+    /// <summary>The fly camera, or null before <see cref="OnEnter"/>. Exposed for tests (assert the command-modifier
+    /// camera suppression leaves the position untouched).</summary>
+    internal FlyCamera3D Camera => _camera;
 
     // ---- lifecycle ---------------------------------------------------------------------------------------
 
@@ -300,7 +331,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         BuildWorld();
         RebuildOutline();
         RebuildInspector();
-        _exitArmed = false;   // a re-entered scene starts with no leftover discard warning
+        _exitDialog = null;   // a re-entered scene starts with no open exit dialog
         _built = true;
     }
 
@@ -362,6 +393,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     public override void OnUpdate(float dt)
     {
         if (!_built) return;
+        // A modal exit dialog owns the frame: it updates FIRST (its keyboard + pointer-block route Esc/Enter and
+        // clicks to its own buttons) and every other editor step is skipped, so no chord, tool pick, or camera
+        // move leaks through to the frozen editor beneath the scrim (decision 3).
+        if (_exitDialog is not null) { UpdateExitDialog(dt); return; }
         UpdateCamera(dt);
         UpdateTools(dt);
         CheckWorldRebuild();
@@ -374,6 +409,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         int w = Manager!.Input.Width, h = Manager.Input.Height;
         if (h > 0) _camera.AspectRatio = (float)w / h;
+        // Skip the fly step while a command modifier is held (decision 5): Cmd+S / Cmd+D and friends carry a WASD
+        // letter, and running the fly camera on those frames nudges the view one frame per chord. The aspect upkeep
+        // above still runs so a resize during a held modifier is not missed.
+        if (Manager.Input.IsCommandDown) return;
         _camController.Update(Manager.Input, dt);
     }
 
@@ -410,6 +449,10 @@ public class MapEditorScene : GameScene, IGameScene3D
         // UpdateWidgets' UiViewport guard so the toolbar stays in sync even headless, and ActiveIndex's setter
         // never raises a change event, so this cannot loop back into a mode switch.
         _toolbar.ActiveIndex = (int)_controller.Mode;
+
+        // Keep the toolbar Save button's label tracking the dirty flag, also outside the UiViewport guard so a
+        // headless test sees "Save" / "Save*" flip without a live viewport (decision 4).
+        _saveButton.Content = LocalizedText.Raw(_document.IsDirty ? "Save*" : "Save");
 
         // Sync the selection to a renamed element (region by name, placement/spawn by id) once the rename row is
         // done (outside the grid's row iteration, so the inspector rebuild this triggers never tears down a row
@@ -596,9 +639,14 @@ public class MapEditorScene : GameScene, IGameScene3D
         FillPanel(batch, L.Inspector, PanelBackground);
         FillPanel(batch, L.Status, StatusBackground);
 
-        _toolbar.Bounds = L.Toolbar;
+        (Rect tabsRect, Rect saveRect) = SplitToolbar(L.Toolbar);
+        _toolbar.Bounds = tabsRect;
         _toolbar.Font = font;
         _toolbar.Draw(batch, _white);
+
+        _saveButton.Bounds = saveRect;
+        _saveButton.Font = font;
+        _saveButton.Draw(batch, _white);
 
         _outline.Bounds = L.Outline;
         _outline.Draw(batch, _white, font);
@@ -615,6 +663,16 @@ public class MapEditorScene : GameScene, IGameScene3D
         // scissor at the end): a hovered row's Description tooltip must escape the grid's clip and overlay
         // everything else, the PatchNotesView.DrawCloseTooltip precedent (drawn after ClearScissor).
         DrawInspectorTooltip(batch, font, new Vector2(ui.Width, ui.Height));
+
+        // The modal exit dialog draws on top of everything (scrim + panel over the tooltip): it dims the whole
+        // editor behind it while it is open. Its own font is set here (BuildChrome runs before any font resolves).
+        if (_exitDialog is not null)
+        {
+            _exitDialog.Viewport = new Vector2(ui.Width, ui.Height);
+            _exitDialog.TitleFont = font;
+            _exitDialog.BodyFont = font;
+            _exitDialog.Draw(batch, _white, _ui.Pointer);
+        }
     }
 
     // The inspector's hover tooltip: built lazily here (the PatchNotesView precedent, `_tooltip ??= new
@@ -754,6 +812,13 @@ public class MapEditorScene : GameScene, IGameScene3D
 
         _featureList = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
         _featureList.OnSelected = OnFeatureTypeSelected;
+
+        // The toolbar Save button (decision 4). Font and Bounds are set per frame (no SpriteFont resolves at
+        // chrome-build time, the TabBar pattern). The label is re-synced each chrome step in UpdateChrome.
+        _saveButton = new Button(default, LocalizedText.Raw("Save"), null!, () => SaveDocument())
+        {
+            Style = GuiStyle.Modern,
+        };
     }
 
     void UpdateWidgets(float dt)
@@ -763,8 +828,12 @@ public class MapEditorScene : GameScene, IGameScene3D
         _ui.Update(Manager.Input, ui);
         ChromeLayout L = ComputeLayout(ui.Width, ui.Height);
 
-        _toolbar.Bounds = L.Toolbar;
+        (Rect tabsRect, Rect saveRect) = SplitToolbar(L.Toolbar);
+        _toolbar.Bounds = tabsRect;
         if (_toolbar.Update(_ui.Pointer)) _controller.Mode = (EditorToolMode)_toolbar.ActiveIndex;
+
+        _saveButton.Bounds = saveRect;
+        _saveButton.Update(_ui.Pointer);
 
         _outline.Bounds = L.Outline;
         _outline.Update(_ui);
@@ -831,13 +900,14 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         InputState s = Manager!.Input;
         bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
-        // Shift+Escape is the exit chord (HandleExitChord). It deliberately stays global here, even while an
-        // inspector field or a filter is focused: it is the one chord a user needs to be able to reach FROM
-        // inside a field (leave the editor). NumberField's own bare-Escape cancel never watches the
-        // Shift-modified form, and TextInput (both the inspector's TextRow and the palette/spawn filters) has
-        // no Escape handling of its own at all, so neither can ever compete with this chord for the same
-        // keypress.
-        if (shift && s.WasPressed(Key.Escape)) { HandleExitChord(); return; }
+        // Shift+Escape opens the modal exit dialog (OpenExitDialog). It deliberately stays global here, even while
+        // an inspector field or a filter is focused: it is the one chord a user needs to be able to reach FROM
+        // inside a field (leave the editor). NumberField's own bare-Escape cancel never watches the Shift-modified
+        // form, and TextInput (both the inspector's TextRow and the palette/spawn filters) has no Escape handling
+        // of its own at all, so neither can ever compete with this chord for the same keypress. HandleShortcuts
+        // never runs while the dialog is already open (OnUpdate gates the whole editor step off _exitDialog), so
+        // this only ever opens a fresh dialog, never re-opens one.
+        if (shift && s.WasPressed(Key.Escape)) { OpenExitDialog(); return; }
 
         // Every other chord below, plus the bare R hotkey, belongs to a focused editor over the document:
         // Ctrl+Z inside a focused NumberField should undo the field's own typed digit (TextEntry already blocks
@@ -892,47 +962,121 @@ public class MapEditorScene : GameScene, IGameScene3D
         _document.Execute(new MovePlacementCommand(p.Id, p.X, p.Z, null));
     }
 
-    // Shift+Escape: pop the scene right away when the document has no unsaved changes. With unsaved changes
-    // the first press only arms the discard warning (status strip), and the next Shift+Escape (with nothing
-    // disarming it in between, see SaveDocument / OnDocumentChanged) discards and pops.
-    void HandleExitChord()
+    // Shift+Escape: build and open the modal exit dialog (decision 3), keyed to the current dirty state. A dirty
+    // document offers Save and Close (the default, Enter) / Save / Discard / Cancel (the Esc target). A clean one
+    // offers Close / Cancel. The footer-button callbacks below drive save / quit / dismiss.
+    void OpenExitDialog()
     {
-        if (!_document.IsDirty || _exitArmed)
+        var dialog = new PopupPanel
         {
-            Manager?.Pop();
-            return;
+            Style = GuiStyle.Modern,
+            TitleContent = LocalizedText.Raw("Exit map editor"),
+            WrapLongLabels = true,
+        };
+        if (_document.IsDirty)
+        {
+            dialog.SetRows(new[] { PopupRow.Stat(LocalizedText.Raw("You have unsaved changes."), LocalizedText.Raw(""), Vector4.One) });
+            dialog.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("Save and Close"), ExitDialogSaveAndClose),
+                new PopupAction(LocalizedText.Raw("Save"), ExitDialogSave),
+                new PopupAction(LocalizedText.Raw("Discard"), ExitDialogQuit),
+                new PopupAction(LocalizedText.Raw("Cancel"), CloseExitDialog),
+            });
         }
-        _exitArmed = true;
-        _statusText = "Unsaved changes. Shift+Escape again to discard and exit";
+        else
+        {
+            dialog.SetRows(new[] { PopupRow.Stat(LocalizedText.Raw("Close the editor?"), LocalizedText.Raw(""), Vector4.One) });
+            dialog.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("Close"), ExitDialogQuit),
+                new PopupAction(LocalizedText.Raw("Cancel"), CloseExitDialog),
+            });
+        }
+        // CancelIndex default -1 resolves to the last footer action (Cancel), which Esc fires. Enter fires index 0
+        // (Save and Close when dirty, Close when clean).
+        _exitDialog = dialog;
+        _statusText = "";   // clear any stale status so the dialog is the whole story
+    }
+
+    // Runs the dialog for a frame while it is open (the OnUpdate gate routes here first): the pointer-block + button
+    // hit-test need a live viewport (skipped headless, where UiViewport is null), the Esc/Enter routing does not.
+    void UpdateExitDialog(float dt)
+    {
+        UiViewport? ui = Manager!.UiViewport;
+        if (ui is not null)
+        {
+            _ui.Update(Manager.Input, ui);
+            _exitDialog!.Viewport = new Vector2(ui.Width, ui.Height);
+            _exitDialog.Update(_ui.Pointer);   // a footer-button click may close the dialog (sets _exitDialog null)
+        }
+        _exitDialog?.HandleKeys(Manager.Input);   // Enter = index 0, Esc = Cancel (Shift+Escape hits the same edge)
+    }
+
+    // "Save" (dirty dialog): save in place, staying in the editor. Dismiss the dialog only on save SUCCESS, so a
+    // failure keeps the dialog up with the error in the status strip and the user's unsaved work intact.
+    void ExitDialogSave()
+    {
+        if (SaveDocument()) CloseExitDialog();
+    }
+
+    // "Save and Close" (dirty dialog, the default action): save, then quit only if the save SUCCEEDED. A failure
+    // aborts the close and leaves the dialog open (the status strip carries the error), never losing the work.
+    void ExitDialogSaveAndClose()
+    {
+        if (!SaveDocument()) return;   // save failed: abort the close, keep the dialog open
+        CloseExitDialog();
+        QuitEditor();
+    }
+
+    // "Discard" / "Close": leave the editor without saving.
+    void ExitDialogQuit()
+    {
+        CloseExitDialog();
+        QuitEditor();
+    }
+
+    // "Cancel" / Esc: dismiss the dialog and stay in the editor.
+    void CloseExitDialog() => _exitDialog = null;
+
+    // Leave the editor (decision 1): when it is the bottom scene (nothing to pop back to) and the head wired a quit
+    // path, invoke that, otherwise pop back to whatever sits beneath (the landing menu, or nothing).
+    void QuitEditor()
+    {
+        if (_options.RequestQuit is { } quit && Manager is { Count: 1 })
+            quit();
+        else
+            Manager?.Pop();
     }
 
     /// <summary>Saves the document back to <see cref="MapEditorOptions.DocumentPath"/>, surfacing a
-    /// <see cref="MapDocumentException"/> (invalid content) into the status strip instead of throwing. Internal so
-    /// the Ctrl+S handler and the tests share one path. Any save attempt disarms the Shift+Escape discard
-    /// warning: the user chose to save, so the pending discard no longer reflects their intent.</summary>
-    internal void SaveDocument()
+    /// <see cref="MapDocumentException"/> (invalid content) or a missing path into the status strip instead of
+    /// throwing. Returns true only when the save actually wrote and the document was marked clean. The exit
+    /// dialog relies on that so a failure never quits or dismisses. Internal so the Ctrl+S handler, the toolbar
+    /// button, and the tests share one path.</summary>
+    internal bool SaveDocument()
     {
-        _exitArmed = false;
         if (string.IsNullOrWhiteSpace(_options.DocumentPath))
         {
             _statusText = "No document path set";
-            return;
+            return false;
         }
         try
         {
             MapDocumentFile.Save(_document.Doc, _options.DocumentPath, _document.Registry);
             _document.MarkSaved();
             _statusText = "Saved " + _options.DocumentPath;
+            return true;
         }
         catch (MapDocumentException ex)
         {
             _statusText = "Save failed: " + ex.Message;
+            return false;
         }
     }
 
     void OnDocumentChanged()
     {
-        _exitArmed = false;   // any mutation (execute / undo / redo) invalidates the pending discard warning
         _viewport.InvalidatePlacements();
         RebuildOutline();
     }
@@ -2765,7 +2909,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             pointerTravel: travel,
             shift: shift,
             deletePressed: s.WasPressed(Key.Delete),
-            // Shift+Escape is the exit chord (HandleExitChord), so it never doubles as the tool gesture cancel.
+            // Shift+Escape opens the exit dialog (OpenExitDialog), so it never doubles as the tool gesture cancel.
             // A focused editor (inspector field or the palette/spawn filter) also owns a bare Escape this
             // frame, so the tool-cancel edge is suppressed too while AnyEditorFocused is true: without this,
             // one Escape would cancel the active tool gesture right out from under a field mid-edit. Only
@@ -2854,6 +2998,19 @@ public class MapEditorScene : GameScene, IGameScene3D
         var status = new Rect(0f, bodyBottom, w, StatusHeight);
         var viewport = new Rect(OutlinePanelWidth, bodyTop, MathF.Max(0f, w - OutlinePanelWidth - InspectorPanelWidth), bodyH);
         return new ChromeLayout(toolbar, outline, inspector, palette, status, viewport);
+    }
+
+    // Splits the full toolbar strip into the tab-bar region (left) and the Save button rect at the right end
+    // (decision 4): the button reserves SaveButtonWidth plus gaps, and the tab bar takes the rest, so the tabs
+    // shrink to leave room instead of overlapping the button. The button is inset vertically within the strip.
+    // Pure math, so the split is asserted headless.
+    (Rect Tabs, Rect Save) SplitToolbar(Rect toolbar)
+    {
+        float saveW = MathF.Min(SaveButtonWidth, MathF.Max(0f, toolbar.Width - ToolbarGap * 2f));
+        var save = new Rect(toolbar.Right - saveW - ToolbarGap,
+            toolbar.Y + (toolbar.Height - SaveButtonHeight) * 0.5f, saveW, SaveButtonHeight);
+        var tabs = new Rect(toolbar.X, toolbar.Y, MathF.Max(0f, toolbar.Width - saveW - ToolbarGap * 2f), toolbar.Height);
+        return (tabs, save);
     }
 
     // Identity payload on an outline row: which document element the row selects. Internal (not private) so

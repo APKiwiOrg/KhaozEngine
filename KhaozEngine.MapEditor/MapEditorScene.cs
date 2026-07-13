@@ -2491,7 +2491,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                     "World-space Z coordinate of the rect's maximum (far) corner, in world units.", s => s.MaxZ, (s, v) => s.MaxZ = v);
                 break;
             case PolygonShapeDoc:
-                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape()),
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Kind"), () => ShapeKind(shape()),
                     description: LocalizedText.Raw(
                         "This element's shape kind. A polygon is read-only in this editor version, it cannot be " +
                         "edited or converted to disc/rect here.")));
@@ -2500,7 +2500,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                     description: LocalizedText.Raw("Number of vertices in this read-only polygon boundary.")));
                 break;
             default:
-                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape()),
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Kind"), () => ShapeKind(shape()),
                     description: LocalizedText.Raw("This element's shape kind. No shape is currently set.")));
                 break;
         }

@@ -190,6 +190,11 @@ public static class CharacterMovement
         CapsuleShape capsule = CapsuleFor(t);
         float halfH = t.CapsuleHalfHeight;
 
+        // Signed step-climb signal (E1): stamped +MaxStepClimbSpeed on a paced continuous-run ascent co-pace tick, a
+        // clamped negative on a step-down grounded-hold, 0 otherwise. It is the fact the presentation smoother reads
+        // instead of estimating climb from position deltas. Default 0 = not on a step climb.
+        float climbRate = 0f;
+
         // A grounded capsule with NO horizontal command this tick is AT REST: its walkable-contact depenetration must
         // resolve vertically only, so it cannot creep down a tilted walkable prop surface (see the depenetration
         // passes). Gated on the command bit, not just grounded, because a fast run-climb is also grounded but needs
@@ -493,6 +498,12 @@ public static class CharacterMovement
                 grounded = true;
                 tSinceGround = 0f;
                 if (vVel < 0f) vVel = 0f;
+                // Descent climb signal (E1): stamp the (negative) seated drop rate, clamped to the paced descent rate
+                // -MaxStepClimbSpeed, so the smoother glides the stepped descent instead of hard-cutting it. A drop
+                // within GroundedEpsilon never reaches here (the onGround stick catches it), so a sub-perceptible
+                // micro-step-down leaves ClimbRate at 0 - the honest dead-zone, reinforced by the wire quantum. Guard
+                // the divide so a degenerate dt=0 tick cannot inject a non-finite rate.
+                climbRate = dt > 0f ? MathF.Max(-t.MaxStepClimbSpeed, -(stepDrop / dt)) : 0f;
             }
         }
 
@@ -611,6 +622,11 @@ public static class CharacterMovement
                 if (desiredRise > allowedRise && allowedRise > 0f && hLen > 1e-6f &&
                     NextRiserAhead(world, capsule, pos, new Vector2(hx, hz), t))
                 {
+                    // Ascent climb signal (E1): a paced continuous stair run - the rise is capped to MaxStepClimbSpeed
+                    // (pos.Y = climbCap below) with a mountable riser ahead. Stamp that honest, grade-limited vertical
+                    // rate so the smoother glides the ascent from the fact, not from a position-delta estimate. A single
+                    // discrete riser seat (no NextRiserAhead) never reaches here, so it stays 0 (a one-off mount, not a glide).
+                    climbRate = t.MaxStepClimbSpeed;
                     // The horizontal the co-pace permits: the tangent for the actual grade (allowedRise/grade), but with
                     // a floor of allowedRise/MaxClimbGrade so a DISCRETE whole-riser step-up (desiredRise = a full riser,
                     // hLen a fraction of a tread) cannot inflate the apparent grade and throttle the advance to a crawl
@@ -652,11 +668,13 @@ public static class CharacterMovement
             Grounded = grounded,
             TimeSinceGrounded = tSinceGround,
             JumpBufferRemaining = jumpBuffer,
+            ClimbRate = climbRate,
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
         // past every clamp and replicate; hold the last good state instead of propagating a poisoned position.
-        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) ? result : state;
+        return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) && float.IsFinite(result.ClimbRate)
+            ? result : state;
     }
 
     /// <summary>True when every component of <paramref name="v"/> is finite (neither NaN nor infinite).</summary>

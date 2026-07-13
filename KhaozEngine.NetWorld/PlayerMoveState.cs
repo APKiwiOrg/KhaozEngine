@@ -74,6 +74,7 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             TimeSinceGrounded = movement.TimeSinceGrounded,
             JumpBufferRemaining = movement.JumpBufferRemaining,
             Swimming = movement.Swimming,
+            ClimbRate = MovementState.DecodeClimbRate(movement.ClimbRateQ),
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

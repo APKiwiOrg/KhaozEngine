@@ -27,9 +27,9 @@ namespace KhaozEngine.Game
     public readonly struct CharacterSample
     {
         // Full-field constructor (private) backing WithFacingYaw: copies every field and overrides the facing yaw.
-        // Keeping it private avoids a public 10-arg overload; the public constructors below stay the documented surface.
+        // Keeping it private avoids a public 11-arg overload; the public constructors below stay the documented surface.
         CharacterSample(long id, Vector3 position, bool isLocal, bool hasMovement, bool grounded, float verticalVelocity,
-            bool swimming, bool hasPlanarSpeed, float planarSpeed, float? facingYaw)
+            bool swimming, float climbRate, bool hasPlanarSpeed, float planarSpeed, float? facingYaw)
         {
             Id = id;
             Position = position;
@@ -38,6 +38,7 @@ namespace KhaozEngine.Game
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
             Swimming = swimming;
+            ClimbRate = climbRate;
             HasPlanarSpeed = hasPlanarSpeed;
             PlanarSpeed = planarSpeed;
             FacingYaw = facingYaw;
@@ -55,16 +56,18 @@ namespace KhaozEngine.Game
             Grounded = false;
             VerticalVelocity = 0f;
             Swimming = false;
+            ClimbRate = 0f;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = null;
         }
 
         /// <summary>Sample with exact movement (the local player, or any entity whose replicated <c>MovementState</c>
-        /// is available): <see cref="Grounded"/>, <see cref="VerticalVelocity"/>, and <see cref="Swimming"/> are used
-        /// as given instead of being derived. <paramref name="swimming"/> defaults false so a pre-swim caller is
-        /// unchanged.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, bool swimming = false)
+        /// is available): <see cref="Grounded"/>, <see cref="VerticalVelocity"/>, <see cref="Swimming"/>, and
+        /// <see cref="ClimbRate"/> are used as given instead of being derived. <paramref name="swimming"/> and
+        /// <paramref name="climbRate"/> default to the non-swimming / not-climbing values so a pre-swim / pre-glide
+        /// caller is unchanged.</summary>
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, bool swimming = false, float climbRate = 0f)
         {
             Id = id;
             Position = position;
@@ -73,6 +76,7 @@ namespace KhaozEngine.Game
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
             Swimming = swimming;
+            ClimbRate = climbRate;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = null;
@@ -86,7 +90,7 @@ namespace KhaozEngine.Game
         /// and does not strobe walk&lt;-&gt;idle when the player decelerates to a stop (where the rendered position, even
         /// after the C1 smoothing fix, settles with a tiny residual sag). Facing still follows the derived heading
         /// (planar speed is magnitude-only). A negative value is treated as zero.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed, bool swimming = false)
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed, bool swimming = false, float climbRate = 0f)
         {
             Id = id;
             Position = position;
@@ -95,6 +99,7 @@ namespace KhaozEngine.Game
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
             Swimming = swimming;
+            ClimbRate = climbRate;
             HasPlanarSpeed = true;
             PlanarSpeed = planarSpeed;
             FacingYaw = null;
@@ -116,6 +121,7 @@ namespace KhaozEngine.Game
             Grounded = false;
             VerticalVelocity = 0f;
             Swimming = false;
+            ClimbRate = 0f;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = facingYaw;
@@ -148,6 +154,14 @@ namespace KhaozEngine.Game
         /// position (a swimmer glides horizontally like a walker, so position cannot distinguish the two).</summary>
         public bool Swimming { get; }
 
+        /// <summary>Exact signed step-climb rate in m/s (only meaningful when <see cref="HasMovement"/>): +ascending a
+        /// paced stair run, -descending stepped risers, 0 not on a step climb. The presentation smoother in
+        /// <see cref="ReplicatedCharacterAnimators.Update"/> glides the drawn feet up/down the stair slope iff this is
+        /// non-zero, feeding it forward directly (never estimating climb from a position delta). Sourced from the sim's
+        /// own <c>MoveState.ClimbRate</c> (local: predicted; remote: the decoded, nearest-sampled replicated
+        /// <c>MovementState.ClimbRateQ</c>, via <c>EntityRenderState.ClimbRate</c>). 0 on every position-only sample.</summary>
+        public float ClimbRate { get; }
+
         /// <summary>True when this sample carries an exact planar <see cref="PlanarSpeed"/> to use for the locomotion
         /// state instead of deriving it from the position delta.</summary>
         public bool HasPlanarSpeed { get; }
@@ -171,7 +185,7 @@ namespace KhaozEngine.Game
         /// sample shape - position-only, exact-movement, or the fullest exact-speed sample - since facing is independent
         /// of the movement/speed/swim data. <see cref="CharacterAnimatorTuning.FacingYawOffset"/> still composes on top.</summary>
         public CharacterSample WithFacingYaw(float facingYaw) =>
-            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, HasPlanarSpeed, PlanarSpeed, facingYaw);
+            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, ClimbRate, HasPlanarSpeed, PlanarSpeed, facingYaw);
     }
 
     /// <summary>A draw-ready character produced by <see cref="ReplicatedCharacterAnimators.Update"/>: the world

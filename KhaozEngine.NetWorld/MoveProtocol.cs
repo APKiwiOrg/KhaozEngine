@@ -11,10 +11,12 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>4</c> as of the teleport-epoch feature,
-    /// which added the authoritative teleport epoch (<see cref="MovementState.TeleportEpoch"/>, 4 bytes) to the
-    /// movement built-in's codec (id <see cref="MovementTypeId"/>). <c>3</c> was the swim feature, which added the
-    /// surface-swim flag (<see cref="MovementState.Swimming"/>) to the same codec. Both are built-in components (NOT
+    /// frame-header layout, so it labels the incompatible generations. It is <c>5</c> as of the signal-driven
+    /// stair-glide feature, which added the quantized signed step-climb rate (<see cref="MovementState.ClimbRateQ"/>,
+    /// 1 byte) to the movement built-in's codec (id <see cref="MovementTypeId"/>). <c>4</c> was the teleport-epoch
+    /// feature, which added the authoritative teleport epoch (<see cref="MovementState.TeleportEpoch"/>, 4 bytes) to the
+    /// same codec. <c>3</c> was the swim feature, which added the
+    /// surface-swim flag (<see cref="MovementState.Swimming"/>) to the same codec. All are built-in components (NOT
     /// length-prefixed, so an older client cannot skip the extra bytes), hence breaking wire changes. <c>2</c> was the 10.0.0 line, which widened
     /// <see cref="NetId"/> from 32-bit to 64-bit on the wire (the snapshot/delta netId field and the
     /// <see cref="EncodeSnapshotFrame"/> header). <c>1</c> was the pre-10.0.0 32-bit line. Engine built-ins and the
@@ -30,7 +32,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 4;
+    public const int WireProtocolVersion = 5;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -88,6 +90,7 @@ public static class MoveProtocol
                 bw.Write(m.JumpBufferRemaining);
                 bw.Write(m.Swimming);       // wire generation 3: the surface-swim flag rides alongside the vertical axis
                 bw.Write(m.TeleportEpoch);  // wire generation 4: the authoritative teleport epoch (hard-cut marker)
+                bw.Write(m.ClimbRateQ);     // wire generation 5: the quantized signed step-climb rate (0 = not climbing)
             },
             read: br => new MovementState
             {
@@ -97,6 +100,7 @@ public static class MoveProtocol
                 JumpBufferRemaining = br.ReadSingle(),
                 Swimming = br.ReadBoolean(),
                 TeleportEpoch = br.ReadUInt32(),
+                ClimbRateQ = br.ReadSByte(),
             });
         // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
         // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the

@@ -18,21 +18,26 @@ namespace KhaozEngine.NetWorld;
 public readonly struct EntityRenderState
 {
     public EntityRenderState(NetId id, Vector3 position, bool isLocal)
-        : this(id, position, isLocal, null, false, 0f, false)
+        : this(id, position, isLocal, null, false, 0f, false, 0f)
     {
     }
 
     public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName)
-        : this(id, position, isLocal, displayName, false, 0f, false)
+        : this(id, position, isLocal, displayName, false, 0f, false, 0f)
     {
     }
 
     public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity)
-        : this(id, position, isLocal, displayName, grounded, verticalVelocity, false)
+        : this(id, position, isLocal, displayName, grounded, verticalVelocity, false, 0f)
     {
     }
 
     public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming)
+        : this(id, position, isLocal, displayName, grounded, verticalVelocity, swimming, 0f)
+    {
+    }
+
+    public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate)
     {
         Id = id;
         Position = position;
@@ -41,6 +46,7 @@ public readonly struct EntityRenderState
         Grounded = grounded;
         VerticalVelocity = verticalVelocity;
         Swimming = swimming;
+        ClimbRate = climbRate;
     }
 
     /// <summary>The entity's network identity (stable server/client).</summary>
@@ -69,4 +75,12 @@ public readonly struct EntityRenderState
     /// <c>MovementState.Swimming</c>). Feed it into <c>KhaozEngine.Game.CharacterSample</c> so the animator plays the
     /// swim/tread clips. Defaults to false (a land character) when a remote has no replicated movement yet.</summary>
     public bool Swimming { get; }
+
+    /// <summary>The entity's signed step-climb rate this frame (m/s; +ascending, -descending, 0 not on a step climb;
+    /// local: predicted <c>MoveState.ClimbRate</c>; remote: the decoded replicated <c>MovementState.ClimbRateQ</c>,
+    /// nearest-sampled to the same delayed render time as the interpolated position). Feed it into
+    /// <c>KhaozEngine.Game.CharacterSample.ClimbRate</c> so the presentation smoother glides the drawn feet up/down the
+    /// stair slope from the sim's own fact instead of estimating climb state from a position delta. 0 (the default when
+    /// a remote has no replicated movement yet) reads as not-climbing, so the smoother renders raw.</summary>
+    public float ClimbRate { get; }
 }

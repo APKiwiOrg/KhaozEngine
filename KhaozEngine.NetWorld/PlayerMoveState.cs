@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
@@ -75,6 +76,20 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             JumpBufferRemaining = movement.JumpBufferRemaining,
             Swimming = movement.Swimming,
             ClimbRate = MovementState.DecodeClimbRate(movement.ClimbRateQ),
+            // Seed the sim-local ascent EWMA (MoveState.ClimbRateEwma, which does NOT ride the wire) from the wire's
+            // decoded rate, so client-prediction replay CONTINUES the average from the authoritative value instead of
+            // restarting it from 0. Without this the reconcile rebuilds the basis here, the EWMA restarts every
+            // reconcile, and over a pending-command window SHORTER than the EWMA tau (6 ticks) the exported ClimbRate
+            // reads below the achieved rise - the render feed-forward/damp equilibrium then sinks below the true feet
+            // (tens of mm at walk to ~100 mm at run on short RTT windows), plus a per-reconcile ripple.
+            // ASCENT-ONLY via Max(0, ...): the EWMA is ascent state (only the ascent branch reads/writes it; descent's
+            // signal is STATELESS - re-derived from the current tick's geometry, never from the EWMA). A descent basis
+            // carries a NEGATIVE decoded rate; seeding the ascent EWMA negative would suppress the next ascent's seed
+            // sentinel (== 0) and hold ClimbRate = Max(0, ewma) at 0 for several ticks into that ascent (a fresh sink).
+            // Clamping to 0 for a descent basis re-arms the ascent seed path and leaves the stateless descent untouched.
+            // At a genuine run START the decoded rate is 0 (sub-quantum), so the seed still lands at 0 and the first-tick
+            // seed fraction applies exactly as in a lag-free run.
+            ClimbRateEwma = MathF.Max(0f, MovementState.DecodeClimbRate(movement.ClimbRateQ)),
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

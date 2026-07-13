@@ -28,15 +28,17 @@ public class StairGlideEquilibriumTests
 
     static MoveTuning Tuning() => MoveTuning.Default with { WalkSpeed = Walk, RunSpeed = Run, CapsuleRadius = 0.4f };
 
-    static void AddStairs(IPhysicsWorld world)
+    static void AddStairs(IPhysicsWorld world) => AddStairs(world, Riser, Tread);
+
+    static void AddStairs(IPhysicsWorld world, float riser, float tread)
     {
-        float backZ = -Tread * Risers - 2f;
+        float backZ = -tread * Risers - 2f;
         const float halfX = 20f;
         for (int i = 0; i < Risers; i++)
         {
-            float treadTop = Riser * (i + 1);
-            float centerZ = 0.5f * (-Tread * i + backZ);
-            float depth = -Tread * i - backZ;
+            float treadTop = riser * (i + 1);
+            float centerZ = 0.5f * (-tread * i + backZ);
+            float depth = -tread * i - backZ;
             world.AddStatic(new BoxShape(new Vector3(halfX, treadTop * 0.5f, depth * 0.5f)),
                 Pose.At(new Vector3(0f, treadTop * 0.5f, centerZ)));
         }
@@ -52,19 +54,21 @@ public class StairGlideEquilibriumTests
     }
 
     // Drive the real CharacterMovement sim (30 Hz) UP the staircase; capture per-tick position/grounded/vVel/ClimbRate.
-    static List<Frame> DriveAscent(bool run)
+    static List<Frame> DriveAscent(bool run) => DriveAscent(run, Riser, Tread);
+
+    static List<Frame> DriveAscent(bool run, float riser, float tread)
     {
         MoveTuning tuning = Tuning();
         float speed = run ? Run : Walk;
         float dt = 1f / 30f, halfH = tuning.CapsuleHalfHeight;
         using IPhysicsWorld world = new BepuPhysicsWorld();
-        AddStairs(world);
+        AddStairs(world, riser, tread);
         world.Step(dt);
         float Ground(float x, float z) => 0f;
         Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
         var state = new MoveState { Position = new Vector3(0f, halfH, 1.0f), Grounded = true };
         var cmd = new MoveCommand(new Vector2(0f, 1f), run, cameraYaw: 0f, jump: false);
-        int ticks = (int)(1.6f * (Tread * Risers + 3f) / (0.5f * speed * dt));
+        int ticks = (int)(1.6f * (tread * Risers + 3f) / (0.5f * speed * dt));
         var outp = new List<Frame>();
         for (int i = 0; i < ticks; i++)
         {
@@ -195,5 +199,63 @@ public class StairGlideEquilibriumTests
 
         Assert.True(worstSnap < 0.02f,
             $"{(run ? "run" : "walk")} sub={sub}: crest single-frame render drop {worstSnap * 1000:F1} mm must be under 20 mm (pre-fix hard snap of the ~{(run ? 101 : 151)} mm hover)");
+    }
+
+    // (finding 3) GEOMETRY SWEEP: prove the seed/smoothing constants (ClimbSignalSeedFraction, ClimbSignalSmoothingRate)
+    // are NOT a single-geometry fit to the 0.75-grade TestStaircase. Steeper-grade / shallow-tread and gentler-grade
+    // stairs must hold the SAME mid-climb equilibrium: NO sustained hover (the |mean| bar - the thing "single-geometry
+    // fit" would break). Same DriveAscent -> Present -> real animator path as AscentMidClimb, at 120 fps (sub=4).
+    //
+    // `strictBob`: also apply the bob-removed sustained bar. That bar's ~1-riser moving-average window is CALIBRATED to
+    // the base stair cadence (tread ~ the 0.4 m capsule radius). At a near-degenerate fixture where the tread is well
+    // under half the capsule radius (grade 1.73: riser 0.38 / tread 0.22, the capsule bridging ~3.6 treads and the
+    // riser ~= StepHeight), the taller/faster per-riser bob leaks past that fixed window, so the moving average reads
+    // the residual BOB (~53 mm) rather than a hover - while the MEAN stays ~0 (measured -3.3 mm: the equilibrium is
+    // still ON the feet, so the constants are NOT overfit). So the bob bar is asserted only where its window is valid;
+    // the equilibrium |mean| bar - the actual single-geometry-fit guard - is asserted everywhere, grade 0.44 .. 1.73.
+    public static IEnumerable<object[]> Geometries()
+    {
+        // riser, tread, strictBob. Base 0.30/0.40 (grade 0.75) is covered by AscentMidClimb; these bracket it both ways.
+        foreach (bool run in new[] { false, true })
+        {
+            yield return new object[] { run, 0.35f, 0.25f, true };    // shallow-tread / steeper, grade 1.40
+            yield return new object[] { run, 0.22f, 0.50f, true };    // gentle-grade, grade 0.44 (brackets below base)
+            yield return new object[] { run, 0.38f, 0.22f, false };   // near-degenerate steep extreme, grade 1.73 (mean only)
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Geometries))]
+    public void AscentMidClimb_HoldsAcrossGeometries_NoSustainedHover(bool run, float riser, float tread, bool strictBob)
+    {
+        const int sub = 4;
+        List<Frame> frames = Present(DriveAscent(run, riser, tread), sub);
+        var (engage, peak) = EngageAndPeak(frames);
+        float dtR = (1f / 30f) / sub, speed = run ? Run : Walk;
+        float[] r = RenderY(frames, dtR, speed);
+
+        int span = peak - engage;
+        Assert.True(span > 20 * sub, $"grade {riser / tread:F2}: degenerate climb window (span {span})");
+        int lo = engage + span / 4, hi = peak - span / 12;      // the steady middle only
+
+        double sum = 0; int n = 0;
+        for (int i = lo; i < hi; i++) { sum += r[i] - frames[i].Pos.Y; n++; }
+        float meanHover = (float)(sum / n);
+
+        int win = 4 * sub; float maxMovAvg = 0f;                 // bob-removed sustained offset (~1-riser window)
+        for (int i = lo; i < hi; i++)
+        {
+            float mv = 0f; int c = 0;
+            for (int k = i - win; k <= i + win; k++) if (k >= lo && k < hi) { mv += r[k] - frames[k].Pos.Y; c++; }
+            maxMovAvg = MathF.Max(maxMovAvg, MathF.Abs(mv / c));
+        }
+
+        string tag = $"{(run ? "run" : "walk")} riser={riser:F2} tread={tread:F2} grade={riser / tread:F2}";
+        // The single-geometry-fit guard: no sustained hover at any geometry (the equilibrium sits on the true feet).
+        Assert.True(MathF.Abs(meanHover) < 0.03f,
+            $"{tag}: sustained mid-climb hover {meanHover * 1000:F1} mm must be under 30 mm (constant must not be a single-geometry fit)");
+        if (strictBob)
+            Assert.True(maxMovAvg < 0.035f,
+                $"{tag}: bob-removed sustained hover {maxMovAvg * 1000:F1} mm must be under 35 mm (constant must not be a single-geometry fit)");
     }
 }

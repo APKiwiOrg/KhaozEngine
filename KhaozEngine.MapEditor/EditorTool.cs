@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
 using KhaozEngine.MapDoc;
@@ -874,6 +875,170 @@ public sealed class EditorToolController
         _document.Selection.Clear();
     }
 
+    // ---- duplicate -----------------------------------------------------------------------------------------
+
+    /// <summary>World-unit XZ offset applied to a duplicate's position, so it never lands exactly on top of its
+    /// source (Cmd+D, decision 8). The kinds with no position (a biome band, a scatter or companion layer)
+    /// ignore it entirely.</summary>
+    const float DuplicateOffset = 2f;
+
+    /// <summary>Duplicates the current selection: a deep clone with a fresh unique identity, offset +2/+2 on X/Z
+    /// for the kinds that carry a position, added through the same kind's Add command and immediately sealed
+    /// (<see cref="EditorDocument.SealGesture"/>) before the new element becomes the selection. Sealing right
+    /// after Execute matters: several Add commands absorb a same-id Move that immediately follows
+    /// (place-and-adjust), and a duplicate is not a place gesture, so without the seal a later drag of the fresh
+    /// duplicate could silently fold into its Add instead of landing its own undo step. Mirrors the
+    /// <see cref="DeleteSelection"/> dispatcher shape, covering the same nine kinds plus the two Delete does not
+    /// handle (scatter and companion layers, which have no viewport geometry to delete but are still document
+    /// elements a user wants to clone). Terrain (the singleton root) and an empty selection have nothing to
+    /// duplicate and no-op silently, exactly like Delete's own default branch. The owning scene surfaces a
+    /// status note for the Terrain case (this controller carries no status text of its own).</summary>
+    public void DuplicateSelection()
+    {
+        EditorSelection sel = _document.Selection;
+        switch (sel.Kind)
+        {
+            case SelectionKind.Placement:
+            {
+                if (FindPlacement(sel.Id) is not { } p) return;
+                string id = UniqueName("placement", PlacementIdExists);
+                _document.Execute(new AddPlacementCommand(new MapPlacement
+                {
+                    Id = id, Kind = p.Kind, X = p.X + DuplicateOffset, Z = p.Z + DuplicateOffset, Y = p.Y,
+                    Yaw = p.Yaw, Scale = p.Scale, Tags = new List<string>(p.Tags),
+                }));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.Placement, id);
+                break;
+            }
+            case SelectionKind.Spawn:
+            {
+                if (FindSpawn(sel.Id) is not { } s) return;
+                string id = UniqueName("spawn", SpawnIdExists);
+                _document.Execute(new AddSpawnCommand(new MapSpawn
+                {
+                    Id = id, ArchetypeId = s.ArchetypeId, X = s.X + DuplicateOffset, Z = s.Z + DuplicateOffset,
+                    Enabled = s.Enabled, Tags = new List<string>(s.Tags),
+                }));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.Spawn, id);
+                break;
+            }
+            case SelectionKind.PlayerSpawn:
+            {
+                if (FindPlayerSpawn(sel.Id) is not { } ps) return;
+                string id = UniqueName("player", PlayerSpawnIdExists);
+                // AddPlayerSpawnCommand deep-copies at construction (a fresh Tags list), so handing it a plain new
+                // instance here is enough: the command never aliases this local's Tags list either way.
+                _document.Execute(new AddPlayerSpawnCommand(new MapPlayerSpawn
+                {
+                    Id = id, X = ps.X + DuplicateOffset, Z = ps.Z + DuplicateOffset, Yaw = ps.Yaw,
+                    Enabled = ps.Enabled, Tags = new List<string>(ps.Tags),
+                }));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.PlayerSpawn, id);
+                break;
+            }
+            case SelectionKind.Feature:
+            {
+                if (!TryFeatureIndex(sel.Id, out int fi)) return;
+                MapFeature source = _document.Doc.Terrain.Features[fi];
+                // FeatureGeometry.Translated already clones AND offsets the center / through-point atomically. It
+                // returns null for a custom feature type it does not know how to translate (the same "unknown
+                // type, no guess" policy TryCenter / Scaled already follow), so an unsupported type no-ops here
+                // rather than adding an un-offset clone.
+                if (FeatureGeometry.Translated(source, DuplicateOffset, DuplicateOffset) is not { } clone) return;
+                // A feature Name is optional and unique-when-set (round 5), but AddFeatureCommand carries no
+                // add-time guard for that (only RenameFeatureCommand does), so a straight clone of a named
+                // feature would silently collide. Uniquify it, an unnamed feature's null Name carries no key to
+                // collide on and needs no change.
+                if (!string.IsNullOrEmpty(clone.Name))
+                    clone.Name = UniqueName(clone.Name + "-copy", FeatureNameExists);
+                _document.Execute(new AddFeatureCommand(clone));
+                _document.SealGesture();
+                int idx = _document.Doc.Terrain.Features.Count - 1;
+                _document.Selection.Set(SelectionKind.Feature, idx.ToString(CultureInfo.InvariantCulture));
+                break;
+            }
+            case SelectionKind.Exclusion:
+            {
+                if (!TryExclusionIndex(sel.Id, out int ei)) return;
+                MapExclusion source = _document.Doc.Exclusions[ei];
+                var clone = new MapExclusion
+                {
+                    Name = source.Name,
+                    Shape = source.Shape is { } shape ? CloneShapeOffset(shape, DuplicateOffset, DuplicateOffset) : null,
+                    Layers = source.Layers is { } layers ? new List<string>(layers) : null,
+                };
+                // Same round-5 name-collision dodge as Feature above: AddExclusionCommand has no add-time guard.
+                if (!string.IsNullOrEmpty(clone.Name))
+                    clone.Name = UniqueName(clone.Name + "-copy", ExclusionNameExists);
+                _document.Execute(new AddExclusionCommand(clone));
+                _document.SealGesture();
+                int idx = _document.Doc.Exclusions.Count - 1;
+                _document.Selection.Set(SelectionKind.Exclusion, idx.ToString(CultureInfo.InvariantCulture));
+                break;
+            }
+            case SelectionKind.Region:
+            {
+                if (RegionByName(sel.Id) is not { } source) return;
+                // A region's Name IS its identity (like a placement id), always set and always unique, so a
+                // duplicate takes a fresh generated name exactly like a freshly drawn region rather than deriving
+                // one from the source name.
+                string name = UniqueName("region", RegionExists);
+                var clone = new MapRegion
+                {
+                    Name = name,
+                    Shape = source.Shape is { } shape ? CloneShapeOffset(shape, DuplicateOffset, DuplicateOffset) : null,
+                    Tags = new List<string>(source.Tags),
+                };
+                _document.Execute(new AddRegionCommand(clone));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.Region, name);
+                break;
+            }
+            case SelectionKind.BiomeBand:
+            {
+                if (!TryListIndex(sel.Id, _document.Doc.Terrain.Biomes.Count, out int bi)) return;
+                MapBiomeBand source = _document.Doc.Terrain.Biomes[bi];
+                // No name, no position (a band is an elevation range, not a placed element): a plain verbatim
+                // clone, no uniquify, no offset.
+                var clone = new MapBiomeBand
+                {
+                    Start = source.Start, End = source.End, Biome = source.Biome,
+                    BaseHeight = source.BaseHeight, HillAmplitude = source.HillAmplitude,
+                };
+                _document.Execute(new AddBiomeBandCommand(clone));
+                _document.SealGesture();
+                int idx = _document.Doc.Terrain.Biomes.Count - 1;
+                _document.Selection.Set(SelectionKind.BiomeBand, idx.ToString(CultureInfo.InvariantCulture));
+                break;
+            }
+            case SelectionKind.ScatterLayer:
+            {
+                if (ScatterLayerByName(sel.Id) is not { } source) return;
+                MapScatterLayer clone = MapEditorScene.CloneScatterLayer(source);
+                clone.Name = UniqueName(source.Name + "-copy", ScatterLayerNameExists);
+                _document.Execute(new AddScatterLayerCommand(clone));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.ScatterLayer, clone.Name);
+                break;
+            }
+            case SelectionKind.CompanionLayer:
+            {
+                if (CompanionLayerByName(sel.Id) is not { } source) return;
+                MapCompanionLayer clone = MapEditorScene.CloneCompanionLayer(source);
+                clone.Name = UniqueName(source.Name + "-copy", CompanionLayerNameExists);
+                _document.Execute(new AddCompanionLayerCommand(clone));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.CompanionLayer, clone.Name);
+                break;
+            }
+            default:
+                return;   // Terrain (a singleton) and an empty selection: nothing to duplicate.
+        }
+    }
+
     // ---- helpers -----------------------------------------------------------------------------------------
 
     static bool IntersectGroundPlane(Vector3 origin, Vector3 dir, float planeY, out Vector3 hit)
@@ -936,6 +1101,73 @@ public sealed class EditorToolController
     // Parses an Exclusion id to a valid in-range exclusion index.
     bool TryExclusionIndex(string id, out int index) =>
         TryListIndex(id, _document.Doc.Exclusions.Count, out index);
+
+    // Whether any CURRENT terrain feature carries `name` (ordinal): AddFeatureCommand has no add-time name
+    // guard (only RenameFeatureCommand does), so DuplicateSelection uses this to uniquify a named clone itself.
+    bool FeatureNameExists(string name)
+    {
+        foreach (MapFeature f in _document.Doc.Terrain.Features)
+            if (string.Equals(f.Name, name, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    // Whether any CURRENT exclusion carries `name` (ordinal): same add-time gap as FeatureNameExists above.
+    bool ExclusionNameExists(string name)
+    {
+        foreach (MapExclusion e in _document.Doc.Exclusions)
+            if (string.Equals(e.Name, name, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    MapScatterLayer? ScatterLayerByName(string name)
+    {
+        foreach (MapScatterLayer l in _document.Doc.ScatterLayers)
+            if (string.Equals(l.Name, name, StringComparison.Ordinal)) return l;
+        return null;
+    }
+
+    MapCompanionLayer? CompanionLayerByName(string name)
+    {
+        foreach (MapCompanionLayer l in _document.Doc.CompanionLayers)
+            if (string.Equals(l.Name, name, StringComparison.Ordinal)) return l;
+        return null;
+    }
+
+    bool ScatterLayerNameExists(string name) => ScatterLayerByName(name) is not null;
+
+    bool CompanionLayerNameExists(string name) => CompanionLayerByName(name) is not null;
+
+    // Deep-clones a shape DTO (disc / rect / polygon), offset by (dx, dz) on the XZ plane, for a duplicated
+    // exclusion / region (decision 8). Unlike MapEditorScene's shape-row CloneShape (editable disc / rect only,
+    // a polygon row is read-only v1 there), Duplicate must round-trip every shape kind a document can legally
+    // hold, so this is a local clone rather than a reuse: a hand-authored polygon exclusion or region is a legal
+    // duplicate target even though the inspector cannot edit its points.
+    static MapShapeDoc CloneShapeOffset(MapShapeDoc shape, float dx, float dz)
+    {
+        switch (shape)
+        {
+            case DiscShapeDoc d:
+                return new DiscShapeDoc { CenterX = d.CenterX + dx, CenterZ = d.CenterZ + dz, Radius = d.Radius };
+            case RectShapeDoc r:
+                return new RectShapeDoc
+                {
+                    MinX = r.MinX + dx, MinZ = r.MinZ + dz, MaxX = r.MaxX + dx, MaxZ = r.MaxZ + dz,
+                };
+            case PolygonShapeDoc poly:
+            {
+                var clone = new PolygonShapeDoc();
+                foreach (float[] point in poly.Points)
+                {
+                    float x = point.Length > 0 ? point[0] : 0f;
+                    float z = point.Length > 1 ? point[1] : 0f;
+                    clone.Points.Add(new[] { x + dx, z + dz });
+                }
+                return clone;
+            }
+            default:
+                throw new InvalidOperationException($"No clone support for shape type '{shape.GetType().Name}'.");
+        }
+    }
 
     // The live shape of the current exclusion / region selection, or null for any other kind.
     MapShapeDoc? SelectedShapeOf(SelectionKind kind, string id) => kind switch

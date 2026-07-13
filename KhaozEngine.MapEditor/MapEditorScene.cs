@@ -143,6 +143,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     FlyCamera3D _camera = null!;
     FlyCameraController _camController = null!;
 
+    // Session-only camera bookmarks (decision 9): index 0 = slot 1 ... index 8 = slot 9. Never persisted, so a
+    // fresh editor session starts with every slot empty (CameraBookmark.Set false, the struct's default).
+    readonly CameraBookmark[] _bookmarks = new CameraBookmark[9];
+
     MeshHandle _translateArrows, _translateArrowsXZ, _yawRing, _scaleHandle, _selectionMarker;
 
     readonly InputManager _ui = new();
@@ -921,13 +925,72 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (!ctrl)
         {
             if (s.WasPressed(Key.R)) SnapSelectedPlacementToGround();
+            else HandleBookmarkChord(s, shift);   // bare / Shift+1..9 (decision 9)
             return;
         }
         if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
         else if (s.WasPressed(Key.Y)) _document.Redo();
         else if (s.WasPressed(Key.S)) SaveDocument();
+        else if (s.WasPressed(Key.D)) DuplicateSelectionChord();       // Cmd+D (decision 8)
         else if (s.WasPressed(Key.Up)) ReorderSelectedFeature(-1);     // earlier in the fold order
         else if (s.WasPressed(Key.Down)) ReorderSelectedFeature(+1);   // later in the fold order (toward winning)
+    }
+
+    // Cmd+D: duplicate the current selection (decision 8). Terrain (the singleton root) has nothing to
+    // duplicate, so it lands a status note instead of a mutation. An empty selection silently no-ops (nothing to
+    // explain, same as every other chord over an empty selection). Every other kind clones through
+    // EditorToolController.DuplicateSelection, which already offsets the position, gives the clone a fresh
+    // identity, selects it, and seals one undo step.
+    void DuplicateSelectionChord()
+    {
+        if (_document.Selection.Kind == SelectionKind.Terrain)
+        {
+            _statusText = "Nothing to duplicate: Terrain is the document singleton.";
+            return;
+        }
+        _controller.DuplicateSelection();
+    }
+
+    // The digit keys a bookmark chord watches, index 0 = slot 1 through index 8 = slot 9 (decision 9).
+    static readonly Key[] BookmarkKeys =
+    {
+        Key.D1, Key.D2, Key.D3, Key.D4, Key.D5, Key.D6, Key.D7, Key.D8, Key.D9,
+    };
+
+    // Checks every digit key for a press edge this frame and stores (Shift held) or recalls (bare) the matching
+    // slot. At most one digit fires per frame (a single physical keypress), so the first match wins.
+    void HandleBookmarkChord(InputState s, bool shift)
+    {
+        for (int i = 0; i < BookmarkKeys.Length; i++)
+        {
+            if (!s.WasPressed(BookmarkKeys[i])) continue;
+            int slot = i + 1;
+            if (shift) StoreBookmark(i, slot); else RecallBookmark(i, slot);
+            return;
+        }
+    }
+
+    // Shift+<slot>: snapshots the fly camera's pose into the slot (decision 9), overwriting whatever was there.
+    void StoreBookmark(int index, int slot)
+    {
+        _bookmarks[index] = new CameraBookmark(_camera.Position, _camera.Yaw, _camera.Pitch);
+        _statusText = "Bookmark " + slot.ToString(CultureInfo.InvariantCulture) + " stored";
+    }
+
+    // Bare <slot>: restores the fly camera to a previously stored pose. An empty slot (never stored this
+    // session) leaves the camera untouched and surfaces a status note instead.
+    void RecallBookmark(int index, int slot)
+    {
+        CameraBookmark b = _bookmarks[index];
+        if (!b.Set)
+        {
+            _statusText = "Bookmark " + slot.ToString(CultureInfo.InvariantCulture) + " is empty";
+            return;
+        }
+        _camera.Position = b.Position;
+        _camera.Yaw = b.Yaw;
+        _camera.Pitch = b.Pitch;
+        _statusText = "Bookmark " + slot.ToString(CultureInfo.InvariantCulture) + " recalled";
     }
 
     // Ctrl+Up / Ctrl+Down: move the selected terrain feature one step earlier (delta -1) or later (delta +1) in
@@ -2517,6 +2580,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     // Deep clones (the whole-value-edit copy discipline): a scatter / companion layer is a mutable class with
     // nested lists (Rules -> Kinds, HostKinds, Kinds), so a shallow copy would share those lists and let a scrub of
     // the clone mutate the live instance the command captured as its old value. Every nested list is rebuilt.
+    // CloneScatterLayer / CloneCompanionLayer are internal (not private) so EditorToolController.DuplicateSelection
+    // (EditorTool.cs, same assembly) reuses this exact deep-clone rather than a second copy of the nested-list logic.
     static MapPropKind CloneKind(MapPropKind k) => new MapPropKind { Id = k.Id, Weight = k.Weight };
 
     static MapBiomeScatterRule CloneRule(MapBiomeScatterRule r)
@@ -2526,7 +2591,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         return new MapBiomeScatterRule { Biome = r.Biome, Density = r.Density, Kinds = kinds };
     }
 
-    static MapScatterLayer CloneScatterLayer(MapScatterLayer l)
+    internal static MapScatterLayer CloneScatterLayer(MapScatterLayer l)
     {
         var rules = new List<MapBiomeScatterRule>(l.Rules.Count);
         foreach (MapBiomeScatterRule r in l.Rules) rules.Add(CloneRule(r));
@@ -2537,7 +2602,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         };
     }
 
-    static MapCompanionLayer CloneCompanionLayer(MapCompanionLayer l)
+    internal static MapCompanionLayer CloneCompanionLayer(MapCompanionLayer l)
     {
         var kinds = new List<MapPropKind>(l.Kinds.Count);
         foreach (MapPropKind k in l.Kinds) kinds.Add(CloneKind(k));
@@ -3045,6 +3110,11 @@ public class MapEditorScene : GameScene, IGameScene3D
             Palette = palette; Status = status; Viewport = viewport;
         }
     }
+
+    // One stored fly-camera pose (Shift+1..9 stores, bare 1..9 recalls, decision 9). Set is false for a
+    // never-stored slot's default zero value, so RecallBookmark can tell "nothing here" apart from a legitimately
+    // stored pose that happens to sit at the world origin looking along +Z.
+    readonly record struct CameraBookmark(Vector3 Position, float Yaw, float Pitch, bool Set = true);
 }
 
 /// <summary>Which baked transform-gizmo mesh a <see cref="MapEditorScene.ComputeGizmoMeshes"/> entry draws, keyed

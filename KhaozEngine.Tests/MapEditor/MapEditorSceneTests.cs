@@ -3154,5 +3154,150 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Fail($"no row labeled '{label}' (rows: {grid.Rows.Count})");
             return null!;   // unreachable
         }
+
+        // ---- duplicate chord (Cmd+D, decision 8) ----------------------------------------------------------
+
+        [Fact]
+        public void CmdD_TerrainSelected_NoOp()
+        {
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+
+            m.Input = CtrlKeyFrame(Key.D);
+            m.Update(0.016f);
+
+            Assert.False(scene.Document.History.CanUndo);
+            Assert.Equal(SelectionKind.Terrain, scene.Document.Selection.Kind);
+            Assert.Equal("Nothing to duplicate: Terrain is the document singleton.", scene.StatusText);
+        }
+
+        [Fact]
+        public void CmdD_DuplicatesSelection_ThroughTheScene()
+        {
+            // A thin end-to-end check that the chord actually reaches EditorToolController.DuplicateSelection
+            // (the exhaustive per-kind coverage lives in EditorToolTests against the controller directly).
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 1f, Z = 1f });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+
+            m.Input = SuperKeyFrame(Key.D);   // Cmd+D via Super, proving IsCommandDown's other modifier fires it too
+            m.Update(0.016f);
+
+            Assert.Equal(2, scene.Document.Doc.Placements.Count);
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.NotEqual("hut", scene.Document.Selection.Id);
+            Assert.Equal(1, scene.Document.History.UndoDepth);
+        }
+
+        // ---- camera bookmarks (Shift+1..9 / 1..9, decision 9) ---------------------------------------------
+
+        [Fact]
+        public void Bookmark_StoreRecall_RestoresPositionYawPitch()
+        {
+            var scene = new SpyScene();   // real UpdateCamera, device work skipped
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Camera.Position = new Vector3(3f, 4f, 5f);
+            scene.Camera.Yaw = 0.7f;
+            scene.Camera.Pitch = 0.2f;
+
+            m.Input = KeyFrame(shiftDown: true, Key.D3);   // Shift+3 stores
+            m.Update(0.016f);
+            Assert.Equal("Bookmark 3 stored", scene.StatusText);
+
+            scene.Camera.Position = new Vector3(-9f, 1f, 2f);
+            scene.Camera.Yaw = -1.1f;
+            scene.Camera.Pitch = -0.3f;
+
+            m.Input = KeyFrame(shiftDown: false, Key.D3);   // bare 3 recalls
+            m.Update(0.016f);
+
+            Assert.Equal(new Vector3(3f, 4f, 5f), scene.Camera.Position);
+            Assert.Equal(0.7f, scene.Camera.Yaw);
+            Assert.Equal(0.2f, scene.Camera.Pitch);
+            Assert.Equal("Bookmark 3 recalled", scene.StatusText);
+        }
+
+        [Fact]
+        public void Bookmark_EmptySlot_StatusNote_NoCameraChange()
+        {
+            var scene = new SpyScene();
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            Vector3 before = scene.Camera.Position;
+            float yawBefore = scene.Camera.Yaw, pitchBefore = scene.Camera.Pitch;
+
+            m.Input = KeyFrame(shiftDown: false, Key.D5);   // slot 5 was never stored this session
+            m.Update(0.016f);
+
+            Assert.Equal(before, scene.Camera.Position);
+            Assert.Equal(yawBefore, scene.Camera.Yaw);
+            Assert.Equal(pitchBefore, scene.Camera.Pitch);
+            Assert.Equal("Bookmark 5 is empty", scene.StatusText);
+        }
+
+        [Fact]
+        public void Bookmark_GatedWhileTyping()
+        {
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            // Store bookmark 3 at a pose distinct from the camera's current one, so a wrongly-ungated recall
+            // would be an observable camera jump rather than a no-op that happens to look like the gate working.
+            scene.Camera.Position = new Vector3(10f, 5f, 10f);
+            scene.Camera.Yaw = 1f;
+            scene.Camera.Pitch = 0.1f;
+            m.Input = KeyFrame(shiftDown: true, Key.D3);
+            m.Update(0.016f);
+            Assert.Equal("Bookmark 3 stored", scene.StatusText);
+
+            scene.Camera.Position = new Vector3(0f, 24f, -32f);
+            scene.Camera.Yaw = 0f;
+            scene.Camera.Pitch = -0.5f;
+            Vector3 before = scene.Camera.Position;
+            float yawBefore = scene.Camera.Yaw, pitchBefore = scene.Camera.Pitch;
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            TextRow name = TextRowByLabel(scene.Inspector, "Name");
+            name.Input.IsFocused = true;
+
+            m.Input = KeyFrame(shiftDown: false, Key.D3);   // bare 3 while the rename row owns the frame
+            m.Update(0.016f);
+
+            // AnyEditorFocused gates the bookmark chord exactly like every other bare-key chord: no recall runs.
+            Assert.Equal(before, scene.Camera.Position);
+            Assert.Equal(yawBefore, scene.Camera.Yaw);
+            Assert.Equal(pitchBefore, scene.Camera.Pitch);
+
+            // The same key reaches the row's own Update (the live UiViewport path this headless suite stands in
+            // for by driving the row directly), so the digit types into the field instead of being swallowed.
+            var ui = new InputManager();
+            ui.Update(KeyFrame(shiftDown: false, Key.D3));
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Equal("3", name.Input.Text);
+        }
     }
 }

@@ -1138,13 +1138,14 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.Placement, "p1");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.Placements.Count);
                     Assert.Equal(SelectionKind.Placement, doc.Selection.Kind);
                     string newId = doc.Selection.Id;
                     Assert.NotEqual("p1", newId);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Placement, newId), result);
                     MapPlacement dup = doc.Doc.Placements[1];
                     Assert.Equal(newId, dup.Id);
                     Near(3f, dup.X); Near(4f, dup.Z);
@@ -1166,13 +1167,14 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.Spawn, "s1");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.Spawns.Count);
                     Assert.Equal(SelectionKind.Spawn, doc.Selection.Kind);
                     string newId = doc.Selection.Id;
                     Assert.NotEqual("s1", newId);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Spawn, newId), result);
                     MapSpawn dup = doc.Doc.Spawns[1];
                     Assert.Equal(newId, dup.Id);
                     Near(7f, dup.X); Near(8f, dup.Z);
@@ -1193,13 +1195,14 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.PlayerSpawns.Count);
                     Assert.Equal(SelectionKind.PlayerSpawn, doc.Selection.Kind);
                     string newId = doc.Selection.Id;
                     Assert.NotEqual("player-1", newId);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.PlayerSpawn, newId), result);
                     MapPlayerSpawn dup = doc.Doc.PlayerSpawns[1];
                     Assert.Equal(newId, dup.Id);
                     Near(3f, dup.X); Near(3f, dup.Z);
@@ -1219,12 +1222,13 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.Feature, "0");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.Terrain.Features.Count);
                     Assert.Equal(SelectionKind.Feature, doc.Selection.Kind);
                     Assert.Equal("1", doc.Selection.Id);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Feature, "1"), result);
                     var dup = Assert.IsType<LakeFeatureDoc>(doc.Doc.Terrain.Features[1]);
                     // The source is named, and AddFeatureCommand carries no add-time uniqueness guard, so
                     // DuplicateSelection uniquifies it itself: "-copy" via the same UniqueName helper every other
@@ -1245,9 +1249,10 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.Feature, "0");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Feature, "1"), result);
                     var dup = Assert.IsType<FlattenFeatureDoc>(doc.Doc.Terrain.Features[1]);
                     Assert.Null(dup.Name);   // unnamed stays unnamed: nothing to uniquify
                     Near(6f, dup.CenterX); Near(7f, dup.CenterZ);
@@ -1269,12 +1274,13 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.Exclusion, "0");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.Exclusions.Count);
                     Assert.Equal(SelectionKind.Exclusion, doc.Selection.Kind);
                     Assert.Equal("1", doc.Selection.Id);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Exclusion, "1"), result);
                     MapExclusion dup = doc.Doc.Exclusions[1];
                     Assert.Equal("Zone1-copy-1", dup.Name);
                     var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
@@ -1294,9 +1300,10 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.Exclusion, "0");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Exclusion, "1"), result);
                     MapExclusion dup = doc.Doc.Exclusions[1];
                     Assert.Null(dup.Name);
                     var dupShape = Assert.IsType<RectShapeDoc>(dup.Shape);
@@ -1314,7 +1321,7 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.Region, "town");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.Regions.Count);
@@ -1323,6 +1330,7 @@ namespace KhaozEngine.Tests.MapEditor
                     // A region's name IS its identity (always set, always unique), so a duplicate takes the
                     // standard generated "region-N" name exactly like a freshly drawn region, not "town-copy".
                     Assert.Equal("region-1", newName);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Region, newName), result);
                     MapRegion dup = doc.Doc.Regions[1];
                     Assert.Equal(newName, dup.Name);
                     var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
@@ -1342,12 +1350,13 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.BiomeBand, "0");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.Terrain.Biomes.Count);
                     Assert.Equal(SelectionKind.BiomeBand, doc.Selection.Kind);
                     Assert.Equal("1", doc.Selection.Id);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.BiomeBand, "1"), result);
                     MapBiomeBand dup = doc.Doc.Terrain.Biomes[1];
                     // A band has no name and no position (an elevation range, not a placed element): a verbatim
                     // clone, distinct instance, no offset.
@@ -1372,7 +1381,7 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.ScatterLayer, "trees");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);
                     Assert.Equal(2, doc.Doc.ScatterLayers.Count);
@@ -1381,6 +1390,7 @@ namespace KhaozEngine.Tests.MapEditor
                     // Name-keyed, no position: UniqueName("trees-copy", exists) always appends "-N" from 1, so
                     // the first copy is "trees-copy-1" (never the bare "trees-copy").
                     Assert.Equal("trees-copy-1", newName);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterLayer, newName), result);
                     MapScatterLayer dup = doc.Doc.ScatterLayers[1];
                     Assert.Equal(newName, dup.Name);
                     Assert.Equal(42, dup.Seed);
@@ -1414,13 +1424,14 @@ namespace KhaozEngine.Tests.MapEditor
                     doc.Selection.Set(SelectionKind.CompanionLayer, "ring");
                     string before = Json(doc);
 
-                    c.DuplicateSelection();
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
                     Assert.Equal(1, doc.History.UndoDepth);   // the scatter layer above landed no command (direct Add)
                     Assert.Equal(2, doc.Doc.CompanionLayers.Count);
                     Assert.Equal(SelectionKind.CompanionLayer, doc.Selection.Kind);
                     string newName = doc.Selection.Id;
                     Assert.Equal("ring-copy-1", newName);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.CompanionLayer, newName), result);
                     MapCompanionLayer dup = doc.Doc.CompanionLayers[1];
                     Assert.Equal(newName, dup.Name);
                     Assert.Equal("trees", dup.HostLayer);
@@ -1452,10 +1463,11 @@ namespace KhaozEngine.Tests.MapEditor
             var (doc, c) = Make();
             doc.Selection.Set(SelectionKind.Terrain, "");
 
-            c.DuplicateSelection();
+            EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
             Assert.False(doc.History.CanUndo);
             Assert.Equal(SelectionKind.Terrain, doc.Selection.Kind);
+            Assert.Null(result);
         }
 
         [Fact]
@@ -1464,10 +1476,42 @@ namespace KhaozEngine.Tests.MapEditor
             var (doc, c) = Make();
             Assert.True(doc.Selection.IsEmpty);
 
-            c.DuplicateSelection();
+            EditorToolController.DuplicateResult? result = c.DuplicateSelection();
 
             Assert.False(doc.History.CanUndo);
             Assert.True(doc.Selection.IsEmpty);
+            Assert.Null(result);
+        }
+
+        // A custom feature type FeatureGeometry.Translated does not know how to offset (not one of the four
+        // built-ins), the same "unknown type, no guess" case MapEditorOverlayTests.UnknownFeatureDoc covers for
+        // the overlay draw list. DuplicateSelection must no-op (null result, no command, selection untouched)
+        // rather than adding an un-offset clone, so an automation caller sees a clean "nothing happened" signal
+        // instead of a false success.
+        sealed class UnknownFeatureDoc : MapFeature
+        {
+            public override string Type => "unknown";
+        }
+
+        [Fact]
+        public void CmdD_CustomFeatureType_NoOp()
+        {
+            // No Json(doc) before/after round-trip here (unlike the theory above): "unknown" is not a type the
+            // default MapDocRegistry knows, so serializing it would throw. The in-memory assertions below are
+            // enough to confirm nothing was mutated.
+            var (doc, c) = Make();
+            var source = new UnknownFeatureDoc { Name = "mystery" };
+            doc.Doc.Terrain.Features.Add(source);
+            doc.Selection.Set(SelectionKind.Feature, "0");
+
+            EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+
+            Assert.Null(result);
+            Assert.False(doc.History.CanUndo);
+            Assert.Single(doc.Doc.Terrain.Features);
+            Assert.Same(source, doc.Doc.Terrain.Features[0]);
+            Assert.Equal(SelectionKind.Feature, doc.Selection.Kind);
+            Assert.Equal("0", doc.Selection.Id);   // selection untouched, nothing was created to select
         }
 
         [Fact]
@@ -1525,7 +1569,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.True(doc.Undo());
             Assert.Equal(1, doc.History.UndoDepth);
-            Near(2f, doc.Doc.Placements[1].X);   // the move undid; the duplicate (at its +2 offset) is still there
+            Near(2f, doc.Doc.Placements[1].X);   // the move undid, the duplicate (at its +2 offset) is still there
 
             Assert.True(doc.Undo());
             Assert.Single(doc.Doc.Placements);   // the duplicate itself undid too

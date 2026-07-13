@@ -3201,6 +3201,40 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(1, scene.Document.History.UndoDepth);
         }
 
+        // A custom feature type FeatureGeometry.Translated does not know how to offset (not one of the four
+        // built-ins), the same "unknown type" idiom EditorToolTests.UnknownFeatureDoc covers at the controller
+        // level. DuplicateSelection returns null for it, and the scene tells that apart from the ordinary
+        // empty-selection no-op (selection kind is still Feature) to surface its own status note.
+        sealed class UnknownFeatureDoc : MapFeature
+        {
+            public override string Type => "unknown";
+        }
+
+        [Fact]
+        public void CmdD_CustomFeatureType_ShowsStatusNote()
+        {
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Features.Add(new UnknownFeatureDoc { Name = "mystery" });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+
+            m.Input = CtrlKeyFrame(Key.D);
+            m.Update(0.016f);
+
+            Assert.False(scene.Document.History.CanUndo);
+            Assert.Single(scene.Document.Doc.Terrain.Features);
+            Assert.Equal(SelectionKind.Feature, scene.Document.Selection.Kind);
+            Assert.Equal("0", scene.Document.Selection.Id);
+            Assert.Equal("Cannot duplicate this feature type.", scene.StatusText);
+        }
+
         // ---- camera bookmarks (Shift+1..9 / 1..9, decision 9) ---------------------------------------------
 
         [Fact]

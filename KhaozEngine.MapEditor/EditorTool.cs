@@ -882,6 +882,12 @@ public sealed class EditorToolController
     /// ignore it entirely.</summary>
     const float DuplicateOffset = 2f;
 
+    /// <summary>Identifies what <see cref="DuplicateSelection"/> created: the duplicated kind, and its fresh key
+    /// (the new id/name for a keyed kind, or the new index as a string for an index-keyed kind), the same shape
+    /// <see cref="EditorSelection.Set"/> already takes for that kind. Lets a caller confirm a duplicate actually
+    /// landed rather than inferring it from a void return.</summary>
+    public readonly record struct DuplicateResult(SelectionKind Kind, string Id);
+
     /// <summary>Duplicates the current selection: a deep clone with a fresh unique identity, offset +2/+2 on X/Z
     /// for the kinds that carry a position, added through the same kind's Add command and immediately sealed
     /// (<see cref="EditorDocument.SealGesture"/>) before the new element becomes the selection. Sealing right
@@ -890,17 +896,21 @@ public sealed class EditorToolController
     /// duplicate could silently fold into its Add instead of landing its own undo step. Mirrors the
     /// <see cref="DeleteSelection"/> dispatcher shape, covering the same nine kinds plus the two Delete does not
     /// handle (scatter and companion layers, which have no viewport geometry to delete but are still document
-    /// elements a user wants to clone). Terrain (the singleton root) and an empty selection have nothing to
-    /// duplicate and no-op silently, exactly like Delete's own default branch. The owning scene surfaces a
-    /// status note for the Terrain case (this controller carries no status text of its own).</summary>
-    public void DuplicateSelection()
+    /// elements a user wants to clone). Returns a <see cref="DuplicateResult"/> naming what got created, or null
+    /// when nothing was duplicated: an empty selection, Terrain (the singleton root), or a custom feature type
+    /// <see cref="FeatureGeometry.Translated"/> does not know how to offset. Both no-op cases no-op silently here,
+    /// exactly like Delete's own default branch, and the null return is what lets a caller (the scene's Cmd+D
+    /// chord, or an automation caller) tell "duplicated" from "silently skipped" apart instead of assuming
+    /// success. The owning scene surfaces a status note for the Terrain case and for a skipped custom feature
+    /// type (this controller carries no status text of its own).</summary>
+    public DuplicateResult? DuplicateSelection()
     {
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
             case SelectionKind.Placement:
             {
-                if (FindPlacement(sel.Id) is not { } p) return;
+                if (FindPlacement(sel.Id) is not { } p) return null;
                 string id = UniqueName("placement", PlacementIdExists);
                 _document.Execute(new AddPlacementCommand(new MapPlacement
                 {
@@ -909,11 +919,11 @@ public sealed class EditorToolController
                 }));
                 _document.SealGesture();
                 _document.Selection.Set(SelectionKind.Placement, id);
-                break;
+                return new DuplicateResult(SelectionKind.Placement, id);
             }
             case SelectionKind.Spawn:
             {
-                if (FindSpawn(sel.Id) is not { } s) return;
+                if (FindSpawn(sel.Id) is not { } s) return null;
                 string id = UniqueName("spawn", SpawnIdExists);
                 _document.Execute(new AddSpawnCommand(new MapSpawn
                 {
@@ -922,11 +932,11 @@ public sealed class EditorToolController
                 }));
                 _document.SealGesture();
                 _document.Selection.Set(SelectionKind.Spawn, id);
-                break;
+                return new DuplicateResult(SelectionKind.Spawn, id);
             }
             case SelectionKind.PlayerSpawn:
             {
-                if (FindPlayerSpawn(sel.Id) is not { } ps) return;
+                if (FindPlayerSpawn(sel.Id) is not { } ps) return null;
                 string id = UniqueName("player", PlayerSpawnIdExists);
                 // AddPlayerSpawnCommand deep-copies at construction (a fresh Tags list), so handing it a plain new
                 // instance here is enough: the command never aliases this local's Tags list either way.
@@ -937,17 +947,18 @@ public sealed class EditorToolController
                 }));
                 _document.SealGesture();
                 _document.Selection.Set(SelectionKind.PlayerSpawn, id);
-                break;
+                return new DuplicateResult(SelectionKind.PlayerSpawn, id);
             }
             case SelectionKind.Feature:
             {
-                if (!TryFeatureIndex(sel.Id, out int fi)) return;
+                if (!TryFeatureIndex(sel.Id, out int fi)) return null;
                 MapFeature source = _document.Doc.Terrain.Features[fi];
                 // FeatureGeometry.Translated already clones AND offsets the center / through-point atomically. It
                 // returns null for a custom feature type it does not know how to translate (the same "unknown
                 // type, no guess" policy TryCenter / Scaled already follow), so an unsupported type no-ops here
-                // rather than adding an un-offset clone.
-                if (FeatureGeometry.Translated(source, DuplicateOffset, DuplicateOffset) is not { } clone) return;
+                // rather than adding an un-offset clone. The null return is the signal the owning scene checks to
+                // surface its "cannot duplicate this feature type" status note.
+                if (FeatureGeometry.Translated(source, DuplicateOffset, DuplicateOffset) is not { } clone) return null;
                 // A feature Name is optional and unique-when-set (round 5), but AddFeatureCommand carries no
                 // add-time guard for that (only RenameFeatureCommand does), so a straight clone of a named
                 // feature would silently collide. Uniquify it, an unnamed feature's null Name carries no key to
@@ -957,12 +968,13 @@ public sealed class EditorToolController
                 _document.Execute(new AddFeatureCommand(clone));
                 _document.SealGesture();
                 int idx = _document.Doc.Terrain.Features.Count - 1;
-                _document.Selection.Set(SelectionKind.Feature, idx.ToString(CultureInfo.InvariantCulture));
-                break;
+                string key = idx.ToString(CultureInfo.InvariantCulture);
+                _document.Selection.Set(SelectionKind.Feature, key);
+                return new DuplicateResult(SelectionKind.Feature, key);
             }
             case SelectionKind.Exclusion:
             {
-                if (!TryExclusionIndex(sel.Id, out int ei)) return;
+                if (!TryExclusionIndex(sel.Id, out int ei)) return null;
                 MapExclusion source = _document.Doc.Exclusions[ei];
                 var clone = new MapExclusion
                 {
@@ -976,12 +988,13 @@ public sealed class EditorToolController
                 _document.Execute(new AddExclusionCommand(clone));
                 _document.SealGesture();
                 int idx = _document.Doc.Exclusions.Count - 1;
-                _document.Selection.Set(SelectionKind.Exclusion, idx.ToString(CultureInfo.InvariantCulture));
-                break;
+                string key = idx.ToString(CultureInfo.InvariantCulture);
+                _document.Selection.Set(SelectionKind.Exclusion, key);
+                return new DuplicateResult(SelectionKind.Exclusion, key);
             }
             case SelectionKind.Region:
             {
-                if (RegionByName(sel.Id) is not { } source) return;
+                if (RegionByName(sel.Id) is not { } source) return null;
                 // A region's Name IS its identity (like a placement id), always set and always unique, so a
                 // duplicate takes a fresh generated name exactly like a freshly drawn region rather than deriving
                 // one from the source name.
@@ -995,11 +1008,11 @@ public sealed class EditorToolController
                 _document.Execute(new AddRegionCommand(clone));
                 _document.SealGesture();
                 _document.Selection.Set(SelectionKind.Region, name);
-                break;
+                return new DuplicateResult(SelectionKind.Region, name);
             }
             case SelectionKind.BiomeBand:
             {
-                if (!TryListIndex(sel.Id, _document.Doc.Terrain.Biomes.Count, out int bi)) return;
+                if (!TryListIndex(sel.Id, _document.Doc.Terrain.Biomes.Count, out int bi)) return null;
                 MapBiomeBand source = _document.Doc.Terrain.Biomes[bi];
                 // No name, no position (a band is an elevation range, not a placed element): a plain verbatim
                 // clone, no uniquify, no offset.
@@ -1011,31 +1024,32 @@ public sealed class EditorToolController
                 _document.Execute(new AddBiomeBandCommand(clone));
                 _document.SealGesture();
                 int idx = _document.Doc.Terrain.Biomes.Count - 1;
-                _document.Selection.Set(SelectionKind.BiomeBand, idx.ToString(CultureInfo.InvariantCulture));
-                break;
+                string key = idx.ToString(CultureInfo.InvariantCulture);
+                _document.Selection.Set(SelectionKind.BiomeBand, key);
+                return new DuplicateResult(SelectionKind.BiomeBand, key);
             }
             case SelectionKind.ScatterLayer:
             {
-                if (ScatterLayerByName(sel.Id) is not { } source) return;
+                if (ScatterLayerByName(sel.Id) is not { } source) return null;
                 MapScatterLayer clone = MapEditorScene.CloneScatterLayer(source);
                 clone.Name = UniqueName(source.Name + "-copy", ScatterLayerNameExists);
                 _document.Execute(new AddScatterLayerCommand(clone));
                 _document.SealGesture();
                 _document.Selection.Set(SelectionKind.ScatterLayer, clone.Name);
-                break;
+                return new DuplicateResult(SelectionKind.ScatterLayer, clone.Name);
             }
             case SelectionKind.CompanionLayer:
             {
-                if (CompanionLayerByName(sel.Id) is not { } source) return;
+                if (CompanionLayerByName(sel.Id) is not { } source) return null;
                 MapCompanionLayer clone = MapEditorScene.CloneCompanionLayer(source);
                 clone.Name = UniqueName(source.Name + "-copy", CompanionLayerNameExists);
                 _document.Execute(new AddCompanionLayerCommand(clone));
                 _document.SealGesture();
                 _document.Selection.Set(SelectionKind.CompanionLayer, clone.Name);
-                break;
+                return new DuplicateResult(SelectionKind.CompanionLayer, clone.Name);
             }
             default:
-                return;   // Terrain (a singleton) and an empty selection: nothing to duplicate.
+                return null;   // Terrain (a singleton) and an empty selection: nothing to duplicate.
         }
     }
 

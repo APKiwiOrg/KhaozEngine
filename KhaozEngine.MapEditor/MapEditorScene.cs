@@ -940,7 +940,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     // duplicate, so it lands a status note instead of a mutation. An empty selection silently no-ops (nothing to
     // explain, same as every other chord over an empty selection). Every other kind clones through
     // EditorToolController.DuplicateSelection, which already offsets the position, gives the clone a fresh
-    // identity, selects it, and seals one undo step.
+    // identity, selects it, and seals one undo step. DuplicateSelection also no-ops (null result) for a custom
+    // feature type FeatureGeometry.Translated does not know how to offset, and the selection kind is still
+    // Feature in that case (nothing changed it), which is how this tells that skip apart from the ordinary
+    // empty-selection no-op and surfaces its own status note instead of silently doing nothing.
     void DuplicateSelectionChord()
     {
         if (_document.Selection.Kind == SelectionKind.Terrain)
@@ -948,7 +951,10 @@ public class MapEditorScene : GameScene, IGameScene3D
             _statusText = "Nothing to duplicate: Terrain is the document singleton.";
             return;
         }
-        _controller.DuplicateSelection();
+        SelectionKind kindBefore = _document.Selection.Kind;
+        EditorToolController.DuplicateResult? result = _controller.DuplicateSelection();
+        if (result is null && kindBefore == SelectionKind.Feature)
+            _statusText = "Cannot duplicate this feature type.";
     }
 
     // The digit keys a bookmark chord watches, index 0 = slot 1 through index 8 = slot 9 (decision 9).

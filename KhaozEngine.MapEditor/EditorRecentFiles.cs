@@ -15,13 +15,18 @@ namespace KhaozEngine.MapEditor
         /// <summary>The recent paths, most-recent first (index 0 is the last <see cref="Touch"/>ed). Never null.</summary>
         IReadOnlyList<string> Paths { get; }
 
-        /// <summary>Record <paramref name="path"/> as the most recent: de-duplicate it (ordinal), move it to the
-        /// front, cap the list, and persist. A null or whitespace path is ignored.</summary>
+        /// <summary>Record <paramref name="path"/> as the most recent: de-duplicate it (ordinal, case-sensitive),
+        /// move it to the front, cap the list, and persist. A null or whitespace path is ignored.</summary>
         void Touch(string path);
 
         /// <summary>Drop <paramref name="path"/> from the list (ordinal compare) if present, then persist. Absent is
         /// a no-op.</summary>
         void Remove(string path);
+
+        /// <summary>Drain any pending persisted write so the on-disk file reflects every prior <see cref="Touch"/>/
+        /// <see cref="Remove"/> before shutdown. A head calls this once, itself, during its own quit/shutdown
+        /// flushing. A scene never calls it directly (decision 1: a scene never touches persistence directly).</summary>
+        void Flush();
     }
 
     /// <summary>The serialized shape of the recent-files list persisted through the settings seam. A plain mutable
@@ -40,6 +45,13 @@ namespace KhaozEngine.MapEditor
     /// fake or a temp-rooted <see cref="FileSettingsStorage"/>), or with a publisher / app-name pair, which builds a
     /// publisher-rooted <see cref="GameStorage"/> internally. Writes go through that storage's coalesced write queue,
     /// so rapid touches collapse to one file write.</para>
+    /// <para><see cref="Flush"/> drains that coalesced write: the publisher/app-name overload always can, since it
+    /// owns the <see cref="GameStorage"/> (and so its write queue) it built. The <see cref="ISettingsStorage"/>
+    /// overload has no queue handle of its own. Pass one in explicitly (e.g. the same <see cref="IPersistenceQueue"/>
+    /// the caller built the storage over) when that caller wants this store's <see cref="Flush"/> to reach it.
+    /// Omitting it makes <see cref="Flush"/> a no-op there, on the assumption the injected storage's owner flushes it
+    /// itself, which is what keeps a fake-storage unit test simple (no queue to wire up just to satisfy the
+    /// interface).</para>
     /// </summary>
     public sealed class EditorRecentFiles : IRecentFilesStore
     {
@@ -51,27 +63,42 @@ namespace KhaozEngine.MapEditor
 
         readonly ISettingsStorage _storage;
         readonly List<string> _paths = new();
+        readonly IPersistenceQueue? _queue;
+        readonly GameStorage? _ownedStorage;
 
         /// <summary>
         /// Wraps an already-built <paramref name="storage"/> (which it points at <see cref="FileName"/>) and loads the
         /// persisted list. This is the seam a test drives with a fake or temp-rooted storage.
+        /// <paramref name="queue"/> is optional: pass the <see cref="IPersistenceQueue"/> <paramref name="storage"/>
+        /// itself writes through so <see cref="Flush"/> can drain it. Omit it (the default) to make
+        /// <see cref="Flush"/> a no-op here, e.g. when a fake test storage has no queue at all.
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="storage"/> is null.</exception>
-        public EditorRecentFiles(ISettingsStorage storage)
+        public EditorRecentFiles(ISettingsStorage storage, IPersistenceQueue? queue = null)
         {
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
             _storage.SettingsFileName = FileName;
+            _queue = queue;
             Load();
         }
 
         /// <summary>
         /// Convenience over-load for a head: builds a publisher-rooted <see cref="GameStorage"/> internally and rides
         /// its settings storage. Layout follows <see cref="AppDataPaths"/> (<c>&lt;os-base&gt;/&lt;publisher&gt;/&lt;appName&gt;/</c>),
-        /// so the recents nest beside the game's own data.
+        /// so the recents nest beside the game's own data. Holds the <see cref="GameStorage"/> so <see cref="Flush"/>
+        /// can drain its write queue.
         /// </summary>
         public EditorRecentFiles(string publisher, string appName)
-            : this(new GameStorage(publisher, appName).Settings)
+            : this(new GameStorage(publisher, appName))
         {
+        }
+
+        // Chains to the ISettingsStorage ctor over the owned GameStorage's settings storage, then keeps the
+        // GameStorage itself (readonly fields may still be assigned from a constructor body) so Flush can reach its
+        // write queue via GameStorage.Flush.
+        EditorRecentFiles(GameStorage owned) : this(owned.Settings)
+        {
+            _ownedStorage = owned;
         }
 
         /// <inheritdoc/>
@@ -92,6 +119,16 @@ namespace KhaozEngine.MapEditor
         {
             if (string.IsNullOrEmpty(path)) return;
             if (_paths.RemoveAll(p => string.Equals(p, path, StringComparison.Ordinal)) > 0) Save();
+        }
+
+        /// <inheritdoc/>
+        // _ownedStorage is set only by the publisher/appName ctor (drains that GameStorage's own write queue).
+        // _queue is set only when the ISettingsStorage ctor was given one explicitly. Exactly one of the two is ever
+        // non-null for a given instance, so draining both here is a single unconditional call, not a branch.
+        public void Flush()
+        {
+            _ownedStorage?.Flush();
+            _queue?.Flush();
         }
 
         // Load the persisted record and re-apply the store's own invariants (drop blanks, dedup ordinal, cap), so a

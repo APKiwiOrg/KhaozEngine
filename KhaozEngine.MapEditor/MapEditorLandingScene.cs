@@ -98,6 +98,13 @@ namespace KhaozEngine.MapEditor
         string _note = "";
         bool _built;
 
+        // The store's Paths as of the last RebuildRecentButtons, so OnUpdate can notice a mutation made while this
+        // scene was not driving the actions itself (e.g. a future Save-As from the editor scene pushed on top).
+        // IRecentFilesStore.Paths aliases the SAME list instance across calls for EditorRecentFiles (only its
+        // contents change), so a reference/identity check can never see such a mutation. This cache is a real copy
+        // compared by ordinal sequence instead.
+        readonly List<string> _lastSeenRecentPaths = new();
+
         /// <summary>Wires the shared white pixel and UI font, and the landing options, then returns this for chaining
         /// (the <see cref="MapEditorScene.Init"/> pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
         public MapEditorLandingScene Init(Texture2D white, DpiFont font, MapEditorLandingOptions options)
@@ -120,6 +127,14 @@ namespace KhaozEngine.MapEditor
 
         /// <summary>The Quit button, or null before <see cref="OnEnter"/>. Exposed for tests.</summary>
         internal Button QuitButton => _quitButton;
+
+        /// <summary>The number of Open Recent buttons currently built (mirrors the store's <see cref="IRecentFilesStore.Paths"/>
+        /// count as of the last rebuild). Exposed for tests.</summary>
+        internal int RecentButtonCount => _recent.Count;
+
+        /// <summary>The Nth Open Recent button, or null when out of range. After an <see cref="OnUpdate"/> pass its
+        /// <c>Bounds</c> reflect that frame's layout, so a test can drive a real tap against it. Exposed for tests.</summary>
+        internal Button? RecentButtonAt(int index) => index >= 0 && index < _recent.Count ? _recent[index].Button : null;
 
         // ---- lifecycle ---------------------------------------------------------------------------------------
 
@@ -155,9 +170,11 @@ namespace KhaozEngine.MapEditor
         void RebuildRecentButtons()
         {
             _recent.Clear();
+            _lastSeenRecentPaths.Clear();
             if (_options.Recent is not { } store) return;
             foreach (string path in store.Paths)
             {
+                _lastSeenRecentPaths.Add(path);
                 bool exists = SafeExists(path);
                 var button = new Button(default, LocalizedText.Raw(FriendlyLabel(path)), null!, () => ActivateRecent(path))
                 {
@@ -165,6 +182,26 @@ namespace KhaozEngine.MapEditor
                 };
                 _recent.Add(new RecentEntry(button, path));
             }
+        }
+
+        // SceneManager gives this scene no re-exposure hook when the editor scene pushed on top of it later pops
+        // back (only OnEnter/OnUpdate exist, and OnEnter runs once per push per the _built guard above), so a store
+        // mutation made while this menu was not driving the actions itself would otherwise leave the Open Recent
+        // list stale until the next Touch/ActivateRecent through this scene. Called every driven frame (cheap: at
+        // most MaxPaths == 10 ordinal string compares) so the list self-heals as soon as this scene is updated again.
+        void RefreshRecentIfChanged()
+        {
+            IReadOnlyList<string> live = _options.Recent?.Paths ?? Array.Empty<string>();
+            if (RecentPathsMatchLastSeen(live)) return;
+            RebuildRecentButtons();
+        }
+
+        bool RecentPathsMatchLastSeen(IReadOnlyList<string> live)
+        {
+            if (live.Count != _lastSeenRecentPaths.Count) return false;
+            for (int i = 0; i < live.Count; i++)
+                if (!string.Equals(live[i], _lastSeenRecentPaths[i], StringComparison.Ordinal)) return false;
+            return true;
         }
 
         // ---- actions (the seam the buttons + Enter key both call, reachable headless) -------------------------
@@ -243,6 +280,7 @@ namespace KhaozEngine.MapEditor
             UiViewport? ui = Manager!.UiViewport;
             if (ui is null) return;   // headless: no widget drive (actions stay reachable directly)
 
+            RefreshRecentIfChanged();
             _ui.Update(Manager.Input, ui);
             LandingLayout layout = ComputeLayout(ui.Width, ui.Height);
 

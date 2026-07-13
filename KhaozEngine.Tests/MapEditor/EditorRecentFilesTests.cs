@@ -76,6 +76,49 @@ namespace KhaozEngine.Tests.MapEditor
             }
         }
 
+        [Fact]
+        public void RecentFiles_Flush_DrainsPendingWriteThroughInjectedQueue()
+        {
+            AppDataPaths paths = TempPaths(out string root);
+            var queue = new PersistenceQueue();
+            try
+            {
+                // The ISettingsStorage ctor overload has no queue handle of its own (the fake-storage tests above
+                // never pass one), so Flush is a no-op there unless the SAME queue the storage writes through is
+                // passed in explicitly, which is what this test does.
+                var storage = new FileSettingsStorage(paths, queue);
+                var store = new EditorRecentFiles(storage, queue);
+
+                store.Touch("/world/flush-me.map.json");
+                store.Flush();   // must itself drain the queue: no separate queue.Flush() call from the test
+
+                string path = paths.GetFilePath(EditorRecentFiles.FileName);
+                Assert.True(File.Exists(path));   // the write landed on disk, not just queued
+
+                // A fresh instance over a fresh storage on the same root sees exactly what was touched.
+                var reader = new EditorRecentFiles(new FileSettingsStorage(paths, queue));
+                Assert.Equal(new[] { "/world/flush-me.map.json" }, reader.Paths);
+            }
+            finally
+            {
+                queue.Dispose();
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void RecentFiles_Flush_IsNoOpWithoutAnInjectedQueue()
+        {
+            // The default (no queue argument) shape used by every fake-storage test in this file: Flush must be a
+            // safe no-op rather than require every such test to also wire up a PersistenceQueue.
+            var store = new EditorRecentFiles(new InMemorySettingsStorage());
+            store.Touch("/maps/a.json");
+
+            store.Flush();
+
+            Assert.Equal(new[] { "/maps/a.json" }, store.Paths);
+        }
+
         static AppDataPaths TempPaths(out string root)
         {
             root = Path.Combine(Path.GetTempPath(), "ke-recent-" + Path.GetRandomFileName());

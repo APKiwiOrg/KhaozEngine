@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.MapEditor;
+using KhaozEngine.Windowing;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapEditor
@@ -144,6 +146,123 @@ namespace KhaozEngine.Tests.MapEditor
             new SceneManager().Push(noQuit);
             noQuit.RequestQuitLanding();
             Assert.False(string.IsNullOrEmpty(noQuit.Note));
+        }
+
+        [Fact]
+        public void Landing_OnUpdate_RefreshesRecentList_WhenStoreMutatedExternally()
+        {
+            EditorRecentFiles store = NewStore();
+            store.Touch("/maps/alpha.map.json");
+
+            var scene = Landing(new MapEditorLandingOptions { Recent = store });
+            var m = new SceneManager();
+            m.Push(scene);   // OnEnter already builds one button from the store's current contents
+            m.UiViewport = new UiViewport(800, 600, 800, 600);
+
+            Assert.Equal(1, scene.RecentButtonCount);
+
+            m.Input = InputState.Empty;
+            m.Update(0.016f);   // nothing changed since OnEnter: no rebuild needed, still 1
+            Assert.Equal(1, scene.RecentButtonCount);
+
+            // Mutate the store directly, bypassing the landing scene's own Touch/ActivateRecent seam entirely (the
+            // stand-in for a future Save-As happening from the editor scene pushed on top of this menu). SceneManager
+            // gives this scene no re-exposure hook, so the only way it can notice is the live-vs-cached compare in
+            // RefreshRecentIfChanged, run every driven frame.
+            store.Touch("/maps/beta.map.json");
+            Assert.Equal(1, scene.RecentButtonCount);   // not yet rebuilt: no OnUpdate has run since the mutation
+
+            m.Update(0.016f);
+
+            Assert.Equal(2, scene.RecentButtonCount);   // this frame's OnUpdate noticed the change and rebuilt
+        }
+
+        [Fact]
+        public void Landing_OnUpdate_EnterInFocusedNameField_CommitsCreate()
+        {
+            var created = new List<string>();
+            string? opened = null;
+            EditorRecentFiles store = NewStore();
+
+            var scene = Landing(new MapEditorLandingOptions
+            {
+                Recent = store,
+                CreateMap = name => { created.Add(name); return "/maps/" + name + ".map.json"; },
+                OpenEditor = path => { opened = path; return new StubEditorScene(); },
+            });
+            var m = new SceneManager();
+            m.Push(scene);
+            m.UiViewport = new UiViewport(800, 600, 800, 600);
+
+            // Focus the field directly (as a click inside its bounds would) and type via SetText, then drive one
+            // REAL OnUpdate frame with Enter pressed: this exercises the actual TextInput.Update + Enter-commits-Create
+            // wiring in MapEditorLandingScene.OnUpdate, not the internal CreateMapNamed seam the other tests call.
+            scene.NameInput.SetText("meadow");
+            scene.NameInput.Focus();
+
+            m.Input = KeyFrame(Key.Enter);
+            m.Update(0.016f);
+
+            Assert.Equal(new[] { "meadow" }, created);
+            Assert.Equal("/maps/meadow.map.json", opened);
+            Assert.Equal(2, m.Count);   // the stub editor was pushed on top
+        }
+
+        [Fact]
+        public void Landing_OnUpdate_TapRecentButton_ActivatesRecent()
+        {
+            string existing = Path.Combine(Path.GetTempPath(), "ke-landing-tap-" + Path.GetRandomFileName() + ".map.json");
+            File.WriteAllText(existing, "{}");
+            try
+            {
+                EditorRecentFiles store = NewStore();
+                store.Touch(existing);
+
+                string? opened = null;
+                var scene = Landing(new MapEditorLandingOptions
+                {
+                    Recent = store,
+                    OpenEditor = path => { opened = path; return new StubEditorScene(); },
+                });
+                var m = new SceneManager();
+                m.Push(scene);
+                m.UiViewport = new UiViewport(800, 600, 800, 600);
+
+                m.Input = InputState.Empty;
+                m.Update(0.016f);   // lays out this frame's recent button, so its Bounds are current
+
+                Button button = scene.RecentButtonAt(0) ?? throw new InvalidOperationException("expected a recent button");
+                var at = new Vector2(button.Bounds.X + button.Bounds.Width * 0.5f, button.Bounds.Y + button.Bounds.Height * 0.5f);
+
+                // A real press-then-release tap at the button's center (the TapTree/TapGrid idiom MapEditorSceneTests
+                // uses), driven through SceneManager.Update -> MapEditorLandingScene.OnUpdate, not ActivateRecent directly.
+                m.Input = MouseFrame(at, leftDown: false); m.Update(0.016f);
+                m.Input = MouseFrame(at, leftDown: true); m.Update(0.016f);
+                m.Input = MouseFrame(at, leftDown: false); m.Update(0.016f);
+
+                Assert.Equal(existing, opened);
+                Assert.Equal(2, m.Count);
+            }
+            finally { if (File.Exists(existing)) File.Delete(existing); }
+        }
+
+        // A minimal mouse frame for driving the scene's real OnUpdate headless (mirrors the MapEditorSceneTests
+        // MouseFrame idiom: a press/release edge is read from the transition between consecutive frames).
+        static InputState MouseFrame(Vector2 pos, bool leftDown)
+        {
+            var down = new HashSet<MouseButton>();
+            if (leftDown) down.Add(MouseButton.Left);
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                down, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 800, 600);
+        }
+
+        // A keyboard frame: the given keys fire their press edge this frame (and read as held).
+        static InputState KeyFrame(params Key[] pressed)
+        {
+            var down = new HashSet<Key>(pressed);
+            return new InputState(down, new HashSet<Key>(pressed), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0, 800, 600);
         }
     }
 }

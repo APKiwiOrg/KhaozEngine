@@ -7,17 +7,20 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Game
 {
-    // The slope-fed render-height smoother in ReplicatedCharacterAnimators: the paced stair-climb SIM is unchanged (it
-    // deliberately produces a per-riser vertical sawtooth - a ~120-140 mm peak-to-peak render-Y bob at 4-9 Hz on a
-    // 0.30/0.40 staircase), and this bridge turns that raw bob into a smooth glide up the stair slope for the drawn model
-    // AND a follow camera (CharacterPose.RenderPosition), WITHOUT the feet-float lag a plain low-pass would cost. These
-    // drive synthetic per-tick position streams shaped like the measured stair profile through the bridge and assert on
-    // the baked render-Y. All GPU-free.
+    // E3: the SIGNAL-GATED render-height glide in ReplicatedCharacterAnimators. The glide is driven ENTIRELY by the
+    // sim's exported climb rate (CharacterSample.ClimbRate) - never estimated from position deltas. The estimator (grade
+    // windows, clamps, the ballistic threshold, the horizontal-motion gate) is deleted: the sim already knows when it is
+    // climbing and how fast, so falls / jumps / teleports / platforms carry ClimbRate == 0 and are raw BY CONSTRUCTION.
+    // These drive synthetic per-tick streams (a per-riser Y bob shaped like the measured stair profile) through the
+    // bridge and assert on the baked render-Y. All GPU-free.
     public class StairGlideSmootherTests
     {
         const float Dt = 1f / 30f;   // the investigation's tick
         const float ClimbCap = 3.5f; // MoveTuning.MaxStepClimbSpeed -> a rise tick is 3.5 * 1/30 = 0.1167 m
-        const float Walk = 3f, Run = 6f;
+        const float Walk = 3f;
+        // Mean climb rate of the synthetic 7-tick riser cycle: one ClimbCap*Dt rise per 7 ticks -> ClimbCap/7 m/s. This
+        // is the STEADY rate the sim exports (0 = not climbing), the exact value the smoother feeds forward.
+        const float MeanClimbRate = ClimbCap / 7f;
 
         static Skeleton OneBone() => new Skeleton(new[] { -1 }, new[] { JointPose.Identity }, new[] { 0 }, new[] { 0 });
 
@@ -42,7 +45,6 @@ namespace KhaozEngine.Tests.Game
         static ReplicatedCharacterAnimators NewAnimators(CharacterAnimatorTuning? tuning = null) =>
             new ReplicatedCharacterAnimators(() => new AnimatedCharacter(OneBone(), Clips(), LocomotionThresholds.Default), tuning);
 
-        // Default tuning with the smoother turned OFF (the escape hatch / pre-feature raw path).
         static CharacterAnimatorTuning SmootherOff()
         {
             CharacterAnimatorTuning t = CharacterAnimatorTuning.Default;
@@ -50,120 +52,107 @@ namespace KhaozEngine.Tests.Game
             return t;
         }
 
-        // Exact-movement grounded sample (what Ruinborne feeds for the local player AND remotes): feet position, grounded,
-        // vertical velocity ~0 on a paced stair climb (the rise is a position adjustment, not a ballistic velocity).
-        static CharacterSample Ground(Vector3 feet, float planarSpeed) =>
-            new CharacterSample(1, feet, isLocal: true, grounded: true, verticalVelocity: 0f, planarSpeed: planarSpeed);
+        // Exact-movement grounded sample carrying the sim's signed climb rate (what Ruinborne feeds for the local player
+        // AND remotes): feet position, grounded, vertical velocity ~0, planar speed, and ClimbRate (0 = not climbing).
+        static CharacterSample Ground(Vector3 feet, float planarSpeed, float climbRate) =>
+            new CharacterSample(1, feet, isLocal: true, grounded: true, verticalVelocity: 0f, planarSpeed: planarSpeed, swimming: false, climbRate: climbRate);
 
         // ---- Synthetic stair profile (the investigation's "7-tick riser cycle: one 0.1167 rise + flat treads") --------
-        // Horizontal advances every tick at `speed`, except it PAUSES on the single rise tick of each cycle (the paced
-        // step-up holds horizontal while the feet clear the riser); one 3.5 m/s-capped rise per 7-tick cycle. Feet run
-        // along +X. `climbSign` = +1 ascent, -1 descent.
-        static List<Vector3> StairStream(float speed, int cycles = 16, float climbSign = 1f)
+        // Horizontal advances every tick at `speed`, except it PAUSES on the single rise tick of each cycle; one
+        // ClimbCap-capped rise per 7-tick cycle. Feet run along +X. `climbSign` = +1 ascent, -1 descent. Every CLIMB
+        // tick carries the steady mean climb rate (the sim's exported signal); the flat approach/runout carry 0.
+        static List<(Vector3 pos, float climbRate)> StairStream(float speed, int cycles = 16, float climbSign = 1f)
         {
             float hpt = speed * Dt, rise = ClimbCap * Dt * climbSign;
-            var pts = new List<Vector3>();
+            var pts = new List<(Vector3, float)>();
             float x = 0f, y = 0f;
-            for (int i = 0; i < 5; i++) { x += hpt; pts.Add(new Vector3(x, y, 0f)); }         // flat approach
+            for (int i = 0; i < 5; i++) { x += hpt; pts.Add((new Vector3(x, y, 0f), 0f)); }         // flat approach (not climbing)
             for (int c = 0; c < cycles; c++)
                 for (int k = 0; k < 7; k++)
                 {
                     if (k != 3) x += hpt;    // horizontal pauses on the rise tick
                     if (k == 3) y += rise;   // one riser rise per cycle
-                    pts.Add(new Vector3(x, y, 0f));
+                    pts.Add((new Vector3(x, y, 0f), MeanClimbRate * climbSign));   // the sim stamps the steady rate every climb tick
                 }
-            for (int i = 0; i < 5; i++) { x += hpt; pts.Add(new Vector3(x, y, 0f)); }         // flat runout
+            for (int i = 0; i < 5; i++) { x += hpt; pts.Add((new Vector3(x, y, 0f), 0f)); }         // flat runout (not climbing)
             return pts;
         }
 
-        // Drive a position stream through the bridge; return the baked render-Y per frame (CharacterPose.RenderPosition.Y).
-        static float[] DriveRenderY(ReplicatedCharacterAnimators a, IReadOnlyList<Vector3> stream, float speed)
+        static float[] DriveRenderY(ReplicatedCharacterAnimators a, IReadOnlyList<(Vector3 pos, float climbRate)> stream, float speed)
         {
             var outY = new float[stream.Count];
             for (int i = 0; i < stream.Count; i++)
             {
-                a.Update(new[] { Ground(stream[i], speed) }, Dt);
+                a.Update(new[] { Ground(stream[i].pos, speed, stream[i].climbRate) }, Dt);
                 outY[i] = a.Live[0].RenderPosition.Y;
             }
             return outY;
         }
 
-        // Peak-to-peak of `vals` minus the least-squares line fit of vals-vs-X, over [lo,hi): the deviation from the
-        // straight "ramp line" the climb should read as.
-        static float RampResidualPeakToPeak(IReadOnlyList<Vector3> pts, IReadOnlyList<float> vals, int lo, int hi)
+        static float RampResidualPeakToPeak(IReadOnlyList<(Vector3 pos, float climbRate)> pts, IReadOnlyList<float> vals, int lo, int hi)
         {
             int n = hi - lo;
             double mx = 0, mv = 0;
-            for (int i = lo; i < hi; i++) { mx += pts[i].X; mv += vals[i]; }
+            for (int i = lo; i < hi; i++) { mx += pts[i].pos.X; mv += vals[i]; }
             mx /= n; mv /= n;
             double sxx = 0, sxy = 0;
-            for (int i = lo; i < hi; i++) { double dx = pts[i].X - mx; sxx += dx * dx; sxy += dx * (vals[i] - mv); }
+            for (int i = lo; i < hi; i++) { double dx = pts[i].pos.X - mx; sxx += dx * dx; sxy += dx * (vals[i] - mv); }
             double slope = sxy / sxx, icpt = mv - slope * mx;
             double max = double.NegativeInfinity, min = double.PositiveInfinity;
             for (int i = lo; i < hi; i++)
             {
-                double r = vals[i] - (slope * pts[i].X + icpt);
+                double r = vals[i] - (slope * pts[i].pos.X + icpt);
                 if (r > max) max = r; if (r < min) min = r;
             }
             return (float)(max - min);
         }
 
-        // Mean |vals - trueRamp| over [lo,hi), where trueRamp is the least-squares line fit through the TRUE feet
-        // positions (pts.X vs pts.Y). This isolates how far the smoothed height sits from the ideal climb ramp - the
-        // feed-forward LAG - independent of the deliberate per-riser sawtooth (which is symmetric about that same ramp).
-        static float MeanAbsLagFromTrueRamp(IReadOnlyList<Vector3> pts, IReadOnlyList<float> vals, int lo, int hi)
+        static float MeanAbsLagFromTrueRamp(IReadOnlyList<(Vector3 pos, float climbRate)> pts, IReadOnlyList<float> vals, int lo, int hi)
         {
             int n = hi - lo;
             double mx = 0, my = 0;
-            for (int i = lo; i < hi; i++) { mx += pts[i].X; my += pts[i].Y; }
+            for (int i = lo; i < hi; i++) { mx += pts[i].pos.X; my += pts[i].pos.Y; }
             mx /= n; my /= n;
             double sxx = 0, sxy = 0;
-            for (int i = lo; i < hi; i++) { double dx = pts[i].X - mx; sxx += dx * dx; sxy += dx * (pts[i].Y - my); }
-            double slope = sxy / sxx, icpt = my - slope * mx;   // the TRUE feet ramp line
+            for (int i = lo; i < hi; i++) { double dx = pts[i].pos.X - mx; sxx += dx * dx; sxy += dx * (pts[i].pos.Y - my); }
+            double slope = sxy / sxx, icpt = my - slope * mx;
             double sum = 0;
-            for (int i = lo; i < hi; i++) sum += Math.Abs(vals[i] - (slope * pts[i].X + icpt));
+            for (int i = lo; i < hi; i++) sum += Math.Abs(vals[i] - (slope * pts[i].pos.X + icpt));
             return (float)(sum / n);
         }
 
-        [Theory]
-        [InlineData(Walk)]
-        [InlineData(Run)]
-        public void StairClimb_RenderY_TracksRampLine_UnderFiftyMillimetres(float speed)
+        [Fact]
+        public void StairClimb_RenderY_TracksRampLine_UnderFiftyMillimetres()
         {
-            List<Vector3> stream = StairStream(speed);
+            List<(Vector3 pos, float climbRate)> stream = StairStream(Walk);
             int lo = stream.Count * 15 / 100, hi = stream.Count * 85 / 100;
 
-            // Raw (smoother OFF) is the deliberate sim bob; smoothed (default ON) tracks the ramp.
             var off = NewAnimators(SmootherOff());
-            float[] rawY = DriveRenderY(off, stream, speed);
+            float[] rawY = DriveRenderY(off, stream, Walk);
             float rawPp = RampResidualPeakToPeak(stream, rawY, lo, hi);
 
-            var on = NewAnimators();   // default tuning -> smoother ON
-            float[] smY = DriveRenderY(on, stream, speed);
+            var on = NewAnimators();   // default tuning -> glide ON
+            float[] smY = DriveRenderY(on, stream, Walk);
             float smPp = RampResidualPeakToPeak(stream, smY, lo, hi);
 
             Assert.True(rawPp > 0.09f, $"the synthetic raw stair bob should be a real sawtooth (got {rawPp * 1000:F0} mm)");
-            Assert.True(smPp < 0.050f, $"speed {speed}: smoothed render-Y bob {smPp * 1000:F1} mm should be under 50 mm (raw {rawPp * 1000:F0} mm)");
-            Assert.True(smPp < 0.5f * rawPp, $"speed {speed}: smoothed {smPp * 1000:F1} mm should be well under half the raw {rawPp * 1000:F0} mm");
+            Assert.True(smPp < 0.050f, $"glided render-Y bob {smPp * 1000:F1} mm should be under 50 mm (raw {rawPp * 1000:F0} mm)");
+            Assert.True(smPp < 0.5f * rawPp, $"glided {smPp * 1000:F1} mm should be well under half the raw {rawPp * 1000:F0} mm");
 
-            // LAG assertion - this is what pins the FEED-FORWARD specifically, not just the smoothness. The feed-forward
-            // rides the true climb ramp, so the mean distance from render-Y to that ramp line is under 10 mm (~9 mm).
-            // A plain low-pass CANNOT get here: damping the 4-9 Hz bob hard enough to hit the p2p bound above lags a
-            // rising signal, so the feet sit ~90 mm BELOW the ramp on a moving climb (measured ~91 mm at 5 rad/s with
-            // grade forced to 0). The 20 mm bound sits cleanly between the two, so this goes RED if feed-forward is cut.
+            // Feed-forward at the EXACT sim rate rides the true climb ramp, so the mean distance from render-Y to that
+            // ramp line is small (a plain low-pass would lag ~90 mm below it). This pins the feed-forward specifically.
             float meanLag = MeanAbsLagFromTrueRamp(stream, smY, lo, hi);
-            Assert.True(meanLag < 0.020f, $"speed {speed}: mean render-Y lag off the true ramp {meanLag * 1000:F1} mm should be under 20 mm (feed-forward ~9 mm; a plain low-pass ~91 mm)");
+            Assert.True(meanLag < 0.020f, $"mean render-Y lag off the true ramp {meanLag * 1000:F1} mm should be under 20 mm (a plain low-pass ~90 mm)");
 
-            // Monotone while climbing: the drawn height never dips during the ascent (no downward pop).
             float worstDrop = 0f;
             for (int i = lo + 1; i < hi; i++) worstDrop = MathF.Min(worstDrop, smY[i] - smY[i - 1]);
-            Assert.True(worstDrop > -0.001f, $"speed {speed}: render-Y dropped {worstDrop * 1000:F2} mm during the ascent (not monotone)");
+            Assert.True(worstDrop > -0.001f, $"render-Y dropped {worstDrop * 1000:F2} mm during the ascent (not monotone)");
         }
 
         [Fact]
         public void StairDescent_RenderY_TracksRampLine_AndIsMonotoneDown()
         {
-            List<Vector3> stream = StairStream(Walk, climbSign: -1f);
+            List<(Vector3 pos, float climbRate)> stream = StairStream(Walk, climbSign: -1f);
             int lo = stream.Count * 15 / 100, hi = stream.Count * 85 / 100;
 
             var off = NewAnimators(SmootherOff());
@@ -172,7 +161,7 @@ namespace KhaozEngine.Tests.Game
             float[] smY = DriveRenderY(on, stream, Walk);
             float smPp = RampResidualPeakToPeak(stream, smY, lo, hi);
 
-            Assert.True(smPp < 0.050f, $"descent: smoothed render-Y bob {smPp * 1000:F1} mm should be under 50 mm (raw {rawPp * 1000:F0} mm)");
+            Assert.True(smPp < 0.050f, $"descent: glided render-Y bob {smPp * 1000:F1} mm should be under 50 mm (raw {rawPp * 1000:F0} mm)");
             float worstRise = 0f;
             for (int i = lo + 1; i < hi; i++) worstRise = MathF.Max(worstRise, smY[i] - smY[i - 1]);
             Assert.True(worstRise < 0.001f, $"descent: render-Y rose {worstRise * 1000:F2} mm (not monotone down)");
@@ -181,116 +170,105 @@ namespace KhaozEngine.Tests.Game
         [Fact]
         public void FlatGround_RenderY_EqualsTrueY_ByteClose()
         {
-            // On flat ground the grade reads ~0, the feed-forward term is off, and the damp-toward-true is a no-op from the
-            // seeded state: render-Y must equal the sample Y exactly (identity, no behaviour change vs the pre-feature bridge).
+            // Flat ground: ClimbRate == 0 -> raw branch -> render-Y == the sample Y exactly (identity, correct by
+            // construction, no behaviour change vs the pre-feature bridge).
             var a = NewAnimators();
-            float y = 12.5f;   // an arbitrary non-zero flat height
+            float y = 12.5f;
             var x = 0f;
             for (int i = 0; i < 200; i++)
             {
                 x += Walk * Dt;
-                a.Update(new[] { Ground(new Vector3(x, y, 0f), Walk) }, Dt);
-                Assert.Equal(y, a.Live[0].RenderPosition.Y, 6);   // 6 decimal places == byte-close for these magnitudes
+                a.Update(new[] { Ground(new Vector3(x, y, 0f), Walk, climbRate: 0f) }, Dt);
+                Assert.Equal(y, a.Live[0].RenderPosition.Y, 6);
             }
         }
 
         [Fact]
         public void Disabled_RenderY_IsAlwaysTrueY()
         {
-            // SlopeGlideRate <= 0 disables the smoother: render-Y is the raw feet-Y even mid-stair (an escape hatch that
-            // reproduces the pre-feature bridge exactly).
+            // SlopeGlideRate <= 0 disables the glide: render-Y is the raw feet-Y even with a climb signal present.
             var a = NewAnimators(SmootherOff());
-            foreach (Vector3 p in StairStream(Walk))
+            foreach ((Vector3 pos, float climbRate) p in StairStream(Walk))
             {
-                a.Update(new[] { Ground(p, Walk) }, Dt);
-                Assert.Equal(p.Y, a.Live[0].RenderPosition.Y, 6);
+                a.Update(new[] { Ground(p.pos, Walk, p.climbRate) }, Dt);
+                Assert.Equal(p.pos.Y, a.Live[0].RenderPosition.Y, 6);
             }
         }
 
         [Fact]
-        public void StopMidStair_RenderY_SettlesToTrueTread_NoPersistentFloat()
+        public void StopMidStair_RenderY_SnapsToTrueTread_WhenSignalGoesToZero()
         {
-            // Climb, then stop mid-stair (hold the position). The smoothed height is mid-ramp when the stop lands, then
-            // must settle DOWN onto the true tread within a bounded time and stay there (no persistent feet-float).
+            // Climb, then STOP mid-stair: the sim stops stamping a climb rate (ClimbRate -> 0), so the glide disengages
+            // and render-Y renders raw - the drawn feet sit on the true tread immediately, no persistent feet-float.
             var a = NewAnimators();
-            List<Vector3> climb = StairStream(Walk, cycles: 6);
-            float[] climbY = DriveRenderY(a, climb, Walk);
-            Vector3 stopAt = climb[^1];
+            List<(Vector3 pos, float climbRate)> climb = StairStream(Walk, cycles: 6);
+            DriveRenderY(a, climb, Walk);
+            Vector3 stopAt = climb[^1].pos;
             float tread = stopAt.Y;
 
-            float offsetAtStop = MathF.Abs(climbY[^1] - tread);
-            Assert.True(offsetAtStop > 0.02f, $"expected a real mid-ramp offset at the stop, got {offsetAtStop * 1000:F0} mm");
-
-            float? settleSeconds = null;
-            for (int i = 0; i < 90; i++)   // hold up to 3 s
+            // First stopped frame (ClimbRate 0): render-Y is the true tread, not the mid-ramp glided height.
+            a.Update(new[] { Ground(stopAt, 0f, climbRate: 0f) }, Dt);
+            Assert.Equal(tread, a.Live[0].RenderPosition.Y, 5);
+            // And it stays there.
+            for (int i = 0; i < 30; i++)
             {
-                a.Update(new[] { Ground(stopAt, 0f) }, Dt);
-                if (settleSeconds is null && MathF.Abs(a.Live[0].RenderPosition.Y - tread) < 0.003f)
-                    settleSeconds = (i + 1) * Dt;
+                a.Update(new[] { Ground(stopAt, 0f, climbRate: 0f) }, Dt);
+                Assert.Equal(tread, a.Live[0].RenderPosition.Y, 5);
             }
-            Assert.NotNull(settleSeconds);
-            Assert.True(settleSeconds < 1.5f, $"render-Y should settle onto the tread within ~1.5 s, took {settleSeconds:F2} s");
-            Assert.Equal(tread, a.Live[0].RenderPosition.Y, 3);   // no persistent float after the hold
         }
 
         [Fact]
         public void TeleportSizedGap_SnapsSameFrame()
         {
-            // A teleport (a gap beyond SlopeGlideSnapDistance) snaps the render-Y to true on the SAME frame - the epoch
-            // teleport hard-cut standard: an authoritative teleport is never smoothed.
+            // A large gap (beyond SlopeGlideSnapDistance) snaps render-Y to true on the SAME frame - and it is not
+            // climbing anyway (ClimbRate 0), so it is raw twice over.
             var a = NewAnimators();
             var x = 0f;
-            for (int i = 0; i < 30; i++) { x += Walk * Dt; a.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk) }, Dt); }
+            for (int i = 0; i < 30; i++) { x += Walk * Dt; a.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk, 0f) }, Dt); }
             x += Walk * Dt;
-            a.Update(new[] { Ground(new Vector3(x, 50f, 0f), Walk) }, Dt);   // +50 m teleport
-            Assert.Equal(50f, a.Live[0].RenderPosition.Y, 5);                // snapped same-frame, no crawl
+            a.Update(new[] { Ground(new Vector3(x, 50f, 0f), Walk, 0f) }, Dt);   // +50 m teleport
+            Assert.Equal(50f, a.Live[0].RenderPosition.Y, 5);
         }
 
         [Fact]
-        public void ShortTeleport_GlidesWithoutReset_CutsWithSnapRenderHeight()
+        public void ShortTeleport_OntoAClimb_GlidesWithoutReset_CutsWithSnapRenderHeight()
         {
-            // A SHORT teleport (a vertical gap UNDER SlopeGlideSnapDistance) is height-identical to a stair riser, so the
-            // gap snap never fires and the smoother GLIDES it - the hole SnapRenderHeight closes. Called before the
-            // destination frame (as a consumer wires it to the netcode teleport epoch), it hard-cuts that frame instead.
-            const float dest = 1.0f;   // 1.0 m < 1.5 m snap distance: a short blink, indistinguishable from a riser by height
+            // Belt-and-braces for SnapRenderHeight: a SHORT teleport (under SlopeGlideSnapDistance) onto a position that
+            // itself carries a climb signal would GLIDE (height-identical to a stair riser). SnapRenderHeight, wired to
+            // the teleport epoch, forces the raw cut that frame. (A short teleport onto NON-climbing ground is raw by
+            // construction and needs no hook - that is why this is belt-and-braces.)
+            const float dest = 1.0f;   // 1.0 m < 1.5 m snap distance
 
-            // Without the reset: the destination frame glides, so render-Y is still well below the true height.
+            // Without the reset: mid-climb, then a short jump to a still-climbing destination -> glides (render-Y lags).
             var noReset = NewAnimators();
-            var x = 0f;
-            for (int i = 0; i < 30; i++) { x += Walk * Dt; noReset.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk) }, Dt); }
-            x += Walk * Dt;
-            noReset.Update(new[] { Ground(new Vector3(x, dest, 0f), Walk) }, Dt);
-            Assert.True(noReset.Live[0].RenderPosition.Y < dest - 0.3f,
-                $"a short teleport should GLIDE without the reset (render-Y {noReset.Live[0].RenderPosition.Y:F3} m, true {dest} m)");
+            DriveRenderY(noReset, StairStream(Walk, cycles: 4), Walk);
+            noReset.Update(new[] { Ground(new Vector3(99f, dest, 0f), Walk, MeanClimbRate) }, Dt);
+            Assert.True(noReset.Live[0].RenderPosition.Y < dest - 0.2f,
+                $"a short teleport onto a climb should GLIDE without the reset (render-Y {noReset.Live[0].RenderPosition.Y:F3} m, true {dest} m)");
 
             // With SnapRenderHeight before the same destination frame: hard-cut to the true height same-frame.
             var reset = NewAnimators();
-            x = 0f;
-            for (int i = 0; i < 30; i++) { x += Walk * Dt; reset.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk) }, Dt); }
-            x += Walk * Dt;
-            reset.SnapRenderHeight(1);   // consumer wires this to WorldClient.LocalTeleportEpoch / RemoteTeleports
-            reset.Update(new[] { Ground(new Vector3(x, dest, 0f), Walk) }, Dt);
-            Assert.Equal(dest, reset.Live[0].RenderPosition.Y, 5);   // cut, no glide
+            DriveRenderY(reset, StairStream(Walk, cycles: 4), Walk);
+            reset.SnapRenderHeight(1);
+            reset.Update(new[] { Ground(new Vector3(99f, dest, 0f), Walk, MeanClimbRate) }, Dt);
+            Assert.Equal(dest, reset.Live[0].RenderPosition.Y, 5);
         }
 
         [Fact]
         public void SnapRenderHeight_UnknownId_IsNoOp()
         {
-            // No-op for an id that was never sampled (not yet tracked, or dropped on disconnect): no throw, no effect.
             var a = NewAnimators();
             a.SnapRenderHeight(999);
-            a.Update(new[] { Ground(new Vector3(0f, 0f, 0f), Walk) }, Dt);
+            a.Update(new[] { Ground(new Vector3(0f, 0f, 0f), Walk, 0f) }, Dt);
             Assert.Single(a.Live);
         }
 
         [Fact]
         public void SnapRenderHeight_IsOneShot_ClimbAfterASnapStillGlides()
         {
-            // The reset applies to exactly the next Update; it does not disable the smoother. After a snapped teleport
-            // a subsequent stair climb glides again (SmoothedY tracks the ramp, not the raw sawtooth).
             var a = NewAnimators();
-            a.SnapRenderHeight(1);   // pending, but there is no entry yet -> no-op; the first Update just seeds
-            List<Vector3> stream = StairStream(Walk);
+            a.SnapRenderHeight(1);
+            List<(Vector3 pos, float climbRate)> stream = StairStream(Walk);
             int lo = stream.Count * 15 / 100, hi = stream.Count * 85 / 100;
             float[] smY = DriveRenderY(a, stream, Walk);
             float smPp = RampResidualPeakToPeak(stream, smY, lo, hi);
@@ -298,59 +276,55 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Fact]
-        public void Airborne_JumpArc_BypassesSmoothing_TracksTrueExactly()
+        public void Airborne_JumpArc_BypassesGlide_TracksTrueExactly()
         {
-            // A genuine jump/fall (!grounded) bypasses the smoother: the drawn height is the physics height EXACTLY every
-            // airborne frame, so the arc stays crisp (never eased like a stair).
+            // A genuine jump/fall carries ClimbRate 0 (never a step climb), so it is raw: render-Y == physics Y exactly.
             var a = NewAnimators();
             var x = 0f; float y = 0f;
-            for (int i = 0; i < 20; i++) { x += Walk * Dt; a.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk) }, Dt); }
-            // Rise then fall, airborne throughout, with a fast vertical velocity.
+            for (int i = 0; i < 20; i++) { x += Walk * Dt; a.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk, 0f) }, Dt); }
             float[] arc = { 0.2f, 0.4f, 0.55f, 0.62f, 0.6f, 0.5f, 0.32f, 0.1f };
             foreach (float h in arc)
             {
                 x += Walk * Dt; y = h;
                 a.Update(new[] { new CharacterSample(1, new Vector3(x, y, 0f), isLocal: true, grounded: false, verticalVelocity: 4f) }, Dt);
-                Assert.Equal(y, a.Live[0].RenderPosition.Y, 5);   // airborne -> render-Y == physics Y exactly
+                Assert.Equal(y, a.Live[0].RenderPosition.Y, 5);
             }
         }
 
         [Fact]
-        public void BallisticTakeoff_WhileStillGrounded_SnapsNotSmoothed()
+        public void LandingFromFall_RenderY_NeverDipsBelowTrueFeet_TheProdFallSink()
         {
-            // The jump-takeoff frame can still read grounded for one tick while the vertical velocity spikes. The ballistic
-            // gate (|vertical velocity| over the threshold) snaps that frame so the launch stays crisp.
+            // THE 1.2 m fall-sink, turned into a standing guard. Climb (so SmoothedY is glided above the true feet), then
+            // fall ballistically onto the floor. The fall carries ClimbRate 0, so the glide disengages the instant the
+            // fall begins - render-Y snaps to and TRACKS the true feet through the fall, and at touchdown it is exactly
+            // the floor. It can NEVER be driven below the floor, because nothing was fed forward during the fall.
             var a = NewAnimators();
-            var x = 0f;
-            for (int i = 0; i < 20; i++) { x += Walk * Dt; a.Update(new[] { Ground(new Vector3(x, 0f, 0f), Walk) }, Dt); }
-            x += Walk * Dt;
-            // Grounded true but vertical velocity 6 m/s (a launch): must snap to the true height, not ease.
-            a.Update(new[] { new CharacterSample(1, new Vector3(x, 0.2f, 0f), isLocal: true, grounded: true, verticalVelocity: 6f) }, Dt);
-            Assert.Equal(0.2f, a.Live[0].RenderPosition.Y, 5);
-        }
+            DriveRenderY(a, StairStream(Walk, cycles: 6), Walk);   // build a glided-above-true SmoothedY
 
-        [Fact]
-        public void LedgeWalkOff_Drop_DoesNotFloat()
-        {
-            // Walk off a ledge: the character goes airborne and the true feet-Y drops fast. The render-Y must follow the
-            // drop (bypassed while airborne), never hang in the air above the fall.
-            var a = NewAnimators();
-            var x = 0f;
-            for (int i = 0; i < 20; i++) { x += Walk * Dt; a.Update(new[] { Ground(new Vector3(x, 2f, 0f), Walk) }, Dt); }
-            float y = 2f, vy = 0f;
-            for (int i = 0; i < 15; i++)   // free fall off the ledge
+            // Now fall from ~2 m onto the floor at Y=0, ClimbRate 0 throughout (a fall is never a climb).
+            float x = 100f, y = 2f, vy = 0f;
+            float worstDipBelowTrue = 0f;
+            for (int i = 0; i < 40; i++)
             {
-                vy -= 9.8f * Dt; y += vy * Dt; x += Walk * Dt;
-                a.Update(new[] { new CharacterSample(1, new Vector3(x, y, 0f), isLocal: true, grounded: false, verticalVelocity: vy) }, Dt);
-                Assert.Equal(y, a.Live[0].RenderPosition.Y, 5);   // tracks the fall exactly, no float
+                vy -= 9.8f * Dt;
+                y = MathF.Max(0f, y + vy * Dt);
+                bool grounded = y <= 0f;
+                if (grounded) vy = 0f;
+                x += Walk * Dt;
+                a.Update(new[] { new CharacterSample(1, new Vector3(x, y, 0f), isLocal: true, grounded: grounded, verticalVelocity: vy, planarSpeed: Walk, swimming: false, climbRate: 0f) }, Dt);
+                float renderY = a.Live[0].RenderPosition.Y;
+                worstDipBelowTrue = MathF.Min(worstDipBelowTrue, renderY - y);
+                Assert.Equal(y, renderY, 5);   // raw: render-Y tracks the true feet exactly through the whole fall + landing
             }
+            // The whole point: the drawn feet never went below the true feet by any margin (the 1.2 m sink is impossible).
+            Assert.True(worstDipBelowTrue > -0.001f,
+                $"render-Y dipped {worstDipBelowTrue * 1000:F1} mm below the true feet during a fall/landing (the fall-sink must be impossible by construction)");
         }
 
         [Fact]
-        public void Swimming_BypassesSmoothing()
+        public void Swimming_BypassesGlide()
         {
-            // A swimmer bobs on the surface (vertical medium motion), which is not a stair climb: the smoother bypasses so
-            // the swim vertical is drawn as-is.
+            // A swimmer carries ClimbRate 0 (never a step climb), so its surface bob is drawn as-is (raw).
             var a = NewAnimators();
             var x = 0f;
             float[] bob = { 0.05f, 0.1f, 0.08f, 0.12f, 0.06f, 0.11f };

@@ -20,6 +20,13 @@ namespace KhaozEngine.Tests.Gui
                 b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
         }
 
+        static InputState KeyFrame(Key key)
+        {
+            var pressed = new HashSet<Key> { key };
+            return new InputState(new HashSet<Key>(), pressed, new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(), Vector2.Zero, Vector2.Zero, 0, 960, 540);
+        }
+
         static void Tap(PopupPanel panel, Pointer p, Vector2 at)
         {
             p.Update(Frame(at, false)); panel.Update(p);
@@ -110,6 +117,128 @@ namespace KhaozEngine.Tests.Gui
             panel.Viewport = View;
             var rect = panel.PanelRect();                                     // no throw once set
             Assert.True(rect.Width > 0f && rect.Height > 0f);
+        }
+
+        [Fact]
+        public void FooterButtons_LayoutRightToLeft_ClickFires()
+        {
+            var panel = new PopupPanel { Viewport = View };
+            bool fired0 = false, fired1 = false, fired2 = false;
+            panel.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("First"), () => fired0 = true),
+                new PopupAction(LocalizedText.Raw("Second"), () => fired1 = true),
+                new PopupAction(LocalizedText.Raw("Third"), () => fired2 = true),
+            });
+
+            var bounds = panel.FooterButtonBounds();
+            Assert.Equal(3, bounds.Count);
+            Assert.True(bounds[0].X > bounds[1].X);   // index 0 (rightmost) sits right of index 1
+            Assert.True(bounds[1].X > bounds[2].X);   // index 1 sits right of index 2 (leftmost)
+
+            var p = new Pointer();
+            Tap(panel, p, Center(bounds[1]));
+
+            Assert.False(fired0);
+            Assert.True(fired1);
+            Assert.False(fired2);
+        }
+
+        [Fact]
+        public void FooterButtons_DisabledButtonIgnoresClicks()
+        {
+            var panel = new PopupPanel { Viewport = View };
+            bool fired = false;
+            panel.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("Disabled"), () => fired = true, enabled: false),
+            });
+
+            var p = new Pointer();
+            Tap(panel, p, Center(panel.FooterButtonBounds()[0]));
+            Assert.False(fired);
+
+            // A disabled action also ignores its keyboard trigger (here index 0 is both the Enter default and the
+            // CancelIndex default, since it is the only, and therefore last, footer action).
+            panel.HandleKeys(KeyFrame(Key.Enter));
+            Assert.False(fired);
+            panel.HandleKeys(KeyFrame(Key.Escape));
+            Assert.False(fired);
+        }
+
+        [Fact]
+        public void FooterButtons_EmptyKeepsDismissPrimaryCompat()
+        {
+            var panel = new PopupPanel { Viewport = View, ShowPrimaryAction = true };
+            panel.SetRows(new[] { PopupRow.Stat(LocalizedText.Raw("a"), LocalizedText.Raw("1"), Vector4.One) });
+            Assert.Empty(panel.FooterButtons);
+            Assert.Empty(panel.FooterButtonBounds());
+
+            var p = new Pointer();
+            Vector2 primaryAt = Center(panel.PrimaryBounds());
+            p.Update(Frame(primaryAt, false)); panel.Update(p);
+            p.Update(Frame(primaryAt, true)); panel.Update(p);
+            p.Update(Frame(primaryAt, false));
+            bool dismissedByPrimaryTap = panel.Update(p);
+            Assert.False(dismissedByPrimaryTap);
+            Assert.True(panel.WasPrimaryActionClicked);
+
+            p = new Pointer();
+            p.Update(Frame(Center(panel.DismissBounds()), false)); panel.Update(p);
+            p.Update(Frame(Center(panel.DismissBounds()), true)); panel.Update(p);
+            p.Update(Frame(Center(panel.DismissBounds()), false));
+            Assert.True(panel.Update(p));
+        }
+
+        [Fact]
+        public void FooterButtons_EscTriggersCancelIndex_EnterTriggersDefault()
+        {
+            var panel = new PopupPanel { Viewport = View };
+            bool fired0 = false, fired1 = false, fired2 = false;
+            panel.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("First"), () => fired0 = true),
+                new PopupAction(LocalizedText.Raw("Second"), () => fired1 = true),
+                new PopupAction(LocalizedText.Raw("Third"), () => fired2 = true),
+            });
+
+            // Default CancelIndex (-1) resolves to the last footer action.
+            panel.HandleKeys(KeyFrame(Key.Escape));
+            Assert.False(fired0);
+            Assert.False(fired1);
+            Assert.True(fired2);
+
+            fired2 = false;
+            panel.HandleKeys(KeyFrame(Key.Enter));
+            Assert.True(fired0);
+            Assert.False(fired1);
+            Assert.False(fired2);
+
+            fired0 = false;
+            panel.CancelIndex = 1;
+            panel.HandleKeys(KeyFrame(Key.Escape));
+            Assert.False(fired0);
+            Assert.True(fired1);
+            Assert.False(fired2);
+        }
+
+        [Fact]
+        public void FooterButtons_PointerBlockBehindStaysIntact()
+        {
+            var panel = new PopupPanel { Viewport = View };
+            panel.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("A"), () => { }),
+                new PopupAction(LocalizedText.Raw("B"), () => { }),
+            });
+
+            var p = new Pointer();
+            p.Update(Frame(Center(panel.PanelRect()), false));
+            panel.Update(p);
+
+            Assert.True(p.IsBlocked(Center(panel.PanelRect())));
+            Assert.True(p.IsBlocked(Center(panel.FooterButtonBounds()[0])));
+            Assert.False(p.IsBlocked(new Vector2(2, 2)));   // top-left corner outside the panel: a background control there is not blocked
         }
     }
 }

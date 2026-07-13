@@ -78,10 +78,14 @@ public static class MoveProtocol
             write: (p, bw) => { bw.Write(p.Value.X); bw.Write(p.Value.Y); bw.Write(p.Value.Z); },
             read: br => new ReplicatedPosition { Value = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()) },
             lerp: (a, b, t) => new ReplicatedPosition { Value = Vector3.Lerp(a.Value, b.Value, t) });
-        // Vertical movement state. Not interpolated: remotes render from ReplicatedPosition; only the local owner
-        // reads this (as its exact authoritative reconciliation basis), and the booleans/timers must not be blended.
+        // Vertical movement state. NOT interpolated (its booleans/timers/quantized rate must never be blended into an
+        // impossible in-between), but fixed-delay nearest-SAMPLED (discreteSample) so a remote's grounded/swim/climb
+        // flags ride the SAME delayed render timeline as its interpolated ReplicatedPosition instead of being read live
+        // at the newest snapshot (~InterpolationDelayTicks ahead of the drawn feet). The local owner is excluded from
+        // the fixed-delay buffer and reads this as its exact authoritative reconciliation basis, unchanged.
         r.Register<MovementState>(
             MovementTypeId,
+            discreteSample: true,
             write: (m, bw) =>
             {
                 bw.Write(m.VerticalVelocity);

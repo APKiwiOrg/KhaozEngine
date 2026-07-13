@@ -36,6 +36,8 @@ namespace KhaozEngine.Showcase
         public static readonly StringId WidgetsTipTitle = new("Widgets.TipTitle");
         public static readonly StringId WidgetsTipLine1 = new("Widgets.TipLine1");
         public static readonly StringId WidgetsTipLine2 = new("Widgets.TipLine2");
+        public static readonly StringId WidgetsHotbar = new("Widgets.Hotbar");
+        public static readonly StringId WidgetsLoading = new("Widgets.Loading");
 
         // Overlay demo
         public static readonly StringId OverlayTitle = new("Overlay.Title");

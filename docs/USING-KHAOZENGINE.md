@@ -672,6 +672,36 @@ tip.Update(pointer);                               // auto-dismisses on tap-outs
 tip.Draw(batch, white);
 ```
 
+**HUD widgets: `SlotGrid` + `ProgressBar` (10.78.0)** - two additive widgets for inventory / status HUDs. `SlotGrid`
+lays out `Count` uniform square slots wrapping at `Columns` (`Bounds`.X/Y is the origin; the footprint is `ContentSize`
+/ `ContentBounds`, derived from `SlotSize` / `Spacing`). It hit-tests each slot through the press-origin invariant and
+exposes `HoveredSlot` / `PressedSlot` (-1 = none); a valid tap fires `OnSlotClicked` and `Update` returns the tapped
+index. The widget is item-agnostic: empty slots draw a themed frame, and the caller paints icons / counts through the
+`DrawSlotContent(index, rect, batch)` hook and optional per-slot `KeybindLabels` (raw input-token glyphs).
+`ProgressBar` is a thin fill bar: `Fraction` clamps 0..1, the accent `FillColor` sits inside the border frame, and an
+optional centered `OverlayText` (`LocalizedText`) labels it. Both expose pure-geometry helpers for headless tests
+(`SlotRect(i)` / `SlotAt(point)`, `FillRect` / `InnerBounds`) and carry the shared `Opacity` fade.
+
+```csharp
+// A 10-slot hotbar (one row of 10) with keybind glyphs; icons are painted by the caller.
+var hotbar = new SlotGrid(new Rect(hudX, hudY, 0, 0), count: 10, columns: 10)
+{
+    SlotSize = 48f, Spacing = 6f,
+    KeybindLabels = new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" },
+    DrawSlotContent = (i, rect, b) => DrawItemIcon(b, rect, _items[i]),   // widget stays item-agnostic
+    OnSlotClicked = i => UseSlot(i),
+};
+hotbar.Update(pointer);
+hotbar.Draw(batch, white, keybindFont);
+
+// A thin XP bar with a localized "Level {0}" overlay.
+var xp = new ProgressBar(new Rect(hudX, hudY - 16, 240, 8), fraction: xpFrac)
+{
+    OverlayText = LocalizedText.Of(Strings.Level, playerLevel),
+};
+xp.Draw(batch, white, smallFont);
+```
+
 ---
 
 ## Number + duration formatting (`NumberFormatter` / `TimeFormatter`)

@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.78.0
+
+### Gui: `SlotGrid` and `ProgressBar` HUD widgets
+
+Two additive `KhaozEngine.Gui` widgets for inventory and status HUDs (a hotbar or inventory slot grid, and a thin fill bar), item-agnostic and themed like the rest of the widget set. No breaking changes.
+
+- **`SlotGrid` (`KhaozEngine.Gui/SlotGrid.cs`).** A grid of `Count` uniform square slots wrapping at `Columns`, filled left-to-right then top-to-bottom. `Bounds`.X/Y is the origin and the footprint is derived from `SlotSize` and `Spacing` (read `ContentSize` / `ContentBounds`, since `Bounds`.Width/Height are advisory). Each slot hit-tests through the press-origin `Pointer.IsTapIn` invariant, so a click that began in another slot or off-grid never fires it. `HoveredSlot` / `PressedSlot` expose the live index (-1 = none), a valid tap fires `OnSlotClicked`, and `Update` returns the tapped index. The widget knows nothing about game items: empty slots draw a themed frame (`SlotColor` / `HoverColor` / `PressColor` plus border, `GuiStyle` corners), the caller paints icons or counts through the `DrawSlotContent(index, rect, batch)` hook, and optional per-slot `KeybindLabels` render a small glyph in the top-left (raw input tokens, the same non-localizable escape hatch as a number). `SlotRect(i)` / `SlotAt(point)` are pure geometry, `Rows` is derived `ceil(Count / Columns)`, and `Opacity` fades the whole grid.
+- **`ProgressBar` (`KhaozEngine.Gui/ProgressBar.cs`).** A thin horizontal fill bar for health, XP, cast, or load. `Fraction` clamps to 0..1 on assignment. The accent fill (`FillColor`, defaults to the theme accent) sits inside the border frame over a `TrackColor` track, with corners and border thickness from `GuiStyle`. Optional centered `OverlayText` is a `LocalizedText`, so a caption localizes through the catalog (wrap a pure number or percentage in `LocalizedText.Raw`). It is non-interactive (no `Update`), `FillRect` / `InnerBounds` are pure geometry, and `Opacity` fades the whole bar.
+- **Tests and showcase.** Headless `SlotGridTests` (slot-rect layout, footprint, `SlotAt` gaps, pointer-driven hover and press index, the tap press-origin invariant, footprint blocking) and `ProgressBarTests` (fraction clamp, fill width versus fraction, empty and full edges, fill inside the frame). Both widgets are demoed in the Showcase "Gui" room's Widgets screen.
+
 ## 10.77.0
 
 ### UE-style step-event mesh smoothing: ease an isolated step the continuous glide renders raw

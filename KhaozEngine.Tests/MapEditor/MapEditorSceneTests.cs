@@ -2442,6 +2442,40 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void PlayerSpawnYaw_EditIsUndoable_MarksDirty()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", X = 2f, Z = 3f, Yaw = 1.5f, Enabled = true });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+            FloatRow yaw = FloatRowByLabel(scene.Inspector, "Yaw");
+            Assert.False(scene.Document.IsDirty);
+
+            // Scrub the row's NumberField headless, same idiom as the X/Z and feature-row scrub tests: press
+            // inside the editor cell, then drag +100 px. The scrub calls Field.SetValue and the row writes the
+            // change through its setter, which must route through SetPlayerSpawnYawCommand (not a bare field set).
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            yaw.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));    // press inside (grab-gate origin)
+            yaw.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));    // +100 px at DragScale 0.01 = +1.0
+            bool changed = yaw.Update(cell, ui, 0.016f);
+
+            Assert.True(changed);
+            Near(2.5f, scene.Document.Doc.PlayerSpawns[0].Yaw);   // 1.5 + 1.0 scrub
+            Assert.True(scene.Document.History.CanUndo);
+            Assert.True(scene.Document.IsDirty);
+
+            Assert.True(scene.Document.Undo());
+            Near(1.5f, scene.Document.Doc.PlayerSpawns[0].Yaw);
+        }
+
+        [Fact]
         public void PlayerSpawnOutline_ListsSpawns_DisabledSuffixed()
         {
             var scene = PushDocScene(() =>

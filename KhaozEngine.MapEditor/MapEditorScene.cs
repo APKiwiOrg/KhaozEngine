@@ -1487,8 +1487,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     // The player-spawn inspector mirrors the NPC spawn one (inline-rename Name, X / Z through MovePlayerSpawnCommand,
     // Enabled, per-element Visible), swapping the NPC Archetype row for a Yaw row (player spawns carry a facing, NPC
     // spawns do not). Yaw is raw radians, matching the placement Yaw row (no degree conversion in this editor), and
-    // is written by direct field mutation the same way the NPC Archetype row is: the player-spawn command family has
-    // no yaw command, so this is the command-less field with no undo entry, exactly the Archetype row's precedent.
+    // routes through SetPlayerSpawnYawCommand the same way the placement Yaw row routes through
+    // RotatePlacementCommand, so the edit is undoable and marks the document dirty. The NPC Archetype row this Yaw
+    // row replaces stays a command-less direct field mutation with no undo entry, unrelated to this row.
     void BuildPlayerSpawnInspector(string id)
     {
         if (PlayerSpawn(id) is null) return;
@@ -1499,7 +1500,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
             () => PlayerSpawn(cur())?.Z ?? 0f, v => MovePlayerSpawn(cur(), z: v)));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
-            () => PlayerSpawn(cur())?.Yaw ?? 0f, v => { if (PlayerSpawn(cur()) is { } s) s.Yaw = v; }));
+            () => PlayerSpawn(cur())?.Yaw ?? 0f, v => _document.Execute(new SetPlayerSpawnYawCommand(cur(), v))));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
             () => PlayerSpawn(cur())?.Enabled ?? false, v => _document.Execute(new SetPlayerSpawnEnabledCommand(cur(), v))));
         AddVisibleRow(SelectionKind.PlayerSpawn, cur);

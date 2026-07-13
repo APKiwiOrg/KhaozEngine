@@ -777,6 +777,50 @@ public sealed class MovePlayerSpawnCommand : EditorCommand
     }
 }
 
+/// <summary>Sets a player spawn's yaw (facing), in raw radians (no degree conversion in this editor). Mirrors
+/// <see cref="RotatePlacementCommand"/>: successive scrubs of the same spawn's yaw coalesce into one undo step
+/// that restores the pre-scrub yaw.</summary>
+public sealed class SetPlayerSpawnYawCommand : EditorCommand
+{
+    readonly string _id;
+    float _newYaw;
+    float _oldYaw;
+    bool _captured;
+
+    /// <summary>Creates the command setting player spawn <paramref name="id"/>'s yaw to <paramref name="newYaw"/>.</summary>
+    public SetPlayerSpawnYawCommand(string id, float newYaw)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newYaw = newYaw;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Set player spawn yaw";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlayerSpawn s = FindPlayerSpawn(doc, _id);
+        if (!_captured) { _oldYaw = s.Yaw; _captured = true; }
+        s.Yaw = _newYaw;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlayerSpawn(doc, _id).Yaw = _oldYaw;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is SetPlayerSpawnYawCommand y && string.Equals(y._id, _id, StringComparison.Ordinal))
+        {
+            _newYaw = y._newYaw;
+            return true;
+        }
+        return false;
+    }
+}
+
 /// <summary>Toggles a player spawn's enabled flag.</summary>
 public sealed class SetPlayerSpawnEnabledCommand : EditorCommand
 {

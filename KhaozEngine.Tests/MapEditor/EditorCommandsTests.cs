@@ -195,6 +195,14 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void SetPlayerSpawnYaw_RoundTrips()
+        {
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 3f, Z = 3f, Yaw = 0.5f });
+            AssertRoundTrip(doc, new SetPlayerSpawnYawCommand("start", 2.5f));
+        }
+
+        [Fact]
         public void RenamePlayerSpawnCommand_AppliesRevertsAndGuardsDuplicates()
         {
             var doc = Sample();
@@ -244,6 +252,22 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.True(ed.Undo());
             Assert.Equal(20f, doc.PlayerSpawns.First(s => s.Id == "start").X);
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void SetPlayerSpawnYaw_MergesScrubs_FirstOldLastNew()
+        {
+            var doc = Sample();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 20f, Z = 5f, Yaw = 0.2f });
+            var ed = new EditorDocument(doc);
+            ed.Execute(new SetPlayerSpawnYawCommand("start", 1f));
+            ed.Execute(new SetPlayerSpawnYawCommand("start", 2f));
+            Assert.Equal(2f, doc.PlayerSpawns.First(s => s.Id == "start").Yaw);
+            Assert.Equal(1, ed.History.UndoDepth);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(0.2f, doc.PlayerSpawns.First(s => s.Id == "start").Yaw);
             Assert.False(ed.History.CanUndo);
         }
 

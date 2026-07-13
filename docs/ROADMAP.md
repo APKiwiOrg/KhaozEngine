@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.74.1** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.75.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -157,6 +157,16 @@ Also here, unchanged:
   equivalent reset yet. Add a `SnapRenderHeight()` (or teleport-aware `Update` overload) when a single-avatar
   consumer needs crisp short teleports - not fixed now because `CharacterAvatar`'s owner drives the controller
   directly (it can seed `_renderY` on a teleport itself), so there is no live consumer pull.
+
+- Stair-glide EWMA resets across a mid-climb shard handoff (10.75.0 follow-up): the ascent climb signal's
+  smoothing average (`ClimbRateEwma`) is sim-local and deliberately absent from the `ReplicationChannels.Migrate`
+  capture, so a player crossing a cell boundary WHILE climbing a stair run re-seeds it to 0 on the new shard and
+  the exported `ClimbRateQ` re-converges over the EWMA time constant. That is a ~0.2 s dip in the remote's
+  rendered glide right at the boundary (content-dependent - needs a stair straddling a cell edge - and cosmetic:
+  the authoritative position and the wire `ClimbRateQ` itself are unaffected, only the smoothed feed-forward
+  dips). Fix when a real straddling-stair layout surfaces it. Candidates: carry the EWMA on a Migrate-only
+  channel (survives the handoff, still off the wire), or re-seed it from the decoded `ClimbRateQ` in
+  `PlayerMovementSystem` when `Ewma == 0 && ClimbRateQ != 0` (mirror of the reconcile seed, no migrate change).
 
 ## Cross-platform reach
 

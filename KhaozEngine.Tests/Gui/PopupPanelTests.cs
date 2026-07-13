@@ -223,6 +223,88 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void FooterButtons_CallbackGrowingTheListMidFireDoesNotThrow()
+        {
+            var panel = new PopupPanel { Viewport = View };
+            int firedCount = 0;
+            panel.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("First"), () =>
+                {
+                    firedCount++;
+                    // Reentrant SetFooterButtons from inside the callback, with a LARGER list than the one
+                    // UpdateFooterButtons is currently iterating: this used to IndexOutOfRange because the loop
+                    // bound re-read the live (now-larger) _footerButtons.Count against the smaller bounds
+                    // snapshot taken before the callback ran.
+                    panel.SetFooterButtons(new[]
+                    {
+                        new PopupAction(LocalizedText.Raw("A"), () => { }),
+                        new PopupAction(LocalizedText.Raw("B"), () => { }),
+                        new PopupAction(LocalizedText.Raw("C"), () => { }),
+                        new PopupAction(LocalizedText.Raw("D"), () => { }),
+                    });
+                }),
+                new PopupAction(LocalizedText.Raw("Second"), () => { }),
+            });
+
+            var bounds = panel.FooterButtonBounds();
+            var p = new Pointer();
+            var exception = Record.Exception(() => Tap(panel, p, Center(bounds[0])));
+
+            Assert.Null(exception);
+            Assert.Equal(1, firedCount);
+            Assert.Equal(4, panel.FooterButtons.Count);   // the reentrant SetFooterButtons call took effect
+        }
+
+        [Fact]
+        public void PanelRect_WidensWhenButtonsNeedMoreRoomThanWidthFractionGives()
+        {
+            var narrow = new PopupPanel { Viewport = View };
+            narrow.SetRows(new[] { PopupRow.Stat(LocalizedText.Raw("a"), LocalizedText.Raw("1"), Vector4.One) });
+
+            var wide = new PopupPanel { Viewport = View };
+            wide.SetRows(new[] { PopupRow.Stat(LocalizedText.Raw("a"), LocalizedText.Raw("1"), Vector4.One) });
+            wide.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("A"), () => { }),
+                new PopupAction(LocalizedText.Raw("B"), () => { }),
+                new PopupAction(LocalizedText.Raw("C"), () => { }),
+                new PopupAction(LocalizedText.Raw("D"), () => { }),
+                new PopupAction(LocalizedText.Raw("E"), () => { }),
+                new PopupAction(LocalizedText.Raw("F"), () => { }),
+            });
+
+            // 6 fixed-width buttons need more room than WidthFraction of the viewport gives, so the panel widens
+            // to fit them instead of shrinking the buttons.
+            Assert.True(wide.PanelRect().Width > View.X * wide.WidthFraction);
+            Assert.True(wide.PanelRect().Width > narrow.PanelRect().Width);
+        }
+
+        [Fact]
+        public void FooterButtons_NonEmptySuppressesClassicDismissPrimaryHitTest()
+        {
+            var panel = new PopupPanel { Viewport = View, ShowPrimaryAction = true };
+            panel.SetRows(new[] { PopupRow.Stat(LocalizedText.Raw("a"), LocalizedText.Raw("1"), Vector4.One) });
+            panel.SetFooterButtons(new[]
+            {
+                new PopupAction(LocalizedText.Raw("A"), () => { }),
+                new PopupAction(LocalizedText.Raw("B"), () => { }),
+            });
+
+            // Tap the classic primary-button location: with a non-empty footer, Update never reaches the
+            // ShowPrimaryAction/DismissBounds branch, so neither WasPrimaryActionClicked nor a dismiss fires.
+            var p = new Pointer();
+            Vector2 classicPrimaryAt = Center(panel.PrimaryBounds());
+            p.Update(Frame(classicPrimaryAt, false)); panel.Update(p);
+            p.Update(Frame(classicPrimaryAt, true)); panel.Update(p);
+            p.Update(Frame(classicPrimaryAt, false));
+            bool dismissed = panel.Update(p);
+
+            Assert.False(dismissed);
+            Assert.False(panel.WasPrimaryActionClicked);
+        }
+
+        [Fact]
         public void FooterButtons_PointerBlockBehindStaysIntact()
         {
             var panel = new PopupPanel { Viewport = View };

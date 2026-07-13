@@ -386,14 +386,20 @@ namespace KhaozEngine.Gui
             return pointer.IsTapIn(DismissBounds());
         }
 
+        // Loops to bounds.Count (a snapshot taken before any callback can run), not the live _footerButtons.Count,
+        // and breaks the moment a callback fires: only one tap is possible per gesture anyway, and breaking makes
+        // it safe for a button's OnClick to call SetFooterButtons (even with a LARGER list) from inside the loop.
         void UpdateFooterButtons(Pointer pointer)
         {
             IReadOnlyList<Rect> bounds = FooterButtonBounds();
-            for (int i = 0; i < _footerButtons.Count; i++)
+            for (int i = 0; i < bounds.Count; i++)
             {
                 PopupAction action = _footerButtons[i];
                 if (action.Enabled && pointer.IsTapIn(bounds[i]))
+                {
                     action.OnClick?.Invoke();
+                    break;
+                }
             }
         }
 

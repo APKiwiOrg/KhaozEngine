@@ -8,8 +8,9 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEdit;
 
-/// <summary>Mutates the session's open document: placements, spawns, regions, terrain globals, terrain features
-/// and biome bands, exclusions, scatter overrides, scatter and companion layers, and region bake. Command-backed
+/// <summary>Mutates the session's open document: placements, spawns, player spawns, regions, terrain globals,
+/// terrain features and biome bands, exclusions, scatter overrides, scatter and companion layers, and region
+/// bake. Command-backed
 /// mutations route through
 /// <see cref="Apply(EditorCommand, string, string)"/> (or its factory overload,
 /// <see cref="Apply(Func{MapDocument, MapDocRegistry, EditorCommand}, string, Func{EditorCommand, string}, bool)"/>,
@@ -222,6 +223,86 @@ public sealed class MutationService(MapEditSession session)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         return Apply(new RemoveSpawnCommand(id), "spawn_remove", $"removed spawn {id}");
+    }
+
+    // ---- player spawns ----------------------------------------------------------------------------------------
+
+    /// <summary>Adds a player start marker. When <paramref name="id"/> is null, auto-generates <c>player-N</c>
+    /// with the smallest N &gt;= 1 unique against existing player spawn ids, the same scheme the editor's own
+    /// auto-naming (<c>EditorTool.UniqueName</c>) uses. Which spawn a game uses at runtime (single-player start,
+    /// party rally point, respawn point) is game code's concern, so unlike <see cref="SpawnAdd"/> there is no
+    /// archetype here. A duplicate explicit id is not pre-checked: it is rejected the same way <see cref="SpawnAdd"/>
+    /// and <see cref="PlacementAdd"/> already are, by the choke point's validate-and-revert net (the document
+    /// validator reports "duplicate player spawn id"), so this mirrors both exactly rather than adding a bespoke
+    /// precondition neither of them has.</summary>
+    public MutationResult PlayerSpawnAdd(float x, float z, float yaw = 0f, bool enabled = true,
+        string? id = null, IReadOnlyList<string>? tags = null)
+    {
+        string spawnId = id ?? session.WithDocument((doc, _) =>
+            GenerateId(doc.PlayerSpawns.Select(s => s.Id), "player-"));
+
+        var spawn = new MapPlayerSpawn
+        {
+            Id = spawnId,
+            X = x,
+            Z = z,
+            Yaw = yaw,
+            Enabled = enabled,
+            Tags = tags is null ? new List<string>() : new List<string>(tags),
+        };
+
+        MutationResult result = Apply(new AddPlayerSpawnCommand(spawn), "player_spawn_add",
+            $"added player spawn at ({x:F1}, {z:F1})");
+        return result with { Id = spawnId };
+    }
+
+    /// <summary>Moves a player spawn to a new XZ.</summary>
+    public MutationResult PlayerSpawnMove(string id, float x, float z)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        return Apply(new MovePlayerSpawnCommand(id, x, z), "player_spawn_move",
+            $"moved player spawn {id} to ({x:F1}, {z:F1})");
+    }
+
+    /// <summary>Sets a player spawn's facing yaw, in radians. A separate verb from <see cref="PlayerSpawnMove"/>,
+    /// mirroring how <see cref="PlacementRotate"/> stays a separate verb from <see cref="PlacementMove"/>: the
+    /// underlying commands (<see cref="SetPlayerSpawnYawCommand"/> vs <see cref="MovePlayerSpawnCommand"/>) are
+    /// already distinct, each with its own independent TryMerge coalescing, so the MCP verb granularity follows
+    /// the command granularity rather than folding yaw into the move verb.</summary>
+    public MutationResult PlayerSpawnSetYaw(string id, float yaw)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        return Apply(new SetPlayerSpawnYawCommand(id, yaw), "player_spawn_set_yaw",
+            $"set player spawn {id} yaw to {yaw:F2}");
+    }
+
+    /// <summary>Toggles a player spawn's enabled flag.</summary>
+    public MutationResult PlayerSpawnSetEnabled(string id, bool enabled)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        string state = enabled ? "enabled" : "disabled";
+        return Apply(new SetPlayerSpawnEnabledCommand(id, enabled), "player_spawn_set_enabled",
+            $"set player spawn {id} {state}");
+    }
+
+    /// <summary>Renames a player spawn. The target id must be unique in the document, rejected inside
+    /// <see cref="RenamePlayerSpawnCommand.Apply"/> before it mutates (the in-Apply guard the editor GUI itself
+    /// relies on, since it has no validate-and-revert net of its own), surfaced here as a clean error the same
+    /// way the choke point surfaces every other rejected mutation.</summary>
+    public MutationResult PlayerSpawnRename(string oldId, string newId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newId);
+        MutationResult result = Apply(new RenamePlayerSpawnCommand(oldId, newId), "player_spawn_rename",
+            $"renamed player spawn {oldId} to {newId}");
+        return result with { Id = newId };
+    }
+
+    /// <summary>Removes a player spawn by id.</summary>
+    public MutationResult PlayerSpawnRemove(string id)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        return Apply(new RemovePlayerSpawnCommand(id), "player_spawn_remove", $"removed player spawn {id}");
     }
 
     // ---- regions --------------------------------------------------------------------------------------------
@@ -563,7 +644,10 @@ public sealed class MutationService(MapEditSession session)
     /// <paramref name="hostLayer"/> naming an unknown scatter layer is not rejected there: the standard document
     /// validator at the choke point catches it (the same invariant the editor's HostLayer chooser relies on
     /// live, but MCP has no live chooser, so a bad name surfaces as a validation rejection instead).
-    /// <paramref name="kinds"/> entries parse as <c>"id"</c> (weight 1) or <c>"id:weight"</c>. Affects the
+    /// <paramref name="kinds"/> entries parse as <c>"id"</c> (weight 1) or <c>"id:weight"</c>. When the resulting
+    /// <paramref name="hostKinds"/> is non-empty and has zero intersection with the host layer's rule kind ids
+    /// (<see cref="QueryService.HostKindsMatchHost"/>), the result's Detail appends a warning note, mirroring the
+    /// editor's own read-only warning row, since this companion layer would silently spawn nothing. Affects the
     /// streamed world.</summary>
     public MutationResult CompanionLayerAdd(string name, string hostLayer, int seed = 1337,
         IReadOnlyList<string>? hostKinds = null, IReadOnlyList<string>? kinds = null,
@@ -581,14 +665,24 @@ public sealed class MutationService(MapEditSession session)
             CountMin = countMin, CountMax = countMax, RadiusMin = radiusMin, RadiusMax = radiusMax,
             ScaleMin = scaleMin, ScaleMax = scaleMax, MaxHeight = maxHeight,
         };
-        return Apply(new AddCompanionLayerCommand(layer), "companion_layer_add", $"added companion layer '{name}'");
+
+        bool mismatch = false;
+        return Apply((doc, _) =>
+        {
+            mismatch = layer.HostKinds.Count > 0 && !QueryService.HostKindsMatchHost(layer.HostKinds, layer.HostLayer, doc);
+            return new AddCompanionLayerCommand(layer);
+        }, "companion_layer_add", _ => AppendMismatchNote($"added companion layer '{name}'", mismatch),
+            worldChanged: true);
     }
 
     /// <summary>Edits a companion layer by name, replacing only the supplied fields (a null argument leaves that
     /// field unchanged, the read-modify pattern the editor's per-field rows use). <paramref name="clearMaxHeight"/>
     /// forces MaxHeight back to unset, taking precedence over <paramref name="maxHeight"/>, the same idiom
     /// <see cref="ScatterLayerEdit"/> uses. The whole edited value is deep-cloned so the command's new and old
-    /// values never alias the same nested Kinds list. Affects the streamed world.</summary>
+    /// values never alias the same nested Kinds list. When the resulting HostKinds is non-empty and has zero
+    /// intersection with the (possibly also just-edited) host layer's rule kind ids
+    /// (<see cref="QueryService.HostKindsMatchHost"/>), the result's Detail appends a warning note, mirroring the
+    /// editor's own read-only warning row. Affects the streamed world.</summary>
     public MutationResult CompanionLayerEdit(string name, string? hostLayer = null, int? seed = null,
         IReadOnlyList<string>? hostKinds = null, IReadOnlyList<string>? kinds = null,
         int? countMin = null, int? countMax = null, float? radiusMin = null, float? radiusMax = null,
@@ -596,6 +690,7 @@ public sealed class MutationService(MapEditSession session)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
+        bool mismatch = false;
         return Apply((doc, _) =>
         {
             MapCompanionLayer old = doc.CompanionLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
@@ -615,8 +710,10 @@ public sealed class MutationService(MapEditSession session)
                 ScaleMax = scaleMax ?? old.ScaleMax,
                 MaxHeight = clearMaxHeight ? null : (maxHeight ?? old.MaxHeight),
             };
+            mismatch = newValue.HostKinds.Count > 0 && !QueryService.HostKindsMatchHost(newValue.HostKinds, newValue.HostLayer, doc);
             return new EditCompanionLayerCommand(name, newValue, old);
-        }, "companion_layer_edit", _ => $"edited companion layer '{name}'", worldChanged: true);
+        }, "companion_layer_edit", _ => AppendMismatchNote($"edited companion layer '{name}'", mismatch),
+            worldChanged: true);
     }
 
     /// <summary>Removes the companion layer named <paramref name="name"/>. Nothing else in the document
@@ -1004,6 +1101,13 @@ public sealed class MutationService(MapEditSession session)
             result.Add(new MapBiomeScatterRule { Biome = r.Biome, Density = r.Density, Kinds = CloneKinds(r.Kinds) });
         return result;
     }
+
+    /// <summary>Appends the companion host-kinds mismatch note to <paramref name="detail"/> when
+    /// <paramref name="mismatch"/> is true, echoing the editor's own read-only warning row wording ("HostKinds
+    /// match no kind in the host layer"). Joined with a comma, the same style <see cref="ScatterLayerRename"/>
+    /// uses for its cascaded-reference note.</summary>
+    static string AppendMismatchNote(string detail, bool mismatch) =>
+        mismatch ? detail + ", host kinds match no kind in the host layer" : detail;
 
     /// <summary>Finds the scatter layer named <paramref name="name"/>, throwing the same precise message
     /// <see cref="ScatterLayerEdit"/> uses when no layer carries that name.</summary>

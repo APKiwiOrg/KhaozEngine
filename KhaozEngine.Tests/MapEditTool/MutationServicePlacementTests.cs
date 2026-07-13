@@ -9,9 +9,9 @@ using SampleDocs = KhaozEngine.Tests.MapDoc.MapDocumentFileTests;
 
 namespace KhaozEngine.Tests.MapEditTool
 {
-    /// <summary>Headless tests for <see cref="MutationService"/>: placement, spawn, and region mutations, and the
-    /// validate-revert invariant shared by every verb (apply, validate, revert-and-throw on error). All mutations
-    /// run against <see cref="SampleDocs.SampleDoc"/> opened through a fresh session.</summary>
+    /// <summary>Headless tests for <see cref="MutationService"/>: placement, spawn, player spawn, and region
+    /// mutations, and the validate-revert invariant shared by every verb (apply, validate, revert-and-throw on
+    /// error). All mutations run against <see cref="SampleDocs.SampleDoc"/> opened through a fresh session.</summary>
     public class MutationServicePlacementTests
     {
         static string NewTempDir()
@@ -189,6 +189,125 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.False(session.WithDocument((doc, _) => doc.Spawns.Any(s => s.Id == "bandit-2")));
 
                 Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void PlayerSpawnAdd_AutoId_DocumentGainsPlayerSpawn()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                MutationResult result = mutation.PlayerSpawnAdd(12f, -3.5f, yaw: 0.75f);
+
+                Assert.Equal("player_spawn_add", result.Verb);
+                Assert.False(result.WorldChanged);
+                Assert.Equal("player-1", result.Id);
+                Assert.Contains("player spawn", result.Detail);
+
+                MapPlayerSpawn added = session.WithDocument((doc, _) => doc.PlayerSpawns.Single(s => s.Id == "player-1"));
+                Assert.Equal(12f, added.X);
+                Assert.Equal(-3.5f, added.Z);
+                Assert.Equal(0.75f, added.Yaw);
+                Assert.True(added.Enabled);
+
+                // A second auto-id add skips the taken "player-1" and lands on "player-2".
+                MutationResult second = mutation.PlayerSpawnAdd(0f, 0f);
+                Assert.Equal("player-2", second.Id);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void PlayerSpawnAdd_DuplicateExplicitId_ThrowsAndDocumentUnchanged()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                MutationResult first = mutation.PlayerSpawnAdd(0f, 0f, id: "start");
+                Assert.Equal("start", first.Id);
+
+                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
+                bool dirtyBefore = session.IsDirty;
+
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                    mutation.PlayerSpawnAdd(1f, 1f, id: "start"));
+
+                Assert.StartsWith("mutation rejected:", ex.Message);
+                Assert.Contains("duplicate player spawn id", ex.Message);
+
+                string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
+                Assert.Equal(before, after);
+                Assert.Equal(dirtyBefore, session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void PlayerSpawnMove_SetYaw_SetEnabled_Rename_Remove_RoundTrip()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                MutationResult add = mutation.PlayerSpawnAdd(3f, 4f);
+                Assert.Equal("player-1", add.Id);
+
+                MutationResult move = mutation.PlayerSpawnMove("player-1", 10f, 12f);
+                Assert.Equal("player_spawn_move", move.Verb);
+                MapPlayerSpawn afterMove = session.WithDocument((doc, _) => doc.PlayerSpawns.Single(s => s.Id == "player-1"));
+                Assert.Equal(10f, afterMove.X);
+                Assert.Equal(12f, afterMove.Z);
+
+                MutationResult yaw = mutation.PlayerSpawnSetYaw("player-1", 2.1f);
+                Assert.Equal("player_spawn_set_yaw", yaw.Verb);
+                Assert.Equal(2.1f, session.WithDocument((doc, _) => doc.PlayerSpawns.Single(s => s.Id == "player-1").Yaw));
+
+                MutationResult disable = mutation.PlayerSpawnSetEnabled("player-1", false);
+                Assert.Equal("player_spawn_set_enabled", disable.Verb);
+                Assert.False(session.WithDocument((doc, _) => doc.PlayerSpawns.Single(s => s.Id == "player-1").Enabled));
+
+                MutationResult rename = mutation.PlayerSpawnRename("player-1", "start-point");
+                Assert.Equal("player_spawn_rename", rename.Verb);
+                Assert.Equal("start-point", rename.Id);
+                Assert.True(session.WithDocument((doc, _) => doc.PlayerSpawns.Any(s => s.Id == "start-point")));
+                Assert.False(session.WithDocument((doc, _) => doc.PlayerSpawns.Any(s => s.Id == "player-1")));
+
+                MutationResult remove = mutation.PlayerSpawnRemove("start-point");
+                Assert.Equal("player_spawn_remove", remove.Verb);
+                Assert.False(session.WithDocument((doc, _) => doc.PlayerSpawns.Any(s => s.Id == "start-point")));
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void PlayerSpawnRename_ToTakenId_ThrowsAndDocumentUnchanged()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                mutation.PlayerSpawnAdd(0f, 0f, id: "player-a");
+                mutation.PlayerSpawnAdd(1f, 1f, id: "player-b");
+
+                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
+                bool dirtyBefore = session.IsDirty;
+
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                    mutation.PlayerSpawnRename("player-a", "player-b"));
+                Assert.Contains("already exists", ex.Message);
+
+                string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
+                Assert.Equal(before, after);
+                Assert.Equal(dirtyBefore, session.IsDirty);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

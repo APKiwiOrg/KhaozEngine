@@ -13,9 +13,10 @@ namespace KhaozEngine.Tests.MapEditTool
     /// <summary>Headless tests for the Task 5 verb surface added to <see cref="MutationService"/> and
     /// <see cref="QueryService"/>: feature/exclusion rename, exclusion layer targeting, the widened terrain-scalar
     /// edit, the biome band triad, the scatter/companion layer triads plus their rename verbs, and the
-    /// <see cref="QueryService.ProceduralInfo"/> read path. Every mutation runs against
-    /// <see cref="SampleDocs.SampleDoc"/> opened through a fresh session and holds the shared apply, validate,
-    /// revert-on-error invariant the rest of the suite already exercises.</summary>
+    /// <see cref="QueryService.ProceduralInfo"/> read path, plus the Task 6 companion host-kinds mismatch note on
+    /// companion_layer_add/edit and the computed <see cref="CompanionLayerInfo.HostKindsMatchHost"/> flag. Every
+    /// mutation runs against <see cref="SampleDocs.SampleDoc"/> opened through a fresh session and holds the
+    /// shared apply, validate, revert-on-error invariant the rest of the suite already exercises.</summary>
     public class MutationServiceProceduralTests
     {
         static string NewTempDir()
@@ -590,7 +591,88 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        [Fact]
+        public void CompanionLayerAdd_MismatchWarnsInDetail()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                // SampleDoc's "trees" layer only ever places "pine_a" (its one rule), so "oak_a" matches nothing.
+                MutationResult add = mutation.CompanionLayerAdd("mismatched", "trees", hostKinds: new[] { "oak_a" });
+                Assert.Equal("companion_layer_add", add.Verb);
+                Assert.Contains("host kinds match no kind in the host layer", add.Detail);
+
+                // A host kind that IS one of "trees"'s rule kinds carries no warning.
+                MutationResult matching = mutation.CompanionLayerAdd("matched", "trees", hostKinds: new[] { "pine_a" });
+                Assert.DoesNotContain("host kinds match no kind in the host layer", matching.Detail);
+
+                // An empty HostKinds (match-all) never warns either.
+                MutationResult empty = mutation.CompanionLayerAdd("catch-all", "trees");
+                Assert.DoesNotContain("host kinds match no kind in the host layer", empty.Detail);
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void CompanionLayerEdit_MismatchWarnsInDetail()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                // SampleDoc's "understory" starts matching (HostKinds=[pine_a] intersects "trees"'s one rule).
+                // Editing HostKinds to something "trees" never places should surface the mismatch note.
+                MutationResult edit = mutation.CompanionLayerEdit("understory", hostKinds: new[] { "oak_a" });
+                Assert.Equal("companion_layer_edit", edit.Verb);
+                Assert.Contains("host kinds match no kind in the host layer", edit.Detail);
+
+                // Editing back to a matching kind clears the warning.
+                MutationResult fixedEdit = mutation.CompanionLayerEdit("understory", hostKinds: new[] { "pine_a" });
+                Assert.DoesNotContain("host kinds match no kind in the host layer", fixedEdit.Detail);
+
+                // Clearing HostKinds to empty (match-all) never warns.
+                MutationResult cleared = mutation.CompanionLayerEdit("understory", hostKinds: Array.Empty<string>());
+                Assert.DoesNotContain("host kinds match no kind in the host layer", cleared.Detail);
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
         // ---- procedural_info read path --------------------------------------------------------------------------
+
+        [Fact]
+        public void ProceduralInfo_HostKindsMatchFlag()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                var query = new QueryService(session);
+
+                // SampleDoc's "understory" HostKinds=[pine_a] intersects "trees"'s one rule (pine_a): matches.
+                CompanionLayerInfo understory = query.ProceduralInfo().CompanionLayers.Single(l => l.Name == "understory");
+                Assert.True(understory.HostKindsMatchHost);
+
+                // Empty HostKinds means match-all regardless of the host's rule kinds.
+                mutation.CompanionLayerEdit("understory", hostKinds: Array.Empty<string>());
+                CompanionLayerInfo emptyHostKinds = query.ProceduralInfo().CompanionLayers.Single(l => l.Name == "understory");
+                Assert.True(emptyHostKinds.HostKindsMatchHost);
+
+                // A populated HostKinds with zero intersection against the host's rule kinds does not match.
+                mutation.CompanionLayerEdit("understory", hostKinds: new[] { "oak_a" });
+                CompanionLayerInfo mismatched = query.ProceduralInfo().CompanionLayers.Single(l => l.Name == "understory");
+                Assert.False(mismatched.HostKindsMatchHost);
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
 
         [Fact]
         public void ProceduralInfo_ReturnsFullSetup()
@@ -626,6 +708,7 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal("trees", understory.HostLayer);
                 Assert.Equal(new[] { "pine_a" }, understory.HostKinds);
                 Assert.Equal(new[] { "fern" }, understory.Kinds);
+                Assert.True(understory.HostKindsMatchHost);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

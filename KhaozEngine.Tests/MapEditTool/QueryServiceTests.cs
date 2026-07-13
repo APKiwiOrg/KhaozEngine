@@ -11,8 +11,9 @@ using SampleDocs = KhaozEngine.Tests.MapDoc.MapDocumentFileTests;
 namespace KhaozEngine.Tests.MapEditTool
 {
     /// <summary>Headless tests for <see cref="QueryService"/>: ground sampling, walkability (slope composed with
-    /// a water gate), rect scans over placements/spawns and a scatter layer preview, and the brute-force flat-area
-    /// search. All queries run against <see cref="SampleDocs.SampleDoc"/> opened through a fresh session.</summary>
+    /// a water gate), rect scans over placements/spawns/player spawns and a scatter layer preview, and the
+    /// brute-force flat-area search. All queries run against <see cref="SampleDocs.SampleDoc"/> opened through a
+    /// fresh session.</summary>
     public class QueryServiceTests
     {
         static string NewTempDir()
@@ -158,6 +159,44 @@ namespace KhaozEngine.Tests.MapEditTool
                 PlacementsInRectResult disjoint = query.PlacementsInRect(60f, 60f, 90f, 90f);
                 Assert.Empty(disjoint.Placements);
                 Assert.Empty(disjoint.Spawns);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void PlacementsInRect_IncludesPlayerSpawns()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, QueryService query) = OpenSample(dir);
+
+                session.Mutate((d, r) =>
+                {
+                    d.PlayerSpawns.Add(new MapPlayerSpawn
+                    {
+                        Id = "player-1", X = -25f, Z = 15f, Yaw = 1.5f, Enabled = false, Tags = { "start" },
+                    });
+                    d.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-2", X = 200f, Z = 200f });
+                    return 0;
+                }, worldChanged: false);
+
+                TerrainField field = session.Field();
+
+                // "player-1" is at (-25, 15), inside this rect. "player-2" at (200, 200) is not.
+                PlacementsInRectResult inRect = query.PlacementsInRect(-40f, 10f, -20f, 30f);
+                PlayerSpawnEntry entry = Assert.Single(inRect.PlayerSpawns);
+                Assert.Equal("player-1", entry.Id);
+                Assert.Equal(-25f, entry.X);
+                Assert.Equal(15f, entry.Z);
+                Assert.Equal(1.5f, entry.Yaw);
+                Assert.False(entry.Enabled);
+                Assert.Equal(field.SampleHeight(-25f, 15f), entry.GroundY);
+                Assert.Contains("start", entry.Tags);
+
+                // A disjoint rect finds neither player spawn.
+                PlacementsInRectResult disjoint = query.PlacementsInRect(60f, 60f, 90f, 90f);
+                Assert.Empty(disjoint.PlayerSpawns);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

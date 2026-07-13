@@ -28,11 +28,15 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 57 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 63 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
-        /// triads plus their rename verbs, and the procedural_info read verb), plus the scatter_rule
-        /// add/edit/remove triad that closes the scatter-layer-rules MCP parity gap.</summary>
+        /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
+        /// add/edit/remove triad that closes the scatter-layer-rules MCP parity gap, and the Task 6 player_spawn
+        /// verb family (add/move/set_yaw/set_enabled/rename/remove). player_spawn_set_yaw stays its own verb
+        /// rather than folding yaw into player_spawn_move, mirroring how placement_rotate stays a separate verb
+        /// from placement_move (the underlying commands are already distinct with independent TryMerge
+        /// coalescing, so the MCP verb granularity follows the command granularity).</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
@@ -45,6 +49,9 @@ namespace KhaozEngine.Tests.MapEditTool
             "placement_remove",
             // Spawns
             "spawn_add", "spawn_move", "spawn_set_enabled", "spawn_rename", "spawn_remove",
+            // Player spawns
+            "player_spawn_add", "player_spawn_move", "player_spawn_set_yaw", "player_spawn_set_enabled",
+            "player_spawn_rename", "player_spawn_remove",
             // Terrain
             "terrain_edit", "feature_add", "feature_edit", "feature_remove", "feature_reorder", "feature_rename",
             "biome_band_add", "biome_band_edit", "biome_band_remove",
@@ -157,6 +164,42 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal("hut", added.Kind);
                 Assert.Equal(12f, added.X);
                 Assert.Equal(-3.5f, added.Z);
+                Assert.True(session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public async Task PlayerSpawnAdd_ThroughMcp_MutatesSessionAndReportsId()
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            string dir = NewTempDir();
+            try
+            {
+                string path = Path.Combine(dir, "zone.map.json");
+                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
+
+                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+
+                await harness.Client.CallToolAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+
+                CallToolResult result = await harness.Client.CallToolAsync("player_spawn_add",
+                    new Dictionary<string, object?> { ["x"] = 5.0, ["z"] = 6.0, ["yaw"] = 0.5 },
+                    cancellationToken: cts.Token);
+                Assert.NotEqual(true, result.IsError);
+
+                MutationResult mutation = Deserialize<MutationResult>(result);
+                Assert.Equal("player_spawn_add", mutation.Verb);
+                Assert.Equal("player-1", mutation.Id);
+
+                // The mutation reached the same session singleton the tool resolved from DI.
+                var session = harness.Services.GetRequiredService<MapEditSession>();
+                MapPlayerSpawn added = session.WithDocument((doc, _) => doc.PlayerSpawns.Single(s => s.Id == "player-1"));
+                Assert.Equal(5f, added.X);
+                Assert.Equal(6f, added.Z);
+                Assert.Equal(0.5f, added.Yaw);
+                Assert.True(added.Enabled);
                 Assert.True(session.IsDirty);
             }
             finally { Directory.Delete(dir, recursive: true); }

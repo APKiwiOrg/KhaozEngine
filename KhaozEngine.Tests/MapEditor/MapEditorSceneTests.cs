@@ -236,9 +236,10 @@ namespace KhaozEngine.Tests.MapEditor
             return null!;   // unreachable
         }
 
-        // Type-scoped lookup (unlike the generic RowByLabel further down): the shape-kind selector and its own
-        // "Shape" group HeaderRow (Task 5 grouping) share the label "Shape", so a plain label search can return
-        // either one depending on row order. Only a ChoiceRow is ever the kind selector.
+        // Type-scoped lookup (unlike the generic RowByLabel further down): the shape-kind selector used to share
+        // the label "Shape" with its own "Shape" group HeaderRow (Task 5 grouping), so a plain label search could
+        // return either one depending on row order. Renamed to "Kind" to un-confuse the two (see AddShapeKindRow),
+        // kept type-scoped here since only a ChoiceRow is ever the kind selector.
         static ChoiceRow ChoiceRowByLabel(PropertyGrid grid, string label)
         {
             foreach (PropertyRow row in grid.Rows)
@@ -1183,9 +1184,10 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
 
-            // A disc exclusion gets the editable shape surface: the kind selector (under the "Shape" group header,
-            // Task 5 grouping) plus one FloatRow per param.
-            Assert.NotNull(ChoiceRowByLabel(scene.Inspector, "Shape"));
+            // A disc exclusion gets the editable shape surface: the "Kind" selector (under the "Shape" group
+            // header, Task 5 grouping, renamed off "Shape" so it does not repeat the header) plus one FloatRow
+            // per param.
+            Assert.NotNull(ChoiceRowByLabel(scene.Inspector, "Kind"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterX"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterZ"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "Radius"));
@@ -1419,10 +1421,10 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
             scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
-            int shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Shape"));
+            int shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Kind"));
             Assert.IsType<ChoiceRow>(scene.Inspector.Rows[shapeRow]);
 
-            // The Shape kind row now sits after the "Identity" group header (Task 5 grouping put a header ahead of
+            // The Kind row now sits after the "Identity" group header (Task 5 grouping put a header ahead of
             // it), so its editor cell is looked up by index rather than assumed at Rows[0] / y 0..28. With two
             // options the open list stacks directly below the trigger, one trigger-height row per option. Tap the
             // trigger, then pick "rect".
@@ -1443,7 +1445,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "MinX"));
 
             // Converting back picks the rect's center plus half its max extent, landing on the original disc.
-            shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Shape"));
+            shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Kind"));
             OpenAndPickOption(scene.Inspector, ui, shapeRow, optionIndex: 0);   // "disc" is option 0
             var disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
             Near(2f, disc.CenterX);
@@ -2649,7 +2651,9 @@ namespace KhaozEngine.Tests.MapEditor
         // A document with at least one element of EVERY selection kind (Terrain is always present as the
         // singleton root), so EveryRow_HasDescription and Inspectors_AreGrouped can walk every inspector the
         // editor builds. The companion's HostKinds deliberately matches nothing in its host layer's rules
-        // ("maple" against a layer that only places "oak"), so the mismatch Warning row is present too.
+        // ("maple" against a layer that only places "oak"), so the mismatch Warning row is present too. The
+        // region is rect-shaped (not disc, like the exclusion) so the walk below covers both AddShapeRows
+        // branches, not just one of them repeated twice.
         static MapDocument EveryKindDoc()
         {
             MapDocument doc = ValidDoc();
@@ -2671,8 +2675,23 @@ namespace KhaozEngine.Tests.MapEditor
                 } },
             });
             doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = new List<string> { "trees" } });
-            doc.Regions.Add(new MapRegion { Name = "region-1", Shape = new DiscShapeDoc { Radius = 4f } });
+            doc.Regions.Add(new MapRegion
+            {
+                Name = "region-1",
+                Shape = new RectShapeDoc { MinX = -2f, MinZ = -2f, MaxX = 2f, MaxZ = 2f },
+            });
             doc.CompanionLayers.Add(new MapCompanionLayer { Name = "understory", HostLayer = "trees", HostKinds = { "maple" } });
+            return doc;
+        }
+
+        // A minimal document with a companion layer but NO scatter layers at all: BuildCompanionLayerInspector's
+        // HostLayer chooser has nothing to offer (hostOptions empty, HostLayer defaults to ""), routing it to the
+        // ReadOnlyRow fallback branch instead of the ChoiceRow branch EveryKindDoc's "understory" companion
+        // already walks (it has a live "trees" scatter layer to choose from).
+        static MapDocument CompanionNoScatterLayersDoc()
+        {
+            MapDocument doc = ValidDoc();
+            doc.CompanionLayers.Add(new MapCompanionLayer { Name = "lonely" });
             return doc;
         }
 
@@ -2734,6 +2753,14 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
             Assert.True(HasRow(scene.Inspector, "Warning"));
             AssertEveryRowDescribed(scene.Inspector, "CompanionLayer");
+
+            // A second, separate walk: a companion with no scatter layers to choose from routes HostLayer to its
+            // ReadOnlyRow fallback (see CompanionNoScatterLayersDoc), never covered by the "understory" companion
+            // above since it always has a live "trees" layer.
+            var noScatterScene = PushDocScene(CompanionNoScatterLayersDoc);
+            noScatterScene.Document.Selection.Set(SelectionKind.CompanionLayer, "lonely");
+            Assert.NotNull(ReadOnlyRowByLabel(noScatterScene.Inspector, "HostLayer"));
+            AssertEveryRowDescribed(noScatterScene.Inspector, "CompanionLayer (no scatter layers)");
         }
 
         // Asserts the CURRENT inspector carries at least the given group HeaderRow labels (order-independent,
@@ -2840,6 +2867,49 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Inspector.Update(ui, 0.016f);
 
             Assert.Null(scene.Inspector.HoveredRow);
+            Assert.Null(scene.ComputeTooltipContent());
+        }
+
+        [Fact]
+        public void ComputeTooltipContent_SurvivesInspectorRebuildMidFrame()
+        {
+            // A same-frame RebuildInspector (SyncShapeInspector's "All layers" mismatch check, driven by the
+            // deterministic ExclusionLayerRows_AllToggle_NullSemantics repro) clears and re-adds Rows wholesale
+            // but PropertyGrid has no seam to reset HoveredRow along with it, so a row hovered just before the
+            // rebuild is left dangling: still referenced by HoveredRow, but absent from the new Rows list.
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = null });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
+
+            BoolRow all = BoolRowByLabel(scene.Inspector, "All layers");
+            int allIndex = scene.Inspector.Rows.IndexOf(all);
+            Rect label = scene.Inspector.RowLabelBounds(allIndex);
+            var overRow = new Vector2(label.X + 5f, label.Y + label.Height * 0.5f);
+
+            var ui = new InputManager();
+            ui.Update(MouseFrame(overRow, leftDown: false));
+            scene.Inspector.Update(ui, 0.016f);
+            Assert.Same(all, scene.Inspector.HoveredRow);   // hovering a live, described row
+
+            // Flip All off: materializes the explicit layer list, which SyncShapeInspector notices next as an
+            // "All layers" mismatch against the inspector's build snapshot and rebuilds.
+            Assert.True(TapBool(all));
+            scene.SyncShapeInspector();
+
+            // The rebuild replaced Rows wholesale (fresh row instances) but never touched HoveredRow: it still
+            // references the OLD "All layers" row, now orphaned from the live Rows list.
+            Assert.DoesNotContain(all, scene.Inspector.Rows);
+            Assert.Same(all, scene.Inspector.HoveredRow);
+
+            // Before the fix this threw ArgumentOutOfRangeException: Rows.IndexOf(hovered) returned -1 for the
+            // orphaned row, and RowLabelBounds(-1) indexes straight into Rows[-1]. The seam degrades gracefully
+            // instead: no content for a row that no longer exists in the grid it is asked about.
             Assert.Null(scene.ComputeTooltipContent());
         }
 

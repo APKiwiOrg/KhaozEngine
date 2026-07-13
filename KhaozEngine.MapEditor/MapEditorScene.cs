@@ -81,9 +81,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     // (decision 6): only the "stays dark" intent and the DrawRounded call shape are.
     static readonly Color PanelBackground = new(0.115f, 0.12f, 0.165f, 0.95f);
     static readonly Color StatusBackground = new(0.075f, 0.08f, 0.105f, 0.97f);
-    /// <summary>Corner radius (points) for the rounded chrome panel fills, matching <see cref="GuiStyle.Modern"/>'s
-    /// own <c>CornerRadius</c> so the editor chrome and its inspector widgets read as one consistent style.</summary>
-    const float PanelCornerRadius = 7f;
+    /// <summary>Corner radius (points) for the rounded chrome panel fills, derived from <see cref="GuiStyle.Modern"/>
+    /// so the editor chrome and its inspector widgets read as one consistent style.</summary>
+    static readonly float PanelCornerRadius = GuiStyle.Modern.CornerRadius;
     static readonly Color SelectionHighlight = new(1.35f, 1.2f, 0.7f, 1f);
 
     // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish) and region (blue-ish), and
@@ -134,8 +134,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     TreeView _outline = null!;
     PropertyGrid _inspector = null!;
     // The inspector's hover tooltip, built lazily on first draw (see DrawInspectorTooltip): BuildChrome runs
-    // before a UiViewport exists, so no SpriteFont is resolvable yet at chrome-build time.
+    // before a UiViewport exists, so no SpriteFont is resolvable yet at chrome-build time. Rebuilt whenever the
+    // resolved SpriteFont instance changes (a DPI rebake, see DpiFont.For), since Tooltip's fonts are fixed at
+    // construction: _tooltipFont tracks which instance _tooltip was last built with.
     Tooltip? _tooltip;
+    SpriteFont? _tooltipFont;
 
     // Kit palette: a filter box above a category-grouped, collapsible tree. Spawn archetypes: a filter box above a
     // flat list (a TreeView with leaf-only roots, so it renders and hit-tests exactly like the palette minus the
@@ -616,6 +619,9 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // The inspector's hover tooltip: built lazily here (the PatchNotesView precedent, `_tooltip ??= new
     // Tooltip(font, font)`), because BuildChrome runs before a UiViewport (and so a resolved SpriteFont) exists.
+    // Rebuilt (not just re-anchored) whenever `font` is a different instance than the one it was last built with,
+    // since Tooltip's title/body fonts are fixed at construction and DpiFont.For re-bakes (and disposes the old
+    // SpriteFont) on a DPI change, a stale _tooltip would otherwise keep drawing with a disposed font forever.
     // Shown immediately while PropertyGrid.HoveredRow carries a non-null Description (no delay, matching every
     // other Tooltip consumer), anchored at the hovered row's label rect (top-center, so it opens upward over the
     // row like a standard hover tip), hidden the instant the hover leaves or the row has no Description. The
@@ -623,7 +629,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     // without a live SpriteFont (a real Tooltip instance only needs one to actually draw).
     void DrawInspectorTooltip(SpriteBatch batch, SpriteFont font, Vector2 viewport)
     {
-        _tooltip ??= new Tooltip(font, font);
+        if (_tooltip is null || !ReferenceEquals(_tooltipFont, font))
+        {
+            _tooltip = new Tooltip(font, font);
+            _tooltipFont = font;
+        }
         _tooltip.Viewport = viewport;
 
         if (ComputeTooltipContent() is { } content)
@@ -636,15 +646,20 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>
     /// The inspector hover tooltip's content for this frame: the current <see cref="PropertyGrid.HoveredRow"/>'s
     /// <see cref="PropertyRow.Description"/> plus the anchor point to show it at (the hovered row's label rect,
-    /// top-center via <see cref="PropertyGrid.RowLabelBounds(int)"/>), or null while nothing is hovered or the
-    /// hovered row carries no Description (a <see cref="HeaderRow"/>, or a row an implementer forgot to describe).
-    /// Pure and internal so a headless test can assert the hover-to-tooltip mapping without a live SpriteFont,
-    /// which <see cref="Tooltip"/> needs only to actually draw (see <see cref="DrawInspectorTooltip"/>).
+    /// top-center via <see cref="PropertyGrid.RowLabelBounds(int)"/>), or null while nothing is hovered, the
+    /// hovered row carries no Description (a <see cref="HeaderRow"/>, or a row an implementer forgot to describe),
+    /// or the hovered row was orphaned by a same-frame inspector rebuild: <c>SyncShapeInspector</c> can call
+    /// <c>RebuildInspector</c> after <see cref="PropertyGrid.Update"/> already set <see cref="PropertyGrid.HoveredRow"/>
+    /// this frame, and a rebuild clears and re-adds fresh row instances without resetting the hover, so the old row
+    /// can briefly outlive the grid it came from. Pure and internal so a headless test can assert the
+    /// hover-to-tooltip mapping without a live SpriteFont, which <see cref="Tooltip"/> needs only to actually draw
+    /// (see <see cref="DrawInspectorTooltip"/>).
     /// </summary>
     internal (LocalizedText Text, Vector2 Anchor)? ComputeTooltipContent()
     {
         if (_inspector.HoveredRow is not { Description: { } desc } hovered) return null;
         int index = _inspector.Rows.IndexOf(hovered);
+        if (index < 0) return null;   // orphaned by a same-frame RebuildInspector, see the summary above
         Rect label = _inspector.RowLabelBounds(index);
         return (desc, new Vector2(label.X + label.Width * 0.5f, label.Y));
     }
@@ -2493,10 +2508,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     // The shape-kind selector: disc <-> rect, converted center-preservingly (see ConvertShape). ChoiceRow fires
-    // the setter only on a real change, so re-picking the current kind never lands a command.
+    // the setter only on a real change, so re-picking the current kind never lands a command. Labeled "Kind"
+    // rather than "Shape" so it does not repeat the "Shape" group HeaderRow it sits directly under.
     void AddShapeKindRow(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute)
     {
-        _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Shape"), ShapeKindChoices,
+        _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Kind"), ShapeKindChoices,
             () => ShapeKind(shape()),
             v =>
             {

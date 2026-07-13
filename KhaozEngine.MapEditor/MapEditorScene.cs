@@ -63,8 +63,12 @@ public class MapEditorScene : GameScene, IGameScene3D
 {
     /// <summary>Toolbar height in points.</summary>
     const float ToolbarHeight = 40f;
-    /// <summary>Side-panel width in points (outline / palette on the left, inspector on the right).</summary>
-    const float PanelWidth = 260f;
+    /// <summary>Left side-panel width in points (the outline / palette column).</summary>
+    const float OutlinePanelWidth = 260f;
+    /// <summary>Right side-panel width in points (the inspector column). Wider than <see cref="OutlinePanelWidth"/>
+    /// so a scrubbed <see cref="NumberField"/> label and its value both read comfortably at
+    /// <see cref="PropertyGrid.LabelFraction"/>'s default split.</summary>
+    const float InspectorPanelWidth = 340f;
     /// <summary>Status-strip height in points.</summary>
     const float StatusHeight = 26f;
     /// <summary>Height in points of the filter box slotted at the top of the palette / spawn-list region.</summary>
@@ -72,8 +76,14 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>Falls back to this world-space box height for a kit id absent from the manifests.</summary>
     const float FallbackKindHeight = 2f;
 
-    static readonly Color PanelBackground = new(0.09f, 0.09f, 0.12f, 0.94f);
-    static readonly Color StatusBackground = new(0.05f, 0.05f, 0.07f, 0.96f);
+    // A touch lighter than a flat black panel so the chrome reads as a raised card over the viewport, matching
+    // GuiStyle.Modern's own lifted-surface look (see EditorStyle below). Colors are not pinned exact in tests
+    // (decision 6): only the "stays dark" intent and the DrawRounded call shape are.
+    static readonly Color PanelBackground = new(0.115f, 0.12f, 0.165f, 0.95f);
+    static readonly Color StatusBackground = new(0.075f, 0.08f, 0.105f, 0.97f);
+    /// <summary>Corner radius (points) for the rounded chrome panel fills, matching <see cref="GuiStyle.Modern"/>'s
+    /// own <c>CornerRadius</c> so the editor chrome and its inspector widgets read as one consistent style.</summary>
+    const float PanelCornerRadius = 7f;
     static readonly Color SelectionHighlight = new(1.35f, 1.2f, 0.7f, 1f);
 
     // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish) and region (blue-ish), and
@@ -123,6 +133,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     TabBar _toolbar = null!;
     TreeView _outline = null!;
     PropertyGrid _inspector = null!;
+    // The inspector's hover tooltip, built lazily on first draw (see DrawInspectorTooltip): BuildChrome runs
+    // before a UiViewport exists, so no SpriteFont is resolvable yet at chrome-build time.
+    Tooltip? _tooltip;
 
     // Kit palette: a filter box above a category-grouped, collapsible tree. Spawn archetypes: a filter box above a
     // flat list (a TreeView with leaf-only roots, so it renders and hit-tests exactly like the palette minus the
@@ -575,9 +588,10 @@ public class MapEditorScene : GameScene, IGameScene3D
         SpriteFont font = _font.For(ui.DpiScale);
         ChromeLayout L = ComputeLayout(ui.Width, ui.Height);
 
-        Fill(batch, L.Outline, PanelBackground);
-        Fill(batch, L.Inspector, PanelBackground);
-        Fill(batch, L.Status, StatusBackground);
+        FillPanel(batch, L.Toolbar, PanelBackground);
+        FillPanel(batch, L.Outline, PanelBackground);
+        FillPanel(batch, L.Inspector, PanelBackground);
+        FillPanel(batch, L.Status, StatusBackground);
 
         _toolbar.Bounds = L.Toolbar;
         _toolbar.Font = font;
@@ -593,6 +607,46 @@ public class MapEditorScene : GameScene, IGameScene3D
         batch.DrawString(font, StatusLine(),
             new Vector2(MathF.Floor(L.Status.X + 8f), MathF.Floor(L.Status.Y + (StatusHeight - font.LineHeight) * 0.5f)),
             new Color(0.85f, 0.87f, 0.92f, 1f));
+
+        // Drawn LAST, after every other chrome element (including the inspector, whose own Draw already clears its
+        // scissor at the end): a hovered row's Description tooltip must escape the grid's clip and overlay
+        // everything else, the PatchNotesView.DrawCloseTooltip precedent (drawn after ClearScissor).
+        DrawInspectorTooltip(batch, font, new Vector2(ui.Width, ui.Height));
+    }
+
+    // The inspector's hover tooltip: built lazily here (the PatchNotesView precedent, `_tooltip ??= new
+    // Tooltip(font, font)`), because BuildChrome runs before a UiViewport (and so a resolved SpriteFont) exists.
+    // Shown immediately while PropertyGrid.HoveredRow carries a non-null Description (no delay, matching every
+    // other Tooltip consumer), anchored at the hovered row's label rect (top-center, so it opens upward over the
+    // row like a standard hover tip), hidden the instant the hover leaves or the row has no Description. The
+    // hover-to-content decision itself is the pure ComputeTooltipContent seam below, so it stays headless-testable
+    // without a live SpriteFont (a real Tooltip instance only needs one to actually draw).
+    void DrawInspectorTooltip(SpriteBatch batch, SpriteFont font, Vector2 viewport)
+    {
+        _tooltip ??= new Tooltip(font, font);
+        _tooltip.Viewport = viewport;
+
+        if (ComputeTooltipContent() is { } content)
+            _tooltip.Show(content.Text, Array.Empty<TooltipLine>(), content.Anchor);
+        else
+            _tooltip.Hide();
+        _tooltip.Draw(batch, _white);
+    }
+
+    /// <summary>
+    /// The inspector hover tooltip's content for this frame: the current <see cref="PropertyGrid.HoveredRow"/>'s
+    /// <see cref="PropertyRow.Description"/> plus the anchor point to show it at (the hovered row's label rect,
+    /// top-center via <see cref="PropertyGrid.RowLabelBounds(int)"/>), or null while nothing is hovered or the
+    /// hovered row carries no Description (a <see cref="HeaderRow"/>, or a row an implementer forgot to describe).
+    /// Pure and internal so a headless test can assert the hover-to-tooltip mapping without a live SpriteFont,
+    /// which <see cref="Tooltip"/> needs only to actually draw (see <see cref="DrawInspectorTooltip"/>).
+    /// </summary>
+    internal (LocalizedText Text, Vector2 Anchor)? ComputeTooltipContent()
+    {
+        if (_inspector.HoveredRow is not { Description: { } desc } hovered) return null;
+        int index = _inspector.Rows.IndexOf(hovered);
+        Rect label = _inspector.RowLabelBounds(index);
+        return (desc, new Vector2(label.X + label.Width * 0.5f, label.Y));
     }
 
     /// <summary>Submits the transform-gizmo meshes for the current selection. The affordance-to-mesh-set
@@ -639,7 +693,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     void DrawPalette(SpriteBatch batch, SpriteFont font, Rect bounds)
     {
         if (!BottomPanelVisible) return;   // no panel this frame: the outline owns the whole left column
-        Fill(batch, bounds, PanelBackground);
+        FillPanel(batch, bounds, PanelBackground);
         if (FeatureMode)
         {
             _featureList.Bounds = bounds;   // no filter box: the feature-type list fills the whole panel
@@ -670,20 +724,20 @@ public class MapEditorScene : GameScene, IGameScene3D
     void BuildChrome()
     {
         _toolbar = new TabBar(ToolLabels);
-        _outline = new TreeView(default) { RowHeight = 22f };
-        _inspector = new PropertyGrid(default);
+        _outline = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
+        _inspector = new PropertyGrid(default) { EditorStyle = GuiStyle.Modern };
         _outline.OnSelected = OnOutlineSelected;
         _outline.OnReordered = OnOutlineReordered;
 
         _paletteFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter kits...") };
-        _paletteTree = new TreeView(default) { RowHeight = 22f };
+        _paletteTree = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
         _paletteTree.OnSelected = OnPaletteSelected;
 
         _spawnFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter spawns...") };
-        _spawnList = new TreeView(default) { RowHeight = 22f };
+        _spawnList = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
         _spawnList.OnSelected = OnSpawnSelected;
 
-        _featureList = new TreeView(default) { RowHeight = 22f };
+        _featureList = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
         _featureList.OnSelected = OnFeatureTypeSelected;
     }
 
@@ -1313,18 +1367,30 @@ public class MapEditorScene : GameScene, IGameScene3D
     // not player-facing). Rebuilt on every selection change, so the panel tracks the live scatter-layer set.
     void BuildLayersInspector()
     {
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Groups"), LocalizedText.Raw(
+            "Shows or hides a whole category of editor markers and shapes in the viewport. Editor view only, " +
+            "turning a group off never changes the saved document or what the game loads, it only stops that " +
+            "category from drawing and being pickable here.")));
         foreach (VisibilityGroup group in Enum.GetValues<VisibilityGroup>())
         {
             VisibilityGroup g = group;   // capture per iteration for the closures
             _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(GroupLabel(g)),
-                () => _visibility.GetGroup(g), v => _visibility.SetGroup(g, v)));
+                () => _visibility.GetGroup(g), v => _visibility.SetGroup(g, v),
+                LocalizedText.Raw($"Shows or hides every {GroupLabel(g)} in the viewport. Editor view only, " +
+                    "does not affect the saved document or the game.")));
         }
+        if (_document.Doc.ScatterLayers.Count > 0)
+            _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Scatter Layers"), LocalizedText.Raw(
+                "Streams or hides one named scatter layer's placed props in the viewport, independent of the " +
+                "whole-group toggles above.")));
         foreach (MapScatterLayer layer in _document.Doc.ScatterLayers)
         {
             string name = layer.Name;
             _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(name),
                 () => _visibility.GetLayer(name),
-                v => { _visibility.SetLayer(name, v); RebuildWorldForVisibility(); }));
+                v => { _visibility.SetLayer(name, v); RebuildWorldForVisibility(); },
+                LocalizedText.Raw($"Streams or hides the '{name}' scatter layer's placed props in the viewport. " +
+                    "Editor view only, does not affect the saved document.")));
         }
     }
 
@@ -1355,37 +1421,69 @@ public class MapEditorScene : GameScene, IGameScene3D
     // round to an int on write. Biome bands themselves are edited via the Biomes outline category, not here.
     void BuildTerrainInspector()
     {
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Water")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("WaterLevel"),
             () => _document.Doc.Terrain.WaterLevel,
-            v => _document.Execute(new EditTerrainCommand(newWaterLevel: v, oldWaterLevel: _document.Doc.Terrain.WaterLevel))));
+            v => _document.Execute(new EditTerrainCommand(newWaterLevel: v, oldWaterLevel: _document.Doc.Terrain.WaterLevel)),
+            description: LocalizedText.Raw(
+                "World-space height, in world units, of the flat water plane. Terrain below this height reads as " +
+                "submerged. Also feeds scatter placement, so raising or lowering it can drown or reveal existing " +
+                "prop placements on the next world rebuild.")));
+
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("World")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Seed"),
             () => _document.Doc.Terrain.Seed,
             v => _document.Execute(new EditTerrainCommand(
                 newSeed: (int)MathF.Round(v), oldSeed: _document.Doc.Terrain.Seed)),
-            dragScale: 1f, decimals: 0));
+            dragScale: 1f, decimals: 0,
+            description: LocalizedText.Raw(
+                "Random seed driving the terrain noise and scatter placement. Two documents with the same seed " +
+                "and the same parameters below generate identical terrain. Change it to get a different variation " +
+                "of the same settings.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("BiomeBlend"),
             () => _document.Doc.Terrain.BiomeBlend,
             v => _document.Execute(new EditTerrainCommand(newBiomeBlend: v, oldBiomeBlend: _document.Doc.Terrain.BiomeBlend)),
-            min: 0f));
+            min: 0f,
+            description: LocalizedText.Raw(
+                "Blend distance, in world units, across a biome band boundary. Higher values soften the " +
+                "transition between two adjacent biomes' height and scatter rules, lower values make the " +
+                "boundary sharper.")));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Biomes"),
+            () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture),
+            description: LocalizedText.Raw(
+                "Number of biome bands currently defined on this terrain. Bands are added, removed, and edited " +
+                "via the Biomes category in the outline, not here.")));
+
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Noise")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleFrequency"),
             () => _document.Doc.Terrain.GentleFrequency,
             v => _document.Execute(new EditTerrainCommand(newGentleFrequency: v, oldGentleFrequency: _document.Doc.Terrain.GentleFrequency)),
-            min: 0f, dragScale: 0.001f, decimals: 3));
+            min: 0f, dragScale: 0.001f, decimals: 3,
+            description: LocalizedText.Raw(
+                "Feature size, in inverse world units, of the broad rolling hills layer. Lower values stretch the " +
+                "hills wider and smoother, higher values pack them closer together.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleAmplitude"),
             () => _document.Doc.Terrain.GentleAmplitude,
             v => _document.Execute(new EditTerrainCommand(newGentleAmplitude: v, oldGentleAmplitude: _document.Doc.Terrain.GentleAmplitude)),
-            min: 0f));
+            min: 0f,
+            description: LocalizedText.Raw(
+                "Height swing, in world units, of the broad rolling hills layer. Higher values make the gentle " +
+                "hills taller, zero flattens them out entirely.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailFrequency"),
             () => _document.Doc.Terrain.DetailFrequency,
             v => _document.Execute(new EditTerrainCommand(newDetailFrequency: v, oldDetailFrequency: _document.Doc.Terrain.DetailFrequency)),
-            min: 0f, dragScale: 0.001f, decimals: 3));
+            min: 0f, dragScale: 0.001f, decimals: 3,
+            description: LocalizedText.Raw(
+                "Feature size, in inverse world units, of the fine detail noise layered on top of the gentle " +
+                "hills. Higher values pack the small bumps closer together for a rougher surface.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailOctaves"),
             () => _document.Doc.Terrain.DetailOctaves,
             v => _document.Execute(new EditTerrainCommand(
                 newDetailOctaves: (int)MathF.Round(v), oldDetailOctaves: _document.Doc.Terrain.DetailOctaves)),
-            min: 1f, dragScale: 1f, decimals: 0));
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Biomes"),
-            () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture)));
+            min: 1f, dragScale: 1f, decimals: 0,
+            description: LocalizedText.Raw(
+                "Number of detail noise layers summed together. More octaves add finer, more varied bumps to the " +
+                "terrain surface but cost more to generate.")));
     }
 
     // The inline-rename Name row shared by the region, placement, and spawn inspectors. A closure tracks the
@@ -1395,7 +1493,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     // loses focus, see UpdateChrome) so the name-keyed selection follows the rename. Returns a getter for the
     // live key so the caller's remaining rows track the element across a rename.
     Func<string> AddNameRow(SelectionKind kind, string key, Func<string, bool> exists,
-        Func<string, string, IEditorCommand> rename)
+        Func<string, string, IEditorCommand> rename, LocalizedText description)
     {
         string current = key;
         var row = new TextRow(LocalizedText.Raw("Name"),
@@ -1411,7 +1509,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 _pendingSelectId = v;
                 _document.Execute(rename(current, v));
                 current = v;
-            });
+            }, description: description);
         _nameRow = row;
         _inspector.Rows.Add(row);
         return () => current;
@@ -1427,7 +1525,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     // own GuardNoFeatureName/GuardNoExclusionName check (normalized non-empty, Ordinal, excluding this index),
     // so the row rejects a collision before the command would throw.
     void AddIndexNameRow(int index, Func<int, string> getName, Func<string, int, bool> nameExists,
-        Func<int, string, string, IEditorCommand> rename)
+        Func<int, string, string, IEditorCommand> rename, LocalizedText description)
     {
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Name"),
             () => getName(index),
@@ -1437,51 +1535,84 @@ public class MapEditorScene : GameScene, IGameScene3D
                 if (string.Equals(v, old, StringComparison.Ordinal)) return;   // unchanged: no command
                 if (v.Length > 0 && nameExists(v, index)) return;   // duplicate target: reject before the command throws
                 _document.Execute(rename(index, v, old));
-            }));
+            }, description: description));
     }
 
     // The per-element "Visible" toggle, bound to the visibility hidden set (Visible on == not hidden). Added to
     // every element inspector so the operator can hide a single placement / spawn / feature / exclusion / region
     // from the viewport (draws and picks) while it stays in the outline. `id` is polled through a getter so a
     // renamable element (its key follows the rename via the caller's `cur()` closure) keeps toggling the right key.
+    // The description is the same for every caller (the toggle means the same thing everywhere), so it is fixed
+    // here rather than threaded through every call site.
     void AddVisibleRow(SelectionKind kind, Func<string> id)
     {
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Visible"),
             () => !_visibility.IsElementHidden(kind, id()),
-            v => _visibility.SetElementHidden(kind, id(), !v)));
+            v => _visibility.SetElementHidden(kind, id(), !v),
+            LocalizedText.Raw(
+                "Hides this element from the viewport (both drawing and picking) while it stays in the outline " +
+                "and the saved document. Editor view only, does not affect the game.")));
     }
 
     void BuildPlacementInspector(string id)
     {
         if (Placement(id) is null) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
         Func<string> cur = AddNameRow(SelectionKind.Placement, id,
-            v => Placement(v) is not null, (oldId, newId) => new RenamePlacementCommand(oldId, newId));
+            v => Placement(v) is not null, (oldId, newId) => new RenamePlacementCommand(oldId, newId),
+            LocalizedText.Raw(
+                "Unique id for this placement. Renaming it updates the outline node and the current selection to " +
+                "follow the new id. Must be non-empty and not collide with another placement's id."));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
-            () => Placement(cur())?.X ?? 0f, v => MovePlacement(cur(), x: v)));
+            () => Placement(cur())?.X ?? 0f, v => MovePlacement(cur(), x: v),
+            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
-            () => Placement(cur())?.Z ?? 0f, v => MovePlacement(cur(), z: v)));
+            () => Placement(cur())?.Z ?? 0f, v => MovePlacement(cur(), z: v),
+            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
-            () => Placement(cur())?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(cur(), v))));
+            () => Placement(cur())?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(cur(), v)),
+            description: LocalizedText.Raw(
+                "Facing rotation around the vertical (Y) axis, in radians.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Scale"),
             () => Placement(cur())?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(cur(), v)),
-            min: 0.01f));
+            min: 0.01f,
+            description: LocalizedText.Raw(
+                "Uniform scale multiplier applied to the placed kit's mesh. 1 is the kit's authored size, below " +
+                "1 shrinks it, above 1 grows it.")));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         AddVisibleRow(SelectionKind.Placement, cur);
     }
 
     void BuildSpawnInspector(string id)
     {
         if (Spawn(id) is null) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
         Func<string> cur = AddNameRow(SelectionKind.Spawn, id,
-            v => Spawn(v) is not null, (oldId, newId) => new RenameSpawnCommand(oldId, newId));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
-            () => Spawn(cur())?.X ?? 0f, v => MoveSpawn(cur(), x: v)));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
-            () => Spawn(cur())?.Z ?? 0f, v => MoveSpawn(cur(), z: v)));
-        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
-            () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v))));
+            v => Spawn(v) is not null, (oldId, newId) => new RenameSpawnCommand(oldId, newId),
+            LocalizedText.Raw(
+                "Unique id for this spawn marker. Renaming it updates the outline node and the current selection " +
+                "to follow the new id. Must be non-empty and not collide with another spawn's id."));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Archetype"),
             () => Spawn(cur())?.ArchetypeId ?? "",
-            v => { if (Spawn(cur()) is not null) _document.Execute(new SetSpawnArchetypeCommand(cur(), v)); }));
+            v => { if (Spawn(cur()) is not null) _document.Execute(new SetSpawnArchetypeCommand(cur(), v)); },
+            description: LocalizedText.Raw(
+                "Id of the NPC archetype spawned here, matched against the game's own archetype registry (the " +
+                "spawn-tool palette below lists the ids the current game offers). The editor accepts any text " +
+                "here, so a typo only surfaces once the game fails to resolve it.")));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+            () => Spawn(cur())?.X ?? 0f, v => MoveSpawn(cur(), x: v),
+            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            () => Spawn(cur())?.Z ?? 0f, v => MoveSpawn(cur(), z: v),
+            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
+            () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v)),
+            description: LocalizedText.Raw(
+                "Whether the game spawns an NPC here at all. A disabled spawn stays in the document and the " +
+                "outline but never produces an NPC.")));
         AddVisibleRow(SelectionKind.Spawn, cur);
     }
 
@@ -1495,16 +1626,31 @@ public class MapEditorScene : GameScene, IGameScene3D
     void BuildPlayerSpawnInspector(string id)
     {
         if (PlayerSpawn(id) is null) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
         Func<string> cur = AddNameRow(SelectionKind.PlayerSpawn, id,
-            v => PlayerSpawn(v) is not null, (oldId, newId) => new RenamePlayerSpawnCommand(oldId, newId));
+            v => PlayerSpawn(v) is not null, (oldId, newId) => new RenamePlayerSpawnCommand(oldId, newId),
+            LocalizedText.Raw(
+                "Unique id for this player start. Game code picks which player spawn to use by this id (there is " +
+                "no archetype, that choice is game code's concern), so renaming it changes what the game must " +
+                "reference. Must be non-empty and not collide with another player spawn's id."));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
-            () => PlayerSpawn(cur())?.X ?? 0f, v => MovePlayerSpawn(cur(), x: v)));
+            () => PlayerSpawn(cur())?.X ?? 0f, v => MovePlayerSpawn(cur(), x: v),
+            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
-            () => PlayerSpawn(cur())?.Z ?? 0f, v => MovePlayerSpawn(cur(), z: v)));
+            () => PlayerSpawn(cur())?.Z ?? 0f, v => MovePlayerSpawn(cur(), z: v),
+            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
-            () => PlayerSpawn(cur())?.Yaw ?? 0f, v => _document.Execute(new SetPlayerSpawnYawCommand(cur(), v))));
+            () => PlayerSpawn(cur())?.Yaw ?? 0f, v => _document.Execute(new SetPlayerSpawnYawCommand(cur(), v)),
+            description: LocalizedText.Raw(
+                "Facing rotation around the vertical (Y) axis, in radians, the direction the player faces on " +
+                "spawn.")));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
-            () => PlayerSpawn(cur())?.Enabled ?? false, v => _document.Execute(new SetPlayerSpawnEnabledCommand(cur(), v))));
+            () => PlayerSpawn(cur())?.Enabled ?? false, v => _document.Execute(new SetPlayerSpawnEnabledCommand(cur(), v)),
+            description: LocalizedText.Raw(
+                "Whether this player start is a candidate the game can use at all. A disabled player spawn stays " +
+                "in the document but game code should skip it when picking a start.")));
         AddVisibleRow(SelectionKind.PlayerSpawn, cur);
     }
 
@@ -1516,53 +1662,99 @@ public class MapEditorScene : GameScene, IGameScene3D
         MapFeature? feature = FeatureAt(index);
         if (feature is null) return;
 
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Type"), () => FeatureAt(index)?.Type ?? ""));
-        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Apply order"), () => FeatureOrderText(index)));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Type"), () => FeatureAt(index)?.Type ?? "",
+            description: LocalizedText.Raw(
+                "Which terrain-sculpting operation this feature applies (lake, flatten, rim, or ridge). Fixed at " +
+                "creation, not editable here.")));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Apply order"), () => FeatureOrderText(index),
+            description: LocalizedText.Raw(
+                "This feature's position in the fold order and the total feature count. Features apply in list " +
+                "order, so the LAST feature covering a given point wins where two overlap. Reorder with " +
+                "Ctrl+Up / Ctrl+Down.")));
         AddIndexNameRow(index, i => FeatureAt(i)?.Name ?? "", FeatureNameExists,
-            (i, newName, oldName) => new RenameFeatureCommand(i, newName, oldName));
+            (i, newName, oldName) => new RenameFeatureCommand(i, newName, oldName),
+            LocalizedText.Raw(
+                "Optional display name shown in the outline instead of the index and type. Leave empty to fall " +
+                "back to the index label. Must not duplicate another feature's name."));
+
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Shape")));
         switch (feature)
         {
             case LakeFeatureDoc:
-                AddFeatureRow<LakeFeatureDoc>(index, "CenterX", f => f.CenterX, (f, v) => f.CenterX = v);
-                AddFeatureRow<LakeFeatureDoc>(index, "CenterZ", f => f.CenterZ, (f, v) => f.CenterZ = v);
-                AddFeatureRow<LakeFeatureDoc>(index, "Radius", f => f.Radius, (f, v) => f.Radius = v);
-                AddFeatureRow<LakeFeatureDoc>(index, "Depth", f => f.Depth, (f, v) => f.Depth = v);
+                AddFeatureRow<LakeFeatureDoc>(index, "CenterX",
+                    "World-space X coordinate of the lake's center, in world units.", f => f.CenterX, (f, v) => f.CenterX = v);
+                AddFeatureRow<LakeFeatureDoc>(index, "CenterZ",
+                    "World-space Z coordinate of the lake's center, in world units.", f => f.CenterZ, (f, v) => f.CenterZ = v);
+                AddFeatureRow<LakeFeatureDoc>(index, "Radius",
+                    "Radius of the lake basin, in world units, measured from CenterX/CenterZ.", f => f.Radius, (f, v) => f.Radius = v);
+                AddFeatureRow<LakeFeatureDoc>(index, "Depth",
+                    "How far, in world units, the lake basin is carved below the surrounding terrain height at " +
+                    "its center, fading back to the original height toward the radius.", f => f.Depth, (f, v) => f.Depth = v);
                 break;
             case FlattenFeatureDoc:
-                AddFeatureRow<FlattenFeatureDoc>(index, "CenterX", f => f.CenterX, (f, v) => f.CenterX = v);
-                AddFeatureRow<FlattenFeatureDoc>(index, "CenterZ", f => f.CenterZ, (f, v) => f.CenterZ = v);
-                AddFeatureRow<FlattenFeatureDoc>(index, "Radius", f => f.Radius, (f, v) => f.Radius = v);
-                AddFeatureRow<FlattenFeatureDoc>(index, "TargetHeight", f => f.TargetHeight, (f, v) => f.TargetHeight = v);
-                AddFeatureRow<FlattenFeatureDoc>(index, "Blend", f => f.Blend, (f, v) => f.Blend = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "CenterX",
+                    "World-space X coordinate of the flattened area's center, in world units.", f => f.CenterX, (f, v) => f.CenterX = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "CenterZ",
+                    "World-space Z coordinate of the flattened area's center, in world units.", f => f.CenterZ, (f, v) => f.CenterZ = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "Radius",
+                    "Radius of the flattened area, in world units, measured from CenterX/CenterZ.", f => f.Radius, (f, v) => f.Radius = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "TargetHeight",
+                    "World-space height, in world units, the terrain inside the radius is leveled toward.", f => f.TargetHeight, (f, v) => f.TargetHeight = v);
+                AddFeatureRow<FlattenFeatureDoc>(index, "Blend",
+                    "Fraction, from 0 to 1, of the radius over which the flatten effect fades out: full effect " +
+                    "until Radius*(1-Blend), then ramping down to no effect by Radius. Higher values start the " +
+                    "fade closer to the center for a gentler edge.", f => f.Blend, (f, v) => f.Blend = v);
                 break;
             case RimFeatureDoc:
-                AddFeatureRow<RimFeatureDoc>(index, "CenterX", f => f.CenterX, (f, v) => f.CenterX = v);
-                AddFeatureRow<RimFeatureDoc>(index, "CenterZ", f => f.CenterZ, (f, v) => f.CenterZ = v);
-                AddFeatureRow<RimFeatureDoc>(index, "InnerRadius", f => f.InnerRadius, (f, v) => f.InnerRadius = v);
-                AddFeatureRow<RimFeatureDoc>(index, "OuterRadius", f => f.OuterRadius, (f, v) => f.OuterRadius = v);
-                AddFeatureRow<RimFeatureDoc>(index, "WallHeight", f => f.WallHeight, (f, v) => f.WallHeight = v);
-                AddFeatureRow<RimFeatureDoc>(index, "Ruggedness", f => f.Ruggedness, (f, v) => f.Ruggedness = v);
+                AddFeatureRow<RimFeatureDoc>(index, "CenterX",
+                    "World-space X coordinate of the rim's center, in world units.", f => f.CenterX, (f, v) => f.CenterX = v);
+                AddFeatureRow<RimFeatureDoc>(index, "CenterZ",
+                    "World-space Z coordinate of the rim's center, in world units.", f => f.CenterZ, (f, v) => f.CenterZ = v);
+                AddFeatureRow<RimFeatureDoc>(index, "InnerRadius",
+                    "Radius, in world units, of the flat interior left unchanged inside the rim wall.", f => f.InnerRadius, (f, v) => f.InnerRadius = v);
+                AddFeatureRow<RimFeatureDoc>(index, "OuterRadius",
+                    "Radius, in world units, where the wall ramp reaches full WallHeight and plateaus.", f => f.OuterRadius, (f, v) => f.OuterRadius = v);
+                AddFeatureRow<RimFeatureDoc>(index, "WallHeight",
+                    "Height, in world units, the rim wall plateau rises above the interior.", f => f.WallHeight, (f, v) => f.WallHeight = v);
+                AddFeatureRow<RimFeatureDoc>(index, "Ruggedness",
+                    "Amount of jagged noise added to the rim wall's crest so it reads as mountains instead of a " +
+                    "smooth berm. 0 is a smooth wall, higher values add rougher variation.", f => f.Ruggedness, (f, v) => f.Ruggedness = v);
                 break;
             case RidgeFeatureDoc:
-                AddFeatureRow<RidgeFeatureDoc>(index, "PointX", f => f.PointX, (f, v) => f.PointX = v);
-                AddFeatureRow<RidgeFeatureDoc>(index, "PointZ", f => f.PointZ, (f, v) => f.PointZ = v);
-                AddFeatureRow<RidgeFeatureDoc>(index, "DirectionX", f => f.DirectionX, (f, v) => f.DirectionX = v);
-                AddFeatureRow<RidgeFeatureDoc>(index, "DirectionZ", f => f.DirectionZ, (f, v) => f.DirectionZ = v);
-                AddFeatureRow<RidgeFeatureDoc>(index, "Height", f => f.Height, (f, v) => f.Height = v);
-                AddFeatureRow<RidgeFeatureDoc>(index, "Width", f => f.Width, (f, v) => f.Width = v);
-                AddFeatureRow<RidgeFeatureDoc>(index, "PassAlong", f => f.PassAlong, (f, v) => f.PassAlong = v);
-                AddFeatureRow<RidgeFeatureDoc>(index, "PassWidth", f => f.PassWidth, (f, v) => f.PassWidth = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "PointX",
+                    "World-space X coordinate of the ridge line's anchor point, in world units.", f => f.PointX, (f, v) => f.PointX = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "PointZ",
+                    "World-space Z coordinate of the ridge line's anchor point, in world units.", f => f.PointZ, (f, v) => f.PointZ = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "DirectionX",
+                    "X component of the ridge's direction vector from the anchor point. Any length works, it is " +
+                    "normalized internally.", f => f.DirectionX, (f, v) => f.DirectionX = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "DirectionZ",
+                    "Z component of the ridge's direction vector from the anchor point. Any length works, it is " +
+                    "normalized internally.", f => f.DirectionZ, (f, v) => f.DirectionZ = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "Height",
+                    "How far, in world units, the ridge crest rises above the surrounding terrain.", f => f.Height, (f, v) => f.Height = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "Width",
+                    "Width of the ridge, in world units, measured perpendicular to the direction it runs. Larger " +
+                    "values make a broader, gentler wall.", f => f.Width, (f, v) => f.Width = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "PassAlong",
+                    "Signed distance, in world units, along the ridge line from PointX/PointZ marking the center " +
+                    "of a lowered pass or gap through the wall. Only takes effect when PassWidth is positive.", f => f.PassAlong, (f, v) => f.PassAlong = v);
+                AddFeatureRow<RidgeFeatureDoc>(index, "PassWidth",
+                    "Width, in world units, of the pass cut through the ridge at PassAlong. 0 (the default) means " +
+                    "no pass at all, a solid, continuous ridge wall.", f => f.PassWidth, (f, v) => f.PassWidth = v);
                 break;
             default:
                 break;   // unknown/custom feature type: the read-only Type row above is the whole inspector
         }
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         AddVisibleRow(SelectionKind.Feature, () => id);   // index-keyed, non-renamable: a constant id getter
     }
 
     // One scrubbed parameter of the feature at `index`: get reads the LIVE DTO (the instance at the index is
     // replaced by every edit), set clones the current DTO with the one property changed and routes it through
     // EditFeatureCommand, whose same-index merge makes a scrub coalesce into one undo step.
-    void AddFeatureRow<T>(int index, string label, Func<T, float> get, Action<T, float> assign) where T : MapFeature
+    void AddFeatureRow<T>(int index, string label, string description, Func<T, float> get, Action<T, float> assign) where T : MapFeature
     {
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
             () => FeatureAt(index) is T f ? get(f) : 0f,
@@ -1572,7 +1764,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 var clone = (T)FeatureGeometry.Clone(current);
                 assign(clone, v);
                 _document.Execute(new EditFeatureCommand(index, clone, current));
-            }));
+            }, description: LocalizedText.Raw(description)));
     }
 
     MapFeature? FeatureAt(int index)
@@ -1606,11 +1798,17 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
         if (index < 0 || index >= _document.Doc.Exclusions.Count) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
+        AddIndexNameRow(index, i => ExclusionAt(i)?.Name ?? "", ExclusionNameExists,
+            (i, newName, oldName) => new RenameExclusionCommand(i, newName, oldName),
+            LocalizedText.Raw(
+                "Optional display name shown in the outline instead of the index. Leave empty to fall back to " +
+                "the index label. Must not duplicate another exclusion's name."));
+        AddVisibleRow(SelectionKind.Exclusion, () => id);
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Shape")));
         AddShapeRows(() => index < _document.Doc.Exclusions.Count ? _document.Doc.Exclusions[index].Shape : null,
             (newShape, oldShape) => _document.Execute(new EditExclusionShapeCommand(index, newShape, oldShape)));
-        AddIndexNameRow(index, i => ExclusionAt(i)?.Name ?? "", ExclusionNameExists,
-            (i, newName, oldName) => new RenameExclusionCommand(i, newName, oldName));
-        AddVisibleRow(SelectionKind.Exclusion, () => id);   // after the shape rows so the kind ChoiceRow stays Rows[0]
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Targeting")));
         AddExclusionLayerRows(index);
         _inspectorLayersAllOn = ExclusionAt(index)?.Layers is null;
         // Capture the scatter-layer name set the targeting rows were built from, so SyncShapeInspector rebuilds
@@ -1654,7 +1852,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("All layers"),
             () => ExclusionAt(index)?.Layers is null,
             v => _document.Execute(new EditExclusionLayersCommand(index,
-                v ? null : new List<string>(layerNames), ExclusionAt(index)?.Layers))));
+                v ? null : new List<string>(layerNames), ExclusionAt(index)?.Layers)),
+            LocalizedText.Raw(
+                "On (the default) masks scatter placement from EVERY scatter layer inside this exclusion's shape, " +
+                "including any layer added later. Turn off to target only specific layers below, leaving the rest " +
+                "free to scatter through this shape.")));
 
         if (ExclusionAt(index)?.Layers is null) return;   // All is on: no explicit list to show membership rows for
         foreach (string name in layerNames)
@@ -1669,18 +1871,28 @@ public class MapEditorScene : GameScene, IGameScene3D
                     if (v) { if (!next.Contains(layerName)) next.Add(layerName); }
                     else next.Remove(layerName);
                     _document.Execute(new EditExclusionLayersCommand(index, next, live));
-                }));
+                },
+                LocalizedText.Raw(
+                    $"On masks scatter placement from the '{layerName}' scatter layer inside this exclusion's " +
+                    "shape. Only shown while All layers is off, and only masks the layers checked here, every " +
+                    "other layer still scatters through this shape freely.")));
         }
     }
 
     void BuildRegionInspector(string name)
     {
         if (RegionByName(name) is null) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
         Func<string> cur = AddNameRow(SelectionKind.Region, name,
-            v => RegionByName(v) is not null, (oldName, newName) => new RenameRegionCommand(oldName, newName));
+            v => RegionByName(v) is not null, (oldName, newName) => new RenameRegionCommand(oldName, newName),
+            LocalizedText.Raw(
+                "Unique name for this region, the key game code reads to find it (KhaozEngine.MapDoc.MapRegion " +
+                "carries no other identity). Renaming updates the outline node and the current selection to " +
+                "follow the new name. Must be non-empty and not collide with another region's name."));
+        AddVisibleRow(SelectionKind.Region, cur);
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Shape")));
         AddShapeRows(() => RegionByName(cur())?.Shape,
             (newShape, oldShape) => _document.Execute(new EditRegionShapeCommand(cur(), newShape, oldShape)));
-        AddVisibleRow(SelectionKind.Region, cur);
     }
 
     // ---- biome band inspector ------------------------------------------------------------------------------
@@ -1706,17 +1918,39 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
         if (BandAt(index) is null) return;
 
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Range")));
         _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Biome"), BiomeChoices,
             () => (BandAt(index)?.Biome ?? BiomeId.Meadow).ToString(),
-            v => { if (Enum.TryParse(v, out BiomeId biome)) EditBand(index, b => b.Biome = biome); }));
+            v => { if (Enum.TryParse(v, out BiomeId biome)) EditBand(index, b => b.Biome = biome); },
+            description: LocalizedText.Raw(
+                "Which biome's height and scatter rules apply within this band's Start/End height range.")));
 
-        AddBandFloatRow(index, "Start", b => b.Start ?? 0f, (b, v) => b.Start = v);
-        AddBandEdgeToggle(index, "Start open", b => b.Start, (b, open) => b.Start = open ? null : (b.Start ?? 0f));
-        AddBandFloatRow(index, "End", b => b.End ?? 0f, (b, v) => b.End = v);
-        AddBandEdgeToggle(index, "End open", b => b.End, (b, open) => b.End = open ? null : (b.End ?? 0f));
+        AddBandFloatRow(index, "Start",
+            "Lower height bound, in world units, where this band begins applying. Ignored (treated as an open, " +
+            "unbounded edge) while Start open is on.",
+            b => b.Start ?? 0f, (b, v) => b.Start = v);
+        AddBandEdgeToggle(index, "Start open",
+            "On leaves the lower bound open: this band applies below End with no lower limit. Off closes it to " +
+            "the Start value above.",
+            b => b.Start, (b, open) => b.Start = open ? null : (b.Start ?? 0f));
+        AddBandFloatRow(index, "End",
+            "Upper height bound, in world units, where this band stops applying. Ignored (treated as an open, " +
+            "unbounded edge) while End open is on.",
+            b => b.End ?? 0f, (b, v) => b.End = v);
+        AddBandEdgeToggle(index, "End open",
+            "On leaves the upper bound open: this band applies above Start with no upper limit. Off closes it to " +
+            "the End value above.",
+            b => b.End, (b, open) => b.End = open ? null : (b.End ?? 0f));
 
-        AddBandFloatRow(index, "BaseHeight", b => b.BaseHeight, (b, v) => b.BaseHeight = v);
-        AddBandFloatRow(index, "HillAmplitude", b => b.HillAmplitude, (b, v) => b.HillAmplitude = v, min: 0f);
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Shape")));
+        AddBandFloatRow(index, "BaseHeight",
+            "Height, in world units, this biome's terrain settles toward within its range, before the gentle and " +
+            "detail noise layers add their own variation on top.",
+            b => b.BaseHeight, (b, v) => b.BaseHeight = v);
+        AddBandFloatRow(index, "HillAmplitude",
+            "Extra height swing, in world units, this biome adds on top of BaseHeight. Higher values make this " +
+            "band's terrain hillier relative to the rest of the map.",
+            b => b.HillAmplitude, (b, v) => b.HillAmplitude = v, min: 0f);
     }
 
     MapBiomeBand? BandAt(int index)
@@ -1742,22 +1976,23 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // One scrubbed scalar of the band at `index` (the AddFeatureRow idiom): get reads the LIVE band (every edit
     // replaces the instance), set clones and writes the one field through EditBand.
-    void AddBandFloatRow(int index, string label, Func<MapBiomeBand, float> get, Action<MapBiomeBand, float> assign,
-        float min = float.MinValue)
+    void AddBandFloatRow(int index, string label, string description, Func<MapBiomeBand, float> get,
+        Action<MapBiomeBand, float> assign, float min = float.MinValue)
     {
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
             () => BandAt(index) is { } b ? get(b) : 0f,
-            v => EditBand(index, b => assign(b, v)), min: min));
+            v => EditBand(index, b => assign(b, v)), min: min, description: LocalizedText.Raw(description)));
     }
 
     // The "<edge> open" toggle for a nullable band edge: on == the edge is open (the field is null). `read` reads
     // the live nullable edge (so the toggle reflects the current null state), and `apply` sets the field per the
     // new open flag (true => null, false => a concrete value, closing the edge). Whole-value edit via EditBand.
-    void AddBandEdgeToggle(int index, string label, Func<MapBiomeBand, float?> read, Action<MapBiomeBand, bool> apply)
+    void AddBandEdgeToggle(int index, string label, string description, Func<MapBiomeBand, float?> read,
+        Action<MapBiomeBand, bool> apply)
     {
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(label),
             () => BandAt(index) is { } b && read(b) is null,
-            v => EditBand(index, b => apply(b, v))));
+            v => EditBand(index, b => apply(b, v)), LocalizedText.Raw(description)));
     }
 
     // ---- scatter + companion layer inspectors --------------------------------------------------------------
@@ -1773,39 +2008,86 @@ public class MapEditorScene : GameScene, IGameScene3D
     void BuildScatterLayerInspector(string name)
     {
         if (ScatterLayerByName(name) is not { } layer) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
         Func<string> cur = AddNameRow(SelectionKind.ScatterLayer, name,
             v => ScatterLayerByName(v) is not null,
-            (oldName, newName) => { _visibility.RenameLayer(oldName, newName); return new RenameScatterLayerCommand(oldName, newName); });
+            (oldName, newName) => { _visibility.RenameLayer(oldName, newName); return new RenameScatterLayerCommand(oldName, newName); },
+            LocalizedText.Raw(
+                "Unique name for this scatter layer, referenced by exclusion targeting and by any companion " +
+                "layer's HostLayer. Renaming it cascades: exclusions and companions that reference the old name " +
+                "retarget to the new one automatically. Must be non-empty and not collide with another layer's " +
+                "name."));
 
-        AddScatterFloatRow(cur, "Seed", l => l.Seed, (l, v) => l.Seed = (int)MathF.Round(v), dragScale: 1f, decimals: 0);
-        AddScatterFloatRow(cur, "CellSize", l => l.CellSize, (l, v) => l.CellSize = v, min: 0.01f);
-        AddScatterFloatRow(cur, "Jitter", l => l.Jitter, (l, v) => l.Jitter = v, min: 0f);
-        AddScatterFloatRow(cur, "ScaleMin", l => l.ScaleMin, (l, v) => l.ScaleMin = v, min: 0f);
-        AddScatterFloatRow(cur, "ScaleMax", l => l.ScaleMax, (l, v) => l.ScaleMax = v, min: 0f);
-        AddScatterFloatRow(cur, "MaxHeight", l => l.MaxHeight ?? 0f, (l, v) => l.MaxHeight = v);
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Placement")));
+        AddScatterFloatRow(cur, "Seed",
+            "Random seed driving this layer's scatter placement pattern. Two layers with the same seed and " +
+            "parameters place identical instances. Change it to get a different pattern at the same density.",
+            l => l.Seed, (l, v) => l.Seed = (int)MathF.Round(v), dragScale: 1f, decimals: 0);
+        AddScatterFloatRow(cur, "CellSize",
+            "Size, in world units, of the jittered grid cells candidate positions are drawn from. Smaller cells " +
+            "pack candidates closer together (denser scatter before rule density filters it down), larger cells " +
+            "space them further apart.",
+            l => l.CellSize, (l, v) => l.CellSize = v, min: 0.01f);
+        AddScatterFloatRow(cur, "Jitter",
+            "How far, from 0 (none) to 1 (a full cell), each candidate position is randomly offset from its grid " +
+            "cell center. Higher values look more natural and less grid-aligned.",
+            l => l.Jitter, (l, v) => l.Jitter = v, min: 0f);
+
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Scale")));
+        AddScatterFloatRow(cur, "ScaleMin",
+            "Minimum random uniform scale applied to each placed instance. Actual scale per instance is picked " +
+            "uniformly between ScaleMin and ScaleMax.",
+            l => l.ScaleMin, (l, v) => l.ScaleMin = v, min: 0f);
+        AddScatterFloatRow(cur, "ScaleMax",
+            "Maximum random uniform scale applied to each placed instance. Actual scale per instance is picked " +
+            "uniformly between ScaleMin and ScaleMax.",
+            l => l.ScaleMax, (l, v) => l.ScaleMax = v, min: 0f);
+        AddScatterFloatRow(cur, "MaxHeight",
+            "World-space height, in world units, above which this layer stops placing instances. Ignored while " +
+            "MaxHeight unset is on.",
+            l => l.MaxHeight ?? 0f, (l, v) => l.MaxHeight = v);
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("MaxHeight unset"),
             () => ScatterLayerByName(cur())?.MaxHeight is null,
-            v => EditScatterLayer(cur(), l => l.MaxHeight = v ? null : (l.MaxHeight ?? 0f))));
+            v => EditScatterLayer(cur(), l => l.MaxHeight = v ? null : (l.MaxHeight ?? 0f)),
+            LocalizedText.Raw(
+                "On removes the height ceiling entirely: this layer can place at any height. Off closes it to " +
+                "the MaxHeight value above.")));
 
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Rules")));
         for (int r = 0; r < layer.Rules.Count; r++)
         {
             int ri = r;   // capture per iteration for the closures
             _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw($"Rule {ri} biome"), BiomeChoices,
                 () => (RuleAt(cur(), ri)?.Biome ?? BiomeId.Meadow).ToString(),
-                v => { if (Enum.TryParse(v, out BiomeId biome)) EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Biome = biome; }); }));
+                v => { if (Enum.TryParse(v, out BiomeId biome)) EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Biome = biome; }); },
+                description: LocalizedText.Raw(
+                    "Biome this rule applies within. A candidate position only uses this rule's density and " +
+                    "kinds where the terrain's live biome at that point matches.")));
             _inspector.Rows.Add(new FloatRow(LocalizedText.Raw($"Rule {ri} density"),
                 () => RuleAt(cur(), ri)?.Density ?? 0f,
-                v => EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Density = v; }), min: 0f));
+                v => EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Density = v; }), min: 0f,
+                description: LocalizedText.Raw(
+                    "Chance, from 0 (never) to 1 (always), a candidate position in this rule's biome becomes an " +
+                    "instance from its Kinds below.")));
             _inspector.Rows.Add(new TextRow(LocalizedText.Raw($"Rule {ri} kinds"),
                 () => RuleAt(cur(), ri) is { } rule ? FormatKinds(rule.Kinds) : "",
                 v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Kinds = kinds; }); },
-                maxLength: 256));
+                maxLength: 256,
+                description: LocalizedText.Raw(
+                    "Comma-separated kit ids this rule places, each optionally followed by :weight (for example " +
+                    "'oak:2, pine' places oak twice as often as pine, a bare id defaults to weight 1). Weights " +
+                    "are relative to each other within this rule, not a percentage of any total.")));
             AddActionRow($"[- remove rule {ri}]",
+                "Removes this rule from the layer. Undoable as its own step.",
                 () => { EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules.RemoveAt(ri); }); _document.SealGesture(); });
         }
         AddActionRow("[+ add rule]",
+            "Adds a new, blank rule to this layer (Meadow biome, zero density, no kinds) for you to configure.",
             () => { EditScatterLayer(cur(), l => l.Rules.Add(new MapBiomeScatterRule())); _document.SealGesture(); });
-        AddActionRow("[- remove layer]", () => RemoveScatterLayerFromInspector(cur()));
+        AddActionRow("[- remove layer]",
+            "Removes this entire scatter layer from the document. Rejected if any companion layer still hosts " +
+            "on it, retarget or remove those companions first.",
+            () => RemoveScatterLayerFromInspector(cur()));
 
         _inspectorRuleCount = layer.Rules.Count;   // reflow the per-rule rows when a rule is added / removed
     }
@@ -1819,10 +2101,15 @@ public class MapEditorScene : GameScene, IGameScene3D
     void BuildCompanionLayerInspector(string name)
     {
         if (CompanionLayerByName(name) is not { } companion) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
         Func<string> cur = AddNameRow(SelectionKind.CompanionLayer, name,
             v => CompanionLayerByName(v) is not null,
-            (oldName, newName) => new RenameCompanionLayerCommand(oldName, newName));
+            (oldName, newName) => new RenameCompanionLayerCommand(oldName, newName),
+            LocalizedText.Raw(
+                "Unique name for this companion layer. Must be non-empty and not collide with another " +
+                "companion's name."));
 
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Host")));
         // Always offer at least the current host as an option (even if it is somehow not among the live scatter
         // layers), so the dropdown never silently drops an out-of-set value. Fall back to a read-only row only when
         // there is nothing at all to choose (no scatter layers and an empty host).
@@ -1832,15 +2119,26 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (hostOptions.Count > 0)
             _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("HostLayer"), hostOptions.ToArray(),
                 () => CompanionLayerByName(cur())?.HostLayer ?? "",
-                v => SetCompanionHostLayer(cur(), v)));
+                v => SetCompanionHostLayer(cur(), v),
+                description: LocalizedText.Raw(
+                    "Which scatter layer's placed instances this companion layer rings. Companions spawn near " +
+                    "each of the host layer's placed props (its 'hosts'), so changing this changes which props " +
+                    "they cluster around. If HostKinds below no longer matches anything in the new host, it is " +
+                    "cleared to match all in the same edit.")));
         else
             _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("HostLayer"),
-                () => (CompanionLayerByName(cur())?.HostLayer ?? "") is { Length: > 0 } h ? h : "(no scatter layers)"));
+                () => (CompanionLayerByName(cur())?.HostLayer ?? "") is { Length: > 0 } h ? h : "(no scatter layers)",
+                description: LocalizedText.Raw(
+                    "Which scatter layer this companion layer rings. No scatter layers exist yet to choose from, " +
+                    "add one first.")));
 
-        AddCompanionFloatRow(cur, "Seed", l => l.Seed, (l, v) => l.Seed = (int)MathF.Round(v), dragScale: 1f, decimals: 0);
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("HostKinds"),
             () => CompanionLayerByName(cur()) is { } l ? FormatIds(l.HostKinds) : "",
-            v => EditCompanionLayer(cur(), l => l.HostKinds = ParseIds(v)), maxLength: 256));
+            v => EditCompanionLayer(cur(), l => l.HostKinds = ParseIds(v)), maxLength: 256,
+            description: LocalizedText.Raw(
+                "Comma-separated kit ids to match against the host layer's placed instances (plain ids, no " +
+                "weights). A host only gets companions when its kit id appears here. Empty (the default) means " +
+                "match EVERY kind the host layer can place, not none.")));
 
         // A populated HostKinds that matches NONE of the host layer's rule kinds spawns no companions (a silent
         // no-op), so surface it with a warning-styled read-only row right under the HostKinds row. Empty HostKinds
@@ -1849,49 +2147,94 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspectorCompanionMismatch = mismatch;
         if (mismatch)
             _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Warning"),
-                () => "HostKinds match no kind in the host layer") { TextColor = GuiTheme.Default.DangerBright });
+                () => "HostKinds match no kind in the host layer",
+                description: LocalizedText.Raw(
+                    "HostKinds names no kit id the host layer can actually place, so this companion currently " +
+                    "spawns nothing. Either clear HostKinds to match every host, or list an id the host layer's " +
+                    "rules actually place.")) { TextColor = GuiTheme.Default.DangerBright });
+
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Output")));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Kinds"),
             () => CompanionLayerByName(cur()) is { } l ? FormatKinds(l.Kinds) : "",
-            v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditCompanionLayer(cur(), l => l.Kinds = kinds); }, maxLength: 256));
-        AddCompanionFloatRow(cur, "CountMin", l => l.CountMin, (l, v) => l.CountMin = (int)MathF.Round(v), min: 0f, dragScale: 1f, decimals: 0);
-        AddCompanionFloatRow(cur, "CountMax", l => l.CountMax, (l, v) => l.CountMax = (int)MathF.Round(v), min: 0f, dragScale: 1f, decimals: 0);
-        AddCompanionFloatRow(cur, "RadiusMin", l => l.RadiusMin, (l, v) => l.RadiusMin = v, min: 0f);
-        AddCompanionFloatRow(cur, "RadiusMax", l => l.RadiusMax, (l, v) => l.RadiusMax = v, min: 0f);
-        AddCompanionFloatRow(cur, "ScaleMin", l => l.ScaleMin, (l, v) => l.ScaleMin = v, min: 0f);
-        AddCompanionFloatRow(cur, "ScaleMax", l => l.ScaleMax, (l, v) => l.ScaleMax = v, min: 0f);
-        AddCompanionFloatRow(cur, "MaxHeight", l => l.MaxHeight ?? 0f, (l, v) => l.MaxHeight = v);
+            v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditCompanionLayer(cur(), l => l.Kinds = kinds); }, maxLength: 256,
+            description: LocalizedText.Raw(
+                "Comma-separated kit ids this companion layer places around each matched host, each optionally " +
+                "followed by :weight (for example 'bush:2, fern' places bush twice as often as fern, a bare id " +
+                "defaults to weight 1).")));
+        AddCompanionFloatRow(cur, "CountMin",
+            "Minimum number of companion instances placed around each matched host. Actual count per host is " +
+            "picked uniformly between CountMin and CountMax.",
+            l => l.CountMin, (l, v) => l.CountMin = (int)MathF.Round(v), min: 0f, dragScale: 1f, decimals: 0);
+        AddCompanionFloatRow(cur, "CountMax",
+            "Maximum number of companion instances placed around each matched host. Actual count per host is " +
+            "picked uniformly between CountMin and CountMax.",
+            l => l.CountMax, (l, v) => l.CountMax = (int)MathF.Round(v), min: 0f, dragScale: 1f, decimals: 0);
+
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Shape")));
+        AddCompanionFloatRow(cur, "Seed",
+            "Random seed driving this companion layer's placement pattern around its hosts. Two layers with the " +
+            "same seed and parameters place identical companions.",
+            l => l.Seed, (l, v) => l.Seed = (int)MathF.Round(v), dragScale: 1f, decimals: 0);
+        AddCompanionFloatRow(cur, "RadiusMin",
+            "Minimum distance, in world units, a companion instance can land from its host. Actual distance per " +
+            "instance is picked uniformly between RadiusMin and RadiusMax.",
+            l => l.RadiusMin, (l, v) => l.RadiusMin = v, min: 0f);
+        AddCompanionFloatRow(cur, "RadiusMax",
+            "Maximum distance, in world units, a companion instance can land from its host. Actual distance per " +
+            "instance is picked uniformly between RadiusMin and RadiusMax.",
+            l => l.RadiusMax, (l, v) => l.RadiusMax = v, min: 0f);
+        AddCompanionFloatRow(cur, "ScaleMin",
+            "Minimum random uniform scale applied to each placed companion instance. Actual scale per instance " +
+            "is picked uniformly between ScaleMin and ScaleMax.",
+            l => l.ScaleMin, (l, v) => l.ScaleMin = v, min: 0f);
+        AddCompanionFloatRow(cur, "ScaleMax",
+            "Maximum random uniform scale applied to each placed companion instance. Actual scale per instance " +
+            "is picked uniformly between ScaleMin and ScaleMax.",
+            l => l.ScaleMax, (l, v) => l.ScaleMax = v, min: 0f);
+        AddCompanionFloatRow(cur, "MaxHeight",
+            "World-space height, in world units, above which this companion layer stops placing instances. " +
+            "Ignored while MaxHeight unset is on.",
+            l => l.MaxHeight ?? 0f, (l, v) => l.MaxHeight = v);
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("MaxHeight unset"),
             () => CompanionLayerByName(cur())?.MaxHeight is null,
-            v => EditCompanionLayer(cur(), l => l.MaxHeight = v ? null : (l.MaxHeight ?? 0f))));
-        AddActionRow("[- remove companion]", () => RemoveCompanionLayerFromInspector(cur()));
+            v => EditCompanionLayer(cur(), l => l.MaxHeight = v ? null : (l.MaxHeight ?? 0f)),
+            LocalizedText.Raw(
+                "On removes the height ceiling entirely: this companion layer can place at any height. Off " +
+                "closes it to the MaxHeight value above.")));
+        AddActionRow("[- remove companion]",
+            "Removes this companion layer from the document. Undoable as its own step.",
+            () => RemoveCompanionLayerFromInspector(cur()));
 
         _inspectorScatterNames = LiveScatterNames();   // the HostLayer chooser enumerates scatter names: refresh on a change
     }
 
     // One scrubbed scalar of the scatter layer named by `name()` (the AddBandFloatRow idiom): get reads the LIVE
     // layer, set clones deeply and writes the one field through EditScatterLayer.
-    void AddScatterFloatRow(Func<string> name, string label, Func<MapScatterLayer, float> get,
+    void AddScatterFloatRow(Func<string> name, string label, string description, Func<MapScatterLayer, float> get,
         Action<MapScatterLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
     {
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
             () => ScatterLayerByName(name()) is { } l ? get(l) : 0f,
-            v => EditScatterLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals));
+            v => EditScatterLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals,
+            description: LocalizedText.Raw(description)));
     }
 
-    void AddCompanionFloatRow(Func<string> name, string label, Func<MapCompanionLayer, float> get,
+    void AddCompanionFloatRow(Func<string> name, string label, string description, Func<MapCompanionLayer, float> get,
         Action<MapCompanionLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
     {
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
             () => CompanionLayerByName(name()) is { } l ? get(l) : 0f,
-            v => EditCompanionLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals));
+            v => EditCompanionLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals,
+            description: LocalizedText.Raw(description)));
     }
 
     // A "button" row: no PropertyGrid button widget exists, so a BoolRow whose value is always read as off doubles
     // as one. Tapping flips it on, which runs `action` once. The getter re-reads off next frame (and a deferred
     // rebuild recreates the row), so it never stays pressed. Used for the crude rule / layer add-remove affordances.
-    void AddActionRow(string label, Action action)
+    void AddActionRow(string label, string description, Action action)
     {
-        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(label), () => false, v => { if (v) action(); }));
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(label), () => false, v => { if (v) action(); },
+            LocalizedText.Raw(description)));
     }
 
     // Removes the scatter layer from its inspector's remove button, surfacing a referenced-removal rejection in the
@@ -2114,24 +2457,36 @@ public class MapEditorScene : GameScene, IGameScene3D
         {
             case DiscShapeDoc:
                 AddShapeKindRow(shape, execute);
-                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterX", s => s.CenterX, (s, v) => s.CenterX = v);
-                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterZ", s => s.CenterZ, (s, v) => s.CenterZ = v);
-                AddShapeRow<DiscShapeDoc>(shape, execute, "Radius", s => s.Radius, (s, v) => s.Radius = v);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterX",
+                    "World-space X coordinate of the disc's center, in world units.", s => s.CenterX, (s, v) => s.CenterX = v);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "CenterZ",
+                    "World-space Z coordinate of the disc's center, in world units.", s => s.CenterZ, (s, v) => s.CenterZ = v);
+                AddShapeRow<DiscShapeDoc>(shape, execute, "Radius",
+                    "Radius of the disc, in world units, measured from CenterX/CenterZ.", s => s.Radius, (s, v) => s.Radius = v);
                 break;
             case RectShapeDoc:
                 AddShapeKindRow(shape, execute);
-                AddShapeRow<RectShapeDoc>(shape, execute, "MinX", s => s.MinX, (s, v) => s.MinX = v);
-                AddShapeRow<RectShapeDoc>(shape, execute, "MinZ", s => s.MinZ, (s, v) => s.MinZ = v);
-                AddShapeRow<RectShapeDoc>(shape, execute, "MaxX", s => s.MaxX, (s, v) => s.MaxX = v);
-                AddShapeRow<RectShapeDoc>(shape, execute, "MaxZ", s => s.MaxZ, (s, v) => s.MaxZ = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MinX",
+                    "World-space X coordinate of the rect's minimum (near) corner, in world units.", s => s.MinX, (s, v) => s.MinX = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MinZ",
+                    "World-space Z coordinate of the rect's minimum (near) corner, in world units.", s => s.MinZ, (s, v) => s.MinZ = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MaxX",
+                    "World-space X coordinate of the rect's maximum (far) corner, in world units.", s => s.MaxX, (s, v) => s.MaxX = v);
+                AddShapeRow<RectShapeDoc>(shape, execute, "MaxZ",
+                    "World-space Z coordinate of the rect's maximum (far) corner, in world units.", s => s.MaxZ, (s, v) => s.MaxZ = v);
                 break;
             case PolygonShapeDoc:
-                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape()),
+                    description: LocalizedText.Raw(
+                        "This element's shape kind. A polygon is read-only in this editor version, it cannot be " +
+                        "edited or converted to disc/rect here.")));
                 _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Points"),
-                    () => ((shape() as PolygonShapeDoc)?.Points.Count ?? 0).ToString(CultureInfo.InvariantCulture)));
+                    () => ((shape() as PolygonShapeDoc)?.Points.Count ?? 0).ToString(CultureInfo.InvariantCulture),
+                    description: LocalizedText.Raw("Number of vertices in this read-only polygon boundary.")));
                 break;
             default:
-                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape())));
+                _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Shape"), () => ShapeKind(shape()),
+                    description: LocalizedText.Raw("This element's shape kind. No shape is currently set.")));
                 break;
         }
         _inspectorShapeKind = ShapeKind(current);
@@ -2147,14 +2502,18 @@ public class MapEditorScene : GameScene, IGameScene3D
             {
                 if (shape() is not { } current || ConvertShape(current, v) is not { } converted) return;
                 execute(converted, current);
-            }));
+            },
+            description: LocalizedText.Raw(
+                "Which primitive defines this element's ground-plane footprint. Switching between disc and rect " +
+                "converts the current shape center-preservingly (the new shape covers roughly the same area " +
+                "around the same center) instead of resetting it.")));
     }
 
     // One scrubbed parameter of the selected shape (the AddFeatureRow idiom): get reads the LIVE DTO, set clones
     // the current DTO with the one property changed and routes the (new, old) pair through `execute`, whose
     // command's same-key merge makes a scrub coalesce into one undo step.
     void AddShapeRow<T>(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute, string label,
-        Func<T, float> get, Action<T, float> assign) where T : MapShapeDoc
+        string description, Func<T, float> get, Action<T, float> assign) where T : MapShapeDoc
     {
         _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
             () => shape() is T s ? get(s) : 0f,
@@ -2164,7 +2523,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 var clone = (T)CloneShape(current);
                 assign(clone, v);
                 execute(clone, current);
-            }));
+            }, description: LocalizedText.Raw(description)));
     }
 
     // Copies a disc / rect shape DTO so an edit replaces the instance (the shape commands hold old + new by
@@ -2435,6 +2794,12 @@ public class MapEditorScene : GameScene, IGameScene3D
     void Fill(SpriteBatch batch, Rect r, Color color) =>
         batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height), color);
 
+    // A chrome panel background (toolbar / outline / inspector / status / palette): a rounded, slightly lifted
+    // fill instead of the flat Fill above, so the chrome matches GuiStyle.Modern's own rounded-surface look
+    // (decision 6). Same signature as Fill, so every panel-background call site is a one-word swap.
+    void FillPanel(SpriteBatch batch, Rect r, Color color) =>
+        batch.DrawRounded(_white, new Vector4(r.X, r.Y, r.Width, r.Height), color, PanelCornerRadius);
+
     /// <summary>The status-strip rectangle the chrome lays out for a window of <paramref name="w"/> x
     /// <paramref name="h"/> points, honouring <see cref="MapEditorOptions.StatusBottomOffset"/>. Exposed so a
     /// headless test can assert the strip shifts up to clear a host-reserved bottom band.</summary>
@@ -2450,6 +2815,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// Place modes.</summary>
     internal Rect OutlineRect(float w, float h) => ComputeLayout(w, h).Outline;
 
+    /// <summary>The inspector rectangle for a window of <paramref name="w"/> x <paramref name="h"/> points.
+    /// Exposed so a headless test can assert <see cref="InspectorPanelWidth"/> (flush against the right edge,
+    /// independent of <see cref="OutlinePanelWidth"/> on the left).</summary>
+    internal Rect InspectorRect(float w, float h) => ComputeLayout(w, h).Inspector;
+
     ChromeLayout ComputeLayout(float w, float h)
     {
         var toolbar = new Rect(0f, 0f, w, ToolbarHeight);
@@ -2462,11 +2832,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         // The bottom-left panel (kit palette / spawn picker) exists only in the two Place tools; otherwise the
         // outline takes the whole left column and the panel rect collapses to zero height at its bottom edge.
         float outlineH = BottomPanelVisible ? bodyH * 0.5f : bodyH;
-        var outline = new Rect(0f, bodyTop, PanelWidth, outlineH);
-        var palette = new Rect(0f, bodyTop + outlineH, PanelWidth, bodyH - outlineH);
-        var inspector = new Rect(w - PanelWidth, bodyTop, PanelWidth, bodyH);
+        var outline = new Rect(0f, bodyTop, OutlinePanelWidth, outlineH);
+        var palette = new Rect(0f, bodyTop + outlineH, OutlinePanelWidth, bodyH - outlineH);
+        var inspector = new Rect(w - InspectorPanelWidth, bodyTop, InspectorPanelWidth, bodyH);
         var status = new Rect(0f, bodyBottom, w, StatusHeight);
-        var viewport = new Rect(PanelWidth, bodyTop, MathF.Max(0f, w - 2f * PanelWidth), bodyH);
+        var viewport = new Rect(OutlinePanelWidth, bodyTop, MathF.Max(0f, w - OutlinePanelWidth - InspectorPanelWidth), bodyH);
         return new ChromeLayout(toolbar, outline, inspector, palette, status, viewport);
     }
 

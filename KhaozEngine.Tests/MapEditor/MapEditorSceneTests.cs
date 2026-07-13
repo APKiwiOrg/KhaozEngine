@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.MapDoc;
@@ -115,6 +116,19 @@ namespace KhaozEngine.Tests.MapEditor
             input.Update(MouseFrame(at, leftDown: false)); grid.Update(input, 0.016f);
         }
 
+        // Opens the ChoiceRow at `rowIndex` (tap its trigger) then picks the option at `optionIndex` (tap the open
+        // list item, which Dropdown.OptionBounds stacks directly below the trigger at one trigger-height per
+        // option). Coordinates are derived from the grid's own RowEditorBounds rather than hand-computed pixel
+        // offsets, so a test stays correct regardless of which rows or group headers precede the ChoiceRow.
+        static void OpenAndPickOption(PropertyGrid grid, InputManager ui, int rowIndex, int optionIndex)
+        {
+            Rect trigger = grid.RowEditorBounds(rowIndex);
+            var triggerCenter = new Vector2(trigger.X + trigger.Width * 0.5f, trigger.Y + trigger.Height * 0.5f);
+            TapGrid(grid, ui, triggerCenter);   // open the list
+            float optionCenterY = trigger.Bottom + trigger.Height * optionIndex + trigger.Height * 0.5f;
+            TapGrid(grid, ui, new Vector2(triggerCenter.X, optionCenterY));   // pick the option
+        }
+
         static string TempPath() => Path.Combine(Path.GetTempPath(), $"ke-editor-{Guid.NewGuid():N}.map.json");
 
         static MapDocument ValidDoc()
@@ -219,6 +233,17 @@ namespace KhaozEngine.Tests.MapEditor
             foreach (PropertyRow row in grid.Rows)
                 if (row is TextRow t && t.Label.Resolve() == label) return t;
             Assert.Fail($"no TextRow labeled '{label}' (rows: {grid.Rows.Count})");
+            return null!;   // unreachable
+        }
+
+        // Type-scoped lookup (unlike the generic RowByLabel further down): the shape-kind selector and its own
+        // "Shape" group HeaderRow (Task 5 grouping) share the label "Shape", so a plain label search can return
+        // either one depending on row order. Only a ChoiceRow is ever the kind selector.
+        static ChoiceRow ChoiceRowByLabel(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row is ChoiceRow c && c.Label.Resolve() == label) return c;
+            Assert.Fail($"no ChoiceRow labeled '{label}' (rows: {grid.Rows.Count})");
             return null!;   // unreachable
         }
 
@@ -1051,10 +1076,12 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("[0] Meadow 0..40", band0.Label.Resolve());
             Assert.Equal("[1] Mountains 40..*", band1.Label.Resolve());   // open end edge renders as "*"
 
-            // Selecting the band node builds its editable inspector (Biome choice + scalar rows).
+            // Selecting the band node builds its editable inspector (a "Range" group header, then the Biome
+            // choice + scalar rows, Task 5 grouping).
             scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
-            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[0]).Selected);
+            Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[1]);
+            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[1]).Selected);
             Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "BaseHeight").Field.Value);
             Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "HillAmplitude").Field.Value);
             Assert.Equal(0f, FloatRowByLabel(scene.Inspector, "Start").Field.Value);
@@ -1156,8 +1183,9 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
 
-            // A disc exclusion gets the editable shape surface: the kind selector plus one FloatRow per param.
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
+            // A disc exclusion gets the editable shape surface: the kind selector (under the "Shape" group header,
+            // Task 5 grouping) plus one FloatRow per param.
+            Assert.NotNull(ChoiceRowByLabel(scene.Inspector, "Shape"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterX"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterZ"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "Radius"));
@@ -1391,13 +1419,15 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
             scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
+            int shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Shape"));
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[shapeRow]);
 
-            // Row 0's editor cell is x 135..300, y 0..28 (LabelFraction 0.45 of 300); with two options the open
-            // list sits at y 28..56 ("disc") and y 56..84 ("rect"). Tap the trigger, then pick "rect".
+            // The Shape kind row now sits after the "Identity" group header (Task 5 grouping put a header ahead of
+            // it), so its editor cell is looked up by index rather than assumed at Rows[0] / y 0..28. With two
+            // options the open list stacks directly below the trigger, one trigger-height row per option. Tap the
+            // trigger, then pick "rect".
             var ui = new InputManager();
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 14f));   // open the kind list
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 70f));   // pick "rect"
+            OpenAndPickOption(scene.Inspector, ui, shapeRow, optionIndex: 1);   // "rect" is option 1
 
             // Disc to rect converts center-preservingly: the square of side 2r around the disc center.
             var rect = Assert.IsType<RectShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
@@ -1413,8 +1443,8 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "MinX"));
 
             // Converting back picks the rect's center plus half its max extent, landing on the original disc.
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 14f));   // open the kind list (now showing "rect")
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 42f));   // pick "disc" (option 0)
+            shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Shape"));
+            OpenAndPickOption(scene.Inspector, ui, shapeRow, optionIndex: 0);   // "disc" is option 0
             var disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
             Near(2f, disc.CenterX);
             Near(3f, disc.CenterZ);
@@ -1434,7 +1464,10 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Document.Selection.Set(SelectionKind.Region, "region-1");
 
             Assert.NotEmpty(scene.Inspector.Rows);
-            Assert.IsType<TextRow>(scene.Inspector.Rows[0]);        // the rename row, bound through RenameRegionCommand
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The rename row (bound through
+            // RenameRegionCommand) leads the rows underneath it.
+            Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);
+            Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
         }
 
         [Fact]
@@ -1449,7 +1482,7 @@ namespace KhaozEngine.Tests.MapEditor
             });
 
             scene.Document.Selection.Set(SelectionKind.Region, "region-1");
-            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);   // Rows[0] is the "Identity" group header
 
             // Drive the rename row headless, matching the NumberField-scrub idiom above but for text: focus the
             // field, replace its buffer, then run one row Update so the TextChanged write-through fires the
@@ -1487,7 +1520,8 @@ namespace KhaozEngine.Tests.MapEditor
             });
 
             scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
-            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The Name rename row is Rows[1].
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
 
             // ---- half 1: the selection follows the rename once the row blurs ----
             // Drive the rename row headless (the region-rename idiom): focus the field, replace its buffer, then run
@@ -1508,7 +1542,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("placement-1-renamed", scene.Document.Selection.Id);   // selection followed the new id
 
             // ---- half 2: a fresh pick made mid-rename yields (is not stomped by the pending sync) ----
-            var row2 = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+            var row2 = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);   // Rows[0] is the "Identity" group header
             row2.Input.IsFocused = true;
             row2.Input.SetText("placement-1-again");
             row2.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
@@ -1534,7 +1568,8 @@ namespace KhaozEngine.Tests.MapEditor
             });
 
             scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
-            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The Name rename row is Rows[1].
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
 
             var ui = new InputManager();
             ui.Update(InputState.Empty);
@@ -1562,7 +1597,8 @@ namespace KhaozEngine.Tests.MapEditor
             });
 
             scene.Document.Selection.Set(SelectionKind.Placement, "hut");
-            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The Name rename row is Rows[1].
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
 
             // Type a single character into the rename row: focus the field, replace its buffer with the OLD key
             // plus one appended character, then run one row Update so the TextChanged write-through fires the
@@ -2374,8 +2410,9 @@ namespace KhaozEngine.Tests.MapEditor
             Near(5f, scene.Document.Doc.PlayerSpawns[0].X);   // dragged +5 on X
             Near(0f, scene.Document.Doc.PlayerSpawns[0].Z);
 
-            // RENAME: the inline Name row leads the player-spawn inspector, routing through RenamePlayerSpawnCommand.
-            var name = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+            // RENAME: the inline Name row (Rows[1], after the "Identity" group header) routes through
+            // RenamePlayerSpawnCommand.
+            var name = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
             var ui = new InputManager();
             ui.Update(InputState.Empty);
             name.Input.IsFocused = true;
@@ -2426,7 +2463,8 @@ namespace KhaozEngine.Tests.MapEditor
             });
             scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
 
-            Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // inline rename row leads
+            Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);   // the "Identity" group header (Task 5 grouping)
+            Assert.IsType<TextRow>(scene.Inspector.Rows[1]);     // inline rename row
             Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "X").Field.Value);
             Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "Z").Field.Value);
             Assert.Equal(1.5f, FloatRowByLabel(scene.Inspector, "Yaw").Field.Value);   // raw radians, like the placement Yaw row
@@ -2604,6 +2642,205 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Empty(scene.Document.Doc.CompanionLayers[0].HostKinds);
             scene.SyncShapeInspector();
             Assert.False(HasRow(scene.Inspector, "Warning"));
+        }
+
+        // ---- Task 5: tooltips, grouping, layout, styling content ------------------------------------------
+
+        // A document with at least one element of EVERY selection kind (Terrain is always present as the
+        // singleton root), so EveryRow_HasDescription and Inspectors_AreGrouped can walk every inspector the
+        // editor builds. The companion's HostKinds deliberately matches nothing in its host layer's rules
+        // ("maple" against a layer that only places "oak"), so the mismatch Warning row is present too.
+        static MapDocument EveryKindDoc()
+        {
+            MapDocument doc = ValidDoc();
+            doc.Terrain.Biomes.Add(new MapBiomeBand { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+            doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
+            doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f });
+            doc.Terrain.Features.Add(new RimFeatureDoc { CenterX = 2f, CenterZ = 2f, InnerRadius = 3f, OuterRadius = 6f, WallHeight = 2f });
+            doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 3f, PointZ = 3f, DirectionX = 1f, Height = 2f, Width = 1f });
+            doc.Placements.Add(new MapPlacement { Id = "placement-1", Kind = "prop" });
+            doc.Spawns.Add(new MapSpawn { Id = "spawn-1", ArchetypeId = "wolf" });
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1" });
+            doc.ScatterLayers.Add(new MapScatterLayer
+            {
+                Name = "trees",
+                Rules = { new MapBiomeScatterRule
+                {
+                    Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
+                    Kinds = { new MapPropKind { Id = "oak", Weight = 1f } },
+                } },
+            });
+            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = new List<string> { "trees" } });
+            doc.Regions.Add(new MapRegion { Name = "region-1", Shape = new DiscShapeDoc { Radius = 4f } });
+            doc.CompanionLayers.Add(new MapCompanionLayer { Name = "understory", HostLayer = "trees", HostKinds = { "maple" } });
+            return doc;
+        }
+
+        // Every non-header row in the CURRENT inspector must carry a non-null, non-empty Description: the guard
+        // against a tooltip gap (a row an implementer forgot to describe would show no tooltip at all).
+        static void AssertEveryRowDescribed(PropertyGrid grid, string context)
+        {
+            foreach (PropertyRow row in grid.Rows)
+            {
+                if (row is HeaderRow) continue;   // group dividers carry no editable value, no tooltip required
+                LocalizedText? description = row.Description;
+                Assert.True(description.HasValue, $"{context}: row '{row.Label.Resolve()}' has no Description");
+                Assert.False(string.IsNullOrWhiteSpace(description!.Value.Resolve()),
+                    $"{context}: row '{row.Label.Resolve()}' has an empty Description");
+            }
+        }
+
+        [Fact]
+        public void EveryRow_HasDescription()
+        {
+            var scene = PushDocScene(EveryKindDoc);
+
+            // No selection: the Layers panel (group + per-scatter-layer visibility toggles).
+            scene.Document.Selection.Clear();
+            AssertEveryRowDescribed(scene.Inspector, "Layers panel (no selection)");
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            AssertEveryRowDescribed(scene.Inspector, "Terrain");
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
+            AssertEveryRowDescribed(scene.Inspector, "Placement");
+
+            scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
+            AssertEveryRowDescribed(scene.Inspector, "Spawn");
+
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+            AssertEveryRowDescribed(scene.Inspector, "PlayerSpawn");
+
+            // Every feature type (lake, flatten, rim, ridge) has its own AddFeatureRow call sites: walk all four.
+            for (int i = 0; i < 4; i++)
+            {
+                scene.Document.Selection.Set(SelectionKind.Feature, $"{i}");
+                AssertEveryRowDescribed(scene.Inspector, $"Feature[{i}]");
+            }
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            AssertEveryRowDescribed(scene.Inspector, "Exclusion");
+
+            scene.Document.Selection.Set(SelectionKind.Region, "region-1");
+            AssertEveryRowDescribed(scene.Inspector, "Region");
+
+            scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+            AssertEveryRowDescribed(scene.Inspector, "BiomeBand");
+
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            AssertEveryRowDescribed(scene.Inspector, "ScatterLayer");
+
+            // The companion selection also exercises the Warning row (HostKinds mismatches the host layer).
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+            Assert.True(HasRow(scene.Inspector, "Warning"));
+            AssertEveryRowDescribed(scene.Inspector, "CompanionLayer");
+        }
+
+        // Asserts the CURRENT inspector carries at least the given group HeaderRow labels (order-independent,
+        // extra headers allowed), the loose pin the plan calls for so a wording tweak does not break the test.
+        static void AssertGrouped(PropertyGrid grid, string context, params string[] expectedHeaders)
+        {
+            List<string> headers = grid.Rows.OfType<HeaderRow>().Select(h => h.Label.Resolve()).ToList();
+            Assert.True(headers.Count >= expectedHeaders.Length,
+                $"{context}: expected at least {expectedHeaders.Length} group headers, found {headers.Count} " +
+                $"({string.Join(", ", headers)})");
+            foreach (string expected in expectedHeaders)
+                Assert.Contains(expected, headers);
+        }
+
+        [Fact]
+        public void Inspectors_AreGrouped()
+        {
+            var scene = PushDocScene(EveryKindDoc);
+
+            scene.Document.Selection.Clear();
+            AssertGrouped(scene.Inspector, "Layers panel", "Groups");
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            AssertGrouped(scene.Inspector, "Terrain", "Water", "World", "Noise");
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
+            AssertGrouped(scene.Inspector, "Placement", "Identity", "Transform", "State");
+
+            scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
+            AssertGrouped(scene.Inspector, "Spawn", "Identity", "Transform", "State");
+
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+            AssertGrouped(scene.Inspector, "PlayerSpawn", "Identity", "Transform", "State");
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+            AssertGrouped(scene.Inspector, "Feature", "Identity", "Shape", "State");
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            AssertGrouped(scene.Inspector, "Exclusion", "Identity", "Shape", "Targeting");
+
+            scene.Document.Selection.Set(SelectionKind.Region, "region-1");
+            AssertGrouped(scene.Inspector, "Region", "Identity", "Shape");
+
+            scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+            AssertGrouped(scene.Inspector, "BiomeBand", "Range", "Shape");
+
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            AssertGrouped(scene.Inspector, "ScatterLayer", "Identity", "Placement", "Scale", "Rules");
+
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+            AssertGrouped(scene.Inspector, "CompanionLayer", "Identity", "Host", "Output", "Shape");
+        }
+
+        [Fact]
+        public void Layout_InspectorWidth340_Outline260()
+        {
+            var scene = PushDocScene(ValidDoc);
+
+            Rect outline = scene.OutlineRect(1200f, 700f);
+            Rect inspector = scene.InspectorRect(1200f, 700f);
+
+            Near(260f, outline.Width);
+            Near(0f, outline.X);                     // flush against the left edge
+            Near(340f, inspector.Width);
+            Near(1200f - 340f, inspector.X);          // flush against the right edge, independent of outline width
+            Near(outline.Y, inspector.Y);             // both share the same body-top / body-bottom band
+            Near(outline.Height, inspector.Height);
+        }
+
+        [Fact]
+        public void Tooltip_ShowsOnRowHover_HidesOff()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.WaterLevel = 1f;
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
+
+            FloatRow water = FloatRowByLabel(scene.Inspector, "WaterLevel");
+            int rowIndex = scene.Inspector.Rows.IndexOf(water);
+            Rect label = scene.Inspector.RowLabelBounds(rowIndex);
+            var overRow = new Vector2(label.X + 5f, label.Y + label.Height * 0.5f);
+
+            var ui = new InputManager();
+            ui.Update(MouseFrame(overRow, leftDown: false));
+            scene.Inspector.Update(ui, 0.016f);
+
+            // Hovering the row's label band tracks it as HoveredRow (PropertyGrid, decision 4) and the scene's
+            // tooltip content decision (ComputeTooltipContent, decision 4's host-owned Tooltip) shows immediately
+            // with that row's Description, anchored at its label rect. No live SpriteFont is needed for this: the
+            // Tooltip instance itself is only built lazily in OnDrawUi to actually draw.
+            Assert.Same(water, scene.Inspector.HoveredRow);
+            (LocalizedText Text, Vector2 Anchor)? content = scene.ComputeTooltipContent();
+            Assert.NotNull(content);
+            Assert.Equal(water.Description!.Value.Resolve(), content!.Value.Text.Resolve());
+            Assert.Equal(label.X + label.Width * 0.5f, content.Value.Anchor.X);
+            Assert.Equal(label.Y, content.Value.Anchor.Y);
+
+            // Moving the pointer off the grid entirely clears the hover and hides the tooltip content.
+            ui.Update(MouseFrame(new Vector2(-100f, -100f), leftDown: false));
+            scene.Inspector.Update(ui, 0.016f);
+
+            Assert.Null(scene.Inspector.HoveredRow);
+            Assert.Null(scene.ComputeTooltipContent());
         }
 
         // Drives a companion/scatter TextRow the way a keystroke commit does. One unfocused Update first polls the

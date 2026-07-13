@@ -873,6 +873,29 @@ public class MapEditorScene : GameScene, IGameScene3D
             _pendingSelectId = null;
         }
         RebuildInspector();
+        SyncOutlineSelection();
+    }
+
+    // Resolves the current EditorSelection to its live outline node and highlights + scrolls to it, or clears the
+    // outline highlight when nothing is selected. Called from two places: OnSelectionChanged (a viewport pick, an
+    // outline tap, a RunOutlineAction select-on-add) and the end of RebuildOutline (every document edit news up a
+    // fresh set of TreeNodes, which would otherwise orphan _outline.Selected against a node no longer in Roots).
+    // Matches purely on OutlineRef kind/id equality (a record struct, value equality for free), never on a
+    // per-kind switch, so a new SelectionKind gets sync for free the day its outline nodes start carrying an
+    // OutlineRef tag. An outline-originated selection (the tree already set Selected before invoking OnSelected)
+    // resolves back to the SAME node here, so the re-set and ScrollTo are harmless no-ops, not a feedback loop.
+    void SyncOutlineSelection()
+    {
+        EditorSelection sel = _document.Selection;
+        if (sel.Kind == SelectionKind.None)
+        {
+            _outline.Selected = null;
+            return;
+        }
+        var target = new OutlineRef(sel.Kind, sel.Id);
+        TreeNode? node = _outline.FindByTag(tag => tag is OutlineRef r && r.Equals(target));
+        _outline.Selected = node;
+        if (node is not null) _outline.ScrollTo(node);
     }
 
     void OnOutlineSelected(TreeNode node)
@@ -1109,6 +1132,10 @@ public class MapEditorScene : GameScene, IGameScene3D
         _outline.Roots.Add(Category("Scatter Layers", ScatterLayerNodes()));
         _outline.Roots.Add(Category("Companion Layers", CompanionLayerNodes()));
         _outline.Roots.Add(Category("Regions", RegionNodes()));
+        // Every root above is a freshly-`new`'d TreeNode, so any prior _outline.Selected reference is now
+        // orphaned (no longer reachable from Roots). Re-resolve it against the fresh tree, the fix for the
+        // outline highlight dropping on every document edit.
+        SyncOutlineSelection();
     }
 
     // The terrain root: a single selectable leaf (no children) carrying the singleton Terrain selection, so its
@@ -2296,8 +2323,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         return new ChromeLayout(toolbar, outline, inspector, palette, status, viewport);
     }
 
-    // Identity payload on an outline row: which document element the row selects.
-    readonly record struct OutlineRef(SelectionKind Kind, string Id);
+    // Identity payload on an outline row: which document element the row selects. Internal (not private) so
+    // tests can assert the resolved outline node's Tag matches the live selection after a sync.
+    internal readonly record struct OutlineRef(SelectionKind Kind, string Id);
 
     // Which side effect a synthetic outline ACTION node runs when tapped (a node with no document element behind
     // it, e.g. an add affordance). Distinct from OutlineRef so OnOutlineSelected can tell the two apart.

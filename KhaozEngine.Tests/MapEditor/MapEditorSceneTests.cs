@@ -1587,6 +1587,112 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(OutlineListsPlacement(scene.Outline, "hut"), "hidden placement still appears in the outline");
         }
 
+        // ---- outline selection sync -----------------------------------------------------------------------
+
+        [Fact]
+        public void ViewportPick_HighlightsAndScrollsOutline()
+        {
+            var scene = new FieldDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f, Y = null });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 100f);   // only a handful of rows fit
+            outline.ScrollOffset = 500f;                     // scrolled well past the content
+
+            var down = new Vector3(0f, -1f, 0f);
+            EditorFrameInput Press() => new EditorFrameInput(new Vector3(0f, 100f, 0f), down,
+                pointerPressed: true, pointerDown: true, dt: 0.016f);
+            scene.Controller.Update(Press());
+
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("hut", scene.Document.Selection.Id);
+
+            TreeNode? selected = outline.Selected;
+            Assert.NotNull(selected);
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "hut"), selected!.Tag);
+            Assert.True(outline.ScrollOffset < 500f, "the pick should scroll the newly selected row back into view");
+        }
+
+        [Fact]
+        public void EditRebuild_ReselectsOutlineNode()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            TreeNode? before = scene.Outline.Selected;
+            Assert.NotNull(before);
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "hut"), before!.Tag);
+
+            // Any document command through the normal Execute path rebuilds the outline (RebuildOutline news up
+            // every TreeNode), which used to orphan the highlight. The selection itself (kind/id) is unchanged.
+            scene.Document.Execute(new MovePlacementCommand("hut", 5f, 5f, null));
+
+            TreeNode? after = scene.Outline.Selected;
+            Assert.NotNull(after);
+            Assert.NotSame(before, after);   // proves the node really was replaced by the rebuild, not a survivor
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "hut"), after!.Tag);
+        }
+
+        [Fact]
+        public void SelectionClear_ClearsOutline()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            Assert.NotNull(scene.Outline.Selected);
+
+            scene.Document.Selection.Clear();
+            Assert.Null(scene.Outline.Selected);
+        }
+
+        [Fact]
+        public void OutlineTap_StillWorks_Idempotent()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f });
+                return doc;
+            });
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);
+            TreeNode node = CategoryChild(outline, "Placements", 0);
+
+            var input = new InputManager();
+            TapTree(outline, input, RowCenter(outline, node));
+
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("hut", scene.Document.Selection.Id);
+            Assert.Same(node, outline.Selected);   // the resync did not swap in a different node instance
+            float scrollAfterTap = outline.ScrollOffset;
+
+            // A few quiet frames afterward: the outline-originated resync must be idempotent, no feedback loop
+            // bouncing the highlight or re-scrolling an already-visible row.
+            for (int i = 0; i < 3; i++)
+            {
+                scene.OnUpdate(0.016f);
+                Assert.Same(node, outline.Selected);
+                Assert.Equal(scrollAfterTap, outline.ScrollOffset);
+            }
+        }
+
         [Fact]
         public void HiddenExclusion_SurvivesDeleteOfEarlierIndex()
         {

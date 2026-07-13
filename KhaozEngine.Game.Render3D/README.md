@@ -87,9 +87,12 @@ See `docs/USING-KHAOZENGINE.md`.
 The bridge also SMOOTHS the drawn feet height on stairs. The paced stair-climb sim deliberately produces a per-riser
 vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40 staircase; the sim is unchanged), which reads as
 a bumpy jolt on the model and any follow camera. Rather than low-pass the height (which would lag the feet on the ramp),
-each `Update` FEEDS FORWARD from horizontal motion: it advances a smoothed feet-Y by `horizontalDelta * estimatedGrade`
-(grade read from a short window of dY/dXZ) so it tracks the ramp line with no lag, then critically damps that toward the
-true feet-Y at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s) to correct drift and settle onto real treads. The
+each `Update` FEEDS FORWARD, TIME-PACED: it advances a smoothed feet-Y by the windowed MEAN vertical climb rate (EWMA of
+dY/dt over a short window, gated by the estimated grade from a dY/dXZ window) so it tracks the ramp line with no lag,
+then critically damps that toward the true feet-Y at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s) to correct drift
+and settle onto real treads. The mean rate does not couple to the uneven per-tick horizontal (which anticorrelates with
+the rise on a co-paced ascent - the old `horizontalDelta * estimatedGrade` form judder-injected worse than raw on a
+run-up), so the glide beats the raw bob AND judder on walk-up / run-up / walk-down / run-down. The
 smoothed height is baked into `CharacterPose.World` and exposed as **`CharacterPose.RenderPosition`** - point a follow
 camera at that (not the raw predicted position) and the model glides up stairs to match. It is byte-identity on FLAT
 ground (grade ~0, so render-Y equals the sample Y byte-for-byte) and NEAR-identity on a smooth continuous slope (it

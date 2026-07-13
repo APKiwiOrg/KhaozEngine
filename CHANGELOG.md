@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Stair render-glide: time-paced ascent smoothing + step-down grounded-hold
+
+Two fixes to the way a stair traversal reads, both regressions surfaced by the 10.74.0 slope-fed smoother in prod ("running up is very bad; down seems fine", plus "very glitchy going down" on taller steps). No consumer wiring change: both are internal to `ReplicatedCharacterAnimators` (render) and `CharacterMovement` (sim); a consumer already on the smoother + `RenderPosition` gets them for free.
+
+- **ASCENT render smoothing is now TIME-PACED, not horizontal-paced (`ReplicatedCharacterAnimators`).** The 10.74.0 feed-forward advanced the smoothed feet-Y by `horizontalDelta * estimatedGrade`, which assumed horizontal advance tracks the climb. On ASCENT it does not: the paced step-up co-paces the horizontal along the stair tangent, so per-tick horizontal ANTICORRELATES with the rise (near-zero on rise ticks, a full tread on flat-tread ticks). Multiplying that uneven horizontal by the grade injected a per-frame vertical judder that, over real 120 fps inter-tick-lerped streams, read WORSE than the raw sawtooth on a RUN-up (the worst single-frame vertical pop roughly doubled, ~29 mm raw to ~37 mm; descent was already fine because it advances steadily). The feed-forward now advances the smoothed feet-Y by the windowed MEAN vertical climb RATE (an EWMA of dY/dt over the same grade window, a third leaky accumulator, still allocation-free), gated the same way by the estimated grade and by this frame having horizontal motion. The mean rate rides the ramp lag-free but does not couple to the per-tick horizontal, so it beats the raw bob AND judder on all of walk-up / run-up / walk-down / run-down over both 120 fps inter-tick-lerped and tick-aligned streams (run-up judder drops below raw; descent, flat-ground byte-identity, rest-settle, teleport-snap, and the jump/fall/swim bypass are all unchanged). Measured against a real Bepu + `CharacterMovement` climb of a TestStaircase-scale staircase.
+
 ## 10.74.0
 
 ### Stair climbs render as a smooth glide up the stair slope (slope-fed render smoothing in the character bridge)

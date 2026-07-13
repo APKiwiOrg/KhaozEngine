@@ -1614,10 +1614,14 @@ asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` i
 
 The bridge smooths the drawn FEET HEIGHT on stairs so a climb reads as a glide, not a per-riser bob. A paced
 stair-climb produces a deliberate per-riser vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40
-staircase). A plain low-pass would lag the feet on the ramp, so the bridge instead feeds forward from horizontal
-motion: it advances a smoothed feet-Y by `horizontalDelta * grade` (grade from a short dY/dXZ window) to track the ramp
-line lag-free, then critically damps toward the true feet-Y at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default
-5) to settle onto real treads. The smoothed height is baked into `CharacterPose.World` and exposed as
+staircase). A plain low-pass would lag the feet on the ramp, so the bridge instead feeds forward TIME-PACED: it advances
+a smoothed feet-Y by the windowed MEAN vertical climb rate (EWMA of dY/dt over a short window, gated by the estimated
+grade so flat ground is off) to track the ramp line lag-free, then critically damps toward the true feet-Y at
+`CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default 5) to settle onto real treads. The mean rate does NOT couple to
+the uneven per-tick horizontal (the paced step-up co-paces the horizontal, so on ascent it anticorrelates with the rise
+- an earlier `horizontalDelta * grade` form injected a per-frame judder that read worse than raw on a run-up), so the
+glide beats the raw bob AND judder on walk-up / run-up / walk-down / run-down alike. The smoothed height is baked into
+`CharacterPose.World` and exposed as
 `CharacterPose.RenderPosition` - **point a follow camera at `p.RenderPosition`** (not the raw predicted position) so the
 camera glides with the model. It is byte-identity on FLAT ground (grade ~0, so `RenderPosition == the sample position`)
 and near-identity on a smooth continuous slope (it tracks the already-smooth true Y within a hair, not byte-identical),

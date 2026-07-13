@@ -41,7 +41,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   against the same play-area bound + static physics bodies the server is authoritative over, so a
   solid-prop world predicts straight instead of rubber-banding (null = terrain only).
   Each `EntityRenderState` carries the EXACT movement flags for every entity (local: predicted; remote: replicated
-  `MovementState`): `Grounded` + `VerticalVelocity` (jump/fall) and `Swimming` (the swim feature), so an animator
+  `MovementState`): `Grounded` + `VerticalVelocity` (jump/fall), `Swimming` (the swim feature), and `ClimbRate` (the
+  signed step-climb rate driving the stair glide, decoded from `MovementState.ClimbRateQ` - written per tick by BOTH
+  the single-`World` `WorldServer` and the sharded `PlayerMovementSystem`), so an animator
   bridge reads them straight instead of finite-differencing the terrain-following position - swim in particular is
   impossible to derive from position (a swimmer glides horizontally like a walker), so the replicated bit is the only
   source. Read-only local-avatar shorthands: `LocalRenderState` (whose `.Swimming` mirrors the flag) / `LocalGrounded`

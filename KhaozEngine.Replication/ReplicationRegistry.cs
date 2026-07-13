@@ -34,6 +34,12 @@ public sealed class ReplicationRegistry
     /// Registers a replicated component. <paramref name="write"/>/<paramref name="read"/> must be symmetric
     /// (read consumes exactly what write produced). Supplying <paramref name="lerp"/> makes the component
     /// interpolatable (smoothed between snapshots by <see cref="ClientReplicationView.Interpolate"/>).
+    /// <paramref name="discreteSample"/> instead makes it fixed-delay <b>nearest-sampled</b> (no blending): the
+    /// component is time-buffered like a lerp component, but <see cref="ClientReplicationView.InterpolateAt"/> writes
+    /// the buffered sample NEAREST the render time verbatim rather than lerping - for a discrete quantity (a flag, a
+    /// quantized rate) that must NOT be blended yet must still ride the SAME delayed render timeline as the
+    /// interpolated position. A component supplies AT MOST one of <paramref name="lerp"/> / <paramref name="discreteSample"/>
+    /// (a value either blends or it does not); supplying both throws.
     /// <paramref name="channels"/> declares which downstream consumers see the component's bytes (client AoI
     /// replication, cell persistence, cell handoff, owner-only visibility); it defaults to
     /// <see cref="ReplicationChannels.Default"/> (replicate + persist + migrate), the pre-9.28.0 behaviour, so
@@ -43,13 +49,20 @@ public sealed class ReplicationRegistry
     /// violation throws.
     /// </summary>
     public void Register<T>(ushort typeId, Action<T, BinaryWriter> write, Func<BinaryReader, T> read,
-        Func<T, T, float, T>? lerp = null, ReplicationChannels channels = ReplicationChannels.Default)
+        Func<T, T, float, T>? lerp = null, ReplicationChannels channels = ReplicationChannels.Default,
+        bool discreteSample = false)
         where T : struct, IComponent
     {
         if (typeId == 0) throw new ArgumentOutOfRangeException(nameof(typeId), "Type id 0 is reserved.");
         if (write is null) throw new ArgumentNullException(nameof(write));
         if (read is null) throw new ArgumentNullException(nameof(read));
         if (byId.ContainsKey(typeId)) throw new InvalidOperationException($"Type id {typeId} already registered.");
+        // A component either BLENDS between snapshots (lerp) or is nearest-SAMPLED discretely - never both. Both set
+        // would make the fixed-delay path ambiguous (blend or pick-nearest?), so reject it at registration.
+        if (lerp is not null && discreteSample)
+            throw new ArgumentException(
+                $"Type id {typeId} supplied both a lerp and discreteSample; a component either interpolates or is nearest-sampled, not both.",
+                nameof(discreteSample));
         // Built-in ids (< the floor) are the core protocol: their exact unframed encoding on every channel is fixed,
         // so per-channel flags must never alter what they write. Reject any non-default channel set below the floor.
         if (!IsExtension(typeId) && channels != ReplicationChannels.Default)
@@ -110,7 +123,14 @@ public sealed class ReplicationRegistry
             };
         }
 
-        var codec = new ComponentCodec(typeId, lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, CaptureInto, RemoveComponent);
+        // Discrete nearest-sample: write a chosen buffered sample's bytes verbatim (no blend). Symmetric with the
+        // lerp path (both erase T behind a byte-slice closure), so the fixed-delay history machinery treats a discrete
+        // component exactly like a lerp one except for the write.
+        Action<World, Entity, byte[]>? setFromBytes = null;
+        if (discreteSample)
+            setFromBytes = (w, e, bytes) => w.Set(e, read(new BinaryReader(new MemoryStream(bytes))));
+
+        var codec = new ComponentCodec(typeId, lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -127,6 +147,7 @@ internal sealed class ComponentCodec
     public ComponentCodec(ushort typeId, bool lengthPrefixed, ReplicationChannels channels,
         Func<World, Entity, BinaryWriter, bool> trySerialize,
         Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
+        Action<World, Entity, byte[]>? setFromBytes,
         Func<World, Entity, BinaryWriter, bool> captureInto, Action<World, Entity> removeComponent)
     {
         TypeId = typeId;
@@ -135,6 +156,7 @@ internal sealed class ComponentCodec
         TrySerialize = trySerialize;
         Deserialize = deserialize;
         LerpFromBytes = lerpFromBytes;
+        SetFromBytes = setFromBytes;
         CaptureInto = captureInto;
         RemoveComponent = removeComponent;
     }
@@ -185,5 +207,21 @@ internal sealed class ComponentCodec
     /// <summary>Reads two raw component byte slices, lerps, and sets the result. Null if not interpolatable.</summary>
     public Action<World, Entity, byte[], byte[], float>? LerpFromBytes { get; }
 
+    /// <summary>Reads one raw component byte slice and sets it verbatim (no blend). Null unless the component was
+    /// registered with <c>discreteSample: true</c> - the fixed-delay nearest-sample path for a discrete quantity (a
+    /// flag / quantized rate) that must ride the same delayed render timeline as position without being interpolated.</summary>
+    public Action<World, Entity, byte[]>? SetFromBytes { get; }
+
+    /// <summary>True when this component is smoothed between snapshots (has a lerp).</summary>
     public bool Interpolatable => LerpFromBytes is not null;
+
+    /// <summary>True when this component is fixed-delay nearest-SAMPLED (has a discrete setter): time-buffered like a
+    /// lerp component, but written from the nearest buffered sample rather than a blend. Mutually exclusive with
+    /// <see cref="Interpolatable"/> (enforced at registration).</summary>
+    public bool Discrete => SetFromBytes is not null;
+
+    /// <summary>True when this component is time-buffered for fixed-delay presentation (either interpolated or
+    /// nearest-sampled) - the components <see cref="ClientReplicationView.RecordInterpolationSample"/> captures and
+    /// <see cref="ClientReplicationView.InterpolateAt"/> writes.</summary>
+    public bool FixedDelaySampled => Interpolatable || Discrete;
 }

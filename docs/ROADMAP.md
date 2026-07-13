@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.74.1** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.75.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -32,6 +32,15 @@ one-sided riser, orthogonal to the vertical-support tread-find fix (which correc
 forward push), so that fix neither covers nor regresses it. No shipped consumer geometry hits this - the
 consumers' stairs are convex boxes, which the tread-find fix fully covers - so it is recorded here rather than
 patched. Documented in the `ConsumerStairBaseMountTests` header.
+
+SurfaceGradeAhead complex-geometry robustness (stair-glide signal, deferred). The continuous-run detection that gates
+the climb signal reads the local grade from a small forward ray fan (`SurfaceGradeAhead`). On a clean box/convex
+staircase it is stable, but on complex geometry near the run - railings, corner posts, a balustrade, an adjacent wall
+lip - a probe ray can graze a non-tread surface and flip the detection off for a tick, which flickers the signal and
+can make the render glide disengage/re-engage (a brief hitch). No shipped consumer stair has this (the consumer
+`TestStaircase` and dungeon stairs are convex boxes with clear approaches), so it is recorded here rather than
+hardened now. When it matters, options are a more robust surface classifier (reject rays whose hit normal or height is
+inconsistent with the run) or a short hysteresis on the run-detected flag so a one-tick probe miss does not drop it.
 
 Gate the up-tilted-lip step-up on elevation above the current SUPPORT floor (props included), not analytic
 terrain alone. The lip step-up widened in the short-riser/tread-lip fix keys its near-floor gate off the
@@ -148,6 +157,16 @@ Also here, unchanged:
   equivalent reset yet. Add a `SnapRenderHeight()` (or teleport-aware `Update` overload) when a single-avatar
   consumer needs crisp short teleports - not fixed now because `CharacterAvatar`'s owner drives the controller
   directly (it can seed `_renderY` on a teleport itself), so there is no live consumer pull.
+
+- Stair-glide EWMA resets across a mid-climb shard handoff (10.75.0 follow-up): the ascent climb signal's
+  smoothing average (`ClimbRateEwma`) is sim-local and deliberately absent from the `ReplicationChannels.Migrate`
+  capture, so a player crossing a cell boundary WHILE climbing a stair run re-seeds it to 0 on the new shard and
+  the exported `ClimbRateQ` re-converges over the EWMA time constant. That is a ~0.2 s dip in the remote's
+  rendered glide right at the boundary (content-dependent - needs a stair straddling a cell edge - and cosmetic:
+  the authoritative position and the wire `ClimbRateQ` itself are unaffected, only the smoothed feed-forward
+  dips). Fix when a real straddling-stair layout surfaces it. Candidates: carry the EWMA on a Migrate-only
+  channel (survives the handoff, still off the wire), or re-seed it from the decoded `ClimbRateQ` in
+  `PlayerMovementSystem` when `Ewma == 0 && ClimbRateQ != 0` (mirror of the reconcile seed, no migrate change).
 
 ## Cross-platform reach
 

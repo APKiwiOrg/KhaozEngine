@@ -39,4 +39,29 @@ public struct MoveState
     /// is a land character, so a pre-swim state is byte-identical. Replicated as <c>MovementState.Swimming</c> in
     /// NetWorld so the local owner reconciles it and remotes animate it.</summary>
     public bool Swimming;
+
+    /// <summary>Signed step-climb rate in m/s: the vertical speed at which the capsule is riding a paced STEP climb this
+    /// tick. Positive = ascending a continuous paced stair run (the step-up co-paces the rise to
+    /// <see cref="MoveTuning.MaxStepClimbSpeed"/>); negative = descending a stepped-down riser (the step-down
+    /// grounded-hold seats the capsule one riser down while staying grounded); exactly 0 = not on a step climb (flat
+    /// ground, a terrain slope, a jump, a fall, a swim, or a single discrete riser seat that is not part of a run). It
+    /// is a state OUTPUT of the step, carried like <see cref="VerticalVelocity"/>, and is the SINGLE source of truth a
+    /// presentation smoother reads to glide the drawn feet up/down the stair slope: 0 means "not climbing" (render raw,
+    /// by construction), a signed rate means "glide at exactly this rate" (no position-delta estimation). <c>default</c>
+    /// is 0 (a non-climber, byte-identical to a pre-feature state). Replicated quantized as <c>MovementState.ClimbRateQ</c>
+    /// in NetWorld so remotes glide on the same signal the local owner does.</summary>
+    public float ClimbRate;
+
+    /// <summary>SIM-LOCAL smoothing state (NOT replicated): the exponentially-weighted moving average of the
+    /// actually-applied per-tick climb RATE (<c>(pos.Y - prevY) / dt</c>) over a continuous paced stair run, in m/s.
+    /// <see cref="ClimbRate"/> is stamped FROM this on a run tick, so the exported signal converges to the sim's own
+    /// TRUE emergent rise rate (footprint-limited, co-paced) instead of the commanded rate - which is what drives the
+    /// render-glide feed-forward/damp equilibrium offset to ~0 (a converged signal means render height == true feet on
+    /// average, no half-riser hover and no crest snap). Updated ONLY on a detected continuous-run tick and reset to 0
+    /// otherwise, so a fall / jump / flat / single-riser never accumulates into it (the fall-sink stays correct by
+    /// construction). It is carried tick-to-tick like <see cref="VerticalVelocity"/> but rides no wire: MoveState is
+    /// sim-local and only the derived <see cref="ClimbRate"/> (as <c>MovementState.ClimbRateQ</c>) replicates, and both
+    /// heads run the same deterministic update so their EWMA - and therefore the stamped signal - agree by construction.
+    /// <c>default</c> is 0 (byte-identical to a pre-feature state).</summary>
+    public float ClimbRateEwma;
 }

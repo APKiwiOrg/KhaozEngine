@@ -282,7 +282,7 @@ public sealed class ClientReplicationView
                 codec.Deserialize(world, entity, br);
                 long end = extension ? posBefore + len : ms.Position;   // codec consumes exactly len for extensions
                 if (extension) ms.Position = end;                       // re-align defensively past the framed payload
-                if (codec.Interpolatable)
+                if (codec.FixedDelaySampled)   // interpolated OR discrete nearest-sampled: both need the timestamped bytes
                 {
                     var slice = new byte[end - posBefore];
                     Array.Copy(backing, (int)posBefore, slice, 0, slice.Length);
@@ -372,7 +372,7 @@ public sealed class ClientReplicationView
         foreach (KeyValuePair<(long netId, ushort typeId), byte[]> kv in currentBytes)
         {
             if (excludeNetId is long ex && kv.Key.netId == ex) continue;   // local avatar: predicted, never interpolated
-            if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || codec.LerpFromBytes is null) continue;
+            if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || !codec.FixedDelaySampled) continue;
             if (!sampleHistory.TryGetValue(kv.Key, out List<(double t, byte[] bytes)>? hist))
                 sampleHistory[kv.Key] = hist = new List<(double t, byte[] bytes)>();
             if (hist.Count > 0 && timeSeconds <= hist[^1].t) hist[^1] = (timeSeconds, kv.Value);
@@ -410,7 +410,7 @@ public sealed class ClientReplicationView
             List<(double t, byte[] bytes)> hist = kv.Value;
             if (hist.Count == 0) continue;
             if (!entityByNetId.TryGetValue(kv.Key.netId, out Entity e) || !world.IsAlive(e)) continue;
-            if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || codec.LerpFromBytes is null) continue;
+            if (!registry.TryGet(kv.Key.typeId, out ComponentCodec codec) || !codec.FixedDelaySampled) continue;
 
             // The last sample at or before renderTime is the lower bracket (history is time-ascending).
             int lo = -1;
@@ -419,7 +419,7 @@ public sealed class ClientReplicationView
             if (lo < 0)
             {
                 // renderTime precedes the whole buffer: clamp to the oldest sample (no backward extrapolation).
-                codec.LerpFromBytes(world, e, hist[0].bytes, hist[0].bytes, 0f);
+                WriteSample(codec, world, e, hist[0].bytes, hist[0].bytes, 0f);
                 continue;
             }
             if (lo >= hist.Count - 1)
@@ -427,7 +427,7 @@ public sealed class ClientReplicationView
                 // renderTime is at/past the newest sample: HOLD there, never extrapolate. Flag a genuine starvation
                 // hold (renderTime strictly past the newest), then keep only the newest sample.
                 (double t, byte[] bytes) newest = hist[lo];
-                codec.LerpFromBytes(world, e, newest.bytes, newest.bytes, 0f);
+                WriteSample(codec, world, e, newest.bytes, newest.bytes, 0f);
                 if (renderTime > newest.t + 1e-9) heldNetIds.Add(kv.Key.netId);
                 if (lo > 0) hist.RemoveRange(0, lo);
                 continue;
@@ -436,9 +436,19 @@ public sealed class ClientReplicationView
             (double t, byte[] bytes) b = hist[lo + 1];
             double span = b.t - a.t;
             float frac = span > 0 ? (float)Math.Clamp((renderTime - a.t) / span, 0.0, 1.0) : 1f;
-            codec.LerpFromBytes(world, e, a.bytes, b.bytes, frac);
+            WriteSample(codec, world, e, a.bytes, b.bytes, frac);
             if (lo > 0) hist.RemoveRange(0, lo);   // renderTime only increases: earlier samples are unreachable.
         }
+    }
+
+    // Writes the value at the resolved bracket: for a lerp component, lerp(lo, hi, frac); for a DISCRETE component pick
+    // the NEAREST of the two bracketing samples (frac <= 0.5 -> the lower, tie to lower, mirroring the lerp clamp) and
+    // set its bytes verbatim - a flag / quantized rate rides the same delayed timeline as position but is never blended
+    // into an impossible in-between. Static (no capture) so the per-frame InterpolateAt hot path allocates nothing.
+    private static void WriteSample(ComponentCodec codec, World world, Entity e, byte[] loBytes, byte[] hiBytes, float frac)
+    {
+        if (codec.Discrete) codec.SetFromBytes!(world, e, frac <= 0.5f ? loBytes : hiBytes);
+        else codec.LerpFromBytes!(world, e, loBytes, hiBytes, frac);
     }
 
     /// <summary>True if the entity with network id <paramref name="netId"/> was HELD at the newest buffered sample

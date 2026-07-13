@@ -1598,8 +1598,9 @@ foreach (EntityRenderState e in client.Snapshot())
     samples.Add(e.IsLocal
         // Local player: also pass the EXACT planar speed so idle/walk/run is driven off the clean commanded
         // speed, not finite-differenced from the render position (no walk<->idle flicker on a decel-to-stop).
-        ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming)
-        : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming));
+        // Pass e.ClimbRate LAST so the stair glide drives off the sim's exported climb signal, not a position estimate.
+        ? new CharacterSample(e.Id.Value, feet, isLocal: true, e.Grounded, e.VerticalVelocity, client.LocalHorizontalSpeed, e.Swimming, e.ClimbRate)
+        : new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming, e.ClimbRate));
 }
 animators.Update(samples, dt);
 
@@ -1614,19 +1615,22 @@ asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` i
 
 The bridge smooths the drawn FEET HEIGHT on stairs so a climb reads as a glide, not a per-riser bob. A paced
 stair-climb produces a deliberate per-riser vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40
-staircase). A plain low-pass would lag the feet on the ramp, so the bridge instead feeds forward TIME-PACED: it advances
-a smoothed feet-Y by the windowed MEAN vertical climb rate (EWMA of dY/dt over a short window, gated by the estimated
-grade so flat ground is off) to track the ramp line lag-free, then critically damps toward the true feet-Y at
-`CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default 5) to settle onto real treads. The mean rate does NOT couple to
-the uneven per-tick horizontal (the paced step-up co-paces the horizontal, so on ascent it anticorrelates with the rise
-- an earlier `horizontalDelta * grade` form injected a per-frame judder that read worse than raw on a run-up), so the
-glide beats the raw bob AND judder on walk-up / run-up / walk-down / run-down alike. The smoothed height is baked into
-`CharacterPose.World` and exposed as
+staircase). The glide is SIGNAL-DRIVEN: it engages iff the sample carries a non-zero `CharacterSample.ClimbRate` (the
+signed step-climb rate the SIMULATION exports - `MoveState.ClimbRate`, surfaced on `EntityRenderState.ClimbRate`; the
+bridge no longer ESTIMATES climb state from position deltas). When climbing it feeds that exact rate forward
+(`SmoothedY += ClimbRate * dt`, lag-free) and critically damps toward the true feet-Y at
+`CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default 5) to settle onto real treads. The exported ascent rate is the
+sim's SMOOTHED ACHIEVED rise (not the commanded rate), so the drawn feet track the true feet with ~0 sustained hover,
+and when an ascent signal cuts to 0 at a crest the bridge eases the last sub-perceptual residual onto the top tread (no
+one-frame snap) while a mid-stair STOP, a fall, or a descent between-riser tick still hard-cut. A fall, jump, teleport, prop
+platform, or elevator is never stamped with a climb rate (`ClimbRate == 0`), so it takes the raw branch BY CONSTRUCTION
+- render-Y is the true feet-Y, nothing to carry past the floor at touchdown (a ballistic fall can never bury a landing
+character below the floor). The smoothed height is baked into `CharacterPose.World` and exposed as
 `CharacterPose.RenderPosition` - **point a follow camera at `p.RenderPosition`** (not the raw predicted position) so the
-camera glides with the model. It is byte-identity on FLAT ground (grade ~0, so `RenderPosition == the sample position`)
-and near-identity on a smooth continuous slope (it tracks the already-smooth true Y within a hair, not byte-identical),
-and snaps to true on a jump, fall, swim, or a LARGE gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance`, so those
-stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y).
+camera glides with the model. It is byte-identity on FLAT ground (`ClimbRate == 0`, so `RenderPosition == the sample
+position`), and renders raw on a jump, fall, swim, or a LARGE gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance`,
+so those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y). Feed the sim's
+`ClimbRate` through your sample loop (see `e.ClimbRate` above); a position-only sample reads 0 (no glide).
 
 A teleport whose vertical gap exceeds `SlopeGlideSnapDistance` (1.5 m) hard-cuts automatically, but a SHORT teleport
 under that gap is height-identical to a stair riser - no height heuristic can tell the two apart. For crisp cuts on

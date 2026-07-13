@@ -27,9 +27,9 @@ namespace KhaozEngine.Game
     public readonly struct CharacterSample
     {
         // Full-field constructor (private) backing WithFacingYaw: copies every field and overrides the facing yaw.
-        // Keeping it private avoids a public 10-arg overload; the public constructors below stay the documented surface.
+        // Keeping it private avoids a public 11-arg overload; the public constructors below stay the documented surface.
         CharacterSample(long id, Vector3 position, bool isLocal, bool hasMovement, bool grounded, float verticalVelocity,
-            bool swimming, bool hasPlanarSpeed, float planarSpeed, float? facingYaw)
+            bool swimming, float climbRate, bool hasPlanarSpeed, float planarSpeed, float? facingYaw)
         {
             Id = id;
             Position = position;
@@ -38,6 +38,7 @@ namespace KhaozEngine.Game
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
             Swimming = swimming;
+            ClimbRate = climbRate;
             HasPlanarSpeed = hasPlanarSpeed;
             PlanarSpeed = planarSpeed;
             FacingYaw = facingYaw;
@@ -55,16 +56,18 @@ namespace KhaozEngine.Game
             Grounded = false;
             VerticalVelocity = 0f;
             Swimming = false;
+            ClimbRate = 0f;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = null;
         }
 
         /// <summary>Sample with exact movement (the local player, or any entity whose replicated <c>MovementState</c>
-        /// is available): <see cref="Grounded"/>, <see cref="VerticalVelocity"/>, and <see cref="Swimming"/> are used
-        /// as given instead of being derived. <paramref name="swimming"/> defaults false so a pre-swim caller is
-        /// unchanged.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, bool swimming = false)
+        /// is available): <see cref="Grounded"/>, <see cref="VerticalVelocity"/>, <see cref="Swimming"/>, and
+        /// <see cref="ClimbRate"/> are used as given instead of being derived. <paramref name="swimming"/> and
+        /// <paramref name="climbRate"/> default to the non-swimming / not-climbing values so a pre-swim / pre-glide
+        /// caller is unchanged.</summary>
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, bool swimming = false, float climbRate = 0f)
         {
             Id = id;
             Position = position;
@@ -73,6 +76,7 @@ namespace KhaozEngine.Game
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
             Swimming = swimming;
+            ClimbRate = climbRate;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = null;
@@ -86,7 +90,7 @@ namespace KhaozEngine.Game
         /// and does not strobe walk&lt;-&gt;idle when the player decelerates to a stop (where the rendered position, even
         /// after the C1 smoothing fix, settles with a tiny residual sag). Facing still follows the derived heading
         /// (planar speed is magnitude-only). A negative value is treated as zero.</summary>
-        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed, bool swimming = false)
+        public CharacterSample(long id, Vector3 position, bool isLocal, bool grounded, float verticalVelocity, float planarSpeed, bool swimming = false, float climbRate = 0f)
         {
             Id = id;
             Position = position;
@@ -95,6 +99,7 @@ namespace KhaozEngine.Game
             Grounded = grounded;
             VerticalVelocity = verticalVelocity;
             Swimming = swimming;
+            ClimbRate = climbRate;
             HasPlanarSpeed = true;
             PlanarSpeed = planarSpeed;
             FacingYaw = null;
@@ -116,6 +121,7 @@ namespace KhaozEngine.Game
             Grounded = false;
             VerticalVelocity = 0f;
             Swimming = false;
+            ClimbRate = 0f;
             HasPlanarSpeed = false;
             PlanarSpeed = 0f;
             FacingYaw = facingYaw;
@@ -148,6 +154,14 @@ namespace KhaozEngine.Game
         /// position (a swimmer glides horizontally like a walker, so position cannot distinguish the two).</summary>
         public bool Swimming { get; }
 
+        /// <summary>Exact signed step-climb rate in m/s (only meaningful when <see cref="HasMovement"/>): +ascending a
+        /// paced stair run, -descending stepped risers, 0 not on a step climb. The presentation smoother in
+        /// <see cref="ReplicatedCharacterAnimators.Update"/> glides the drawn feet up/down the stair slope iff this is
+        /// non-zero, feeding it forward directly (never estimating climb from a position delta). Sourced from the sim's
+        /// own <c>MoveState.ClimbRate</c> (local: predicted; remote: the decoded, nearest-sampled replicated
+        /// <c>MovementState.ClimbRateQ</c>, via <c>EntityRenderState.ClimbRate</c>). 0 on every position-only sample.</summary>
+        public float ClimbRate { get; }
+
         /// <summary>True when this sample carries an exact planar <see cref="PlanarSpeed"/> to use for the locomotion
         /// state instead of deriving it from the position delta.</summary>
         public bool HasPlanarSpeed { get; }
@@ -171,7 +185,7 @@ namespace KhaozEngine.Game
         /// sample shape - position-only, exact-movement, or the fullest exact-speed sample - since facing is independent
         /// of the movement/speed/swim data. <see cref="CharacterAnimatorTuning.FacingYawOffset"/> still composes on top.</summary>
         public CharacterSample WithFacingYaw(float facingYaw) =>
-            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, HasPlanarSpeed, PlanarSpeed, facingYaw);
+            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, ClimbRate, HasPlanarSpeed, PlanarSpeed, facingYaw);
     }
 
     /// <summary>A draw-ready character produced by <see cref="ReplicatedCharacterAnimators.Update"/>: the world
@@ -308,23 +322,21 @@ namespace KhaozEngine.Game
         /// <see cref="LocomotionSpeedSync.DefaultMaxMultiplier"/>. Default 3.0.</summary>
         public float MaxLocomotionRate;
 
-        /// <summary>Critical-damp settle rate (radians/second) of the SLOPE-FED render-height smoother that makes a stair
-        /// climb read as a smooth glide up the stair slope instead of a per-riser bob. The paced stair-climb sim
-        /// deliberately produces a per-riser vertical sawtooth (a ~120-140 mm peak-to-peak render-Y bob at 4-9 Hz on a
-        /// 0.30/0.40 staircase - the deliberate per-riser pause, unchanged), which a plain low-pass cannot flatten without
-        /// lagging the feet on the ramp. Instead <see cref="ReplicatedCharacterAnimators.Update"/> advances a smoothed
-        /// feet-Y by the windowed MEAN vertical climb RATE (<c>EWMA of dY/dt</c>, gated by the estimated grade from a
-        /// short dY/dXZ window), which tracks the ramp line with NO lag but does not couple to the uneven per-tick
-        /// horizontal (the co-paced ascent makes horizontal anticorrelate with the rise; the old horizontalDelta*grade
-        /// form judder-injected worse than raw on a run-up). It then critically damps that smoothed-Y toward the true
-        /// feet-Y at THIS rate to correct rate drift and settle onto real tread tops. The smoothed height is baked into
-        /// <see cref="CharacterPose.World"/> and exposed as <see cref="CharacterPose.RenderPosition"/> (point a follow camera at that).
-        /// <para>Default 5 (rad/s). Derivation: the per-riser sawtooth sits at 4-9 Hz (25-56 rad/s); a first-order response
-        /// at 5 rad/s attenuates that band to about a fifth of the raw bob (the feed-forward carries the ramp, this damping
-        /// barely responds to the fast bob) yet settles a mid-stair rest offset to a few mm in about 0.8 s. On flat ground
-        /// the grade reads ~0, the feed-forward term is gated off, and the damp-toward-true is a no-op from the seeded state, so
-        /// render-Y equals the true Y byte-for-byte (identity, no behaviour change). <b>Set &lt;= 0 to disable</b> the
-        /// smoother entirely (render-Y is always the true feet-Y, byte-identical to the pre-feature bridge).</para></summary>
+        /// <summary>Critical-damp settle rate (radians/second) of the SIGNAL-GATED render-height glide that makes a stair
+        /// climb read as a smooth glide up the stair slope instead of a per-riser bob. The glide engages iff the sample
+        /// carries a non-zero sim-exported climb rate (<see cref="CharacterSample.ClimbRate"/> - the fact the simulation
+        /// stamps, never a position-delta estimate): <see cref="ReplicatedCharacterAnimators.Update"/> feeds that exact
+        /// signed rate forward (<c>SmoothedY += ClimbRate * dt</c>, lag-free ramp tracking) and then critically damps
+        /// SmoothedY toward the true feet-Y at THIS rate to absorb quantization drift and settle onto real tread tops. The
+        /// smoothed height is baked into <see cref="CharacterPose.World"/> and exposed as
+        /// <see cref="CharacterPose.RenderPosition"/> (point a follow camera at that).
+        /// <para>Default 5 (rad/s). Derivation: it is now the ONLY smoothing term (the feed-forward is the exact sim rate,
+        /// so the damp only has to absorb quantization drift and the remote interpolation-vs-quantized-rate mismatch, not a
+        /// per-riser sawtooth), and it still settles a mid-stair rest offset onto the tread in about 0.8 s. On flat ground
+        /// - and during any fall, jump, teleport, or platform ride - the sim stamps <see cref="CharacterSample.ClimbRate"/>
+        /// == 0, so the glide never engages and render-Y equals the true feet-Y byte-for-byte (identity, correct by
+        /// construction, no fall-sink possible). <b>Set &lt;= 0 to disable</b> the glide entirely (render-Y is always the
+        /// true feet-Y, byte-identical to the pre-feature bridge).</para></summary>
         public float SlopeGlideRate;
 
         /// <summary>Render-height gap (metres) beyond which the slope-fed smoother SNAPS the smoothed feet-Y to the true
@@ -401,31 +413,18 @@ namespace KhaozEngine.Game
             public Vector3 DispAccum;   // displacement summed within the current velocity window
             public float TimeAccum;     // elapsed time summed within the current velocity window
             public Vector3 Velocity;    // last closed-window velocity, held across zero-delta frames
-            public float SmoothedY;     // slope-glide-smoothed feet height (see the smoother in Update); seeded to true
-            public float GradeSumY;     // leaky-integrated vertical displacement (grade numerator AND mean-rate numerator)
-            public float GradeSumXZ;    // leaky-integrated horizontal distance (grade window denominator, the glide gate)
-            public float GradeSumT;     // leaky-integrated elapsed time (mean-rate denominator: climbRate = GradeSumY / GradeSumT)
+            public float SmoothedY;     // signal-gated render-glide feet height (see the smoother in Update); seeded to true
             public bool SnapPending;    // a consumer called SnapRenderHeight: hard-cut the render height next Update
+            public bool AscendGliding;  // the ASCENT climb feed-forward (or its disengage ease) was active last Update.
+                                        // Gates the disengage ease to an ascent crest ONLY: a fall never sets it (falls
+                                        // render raw), and a DESCENT sets it false (ClimbRate < 0), so the descent's
+                                        // ClimbRate==0 flicker ticks hard-cut and track the drop instead of easing.
         }
 
-        // --- Slope-fed render-height smoother constants (the two tunables live on CharacterAnimatorTuning) --------------
-        // GRADE window: the dY/dXZ ratio is read from an exponentially-weighted sliding window of this length, so it
-        // averages the per-riser sawtooth into the true mean grade. ~2 riser cadence cycles at walk (a cycle is ~0.23 s on
-        // a 0.30/0.40 stair at walk) and ~3 at run - long enough to average the bob, short enough to re-establish the
-        // grade within ~0.5 s at a stair top/bottom. Leaky (two O(1) accumulators), so no per-entity ring buffer/alloc.
-        const float GradeWindowSeconds = 0.45f;
-        // Below this |grade| (a ~3 degree slope) the time-paced glide is GATED OFF: the bob is sub-millimetre and the
-        // damp-toward-true alone keeps flat ground byte-identical to the raw sample Y.
-        const float MinGradeForGlide = 0.05f;
-        // Clamp on the grade estimate (~56 degrees): above the 45 degree walkable-slope gate so real (even steep) stairs
-        // still register as sloped, while rejecting the near-zero-horizontal ratio blow-up on a paused riser tick. Only
-        // the GATE reads the grade now (the glide magnitude comes from the windowed mean RATE, not the grade), so the
-        // clamp just keeps a paused-tick spike from tripping the gate oddly; it never scales the feed-forward.
-        const float MaxGrade = 1.5f;
-        // Exact |vertical velocity| above this (only when the sample carries exact movement) forces a SNAP, so a jump
-        // takeoff / fall stays crisp. A grounded paced stair climb reports ~0 (the rise is a position adjustment, not a
-        // ballistic velocity); a jump/fall reports several m/s - 2.0 sits cleanly between.
-        const float BallisticVerticalSpeed = 2.0f;
+        // The disengage ease (climb -> grounded-flat) snaps exact and ends once the residual falls below this: 1 mm is
+        // sub-perceptual (well under a millimetre per frame at the settle tail), so the ease terminates cleanly rather
+        // than chasing an asymptote onto flat ground.
+        const float SettleEpsilon = 0.001f;
 
         readonly Func<AnimatedCharacter> _factory;
         readonly CharacterAnimatorTuning _tuning;
@@ -475,9 +474,9 @@ namespace KhaozEngine.Game
         public AnimatedCharacter? BrainFor(long id) => _entries.TryGetValue(id, out Entry? e) ? e.Character : null;
 
         /// <summary>Hard-cut the render height for entity <paramref name="id"/> on its NEXT <see cref="Update"/>: the
-        /// slope-glide smoother snaps the drawn feet-Y straight to the true feet-Y and restarts its grade + velocity
-        /// windows from the destination, instead of gliding. No-op if <paramref name="id"/> is not tracked (it has not
-        /// been sampled yet, or was dropped on disconnect).
+        /// render-height glide snaps the drawn feet-Y straight to the true feet-Y and renders raw THAT frame (even if the
+        /// sample carries a climb signal), restarting the velocity window from the destination instead of gliding. No-op
+        /// if <paramref name="id"/> is not tracked (it has not been sampled yet, or was dropped on disconnect).
         ///
         /// <para>This is the consumer hook for an AUTHORITATIVE TELEPORT (a teleport-epoch advance: admin move,
         /// self-rescue, fast-travel, respawn). The smoother's built-in gap snap only guarantees a hard cut when the
@@ -533,20 +532,20 @@ namespace KhaozEngine.Game
                 // a SHORT blink under SlopeGlideSnapDistance cuts crisply instead of gliding (no height heuristic can
                 // tell a short teleport from a stair riser - the consumer's signal is the only reliable source). Treat
                 // the destination exactly like a fresh observation: seed SmoothedY at the true feet-Y, drop the stale
-                // velocity + grade windows, and clear HasPrev so this frame derives no motion (and no feed-forward)
-                // from the teleport delta. Cleared here; applies to exactly this one Update.
+                // velocity window, and clear HasPrev so this frame derives no motion from the teleport delta. The
+                // per-frame `snapped` flag makes the smoother render raw THIS frame even if the sample carries a climb
+                // signal (a teleport is a clean cut, never a glide). Cleared here; applies to exactly this one Update.
+                bool snapped = false;
                 if (e.SnapPending)
                 {
                     e.SnapPending = false;
+                    snapped = true;
                     e.PrevPosition = s.Position;
                     e.HasPrev = false;
                     e.SmoothedY = s.Position.Y;
                     e.DispAccum = Vector3.Zero;
                     e.TimeAccum = 0f;
                     e.Velocity = Vector3.Zero;
-                    e.GradeSumY = 0f;
-                    e.GradeSumXZ = 0f;
-                    e.GradeSumT = 0f;
                 }
 
                 // Derive velocity over a short time WINDOW, not a single frame. The rendered position PLATEAUS
@@ -624,73 +623,64 @@ namespace KhaozEngine.Game
 
                 e.Character.Update(locomotionSpeed, grounded, verticalVelocity, swimming, dt);
 
-                // SLOPE-FED render-height smoother: turn the paced stair-climb sim's per-riser vertical sawtooth (a
-                // deliberate ~120-140 mm bob at 4-9 Hz - the sim is UNCHANGED) into a smooth glide up the stair slope,
-                // for the drawn model (baked into World below) AND a follow camera (CharacterPose.RenderPosition). A plain
-                // low-pass can't win here: attenuating a 4 Hz bob costs 15-22 cm of feet-float LAG on the ramp. Instead we
-                // FEED FORWARD, but TIME-PACED: advance SmoothedY per frame by the windowed MEAN vertical climb RATE
-                // (EWMA of dY/dt over the grade window), then critically damp SmoothedY toward the true feet-Y to correct
-                // rate drift and settle onto real tread tops. The mean rate rides the ramp lag-free like a horizontal
-                // feed-forward, but WITHOUT coupling to the per-tick horizontal - which is the whole point: on ASCENT the
-                // paced step-up co-paces the horizontal along the stair tangent, so per-tick horizontal is ANTICORRELATED
-                // with the rise (near-zero on rise ticks, a full tread on flat-tread ticks). The old horizontalDelta*grade
-                // feed-forward multiplied that uneven horizontal by the grade and injected a per-frame vertical JUDDER
-                // that read WORSE than the raw sawtooth on a run-up (measured: it doubled the worst single-frame pop). The
-                // mean rate is horizontal-independent and smooth, so the glide advances uniformly in time up either slope
-                // and beats the raw bob AND judder on all of walk-up / run-up / walk-down / run-down. Guards mirror
-                // CharacterAvatar: !grounded / a ballistic vertical / a swim / a teleport-sized gap all SNAP to true so
-                // jumps, falls, and ledge walk-offs stay crisp (never smoothed). A LARGE teleport (gap over the snap
-                // distance) hard-cuts here automatically; a SHORT teleport under the snap distance is height-identical
-                // to a stair riser and is cut only when the consumer calls SnapRenderHeight (the SnapPending path above),
-                // which the netcode teleport epoch drives - see that method.
+                // SIGNAL-GATED render-height glide: turn the paced stair-climb sim's per-riser vertical bob into a smooth
+                // glide up the stair slope, for the drawn model (baked into World below) AND a follow camera
+                // (CharacterPose.RenderPosition), driven ENTIRELY by the sim's exported climb rate (CharacterSample.ClimbRate)
+                // - never estimated from position deltas. The estimator (grade windows, clamps, the ballistic threshold,
+                // the horizontal-motion gate) is gone: the sim already knows when it is climbing and how fast, so the
+                // glide is correct BY CONSTRUCTION. A fall, jump, teleport, prop platform, elevator, or moving platform is
+                // never stamped with a climb rate (ClimbRate == 0), so it takes the raw branch - render-Y is the true
+                // feet-Y, no glide, nothing to carry past the floor at touchdown. THAT is why the 1.2 m fall-sink cannot
+                // recur: a fall's ClimbRate is 0, so the smoother never engages during a fall. Flat ground is
+                // byte-identical (ClimbRate == 0 -> raw -> render-Y == true feet-Y exactly, from the seeded state).
                 float trueFeetY = s.Position.Y;
-                if (_tuning.SlopeGlideRate > 0f && dt > 0f)
+                bool climbing = s.ClimbRate != 0f;   // the sim's fact: 0 = not on a step climb (position-only samples read 0)
+                float glideStep = 1f - MathF.Exp(-_tuning.SlopeGlideRate * dt);
+                if (_tuning.SlopeGlideRate <= 0f || dt <= 0f || snapped
+                    || MathF.Abs(trueFeetY - e.SmoothedY) > _tuning.SlopeGlideSnapDistance)
                 {
-                    Vector3 frameDelta = s.Position - e.PrevPosition;
-                    float horizontalDelta = new Vector2(frameDelta.X, frameDelta.Z).Length();
-
-                    // Windowed leaky accumulators (three O(1) sums, no per-entity ring buffer), same decay on all three.
-                    // grade = dY / dXZ GATES the glide (a real slope vs flat); climbRate = dY / dt DRIVES it (the mean
-                    // vertical speed). A stationary entity holds its grade (the ratio is decay-invariant) while its rate
-                    // decays to zero (dt keeps accumulating, dY does not) - so the feed-forward fades and the damp settles.
-                    float decay = MathF.Exp(-dt / GradeWindowSeconds);
-                    e.GradeSumY = e.GradeSumY * decay + frameDelta.Y;
-                    e.GradeSumXZ = e.GradeSumXZ * decay + horizontalDelta;
-                    e.GradeSumT = e.GradeSumT * decay + dt;
-                    float grade = e.GradeSumXZ > 1e-5f ? e.GradeSumY / e.GradeSumXZ : 0f;
-                    grade = Math.Clamp(grade, -MaxGrade, MaxGrade);
-
-                    bool ballistic = s.HasMovement && MathF.Abs(s.VerticalVelocity) > BallisticVerticalSpeed;
-                    if (swimming || !grounded || ballistic
-                        || MathF.Abs(trueFeetY - e.SmoothedY) > _tuning.SlopeGlideSnapDistance)
-                    {
-                        e.SmoothedY = trueFeetY;   // bypass / snap: crisp jumps, falls, teleports, swims
-                    }
-                    else
-                    {
-                        // Time-paced feed-forward: advance by the windowed mean climb RATE (lag-free ramp tracking, no
-                        // per-tick horizontal MAGNITUDE coupling). GATED by the estimated grade - OFF below a ~3 degree
-                        // slope so flat ground stays byte-identical. Also gated on THIS frame having horizontal motion
-                        // (horizontalDelta > 0): feed-forward anticipates the ramp DURING travel, so when the entity is
-                        // standing still there is nothing to feed forward - skipping it there lets the damp settle onto
-                        // the tread promptly instead of the mean-rate window pushing the height on for ~0.5 s after a
-                        // mid-stair stop (the rest-settle). It is a present/absent gate on motion, NOT the old
-                        // magnitude coupling: the advance is still the smooth windowed rate, so a co-paced run-up (uneven
-                        // per-tick horizontal, but nonzero every tick) still glides judder-free. Signed rate -> ascent
-                        // raises, descent lowers, symmetrically.
-                        if (MathF.Abs(grade) > MinGradeForGlide && horizontalDelta > 1e-6f)
-                        {
-                            float climbRate = e.GradeSumT > 1e-6f ? e.GradeSumY / e.GradeSumT : 0f;   // windowed mean dY/dt
-                            e.SmoothedY += climbRate * dt;
-                        }
-                        // Critically damp toward the true feet-Y: corrects rate drift and settles onto real tread tops at
-                        // rest. From an already-equal state (flat ground) this is a no-op, so render-Y == true Y exactly.
-                        e.SmoothedY += (trueFeetY - e.SmoothedY) * (1f - MathF.Exp(-_tuning.SlopeGlideRate * dt));
-                    }
+                    // Disabled / a teleport cut this frame / a gap larger than the snap distance: render raw (hard cut).
+                    e.SmoothedY = trueFeetY;
+                    e.AscendGliding = false;
+                }
+                else if (climbing)
+                {
+                    // Lag-free feed-forward at the EXACT sim rate (signed: ascent raises, descent lowers), then critically
+                    // damp toward the true feet-Y. The ascent ClimbRate is now the EWMA of the ACHIEVED per-tick rise
+                    // (CharacterMovement step 4b), so it converges to the true climb rate and this feed-forward/damp
+                    // equilibrium sits ON the true feet (~0 hover) instead of a half-riser above - no persistent stair
+                    // float, and no hover left to snap when the signal cuts to 0 at the top.
+                    e.SmoothedY += s.ClimbRate * dt;
+                    e.SmoothedY += (trueFeetY - e.SmoothedY) * glideStep;
+                    e.AscendGliding = s.ClimbRate > 0f;   // ascent arms the crest ease; descent does not (see below)
+                }
+                else if (e.AscendGliding && grounded && locomotionSpeed > 0f)
+                {
+                    // DISENGAGE EASE (ASCENT crest -> grounded-flat while STILL MOVING). The signal just cut to 0 at the top
+                    // of a climb, but the drawn feet can still carry the last per-riser hover (~1-2 cm at the disengage
+                    // phase). Ease it onto the true feet with the SAME critical damp instead of hard-cutting that residual in
+                    // a single frame - that one-frame drop is the crest snap. Tightly gated so nothing else changes:
+                    //  - `AscendGliding` means an ASCENT was gliding last frame, so it is scoped to the ascent crest (the
+                    //    only place the snap occurs). A DESCENT does NOT arm it (ClimbRate < 0), so the descent's
+                    //    ClimbRate==0 flicker ticks (a full riser drop the sim reads as "not on a run" for a tick) hard-cut
+                    //    and TRACK the drop, exactly as before - no descent regression.
+                    //  - a FALL renders raw and never arms it, so it can never enter here even on its grounded landing tick;
+                    //    the fall-sink stays impossible by construction.
+                    //  - a mid-stair STOP (locomotionSpeed 0) hard-cuts, so the feet sit on the true tread immediately (no
+                    //    post-stop float).
+                    // Once the residual eases below SettleEpsilon, snap exact and disarm, so it cannot leave a sub-perceptual
+                    // offset running onto flat ground (and genuinely flat ground never climbs, so it never arms - flat-ground
+                    // identity holds).
+                    e.SmoothedY += (trueFeetY - e.SmoothedY) * glideStep;
+                    if (MathF.Abs(trueFeetY - e.SmoothedY) <= SettleEpsilon) { e.SmoothedY = trueFeetY; e.AscendGliding = false; }
                 }
                 else
                 {
-                    e.SmoothedY = trueFeetY;   // smoother disabled (rate <= 0) or a priming/paused tick: draw at true
+                    // Not climbing, and either stopped, airborne, descending-flicker, or already settled: render raw (hard
+                    // cut). Correct by construction for a fall, jump, teleport, prop platform, elevator, swim, mid-stair
+                    // stop, or a descent's between-riser tick.
+                    e.SmoothedY = trueFeetY;
+                    e.AscendGliding = false;
                 }
 
                 Matrix4x4 world = Matrix4x4.CreateScale(_tuning.Scale)

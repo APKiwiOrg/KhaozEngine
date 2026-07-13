@@ -615,6 +615,7 @@ public sealed class WorldClient : IDisposable
             bool grounded;
             float verticalVelocity;
             bool swimming;
+            float climbRate;
             if (isLocal)
             {
                 // The local avatar's exact movement state is the predicted/reconciled state.
@@ -623,6 +624,7 @@ public sealed class WorldClient : IDisposable
                 grounded = rs.Grounded;
                 verticalVelocity = rs.VerticalVelocity;
                 swimming = rs.Swimming;
+                climbRate = rs.Move.ClimbRate;   // local: the exact predicted step-climb rate (un-quantized)
             }
             else
             {
@@ -630,16 +632,19 @@ public sealed class WorldClient : IDisposable
                 // consumer animates jump/fall/swim from the authoritative flags instead of finite-differencing the
                 // terrain-following position (which reads "airborne" the faster a remote moves over a slope, and
                 // cannot tell a swimmer from a walker at all). Default grounded / not-swimming when a remote has no
-                // MovementState yet, so it never spuriously starts airborne or swimming.
+                // MovementState yet, so it never spuriously starts airborne or swimming. MovementState is discrete
+                // nearest-sampled to renderTime (E2), so its flags + climb rate ride the SAME delayed timeline as the
+                // interpolated position - no flag/position skew.
                 world.TryGet(kv.Value, out ReplicatedPosition rp);
                 pos = rp.Value;
                 bool hasMs = world.TryGet(kv.Value, out MovementState ms);
                 grounded = hasMs ? ms.Grounded : true;
                 verticalVelocity = ms.VerticalVelocity;
                 swimming = hasMs && ms.Swimming;
+                climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate));
         }
         return list;
     }

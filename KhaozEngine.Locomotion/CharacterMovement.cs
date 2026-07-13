@@ -544,6 +544,22 @@ public static class CharacterMovement
             // across the final seating tick too (see below), so that tick cannot lurch the capsule the full probe
             // advance forward.
             bool paced = pos.Y > climbCap;
+
+            // CONTINUOUS-CLIMB detection (§E4), for the CLIMB SIGNAL only (no authoritative-motion effect). Grounded and
+            // ELEVATED on a step, with a commanded move and a genuine stair GRADE ahead (SurfaceGradeAhead, measured
+            // surface-to-surface so it is radius-independent). This holds every tick of a run - between mounts too, not
+            // only on the paced mount tick E1 stamps - so the exported climb signal is CONTINUOUS across the run and the
+            // render glide can flatten the per-riser Y bob instead of chattering on an intermittent signal. Scoped to the
+            // ELEVATED case (above the terrain floor) so the base of a stair reads a signal only once genuinely on it.
+            float intX = dx - s.Position.X, intZ = dz - s.Position.Z;
+            float intLen = MathF.Sqrt(intX * intX + intZ * intZ);
+            bool elevated = s.Position.Y > terrainGroundY + OnPropSkin;
+            var intDir = new Vector2(intX, intZ);
+            float runGrade = 0f;
+            bool continuousRun = intLen > 1e-6f && elevated &&
+                                 SurfaceGradeAhead(world, capsule, s.Position, intDir, t, s.Position.Y - halfH, out runGrade) &&
+                                 MathF.Abs(runGrade) >= MinPacedGrade;
+
             if (steppedUp)
             {
                 // MONOTONE step-up mount. The step-up probe teleports the capsule up to a capsule radius forward to
@@ -594,27 +610,35 @@ public static class CharacterMovement
                     }
                 }
             }
+            if (continuousRun)
+            {
+                // CONTINUOUS CLIMB SIGNAL (§E4), SIGNED. Stamp the honest even climb rate sign(grade) * min(commandedForward
+                // * |grade|, MaxStepClimbSpeed) - the paced ceiling caps a fast run (run 6 on a 0.75 grade -> +3.5 m/s), a
+                // walk under the cap reads its commanded rate; a descent reads the negative of the same - on EVERY tick of
+                // a run (ascent OR descent), so the render glide (§E3) has a continuous signal to feed forward and flatten
+                // the per-riser Y bob, instead of the intermittent paced-mount / step-down-hold stamps E1 gives (which
+                // chatter). This is SIGNAL ONLY: it never touches the authoritative position. The even-FORWARD feel change
+                // the design also scoped for E4 is deliberately NOT applied - evening the forward requires advancing a
+                // depenetration-held tick PAST the swept collision into the solid stair risers, which breaks the
+                // bounded-penetration invariant (StairRunTangentPacingTests); the authoritative forward is therefore left
+                // to the co-pace below, unchanged. See docs/design/2026-07-13-stair-glide-signal-redesign.md.
+                float absGrade = Math.Clamp(MathF.Abs(runGrade), MinPacedGrade, MaxPacedGrade);
+                float rate = intLen / dt * absGrade;   // commanded forward * grade = the surface climb/descent rate
+                // ASCENT is paced (capped at MaxStepClimbSpeed - the step-up ceiling); DESCENT is not paced by that
+                // ceiling (the step-down-hold does not throttle the drop rate), so it reads its full surface rate, only
+                // bounded by the wire quantum range so it always round-trips. Understating a fast run-descent by the
+                // ascent cap left a residual bob the render glide could not track.
+                if (runGrade >= 0f) climbRate = MathF.Min(rate, t.MaxStepClimbSpeed);
+                else climbRate = -MathF.Min(rate, MaxDescentSignalRate);
+            }
             if (paced)
             {
-                // TANGENT CO-PACE. The rise is throttled from the support's desired rise (pos.Y - start) down to the
-                // climb cap (allowedRise = MaxStepClimbSpeed*dt). Scale the committed HORIZONTAL advance so the capsule
-                // travels ALONG the stair surface at ~MaxStepClimbSpeed/grade instead of committing the full (run-speed)
-                // horizontal while the Y is held. That mismatch raced the XZ ahead of the paced height, plowing the
-                // capsule metres into the risers (sustained penetration) and strobing forward advance between a frozen 0
-                // (monotone-hold / no support) and a full-tread catch-up. Co-pacing keeps a runner gliding up smoothly at
-                // the honest grade-limited speed; a walk whose per-tick rise fits the climb cap is untouched (block
-                // skipped), while a discrete mount tick is paced (and now co-paced) even at walk speed, smoothing walk mounts too.
-                //
-                // Gated on a CONTINUOUS climb - a MOUNTABLE next riser AHEAD within reach (NextRiserAhead). Anything
-                // else is a single-riser seat that MUST keep its full forward commitment: a clear path ahead (a deep
-                // tread or the top of the run), OR a steep face ahead that is NOT a climbable riser - a building's tall
-                // back WALL a footprint behind the doorstep, or an overhang. Throttling any of those re-embeds the
-                // load-bearing seat's footprint and re-creates the slow-walk mount stall (the 10.66 stall on a clear
-                // tread; the 10.68 stall on a compound doorstep whose bare steep-face test misread the wall behind it
-                // as a riser). NextRiserAhead confirms a mountable, strictly-higher tread with the same step-up probe
-                // the mount uses, so it is geometry-robust where a support-under-the-feet probe is not (analytic
-                // terrain in front of a placed staircase is invisible to a downward ray) and cannot misread a wall as
-                // a riser.
+                // TANGENT CO-PACE (unchanged authoritative motion). The rise is throttled from the support's desired rise
+                // down to the climb cap; scale the committed HORIZONTAL advance so the capsule travels ALONG the stair
+                // surface at ~MaxStepClimbSpeed/grade instead of racing the XZ ahead of the paced height (which plowed the
+                // risers and strobed forward advance). Gated on a MOUNTABLE next riser ahead (NextRiserAhead), so a
+                // single-riser seat or a clear/blocked path keeps its full forward commitment. This is the 10.74.1 forward
+                // behaviour exactly - the E4 signal above does not alter it.
                 float desiredRise = pos.Y - s.Position.Y;
                 float allowedRise = climbCap - s.Position.Y;
                 float hx = pos.X - s.Position.X, hz = pos.Z - s.Position.Z;
@@ -622,29 +646,16 @@ public static class CharacterMovement
                 if (desiredRise > allowedRise && allowedRise > 0f && hLen > 1e-6f &&
                     NextRiserAhead(world, capsule, pos, new Vector2(hx, hz), t))
                 {
-                    // Ascent climb signal (E1): a paced continuous stair run - the rise is capped to MaxStepClimbSpeed
-                    // (pos.Y = climbCap below) with a mountable riser ahead. Stamp that honest, grade-limited vertical
-                    // rate so the smoother glides the ascent from the fact, not from a position-delta estimate. A single
-                    // discrete riser seat (no NextRiserAhead) never reaches here, so it stays 0 (a one-off mount, not a glide).
-                    climbRate = t.MaxStepClimbSpeed;
-                    // The horizontal the co-pace permits: the tangent for the actual grade (allowedRise/grade), but with
-                    // a floor of allowedRise/MaxClimbGrade so a DISCRETE whole-riser step-up (desiredRise = a full riser,
-                    // hLen a fraction of a tread) cannot inflate the apparent grade and throttle the advance to a crawl
-                    // (which stalled the first-riser mount). MaxClimbGrade is the steepest grade paced to the exact
-                    // surface tangent; a steeper stair advances a touch faster than the surface (bounded sub-tread lead
-                    // the depenetrate/support pass absorbs), which is safe, where under-advancing would float the capsule
-                    // off the surface and drop it.
                     float tangent = allowedRise / desiredRise;                 // exact tangent throttle (small if inflated)
                     float floor = allowedRise / (MaxClimbGrade * hLen);        // grade floor: horiz >= allowedRise/MaxClimbGrade
                     float throttle = MathF.Min(1f, MathF.Max(tangent, floor));
                     pos.X = s.Position.X + hx * throttle;
                     pos.Z = s.Position.Z + hz * throttle;
                 }
-                // Cap the vertical RISE to MaxStepClimbSpeed (the smooth, steady ascent) and hold the movement state
-                // grounded through the paced climb: the real support (the tread the step-up mounted) sits ABOVE this
-                // committed height, so the capsule is resting on the step run, not airborne - forcing grounded here
-                // stops step 4's support probe (which lags the paced feet) from flickering Grounded false and spamming
-                // the fall animation. Only reached when NOT rising ballistically (vVel <= 0), so a jump is untouched.
+                // Cap the vertical RISE to MaxStepClimbSpeed and hold the movement state grounded through the paced climb:
+                // the real support (the tread the step-up mounted) sits ABOVE this committed height, so the capsule is
+                // resting on the step run, not airborne - forcing grounded stops step 4's support probe from flickering
+                // Grounded false and spamming the fall animation. Only reached when NOT rising ballistically (vVel <= 0).
                 pos.Y = climbCap;
                 grounded = true;
                 tSinceGround = 0f;
@@ -925,6 +936,15 @@ public static class CharacterMovement
     // inflate the apparent grade and crawl the mount to a stall. ~37 deg; below the 45 deg default slope gate so a
     // normal ramp is never in this regime, and near the 0.30/0.40 dungeon/consumer stair grade (0.75) it wires.
     private const float MaxClimbGrade = 0.72f;
+    // Even-tangent delivery (§E4) clamps the NextRiserAhead grade estimate into a sane band before deriving the forward
+    // cap (MaxStepClimbSpeed/grade) and the climb rate (commanded*grade). A too-small grade would let the forward race
+    // far past the risers (the estimate can under-read on an embedded-footprint run); a too-large one would crawl the
+    // advance. [0.3, 2.0] brackets every real stair (a 0.30/0.40 stair is 0.75) while bounding a bad sample.
+    private const float MinPacedGrade = 0.3f;
+    private const float MaxPacedGrade = 2.0f;
+    // Upper bound on the DESCENT climb-signal magnitude (m/s). Descent is not paced by MaxStepClimbSpeed, so it reads its
+    // full surface rate; this only keeps the signal inside the quantized wire range (+/-6.35 m/s) so it round-trips.
+    private const float MaxDescentSignalRate = 6.0f;
     // Depenetration-to-clearance passes before each sweep: push the capsule out of any prop/wall overlap to a small
     // positive clearance so the sweep starts provably outside and yields a REAL contact normal (Bepu reports a
     // useless t=0 zero-normal from a touching start). A few passes clear an inner corner (two simultaneous contacts).
@@ -1275,6 +1295,52 @@ public static class CharacterMovement
                 return true;
         }
         return false;
+    }
+
+    // Forward sample distances (as multiples of the capsule radius) for SurfaceGradeAhead: a spread spanning a few
+    // treads (a paced tread is within a footprint) so the least-squares slope averages out per-tread step noise and the
+    // exact riser phase, reading the true stair grade rather than a single center-to-riser distance (which over-reads
+    // the run by ~a radius and under-reads the grade, racing the forward). Starts past the immediate riser.
+    private static readonly float[] GradeProbeDistances = { 0.75f, 1.25f, 1.75f, 2.25f, 2.75f, 3.25f };
+
+    /// <summary>The local stair GRADE (rise/run, SIGNED: + ascending, - descending) ahead of the capsule, measured
+    /// SURFACE-to-surface so it is independent of the capsule radius (a center-to-riser distance over-reads the run by
+    /// ~a radius and under-reads the grade). Ray-samples the walkable-surface height at a spread of forward distances
+    /// (<see cref="GradeProbeDistances"/>, spanning a few treads) and least-squares fits the slope, so the estimate
+    /// averages out the per-tread staircase and the riser phase into the true grade. Radius-less downward rays (highest
+    /// walkable hit per point) so a straddled tread reads cleanly, over a band that reaches BOTH up and down from the
+    /// feet so a descent (surface below the feet) reads too. False when fewer than two forward points find a walkable
+    /// surface (a gap / the top or bottom of the run), leaving the caller to the ordinary walk.</summary>
+    private static bool SurfaceGradeAhead(IPhysicsWorld world, CapsuleShape capsule, Vector3 start, Vector2 dirXZ,
+        in MoveTuning t, float feetY, out float grade)
+    {
+        grade = 0f;
+        float lenSq = dirXZ.LengthSquared();
+        if (lenSq <= 1e-12f) return false;
+        Vector2 d = dirXZ / MathF.Sqrt(lenSq);
+        float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
+        // Least-squares accumulators over (distance, surfaceRise) sample pairs.
+        int n = 0;
+        double sx = 0, sy = 0, sxx = 0, sxy = 0;
+        foreach (float mult in GradeProbeDistances)
+        {
+            float dist = mult * capsule.Radius;
+            float px = start.X + d.X * dist, pz = start.Z + d.Y * dist;
+            // The surface at `dist` ahead sits within ~dist of the feet either way (a <=45 deg walkable stair up OR down):
+            // cast down from above the highest it could be, over a band that reaches down to feetY - dist too, and take
+            // the highest walkable hit at this XZ (the tread top; risers are vertical, so a downward ray reads the tread).
+            float originY = feetY + dist + t.CapsuleHalfHeight;
+            float reach = 2f * dist + t.CapsuleHalfHeight;
+            if (!world.Raycast(new Vector3(px, originY, pz), -Vector3.UnitY, reach, out RayHit rh)) continue;
+            if (rh.Distance < SkinWidth || rh.Normal.Y < cosMaxSlope - 1e-4f) continue;
+            float rise = (originY - rh.Distance) - feetY;   // surface height relative to the current feet (signed)
+            n++; sx += dist; sy += rise; sxx += (double)dist * dist; sxy += (double)dist * rise;
+        }
+        if (n < 2) return false;
+        double denom = n * sxx - sx * sx;
+        if (denom <= 1e-9) return false;
+        grade = (float)((n * sxy - sx * sy) / denom);       // least-squares slope = rise/run = the signed stair grade
+        return true;
     }
 
     // Recovery sweep: pull back this many radii along -dir (a provably clear start, since a tangent capsule touches

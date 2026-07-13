@@ -16,8 +16,8 @@ namespace KhaozEngine.Tests.Game;
 // tick-aligned (render == sim). This is stronger than the synthetic StairGlideSmootherTests profile: it drives the real
 // sim POSITIONS (the real per-riser Y bob) through the glide. The glide feeds forward the sim's exported climb rate and
 // damps onto the true treads, so it must BEAT the raw feet-Y on BOTH bob and judder for every case and both stream
-// shapes, with no per-frame pop bigger than raw. (E4 makes the sim's rate continuous; here Continuousify models that
-// steady signal so this file pins the GLIDE against realistic positions.) All GPU-free (a one-bone parked animator).
+// shapes. E4's continuous climb signal is captured straight off the real sim (state.ClimbRate) and fed in, so this
+// pins the GLIDE end-to-end against realistic positions AND the real signal. All GPU-free (a one-bone parked animator).
 public class StairGlideRealisticStreamTests
 {
     const float Riser = 0.30f, Tread = 0.40f;   // grade 0.75, the consumer TestStaircase scale
@@ -83,28 +83,6 @@ public class StairGlideRealisticStreamTests
         {
             state = CharacterMovement.Step(state, cmd, dt, Ground, tuning, normal, world);
             outp.Add(new Frame(state.Position, state.Grounded, state.VerticalVelocity, state.ClimbRate));
-        }
-        return outp;
-    }
-
-    // E3 stand-in for E4's continuous sim signal: the pre-E4 sim stamps ClimbRate only on the intermittent paced mount
-    // ticks (~1 in 7), which cannot flatten the bob. E4 makes the co-pace deliver an EVEN, continuous rate every climb
-    // tick; until it lands, model that here by feeding the steady mean climb rate (signed) on every ramp-band tick, 0
-    // elsewhere. E4 replaces this call with the real captured state.ClimbRate. This tests the signal-gated GLIDE against
-    // realistic sim POSITIONS with a clean signal (the sim's continuity itself is pinned by E4's own tests).
-    static List<Frame> Continuousify(List<Frame> ticks, bool descend)
-    {
-        float halfH = 0.9f, yLo = halfH + 1.5f * Riser, yHi = Riser * Risers + halfH - 1.5f * Riser, dt = 1f / 30f;
-        int first = -1, last = -1;
-        for (int i = 0; i < ticks.Count; i++)
-            if (ticks[i].Grounded && ticks[i].Pos.Y > yLo && ticks[i].Pos.Y < yHi) { if (first < 0) first = i; last = i; }
-        float rate = (first >= 0 && last > first)
-            ? (ticks[last].Pos.Y - ticks[first].Pos.Y) / ((last - first) * dt) : 0f;
-        var outp = new List<Frame>(ticks.Count);
-        for (int i = 0; i < ticks.Count; i++)
-        {
-            bool onRamp = i >= first && i <= last && ticks[i].Grounded && ticks[i].Pos.Y > yLo && ticks[i].Pos.Y < yHi;
-            outp.Add(new Frame(ticks[i].Pos, ticks[i].Grounded, ticks[i].VVel, onRamp ? rate : 0f));
         }
         return outp;
     }
@@ -218,7 +196,7 @@ public class StairGlideRealisticStreamTests
     [MemberData(nameof(Cases))]
     public void SmoothedBeatsRaw_OnBobAndJudder_EveryCase(int sub, bool run, bool descend)
     {
-        List<Frame> frames = Present(Continuousify(DriveSim(run, descend), descend), sub);
+        List<Frame> frames = Present(DriveSim(run, descend), sub);
         var (lo, hi) = Window(frames, descend);
         float dtRender = (1f / 30f) / sub, speed = run ? Run : Walk;
 
@@ -255,7 +233,7 @@ public class StairGlideRealisticStreamTests
     [InlineData(true)]
     public void RunUp_And_WalkUp_GlideSmoothly_At120fps(bool run)
     {
-        List<Frame> frames = Present(Continuousify(DriveSim(run, descend: false), descend: false), sub: 4);
+        List<Frame> frames = Present(DriveSim(run, descend: false), sub: 4);
         var (lo, hi) = Window(frames, descend: false);
         float dtRender = (1f / 30f) / 4f, speed = run ? Run : Walk;
         float[] sm = RenderY(frames, dtRender, smootherOn: true, speed);

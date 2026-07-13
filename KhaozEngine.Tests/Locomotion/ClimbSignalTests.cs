@@ -80,8 +80,11 @@ public class ClimbSignalTests
     }
 
     [Fact]
-    public void AscentClimbRate_EqualsMaxStepClimbSpeed_WhereItFires()
+    public void AscentClimbRate_SaturatesMaxStepClimbSpeed_OnARun_NeverExceedsIt()
     {
+        // The ascent climb rate is the honest even rate min(commandedForward * grade, MaxStepClimbSpeed): a RUN (6 m/s)
+        // on a 0.30/0.40 stair (grade 0.75) wants 4.5 m/s, so it SATURATES the MaxStepClimbSpeed cap (3.5) and never
+        // exceeds it - the paced ceiling. The signal is the vertical rate the render glide feeds forward.
         MoveTuning t = Tuning();
         using IPhysicsWorld world = new BepuPhysicsWorld();
         AddStairs(world, Riser, Tread, 33);
@@ -90,17 +93,16 @@ public class ClimbSignalTests
         var cmd = new MoveCommand(new Vector2(0f, 1f), run: true, cameraYaw: 0f, jump: false);
         float Ground(float x, float z) => 0f;
         Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
-        bool sawCap = false;
+        float maxSeen = 0f;
         for (int i = 0; i < 200; i++)
         {
             state = CharacterMovement.Step(state, cmd, Dt, Ground, t, normal, world);
-            if (state.ClimbRate > 0f)
-            {
-                Assert.Equal(t.MaxStepClimbSpeed, state.ClimbRate, 3);   // the exact cap, not an estimate
-                sawCap = true;
-            }
+            Assert.True(state.ClimbRate <= t.MaxStepClimbSpeed + 1e-4f,
+                $"ascent ClimbRate {state.ClimbRate} exceeded the MaxStepClimbSpeed cap {t.MaxStepClimbSpeed}");
+            maxSeen = MathF.Max(maxSeen, state.ClimbRate);
         }
-        Assert.True(sawCap, "expected the ascent to stamp the paced cap at least once");
+        Assert.True(maxSeen >= t.MaxStepClimbSpeed - 0.1f,
+            $"a run up the stair should saturate the paced cap {t.MaxStepClimbSpeed}, but peaked at {maxSeen}");
     }
 
     // ---- Descent: stepping off a raised platform stamps a negative rate ----

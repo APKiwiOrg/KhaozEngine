@@ -25,10 +25,11 @@ public class StairDescentGroundedHoldTests
 
     readonly struct Tick
     {
-        public Tick(Vector3 p, bool g, float v) { Pos = p; Grounded = g; VVel = v; }
+        public Tick(Vector3 p, bool g, float v, float cr) { Pos = p; Grounded = g; VVel = v; ClimbRate = cr; }
         public Vector3 Pos { get; }
         public bool Grounded { get; }
         public float VVel { get; }
+        public float ClimbRate { get; }   // the sim's exported step-climb signal (E1), driving the signal-gated glide
     }
 
     // Isolated single step-down of height `riser`: an upper box (top at `riser`) spanning Z in [-12, 0], analytic terrain
@@ -47,7 +48,7 @@ public class StairDescentGroundedHoldTests
         for (int i = 0; i < 120; i++)
         {
             state = CharacterMovement.Step(state, cmd, dt, Ground, t, normal, world);
-            outp.Add(new Tick(state.Position, state.Grounded, state.VerticalVelocity));
+            outp.Add(new Tick(state.Position, state.Grounded, state.VerticalVelocity, state.ClimbRate));
         }
         return outp;
     }
@@ -90,19 +91,22 @@ public class StairDescentGroundedHoldTests
         Assert.True(MathF.Abs(p[^1].Pos.Y - 0.9f) < 0.05f, $"riser {riser}: did not land on the terrain (final Y {p[^1].Pos.Y:F3})");
     }
 
-    // End-to-end: feed the 0.40 m step-down through the real render smoother at 120 fps. The grounded one-tick seat is
-    // glided (the mean-rate + damp ease the drop), so the worst single-frame render-Y drop is small. Before the fix the
-    // sim reported airborne + ballistic vVel, so the smoother BYPASSED (snap-to-true over a free fall) and popped the
-    // render height much harder. RED before the fix.
+    // End-to-end: feed the 0.40 m step-down through the SIGNAL-GATED render glide at 120 fps. Assert the render never
+    // SINKS below the true feet - the fall-sink guarantee holds for a grounded step-down too, because the sim stamps a
+    // NEGATIVE ClimbRate (never a stale positive one that would carry the feet DOWN through the floor). NB the deleted
+    // estimator windowed an isolated step-down into a sub-30 mm ease; the signal-driven glide CANNOT window a single
+    // one-tick drop (an isolated 0.40 m drop at 30 Hz is ~12 m/s, past the quantized wire range), so it eases the part it
+    // can and settles onto the true tread. A CONTINUOUS stepped descent (many risers) DOES glide smoothly - that is the
+    // continuous ClimbRate signal, pinned by StairGlideRealisticStreamTests' down cases. This pins the property that
+    // matters here: the drawn feet never dip BELOW the true feet on the way down (no under-floor sink).
     [Fact]
-    public void StepDown_0p40_RendersSmoothGlide_At120fps()
+    public void StepDown_0p40_RenderNeverSinksBelowTrue_At120fps()
     {
         List<Tick> ticks = StepDown(0.40f);
-        // Inter-tick lerp to 120 fps, grounded/vVel from the target tick (an interpolating client).
         var frames = new List<Tick> { ticks[0] };
         for (int k = 1; k < ticks.Count; k++)
             for (int f = 1; f <= 4; f++)
-                frames.Add(new Tick(Vector3.Lerp(ticks[k - 1].Pos, ticks[k].Pos, f / 4f), ticks[k].Grounded, ticks[k].VVel));
+                frames.Add(new Tick(Vector3.Lerp(ticks[k - 1].Pos, ticks[k].Pos, f / 4f), ticks[k].Grounded, ticks[k].VVel, ticks[k].ClimbRate));
 
         var skel = new Skeleton(new[] { -1 }, new[] { JointPose.Identity }, new[] { 0 }, new[] { 0 });
         AnimationClip Park(string n) => new(n, 1f, new List<JointTrack>
@@ -114,16 +118,16 @@ public class StairDescentGroundedHoldTests
         };
         var a = new ReplicatedCharacterAnimators(() => new AnimatedCharacter(skel, clips, LocomotionThresholds.Default), CharacterAnimatorTuning.Default);
 
-        float dtR = (1f / 30f) / 4f, worstDrop = 0f, prev = frames[0].Pos.Y;
+        float dtR = (1f / 30f) / 4f, worstSink = 0f;
         foreach (Tick fr in frames)
         {
-            a.Update(new[] { new CharacterSample(1, fr.Pos, isLocal: true, grounded: fr.Grounded, verticalVelocity: fr.VVel, planarSpeed: 3f) }, dtR);
-            float y = a.Live[0].RenderPosition.Y;
-            worstDrop = MathF.Max(worstDrop, prev - y);
-            prev = y;
+            a.Update(new[] { new CharacterSample(1, fr.Pos, isLocal: true, grounded: fr.Grounded, verticalVelocity: fr.VVel, planarSpeed: 3f, swimming: false, climbRate: fr.ClimbRate) }, dtR);
+            float renderY = a.Live[0].RenderPosition.Y;
+            worstSink = MathF.Min(worstSink, renderY - fr.Pos.Y);   // how far the drawn feet went BELOW the true feet
         }
-        // The glided grounded step-down eases the 0.40 m drop over several frames; the worst single frame stays small.
-        Assert.True(worstDrop < 0.030f,
-            $"the 0.40 m step-down should render as a smooth glide, worst single-frame drop {worstDrop * 1000:F0} mm should be under 30 mm");
+        // The drawn feet never dip below the true feet (the render glides on/above the true drop then settles onto the
+        // true tread; the negative signal never carries the feet down past the floor - no under-floor sink).
+        Assert.True(worstSink > -0.01f,
+            $"the render sank {worstSink * 1000:F0} mm below the true feet during the step-down (a downward under-floor pop)");
     }
 }

@@ -78,6 +78,23 @@ if (TerrainRaycast.Raycast(field, ray.Origin, dir, 200f, out Vector3 hit))
 Both arrays default empty (no behaviour change) and must be the same set on every `Generate` call over the
 same world for tiling invariance to hold, exactly like every other input `PropScatter` reads.
 
+## Companion foliage
+
+`PropScatter.GenerateCompanions(field, hosts, config)` rings each matching host placement (a tree, say)
+with a few small-foliage instances (a fern, a bush) in a jittered ring, Y resampled from the field.
+Pure per-host: every value (count, ring angle/radius, kind, scale, yaw) hashes off the host's
+centimetre-quantized world XZ plus per-channel salts, never the host's list index, so the result is
+deterministic and tiling-invariant.
+
+`CompanionConfig.HostKinds` selects which hosts grow companions: a host matches when its
+`PropPlacement.Id` is listed in `HostKinds`, or when `HostKinds` is empty or absent, which now matches
+every host placement. **This is a behavior-visible contract change**: earlier builds treated an empty
+`HostKinds` as matching no host, so a companion layer left with an empty list silently grew nothing. A
+document authored against the old behaviour that relied on an empty `HostKinds` staying inert now grows
+companions on every host in the layer, so re-check any existing companion config with an empty
+`HostKinds` before upgrading. A populated `HostKinds` list is unaffected: it still filters by exact
+ordinal match against `PropPlacement.Id`.
+
 Depends on `KhaozEngine.Primitives` and `KhaozEngine.Collision`. No render dependency: add
 [KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D) to mesh and stream it. In the
 `Foundation` umbrella metapackage.

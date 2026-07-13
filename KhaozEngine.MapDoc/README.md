@@ -18,7 +18,11 @@ A map document (`MapDocument`) has:
 - **`scatterLayers`** - named procedural scatter layers (cell size, jitter, per-biome density and weighted
   kind mix), one per prop type (trees, rocks, ...).
 - **`companionLayers`** - named layers that ring hosts from a scatter layer with small foliage (ferns
-  around trees).
+  around trees). `HostKinds` filters which host placements grow companions: an empty or absent list
+  matches every host kind in the host layer, a populated list keeps the old exact ordinal filter. This is
+  a behavior-visible semantics change from earlier versions, where an empty list meant no companions at
+  all: a document authored against the old behavior with an accidentally-empty `HostKinds` now grows
+  companions on every host, so re-check any existing companion layer that left `HostKinds` empty.
 - **`exclusions`** (`MapExclusion`) - shapes (disc/rect/polygon) kept free of scatter, optionally scoped to
   specific layers via `Layers` (null means every layer, an explicit list names only those). Builds into
   `ScatterConfig.Exclusions`. Carries an optional `Name` too (default null (null or empty means unnamed), unique when non-empty),

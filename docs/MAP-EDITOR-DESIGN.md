@@ -260,6 +260,17 @@ questions above, which predate implementation. This section is what later review
 dispatches keep appending to. Same convention as the rest of the roadmap: delete an item
 once it ships, the detail moves to `CHANGELOG.md`.
 
+**Resolved this round (editor-round6)**: the outline highlight used to orphan against a node no longer in
+`Roots` on every document edit (`RebuildOutline` news up a fresh `TreeNode` set each time), now fixed by
+`MapEditorScene.SyncOutlineSelection` re-resolving the selection via `TreeView.FindByTag` and `ScrollTo`
+after every rebuild and every selection change, including mid-rename. The companion `HostKinds` empty list
+used to silently mean "match no host" (a companion layer left with an empty list grew nothing, discovered
+live in the `valley.map.json` understory/groundcover mismatch), now means "match every host" at the root
+(`PropScatter.GenerateCompanions`), backed by a host-swap that clears a now-orphaned `HostKinds` in the same
+undo step and a warning row for the populated-but-zero-intersection case. The inspector panel used to share
+one 260-point `PanelWidth` with the outline, cramped for the newly-grouped companion/scatter-layer rows,
+now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340).
+
 - **Format and schema (MapDoc)**: `MapTerrain` duplicates `TerrainConfig` defaults, a drift risk that
   is only partially parity-tested.
 - **Ruinborne adoption**: document-to-SQL spawn seed automation. `PostDeploy.sql` still
@@ -275,7 +286,11 @@ once it ships, the detail moves to `CHANGELOG.md`.
     shared rebuilt list rather than a copy. `RowBounds` is never directly asserted.
     Wheel-scrolling the tree while a drag-and-drop reorder is armed is not supported: the
     drop geometry freezes at the scroll position the drag started at, so a long list needs
-    the target row already on screen before the drag begins.
+    the target row already on screen before the drag begins. Every `TreeView` (outline, kit
+    palette, spawn list, feature list) now draws its selection fill through `GuiDraw.FillStyled`
+    against `GuiStyle.Modern`, so every one of them picked up a rounded selection border. This
+    is a visual-only change with no pixel-exact test coverage, verify by eyeball in a manual
+    playtest rather than trusting the test suite alone.
   - `PropertyGrid`: a partial row's `BlockRegion` slivers past the clip. Out-of-range
     external values display unclamped. Wheel feel diverges from the rest of the
     `ScrollablePanel` family. `FloatRow` needs a scrub-end gesture seal:
@@ -283,7 +298,10 @@ once it ships, the detail moves to `CHANGELOG.md`.
     option list now draws in the grid's late overlay pass (above the rows below the
     selector, no longer overpainted), but still inside the grid's own scissor, so a long
     list clips at the grid bounds. A host needing the list to spill past the grid has to
-    call `Dropdown.DrawOverlay` itself after the grid's `Draw`.
+    call `Dropdown.DrawOverlay` itself after the grid's `Draw`. `PropertyGrid.EditorStyle`
+    pushes into every row's inner widget on every `Update`, so a single row cannot carry a
+    style different from the grid's own: this is unreachable through the grid by design, not
+    a bug, and a future per-row style override would need its own opt-out flag.
 - **Editor UX**: sibling-focus drop after a rename, defer the pending re-select while any
   inspector row is focused. Stale exit-chord warning text lingers after disarm. Status-line
   length can overflow the strip, no truncation yet. Default `PlaceKind` pre-arm changed to
@@ -323,7 +341,16 @@ once it ships, the detail moves to `CHANGELOG.md`.
   used everywhere else in this program, and fine at the current few-rules-per-layer scale,
   but it does mean a rule add/remove undo step reverts the WHOLE layer value, not just the
   one rule, which would matter more if a layer ever grew a large rule list edited by
-  multiple hands.
+  multiple hands. Player spawns have no `VisibilityGroup` of their own: they ride along
+  under no whole-class hide toggle (unlike Placements/Spawns/Water/Exclusions/Regions/
+  FeatureMarkers), so a project wanting to mass-hide every player spawn in the Layers panel
+  needs a new group added first. Player spawn (and NPC spawn) id-uniqueness is tested for the
+  straightforward case but not for reusing a gap left by a removed id (add "a", "b", "c",
+  remove "b", add a new "b") - worth its own test once the id-generation scheme is revisited.
+  The polygon branch of the shape editor (`AddShapeRows`, read-only v1: kind + point count) is
+  never exercised by `EveryRow_HasDescription`'s inspector walk, since every exclusion/region
+  fixture the test suite selects is a disc or a rect, so a future polygon-row `Description`
+  regression would not be caught by that guard.
 - **ke-mapedit MCP surface**: exclusions support add/edit/remove and layer-targeting mutations plus
   rename, but have no dedicated read-back verb (only the `map_summary` count is readable, not individual
   exclusion details, names, or layer targeting). An `exclusions_info` read verb or a `map_summary`

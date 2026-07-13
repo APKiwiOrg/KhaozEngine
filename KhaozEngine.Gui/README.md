@@ -111,7 +111,17 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     marks the live target, Escape aborts with no drop, and a cross-parent or off-tree release is rejected. The
     widget only reports the move, never mutating `Roots`/`Children` itself, so the host applies it and rebuilds
     the tree. Wheel-scrolling while a drag is armed is not supported (the drop geometry freezes at the current
-    scroll position).
+    scroll position). `ScrollTo(TreeNode)` brings a node into view: expands every collapsed ancestor so it
+    rejoins the visible walk, then scrolls the minimal amount needed so its row sits fully inside `Bounds`
+    (clamped to `[0, maxScroll]`, the same clamp idiom as `ScrollablePanel.ScrollTo(float)`), a no-op when
+    the node is unreachable from `Roots`. `FindByTag(Func<object?, bool>)` walks `Roots` depth-first
+    (regardless of `Expanded`, a collapsed subtree is still searched) and returns the first node whose `Tag`
+    satisfies the predicate, or null - a host resolves a caller-owned identity (an outline reference) back
+    to the live node after `Roots` is rebuilt from fresh data, then calls `ScrollTo` on the result, the pair
+    a selection-sync host uses after every rebuild so the highlighted row survives instead of orphaning. The
+    selected-row fill now draws via `GuiDraw.FillStyled` against `Style` (a `GuiStyle`, default
+    `GuiStyle.Default`) instead of a flat `GuiDraw.Fill`, so a tree using `GuiStyle.Modern` gets the same
+    rounded selection highlight as its other styled widgets.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
     `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set
@@ -138,6 +148,22 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Deactivate()`d exactly once as it leaves: the base `PropertyRow.Deactivate()` is a no-op, but `FloatRow`
     cancels its `NumberField` edit, `TextRow` unfocuses its `TextInput`, and `ChoiceRow` closes its `Dropdown`,
     so a focused, mid-edit, or open-list row cannot keep consuming input the grid no longer routes to it.
+    Each `PropertyRow` carries an optional `Description` (`LocalizedText?`, null means no tooltip), and
+    `PropertyGrid` tracks the row under the pointer during `Update` as `HoveredRow` (`PropertyRow?`, null
+    when the pointer is over no row or in the gap between rows) plus a public `RowLabelBounds(int)` (was
+    private) returning that row's label rect. A host draws its own `Tooltip` after the grid's `Draw`
+    (escaping the grid's scissor, the same pattern `PatchNotesView` and `RoomGui` use), anchored to
+    `RowLabelBounds` of `HoveredRow`'s index, showing `HoveredRow.Description` immediately on hover with no
+    delay infra. `HeaderRow` is a `PropertyRow` with no getter/setter and `SpansFullWidth` true: a
+    full-width label band with a distinct background fill and a 24f row height (vs the default 28f), used
+    to break a long inspector into named sections ("Water", "Noise", "Identity", "Transform", ...) - the
+    grid skips the label/editor split for any row whose `SpansFullWidth` is true, so `HeaderRow` needs no
+    special-casing in the grid beyond that flag. `PropertyGrid.EditorStyle` (`GuiStyle`, default
+    `GuiStyle.Default`) is pushed into every row's inner widget (`NumberField`/`Toggle`/`TextInput`/
+    `Dropdown`) as rows are added and whenever it is reassigned, so switching a grid to `GuiStyle.Modern`
+    restyles every row's editor in one assignment. `ReadOnlyRow` and `HeaderRow` have no inner widget and
+    ignore it. `HeaderBandColor` (default `GuiTheme.Default.Surface`) is the header row's fill, drawn via
+    `GuiDraw.FillStyled` against `EditorStyle` so it picks up `GuiStyle.Modern`'s rounded corners.
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).

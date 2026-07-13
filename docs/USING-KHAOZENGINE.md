@@ -1628,7 +1628,8 @@ platform, or elevator is never stamped with a climb rate (`ClimbRate == 0`), so 
 - render-Y is the true feet-Y, nothing to carry past the floor at touchdown (a ballistic fall can never bury a landing
 character below the floor). The smoothed height is baked into `CharacterPose.World` and exposed as
 `CharacterPose.RenderPosition` - **point a follow camera at `p.RenderPosition`** (not the raw predicted position) so the
-camera glides with the model. It is byte-identity on FLAT ground (`ClimbRate == 0`, so `RenderPosition == the sample
+camera glides with the model (both the glide and the isolated-step offset ride `RenderPosition`, so the camera eases with
+the MESH, not the raw feet - intentional for third person). It is byte-identity on FLAT ground (`ClimbRate == 0`, so `RenderPosition == the sample
 position`), and renders raw on a jump, fall, swim, or a LARGE gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance`,
 so those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y). Feed the sim's
 `ClimbRate` through your sample loop (see `e.ClimbRate` above); a position-only sample reads 0 (no glide).

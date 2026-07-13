@@ -45,6 +45,26 @@ public class StepOffsetSmoothingTests
 
     static float DrawnY(ReplicatedCharacterAnimators a) => a.Live[0].RenderPosition.Y;
 
+    // Largest single-frame render catch-up for an ISOLATED step under the given tuning: flat approach (mesh at the true
+    // feet), a one-tick full-step commit (the mesh FREEZES at the pre-step height), then eased frames with the true feet
+    // steady. Returns the biggest frame-to-frame |change| in the drawn feet-Y over the event. The freeze offset decays
+    // exponentially, so the ease is front-loaded and this max is the FIRST eased frame = step * (1 - e^(-rate * Dt)).
+    static float LargestStepCatchUp(CharacterAnimatorTuning tuning, float step)
+    {
+        var a = NewBridge(tuning);
+        for (int i = 0; i < 4; i++) a.Update(new[] { Local(0f, 0f) }, Dt);   // flat: identity
+        float prev = DrawnY(a);
+        float maxDelta = 0f;
+        for (int i = 0; i < 21; i++)                                          // commit frame + eased frames, true feet steady
+        {
+            a.Update(new[] { Local(step, step) }, Dt);
+            float y = DrawnY(a);
+            maxDelta = MathF.Max(maxDelta, MathF.Abs(y - prev));
+            prev = y;
+        }
+        return maxDelta;
+    }
+
     [Fact]
     public void IsolatedStepUp_MeshStartsAtPreStep_ThenEasesMonotoneToTrueFeet()
     {
@@ -248,5 +268,40 @@ public class StepOffsetSmoothingTests
         }
         // The mesh converged onto the climbing true feet (the first-riser offset decayed out) - a clean handoff.
         Assert.True(MathF.Abs(prevDrawn - trueY) < 0.01f, $"the mesh should track the climbing feet after the handoff (drawn {prevDrawn:F3} vs true {trueY:F3})");
+    }
+
+    [Fact]
+    public void IsolatedStep_LargestSingleFrameCatchUp_StaysBelowTheNearPopBound()
+    {
+        // Lock the StepSmoothingRate taste constant. The step smoother eases an isolated riser as a decaying FREEZE
+        // offset, so the biggest single-frame move is the FIRST eased frame = step * (1 - e^(-rate*Dt)). At the shipped
+        // default (30/s) that is ~39% of the step - a soft settle, not a quick catch-up. The taste call was 30/s OVER a
+        // fast-settle 40+/s (see the CharacterAnimatorTuning.StepSmoothingRate derivation: "Gentler than a fast-settle
+        // rate (40+/s)"). This pins that margin: the largest single-frame catch-up must stay STRICTLY BELOW the catch-up
+        // the rejected 40/s fast-settle would produce - a near-pop bound DERIVED FROM THE DECAY CONSTANTS (rate, Dt, step),
+        // not a bare magnitude literal - so the guard trips if StepSmoothingRate is bumped into the rejected band.
+        const float Step = 0.30f;
+        const float RejectedFastSettleRate = 40f;   // the doc's rejected "40+/s" fast-settle boundary (30/s was chosen over it)
+        float nearPopBound = Step * (1f - MathF.Exp(-RejectedFastSettleRate * Dt));   // ~0.487 * step
+
+        float catchUp = LargestStepCatchUp(CharacterAnimatorTuning.Default, Step);
+
+        // The default's largest catch-up matches the analytic decay of its own rate and is the documented ~40% of the step.
+        float expectedDefault = Step * (1f - MathF.Exp(-CharacterAnimatorTuning.DefaultStepSmoothingRate * Dt));
+        Assert.Equal(expectedDefault, catchUp, 4);
+        Assert.InRange(catchUp / Step, 0.38f, 0.41f);   // ~39% at 30/s
+
+        // GREEN at 30/s: the largest single-frame catch-up is strictly below the 40/s near-pop bound (comfortable margin,
+        // 30/s ~= 39% vs the bound ~= 49%).
+        Assert.True(catchUp < nearPopBound,
+            $"largest single-frame catch-up {catchUp / Step:P1} of the step must stay below the {RejectedFastSettleRate}/s near-pop bound {nearPopBound / Step:P1}");
+
+        // RED at 40+/s (the direction the guard protects): bumping StepSmoothingRate into the rejected fast-settle band
+        // makes the first eased frame meet/exceed the bound. Demonstrated at 45/s (~53%, unambiguously above); the bound
+        // itself sits at the 40/s level, so any rate >= 40/s trips it.
+        var faster = CharacterAnimatorTuning.Default;
+        faster.StepSmoothingRate = 45f;
+        Assert.False(LargestStepCatchUp(faster, Step) < nearPopBound,
+            "a 45/s fast-settle rate (in the rejected 40+/s band) must NOT stay below the near-pop bound");
     }
 }

@@ -774,6 +774,14 @@ namespace KhaozEngine.Game
                 // snap distance is a teleport re-baseline that slipped the SnapPending re-sync, not a step -> hard-cut. On a
                 // `snapped` frame the SnapPending block above already zeroed the offset and re-synced the baseline + freeze
                 // reference, so no step is detected and it renders raw.
+                //
+                // Two edge paths were TRACED SOUND but are NOT yet pinned by a test (candidates for future coverage):
+                // (1) a DIVERGENT-BASIS reconcile - the cumulative is authored on the commanded (predict) path and rides a
+                //     reconcile rebase onto a divergent server basis UNCHANGED, so this diff stays exactly-once even when the
+                //     authoritative basis jumps under the replay; and
+                // (2) TWO STEPS IN ONE render window - if two impulses commit between frames the diff sees their SUM and
+                //     freezes once at the pre-step height (correct: the mesh still eases the combined rise monotonically, it
+                //     just does not resolve them as two separate eases).
                 float stepDelta = s.StepCumulativeY - e.LastStepCumulative;
                 e.LastStepCumulative = s.StepCumulativeY;
                 float drawnFeetY = e.SmoothedY;

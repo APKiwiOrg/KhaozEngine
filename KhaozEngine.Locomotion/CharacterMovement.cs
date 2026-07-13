@@ -465,6 +465,37 @@ public static class CharacterMovement
             if (vVel < 0f) vVel = 0f;
         }
 
+        // 4a-down. Step-DOWN grounded-hold. Walking OFF a step whose DROP is within StepHeight is a step, not a fall:
+        //     it must stay grounded and seat onto the support one riser below, NOT go airborne. The onGround stick above
+        //     only reaches GroundedEpsilon (0.30) below the feet, so a drop between GroundedEpsilon and StepHeight - e.g.
+        //     a ~0.4 m door step - slips past it: `grounded` flips false, gravity spikes vVel a few m/s over the next
+        //     few ticks, and the render-height smoother reads that as ballistic and hard-cuts (the "very glitchy going
+        //     down" flap on those steps). Extend the stick to StepHeight for the descent, scoped tightly to the
+        //     step-down transition:
+        //       - `s.Grounded` (grounded LAST tick): this fires ONLY on the FIRST tick of leaving the ground, so a real
+        //         FALL (airborne, hence !s.Grounded, on every tick after the first) is never caught mid-air and landed
+        //         early - only the tick you actually step off a ledge is a candidate;
+        //       - the drop from the last grounded height to the resolved support is strictly positive and at MOST
+        //         StepHeight (`0 < s.Position.Y - groundY <= StepHeight`): a DESCENT (ascent has support at/above the
+        //         feet, so this is <= 0 and skips), and a genuine ledge walk-off beyond StepHeight (the ledge-release
+        //         pin's 3 m box) exceeds the band and FALLS as before; and
+        //       - `groundY` is the resolved walkable support (terrain + walkable-normal props), so there is really a
+        //         surface within a step below - open air past the drop leaves groundY at the far floor and it falls.
+        //     Seat pos.Y onto that support this tick (a one-tick step-down snap, exactly what a within-GroundedEpsilon
+        //     step-down already does); the render-height smoother glides the grounded drop instead of hard-cutting a
+        //     ballistic one.
+        if (!grounded && vVel <= 0f && s.Grounded)
+        {
+            float stepDrop = s.Position.Y - groundY;
+            if (stepDrop > 0f && stepDrop <= t.StepHeight)
+            {
+                pos.Y = groundY;
+                grounded = true;
+                tSinceGround = 0f;
+                if (vVel < 0f) vVel = 0f;
+            }
+        }
+
         // 4b. Smooth step-up climb: cap the per-tick RISE onto step/prop support above the terrain floor to
         //     MaxStepClimbSpeed. The step-up mounts a whole riser in one tick, so a dungeon stair run (12-18 risers
         //     of ~0.33 m) otherwise snaps up ~0.33 m per mounting tick - it reads as shooting/jerking up. This paces

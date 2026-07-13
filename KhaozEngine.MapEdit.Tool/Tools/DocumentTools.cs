@@ -39,7 +39,7 @@ public sealed class DocumentTools(MapEditSession session)
     public ValidateResult MapValidate()
         => ToolGuard.Guard(session.Validate);
 
-    [McpServerTool(Name = "map_summary"), Description("Returns a flat summary of the open document: identity, bounds, terrain seed and water level, feature types in fold order, layer and companion names, section counts, region names, and the dirty flag.")]
+    [McpServerTool(Name = "map_summary"), Description("Returns a flat summary of the open document: identity, bounds, terrain seed and water level, feature types in fold order, layer and companion names, section counts, player spawn ids, region names, and the dirty flag.")]
     public MapSummary MapSummary()
         => ToolGuard.Guard(session.Summary);
 }

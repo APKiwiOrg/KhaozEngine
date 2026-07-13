@@ -43,12 +43,43 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal(1, s.ScatterOverrideCount);
                 Assert.Equal(1, s.PlacementCount);
                 Assert.Equal(1, s.SpawnCount);
+                Assert.Equal(0, s.PlayerSpawnCount);
+                Assert.Empty(s.PlayerSpawnIds);
                 Assert.Equal(new[] { "town" }, s.RegionNames);
                 Assert.Equal(-100f, s.MinX);
                 Assert.Equal(100f, s.MaxZ);
                 Assert.False(s.Dirty);
                 Assert.False(session.IsDirty);
                 Assert.True(session.HasDocument);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void MapSummary_ReportsPlayerSpawns()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                string path = Path.Combine(dir, "zone.map.json");
+                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
+
+                var session = new MapEditSession();
+                session.Open(path);
+
+                Assert.Equal(0, session.Summary().PlayerSpawnCount);
+                Assert.Empty(session.Summary().PlayerSpawnIds);
+
+                session.Mutate((d, r) =>
+                {
+                    d.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", X = 0f, Z = 0f });
+                    d.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-2", X = 5f, Z = 5f });
+                    return 0;
+                }, worldChanged: false);
+
+                MapSummary s = session.Summary();
+                Assert.Equal(2, s.PlayerSpawnCount);
+                Assert.Equal(new[] { "player-1", "player-2" }, s.PlayerSpawnIds);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

@@ -13,6 +13,10 @@ public enum SelectionKind
     Placement,
     /// <summary>An NPC spawn marker, keyed by its stable id.</summary>
     Spawn,
+    /// <summary>A player start marker, keyed by its stable id. Mirrors <see cref="Spawn"/> (same viewport marker,
+    /// pick box, and Marker gizmo affordance), but carries no archetype and a facing yaw, and lives in its own
+    /// document section (<see cref="MapDoc.MapDocument.PlayerSpawns"/>).</summary>
+    PlayerSpawn,
     /// <summary>The terrain root: the document's single terrain block (water level, seed, biomes). A singleton,
     /// so the id is unused (the empty string). A dedicated kind, rather than a sentinel <see cref="Feature"/>
     /// index, keeps the index-parsing feature inspector and the placement/spawn gizmo checks free of a special

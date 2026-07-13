@@ -30,8 +30,9 @@ public static class EditorPicking
     /// centred at (X, groundY + h/2, Z) with half-extents (h*0.3, h/2, h*0.3), where h = heightOf(kind) * scale is
     /// the world-space box height (from the game's AssetManifest HeightMeters times the placement scale), the pick
     /// box is therefore 0.6*h wide, and groundY is the placement's explicit Y or, when null, the terrain height
-    /// sampled at (X, Z). Each spawn is boxed as a fixed 1.5-tall, 1.0-wide box based at the sampled ground. The
-    /// terrain is raycast for a fallback ground hit. Placements and spawns beat terrain at equal T; the smallest
+    /// sampled at (X, Z). Each NPC spawn and each player spawn is boxed as a fixed 1.5-tall, 1.0-wide box based at
+    /// the sampled ground. The terrain is raycast for a fallback ground hit. Placements and spawns beat terrain at
+    /// equal T, and the smallest
     /// entry T wins overall. Returns false when nothing is hit within <paramref name="maxDistance"/> (T units).
     /// Direction normalization is the caller's job.
     /// <para><paramref name="visible"/>, when supplied, filters out unpickable elements: a placement or spawn for
@@ -81,6 +82,22 @@ public static class EditorPicking
                 haveBest = true;
                 bestT = tNear;
                 bestKind = SelectionKind.Spawn;
+                bestId = s.Id;
+            }
+        }
+
+        foreach (MapPlayerSpawn s in doc.PlayerSpawns)
+        {
+            if (visible is not null && !visible(SelectionKind.PlayerSpawn, s.Id)) continue;   // hidden: not pickable
+            float groundY = field.SampleHeight(s.X, s.Z);
+            var min = new Vector3(s.X - SpawnHalfWidth, groundY, s.Z - SpawnHalfWidth);
+            var max = new Vector3(s.X + SpawnHalfWidth, groundY + SpawnHeight, s.Z + SpawnHalfWidth);
+            if (RayMath.IntersectAabb(origin, direction, min, max, out float tNear) && tNear <= maxDistance
+                && (!haveBest || tNear < bestT))
+            {
+                haveBest = true;
+                bestT = tNear;
+                bestKind = SelectionKind.PlayerSpawn;
                 bestId = s.Id;
             }
         }

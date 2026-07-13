@@ -18,7 +18,11 @@ A map document (`MapDocument`) has:
 - **`scatterLayers`** - named procedural scatter layers (cell size, jitter, per-biome density and weighted
   kind mix), one per prop type (trees, rocks, ...).
 - **`companionLayers`** - named layers that ring hosts from a scatter layer with small foliage (ferns
-  around trees).
+  around trees). `HostKinds` filters which host placements grow companions: an empty or absent list
+  matches every host kind in the host layer, a populated list keeps the old exact ordinal filter. This is
+  a behavior-visible semantics change from earlier versions, where an empty list meant no companions at
+  all: a document authored against the old behavior with an accidentally-empty `HostKinds` now grows
+  companions on every host, so re-check any existing companion layer that left `HostKinds` empty.
 - **`exclusions`** (`MapExclusion`) - shapes (disc/rect/polygon) kept free of scatter, optionally scoped to
   specific layers via `Layers` (null means every layer, an explicit list names only those). Builds into
   `ScatterConfig.Exclusions`. Carries an optional `Name` too (default null (null or empty means unnamed), unique when non-empty),
@@ -29,6 +33,9 @@ A map document (`MapDocument`) has:
 - **`placements`** - authored props/buildings: stable id, kind, position (Y optional, ground-snapped if
   absent), yaw, scale, tags.
 - **`spawns`** - NPC spawn markers (archetype id, position, enabled flag, tags), interpreted by the game.
+- **`playerSpawns`** - player start markers (stable id, position, yaw, enabled flag, tags). No archetype:
+  which start a game uses at runtime is game code's concern. Games read `doc.PlayerSpawns` directly, the
+  same way they read `spawns` (no `MapRuntime` builder).
 - **`regions`** - named, tagged shapes for quest areas, safe zones, triggers, interpreted by the game.
 - **`terrainOverrides`** - reserved for a future sculpt/delta layer. Must be absent or null in format
   version 1, the validator rejects anything else, so sculpting lands later as a version bump, not a break.
@@ -41,7 +48,7 @@ it, and `MapDocumentSchema.WriteTo(path)` materializes it into a game's data dir
 validator.
 
 Every closed structure (the document root, `bounds`, `terrain`, scatter layers, companion layers,
-placements, spawns, regions, exclusions, overrides, and each concrete shape) sets
+placements, spawns, player spawns, regions, exclusions, overrides, and each concrete shape) sets
 `additionalProperties: false`, so an unknown field anywhere on them fails validation. The one exception
 is deliberate: a `terrain.features` item only requires its `type` discriminator, because the feature
 union is registry-open (`MapDocRegistry.RegisterFeature`), and locking its fields to the built-in set

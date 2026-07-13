@@ -102,7 +102,66 @@ the `EditFeature` tool swaps it again to a flat, unfiltered list of the registry
 static). Every other tool shows no panel at all and the outline reflows over the freed space, taking the
 whole left column. Selecting a palette leaf sets `EditorToolController.PlaceKind`, selecting a spawn-list
 leaf sets `SpawnArchetype`, selecting a feature-list leaf sets `PlaceFeatureType`, and tapping a category row
-itself changes neither.
+itself changes neither. The spawn-archetype list carries one extra, pinned leaf above every archetype: "player
+spawn". Selecting it sets `EditorToolController.PlacingPlayerSpawn` instead of an archetype, so the next click
+places a player start rather than an NPC spawn (see Player spawns below).
+
+## Player spawns
+
+A player spawn (`MapPlayerSpawn`) is a stable-id, position-plus-yaw start marker with no archetype: unlike an
+NPC spawn, which game code interprets by `ArchetypeId`, which start a game actually uses at runtime is game
+code's own concern, so the editor only authors the marker. `ViewportWorld.DrawPlayerSpawnMarkers` draws each
+one as a green marker disc (enabled) or the same grey a disabled NPC spawn uses (disabled), the one color
+distinguishing it from an NPC spawn's blue at a glance. It picks and drags exactly like an NPC spawn: the same
+fixed 1.5-tall, 1.0-wide pick box (`EditorPicking`), the same `GizmoAffordance.Marker` translate-XZ gizmo
+(rotate/scale are not offered, matching NPC spawns), and the same body-drag-past-threshold path any gizmo
+target gets.
+
+Placing one goes through the pinned "player spawn" palette leaf above (Kit palette): a click in `PlaceSpawn`
+mode with it selected auto-names the new spawn `player-N` (the smallest unused suffix) and executes
+`AddPlayerSpawnCommand`, which absorbs an immediately-following same-id `MovePlayerSpawnCommand` (`TryMerge`)
+so a place-then-drag-into-position gesture is one undo step. The outline's "Player Spawns" category
+(`RebuildOutline`) lists one node per spawn, labeled with the id and a trailing "(disabled)" while off,
+mirroring how the NPC "Spawns" category labels its nodes with the archetype. The inspector
+(`BuildPlayerSpawnInspector`) groups Identity (an inline-rename Name row, `RenamePlayerSpawnCommand`,
+rejecting a blank, unchanged, or colliding id before it touches the document) and Transform (X/Z through
+`MovePlayerSpawnCommand`, Yaw in raw radians through `SetPlayerSpawnYawCommand`, both same-id merges
+coalescing a scrub into one undo step) and State (an Enabled `BoolRow` through
+`SetPlayerSpawnEnabledCommand`, plus the standard Visible row). Delete routes through
+`RemovePlayerSpawnCommand`, restoring the removed spawn at its original list index on undo. Player spawn ids
+are unique only within the `playerSpawns` section (an NPC spawn and a player spawn may share the same string
+id with no collision), per `KhaozEngine.MapDoc`.
+
+## Inspector look and feel
+
+Every inspector row now carries a real hover tooltip: each `MapEditorScene.Add*Row` helper passes a
+`description` (`LocalizedText`) explaining what the field does (terrain scalars describe their visual effect,
+biome band fields explain the open-edge toggle, scatter/companion fields explain the weighted-kind syntax
+and the `HostKinds` empty-means-all rule, exclusion/region rows explain targeting, and so on). The scene
+builds one lazy `Tooltip` (`DrawInspectorTooltip`, the `PatchNotesView` precedent: built after a `UiViewport`
+exists, since `Tooltip`'s fonts are fixed at construction and must track a DPI rebake) and draws it after the
+chrome pass, escaping the grid's own scissor, anchored to `PropertyGrid.RowLabelBounds` of the currently
+`HoveredRow`, showing immediately with no delay.
+
+Every inspector is broken into named `HeaderRow` groups instead of one flat row list: Terrain gets Water /
+Noise / World, a biome band gets Range / Shape, a scatter layer gets Identity / Placement / Scale / Rules, a
+companion layer gets Identity / Host / Output / Shape, an exclusion or region gets Identity / Shape (plus
+Targeting for exclusions), and a placement / spawn / player spawn gets Identity / Transform / State. The
+empty-selection Layers panel groups its own rows the same way (Groups, then Scatter Layers). The shape editor
+(`AddShapeRows`, shared by exclusions, regions, and terrain features) sits under a "Shape" group header but
+its own disc/rect selector row is labeled "Kind", not "Shape" - the group name and the row label are
+deliberately distinct so neither reads as a duplicate of the other.
+
+The editor now runs `GuiStyle.Modern` throughout: `PropertyGrid.EditorStyle` and every `TreeView.Style`
+(outline, kit palette, spawn list, feature list) are constructed with it, so every inspector row's inner
+widget and every tree's selection highlight pick up its rounded corners, gradient, and glow. The toolbar,
+outline, inspector, and status-strip chrome panels draw through `SpriteBatch.DrawRounded` at
+`GuiStyle.Modern.CornerRadius` instead of a flat fill, against a slightly lifted dark palette (colors are not
+pinned exact in tests, only that they stay dark and the rounded-fill call shape is used). The inspector
+column is also noticeably wider: `MapEditorScene.ComputeLayout` splits the old single `PanelWidth` into
+`OutlinePanelWidth` (260 points, left column: outline + kit palette, unchanged) and `InspectorPanelWidth`
+(340 points, right column, up from 260), flush against the window's right edge independent of the outline
+width, giving the wider companion/scatter-layer rows and their group headers room to breathe.
 
 ## Viewport overlays
 
@@ -230,6 +289,26 @@ it. But it stays exactly where it was in the outline tree, since the outline is 
 document and visibility never touches the document. Selecting it from the outline still opens its
 inspector, Visible row included, so hiding something never blocks un-hiding it.
 
+## Selection sync
+
+Picking an object in the viewport (or anywhere else the selection changes: an outline tap, a
+`RunOutlineAction` select-on-add) also highlights and scrolls to the matching row in the outline tree, so
+the tree always shows what is actually selected instead of drifting out of sync with the viewport.
+`MapEditorScene.SyncOutlineSelection` resolves the live `EditorSelection` to its `TreeNode` via
+`TreeView.FindByTag` (matching on `OutlineRef` kind/id value equality, so a new `SelectionKind` gets this for
+free the day its outline nodes start carrying an `OutlineRef` tag), sets `TreeView.Selected` to it, and calls
+`TreeView.ScrollTo` to bring it into view. It runs from `OnSelectionChanged` (a viewport pick or an outline
+tap) and again at the end of every `RebuildOutline`, since a rebuild replaces every `TreeNode` wholesale and
+would otherwise orphan the previous highlight against a node no longer reachable from `Roots` - this is what
+fixes the highlight dropping on every document edit. An outline-originated selection resolves back to the
+same node it already set, so the re-set and `ScrollTo` are harmless no-ops, not a feedback loop.
+
+Mid-rename, the highlight stays glued to the row being renamed: each keystroke executes a rename command
+that rebuilds the outline before the actual re-select onto the new key fires (that re-select is deferred
+until the Name row loses focus, see Renaming above), so `SyncOutlineSelection` resolves against the pending
+new key instead of the stale `EditorSelection.Id` for the rest of that frame, keeping the highlight on the
+row live as the operator types.
+
 ## The headless core
 
 GPU-free and fully unit-tested:
@@ -238,14 +317,18 @@ GPU-free and fully unit-tested:
   signalling) and is the mutation choke point: every edit routes through `Execute`.
 - `EditorHistory` is the engine's first undo/redo command stack, with gesture coalescing (a drag collapses
   to one undo step).
-- `EditorCommands` are the reversible edits over the document model (placements, spawns, exclusions,
-  regions, terrain features, terrain globals). Commands are the only mutation path, so undo is total by
-  construction. `EditTerrainCommand` carries all seven terrain-wide scalars as nullable fields (WaterLevel,
-  Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency, DetailOctaves): a caller passes only
-  the fields it is changing, each field merges independently on a same-command follow-up (a scrub coalesces
-  into one undo step per field, not per command), and the `MutationService` seed-only special case collapsed
-  into this one widened command. `ReorderFeatureCommand` moves a terrain feature within the list (see Feature
-  apply order above). It never coalesces, so each reorder is its own undo step.
+- `EditorCommands` are the reversible edits over the document model (placements, spawns, player spawns,
+  exclusions, regions, terrain features, terrain globals). Commands are the only mutation path, so undo is
+  total by construction. `EditTerrainCommand` carries all seven terrain-wide scalars as nullable fields
+  (WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency, DetailOctaves): a caller
+  passes only the fields it is changing, each field merges independently on a same-command follow-up (a
+  scrub coalesces into one undo step per field, not per command), and the `MutationService` seed-only
+  special case collapsed into this one widened command. `ReorderFeatureCommand` moves a terrain feature
+  within the list (see Feature apply order above). It never coalesces, so each reorder is its own undo step.
+  `SetSpawnArchetypeCommand` and `SetPlayerSpawnYawCommand` make an NPC spawn's archetype id and a player
+  spawn's yaw both undoable and dirty-marking through the same free-typed-row, same-id-merge pattern the
+  rename rows use (an earlier gap left NPC archetype retyping outside the command stack, fixed alongside the
+  new player-spawn command family).
 - `EditorVisibility` is the GPU-free, headless-tested editor-session view state described in Visibility
   above: visibility groups, scatter-layer toggles, and per-element hides. It never touches the document, so
   visibility carries no dirty flag and no undo/redo of its own.
@@ -355,11 +438,12 @@ cycle is byte-identical even though `PropScatter` is otherwise deterministic onl
 
 ## Renaming
 
-The placement, spawn, and region inspectors lead with an inline-editable Name row (`MapEditorScene.AddNameRow`,
-shared by all three). Typing a new id or name and moving focus away routes the edit through
-`RenamePlacementCommand`, `RenameSpawnCommand`, or `RenameRegionCommand`, rejecting a blank, unchanged, or
-colliding target before it touches the document, so a rejected rename lands no undo step. Placements and
-spawns are keyed by id and regions by name, so a rename must move the selection to the new key. An immediate
+The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name row
+(`MapEditorScene.AddNameRow`, shared by all four). Typing a new id or name and moving focus away routes the
+edit through `RenamePlacementCommand`, `RenameSpawnCommand`, `RenamePlayerSpawnCommand`, or
+`RenameRegionCommand`, rejecting a blank, unchanged, or colliding target before it touches the document, so a
+rejected rename lands no undo step. Placements, spawns, and player spawns are keyed by id and regions by
+name, so a rename must move the selection to the new key. An immediate
 `Selection.Set` mid-keystroke would rebuild the inspector and drop the row's focus, so the re-select is
 deferred until the Name row itself loses focus. A different selection made first, an outline click or a
 viewport pick while the row is still focused, wins over the stale pending re-select and drops it.
@@ -387,7 +471,7 @@ what the streamed scatter draws).
 
 ## Procedural setup editing
 
-The outline gains three categories alongside the existing six roots (`RebuildOutline`): `Biomes` (a sibling
+The outline gains three categories alongside the existing seven roots (`RebuildOutline`): `Biomes` (a sibling
 of `Terrain`, not nested under it), `Scatter Layers`, and `Companion Layers`. Each lists its elements as
 selectable nodes plus a trailing synthetic `[+ add ...]` action node (`OutlineActionKind.AddBiomeBand` /
 `AddScatterLayer` / `AddCompanionLayer`, `MapEditorScene.RunOutlineAction`): tapping it appends a
@@ -435,6 +519,20 @@ same `ParseKinds` convention), then a `[- remove companion]` action row. Every e
 through `EditCompanionLayerCommand` (deep clone). Renaming a companion layer through
 `RenameCompanionLayerCommand` does NOT cascade, unlike a scatter-layer rename: nothing else references a
 companion layer by name, so it just renames the one layer. Removing one likewise needs no reject guard.
+
+`HostKinds` filters which of the host layer's placements grow companions: an empty or absent list now
+matches every host placement in the layer (see `KhaozEngine.Terrain`'s `PropScatter.GenerateCompanions` for
+the full semantics change), so leaving it empty is no longer a silent "grow nothing" trap. **Host-swap UX**:
+changing the `HostLayer` `ChoiceRow` swaps the host in one whole-value edit, and when the current `HostKinds`
+is non-empty and has zero intersection with the new host layer's placeable kit ids, that same edit also
+clears `HostKinds` back to empty (match-all) and leaves a "host kinds cleared to match all hosts" note in the
+status strip, so a host swap that would otherwise leave every companion silently orphaned is caught and
+fixed in the SAME undo step (one undo restores both the old host and the old `HostKinds`). Independent of
+that swap, whenever the inspector shows a companion with a non-empty `HostKinds` that has zero intersection
+with its CURRENT host layer's kit ids, a read-only, warning-styled "Warning" row appears right under
+`HostKinds` reading "HostKinds match no kind in the host layer" - a live-tracked mismatch (`UpdateChrome`
+compares it every chrome step and reflows the row on a change from `HostKinds` edits, a host swap, or an
+undo/redo of either), not a validator error, since a transient mismatch mid-edit must never block a save.
 
 **Staleness triggers.** The exclusion inspector's layer-targeting rows (above) and the companion inspector's
 `HostLayer` chooser both enumerate the document's live scatter-layer names at inspector-build time

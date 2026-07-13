@@ -235,5 +235,49 @@ namespace KhaozEngine.Tests.MapDoc
             doc.Id = "";
             Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(doc));
         }
+
+        [Fact]
+        public void PlayerSpawn_RoundTripsThroughSaveLoad_PassesSchema()
+        {
+            var doc = SampleDoc();
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 12f, Z = -8f, Yaw = 1.57f });
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "rally", X = -4f, Z = 30f, Enabled = false, Tags = { "co-op", "north" } });
+
+            string json = MapDocumentFile.SaveText(doc);
+            var back = MapDocumentFile.LoadText(json);
+
+            Assert.Equal(2, back.PlayerSpawns.Count);
+            Assert.Equal("start", back.PlayerSpawns[0].Id);
+            Assert.Equal(12f, back.PlayerSpawns[0].X);
+            Assert.Equal(-8f, back.PlayerSpawns[0].Z);
+            Assert.Equal(1.57f, back.PlayerSpawns[0].Yaw);
+            Assert.True(back.PlayerSpawns[0].Enabled);            // default true survives round trip
+            Assert.False(back.PlayerSpawns[1].Enabled);
+            Assert.Contains("co-op", back.PlayerSpawns[1].Tags);
+            Assert.Contains("north", back.PlayerSpawns[1].Tags);
+
+            ValidationReport report = JsonSchemaValidator.Validate(json, MapDocumentSchema.GetJson());
+            Assert.True(report.IsValid, string.Join("\n", report.Errors));
+        }
+
+        [Fact]
+        public void PlayerSpawn_DuplicateIds_FailValidation()
+        {
+            var registry = MapDocRegistry.CreateDefault();
+
+            var dup = SampleDoc();
+            dup.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 0f, Z = 0f });
+            dup.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 1f, Z = 1f });
+            Assert.Contains(MapDocumentValidator.Validate(dup, registry), e => e.Contains("start"));
+
+            var empty = SampleDoc();
+            empty.PlayerSpawns.Add(new MapPlayerSpawn { Id = "", X = 0f, Z = 0f });
+            Assert.Contains(MapDocumentValidator.Validate(empty, registry), e => e.Contains("player spawn"));
+
+            // A single well-formed player spawn is valid.
+            var ok = SampleDoc();
+            ok.PlayerSpawns.Add(new MapPlayerSpawn { Id = "start", X = 0f, Z = 0f });
+            Assert.Empty(MapDocumentValidator.Validate(ok, registry));
+        }
     }
 }

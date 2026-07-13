@@ -82,6 +82,34 @@ public abstract class EditorCommand : IEditorCommand
                 throw new InvalidOperationException($"A spawn with id '{id}' already exists in the document.");
     }
 
+    private protected static MapPlayerSpawn FindPlayerSpawn(MapDocument doc, string id)
+    {
+        foreach (MapPlayerSpawn s in doc.PlayerSpawns)
+            if (string.Equals(s.Id, id, StringComparison.Ordinal))
+                return s;
+        throw new InvalidOperationException($"No player spawn with id '{id}' in the document.");
+    }
+
+    private protected static void GuardNoPlayerSpawn(MapDocument doc, string id)
+    {
+        foreach (MapPlayerSpawn s in doc.PlayerSpawns)
+            if (string.Equals(s.Id, id, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A player spawn with id '{id}' already exists in the document.");
+    }
+
+    /// <summary>Deep-copies a player spawn, including a FRESH Tags list, so a command that owns the copy never
+    /// aliases the caller's list (nor the reverse). Guards against the round-5 shared-list mutation trap.</summary>
+    private protected static MapPlayerSpawn ClonePlayerSpawn(MapPlayerSpawn s) =>
+        new MapPlayerSpawn
+        {
+            Id = s.Id,
+            X = s.X,
+            Z = s.Z,
+            Yaw = s.Yaw,
+            Enabled = s.Enabled,
+            Tags = new List<string>(s.Tags),
+        };
+
     private protected static void GuardNoRegion(MapDocument doc, string name)
     {
         foreach (MapRegion r in doc.Regions)
@@ -588,6 +616,52 @@ public sealed class SetSpawnEnabledCommand : EditorCommand
     public override void Revert(MapDocument doc) => FindSpawn(doc, _id).Enabled = _old;
 }
 
+/// <summary>Sets a spawn's archetype id (which NPC kind the game spawns). The Archetype row is a free-typed
+/// <see cref="KhaozEngine.Gui.TextRow"/> like the rename rows, committing on every keystroke, so successive
+/// same-id sets coalesce (<see cref="TryMerge"/>) into one undo step that restores the pre-retype archetype,
+/// mirroring <see cref="SetPlayerSpawnYawCommand"/>.</summary>
+public sealed class SetSpawnArchetypeCommand : EditorCommand
+{
+    readonly string _id;
+    string _newArchetypeId;
+    string _oldArchetypeId = "";
+    bool _captured;
+
+    /// <summary>Creates the command setting spawn <paramref name="id"/>'s archetype id to
+    /// <paramref name="newArchetypeId"/>.</summary>
+    public SetSpawnArchetypeCommand(string id, string newArchetypeId)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newArchetypeId = newArchetypeId ?? throw new ArgumentNullException(nameof(newArchetypeId));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Set spawn archetype";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapSpawn s = FindSpawn(doc, _id);
+        if (!_captured) { _oldArchetypeId = s.ArchetypeId; _captured = true; }
+        s.ArchetypeId = _newArchetypeId;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindSpawn(doc, _id).ArchetypeId = _oldArchetypeId;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is SetSpawnArchetypeCommand a && string.Equals(a._id, _id, StringComparison.Ordinal))
+        {
+            _newArchetypeId = a._newArchetypeId;
+            return true;
+        }
+        return false;
+    }
+}
+
 /// <summary>Renames a spawn. Spawns are keyed by id, so the id-carrying selection follows the rename. The target
 /// id must be unique: <see cref="Apply"/> throws (before it mutates) if a spawn already carries the new id, so a
 /// rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
@@ -616,6 +690,244 @@ public sealed class RenameSpawnCommand : EditorCommand
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => FindSpawn(doc, _newId).Id = _oldId;
+}
+
+// ---- player spawns ---------------------------------------------------------------------------------------
+
+/// <summary>Appends a player start marker to the document. Player spawns are game-interpreted (which one a game
+/// uses at runtime is game code's concern), so like NPC spawns this does not affect the procedural world build.
+/// Absorbs a same-id <see cref="MovePlayerSpawnCommand"/> that immediately follows (place-and-adjust), so a
+/// just-placed player spawn can be dragged into position within the same gesture and the whole thing stays ONE
+/// undo step whose <see cref="Revert"/> removes the spawn. The incoming spawn is deep-copied at construction
+/// (fresh Tags list), so the command never aliases the caller's mutable state.</summary>
+public sealed class AddPlayerSpawnCommand : EditorCommand
+{
+    readonly MapPlayerSpawn _spawn;
+
+    /// <summary>Creates the command for the given player spawn (a deep copy is added on <see cref="Apply"/>).</summary>
+    public AddPlayerSpawnCommand(MapPlayerSpawn spawn) =>
+        _spawn = ClonePlayerSpawn(spawn ?? throw new ArgumentNullException(nameof(spawn)));
+
+    /// <inheritdoc/>
+    public override string Label => "Add player spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.PlayerSpawns.Add(_spawn);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.PlayerSpawns.Remove(_spawn);
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        // Fold a same-id move into the Add: the placed spawn's final position becomes part of the Add itself, so
+        // place-and-adjust is one undo step and Revert still just removes the spawn.
+        if (next is MovePlayerSpawnCommand m && string.Equals(m.Id, _spawn.Id, StringComparison.Ordinal))
+        {
+            _spawn.X = m.NewX;
+            _spawn.Z = m.NewZ;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Removes the player spawn with the given id, restoring it at its original index on revert.</summary>
+public sealed class RemovePlayerSpawnCommand : EditorCommand
+{
+    readonly string _id;
+    MapPlayerSpawn? _removed;
+    int _index = -1;
+
+    /// <summary>Creates the command for the player spawn id to remove.</summary>
+    public RemovePlayerSpawnCommand(string id) =>
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+
+    /// <inheritdoc/>
+    public override string Label => "Remove player spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlayerSpawn s = FindPlayerSpawn(doc, _id);
+        _index = doc.PlayerSpawns.IndexOf(s);
+        _removed = s;
+        doc.PlayerSpawns.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.PlayerSpawns.Insert(_index, _removed);
+    }
+}
+
+/// <summary>Moves a player spawn to a new XZ. Successive moves of the same spawn coalesce.</summary>
+public sealed class MovePlayerSpawnCommand : EditorCommand
+{
+    readonly string _id;
+    float _newX, _newZ;
+    float _oldX, _oldZ;
+    bool _captured;
+
+    /// <summary>Creates the command moving player spawn <paramref name="id"/> to (<paramref name="newX"/>,
+    /// <paramref name="newZ"/>).</summary>
+    public MovePlayerSpawnCommand(string id, float newX, float newZ)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newX = newX;
+        _newZ = newZ;
+    }
+
+    /// <summary>The moved spawn's id, so <see cref="AddPlayerSpawnCommand.TryMerge"/> can match a same-id move.</summary>
+    internal string Id => _id;
+    /// <summary>The target X this move sets, exposed so an absorbing Add can fold in the final position.</summary>
+    internal float NewX => _newX;
+    /// <summary>The target Z this move sets, exposed so an absorbing Add can fold in the final position.</summary>
+    internal float NewZ => _newZ;
+
+    /// <inheritdoc/>
+    public override string Label => "Move player spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlayerSpawn s = FindPlayerSpawn(doc, _id);
+        if (!_captured) { _oldX = s.X; _oldZ = s.Z; _captured = true; }
+        s.X = _newX;
+        s.Z = _newZ;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        MapPlayerSpawn s = FindPlayerSpawn(doc, _id);
+        s.X = _oldX;
+        s.Z = _oldZ;
+    }
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is MovePlayerSpawnCommand m && string.Equals(m._id, _id, StringComparison.Ordinal))
+        {
+            _newX = m._newX;
+            _newZ = m._newZ;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Sets a player spawn's yaw (facing), in raw radians (no degree conversion in this editor). Mirrors
+/// <see cref="RotatePlacementCommand"/>: successive scrubs of the same spawn's yaw coalesce into one undo step
+/// that restores the pre-scrub yaw.</summary>
+public sealed class SetPlayerSpawnYawCommand : EditorCommand
+{
+    readonly string _id;
+    float _newYaw;
+    float _oldYaw;
+    bool _captured;
+
+    /// <summary>Creates the command setting player spawn <paramref name="id"/>'s yaw to <paramref name="newYaw"/>.</summary>
+    public SetPlayerSpawnYawCommand(string id, float newYaw)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newYaw = newYaw;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Set player spawn yaw";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlayerSpawn s = FindPlayerSpawn(doc, _id);
+        if (!_captured) { _oldYaw = s.Yaw; _captured = true; }
+        s.Yaw = _newYaw;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlayerSpawn(doc, _id).Yaw = _oldYaw;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is SetPlayerSpawnYawCommand y && string.Equals(y._id, _id, StringComparison.Ordinal))
+        {
+            _newYaw = y._newYaw;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Toggles a player spawn's enabled flag.</summary>
+public sealed class SetPlayerSpawnEnabledCommand : EditorCommand
+{
+    readonly string _id;
+    readonly bool _enabled;
+    bool _old;
+    bool _captured;
+
+    /// <summary>Creates the command setting player spawn <paramref name="id"/>'s enabled flag to
+    /// <paramref name="enabled"/>.</summary>
+    public SetPlayerSpawnEnabledCommand(string id, bool enabled)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _enabled = enabled;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Set player spawn enabled";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapPlayerSpawn s = FindPlayerSpawn(doc, _id);
+        if (!_captured) { _old = s.Enabled; _captured = true; }
+        s.Enabled = _enabled;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlayerSpawn(doc, _id).Enabled = _old;
+}
+
+/// <summary>Renames a player spawn. Player spawns are keyed by id, so the id-carrying selection follows the
+/// rename. The target id must be unique: <see cref="Apply"/> throws (before it mutates) if a player spawn already
+/// carries the new id, so a rejected rename lands no undo step. The in-Apply guard is load-bearing here because
+/// the editor GUI executes renames without a validate-and-revert net. Renames never coalesce (no merge).</summary>
+public sealed class RenamePlayerSpawnCommand : EditorCommand
+{
+    readonly string _oldId;
+    readonly string _newId;
+
+    /// <summary>Creates the command renaming player spawn <paramref name="oldId"/> to <paramref name="newId"/>.</summary>
+    public RenamePlayerSpawnCommand(string oldId, string newId)
+    {
+        _oldId = oldId ?? throw new ArgumentNullException(nameof(oldId));
+        _newId = newId ?? throw new ArgumentNullException(nameof(newId));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename player spawn";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        GuardNoPlayerSpawn(doc, _newId);   // reject a duplicate target before touching the source
+        FindPlayerSpawn(doc, _oldId).Id = _newId;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindPlayerSpawn(doc, _newId).Id = _oldId;
 }
 
 // ---- exclusions (terrain-shape affecting) ----------------------------------------------------------------

@@ -131,16 +131,19 @@ namespace KhaozEngine.Terrain
         };
     }
 
-    /// <summary>Inputs for <see cref="PropScatter.GenerateCompanions"/>: rings each host prop whose
-    /// <see cref="PropPlacement.Id"/> is in <see cref="HostKinds"/> with a few small-foliage instances, so
-    /// trees are dressed at the base instead of standing on bare ground. Every value (count, ring angle/radius,
-    /// kind, scale, yaw) hashes off the host's centimetre-quantized world XZ + per-channel salts, so it is
-    /// deterministic and tiling-invariant (the host set is tiling-invariant and each host maps independently to
-    /// its companions). Render-only: companion ids carry no collider.</summary>
+    /// <summary>Inputs for <see cref="PropScatter.GenerateCompanions"/>: rings each matching host prop with a few
+    /// small-foliage instances, so trees are dressed at the base instead of standing on bare ground. A host matches
+    /// when its <see cref="PropPlacement.Id"/> is in <see cref="HostKinds"/>, or when <see cref="HostKinds"/> is
+    /// empty (empty means every host placement matches). Every value (count, ring angle/radius, kind, scale, yaw)
+    /// hashes off the host's centimetre-quantized world XZ + per-channel salts, so it is deterministic and
+    /// tiling-invariant (the host set is tiling-invariant and each host maps independently to its companions).
+    /// Render-only: companion ids carry no collider.</summary>
     public sealed class CompanionConfig
     {
         public int Seed = 1337;
-        /// <summary>Host ids that spawn companions (e.g. the tree kit ids). A host whose Id is not here spawns none.</summary>
+        /// <summary>Host ids that spawn companions (e.g. the tree kit ids). An empty or absent list means every host
+        /// placement matches (all host kinds). A populated list filters exactly: a host whose Id is not listed
+        /// spawns none.</summary>
         public string[] HostKinds = Array.Empty<string>();
         /// <summary>Weighted companion kit ids (bush / fern / ...).</summary>
         public PropKind[] Kinds = Array.Empty<PropKind>();
@@ -241,9 +244,10 @@ namespace KhaozEngine.Terrain
             return result;
         }
 
-        /// <summary>Ring each host whose <see cref="PropPlacement.Id"/> is in <paramref name="config"/>'s
-        /// <see cref="CompanionConfig.HostKinds"/> with <c>Count</c> small-foliage companions in a jittered ring,
-        /// Y resampled from the field. Pure per-host: count/angle/radius/kind/scale/yaw hash off the host's
+        /// <summary>Ring each host matching <paramref name="config"/>'s <see cref="CompanionConfig.HostKinds"/>
+        /// (a host whose <see cref="PropPlacement.Id"/> is listed, or every host when the list is empty) with
+        /// <c>Count</c> small-foliage companions in a jittered ring, Y resampled from the field. Pure per-host:
+        /// count/angle/radius/kind/scale/yaw hash off the host's
         /// centimetre-quantized world XZ + per-channel salts (never the host's list index, which is not
         /// tiling-invariant), so the result is deterministic and the union over any tiling of the hosts equals
         /// the whole. Render-only - companion placements carry no collider.</summary>
@@ -255,7 +259,7 @@ namespace KhaozEngine.Terrain
             if (config == null) throw new ArgumentNullException(nameof(config));
 
             var result = new List<PropPlacement>();
-            if (config.Kinds.Length == 0 || config.HostKinds.Length == 0 || config.CountMax < config.CountMin)
+            if (config.Kinds.Length == 0 || config.CountMax < config.CountMin)
                 return result;
 
             int span = config.CountMax - config.CountMin + 1;
@@ -294,8 +298,11 @@ namespace KhaozEngine.Terrain
             return result;
         }
 
+        // An empty host-kind list means "every host placement matches" (no filter). A populated list keeps exact
+        // ordinal filtering, so only hosts whose Id is listed spawn companions.
         static bool IsHostKind(string[] hostKinds, string id)
         {
+            if (hostKinds.Length == 0) return true;
             for (int i = 0; i < hostKinds.Length; i++)
                 if (string.Equals(hostKinds[i], id, StringComparison.Ordinal)) return true;
             return false;

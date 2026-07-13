@@ -189,6 +189,7 @@ public sealed class MapEditSession
             d.CompanionLayers.Select(l => l.Name).ToArray(),
             d.Exclusions.Count, d.ScatterOverrides.Count,
             d.Placements.Count, d.Spawns.Count,
+            d.PlayerSpawns.Count, d.PlayerSpawns.Select(s => s.Id).ToArray(),
             d.Regions.Select(r => r.Name).ToArray(),
             _dirty);
     }

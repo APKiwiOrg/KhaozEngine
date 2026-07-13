@@ -4,9 +4,9 @@ using ModelContextProtocol.Server;
 
 namespace KhaozEngine.MapEdit.Tools;
 
-/// <summary>Mutation verbs: placements, spawns, regions, terrain globals, terrain features and biome bands,
-/// scatter exclusions and overrides, scatter and companion layers, and region bake. Every method is a thin
-/// wrapper that delegates to <see cref="MutationService"/> through <see cref="ToolGuard.Guard{T}"/>, holding no
+/// <summary>Mutation verbs: placements, spawns, player spawns, regions, terrain globals, terrain features and
+/// biome bands, scatter exclusions and overrides, scatter and companion layers, and region bake. Every method is
+/// a thin wrapper that delegates to <see cref="MutationService"/> through <see cref="ToolGuard.Guard{T}"/>, holding no
 /// logic of its own. Terrain features and shapes cross the MCP boundary as JSON strings because both are open or
 /// polymorphic unions, so the feature and shape parameters take raw json parsed with the document's own
 /// serializer options. Every other closed-shape type (biome bands, scatter/companion layers) crosses as typed
@@ -99,6 +99,48 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
     public MutationResult SpawnRemove(
         [Description("Id of the spawn to remove.")] string id)
         => ToolGuard.Guard(() => mutation.SpawnRemove(id));
+
+    // ---- player spawns --------------------------------------------------------------------------------------
+
+    [McpServerTool(Name = "player_spawn_add"), Description("Adds a player start marker. A null id auto-generates player-N. Which spawn a game uses at runtime (single-player start, party rally point, respawn point) is game code's concern, so there is no archetype here.")]
+    public MutationResult PlayerSpawnAdd(
+        [Description("World X in meters (ground plane).")] float x,
+        [Description("World Z in meters (ground plane).")] float z,
+        [Description("Facing at spawn about the vertical Y axis, in radians. Defaults to 0.")] float yaw = 0f,
+        [Description("Whether the spawn is enabled. Defaults to true.")] bool enabled = true,
+        [Description("Explicit player spawn id. Null auto-generates player-N.")] string? id = null,
+        [Description("Freeform tags to attach to the player spawn. Null for none.")] string[]? tags = null)
+        => ToolGuard.Guard(() => mutation.PlayerSpawnAdd(x, z, yaw, enabled, id, tags));
+
+    [McpServerTool(Name = "player_spawn_move"), Description("Moves a player spawn to a new world XZ.")]
+    public MutationResult PlayerSpawnMove(
+        [Description("Id of the player spawn to move.")] string id,
+        [Description("New world X in meters (ground plane).")] float x,
+        [Description("New world Z in meters (ground plane).")] float z)
+        => ToolGuard.Guard(() => mutation.PlayerSpawnMove(id, x, z));
+
+    [McpServerTool(Name = "player_spawn_set_yaw"), Description("Sets a player spawn's facing yaw, in radians.")]
+    public MutationResult PlayerSpawnSetYaw(
+        [Description("Id of the player spawn to rotate.")] string id,
+        [Description("New facing about the vertical Y axis, in radians.")] float yaw)
+        => ToolGuard.Guard(() => mutation.PlayerSpawnSetYaw(id, yaw));
+
+    [McpServerTool(Name = "player_spawn_set_enabled"), Description("Toggles a player spawn's enabled flag.")]
+    public MutationResult PlayerSpawnSetEnabled(
+        [Description("Id of the player spawn to toggle.")] string id,
+        [Description("New enabled state for the player spawn.")] bool enabled)
+        => ToolGuard.Guard(() => mutation.PlayerSpawnSetEnabled(id, enabled));
+
+    [McpServerTool(Name = "player_spawn_rename"), Description("Renames a player spawn. The new id must be unique in the document.")]
+    public MutationResult PlayerSpawnRename(
+        [Description("Current id of the player spawn.")] string oldId,
+        [Description("New id for the player spawn, unique in the document.")] string newId)
+        => ToolGuard.Guard(() => mutation.PlayerSpawnRename(oldId, newId));
+
+    [McpServerTool(Name = "player_spawn_remove"), Description("Removes a player spawn by id.")]
+    public MutationResult PlayerSpawnRemove(
+        [Description("Id of the player spawn to remove.")] string id)
+        => ToolGuard.Guard(() => mutation.PlayerSpawnRemove(id));
 
     // ---- terrain globals + features -----------------------------------------------------------------------
 

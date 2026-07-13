@@ -77,6 +77,13 @@ public static class MapDocumentValidator
             if (string.IsNullOrWhiteSpace(s.ArchetypeId)) errors.Add($"spawn '{s.Id}': archetypeId must be non-empty.");
         }
 
+        var playerSpawnIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (MapPlayerSpawn s in doc.PlayerSpawns)
+        {
+            if (string.IsNullOrWhiteSpace(s.Id)) errors.Add("every player spawn needs a non-empty id.");
+            else if (!playerSpawnIds.Add(s.Id)) errors.Add($"duplicate player spawn id '{s.Id}'.");
+        }
+
         var regionNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapRegion r in doc.Regions)
         {

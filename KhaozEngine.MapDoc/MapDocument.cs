@@ -25,6 +25,7 @@ public sealed class MapDocument
     public List<MapScatterOverrideDoc> ScatterOverrides { get; set; } = new();
     public List<MapPlacement> Placements { get; set; } = new();
     public List<MapSpawn> Spawns { get; set; } = new();
+    public List<MapPlayerSpawn> PlayerSpawns { get; set; } = new();
     public List<MapRegion> Regions { get; set; } = new();
 
     /// <summary>Reserved for the future sculpt/delta layer. Must be absent or null in format version 1
@@ -102,6 +103,8 @@ public sealed class MapCompanionLayer
     /// <summary>The scatter layer whose placements host these companions.</summary>
     public string HostLayer { get; set; } = "";
     public int Seed { get; set; } = 1337;
+    /// <summary>Host kit ids that spawn companions. Empty or absent means every host placement in the host layer
+    /// matches (all host kinds). A populated list filters exactly: a host whose kit id is not listed spawns none.</summary>
     public List<string> HostKinds { get; set; } = new();
     public List<MapPropKind> Kinds { get; set; } = new();
     public int CountMin { get; set; } = 2;
@@ -158,6 +161,21 @@ public sealed class MapSpawn
     public string ArchetypeId { get; set; } = "";
     public float X { get; set; }
     public float Z { get; set; }
+    public bool Enabled { get; set; } = true;
+    public List<string> Tags { get; set; } = new();
+}
+
+/// <summary>A player start marker. Which spawn a game uses at runtime (single-player start, party rally point,
+/// respawn point) is game code's concern, so there is no archetype here. Games read
+/// <see cref="MapDocument.PlayerSpawns"/> directly, the same way they read <see cref="MapDocument.Spawns"/>.</summary>
+public sealed class MapPlayerSpawn
+{
+    /// <summary>Stable editor identity, unique within the document.</summary>
+    public string Id { get; set; } = "";
+    public float X { get; set; }
+    public float Z { get; set; }
+    /// <summary>Facing at spawn, radians.</summary>
+    public float Yaw { get; set; }
     public bool Enabled { get; set; } = true;
     public List<string> Tags { get; set; } = new();
 }

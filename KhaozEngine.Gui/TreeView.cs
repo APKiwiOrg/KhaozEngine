@@ -148,10 +148,89 @@ namespace KhaozEngine.Gui
             foreach (TreeNode child in node.Children) Walk(child, depth + 1);
         }
 
+        /// <summary>
+        /// The first node (depth-first over <see cref="Roots"/>, regardless of <see cref="TreeNode.Expanded"/> - a
+        /// collapsed subtree is still searched) whose <see cref="TreeNode.Tag"/> satisfies <paramref name="predicate"/>,
+        /// or null when none match. A host uses this to resolve a caller-owned identity (e.g. an outline reference)
+        /// back to the live node after <see cref="Roots"/> is rebuilt from fresh data.
+        /// </summary>
+        public TreeNode? FindByTag(Func<object?, bool> predicate)
+        {
+            foreach (TreeNode root in Roots)
+            {
+                TreeNode? found = FindByTag(root, predicate);
+                if (found is not null) return found;
+            }
+            return null;
+        }
+
+        static TreeNode? FindByTag(TreeNode node, Func<object?, bool> predicate)
+        {
+            if (predicate(node.Tag)) return node;
+            foreach (TreeNode child in node.Children)
+            {
+                TreeNode? found = FindByTag(child, predicate);
+                if (found is not null) return found;
+            }
+            return null;
+        }
+
         /// <summary>The screen rect of visible row <paramref name="visibleIndex"/> (pure arithmetic from
         /// <see cref="Bounds"/>, <see cref="RowHeight"/>, and <see cref="ScrollOffset"/>). May lie outside <see cref="Bounds"/>.</summary>
         public Rect RowBounds(int visibleIndex) =>
             new(Bounds.X, Bounds.Y + visibleIndex * RowHeight - ScrollOffset, Bounds.Width, RowHeight);
+
+        /// <summary>
+        /// Bring <paramref name="node"/> into view: expands every collapsed ancestor so it re-joins the visible walk
+        /// (a node hidden behind a collapsed parent cannot be "in view" at all), then scrolls the minimal amount
+        /// needed so its row sits fully inside <see cref="Bounds"/> - an already-visible row is left untouched.
+        /// Clamped to <c>[0, maxScroll]</c> like <see cref="ScrollablePanel.ScrollTo(float)"/>'s clamp idiom, so a
+        /// row near the end of a long list cannot scroll past its content. No-op when <paramref name="node"/> is not
+        /// reachable from <see cref="Roots"/> at all.
+        /// </summary>
+        public void ScrollTo(TreeNode node)
+        {
+            if (!ExpandAncestorsOf(node)) return;
+
+            IReadOnlyList<(TreeNode Node, int Depth)> rows = VisibleRows();
+            int index = -1;
+            for (int i = 0; i < rows.Count; i++)
+                if (ReferenceEquals(rows[i].Node, node)) { index = i; break; }
+            if (index < 0) return;   // should be unreachable once every ancestor is expanded, but guard anyway
+
+            float top = index * RowHeight;
+            float bottom = top + RowHeight;
+            float target = ScrollOffset;
+            if (top < target) target = top;
+            else if (bottom > target + Bounds.Height) target = bottom - Bounds.Height;
+
+            float max = MathF.Max(0f, rows.Count * RowHeight - Bounds.Height);
+            ScrollOffset = Math.Clamp(target, 0f, max);
+        }
+
+        // Expand every ancestor of `node` (a depth-first search over Roots), leaving Expanded untouched on any
+        // branch that does not lead to it. Returns true when `node` is reachable from Roots at all (a root itself
+        // counts, needing no expansion), false when it is not part of this tree.
+        bool ExpandAncestorsOf(TreeNode node)
+        {
+            foreach (TreeNode root in Roots)
+                if (ExpandAncestors(root, node)) return true;
+            return false;
+        }
+
+        static bool ExpandAncestors(TreeNode node, TreeNode target)
+        {
+            if (ReferenceEquals(node, target)) return true;
+            foreach (TreeNode child in node.Children)
+            {
+                if (ExpandAncestors(child, target))
+                {
+                    node.Expanded = true;
+                    return true;
+                }
+            }
+            return false;
+        }
 
         /// <summary>
         /// Reserve the region on the pointer, apply wheel scrolling, run the drag-and-drop reorder gesture, and
@@ -338,7 +417,8 @@ namespace KhaozEngine.Gui
 
                 (TreeNode node, int depth) = rows[i];
                 if (ReferenceEquals(node, Selected))
-                    GuiDraw.Fill(batch, white, row, GuiDraw.WithOpacity(Style.SelectedFill, Opacity));
+                    GuiDraw.FillStyled(batch, white, row, Style, GuiDraw.WithOpacity(Style.SelectedFill, Opacity),
+                        GuiDraw.WithOpacity(Style.SelectedBorder, Opacity));
 
                 float caretStart = Bounds.X + depth * Indent;
                 if (node.Children.Count > 0)

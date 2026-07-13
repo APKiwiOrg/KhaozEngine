@@ -329,5 +329,100 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(tree.WasReordered);
             Assert.Null(tree.Selected);              // and the post-abort release does not select A2
         }
+
+        // ---- TreeView.ScrollTo(TreeNode) / FindByTag ------------------------------------------------------
+
+        // The visible-row index of `node`, or -1 when it is not (yet) part of the visible walk. A small local
+        // helper so each case below stays a one-liner instead of re-writing the loop.
+        static int VisibleIndexOf(TreeView tree, TreeNode node)
+        {
+            IReadOnlyList<(TreeNode Node, int Depth)> rows = tree.VisibleRows();
+            for (int i = 0; i < rows.Count; i++)
+                if (ReferenceEquals(rows[i].Node, node)) return i;
+            return -1;
+        }
+
+        [Fact]
+        public void ScrollTo_ExpandsAncestors_BringsRowIntoView()
+        {
+            // Case 1: a node behind a COLLAPSED ancestor chain, far enough down the flattened list that bringing
+            // it into view also requires an actual scroll (not just expansion). ScrollTo expands every ancestor
+            // and scrolls so the row lands fully inside Bounds.
+            var tree = new TreeView(Area);   // Area height 120 -> 5 rows visible at RowHeight 24
+            for (int i = 0; i < 5; i++) tree.Roots.Add(new TreeNode(LocalizedText.Raw("Filler" + i)));   // rows 0..4
+            var deep = new TreeNode(LocalizedText.Raw("Deep"));
+            var mid = new TreeNode(LocalizedText.Raw("Mid"));
+            mid.Children.Add(deep);
+            var parent = new TreeNode(LocalizedText.Raw("Parent"));
+            parent.Children.Add(mid);
+            tree.Roots.Add(parent);   // root index 5, collapsed: only "Parent" is visible before ScrollTo
+
+            Assert.False(parent.Expanded);
+            Assert.False(mid.Expanded);
+
+            tree.ScrollTo(deep);
+
+            Assert.True(parent.Expanded);
+            Assert.True(mid.Expanded);
+            int deepIndex = VisibleIndexOf(tree, deep);
+            Assert.True(deepIndex >= 0);
+            Rect deepRow = tree.RowBounds(deepIndex);
+            Assert.True(deepRow.Y >= tree.Bounds.Y - 0.01f && deepRow.Bottom <= tree.Bounds.Bottom + 0.01f);
+            Assert.True(tree.ScrollOffset > 0f);   // a real scroll happened, not just the expansion
+
+            // Case 2: a node that is ALREADY fully visible (no scroll needed). ScrollTo leaves the offset
+            // untouched (a no-op) and the row stays in view.
+            var tree2 = new TreeView(Area);
+            for (int i = 0; i < 3; i++) tree2.Roots.Add(new TreeNode(LocalizedText.Raw("R" + i)));
+            float before = tree2.ScrollOffset;
+            tree2.ScrollTo(tree2.Roots[1]);
+            Assert.Equal(before, tree2.ScrollOffset, 3);
+            Rect r2 = tree2.RowBounds(1);
+            Assert.True(r2.Y >= tree2.Bounds.Y && r2.Bottom <= tree2.Bounds.Bottom);
+
+            // Case 3: a node at the very END of a long flat list. ScrollTo clamps to the max scroll rather than
+            // over-scrolling past the content (mirrors ScrollablePanel.ScrollTo's clamp idiom).
+            var tree3 = new TreeView(Area);
+            var nodes = new List<TreeNode>();
+            for (int i = 0; i < 20; i++)
+            {
+                var n = new TreeNode(LocalizedText.Raw("R" + i));
+                nodes.Add(n);
+                tree3.Roots.Add(n);
+            }
+            // content = 20 * 24 = 480 px in a 120 px view -> max scroll 360.
+            tree3.ScrollTo(nodes[19]);
+            Assert.Equal(360f, tree3.ScrollOffset, 3);
+            Rect r3 = tree3.RowBounds(19);
+            Assert.Equal(tree3.Bounds.Bottom, r3.Bottom, 3);   // last row's bottom lands exactly at the view edge
+        }
+
+        [Fact]
+        public void ScrollTo_NodeNotInTree_IsNoOp()
+        {
+            var tree = NewTree();
+            var stray = new TreeNode(LocalizedText.Raw("Stray"));   // never added to Roots
+
+            float before = tree.ScrollOffset;
+            tree.ScrollTo(stray);
+
+            Assert.Equal(before, tree.ScrollOffset, 3);
+        }
+
+        [Fact]
+        public void FindByTag_ResolvesNode()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0], a2 = a.Children[1], a2a = a2.Children[0];
+            a2a.Tag = "target-id";
+
+            // Found even though its ancestors (A, A2) are collapsed: the search ignores Expanded entirely.
+            Assert.False(a.Expanded);
+            Assert.False(a2.Expanded);
+            TreeNode? found = tree.FindByTag(tag => tag as string == "target-id");
+            Assert.Same(a2a, found);
+
+            Assert.Null(tree.FindByTag(tag => tag as string == "missing"));
+        }
     }
 }

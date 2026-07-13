@@ -83,7 +83,7 @@ query, mutation) runs on a machine with no display or graphics device. A render 
 headless GPU device fails with a precise `McpException` naming the selected backend, instead of hanging
 or crashing the process.
 
-## Verb surface (57 tools)
+## Verb surface (63 tools)
 
 | Group | Verbs |
 |---|---|
@@ -91,10 +91,19 @@ or crashing the process.
 | Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
+| Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
 | Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
 | Renders | `render_topdown`, `render_view` |
+
+A player spawn (`player_spawn_add(x, z, yaw?, enabled?, id?, tags?)`) is a stable-id, position-plus-yaw
+start marker with no archetype: which spawn a game actually uses at runtime is game code's own concern, so
+the tool only authors the marker. A null `id` auto-generates `player-N`. `player_spawn_set_yaw` is its own
+verb (not folded into `player_spawn_move`) since yaw and XZ position are independently undoable edits on the
+GUI side (`SetPlayerSpawnYawCommand`/`MovePlayerSpawnCommand`) and MCP parity requires the same granularity.
+Player spawn ids are unique only within the `playerSpawns` section, so an NPC spawn and a player spawn may
+share the same id string with no collision.
 
 `map_validate` runs the structural checks (`MapDocumentValidator`) first, then a JSON schema check when
 the structural checks pass. `bake_region` freezes a scatter layer's procedural output over a world rect
@@ -117,6 +126,17 @@ Scatter layer rules (per-biome density and kinds) are editable through the `scat
 `scatter_rule_edit`/`scatter_rule_remove` triad, index-addressed against the named layer's Rules list
 the same way the biome band and terrain feature verbs address their own lists. `procedural_info` reports
 rules at full fidelity regardless of whether they were set through MCP or the GUI.
+
+`map_summary` also reports `PlayerSpawnCount` and `PlayerSpawnIds` alongside the existing placement/spawn
+counts and region names, and `placements_in_rect`'s result carries a `PlayerSpawns` entry list (id, x,
+groundY, z, yaw, enabled, tags) alongside its `Placements` and `Spawns` lists, the same way NPC spawns
+already ride along with placements for that query. `procedural_info`'s `CompanionLayerInfo` gains a computed
+`HostKindsMatchHost` bool: true when `HostKinds` is empty (matches every host by the empty-means-all rule) or
+when a populated `HostKinds` intersects the host layer's placeable kit ids, false only for the silent-no-op
+mismatch case. `companion_layer_add` and `companion_layer_edit` detect that same mismatch on the layer they
+just wrote and append ", host kinds match no kind in the host layer" to the result's `Detail` when it applies
+(mirroring the GUI editor's read-only warning row wording), so an MCP client sees the same warning a human
+operator would see in the inspector without a separate `procedural_info` round trip.
 
 Every mutation returns what changed. An exception from a lower layer (`MapDocumentException`,
 `InvalidOperationException`, `ArgumentException`) reaches the client with its original, precise message

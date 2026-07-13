@@ -194,6 +194,11 @@ public sealed class EditorToolController
     /// <summary>The archetype id a <see cref="EditorToolMode.PlaceSpawn"/> click stamps.</summary>
     public string SpawnArchetype { get; set; } = "";
 
+    /// <summary>When true, a <see cref="EditorToolMode.PlaceSpawn"/> click stamps a player start marker
+    /// (<see cref="MapPlayerSpawn"/>, auto-id "player-N") instead of an NPC <see cref="MapSpawn"/>. The spawn
+    /// palette's pinned "player spawn" entry sets this true, an archetype entry sets it false.</summary>
+    public bool PlacingPlayerSpawn { get; set; }
+
     /// <summary>The terrain-feature discriminator a <see cref="EditorToolMode.EditFeature"/> click places (a
     /// registry feature type, list-selected). A type outside the four built-ins has no editor default, so a click
     /// with such a type selected places nothing.</summary>
@@ -246,7 +251,9 @@ public sealed class EditorToolController
     {
         EditorToolMode.Select => "Select. Click selects, drag the gizmo handles to move.",
         EditorToolMode.PlacePlacement => "Place placement. Click to place " + PlaceKind + ".",
-        EditorToolMode.PlaceSpawn => "Place spawn. Click to place a " + SpawnArchetype + " spawn.",
+        EditorToolMode.PlaceSpawn => PlacingPlayerSpawn
+            ? "Place player spawn. Click to place a player start."
+            : "Place spawn. Click to place a " + SpawnArchetype + " spawn.",
         EditorToolMode.DrawExclusion => "Draw exclusion. Drag a disc, shift-drag a rect, scatter skips it. One shot.",
         EditorToolMode.DrawRegion => "Draw region. Drag out a named gameplay region. One shot.",
         EditorToolMode.EditFeature => "Place feature. Click terrain to add a " + PlaceFeatureType + ". One shot.",
@@ -364,6 +371,7 @@ public sealed class EditorToolController
     {
         SelectionKind.Placement => FindPlacement(_dragId) is not null,
         SelectionKind.Spawn => FindSpawn(_dragId) is not null,
+        SelectionKind.PlayerSpawn => FindPlayerSpawn(_dragId) is not null,
         SelectionKind.Feature => FeatureAt(_dragId) is not null,
         SelectionKind.Exclusion => ExclusionShape(_dragId) is not null,
         SelectionKind.Region => RegionByName(_dragId) is not null,
@@ -430,14 +438,15 @@ public sealed class EditorToolController
         }
     }
 
-    // Which gizmo handle a selection kind honours: a placement takes every handle, a spawn only the ground-plane
-    // translate (no yaw / scale in its model), an exclusion / region only translate + scale (their XZ center moves
-    // and their primary radius resizes, with no yaw concept). A feature also takes translate + scale, plus the yaw
-    // ring ONLY when it is rotatable (a ridge or rim). The rotatable fact is threaded in from TryGizmoTarget, the
-    // same source the affordance decision reads, so the drawn ring and this pickable handle can never disagree.
+    // Which gizmo handle a selection kind honours: a placement takes every handle, an NPC or player spawn only the
+    // ground-plane translate (no yaw / scale gizmo in either spawn's marker), an exclusion / region only translate +
+    // scale (their XZ center moves and their primary radius resizes, with no yaw concept). A feature also takes
+    // translate + scale, plus the yaw ring ONLY when it is rotatable (a ridge or rim). The rotatable fact is threaded
+    // in from TryGizmoTarget, the same source the affordance decision reads, so the drawn ring and this pickable
+    // handle can never disagree.
     static GizmoDrag.GizmoHandle RestrictHandle(SelectionKind kind, bool featureRotatable, GizmoDrag.GizmoHandle handle) => kind switch
     {
-        SelectionKind.Spawn => handle == GizmoDrag.GizmoHandle.TranslateXZ ? handle : GizmoDrag.GizmoHandle.None,
+        SelectionKind.Spawn or SelectionKind.PlayerSpawn => handle == GizmoDrag.GizmoHandle.TranslateXZ ? handle : GizmoDrag.GizmoHandle.None,
         SelectionKind.Feature =>
             handle is GizmoDrag.GizmoHandle.TranslateXZ or GizmoDrag.GizmoHandle.Scale
                 || (featureRotatable && handle == GizmoDrag.GizmoHandle.YawRing)
@@ -466,6 +475,10 @@ public sealed class EditorToolController
             case SelectionKind.Spawn when FindSpawn(sel.Id) is { } s:
                 pos = new Vector3(s.X, Field!.SampleHeight(s.X, s.Z), s.Z);
                 kind = SelectionKind.Spawn; id = s.Id;
+                return true;
+            case SelectionKind.PlayerSpawn when FindPlayerSpawn(sel.Id) is { } ps:
+                pos = new Vector3(ps.X, Field!.SampleHeight(ps.X, ps.Z), ps.Z);
+                kind = SelectionKind.PlayerSpawn; id = ps.Id;
                 return true;
             case SelectionKind.Feature when FeatureAt(sel.Id) is { } f && FeatureGeometry.TryCenter(f, out float fx, out float fz):
                 pos = new Vector3(fx, Field!.SampleHeight(fx, fz), fz);
@@ -504,7 +517,7 @@ public sealed class EditorToolController
         return kind switch
         {
             SelectionKind.Placement => GizmoAffordance.Full,
-            SelectionKind.Spawn => GizmoAffordance.Marker,
+            SelectionKind.Spawn or SelectionKind.PlayerSpawn => GizmoAffordance.Marker,
             // A rotatable feature (ridge / rim) adds the yaw ring, drawn from the same rotatable fact RestrictHandle
             // gates the pickable ring on. A symmetric feature or a disc / rect shape stays translate + scale.
             SelectionKind.Feature => rotatable ? GizmoAffordance.MoveScaleRotate : GizmoAffordance.MoveScale,
@@ -541,6 +554,10 @@ public sealed class EditorToolController
                         break;
                     case SelectionKind.Spawn:
                         _document.Execute(new MoveSpawnCommand(_dragId,
+                            _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z));
+                        break;
+                    case SelectionKind.PlayerSpawn:
+                        _document.Execute(new MovePlayerSpawnCommand(_dragId,
                             _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z));
                         break;
                     case SelectionKind.Feature:
@@ -655,6 +672,9 @@ public sealed class EditorToolController
             _document.Execute(new MovePlacementCommand(_placeId, hit.X, hit.Z, null));
     }
 
+    // The spawn place tool stamps either an NPC spawn or a player start, chosen by PlacingPlayerSpawn (the pinned
+    // "player spawn" palette entry). Both share the press-edge-Add-then-hold-to-adjust place-and-adjust path: the
+    // matching Add absorbs the same-id Move so the whole gesture is ONE undo step, sealed on release.
     void UpdatePlaceSpawn(in EditorFrameInput input)
     {
         if (Field is null) return;
@@ -662,6 +682,14 @@ public sealed class EditorToolController
         if (input.PointerPressed)
         {
             if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p)) return;
+            if (PlacingPlayerSpawn)
+            {
+                string playerId = UniqueName("player", PlayerSpawnIdExists);
+                _document.Execute(new AddPlayerSpawnCommand(new MapPlayerSpawn { Id = playerId, X = p.X, Z = p.Z }));
+                _document.Selection.Set(SelectionKind.PlayerSpawn, playerId);
+                _placing = true; _placeKind = SelectionKind.PlayerSpawn; _placeId = playerId;
+                return;
+            }
             string id = UniqueName("spawn", SpawnIdExists);
             _document.Execute(new AddSpawnCommand(new MapSpawn { Id = id, ArchetypeId = SpawnArchetype, X = p.X, Z = p.Z }));
             _document.Selection.Set(SelectionKind.Spawn, id);
@@ -669,11 +697,15 @@ public sealed class EditorToolController
             return;
         }
 
-        if (!_placing || _placeKind != SelectionKind.Spawn) return;
+        if (!_placing || _placeKind is not (SelectionKind.Spawn or SelectionKind.PlayerSpawn)) return;
         if (input.PointerReleased) { _document.SealGesture(); _placing = false; return; }
-        if (input.PointerDown && FindSpawn(_placeId) is not null
-            && EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 hit))
+        if (!input.PointerDown
+            || !EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 hit))
+            return;
+        if (_placeKind == SelectionKind.Spawn && FindSpawn(_placeId) is not null)
             _document.Execute(new MoveSpawnCommand(_placeId, hit.X, hit.Z));
+        else if (_placeKind == SelectionKind.PlayerSpawn && FindPlayerSpawn(_placeId) is not null)
+            _document.Execute(new MovePlayerSpawnCommand(_placeId, hit.X, hit.Z));
     }
 
     // ---- place feature -----------------------------------------------------------------------------------
@@ -810,6 +842,10 @@ public sealed class EditorToolController
                 if (FindSpawn(sel.Id) is null) return;
                 _document.Execute(new RemoveSpawnCommand(sel.Id));
                 break;
+            case SelectionKind.PlayerSpawn:
+                if (FindPlayerSpawn(sel.Id) is null) return;
+                _document.Execute(new RemovePlayerSpawnCommand(sel.Id));
+                break;
             case SelectionKind.Feature:
                 if (!TryFeatureIndex(sel.Id, out int fi)) return;
                 _document.Execute(new RemoveFeatureCommand(fi));
@@ -863,9 +899,18 @@ public sealed class EditorToolController
         return null;
     }
 
+    MapPlayerSpawn? FindPlayerSpawn(string id)
+    {
+        foreach (MapPlayerSpawn s in _document.Doc.PlayerSpawns)
+            if (string.Equals(s.Id, id, StringComparison.Ordinal)) return s;
+        return null;
+    }
+
     bool PlacementIdExists(string id) => FindPlacement(id) is not null;
 
     bool SpawnIdExists(string id) => FindSpawn(id) is not null;
+
+    bool PlayerSpawnIdExists(string id) => FindPlayerSpawn(id) is not null;
 
     bool RegionExists(string name) => RegionByName(name) is not null;
 

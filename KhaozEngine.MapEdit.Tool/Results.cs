@@ -14,15 +14,16 @@ public sealed record ValidateResult(bool StructuralValid, IReadOnlyList<string> 
     bool SchemaValid, IReadOnlyList<string> SchemaErrors);
 
 /// <summary>A flat snapshot of the open document: identity, bounds, terrain seed and water level, the feature
-/// types in fold order, layer and companion names, section counts, region names, and the dirty flag. Kept flat
-/// so it serializes cleanly to the MCP client.</summary>
+/// types in fold order, layer and companion names, section counts, the player spawn ids, region names, and the
+/// dirty flag. Kept flat so it serializes cleanly to the MCP client.</summary>
 public sealed record MapSummary(string Id, string DisplayName, int FormatVersion,
     float MinX, float MinZ, float MaxX, float MaxZ,
     int Seed, float WaterLevel,
     IReadOnlyList<string> FeatureTypes,
     IReadOnlyList<string> ScatterLayers, IReadOnlyList<string> CompanionLayers,
     int ExclusionCount, int ScatterOverrideCount,
-    int PlacementCount, int SpawnCount, IReadOnlyList<string> RegionNames,
+    int PlacementCount, int SpawnCount, int PlayerSpawnCount, IReadOnlyList<string> PlayerSpawnIds,
+    IReadOnlyList<string> RegionNames,
     bool Dirty);
 
 /// <summary>Ground height, slope, and water depth sampled at a single world point.</summary>
@@ -43,8 +44,16 @@ public sealed record PlacementEntry(string Id, string Kind, float X, float Y, fl
 public sealed record SpawnEntry(string Id, string ArchetypeId, float X, float GroundY, float Z, bool Enabled,
     IReadOnlyList<string> Tags);
 
-/// <summary>Placements and spawns whose position falls inside a query rect (inclusive bounds).</summary>
-public sealed record PlacementsInRectResult(IReadOnlyList<PlacementEntry> Placements, IReadOnlyList<SpawnEntry> Spawns);
+/// <summary>One authored player spawn resolved for a query. <see cref="GroundY"/> is always the field's sampled
+/// ground height, since player spawns have no explicit Y, the same convention <see cref="SpawnEntry"/> uses.
+/// <see cref="Yaw"/> is the facing at spawn, in radians, the field NPC spawns do not carry.</summary>
+public sealed record PlayerSpawnEntry(string Id, float X, float GroundY, float Z, float Yaw, bool Enabled,
+    IReadOnlyList<string> Tags);
+
+/// <summary>Placements, NPC spawns, and player spawns whose position falls inside a query rect (inclusive
+/// bounds).</summary>
+public sealed record PlacementsInRectResult(IReadOnlyList<PlacementEntry> Placements, IReadOnlyList<SpawnEntry> Spawns,
+    IReadOnlyList<PlayerSpawnEntry> PlayerSpawns);
 
 /// <summary>One generated scatter prop instance, previewed but not baked into a placement.</summary>
 public sealed record ScatterEntry(string Kind, float X, float Y, float Z, float Yaw, float Scale);
@@ -101,10 +110,13 @@ public sealed record ScatterLayerInfo(string Name, int Seed, float CellSize, flo
 
 /// <summary>A named companion layer read back for <see cref="ProceduralInfo"/>, full field fidelity.
 /// <see cref="HostKinds"/> is a plain id list (companion hosts carry no weights), <see cref="Kinds"/> is the
-/// <c>"id"</c> / <c>"id:weight"</c> convention.</summary>
+/// <c>"id"</c> / <c>"id:weight"</c> convention. <see cref="HostKindsMatchHost"/> is computed: true when
+/// <see cref="HostKinds"/> is empty (matches every host placement) or intersects the union of every kind id the
+/// host layer's rules can place, ordinal. False flags the silent-no-op mismatch the editor's own warning row
+/// surfaces, so an MCP client can detect it without re-deriving the host layer's rule kinds itself.</summary>
 public sealed record CompanionLayerInfo(string Name, string HostLayer, int Seed, IReadOnlyList<string> HostKinds,
     IReadOnlyList<string> Kinds, int CountMin, int CountMax, float RadiusMin, float RadiusMax,
-    float ScaleMin, float ScaleMax, float? MaxHeight);
+    float ScaleMin, float ScaleMax, float? MaxHeight, bool HostKindsMatchHost);
 
 /// <summary>The full procedural setup of the open document: terrain scalars, biome bands, scatter layers (with
 /// their rules and kinds), and companion layers. This is the MCP read path for everything the Task 1-4 GUI

@@ -2914,10 +2914,10 @@ off-mountain placements.
 Everything above (terrain config, scatter layers, companion layers, authored placements) is normally wired
 up in code. `KhaozEngine.MapDoc` (GPU-free, `Foundation` umbrella) is the alternative: one JSON file per
 zone (for example `assets/maps/valley.map.json`, human-diffable, git-committed) capturing terrain, scatter
-and companion layers, exclusion and scatter-override shapes, authored placements, NPC spawns, and tagged
-regions. `MapDocumentFile` loads/saves/validates it, and `MapRuntime` turns a loaded document into the
-exact objects the sections above already consume, so a game swaps hand-wired `TerrainConfig`/
-`ScatterConfig` construction for a document load without touching anything downstream:
+and companion layers, exclusion and scatter-override shapes, authored placements, NPC spawns, player
+spawns, and tagged regions. `MapDocumentFile` loads/saves/validates it, and `MapRuntime` turns a loaded
+document into the exact objects the sections above already consume, so a game swaps hand-wired
+`TerrainConfig`/`ScatterConfig` construction for a document load without touching anything downstream:
 
 ```csharp
 var doc = MapDocumentFile.Load("assets/maps/valley.map.json");
@@ -3139,7 +3139,30 @@ to a flat, unfiltered list of the registry's feature types (`MapDocRegistry.Feat
 order). Tapping a leaf sets `PlaceFeatureType`, the type the next click places. Every other tool (`Select`,
 the draw tools, `BakeRegion`) shows no panel at all, and the outline reflows to take the whole left column.
 Typing in a filter box narrows leaves case-insensitively, and clearing it restores each category's
-remembered expand/collapse state.
+remembered expand/collapse state. The spawn-archetype list carries one pinned leaf above every archetype,
+"player spawn": selecting it arms `PlacingPlayerSpawn` so the next click places a player start instead of an
+NPC spawn (see Player spawns below).
+
+**Player spawns.** A player spawn (`MapPlayerSpawn`) is a stable-id, position-plus-yaw start marker with no
+archetype: unlike an NPC spawn, which game code interprets by `ArchetypeId`, which start a game actually uses
+at runtime is entirely game code's concern, so the editor only authors the marker. It draws as a green marker
+disc (enabled) or the same grey a disabled NPC spawn uses (disabled), picks and drags exactly like an NPC
+spawn (the same pick box, the same `GizmoAffordance.Marker` translate-XZ gizmo, no rotate/scale), and lives in
+its own "Player Spawns" outline category. Placing one through the pinned palette leaf above auto-names it
+`player-N` and executes `AddPlayerSpawnCommand`, which absorbs an immediately-following move into the same
+undo step (place-then-drag-into-position is one undo). The inspector groups Identity (inline-rename Name,
+`RenamePlayerSpawnCommand`), Transform (X/Z through `MovePlayerSpawnCommand`, Yaw in raw radians through
+`SetPlayerSpawnYawCommand`, both undoable and merge-coalescing a scrub), and State (Enabled through
+`SetPlayerSpawnEnabledCommand`, plus the standard Visible row). Player spawn ids are unique only within the
+`playerSpawns` section, so an NPC spawn and a player spawn may share the same id string with no collision.
+
+**Selection sync.** Picking an object in the viewport (or any other selection change: an outline tap, a
+select-on-add) highlights and scrolls to the matching row in the outline tree, via `TreeView.FindByTag`
+(matching on the outline's kind/id tag) and `TreeView.ScrollTo`. It runs on every selection change and again
+after every outline rebuild, since a rebuild replaces every `TreeNode` wholesale and would otherwise orphan
+the previous highlight, which is what fixes the highlight dropping on every document edit. The highlight also
+stays glued to a row mid-rename, resolving against the pending new key instead of the stale selection id for
+the rest of that keystroke's frame.
 
 **Overlays.** Exclusions, regions, and terrain-feature markers are otherwise-invisible authoring shapes, so
 with `MapEditorOptions.ShowOverlays` (default true) the viewport draws them as translucent ground fills
@@ -3193,8 +3216,19 @@ scatter-layer names, their own scalars, and HostKinds/Kinds text rows. Renaming 
 new name into every companion HostLayer and explicit exclusion/override layer filter that names it
 (`RenameScatterLayerCommand`). Removing one that is still referenced is rejected before it mutates anything,
 surfaced in the status strip. Companion-layer rename and remove need no cascade or reject, since nothing else
-references a companion layer by name. See the `KhaozEngine.MapEditor` README's "Procedural setup editing"
-section for the full mechanics.
+references a companion layer by name.
+
+**Behavior change: empty `HostKinds` now means "match every host", not "match none".** A companion layer's
+`HostKinds` used to spawn nothing when left empty. It now matches every host placement in the layer instead
+(see the `KhaozEngine.Terrain` README's `PropScatter.GenerateCompanions` for the full semantics). This is
+behavior-visible: a document that relied on an empty `HostKinds` staying inert now grows companions on every
+host in that layer, so re-check any existing companion layer left with an empty `HostKinds` before adopting
+this version. Alongside it, changing the `HostLayer` chooser now also clears a `HostKinds` that would
+otherwise have zero intersection with the new host's placeable kit ids, in the SAME undo step, leaving a
+"host kinds cleared to match all hosts" note in the status strip, and the inspector shows a read-only warning
+row under `HostKinds` whenever a non-empty value matches none of the current host's kit ids ("HostKinds match
+no kind in the host layer"), live-tracked through edits, host swaps, and undo/redo. See the
+`KhaozEngine.MapEditor` README's "Procedural setup editing" section for the full mechanics.
 
 **Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates six
 `VisibilityGroup`s (placements, spawns, water, exclusions, regions, feature markers), named scatter layers,
@@ -3229,11 +3263,12 @@ calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's 
 the current gesture, so a later same-gesture edit can never merge into the just-saved command and hide
 itself from `IsDirty`.
 
-**Renaming.** The placement, spawn, and region inspectors lead with an inline-editable Name row. Committing
-a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`, or
-`RenameRegionCommand`, rejecting a blank, unchanged, or colliding target, and the selection follows the
-renamed key once the row loses focus. Terrain features and exclusions carry an optional `Name` too (empty
-means unnamed), but stay selected by list index rather than by name, so their Name row allows a blank target
+**Renaming.** The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
+row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,
+`RenamePlayerSpawnCommand`, or `RenameRegionCommand`, rejecting a blank, unchanged, or colliding target, and
+the selection follows the renamed key once the row loses focus. Terrain features and exclusions carry an
+optional `Name` too (empty means unnamed), but stay selected by list index rather than by name, so their
+Name row allows a blank target
 and never moves the selection on a rename. An unnamed feature's outline label falls back to `"[i] type"`,
 an unnamed exclusion's to `"exclusion[i]"`, and an exclusion's label always carries a trailing targeting
 hint from its `Layers` (`" (all)"` for a null filter, `" (trees, groundcover)"` style for an explicit one).
@@ -3242,6 +3277,19 @@ to `Layers == null` (masks every layer, including future ones) plus one `BoolRow
 layer while an explicit list is in effect. Checking All on collapses the list to null, checking it off
 materializes the full explicit list, and manually re-checking every layer by hand does NOT auto-collapse
 back to null, only the All toggle itself produces the null "applies to everything" filter.
+
+**Look and feel.** Every inspector row now carries a hover tooltip (`PropertyRow.Description`), drawn by a
+lazily-built `Tooltip` anchored to the hovered row's label rect, escaping the grid's own scissor the same way
+`PatchNotesView` does. Every inspector is grouped into named `HeaderRow` sections instead of one flat row
+list: Terrain (Water, Noise, World), a biome band (Range, Shape), a scatter layer (Identity, Placement,
+Scale, Rules), a companion layer (Identity, Host, Output, Shape), an exclusion or region (Identity, Shape,
+Targeting), and a placement, spawn, or player spawn (Identity, Transform, State). The exclusion/region/feature
+shape editor's disc/rect selector row is labeled "Kind" (distinct from the "Shape" group header it sits
+under). The whole editor now runs `GuiStyle.Modern`: `PropertyGrid.EditorStyle` and every outline/palette
+`TreeView.Style` pick up its rounded corners and selection highlight, and the toolbar/outline/inspector/
+status-strip panels draw through `SpriteBatch.DrawRounded` against a lifted dark palette. The inspector
+column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWidth` (340, up from the old
+shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
 semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
@@ -3270,7 +3318,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (57 tools).**
+**Verb surface (63 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -3278,10 +3326,18 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
+| Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
 | Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
 | Renders | `render_topdown`, `render_view` |
+
+A player spawn (`player_spawn_add(x, z, yaw?, enabled?, id?, tags?)`) is a stable-id, position-plus-yaw
+start marker with no archetype (which spawn a game uses at runtime is game code's own concern), a null `id`
+auto-generates `player-N`, and `player_spawn_set_yaw` is its own verb so yaw and XZ position stay
+independently undoable, mirroring the GUI's `SetPlayerSpawnYawCommand`/`MovePlayerSpawnCommand` split.
+`map_summary` reports `PlayerSpawnCount`/`PlayerSpawnIds`, and `placements_in_rect` carries a `PlayerSpawns`
+entry list alongside `Placements`/`Spawns`.
 
 Biome bands and scatter/companion layers are closed-shape types, so they cross the wire as typed flat
 parameters (not json), with `kinds`/`hostKinds` as `"id"` / `"id:weight"` string lists.
@@ -3289,7 +3345,12 @@ parameters (not json), with `kinds`/`hostKinds` as `"id"` / `"id:weight"` string
 it, and its result detail reports how many references were cascaded. Scatter layer rules (per-biome
 density and kinds) are editable through the `scatter_rule_add`/`scatter_rule_edit`/`scatter_rule_remove`
 triad, index-addressed against the named layer's rule list. `procedural_info` reads the full
-terrain/band/layer setup back at full field fidelity, including rules however they were set.
+terrain/band/layer setup back at full field fidelity, including rules however they were set, and its
+`CompanionLayerInfo` gains a computed `HostKindsMatchHost` bool (true when `HostKinds` is empty, which
+matches every host, or when a populated `HostKinds` intersects the host layer's kit ids, false only for the
+silent no-op mismatch case). `companion_layer_add`/`companion_layer_edit` detect that same mismatch on the
+layer they just wrote and append ", host kinds match no kind in the host layer" to the result's detail when
+it applies, mirroring the GUI editor's read-only warning row.
 
 `render_topdown` and `render_view` are the only two that need a GPU (`Render3DSnapshot.Capture`, the
 engine's one public headless render entry), and return a PNG `ImageContentBlock` directly, no files

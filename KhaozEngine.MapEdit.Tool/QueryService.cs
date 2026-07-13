@@ -9,9 +9,9 @@ using KhaozEngine.Terrain;
 namespace KhaozEngine.MapEdit;
 
 /// <summary>Read-only world queries over the session's open document: ground sampling, walkability, rect scans
-/// over placements/spawns and a scatter layer preview, a brute-force flat-area search, and the full procedural
-/// setup read (<see cref="ProceduralInfo"/>). Every query reads through <see cref="MapEditSession.Field()"/> and
-/// <see cref="MapEditSession.WithDocument{T}"/>. None mutate.</summary>
+/// over placements/NPC spawns/player spawns and a scatter layer preview, a brute-force flat-area search, and the
+/// full procedural setup read (<see cref="ProceduralInfo"/>). Every query reads through
+/// <see cref="MapEditSession.Field()"/> and <see cref="MapEditSession.WithDocument{T}"/>. None mutate.</summary>
 public sealed class QueryService(MapEditSession session)
 {
     /// <summary>Ground height, slope, and water depth at a single world point. <c>SlopeDegrees</c> is the angle
@@ -39,10 +39,10 @@ public sealed class QueryService(MapEditSession session)
         return new WalkableInfo(x, z, slopeOk && !belowWater, slopeDegrees, maxSlopeDegrees, belowWater);
     }
 
-    /// <summary>Placements and spawns whose position falls inside the inclusive rect
+    /// <summary>Placements, NPC spawns, and player spawns whose position falls inside the inclusive rect
     /// (<c>minX &lt;= p.X &lt;= maxX &amp;&amp; minZ &lt;= p.Z &lt;= maxZ</c>). A null-Y placement resolves to
-    /// the field's sampled ground height (<see cref="PlacementEntry.ExplicitY"/> flags which). Spawns always
-    /// resolve to ground height.</summary>
+    /// the field's sampled ground height (<see cref="PlacementEntry.ExplicitY"/> flags which). NPC and player
+    /// spawns always resolve to ground height.</summary>
     public PlacementsInRectResult PlacementsInRect(float minX, float minZ, float maxX, float maxZ)
     {
         return session.WithDocument((doc, _) =>
@@ -61,7 +61,13 @@ public sealed class QueryService(MapEditSession session)
                     s.Enabled, s.Tags.ToArray()))
                 .ToArray();
 
-            return new PlacementsInRectResult(placements, spawns);
+            PlayerSpawnEntry[] playerSpawns = doc.PlayerSpawns
+                .Where(s => s.X >= minX && s.X <= maxX && s.Z >= minZ && s.Z <= maxZ)
+                .Select(s => new PlayerSpawnEntry(s.Id, s.X, field.SampleHeight(s.X, s.Z), s.Z, s.Yaw,
+                    s.Enabled, s.Tags.ToArray()))
+                .ToArray();
+
+            return new PlacementsInRectResult(placements, spawns, playerSpawns);
         });
     }
 
@@ -205,7 +211,8 @@ public sealed class QueryService(MapEditSession session)
 
             CompanionLayerInfo[] companionLayers = doc.CompanionLayers.Select(l => new CompanionLayerInfo(
                 l.Name, l.HostLayer, l.Seed, l.HostKinds.ToArray(), FormatKinds(l.Kinds),
-                l.CountMin, l.CountMax, l.RadiusMin, l.RadiusMax, l.ScaleMin, l.ScaleMax, l.MaxHeight))
+                l.CountMin, l.CountMax, l.RadiusMin, l.RadiusMax, l.ScaleMin, l.ScaleMax, l.MaxHeight,
+                HostKindsMatchHost(l.HostKinds, l.HostLayer, doc)))
                 .ToArray();
 
             return new ProceduralInfo(terrain, bands, scatterLayers, companionLayers);
@@ -222,5 +229,32 @@ public sealed class QueryService(MapEditSession session)
         foreach (MapPropKind k in kinds)
             result.Add(k.Weight == 1f ? k.Id : string.Create(CultureInfo.InvariantCulture, $"{k.Id}:{k.Weight}"));
         return result;
+    }
+
+    /// <summary>True when a companion layer's <paramref name="hostKinds"/> matches its <paramref name="hostLayer"/>:
+    /// either <paramref name="hostKinds"/> is empty (the empty-means-every-host-placement-matches semantics
+    /// <see cref="KhaozEngine.Terrain.PropScatter"/>'s companion generation applies) or at least one
+    /// <paramref name="hostKinds"/> entry names a kit id the host scatter layer's rules can actually place
+    /// (ordinal compare against the union of every rule's <c>Kinds[].Id</c> across the host layer). Mirrors the
+    /// editor's own HostKindsIntersect / HostLayerKindIds check (<c>KhaozEngine.MapEditor.MapEditorScene</c>), so
+    /// the MCP-surfaced flag agrees with the editor's warning row. An unknown host layer name contributes no ids
+    /// (mirrors the editor's own absent-host behavior), so a non-empty <paramref name="hostKinds"/> against an
+    /// unknown host reports false. Shared with <see cref="MutationService"/>'s companion add/edit mismatch note
+    /// so both surfaces agree on one computation.</summary>
+    internal static bool HostKindsMatchHost(IReadOnlyList<string> hostKinds, string hostLayer, MapDocument doc)
+    {
+        if (hostKinds.Count == 0) return true;
+
+        MapScatterLayer? host = doc.ScatterLayers.FirstOrDefault(l => string.Equals(l.Name, hostLayer, StringComparison.Ordinal));
+        if (host is null) return false;
+
+        var hostIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (MapBiomeScatterRule rule in host.Rules)
+            foreach (MapPropKind kind in rule.Kinds)
+                hostIds.Add(kind.Id);
+
+        foreach (string kindId in hostKinds)
+            if (hostIds.Contains(kindId)) return true;
+        return false;
     }
 }

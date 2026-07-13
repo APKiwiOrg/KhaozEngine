@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.MapDoc;
@@ -115,6 +116,19 @@ namespace KhaozEngine.Tests.MapEditor
             input.Update(MouseFrame(at, leftDown: false)); grid.Update(input, 0.016f);
         }
 
+        // Opens the ChoiceRow at `rowIndex` (tap its trigger) then picks the option at `optionIndex` (tap the open
+        // list item, which Dropdown.OptionBounds stacks directly below the trigger at one trigger-height per
+        // option). Coordinates are derived from the grid's own RowEditorBounds rather than hand-computed pixel
+        // offsets, so a test stays correct regardless of which rows or group headers precede the ChoiceRow.
+        static void OpenAndPickOption(PropertyGrid grid, InputManager ui, int rowIndex, int optionIndex)
+        {
+            Rect trigger = grid.RowEditorBounds(rowIndex);
+            var triggerCenter = new Vector2(trigger.X + trigger.Width * 0.5f, trigger.Y + trigger.Height * 0.5f);
+            TapGrid(grid, ui, triggerCenter);   // open the list
+            float optionCenterY = trigger.Bottom + trigger.Height * optionIndex + trigger.Height * 0.5f;
+            TapGrid(grid, ui, new Vector2(triggerCenter.X, optionCenterY));   // pick the option
+        }
+
         static string TempPath() => Path.Combine(Path.GetTempPath(), $"ke-editor-{Guid.NewGuid():N}.map.json");
 
         static MapDocument ValidDoc()
@@ -219,6 +233,18 @@ namespace KhaozEngine.Tests.MapEditor
             foreach (PropertyRow row in grid.Rows)
                 if (row is TextRow t && t.Label.Resolve() == label) return t;
             Assert.Fail($"no TextRow labeled '{label}' (rows: {grid.Rows.Count})");
+            return null!;   // unreachable
+        }
+
+        // Type-scoped lookup (unlike the generic RowByLabel further down): the shape-kind selector used to share
+        // the label "Shape" with its own "Shape" group HeaderRow (Task 5 grouping), so a plain label search could
+        // return either one depending on row order. Renamed to "Kind" to un-confuse the two (see AddShapeKindRow),
+        // kept type-scoped here since only a ChoiceRow is ever the kind selector.
+        static ChoiceRow ChoiceRowByLabel(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row is ChoiceRow c && c.Label.Resolve() == label) return c;
+            Assert.Fail($"no ChoiceRow labeled '{label}' (rows: {grid.Rows.Count})");
             return null!;   // unreachable
         }
 
@@ -1051,10 +1077,12 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("[0] Meadow 0..40", band0.Label.Resolve());
             Assert.Equal("[1] Mountains 40..*", band1.Label.Resolve());   // open end edge renders as "*"
 
-            // Selecting the band node builds its editable inspector (Biome choice + scalar rows).
+            // Selecting the band node builds its editable inspector (a "Range" group header, then the Biome
+            // choice + scalar rows, Task 5 grouping).
             scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
-            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[0]).Selected);
+            Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[1]);
+            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[1]).Selected);
             Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "BaseHeight").Field.Value);
             Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "HillAmplitude").Field.Value);
             Assert.Equal(0f, FloatRowByLabel(scene.Inspector, "Start").Field.Value);
@@ -1156,8 +1184,10 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
 
-            // A disc exclusion gets the editable shape surface: the kind selector plus one FloatRow per param.
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
+            // A disc exclusion gets the editable shape surface: the "Kind" selector (under the "Shape" group
+            // header, Task 5 grouping, renamed off "Shape" so it does not repeat the header) plus one FloatRow
+            // per param.
+            Assert.NotNull(ChoiceRowByLabel(scene.Inspector, "Kind"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterX"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterZ"));
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "Radius"));
@@ -1391,13 +1421,15 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
             scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[0]);
+            int shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Kind"));
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[shapeRow]);
 
-            // Row 0's editor cell is x 135..300, y 0..28 (LabelFraction 0.45 of 300); with two options the open
-            // list sits at y 28..56 ("disc") and y 56..84 ("rect"). Tap the trigger, then pick "rect".
+            // The Kind row now sits after the "Identity" group header (Task 5 grouping put a header ahead of
+            // it), so its editor cell is looked up by index rather than assumed at Rows[0] / y 0..28. With two
+            // options the open list stacks directly below the trigger, one trigger-height row per option. Tap the
+            // trigger, then pick "rect".
             var ui = new InputManager();
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 14f));   // open the kind list
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 70f));   // pick "rect"
+            OpenAndPickOption(scene.Inspector, ui, shapeRow, optionIndex: 1);   // "rect" is option 1
 
             // Disc to rect converts center-preservingly: the square of side 2r around the disc center.
             var rect = Assert.IsType<RectShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
@@ -1413,8 +1445,8 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.NotNull(FloatRowByLabel(scene.Inspector, "MinX"));
 
             // Converting back picks the rect's center plus half its max extent, landing on the original disc.
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 14f));   // open the kind list (now showing "rect")
-            TapGrid(scene.Inspector, ui, new Vector2(200f, 42f));   // pick "disc" (option 0)
+            shapeRow = scene.Inspector.Rows.IndexOf(ChoiceRowByLabel(scene.Inspector, "Kind"));
+            OpenAndPickOption(scene.Inspector, ui, shapeRow, optionIndex: 0);   // "disc" is option 0
             var disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
             Near(2f, disc.CenterX);
             Near(3f, disc.CenterZ);
@@ -1434,7 +1466,10 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Document.Selection.Set(SelectionKind.Region, "region-1");
 
             Assert.NotEmpty(scene.Inspector.Rows);
-            Assert.IsType<TextRow>(scene.Inspector.Rows[0]);        // the rename row, bound through RenameRegionCommand
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The rename row (bound through
+            // RenameRegionCommand) leads the rows underneath it.
+            Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);
+            Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
         }
 
         [Fact]
@@ -1449,7 +1484,7 @@ namespace KhaozEngine.Tests.MapEditor
             });
 
             scene.Document.Selection.Set(SelectionKind.Region, "region-1");
-            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);   // Rows[0] is the "Identity" group header
 
             // Drive the rename row headless, matching the NumberField-scrub idiom above but for text: focus the
             // field, replace its buffer, then run one row Update so the TextChanged write-through fires the
@@ -1487,7 +1522,8 @@ namespace KhaozEngine.Tests.MapEditor
             });
 
             scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
-            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The Name rename row is Rows[1].
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
 
             // ---- half 1: the selection follows the rename once the row blurs ----
             // Drive the rename row headless (the region-rename idiom): focus the field, replace its buffer, then run
@@ -1508,7 +1544,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("placement-1-renamed", scene.Document.Selection.Id);   // selection followed the new id
 
             // ---- half 2: a fresh pick made mid-rename yields (is not stomped by the pending sync) ----
-            var row2 = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+            var row2 = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);   // Rows[0] is the "Identity" group header
             row2.Input.IsFocused = true;
             row2.Input.SetText("placement-1-again");
             row2.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
@@ -1534,7 +1570,8 @@ namespace KhaozEngine.Tests.MapEditor
             });
 
             scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
-            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // the Name rename row leads the inspector
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The Name rename row is Rows[1].
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
 
             var ui = new InputManager();
             ui.Update(InputState.Empty);
@@ -1549,6 +1586,39 @@ namespace KhaozEngine.Tests.MapEditor
             scene.OnUpdate(0.016f);
             Assert.Equal(SelectionKind.Spawn, scene.Document.Selection.Kind);
             Assert.Equal("spawn-1-renamed", scene.Document.Selection.Id);   // selection followed the new id
+        }
+
+        [Fact]
+        public void MidRename_OutlineHighlightPersists()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop" });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            // Rows[0] is the "Identity" group header (Task 5 grouping). The Name rename row is Rows[1].
+            var row = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
+
+            // Type a single character into the rename row: focus the field, replace its buffer with the OLD key
+            // plus one appended character, then run one row Update so the TextChanged write-through fires the
+            // setter (RenamePlacementCommand). That rebuilds the outline via OnDocumentChanged while the row is
+            // still focused, i.e. before the deferred re-select (_pendingSelectId, see UpdateChrome) ever fires,
+            // which is exactly the frame the outline highlight used to drop on.
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            row.Input.IsFocused = true;
+            row.Input.SetText("huts");
+            row.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.Equal("huts", scene.Document.Doc.Placements[0].Id);
+            Assert.True(row.Input.IsFocused);   // still typing: the deferred re-select has NOT fired yet
+
+            TreeNode? selected = scene.Outline.Selected;
+            Assert.NotNull(selected);
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "huts"), selected!.Tag);
         }
 
         // ---- visibility layers ---------------------------------------------------------------------------
@@ -1585,6 +1655,112 @@ namespace KhaozEngine.Tests.MapEditor
             // But it is still in the outline: visibility is view-only and never mutates the document.
             Assert.Contains(scene.Document.Doc.Placements, p => p.Id == "hut");
             Assert.True(OutlineListsPlacement(scene.Outline, "hut"), "hidden placement still appears in the outline");
+        }
+
+        // ---- outline selection sync -----------------------------------------------------------------------
+
+        [Fact]
+        public void ViewportPick_HighlightsAndScrollsOutline()
+        {
+            var scene = new FieldDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f, Y = null });
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 100f);   // only a handful of rows fit
+            outline.ScrollOffset = 500f;                     // scrolled well past the content
+
+            var down = new Vector3(0f, -1f, 0f);
+            EditorFrameInput Press() => new EditorFrameInput(new Vector3(0f, 100f, 0f), down,
+                pointerPressed: true, pointerDown: true, dt: 0.016f);
+            scene.Controller.Update(Press());
+
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("hut", scene.Document.Selection.Id);
+
+            TreeNode? selected = outline.Selected;
+            Assert.NotNull(selected);
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "hut"), selected!.Tag);
+            Assert.True(outline.ScrollOffset < 500f, "the pick should scroll the newly selected row back into view");
+        }
+
+        [Fact]
+        public void EditRebuild_ReselectsOutlineNode()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            TreeNode? before = scene.Outline.Selected;
+            Assert.NotNull(before);
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "hut"), before!.Tag);
+
+            // Any document command through the normal Execute path rebuilds the outline (RebuildOutline news up
+            // every TreeNode), which used to orphan the highlight. The selection itself (kind/id) is unchanged.
+            scene.Document.Execute(new MovePlacementCommand("hut", 5f, 5f, null));
+
+            TreeNode? after = scene.Outline.Selected;
+            Assert.NotNull(after);
+            Assert.NotSame(before, after);   // proves the node really was replaced by the rebuild, not a survivor
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.Placement, "hut"), after!.Tag);
+        }
+
+        [Fact]
+        public void SelectionClear_ClearsOutline()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "hut");
+            Assert.NotNull(scene.Outline.Selected);
+
+            scene.Document.Selection.Clear();
+            Assert.Null(scene.Outline.Selected);
+        }
+
+        [Fact]
+        public void OutlineTap_StillWorks_Idempotent()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "hut", Kind = "prop", X = 0f, Z = 0f });
+                return doc;
+            });
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);
+            TreeNode node = CategoryChild(outline, "Placements", 0);
+
+            var input = new InputManager();
+            TapTree(outline, input, RowCenter(outline, node));
+
+            Assert.Equal(SelectionKind.Placement, scene.Document.Selection.Kind);
+            Assert.Equal("hut", scene.Document.Selection.Id);
+            Assert.Same(node, outline.Selected);   // the resync did not swap in a different node instance
+            float scrollAfterTap = outline.ScrollOffset;
+
+            // A few quiet frames afterward: the outline-originated resync must be idempotent, no feedback loop
+            // bouncing the highlight or re-scrolling an already-visible row.
+            for (int i = 0; i < 3; i++)
+            {
+                scene.OnUpdate(0.016f);
+                Assert.Same(node, outline.Selected);
+                Assert.Equal(scrollAfterTap, outline.ScrollOffset);
+            }
         }
 
         [Fact]
@@ -1721,16 +1897,19 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var scene = PushPaletteScene(new Dictionary<string, string>(StringComparer.Ordinal), "wolf", "bear", "wolfpup");
 
-            Assert.Equal(3, scene.SpawnList.Roots.Count);                 // full flat list
+            // The pinned "player spawn" entry heads the list (never filtered), then the three archetypes.
+            Assert.Equal(new[] { "player spawn", "wolf", "bear", "wolfpup" },
+                scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
             Assert.All(scene.SpawnList.Roots, r => Assert.Empty(r.Children));   // no categories: every root is a leaf
 
-            scene.SpawnFilter.SetText("WOLF");   // case-insensitive substring
+            scene.SpawnFilter.SetText("WOLF");   // case-insensitive substring, narrows the archetypes below the pin
             scene.RefreshPalettes();
-            Assert.Equal(new[] { "wolf", "wolfpup" }, scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
+            Assert.Equal(new[] { "player spawn", "wolf", "wolfpup" },
+                scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
 
             scene.SpawnFilter.SetText("");
             scene.RefreshPalettes();
-            Assert.Equal(3, scene.SpawnList.Roots.Count);                 // clearing restores the full list
+            Assert.Equal(4, scene.SpawnList.Roots.Count);                 // clearing restores the pin plus all three
         }
 
         // ---- palette visibility ----------------------------------------------------------------------------
@@ -2195,6 +2374,565 @@ namespace KhaozEngine.Tests.MapEditor
 
             var host = Assert.IsType<ChoiceRow>(RowByLabel(scene.Inspector, "HostLayer"));
             Assert.Equal("trees", host.Selected);   // the chooser reflects the live host, drawn from the scatter set
+        }
+
+        // ---- player spawns (Task 4 Half A: the editor slice) ----------------------------------------------
+
+        [Fact]
+        public void PlayerSpawn_PlaceDragRenameDelete_FullGesturePath()
+        {
+            var scene = new FieldDocScene(ValidDoc);
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            var down = new Vector3(0f, -1f, 0f);
+            EditorFrameInput Press(Vector3 o, float travel = 0f) =>
+                new EditorFrameInput(o, down, pointerPressed: true, pointerDown: true, pointerTravel: travel, dt: 0.016f);
+            EditorFrameInput Hold(Vector3 o, float travel) =>
+                new EditorFrameInput(o, down, pointerDown: true, pointerTravel: travel, dt: 0.016f);
+            EditorFrameInput Release(Vector3 o) => new EditorFrameInput(o, down, pointerReleased: true, dt: 0.016f);
+
+            // PLACE: the pinned "player spawn" entry drives the spawn tool to stamp a player start on a click.
+            scene.Controller.Mode = EditorToolMode.PlaceSpawn;
+            scene.Controller.PlacingPlayerSpawn = true;
+            scene.Controller.Update(Press(new Vector3(0f, 100f, 0f)));
+            scene.Controller.Update(Release(new Vector3(0f, 100f, 0f)));
+            Assert.Single(scene.Document.Doc.PlayerSpawns);
+            Assert.Empty(scene.Document.Doc.Spawns);   // an NPC spawn was NOT placed
+            Assert.Equal("player-1", scene.Document.Doc.PlayerSpawns[0].Id);
+            Assert.Equal(SelectionKind.PlayerSpawn, scene.Document.Selection.Kind);
+            Assert.Equal("player-1", scene.Document.Selection.Id);
+
+            // DRAG: body-drag the selected player spawn clear of the gizmo handles (Marker affordance, TranslateXZ).
+            scene.Controller.Mode = EditorToolMode.Select;
+            var bodyPoint = new Vector3(-0.4f, 100f, -0.4f);
+            scene.Controller.Update(Press(bodyPoint));   // press the body: selection stays, no drag yet
+            scene.Controller.Update(Hold(new Vector3(4.6f, 100f, -0.4f), EditorToolController.BodyDragThreshold + 1f));
+            scene.Controller.Update(Release(new Vector3(4.6f, 100f, -0.4f)));
+            Near(5f, scene.Document.Doc.PlayerSpawns[0].X);   // dragged +5 on X
+            Near(0f, scene.Document.Doc.PlayerSpawns[0].Z);
+
+            // RENAME: the inline Name row (Rows[1], after the "Identity" group header) routes through
+            // RenamePlayerSpawnCommand.
+            var name = Assert.IsType<TextRow>(scene.Inspector.Rows[1]);
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("hero-start");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Equal("hero-start", scene.Document.Doc.PlayerSpawns[0].Id);
+            name.Input.IsFocused = false;
+            scene.OnUpdate(0.016f);   // the deferred re-select lands the selection on the new id
+            Assert.Equal("hero-start", scene.Document.Selection.Id);
+
+            // DELETE: the standard Delete-key path removes the selected player spawn and clears the selection.
+            scene.Controller.Update(new EditorFrameInput(default, default, deletePressed: true));
+            Assert.Empty(scene.Document.Doc.PlayerSpawns);
+            Assert.True(scene.Document.Selection.IsEmpty);
+        }
+
+        [Fact]
+        public void PlayerSpawnPalette_EntryPinnedAboveArchetypes()
+        {
+            var scene = PushPaletteScene(new Dictionary<string, string>(StringComparer.Ordinal), "wolf", "bear");
+
+            // The "player spawn" entry is pinned at the very top, above every archetype.
+            Assert.Equal(new[] { "player spawn", "wolf", "bear" },
+                scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
+
+            scene.SpawnList.Bounds = new Rect(0f, 0f, 200f, 240f);
+            scene.SpawnList.RowHeight = 22f;
+            var input = new InputManager();
+
+            // Tapping the pinned entry (row 0) flips the spawn tool to placing a player start.
+            TapTree(scene.SpawnList, input, new Vector2(120f, 0 * 22f + 11f));
+            Assert.True(scene.Controller.PlacingPlayerSpawn);
+
+            // Tapping an archetype (row 1 = "wolf") flips it back to an NPC spawn of that archetype.
+            TapTree(scene.SpawnList, input, new Vector2(120f, 1 * 22f + 11f));
+            Assert.False(scene.Controller.PlacingPlayerSpawn);
+            Assert.Equal("wolf", scene.Controller.SpawnArchetype);
+        }
+
+        [Fact]
+        public void PlayerSpawnInspector_ShowsRenameXZYawEnabledVisible()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", X = 2f, Z = 3f, Yaw = 1.5f, Enabled = true });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+
+            Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);   // the "Identity" group header (Task 5 grouping)
+            Assert.IsType<TextRow>(scene.Inspector.Rows[1]);     // inline rename row
+            Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "X").Field.Value);
+            Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "Z").Field.Value);
+            Assert.Equal(1.5f, FloatRowByLabel(scene.Inspector, "Yaw").Field.Value);   // raw radians, like the placement Yaw row
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "Enabled"));
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "Visible"));
+            // Player spawns carry no archetype, so the NPC Archetype row is absent.
+            Assert.DoesNotContain(scene.Inspector.Rows.OfType<TextRow>(), t => t.Label.Resolve() == "Archetype");
+
+            // Enabled toggles through SetPlayerSpawnEnabledCommand (undoable).
+            Assert.True(TapBool(BoolRowByLabel(scene.Inspector, "Enabled")));
+            Assert.False(scene.Document.Doc.PlayerSpawns[0].Enabled);
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void PlayerSpawnYaw_EditIsUndoable_MarksDirty()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", X = 2f, Z = 3f, Yaw = 1.5f, Enabled = true });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+            FloatRow yaw = FloatRowByLabel(scene.Inspector, "Yaw");
+            Assert.False(scene.Document.IsDirty);
+
+            // Scrub the row's NumberField headless, same idiom as the X/Z and feature-row scrub tests: press
+            // inside the editor cell, then drag +100 px. The scrub calls Field.SetValue and the row writes the
+            // change through its setter, which must route through SetPlayerSpawnYawCommand (not a bare field set).
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            yaw.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));    // press inside (grab-gate origin)
+            yaw.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));    // +100 px at DragScale 0.01 = +1.0
+            bool changed = yaw.Update(cell, ui, 0.016f);
+
+            Assert.True(changed);
+            Near(2.5f, scene.Document.Doc.PlayerSpawns[0].Yaw);   // 1.5 + 1.0 scrub
+            Assert.True(scene.Document.History.CanUndo);
+            Assert.True(scene.Document.IsDirty);
+
+            Assert.True(scene.Document.Undo());
+            Near(1.5f, scene.Document.Doc.PlayerSpawns[0].Yaw);
+        }
+
+        [Fact]
+        public void SpawnArchetype_EditIsUndoable_MarksDirty()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Spawns.Add(new MapSpawn { Id = "spawn-1", ArchetypeId = "wolf", X = 2f, Z = 3f });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
+            TextRow archetype = TextRowByLabel(scene.Inspector, "Archetype");
+            Assert.False(scene.Document.IsDirty);
+
+            // Type into the row's TextInput headless, same idiom as the spawn/placement Name rename rows: focus,
+            // set the buffer, then Update so the row sees TextChanged and writes through the setter, which must
+            // route through SetSpawnArchetypeCommand (not a bare field set).
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            archetype.Input.IsFocused = true;
+            archetype.Input.SetText("worg");
+            bool changed = archetype.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.True(changed);
+            Assert.Equal("worg", scene.Document.Doc.Spawns[0].ArchetypeId);
+            Assert.True(scene.Document.History.CanUndo);
+            Assert.True(scene.Document.IsDirty);
+
+            Assert.True(scene.Document.Undo());
+            Assert.Equal("wolf", scene.Document.Doc.Spawns[0].ArchetypeId);
+        }
+
+        [Fact]
+        public void PlayerSpawnOutline_ListsSpawns_DisabledSuffixed()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", Enabled = true });
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-2", Enabled = false });
+                return doc;
+            });
+
+            TreeNode enabled = CategoryChild(scene.Outline, "Player Spawns", 0);
+            TreeNode disabled = CategoryChild(scene.Outline, "Player Spawns", 1);
+            Assert.Equal("player-1", enabled.Label.Resolve());
+            Assert.Equal("player-2 (disabled)", disabled.Label.Resolve());
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.PlayerSpawn, "player-1"), enabled.Tag);
+        }
+
+        // ---- companion host swap (Task 4 Half B: locked decision 3) ---------------------------------------
+
+        static DocScene CompanionScene(string companionHost, string[] hostKinds,
+            params (string name, string[] kinds)[] scatters)
+        {
+            return PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                foreach ((string name, string[] kinds) in scatters)
+                {
+                    var rule = new MapBiomeScatterRule { Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 1f };
+                    foreach (string k in kinds) rule.Kinds.Add(new MapPropKind { Id = k, Weight = 1f });
+                    doc.ScatterLayers.Add(new MapScatterLayer { Name = name, Rules = { rule } });
+                }
+                var companion = new MapCompanionLayer { Name = "understory", HostLayer = companionHost };
+                companion.HostKinds.AddRange(hostKinds);
+                doc.CompanionLayers.Add(companion);
+                return doc;
+            });
+        }
+
+        [Fact]
+        public void HostSwap_ZeroIntersection_ClearsHostKinds_OneUndoStep()
+        {
+            var scene = CompanionScene("trees", new[] { "pine" },
+                ("trees", new[] { "pine", "oak" }), ("rocks", new[] { "granite" }));
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+
+            // Swap the host to "rocks": [pine] matches none of {granite}, so the same edit clears HostKinds.
+            scene.SetCompanionHostLayer("understory", "rocks");
+
+            MapCompanionLayer live = scene.Document.Doc.CompanionLayers[0];
+            Assert.Equal("rocks", live.HostLayer);
+            Assert.Empty(live.HostKinds);   // cleared to match all hosts
+            Assert.Contains("cleared", scene.StatusText);
+            Assert.Equal(1, scene.Document.History.UndoDepth);   // ONE command, one undo step
+
+            // One undo restores BOTH the host and the kinds.
+            Assert.True(scene.Document.Undo());
+            live = scene.Document.Doc.CompanionLayers[0];
+            Assert.Equal("trees", live.HostLayer);
+            Assert.Equal(new[] { "pine" }, live.HostKinds);
+        }
+
+        [Fact]
+        public void HostSwap_Intersecting_KeepsHostKinds()
+        {
+            var scene = CompanionScene("trees", new[] { "oak" },
+                ("trees", new[] { "pine", "oak" }), ("grove", new[] { "oak", "birch" }));
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+
+            // Swap to "grove": [oak] still matches {oak, birch}, so HostKinds are kept untouched.
+            scene.SetCompanionHostLayer("understory", "grove");
+
+            MapCompanionLayer live = scene.Document.Doc.CompanionLayers[0];
+            Assert.Equal("grove", live.HostLayer);
+            Assert.Equal(new[] { "oak" }, live.HostKinds);
+        }
+
+        [Fact]
+        public void CompanionWarningRow_AppearsOnMismatch_HidesWhenEmpty()
+        {
+            var scene = CompanionScene("trees", new[] { "pine" }, ("trees", new[] { "pine", "oak" }));
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+
+            // Intersecting HostKinds ([pine] in {pine, oak}): no warning.
+            Assert.False(HasRow(scene.Inspector, "Warning"));
+
+            // Edit HostKinds to something the host layer cannot place ([maple]): the mismatch appears live via the
+            // deferred SyncShapeInspector reflow (no reselect), exactly the _inspectorScatterNames-style trigger.
+            DriveTextRow(scene, "HostKinds", "maple");
+            Assert.Equal(new[] { "maple" }, scene.Document.Doc.CompanionLayers[0].HostKinds);
+            scene.SyncShapeInspector();
+            Assert.True(HasRow(scene.Inspector, "Warning"));
+
+            // Empty HostKinds now means match-all, so the warning hides again.
+            DriveTextRow(scene, "HostKinds", "");
+            Assert.Empty(scene.Document.Doc.CompanionLayers[0].HostKinds);
+            scene.SyncShapeInspector();
+            Assert.False(HasRow(scene.Inspector, "Warning"));
+        }
+
+        // ---- Task 5: tooltips, grouping, layout, styling content ------------------------------------------
+
+        // A document with at least one element of EVERY selection kind (Terrain is always present as the
+        // singleton root), so EveryRow_HasDescription and Inspectors_AreGrouped can walk every inspector the
+        // editor builds. The companion's HostKinds deliberately matches nothing in its host layer's rules
+        // ("maple" against a layer that only places "oak"), so the mismatch Warning row is present too. The
+        // region is rect-shaped (not disc, like the exclusion) so the walk below covers both AddShapeRows
+        // branches, not just one of them repeated twice.
+        static MapDocument EveryKindDoc()
+        {
+            MapDocument doc = ValidDoc();
+            doc.Terrain.Biomes.Add(new MapBiomeBand { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+            doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
+            doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f });
+            doc.Terrain.Features.Add(new RimFeatureDoc { CenterX = 2f, CenterZ = 2f, InnerRadius = 3f, OuterRadius = 6f, WallHeight = 2f });
+            doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = 3f, PointZ = 3f, DirectionX = 1f, Height = 2f, Width = 1f });
+            doc.Placements.Add(new MapPlacement { Id = "placement-1", Kind = "prop" });
+            doc.Spawns.Add(new MapSpawn { Id = "spawn-1", ArchetypeId = "wolf" });
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1" });
+            doc.ScatterLayers.Add(new MapScatterLayer
+            {
+                Name = "trees",
+                Rules = { new MapBiomeScatterRule
+                {
+                    Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
+                    Kinds = { new MapPropKind { Id = "oak", Weight = 1f } },
+                } },
+            });
+            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = new List<string> { "trees" } });
+            doc.Regions.Add(new MapRegion
+            {
+                Name = "region-1",
+                Shape = new RectShapeDoc { MinX = -2f, MinZ = -2f, MaxX = 2f, MaxZ = 2f },
+            });
+            doc.CompanionLayers.Add(new MapCompanionLayer { Name = "understory", HostLayer = "trees", HostKinds = { "maple" } });
+            return doc;
+        }
+
+        // A minimal document with a companion layer but NO scatter layers at all: BuildCompanionLayerInspector's
+        // HostLayer chooser has nothing to offer (hostOptions empty, HostLayer defaults to ""), routing it to the
+        // ReadOnlyRow fallback branch instead of the ChoiceRow branch EveryKindDoc's "understory" companion
+        // already walks (it has a live "trees" scatter layer to choose from).
+        static MapDocument CompanionNoScatterLayersDoc()
+        {
+            MapDocument doc = ValidDoc();
+            doc.CompanionLayers.Add(new MapCompanionLayer { Name = "lonely" });
+            return doc;
+        }
+
+        // Every non-header row in the CURRENT inspector must carry a non-null, non-empty Description: the guard
+        // against a tooltip gap (a row an implementer forgot to describe would show no tooltip at all).
+        static void AssertEveryRowDescribed(PropertyGrid grid, string context)
+        {
+            foreach (PropertyRow row in grid.Rows)
+            {
+                if (row is HeaderRow) continue;   // group dividers carry no editable value, no tooltip required
+                LocalizedText? description = row.Description;
+                Assert.True(description.HasValue, $"{context}: row '{row.Label.Resolve()}' has no Description");
+                Assert.False(string.IsNullOrWhiteSpace(description!.Value.Resolve()),
+                    $"{context}: row '{row.Label.Resolve()}' has an empty Description");
+            }
+        }
+
+        [Fact]
+        public void EveryRow_HasDescription()
+        {
+            var scene = PushDocScene(EveryKindDoc);
+
+            // No selection: the Layers panel (group + per-scatter-layer visibility toggles).
+            scene.Document.Selection.Clear();
+            AssertEveryRowDescribed(scene.Inspector, "Layers panel (no selection)");
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            AssertEveryRowDescribed(scene.Inspector, "Terrain");
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
+            AssertEveryRowDescribed(scene.Inspector, "Placement");
+
+            scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
+            AssertEveryRowDescribed(scene.Inspector, "Spawn");
+
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+            AssertEveryRowDescribed(scene.Inspector, "PlayerSpawn");
+
+            // Every feature type (lake, flatten, rim, ridge) has its own AddFeatureRow call sites: walk all four.
+            for (int i = 0; i < 4; i++)
+            {
+                scene.Document.Selection.Set(SelectionKind.Feature, $"{i}");
+                AssertEveryRowDescribed(scene.Inspector, $"Feature[{i}]");
+            }
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            AssertEveryRowDescribed(scene.Inspector, "Exclusion");
+
+            scene.Document.Selection.Set(SelectionKind.Region, "region-1");
+            AssertEveryRowDescribed(scene.Inspector, "Region");
+
+            scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+            AssertEveryRowDescribed(scene.Inspector, "BiomeBand");
+
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            AssertEveryRowDescribed(scene.Inspector, "ScatterLayer");
+
+            // The companion selection also exercises the Warning row (HostKinds mismatches the host layer).
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+            Assert.True(HasRow(scene.Inspector, "Warning"));
+            AssertEveryRowDescribed(scene.Inspector, "CompanionLayer");
+
+            // A second, separate walk: a companion with no scatter layers to choose from routes HostLayer to its
+            // ReadOnlyRow fallback (see CompanionNoScatterLayersDoc), never covered by the "understory" companion
+            // above since it always has a live "trees" layer.
+            var noScatterScene = PushDocScene(CompanionNoScatterLayersDoc);
+            noScatterScene.Document.Selection.Set(SelectionKind.CompanionLayer, "lonely");
+            Assert.NotNull(ReadOnlyRowByLabel(noScatterScene.Inspector, "HostLayer"));
+            AssertEveryRowDescribed(noScatterScene.Inspector, "CompanionLayer (no scatter layers)");
+        }
+
+        // Asserts the CURRENT inspector carries at least the given group HeaderRow labels (order-independent,
+        // extra headers allowed), the loose pin the plan calls for so a wording tweak does not break the test.
+        static void AssertGrouped(PropertyGrid grid, string context, params string[] expectedHeaders)
+        {
+            List<string> headers = grid.Rows.OfType<HeaderRow>().Select(h => h.Label.Resolve()).ToList();
+            Assert.True(headers.Count >= expectedHeaders.Length,
+                $"{context}: expected at least {expectedHeaders.Length} group headers, found {headers.Count} " +
+                $"({string.Join(", ", headers)})");
+            foreach (string expected in expectedHeaders)
+                Assert.Contains(expected, headers);
+        }
+
+        [Fact]
+        public void Inspectors_AreGrouped()
+        {
+            var scene = PushDocScene(EveryKindDoc);
+
+            scene.Document.Selection.Clear();
+            AssertGrouped(scene.Inspector, "Layers panel", "Groups");
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            AssertGrouped(scene.Inspector, "Terrain", "Water", "World", "Noise");
+
+            scene.Document.Selection.Set(SelectionKind.Placement, "placement-1");
+            AssertGrouped(scene.Inspector, "Placement", "Identity", "Transform", "State");
+
+            scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
+            AssertGrouped(scene.Inspector, "Spawn", "Identity", "Transform", "State");
+
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+            AssertGrouped(scene.Inspector, "PlayerSpawn", "Identity", "Transform", "State");
+
+            scene.Document.Selection.Set(SelectionKind.Feature, "0");
+            AssertGrouped(scene.Inspector, "Feature", "Identity", "Shape", "State");
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            AssertGrouped(scene.Inspector, "Exclusion", "Identity", "Shape", "Targeting");
+
+            scene.Document.Selection.Set(SelectionKind.Region, "region-1");
+            AssertGrouped(scene.Inspector, "Region", "Identity", "Shape");
+
+            scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+            AssertGrouped(scene.Inspector, "BiomeBand", "Range", "Shape");
+
+            scene.Document.Selection.Set(SelectionKind.ScatterLayer, "trees");
+            AssertGrouped(scene.Inspector, "ScatterLayer", "Identity", "Placement", "Scale", "Rules");
+
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+            AssertGrouped(scene.Inspector, "CompanionLayer", "Identity", "Host", "Output", "Shape");
+        }
+
+        [Fact]
+        public void Layout_InspectorWidth340_Outline260()
+        {
+            var scene = PushDocScene(ValidDoc);
+
+            Rect outline = scene.OutlineRect(1200f, 700f);
+            Rect inspector = scene.InspectorRect(1200f, 700f);
+
+            Near(260f, outline.Width);
+            Near(0f, outline.X);                     // flush against the left edge
+            Near(340f, inspector.Width);
+            Near(1200f - 340f, inspector.X);          // flush against the right edge, independent of outline width
+            Near(outline.Y, inspector.Y);             // both share the same body-top / body-bottom band
+            Near(outline.Height, inspector.Height);
+        }
+
+        [Fact]
+        public void Tooltip_ShowsOnRowHover_HidesOff()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.WaterLevel = 1f;
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
+
+            FloatRow water = FloatRowByLabel(scene.Inspector, "WaterLevel");
+            int rowIndex = scene.Inspector.Rows.IndexOf(water);
+            Rect label = scene.Inspector.RowLabelBounds(rowIndex);
+            var overRow = new Vector2(label.X + 5f, label.Y + label.Height * 0.5f);
+
+            var ui = new InputManager();
+            ui.Update(MouseFrame(overRow, leftDown: false));
+            scene.Inspector.Update(ui, 0.016f);
+
+            // Hovering the row's label band tracks it as HoveredRow (PropertyGrid, decision 4) and the scene's
+            // tooltip content decision (ComputeTooltipContent, decision 4's host-owned Tooltip) shows immediately
+            // with that row's Description, anchored at its label rect. No live SpriteFont is needed for this: the
+            // Tooltip instance itself is only built lazily in OnDrawUi to actually draw.
+            Assert.Same(water, scene.Inspector.HoveredRow);
+            (LocalizedText Text, Vector2 Anchor)? content = scene.ComputeTooltipContent();
+            Assert.NotNull(content);
+            Assert.Equal(water.Description!.Value.Resolve(), content!.Value.Text.Resolve());
+            Assert.Equal(label.X + label.Width * 0.5f, content.Value.Anchor.X);
+            Assert.Equal(label.Y, content.Value.Anchor.Y);
+
+            // Moving the pointer off the grid entirely clears the hover and hides the tooltip content.
+            ui.Update(MouseFrame(new Vector2(-100f, -100f), leftDown: false));
+            scene.Inspector.Update(ui, 0.016f);
+
+            Assert.Null(scene.Inspector.HoveredRow);
+            Assert.Null(scene.ComputeTooltipContent());
+        }
+
+        [Fact]
+        public void ComputeTooltipContent_SurvivesInspectorRebuildMidFrame()
+        {
+            // A same-frame RebuildInspector (SyncShapeInspector's "All layers" mismatch check, driven by the
+            // deterministic ExclusionLayerRows_AllToggle_NullSemantics repro) clears and re-adds Rows wholesale
+            // but PropertyGrid has no seam to reset HoveredRow along with it, so a row hovered just before the
+            // rebuild is left dangling: still referenced by HoveredRow, but absent from the new Rows list.
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = null });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+            scene.Inspector.Bounds = new Rect(0f, 0f, 300f, 400f);
+
+            BoolRow all = BoolRowByLabel(scene.Inspector, "All layers");
+            int allIndex = scene.Inspector.Rows.IndexOf(all);
+            Rect label = scene.Inspector.RowLabelBounds(allIndex);
+            var overRow = new Vector2(label.X + 5f, label.Y + label.Height * 0.5f);
+
+            var ui = new InputManager();
+            ui.Update(MouseFrame(overRow, leftDown: false));
+            scene.Inspector.Update(ui, 0.016f);
+            Assert.Same(all, scene.Inspector.HoveredRow);   // hovering a live, described row
+
+            // Flip All off: materializes the explicit layer list, which SyncShapeInspector notices next as an
+            // "All layers" mismatch against the inspector's build snapshot and rebuilds.
+            Assert.True(TapBool(all));
+            scene.SyncShapeInspector();
+
+            // The rebuild replaced Rows wholesale (fresh row instances) but never touched HoveredRow: it still
+            // references the OLD "All layers" row, now orphaned from the live Rows list.
+            Assert.DoesNotContain(all, scene.Inspector.Rows);
+            Assert.Same(all, scene.Inspector.HoveredRow);
+
+            // Before the fix this threw ArgumentOutOfRangeException: Rows.IndexOf(hovered) returned -1 for the
+            // orphaned row, and RowLabelBounds(-1) indexes straight into Rows[-1]. The seam degrades gracefully
+            // instead: no content for a row that no longer exists in the grid it is asked about.
+            Assert.Null(scene.ComputeTooltipContent());
+        }
+
+        // Drives a companion/scatter TextRow the way a keystroke commit does. One unfocused Update first polls the
+        // live value into the buffer (a freshly rebuilt row starts empty), so replacing it with `text` is a real
+        // change even when the target is the empty string, then focus, replace, and Update to fire the write-through.
+        static void DriveTextRow(MapEditorScene scene, string label, string text)
+        {
+            TextRow row = TextRowByLabel(scene.Inspector, label);
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            row.Update(cell, ui, 0.016f);   // unfocused: load the live value into the buffer
+            row.Input.IsFocused = true;
+            row.Input.SetText(text);
+            row.Update(cell, ui, 0.016f);
+        }
+
+        static bool HasRow(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row.Label.Resolve() == label) return true;
+            return false;
         }
 
         // The first PropertyRow with the given label (any row type), or a failing assert.

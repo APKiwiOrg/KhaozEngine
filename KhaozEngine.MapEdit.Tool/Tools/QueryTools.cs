@@ -4,10 +4,11 @@ using ModelContextProtocol.Server;
 namespace KhaozEngine.MapEdit.Tools;
 
 /// <summary>Read-only world queries over the open document: ground sampling, walkability, rect scans over
-/// placements and spawns, a scatter layer preview, a brute-force flat-area search, and the full procedural setup
-/// (terrain scalars, biome bands, scatter layers, companion layers). Every method is a thin wrapper that
-/// delegates to <see cref="QueryService"/> through <see cref="ToolGuard.Guard{T}"/>. Coordinates are the engine's
-/// world frame: X and Z span the ground plane and Y is up, all lengths in meters, angles in degrees.</summary>
+/// placements, NPC spawns, and player spawns, a scatter layer preview, a brute-force flat-area search, and the
+/// full procedural setup (terrain scalars, biome bands, scatter layers, companion layers). Every method is a
+/// thin wrapper that delegates to <see cref="QueryService"/> through <see cref="ToolGuard.Guard{T}"/>. Coordinates
+/// are the engine's world frame: X and Z span the ground plane and Y is up, all lengths in meters, angles in
+/// degrees.</summary>
 [McpServerToolType]
 public sealed class QueryTools(QueryService query)
 {
@@ -24,7 +25,7 @@ public sealed class QueryTools(QueryService query)
         [Description("Maximum walkable slope in degrees, measured from vertical (a flat surface is 0). Defaults to 45.")] float maxSlopeDegrees = 45f)
         => ToolGuard.Guard(() => query.IsWalkable(x, z, maxSlopeDegrees));
 
-    [McpServerTool(Name = "placements_in_rect"), Description("Lists placements and spawns whose position falls inside the inclusive world rect. A null-Y placement resolves to sampled ground height.")]
+    [McpServerTool(Name = "placements_in_rect"), Description("Lists placements, NPC spawns, and player spawns whose position falls inside the inclusive world rect. A null-Y placement resolves to sampled ground height.")]
     public PlacementsInRectResult PlacementsInRect(
         [Description("Minimum world X of the rect in meters (ground plane).")] float minX,
         [Description("Minimum world Z of the rect in meters (ground plane).")] float minZ,

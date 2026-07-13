@@ -42,6 +42,10 @@ public sealed class ViewportWorld : IDisposable
     static readonly Color EnabledSpawnColor = new(0.25f, 0.7f, 1f, 0.85f);
     static readonly Color DisabledSpawnColor = new(0.45f, 0.45f, 0.5f, 0.5f);
 
+    // Player start markers read GREEN (vs the NPC spawn blue) so the two spawn kinds are told apart at a glance.
+    // A disabled player spawn reuses the SAME grey as a disabled NPC spawn (one "off" colour for every marker).
+    static readonly Color EnabledPlayerSpawnColor = new(0.3f, 0.85f, 0.35f, 0.85f);
+
     readonly Scene3D _scene;
     readonly IReadOnlyList<AssetEntry> _entries;
     readonly Dictionary<string, float> _kindHeights;
@@ -163,8 +167,9 @@ public sealed class ViewportWorld : IDisposable
     /// <see cref="Rebuild"/>). Authored placements draw OUTSIDE it (instanced, so a drag never rebuilds a chunk),
     /// skipping any placement the <see cref="VisibilityGroup.Placements"/> group or its per-element hide flag turns
     /// off. The placement whose stable id is <paramref name="selectedPlacementId"/> re-draws once with
-    /// <paramref name="highlightTint"/> when it is still visible. Spawn markers draw as ground-height billboards
-    /// under the <see cref="VisibilityGroup.Spawns"/> group and per-element hide. The water plane draws only when
+    /// <paramref name="highlightTint"/> when it is still visible. NPC spawn markers draw as ground-height billboards
+    /// under the <see cref="VisibilityGroup.Spawns"/> group and per-element hide. Player start markers draw the same
+    /// way (green when enabled) gated by per-element hide only (they have no group). The water plane draws only when
     /// the <see cref="VisibilityGroup.Water"/> group is on. Throws <see cref="ObjectDisposedException"/> after
     /// <see cref="Dispose"/> and <see cref="InvalidOperationException"/> before <see cref="Build"/>.</summary>
     public void Draw(Vector3 viewPos, string? selectedPlacementId, Color highlightTint, EditorVisibility visibility)
@@ -189,6 +194,7 @@ public sealed class ViewportWorld : IDisposable
         DrawAuthoredPlacements(unselected, viewPos);
         if (selected is EditorPlacement sel) DrawHighlighted(sel, highlightTint);
         DrawSpawnMarkers(visibility);
+        DrawPlayerSpawnMarkers(visibility);
     }
 
     /// <summary>Keeps only the placements <paramref name="visibility"/> shows: the
@@ -394,6 +400,21 @@ public sealed class ViewportWorld : IDisposable
             if (visibility.IsElementHidden(SelectionKind.Spawn, spawn.Id)) continue;   // this one individually hidden
             float groundY = _field!.SampleHeight(spawn.X, spawn.Z);
             Color color = spawn.Enabled ? EnabledSpawnColor : DisabledSpawnColor;
+            _scene.DrawBillboard(new Vector3(spawn.X, groundY + SpawnMarkerLift, spawn.Z), SpawnMarkerSize, color);
+        }
+    }
+
+    // Player start markers, drawn exactly like the NPC spawn markers (ground-height billboards, same size and lift)
+    // but GREEN when enabled and the shared grey when disabled. Player spawns have no visibility GROUP of their own,
+    // so only the per-element hide gates them (matching EditorVisibility.IsElementVisible, which finds no group for
+    // SelectionKind.PlayerSpawn), keeping draw and pick in lockstep.
+    void DrawPlayerSpawnMarkers(EditorVisibility visibility)
+    {
+        foreach (MapPlayerSpawn spawn in _doc!.PlayerSpawns)
+        {
+            if (visibility.IsElementHidden(SelectionKind.PlayerSpawn, spawn.Id)) continue;   // this one individually hidden
+            float groundY = _field!.SampleHeight(spawn.X, spawn.Z);
+            Color color = spawn.Enabled ? EnabledPlayerSpawnColor : DisabledSpawnColor;
             _scene.DrawBillboard(new Vector3(spawn.X, groundY + SpawnMarkerLift, spawn.Z), SpawnMarkerSize, color);
         }
     }

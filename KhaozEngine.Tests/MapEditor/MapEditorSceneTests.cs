@@ -1859,16 +1859,19 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var scene = PushPaletteScene(new Dictionary<string, string>(StringComparer.Ordinal), "wolf", "bear", "wolfpup");
 
-            Assert.Equal(3, scene.SpawnList.Roots.Count);                 // full flat list
+            // The pinned "player spawn" entry heads the list (never filtered), then the three archetypes.
+            Assert.Equal(new[] { "player spawn", "wolf", "bear", "wolfpup" },
+                scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
             Assert.All(scene.SpawnList.Roots, r => Assert.Empty(r.Children));   // no categories: every root is a leaf
 
-            scene.SpawnFilter.SetText("WOLF");   // case-insensitive substring
+            scene.SpawnFilter.SetText("WOLF");   // case-insensitive substring, narrows the archetypes below the pin
             scene.RefreshPalettes();
-            Assert.Equal(new[] { "wolf", "wolfpup" }, scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
+            Assert.Equal(new[] { "player spawn", "wolf", "wolfpup" },
+                scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
 
             scene.SpawnFilter.SetText("");
             scene.RefreshPalettes();
-            Assert.Equal(3, scene.SpawnList.Roots.Count);                 // clearing restores the full list
+            Assert.Equal(4, scene.SpawnList.Roots.Count);                 // clearing restores the pin plus all three
         }
 
         // ---- palette visibility ----------------------------------------------------------------------------
@@ -2333,6 +2336,231 @@ namespace KhaozEngine.Tests.MapEditor
 
             var host = Assert.IsType<ChoiceRow>(RowByLabel(scene.Inspector, "HostLayer"));
             Assert.Equal("trees", host.Selected);   // the chooser reflects the live host, drawn from the scatter set
+        }
+
+        // ---- player spawns (Task 4 Half A: the editor slice) ----------------------------------------------
+
+        [Fact]
+        public void PlayerSpawn_PlaceDragRenameDelete_FullGesturePath()
+        {
+            var scene = new FieldDocScene(ValidDoc);
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            var down = new Vector3(0f, -1f, 0f);
+            EditorFrameInput Press(Vector3 o, float travel = 0f) =>
+                new EditorFrameInput(o, down, pointerPressed: true, pointerDown: true, pointerTravel: travel, dt: 0.016f);
+            EditorFrameInput Hold(Vector3 o, float travel) =>
+                new EditorFrameInput(o, down, pointerDown: true, pointerTravel: travel, dt: 0.016f);
+            EditorFrameInput Release(Vector3 o) => new EditorFrameInput(o, down, pointerReleased: true, dt: 0.016f);
+
+            // PLACE: the pinned "player spawn" entry drives the spawn tool to stamp a player start on a click.
+            scene.Controller.Mode = EditorToolMode.PlaceSpawn;
+            scene.Controller.PlacingPlayerSpawn = true;
+            scene.Controller.Update(Press(new Vector3(0f, 100f, 0f)));
+            scene.Controller.Update(Release(new Vector3(0f, 100f, 0f)));
+            Assert.Single(scene.Document.Doc.PlayerSpawns);
+            Assert.Empty(scene.Document.Doc.Spawns);   // an NPC spawn was NOT placed
+            Assert.Equal("player-1", scene.Document.Doc.PlayerSpawns[0].Id);
+            Assert.Equal(SelectionKind.PlayerSpawn, scene.Document.Selection.Kind);
+            Assert.Equal("player-1", scene.Document.Selection.Id);
+
+            // DRAG: body-drag the selected player spawn clear of the gizmo handles (Marker affordance, TranslateXZ).
+            scene.Controller.Mode = EditorToolMode.Select;
+            var bodyPoint = new Vector3(-0.4f, 100f, -0.4f);
+            scene.Controller.Update(Press(bodyPoint));   // press the body: selection stays, no drag yet
+            scene.Controller.Update(Hold(new Vector3(4.6f, 100f, -0.4f), EditorToolController.BodyDragThreshold + 1f));
+            scene.Controller.Update(Release(new Vector3(4.6f, 100f, -0.4f)));
+            Near(5f, scene.Document.Doc.PlayerSpawns[0].X);   // dragged +5 on X
+            Near(0f, scene.Document.Doc.PlayerSpawns[0].Z);
+
+            // RENAME: the inline Name row leads the player-spawn inspector, routing through RenamePlayerSpawnCommand.
+            var name = Assert.IsType<TextRow>(scene.Inspector.Rows[0]);
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("hero-start");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Equal("hero-start", scene.Document.Doc.PlayerSpawns[0].Id);
+            name.Input.IsFocused = false;
+            scene.OnUpdate(0.016f);   // the deferred re-select lands the selection on the new id
+            Assert.Equal("hero-start", scene.Document.Selection.Id);
+
+            // DELETE: the standard Delete-key path removes the selected player spawn and clears the selection.
+            scene.Controller.Update(new EditorFrameInput(default, default, deletePressed: true));
+            Assert.Empty(scene.Document.Doc.PlayerSpawns);
+            Assert.True(scene.Document.Selection.IsEmpty);
+        }
+
+        [Fact]
+        public void PlayerSpawnPalette_EntryPinnedAboveArchetypes()
+        {
+            var scene = PushPaletteScene(new Dictionary<string, string>(StringComparer.Ordinal), "wolf", "bear");
+
+            // The "player spawn" entry is pinned at the very top, above every archetype.
+            Assert.Equal(new[] { "player spawn", "wolf", "bear" },
+                scene.SpawnList.Roots.Select(r => r.Label.Resolve()).ToArray());
+
+            scene.SpawnList.Bounds = new Rect(0f, 0f, 200f, 240f);
+            scene.SpawnList.RowHeight = 22f;
+            var input = new InputManager();
+
+            // Tapping the pinned entry (row 0) flips the spawn tool to placing a player start.
+            TapTree(scene.SpawnList, input, new Vector2(120f, 0 * 22f + 11f));
+            Assert.True(scene.Controller.PlacingPlayerSpawn);
+
+            // Tapping an archetype (row 1 = "wolf") flips it back to an NPC spawn of that archetype.
+            TapTree(scene.SpawnList, input, new Vector2(120f, 1 * 22f + 11f));
+            Assert.False(scene.Controller.PlacingPlayerSpawn);
+            Assert.Equal("wolf", scene.Controller.SpawnArchetype);
+        }
+
+        [Fact]
+        public void PlayerSpawnInspector_ShowsRenameXZYawEnabledVisible()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", X = 2f, Z = 3f, Yaw = 1.5f, Enabled = true });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+
+            Assert.IsType<TextRow>(scene.Inspector.Rows[0]);   // inline rename row leads
+            Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "X").Field.Value);
+            Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "Z").Field.Value);
+            Assert.Equal(1.5f, FloatRowByLabel(scene.Inspector, "Yaw").Field.Value);   // raw radians, like the placement Yaw row
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "Enabled"));
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "Visible"));
+            // Player spawns carry no archetype, so the NPC Archetype row is absent.
+            Assert.DoesNotContain(scene.Inspector.Rows.OfType<TextRow>(), t => t.Label.Resolve() == "Archetype");
+
+            // Enabled toggles through SetPlayerSpawnEnabledCommand (undoable).
+            Assert.True(TapBool(BoolRowByLabel(scene.Inspector, "Enabled")));
+            Assert.False(scene.Document.Doc.PlayerSpawns[0].Enabled);
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void PlayerSpawnOutline_ListsSpawns_DisabledSuffixed()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", Enabled = true });
+                doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-2", Enabled = false });
+                return doc;
+            });
+
+            TreeNode enabled = CategoryChild(scene.Outline, "Player Spawns", 0);
+            TreeNode disabled = CategoryChild(scene.Outline, "Player Spawns", 1);
+            Assert.Equal("player-1", enabled.Label.Resolve());
+            Assert.Equal("player-2 (disabled)", disabled.Label.Resolve());
+            Assert.Equal(new MapEditorScene.OutlineRef(SelectionKind.PlayerSpawn, "player-1"), enabled.Tag);
+        }
+
+        // ---- companion host swap (Task 4 Half B: locked decision 3) ---------------------------------------
+
+        static DocScene CompanionScene(string companionHost, string[] hostKinds,
+            params (string name, string[] kinds)[] scatters)
+        {
+            return PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                foreach ((string name, string[] kinds) in scatters)
+                {
+                    var rule = new MapBiomeScatterRule { Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 1f };
+                    foreach (string k in kinds) rule.Kinds.Add(new MapPropKind { Id = k, Weight = 1f });
+                    doc.ScatterLayers.Add(new MapScatterLayer { Name = name, Rules = { rule } });
+                }
+                var companion = new MapCompanionLayer { Name = "understory", HostLayer = companionHost };
+                companion.HostKinds.AddRange(hostKinds);
+                doc.CompanionLayers.Add(companion);
+                return doc;
+            });
+        }
+
+        [Fact]
+        public void HostSwap_ZeroIntersection_ClearsHostKinds_OneUndoStep()
+        {
+            var scene = CompanionScene("trees", new[] { "pine" },
+                ("trees", new[] { "pine", "oak" }), ("rocks", new[] { "granite" }));
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+
+            // Swap the host to "rocks": [pine] matches none of {granite}, so the same edit clears HostKinds.
+            scene.SetCompanionHostLayer("understory", "rocks");
+
+            MapCompanionLayer live = scene.Document.Doc.CompanionLayers[0];
+            Assert.Equal("rocks", live.HostLayer);
+            Assert.Empty(live.HostKinds);   // cleared to match all hosts
+            Assert.Contains("cleared", scene.StatusText);
+            Assert.Equal(1, scene.Document.History.UndoDepth);   // ONE command, one undo step
+
+            // One undo restores BOTH the host and the kinds.
+            Assert.True(scene.Document.Undo());
+            live = scene.Document.Doc.CompanionLayers[0];
+            Assert.Equal("trees", live.HostLayer);
+            Assert.Equal(new[] { "pine" }, live.HostKinds);
+        }
+
+        [Fact]
+        public void HostSwap_Intersecting_KeepsHostKinds()
+        {
+            var scene = CompanionScene("trees", new[] { "oak" },
+                ("trees", new[] { "pine", "oak" }), ("grove", new[] { "oak", "birch" }));
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+
+            // Swap to "grove": [oak] still matches {oak, birch}, so HostKinds are kept untouched.
+            scene.SetCompanionHostLayer("understory", "grove");
+
+            MapCompanionLayer live = scene.Document.Doc.CompanionLayers[0];
+            Assert.Equal("grove", live.HostLayer);
+            Assert.Equal(new[] { "oak" }, live.HostKinds);
+        }
+
+        [Fact]
+        public void CompanionWarningRow_AppearsOnMismatch_HidesWhenEmpty()
+        {
+            var scene = CompanionScene("trees", new[] { "pine" }, ("trees", new[] { "pine", "oak" }));
+            scene.Document.Selection.Set(SelectionKind.CompanionLayer, "understory");
+
+            // Intersecting HostKinds ([pine] in {pine, oak}): no warning.
+            Assert.False(HasRow(scene.Inspector, "Warning"));
+
+            // Edit HostKinds to something the host layer cannot place ([maple]): the mismatch appears live via the
+            // deferred SyncShapeInspector reflow (no reselect), exactly the _inspectorScatterNames-style trigger.
+            DriveTextRow(scene, "HostKinds", "maple");
+            Assert.Equal(new[] { "maple" }, scene.Document.Doc.CompanionLayers[0].HostKinds);
+            scene.SyncShapeInspector();
+            Assert.True(HasRow(scene.Inspector, "Warning"));
+
+            // Empty HostKinds now means match-all, so the warning hides again.
+            DriveTextRow(scene, "HostKinds", "");
+            Assert.Empty(scene.Document.Doc.CompanionLayers[0].HostKinds);
+            scene.SyncShapeInspector();
+            Assert.False(HasRow(scene.Inspector, "Warning"));
+        }
+
+        // Drives a companion/scatter TextRow the way a keystroke commit does. One unfocused Update first polls the
+        // live value into the buffer (a freshly rebuilt row starts empty), so replacing it with `text` is a real
+        // change even when the target is the empty string, then focus, replace, and Update to fire the write-through.
+        static void DriveTextRow(MapEditorScene scene, string label, string text)
+        {
+            TextRow row = TextRowByLabel(scene.Inspector, label);
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            row.Update(cell, ui, 0.016f);   // unfocused: load the live value into the buffer
+            row.Input.IsFocused = true;
+            row.Input.SetText(text);
+            row.Update(cell, ui, 0.016f);
+        }
+
+        static bool HasRow(PropertyGrid grid, string label)
+        {
+            foreach (PropertyRow row in grid.Rows)
+                if (row.Label.Resolve() == label) return true;
+            return false;
         }
 
         // The first PropertyRow with the given label (any row type), or a failing assert.

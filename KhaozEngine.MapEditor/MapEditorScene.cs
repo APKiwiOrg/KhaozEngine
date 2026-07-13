@@ -188,6 +188,14 @@ public class MapEditorScene : GameScene, IGameScene3D
     // rebuild ever runs inside the grid's row iteration).
     int? _inspectorRuleCount;
 
+    // Whether the CURRENT companion inspector was built showing the host-kinds mismatch warning row, or null when
+    // the inspector is not a companion inspector. The mismatch state (non-empty HostKinds with zero intersection
+    // against the host layer's rule kinds) flips when HostKinds is edited, the host is swapped, or an undo / redo
+    // moves either, none of which rebuild the inspector on their own, so SyncShapeInspector compares this snapshot
+    // against the live mismatch each chrome step and rebuilds when it changes, so the warning row appears / hides
+    // live (the _inspectorScatterNames deferred-rebuild idiom).
+    bool? _inspectorCompanionMismatch;
+
     /// <summary>Wires the render surface, the shared white pixel and UI font, and the editor options, then returns
     /// this for chaining (the Room3D Init-injection pattern). Nothing is dereferenced until <see cref="OnEnter"/>.</summary>
     public MapEditorScene Init(Scene3D scene, Texture2D white, DpiFont font, MapEditorOptions options)
@@ -1051,12 +1059,15 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     // Rebuild the flat spawn-archetype list for a filter substring, preserving the game-authored order (no
-    // categories, no re-sort). Called only when the spawn filter text changes.
+    // categories, no re-sort). The "player spawn" entry is PINNED at the top above every archetype and is never
+    // filtered out (it is not an archetype, so the archetype filter box does not apply to it): tapping it flips the
+    // spawn tool to placing a player start. Called only when the spawn filter text changes.
     void RebuildSpawnList(string filter)
     {
         string needle = filter.Trim();
         _spawnList.Roots.Clear();
         _spawnList.Selected = null;
+        _spawnList.Roots.Add(new TreeNode(LocalizedText.Raw("player spawn"), new PaletteLeaf("", PlayerSpawn: true)));
         foreach (string archetype in _options.SpawnArchetypes)
         {
             if (needle.Length > 0 && archetype.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
@@ -1085,7 +1096,10 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     void OnSpawnSelected(TreeNode node)
     {
-        if (node.Tag is PaletteLeaf leaf) _controller.SpawnArchetype = leaf.Kind;
+        if (node.Tag is not PaletteLeaf leaf) return;
+        if (leaf.PlayerSpawn) { _controller.PlacingPlayerSpawn = true; return; }   // the pinned player-start entry
+        _controller.PlacingPlayerSpawn = false;
+        _controller.SpawnArchetype = leaf.Kind;
     }
 
     void OnFeatureTypeSelected(TreeNode node)
@@ -1135,6 +1149,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _outline.Roots.Add(Category("Biomes", BiomeBandNodes()));
         _outline.Roots.Add(Category("Placements", PlacementNodes()));
         _outline.Roots.Add(Category("Spawns", SpawnNodes()));
+        _outline.Roots.Add(Category("Player Spawns", PlayerSpawnNodes()));
         _outline.Roots.Add(Category("Features", FeatureNodes()));
         _outline.Roots.Add(Category("Exclusions", ExclusionNodes()));
         _outline.Roots.Add(Category("Scatter Layers", ScatterLayerNodes()));
@@ -1169,6 +1184,18 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         foreach (MapSpawn s in _document.Doc.Spawns)
             yield return new TreeNode(LocalizedText.Raw($"{s.Id} ({s.ArchetypeId})"), new OutlineRef(SelectionKind.Spawn, s.Id));
+    }
+
+    // The Player Spawns category's children: one selectable node per player start. Player spawns carry no archetype
+    // (unlike NPC spawns), so the label is the id plus a "(disabled)" suffix while the spawn is off, surfacing the
+    // enabled state in the outline the way the NPC node surfaces its archetype.
+    IEnumerable<TreeNode> PlayerSpawnNodes()
+    {
+        foreach (MapPlayerSpawn s in _document.Doc.PlayerSpawns)
+        {
+            string label = s.Enabled ? s.Id : $"{s.Id} (disabled)";
+            yield return new TreeNode(LocalizedText.Raw(label), new OutlineRef(SelectionKind.PlayerSpawn, s.Id));
+        }
     }
 
     // A feature node shows its Name when set, else the index/type fallback ("[i] type"). Features carry no
@@ -1262,12 +1289,14 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspectorLayersAllOn = null;
         _inspectorScatterNames = null;
         _inspectorRuleCount = null;
+        _inspectorCompanionMismatch = null;
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {
             case SelectionKind.Terrain: BuildTerrainInspector(); break;
             case SelectionKind.Placement: BuildPlacementInspector(sel.Id); break;
             case SelectionKind.Spawn: BuildSpawnInspector(sel.Id); break;
+            case SelectionKind.PlayerSpawn: BuildPlayerSpawnInspector(sel.Id); break;
             case SelectionKind.Feature: BuildFeatureInspector(sel.Id); break;
             case SelectionKind.Exclusion: BuildExclusionInspector(sel.Id); break;
             case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
@@ -1453,6 +1482,27 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Archetype"),
             () => Spawn(cur())?.ArchetypeId ?? "", v => { if (Spawn(cur()) is { } s) s.ArchetypeId = v; }));
         AddVisibleRow(SelectionKind.Spawn, cur);
+    }
+
+    // The player-spawn inspector mirrors the NPC spawn one (inline-rename Name, X / Z through MovePlayerSpawnCommand,
+    // Enabled, per-element Visible), swapping the NPC Archetype row for a Yaw row (player spawns carry a facing, NPC
+    // spawns do not). Yaw is raw radians, matching the placement Yaw row (no degree conversion in this editor), and
+    // is written by direct field mutation the same way the NPC Archetype row is: the player-spawn command family has
+    // no yaw command, so this is the command-less field with no undo entry, exactly the Archetype row's precedent.
+    void BuildPlayerSpawnInspector(string id)
+    {
+        if (PlayerSpawn(id) is null) return;
+        Func<string> cur = AddNameRow(SelectionKind.PlayerSpawn, id,
+            v => PlayerSpawn(v) is not null, (oldId, newId) => new RenamePlayerSpawnCommand(oldId, newId));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+            () => PlayerSpawn(cur())?.X ?? 0f, v => MovePlayerSpawn(cur(), x: v)));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            () => PlayerSpawn(cur())?.Z ?? 0f, v => MovePlayerSpawn(cur(), z: v)));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
+            () => PlayerSpawn(cur())?.Yaw ?? 0f, v => { if (PlayerSpawn(cur()) is { } s) s.Yaw = v; }));
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
+            () => PlayerSpawn(cur())?.Enabled ?? false, v => _document.Execute(new SetPlayerSpawnEnabledCommand(cur(), v))));
+        AddVisibleRow(SelectionKind.PlayerSpawn, cur);
     }
 
     // ---- feature / exclusion / region inspectors -----------------------------------------------------------
@@ -1779,7 +1829,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (hostOptions.Count > 0)
             _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("HostLayer"), hostOptions.ToArray(),
                 () => CompanionLayerByName(cur())?.HostLayer ?? "",
-                v => EditCompanionLayer(cur(), l => l.HostLayer = v)));
+                v => SetCompanionHostLayer(cur(), v)));
         else
             _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("HostLayer"),
                 () => (CompanionLayerByName(cur())?.HostLayer ?? "") is { Length: > 0 } h ? h : "(no scatter layers)"));
@@ -1788,6 +1838,15 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("HostKinds"),
             () => CompanionLayerByName(cur()) is { } l ? FormatIds(l.HostKinds) : "",
             v => EditCompanionLayer(cur(), l => l.HostKinds = ParseIds(v)), maxLength: 256));
+
+        // A populated HostKinds that matches NONE of the host layer's rule kinds spawns no companions (a silent
+        // no-op), so surface it with a warning-styled read-only row right under the HostKinds row. Empty HostKinds
+        // means match-all (no warning). The mismatch is captured so SyncShapeInspector reflows the row live.
+        bool mismatch = companion.HostKinds.Count > 0 && !HostKindsIntersect(companion.HostKinds, companion.HostLayer);
+        _inspectorCompanionMismatch = mismatch;
+        if (mismatch)
+            _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Warning"),
+                () => "HostKinds match no kind in the host layer") { TextColor = GuiTheme.Default.DangerBright });
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Kinds"),
             () => CompanionLayerByName(cur()) is { } l ? FormatKinds(l.Kinds) : "",
             v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditCompanionLayer(cur(), l => l.Kinds = kinds); }, maxLength: 256));
@@ -1872,6 +1931,47 @@ public class MapEditorScene : GameScene, IGameScene3D
         MapCompanionLayer clone = CloneCompanionLayer(live);
         mutate(clone);
         _document.Execute(new EditCompanionLayerCommand(name, clone, live));
+    }
+
+    // The HostLayer chooser's setter: swap the host in ONE whole-value edit that also CLEARS HostKinds when the
+    // populated kinds match nothing in the new host layer (zero intersection), so a host swap never silently leaves
+    // a companion that spawns nothing. Because it is a single EditCompanionLayerCommand carrying both fields, one
+    // undo restores BOTH the old host and the old HostKinds. Empty HostKinds already means match-all, so it is left
+    // untouched (clearing it would be a no-op). A clear is noted in the status strip. No-op when the layer vanished.
+    internal void SetCompanionHostLayer(string name, string newHost)
+    {
+        if (CompanionLayerByName(name) is not { } live) return;
+        MapCompanionLayer clone = CloneCompanionLayer(live);
+        clone.HostLayer = newHost;
+        if (clone.HostKinds.Count > 0 && !HostKindsIntersect(clone.HostKinds, newHost))
+        {
+            clone.HostKinds = new List<string>();
+            _statusText = "host kinds cleared to match all hosts";
+        }
+        _document.Execute(new EditCompanionLayerCommand(name, clone, live));
+    }
+
+    // The set of kit ids a scatter layer's rules can place (every Rules[].Kinds[].Id), i.e. the "host kinds" a
+    // companion's HostKinds filters against. An unknown / absent host layer contributes no ids (an empty set).
+    HashSet<string> HostLayerKindIds(string hostLayer)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (ScatterLayerByName(hostLayer) is { } layer)
+            foreach (MapBiomeScatterRule rule in layer.Rules)
+                foreach (MapPropKind kind in rule.Kinds)
+                    ids.Add(kind.Id);
+        return ids;
+    }
+
+    // True when at least one entry of `hostKinds` names a kit id the host layer can actually place (ordinal
+    // compare), so a populated HostKinds still matches SOMETHING. Empty hostKinds is not passed here (empty means
+    // match-all, the callers guard it before calling).
+    bool HostKindsIntersect(IReadOnlyList<string> hostKinds, string hostLayer)
+    {
+        HashSet<string> hostIds = HostLayerKindIds(hostLayer);
+        foreach (string kind in hostKinds)
+            if (hostIds.Contains(kind)) return true;
+        return false;
     }
 
     MapScatterLayer? ScatterLayerByName(string name)
@@ -2142,7 +2242,27 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (_inspectorRuleCount is int builtRules && SelectedScatterRuleCount() is int liveRules && liveRules != builtRules)
         {
             RebuildInspector();
+            return;
         }
+        // The selected companion's host-kinds mismatch flipped (a HostKinds edit, a host swap, or an undo / redo of
+        // either) without a selection change: rebuild so the warning row appears / disappears with the mismatch.
+        if (_inspectorCompanionMismatch is bool builtMismatch && SelectedCompanionMismatch() is bool liveMismatch
+            && liveMismatch != builtMismatch)
+        {
+            RebuildInspector();
+        }
+    }
+
+    // Whether the selected companion layer's populated HostKinds match NONE of its host layer's rule kinds (the
+    // mismatch the warning row surfaces), or null when the selection is not a live companion. Empty HostKinds
+    // returns false (empty means match-all, so no warning). Compared against `_inspectorCompanionMismatch`.
+    bool? SelectedCompanionMismatch()
+    {
+        EditorSelection sel = _document.Selection;
+        if (sel.Kind != SelectionKind.CompanionLayer) return null;
+        if (CompanionLayerByName(sel.Id) is not { } companion) return null;
+        if (companion.HostKinds.Count == 0) return false;
+        return !HostKindsIntersect(companion.HostKinds, companion.HostLayer);
     }
 
     // Whether the live scatter-layer names still equal the snapshot the current inspector was built from (same
@@ -2216,6 +2336,12 @@ public class MapEditorScene : GameScene, IGameScene3D
         _document.Execute(new MoveSpawnCommand(id, x ?? s.X, z ?? s.Z));
     }
 
+    void MovePlayerSpawn(string id, float? x = null, float? z = null)
+    {
+        if (PlayerSpawn(id) is not { } s) return;
+        _document.Execute(new MovePlayerSpawnCommand(id, x ?? s.X, z ?? s.Z));
+    }
+
     MapPlacement? Placement(string id)
     {
         foreach (MapPlacement p in _document.Doc.Placements)
@@ -2226,6 +2352,13 @@ public class MapEditorScene : GameScene, IGameScene3D
     MapSpawn? Spawn(string id)
     {
         foreach (MapSpawn s in _document.Doc.Spawns)
+            if (string.Equals(s.Id, id, StringComparison.Ordinal)) return s;
+        return null;
+    }
+
+    MapPlayerSpawn? PlayerSpawn(string id)
+    {
+        foreach (MapPlayerSpawn s in _document.Doc.PlayerSpawns)
             if (string.Equals(s.Id, id, StringComparison.Ordinal)) return s;
         return null;
     }
@@ -2352,8 +2485,9 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // Identity payload on a palette / spawn-list leaf: the kit id (PlaceKind) or archetype id (SpawnArchetype) the
     // leaf selects. A category node's Tag is its label string instead, so a body-tap on a category is ignored while
-    // a leaf tap sets the placed kind.
-    readonly record struct PaletteLeaf(string Kind);
+    // a leaf tap sets the placed kind. The pinned "player spawn" spawn-list entry sets PlayerSpawn true (and carries
+    // an empty Kind), so a tap on it flips the spawn tool to placing a player start instead of an archetype spawn.
+    readonly record struct PaletteLeaf(string Kind, bool PlayerSpawn = false);
 
     // The chrome rectangles for one frame, computed in point space.
     readonly struct ChromeLayout

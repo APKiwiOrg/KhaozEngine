@@ -975,5 +975,132 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(2, doc.Doc.Placements.Count);
             Assert.Equal(2, doc.History.UndoDepth);
         }
+
+        // ---- player spawns (mirror the NPC spawn gestures) ------------------------------------------------
+
+        [Fact]
+        public void PlaceSpawn_PlayerStart_GroundSnapsClickIntoAddCommand()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.PlaceSpawn;
+            c.PlacingPlayerSpawn = true;   // the pinned "player spawn" palette entry: a click stamps a player start
+            c.SpawnArchetype = "wolf";     // set but ignored while placing a player spawn
+
+            c.Update(Press(new Vector3(2f, 100f, 2f)));
+
+            Assert.Empty(doc.Doc.Spawns);   // an NPC spawn was NOT placed
+            Assert.Single(doc.Doc.PlayerSpawns);
+            MapPlayerSpawn s = doc.Doc.PlayerSpawns[0];
+            Near(2f, s.X);
+            Near(2f, s.Z);
+            Assert.Equal("player-1", s.Id);   // unique auto-id "player-N"
+            Assert.True(s.Enabled);
+            Assert.Equal(SelectionKind.PlayerSpawn, doc.Selection.Kind);
+            Assert.Equal("player-1", doc.Selection.Id);
+        }
+
+        [Fact]
+        public void PlaceSpawn_PlayerStart_UniqueIdIsLowestFree()
+        {
+            var (doc, c) = Make();
+            doc.Doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1" });
+            c.Mode = EditorToolMode.PlaceSpawn;
+            c.PlacingPlayerSpawn = true;
+
+            c.Update(Press(new Vector3(3f, 100f, 4f)));
+
+            Assert.Equal(2, doc.Doc.PlayerSpawns.Count);
+            Assert.Equal("player-2", doc.Doc.PlayerSpawns[1].Id);   // player-1 was taken, so the next free is player-2
+        }
+
+        [Fact]
+        public void SelectDrag_MovesSelectedPlayerSpawn_MergesIntoOneUndoStep()
+        {
+            var (doc, c) = Make();
+            var s = new MapPlayerSpawn { Id = "player-1", X = 0f, Z = 0f };
+            doc.Doc.PlayerSpawns.Add(s);
+
+            // Select via pick: the first press falls through to EditorPicking (no gizmo without a selection).
+            c.Update(Press(new Vector3(0f, 100f, 0f)));
+            Assert.Equal(SelectionKind.PlayerSpawn, doc.Selection.Kind);
+            Assert.Equal("player-1", doc.Selection.Id);
+            Assert.False(c.IsDragging);
+
+            // Now selected, the Marker gizmo sits at the spawn and draws the XZ arrows. Press the +X ground arrow
+            // and drag out along +X. TranslateXZ is the only handle a player spawn honours (RestrictHandle blocks
+            // Y / yaw / scale, same as an NPC spawn).
+            c.Update(Press(new Vector3(0.6f, 100f, 0f)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(2.6f, 100f, 0f)));   // +2 -> X = 2
+            c.Update(Drag(new Vector3(5.6f, 100f, 0f)));   // +5 -> X = 5
+            c.Update(Release(new Vector3(5.6f, 100f, 0f)));
+
+            Assert.False(c.IsDragging);
+            Near(5f, s.X);
+            Near(0f, s.Z);
+            Assert.Equal(1, doc.History.UndoDepth);   // the whole drag coalesces into one MovePlayerSpawnCommand step
+
+            Assert.True(doc.Undo());
+            Near(0f, s.X);                            // undo restores the pre-drag position
+            Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
+        public void BodyDrag_MovesSelectedPlayerSpawn_WithoutTouchingArrows()
+        {
+            var (doc, c) = Make();
+            var s = new MapPlayerSpawn { Id = "player-1", X = 0f, Z = 0f };
+            doc.Doc.PlayerSpawns.Add(s);
+            doc.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+
+            // Press the body clear of every gizmo handle: selection stays, no drag arms yet.
+            c.Update(Press(BodyPoint));
+            Assert.False(c.IsDragging);
+            Assert.Equal(SelectionKind.PlayerSpawn, doc.Selection.Kind);
+            Assert.Equal(0, doc.History.UndoDepth);
+
+            // Past the arming threshold the SAME TranslateXZ path takes over (press ground x = -0.4 dragged to 4.6).
+            c.Update(BodyDrag(new Vector3(4.6f, 100f, -0.4f), EditorToolController.BodyDragThreshold + 1f));
+            Assert.True(c.IsDragging);
+            c.Update(Release(new Vector3(4.6f, 100f, -0.4f)));
+
+            Assert.False(c.IsDragging);
+            Near(5f, s.X);
+            Near(0f, s.Z);
+            Assert.Equal(1, doc.History.UndoDepth);   // the whole body drag is one undo step
+        }
+
+        [Fact]
+        public void Delete_RemovesSelectedPlayerSpawn()
+        {
+            var (doc, c) = Make();
+            doc.Doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1" });
+            doc.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+
+            c.Update(new EditorFrameInput(default, default, deletePressed: true));
+
+            Assert.Empty(doc.Doc.PlayerSpawns);
+            Assert.True(doc.Selection.IsEmpty);
+            Assert.Equal(1, doc.History.UndoDepth);
+        }
+
+        [Fact]
+        public void PlaceMode_PlayerSpawnPressHoldAdjustRelease_OneHistoryEntry()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.PlaceSpawn;
+            c.PlacingPlayerSpawn = true;
+
+            c.Update(Press(new Vector3(2f, 100f, 2f)));
+            Assert.Single(doc.Doc.PlayerSpawns);
+            c.Update(Drag(new Vector3(7f, 100f, -1f)));   // adjust while held: the Add absorbs the same-id Move
+            Near(7f, doc.Doc.PlayerSpawns[0].X);
+            Near(-1f, doc.Doc.PlayerSpawns[0].Z);
+            c.Update(Release(new Vector3(7f, 100f, -1f)));
+
+            Assert.Equal(1, doc.History.UndoDepth);   // place-and-adjust is one undo step
+            Assert.True(doc.Undo());
+            Assert.Empty(doc.Doc.PlayerSpawns);       // whose undo removes the spawn
+        }
     }
 }

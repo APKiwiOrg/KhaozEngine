@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## Unreleased
+## 10.74.1
 
 ### Stair render-glide: time-paced ascent smoothing + step-down grounded-hold
 

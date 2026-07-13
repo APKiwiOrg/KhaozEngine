@@ -1480,7 +1480,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
             () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v))));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Archetype"),
-            () => Spawn(cur())?.ArchetypeId ?? "", v => { if (Spawn(cur()) is { } s) s.ArchetypeId = v; }));
+            () => Spawn(cur())?.ArchetypeId ?? "",
+            v => { if (Spawn(cur()) is not null) _document.Execute(new SetSpawnArchetypeCommand(cur(), v)); }));
         AddVisibleRow(SelectionKind.Spawn, cur);
     }
 
@@ -1489,7 +1490,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     // spawns do not). Yaw is raw radians, matching the placement Yaw row (no degree conversion in this editor), and
     // routes through SetPlayerSpawnYawCommand the same way the placement Yaw row routes through
     // RotatePlacementCommand, so the edit is undoable and marks the document dirty. The NPC Archetype row this Yaw
-    // row replaces stays a command-less direct field mutation with no undo entry, unrelated to this row.
+    // row replaces routes through SetSpawnArchetypeCommand the same way, so it is undoable and marks the document
+    // dirty too, unrelated to this row.
     void BuildPlayerSpawnInspector(string id)
     {
         if (PlayerSpawn(id) is null) return;

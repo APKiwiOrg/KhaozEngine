@@ -616,6 +616,52 @@ public sealed class SetSpawnEnabledCommand : EditorCommand
     public override void Revert(MapDocument doc) => FindSpawn(doc, _id).Enabled = _old;
 }
 
+/// <summary>Sets a spawn's archetype id (which NPC kind the game spawns). The Archetype row is a free-typed
+/// <see cref="KhaozEngine.Gui.TextRow"/> like the rename rows, committing on every keystroke, so successive
+/// same-id sets coalesce (<see cref="TryMerge"/>) into one undo step that restores the pre-retype archetype,
+/// mirroring <see cref="SetPlayerSpawnYawCommand"/>.</summary>
+public sealed class SetSpawnArchetypeCommand : EditorCommand
+{
+    readonly string _id;
+    string _newArchetypeId;
+    string _oldArchetypeId = "";
+    bool _captured;
+
+    /// <summary>Creates the command setting spawn <paramref name="id"/>'s archetype id to
+    /// <paramref name="newArchetypeId"/>.</summary>
+    public SetSpawnArchetypeCommand(string id, string newArchetypeId)
+    {
+        _id = id ?? throw new ArgumentNullException(nameof(id));
+        _newArchetypeId = newArchetypeId ?? throw new ArgumentNullException(nameof(newArchetypeId));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Set spawn archetype";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        MapSpawn s = FindSpawn(doc, _id);
+        if (!_captured) { _oldArchetypeId = s.ArchetypeId; _captured = true; }
+        s.ArchetypeId = _newArchetypeId;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => FindSpawn(doc, _id).ArchetypeId = _oldArchetypeId;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is SetSpawnArchetypeCommand a && string.Equals(a._id, _id, StringComparison.Ordinal))
+        {
+            _newArchetypeId = a._newArchetypeId;
+            return true;
+        }
+        return false;
+    }
+}
+
 /// <summary>Renames a spawn. Spawns are keyed by id, so the id-carrying selection follows the rename. The target
 /// id must be unique: <see cref="Apply"/> throws (before it mutates) if a spawn already carries the new id, so a
 /// rejected rename lands no undo step. Renames never coalesce (no merge).</summary>

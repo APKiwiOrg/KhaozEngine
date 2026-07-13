@@ -2476,6 +2476,37 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void SpawnArchetype_EditIsUndoable_MarksDirty()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Spawns.Add(new MapSpawn { Id = "spawn-1", ArchetypeId = "wolf", X = 2f, Z = 3f });
+                return doc;
+            });
+            scene.Document.Selection.Set(SelectionKind.Spawn, "spawn-1");
+            TextRow archetype = TextRowByLabel(scene.Inspector, "Archetype");
+            Assert.False(scene.Document.IsDirty);
+
+            // Type into the row's TextInput headless, same idiom as the spawn/placement Name rename rows: focus,
+            // set the buffer, then Update so the row sees TextChanged and writes through the setter, which must
+            // route through SetSpawnArchetypeCommand (not a bare field set).
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            archetype.Input.IsFocused = true;
+            archetype.Input.SetText("worg");
+            bool changed = archetype.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            Assert.True(changed);
+            Assert.Equal("worg", scene.Document.Doc.Spawns[0].ArchetypeId);
+            Assert.True(scene.Document.History.CanUndo);
+            Assert.True(scene.Document.IsDirty);
+
+            Assert.True(scene.Document.Undo());
+            Assert.Equal("wolf", scene.Document.Doc.Spawns[0].ArchetypeId);
+        }
+
+        [Fact]
         public void PlayerSpawnOutline_ListsSpawns_DisabledSuffixed()
         {
             var scene = PushDocScene(() =>

@@ -74,6 +74,29 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(Sample(), new SetSpawnEnabledCommand("wolf-1", false));
 
         [Fact]
+        public void SetSpawnArchetype_RoundTrips() =>
+            AssertRoundTrip(Sample(), new SetSpawnArchetypeCommand("wolf-1", "dire-wolf"));
+
+        [Fact]
+        public void SetSpawnArchetype_MergesRetypes_FirstOldLastNew()
+        {
+            // The Archetype row is a TextRow that commits per keystroke, so a retype ("wolf" -> "w" -> "wo" -> ...
+            // -> "worg") must coalesce into one undo step that restores the pre-retype archetype, not one step
+            // per keystroke.
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            ed.Execute(new SetSpawnArchetypeCommand("wolf-1", "w"));
+            ed.Execute(new SetSpawnArchetypeCommand("wolf-1", "wo"));
+            ed.Execute(new SetSpawnArchetypeCommand("wolf-1", "worg"));
+            Assert.Equal("worg", doc.Spawns.First(s => s.Id == "wolf-1").ArchetypeId);
+            Assert.Equal(1, ed.History.UndoDepth);
+
+            Assert.True(ed.Undo());
+            Assert.Equal("wolf", doc.Spawns.First(s => s.Id == "wolf-1").ArchetypeId);
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
         public void AddExclusion_RoundTrips() =>
             AssertRoundTrip(Sample(), new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 1f, Radius = 5f } }));
 

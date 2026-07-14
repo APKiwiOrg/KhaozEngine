@@ -14,14 +14,23 @@
 // the ambiguous ones only the flip + EqualityComparer disambiguation gets right under AOT, so this
 // gate proves the replacement mechanism itself, not just the paths that avoided the old bug.
 //
+// It also gates the two subsystems that went NativeAOT-clean alongside the tick path: the ECS world JSON
+// save/load path (WorldSerializer round-trip through the generic column-factory seam + source-generated
+// envelope) and the durable NetWorld persistence DTOs (PlayerRecord / WorldMetaRecord /
+// WorldStoreBanStore, each through a source-generated JsonSerializerContext).
+//
 // The gate is that this LINKS, RUNS, and prints the expected sentinel under
 //   dotnet publish -c Release -r <rid> (PublishAot=true)
 // on a native arm64 mac. It prints one line starting "AOT PROBE:" with the checked values and returns
 // a non-zero exit code on any mismatch (so the shell gate can assert exit 0).
 using System;
+using System.Numerics;
+using System.Text.Json.Serialization;
 using KhaozEngine.Ecs;
+using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
+using KhaozEngine.WorldStore;
 
 const float tick = 1f / 60f;
 const int count = 3;
@@ -113,8 +122,49 @@ for (int i = 0; i < count && ok; i++)
     lastClientX = cp.X;
 }
 
+// ---- ECS world JSON save/load (WorldSerializer) ----
+// Register the component set through the generic, reflection-free seam (Create().Add<T>()), and pass JSON options
+// backed by a source-generated context for the component structs. Save + Load round-trip a small world, including a
+// zero-field tag (ProbeElite), so the source-generated envelope + Type-keyed column factory both run under AOT.
+var saveSer = WorldSerializer.Create()
+    .Add<ProbePosition>()
+    .Add<ProbeHealth>()
+    .Add<ProbeFlag>()
+    .Add<ProbeElite>()
+    .Build(ProbeJsonContext.Default.Options);
+var saveWorld = new World();
+Entity saved0 = saveWorld.Spawn();
+saveWorld.Set(saved0, new ProbePosition { X = 3f, Y = 4f });
+saveWorld.Set(saved0, new ProbeHealth { Value = 42 });
+saveWorld.Set(saved0, new ProbeElite());               // zero-field tag: presence must survive save/load under AOT
+Entity saved1 = saveWorld.Spawn();
+saveWorld.Set(saved1, new ProbeFlag { Value = 7 });
+World reloaded = saveSer.Load(saveSer.Save(saveWorld));
+bool saveOk =
+    reloaded.IsAlive(saved0) && reloaded.IsAlive(saved1) &&
+    MathF.Abs(reloaded.Get<ProbePosition>(saved0).X - 3f) < 1e-4f &&
+    reloaded.Get<ProbeHealth>(saved0).Value == 42 &&
+    reloaded.Has<ProbeElite>(saved0) &&
+    reloaded.Get<ProbeFlag>(saved1).Value == 7;
+
+// ---- NetWorld durable DTO round-trips (source-generated contexts) ----
+var playerState = new PlayerMoveState { Position = new Vector3(1.5f, 2.5f, -3.5f) };
+PlayerRecord decodedPlayer = PlayerRecord.Decode(PlayerRecord.From(playerState).Encode());
+bool playerOk = decodedPlayer.ToState().Position == playerState.Position;
+
+WorldMetaRecord decodedMeta = WorldMetaRecord.Decode(new WorldMetaRecord { NextNetId = 123456789L }.Encode());
+bool metaOk = decodedMeta.NextNetId == 123456789L;
+
+// The ban round-trip exercises WorldStoreBanStore.BanDto encode/decode over an in-memory store.
+var banStore = new WorldStoreBanStore(new InMemoryWorldStore());
+banStore.BanAsync("acct-1", "probe").AsTask().GetAwaiter().GetResult();
+bool banOk = banStore.IsBanned("acct-1") && !banStore.IsBanned("acct-2");
+
+ok = ok && saveOk && playerOk && metaOk && banOk;
+
 Console.WriteLine(
-    $"AOT PROBE: entities={count} clientEntities={client.Entities.Count} tags={clientTags} lastNetId={lastNetId} clientX={lastClientX:F4} match={ok}");
+    $"AOT PROBE: entities={count} clientEntities={client.Entities.Count} tags={clientTags} lastNetId={lastNetId} " +
+    $"clientX={lastClientX:F4} save={saveOk} player={playerOk} meta={metaOk} ban={banOk} match={ok}");
 return ok ? 0 : 1;
 
 // ---- probe component + system types ----
@@ -146,3 +196,12 @@ sealed class ProbeIntegrateSystem : ISystem
             p.Y += v.Y * dt;
         });
 }
+
+/// <summary>Source-generated JSON context for the probe's component structs, so the WorldSerializer save/load path
+/// resolves their per-type JSON without reflection under NativeAOT. IncludeFields because the components use fields.</summary>
+[JsonSourceGenerationOptions(IncludeFields = true)]
+[JsonSerializable(typeof(ProbePosition))]
+[JsonSerializable(typeof(ProbeHealth))]
+[JsonSerializable(typeof(ProbeFlag))]
+[JsonSerializable(typeof(ProbeElite))]
+internal partial class ProbeJsonContext : JsonSerializerContext { }

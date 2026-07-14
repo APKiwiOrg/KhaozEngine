@@ -41,11 +41,20 @@ textures-ON recipe and load through the multi-material path (`PropLoader.LoadPro
 1. decode meshopt + `dequantize` (as above).
 2. re-encode `EXT_texture_webp` textures to PNG (a `gltf-transform` image step) so the loader can
    decode them, and DROP the `EXT_texture_webp` extension.
-3. KEEP per-material `baseColorTexture` (and normal / metallicRoughness where present). Do NOT
-   flatten to `baseColorFactor`.
+3. KEEP per-material `baseColorTexture` (and normal / metallicRoughness where present) AND each
+   material's `alphaMode` / `alphaCutoff`. Do NOT flatten to `baseColorFactor`. The leaf materials are
+   `alphaMode: MASK` (cutoff 0.2), which the engine's model pass now alpha-cutout-discards so the leaves
+   read as their silhouette instead of a solid quad.
+4. alpha-bleed (dilate) each leaf baseColor texture: flood leaf RGB into the transparent texels (alpha
+   untouched). The source textures store BLACK under the transparent leaf texels, so without this the
+   mip chain and bilinear edge fold black into the leaves (dark fringe, darkening at distance). The bleed
+   makes every mip average leaf-on-leaf. Bark and rock textures are fully opaque, so the bleed is a no-op
+   for them.
 
 Baked on 2026-07-14 from `world-of-claudecraft` main (`public/models/foliage/`), with the checked-in
-tool `tools/kit-bake/` (a `@gltf-transform` script implementing this recipe, see its README.md).
+tool `tools/kit-bake/` (a `@gltf-transform` script implementing this recipe, see its README.md), and
+re-baked the same day to add the leaf alpha-bleed (step 4) once the alpha-cutout mesh path landed. The
+five tree glbs changed (dilated leaf texture); the two rock glbs are byte-identical (opaque, no bleed).
 Source files and their kit ids (`tools/kit-bake/foliage-map.json`):
 
 - `pine_1.glb` -> `pine_a.glb`

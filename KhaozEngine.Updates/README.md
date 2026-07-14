@@ -4,7 +4,7 @@ Game-agnostic delta auto-update pipeline. Only files that changed between the in
 latest published build are downloaded, staged, and applied by an external shim while the game is
 stopped. Determinism-neutral: it never touches simulation or RNG, so no hash concern.
 
-Pure .NET (+ `KhaozEngine.Diagnostics`), no MonoGame dependency.
+Pure .NET (+ `KhaozEngine.Diagnostics`, `KhaozEngine.Platform`, `KhaozEngine.Primitives`), no MonoGame dependency.
 
 ## Signing (required)
 
@@ -61,6 +61,9 @@ configured base host), and caps both the manifest and each downloaded file at a 
   just `UpdateApplier.Run(args, env)`.
 - **`IUpdaterUi`** + **`UpdaterUiOptions`** - the optional progress window the shim shows during the
   apply (Install then Finishing). Windows-only native GDI; a no-op elsewhere. See "Progress window".
+- **`UpdateVersion`** - numeric `x.y.z` comparison for the update gate (`IsNewer`). A thin wrapper over
+  `KhaozEngine.Primitives.VersionComparer`, the rule shared with `KhaozEngine.ServerStatus.VersionOrder`
+  so the two packages cannot drift apart.
 
 ## Relaunch settle wait + retry
 

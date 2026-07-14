@@ -164,6 +164,23 @@ public sealed class UpdateVersionTests
     {
         Assert.Equal(expected, UpdateVersion.IsNewer(current, candidate));
     }
+
+    // Reconciled edge: the shared VersionComparer this now delegates to is null-tolerant (it treats null as
+    // an empty, all-zero version, for KhaozEngine.ServerStatus.VersionOrder's benefit). UpdateVersion's
+    // parameters are non-nullable by contract, so it guards explicitly and throws ArgumentNullException
+    // rather than silently comparing a null argument as "0.0.0". This replaces the old implementation's
+    // incidental NullReferenceException from an unguarded Split call with a deliberate, documented one.
+    [Fact]
+    public void IsNewer_ThrowsOnNullCurrent()
+    {
+        Assert.Throws<System.ArgumentNullException>(() => UpdateVersion.IsNewer(null!, "1.0.0"));
+    }
+
+    [Fact]
+    public void IsNewer_ThrowsOnNullCandidate()
+    {
+        Assert.Throws<System.ArgumentNullException>(() => UpdateVersion.IsNewer("1.0.0", null!));
+    }
 }
 
 public sealed class UpdatePlatformTests

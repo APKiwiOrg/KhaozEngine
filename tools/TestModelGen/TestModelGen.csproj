@@ -9,4 +9,7 @@
   <ItemGroup>
     <PackageReference Include="SharpGLTF.Toolkit" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+  </ItemGroup>
 </Project>

@@ -27,3 +27,28 @@ Result: each `.glb` is plain glTF 2.0 (no extensions, f32 attributes) with brown
 / grey-rock flat colors. The loader then scales each to its manifest `heightMeters` and drops the
 origin to the base. See `props.manifest.json` and `docs/USING-KHAOZENGINE.md` (Prop scatter +
 asset pipeline).
+
+### Textures-ON re-ingest (multi-texture-per-primitive)
+
+Step 2 above deliberately DROPS textures because the flat single-mesh loader (`PropLoader.LoadProp`)
+reads only a per-material base-color factor. To keep real per-material textures instead, bake with a
+textures-ON recipe and load through the multi-material path (`PropLoader.LoadPropParts` ->
+`Scene3D.LoadProp`), which splits the prop into one textured sub-mesh per source material:
+
+1. decode meshopt + `dequantize` (as above).
+2. re-encode `EXT_texture_webp` textures to PNG (a `gltf-transform` image step) so the loader can
+   decode them, and DROP the `EXT_texture_webp` extension.
+3. KEEP per-material `baseColorTexture` (and normal / metallicRoughness where present); do NOT
+   flatten to `baseColorFactor`.
+
+The local Quaternius kit sources were not on hand for this pass, so no real kit was re-baked yet; the
+recipe is documented here and the engine capability is proven by the `signpost.glb` demo below.
+
+## signpost.glb (multi-material textured demo)
+
+`signpost.glb` is a **procedurally generated, fully original** two-material prop (a wood-grain post +
+a checker sign board, each its own baseColor texture), emitted by `tools/TestModelGen`
+(`dotnet run --project tools/TestModelGen -- signpost <out>.glb`). Being original generated content it
+is **CC0 / public domain**. It demonstrates the multi-texture-per-primitive path end to end
+(`GltfLoader.LoadPartsWithMaterials` -> `PropLoader.LoadPropParts` -> `Scene3D.LoadProp` /
+`Scene3D.PropHandle`) and is placed near spawn in the 3D World room (`Room3D`).

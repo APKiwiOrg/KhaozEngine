@@ -1032,6 +1032,276 @@ public sealed class MutationService(MapEditSession session)
         }, worldChanged: true);
     }
 
+    // ---- element duplicate (cross-kind, decision 10) --------------------------------------------------------
+
+    /// <summary>World-unit XZ offset applied to a duplicate's position, so it never lands exactly on top of its
+    /// source. Mirrors <c>KhaozEngine.MapEditor.EditorToolController</c>'s own duplicate offset (the GUI's Cmd+D)
+    /// exactly. The kinds with no position (a biome band, a scatter or companion layer) ignore it entirely.</summary>
+    const float DuplicateOffset = 2f;
+
+    /// <summary>Duplicates one document element by <paramref name="kind"/>: a deep clone with a fresh unique
+    /// identity, offset +2/+2 on X/Z for the kinds that carry a position, added through the same
+    /// <see cref="EditorCommand"/> the GUI's own Cmd+D duplicate uses (<c>EditorToolController.DuplicateSelection</c>).
+    /// Reuses that GUI code's own shared helpers (<see cref="KhaozEngine.MapEditor.EditorToolController.CloneShapeOffset"/>,
+    /// <see cref="KhaozEngine.MapEditor.MapEditorScene.CloneScatterLayer"/>,
+    /// <see cref="KhaozEngine.MapEditor.MapEditorScene.CloneCompanionLayer"/>,
+    /// <see cref="KhaozEngine.MapEditor.FeatureGeometry.Translated"/>) instead of a second copy of that logic, so
+    /// an MCP-driven duplicate and a GUI-driven duplicate can never drift apart. <paramref name="kind"/> is one of
+    /// <c>placement</c>, <c>spawn</c>, <c>player_spawn</c>, <c>region</c>, <c>scatter_layer</c>,
+    /// <c>companion_layer</c> (id/name-keyed, addressed by <paramref name="id"/>) or <c>feature</c>,
+    /// <c>exclusion</c>, <c>biome_band</c> (index-keyed, addressed by <paramref name="index"/>). Terrain has no
+    /// duplicate (it is a document singleton) and is intentionally not a valid kind here. Exactly one of
+    /// <paramref name="id"/> / <paramref name="index"/> must be supplied, matching the kind's addressing: the
+    /// other must be left null. Every failure throws a precise exception instead of silently doing nothing (an
+    /// unknown kind, a missing or wrong-shaped ref, an unresolved id, an out-of-range index, or a feature type
+    /// <see cref="KhaozEngine.MapEditor.FeatureGeometry.Translated"/> cannot offset), so the MCP adapter's
+    /// <c>ToolGuard</c> always surfaces a clean failure and never a silent no-op.</summary>
+    public MutationResult ElementDuplicate(string kind, string? id = null, int? index = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        return kind switch
+        {
+            "placement" => DuplicatePlacement(RequireId(kind, id, index)),
+            "spawn" => DuplicateSpawn(RequireId(kind, id, index)),
+            "player_spawn" => DuplicatePlayerSpawn(RequireId(kind, id, index)),
+            "region" => DuplicateRegion(RequireId(kind, id, index)),
+            "scatter_layer" => DuplicateScatterLayer(RequireId(kind, id, index)),
+            "companion_layer" => DuplicateCompanionLayer(RequireId(kind, id, index)),
+            "feature" => DuplicateFeature(RequireIndex(kind, id, index)),
+            "exclusion" => DuplicateExclusion(RequireIndex(kind, id, index)),
+            "biome_band" => DuplicateBiomeBand(RequireIndex(kind, id, index)),
+            _ => throw new ArgumentException(
+                $"Unknown element kind '{kind}'. Valid kinds: placement, spawn, player_spawn, feature, " +
+                "exclusion, region, biome_band, scatter_layer, companion_layer.", nameof(kind)),
+        };
+    }
+
+    /// <summary>Validates that an id-keyed kind got an id and no index, returning the id.</summary>
+    static string RequireId(string kind, string? id, int? index)
+    {
+        if (index is not null)
+            throw new ArgumentException($"element kind '{kind}' is addressed by id, not index.", nameof(index));
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException($"element kind '{kind}' requires id.", nameof(id));
+        return id;
+    }
+
+    /// <summary>Validates that an index-keyed kind got an index and no id, returning the index.</summary>
+    static int RequireIndex(string kind, string? id, int? index)
+    {
+        if (id is not null)
+            throw new ArgumentException($"element kind '{kind}' is addressed by index, not id.", nameof(id));
+        if (index is null)
+            throw new ArgumentException($"element kind '{kind}' requires index.", nameof(index));
+        return index.Value;
+    }
+
+    MutationResult DuplicatePlacement(string id)
+    {
+        string? newId = null;
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapPlacement source = doc.Placements.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No placement with id '{id}' in the document.");
+            newId = UniqueDuplicateName("placement",
+                n => doc.Placements.Any(p => string.Equals(p.Id, n, StringComparison.Ordinal)));
+            return new AddPlacementCommand(new MapPlacement
+            {
+                Id = newId, Kind = source.Kind, X = source.X + DuplicateOffset, Z = source.Z + DuplicateOffset,
+                Y = source.Y, Yaw = source.Yaw, Scale = source.Scale, Tags = new List<string>(source.Tags),
+            });
+        }, "element_duplicate", _ => $"duplicated placement '{id}' as '{newId}'", worldChanged: false);
+        return result with { Id = newId };
+    }
+
+    MutationResult DuplicateSpawn(string id)
+    {
+        string? newId = null;
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapSpawn source = doc.Spawns.FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No spawn with id '{id}' in the document.");
+            newId = UniqueDuplicateName("spawn",
+                n => doc.Spawns.Any(s => string.Equals(s.Id, n, StringComparison.Ordinal)));
+            return new AddSpawnCommand(new MapSpawn
+            {
+                Id = newId, ArchetypeId = source.ArchetypeId, X = source.X + DuplicateOffset,
+                Z = source.Z + DuplicateOffset, Enabled = source.Enabled, Tags = new List<string>(source.Tags),
+            });
+        }, "element_duplicate", _ => $"duplicated spawn '{id}' as '{newId}'", worldChanged: false);
+        return result with { Id = newId };
+    }
+
+    MutationResult DuplicatePlayerSpawn(string id)
+    {
+        string? newId = null;
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapPlayerSpawn source = doc.PlayerSpawns.FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No player spawn with id '{id}' in the document.");
+            newId = UniqueDuplicateName("player",
+                n => doc.PlayerSpawns.Any(s => string.Equals(s.Id, n, StringComparison.Ordinal)));
+            // AddPlayerSpawnCommand deep-copies at construction (a fresh Tags list), the same behavior the GUI's
+            // own duplicate relies on, so handing it a plain new instance here is enough.
+            return new AddPlayerSpawnCommand(new MapPlayerSpawn
+            {
+                Id = newId, X = source.X + DuplicateOffset, Z = source.Z + DuplicateOffset, Yaw = source.Yaw,
+                Enabled = source.Enabled, Tags = new List<string>(source.Tags),
+            });
+        }, "element_duplicate", _ => $"duplicated player spawn '{id}' as '{newId}'", worldChanged: false);
+        return result with { Id = newId };
+    }
+
+    MutationResult DuplicateRegion(string name)
+    {
+        string? newName = null;
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapRegion source = doc.Regions.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No region named '{name}' in the document.");
+            // A region's Name IS its identity, always set and always unique, so the duplicate takes a fresh
+            // generated name exactly like a freshly drawn region rather than deriving one from the source name
+            // (mirrors the GUI's own region duplicate).
+            newName = UniqueDuplicateName("region",
+                n => doc.Regions.Any(r => string.Equals(r.Name, n, StringComparison.Ordinal)));
+            var clone = new MapRegion
+            {
+                Name = newName,
+                Shape = source.Shape is { } shape
+                    ? EditorToolController.CloneShapeOffset(shape, DuplicateOffset, DuplicateOffset)
+                    : null,
+                Tags = new List<string>(source.Tags),
+            };
+            return new AddRegionCommand(clone);
+        }, "element_duplicate", _ => $"duplicated region '{name}' as '{newName}'", worldChanged: false);
+        return result with { Id = newName };
+    }
+
+    MutationResult DuplicateScatterLayer(string name)
+    {
+        string? cloneName = null;
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapScatterLayer source = FindScatterLayer(doc, name);
+            MapScatterLayer clone = MapEditorScene.CloneScatterLayer(source);
+            cloneName = UniqueDuplicateName(name + "-copy",
+                n => doc.ScatterLayers.Any(l => string.Equals(l.Name, n, StringComparison.Ordinal)));
+            clone.Name = cloneName;
+            return new AddScatterLayerCommand(clone);
+        }, "element_duplicate", _ => $"duplicated scatter layer '{name}' as '{cloneName}'", worldChanged: true);
+        return result with { Id = cloneName };
+    }
+
+    MutationResult DuplicateCompanionLayer(string name)
+    {
+        string? cloneName = null;
+        MutationResult result = Apply((doc, _) =>
+        {
+            MapCompanionLayer source = doc.CompanionLayers.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"No companion layer named '{name}' in the document.");
+            MapCompanionLayer clone = MapEditorScene.CloneCompanionLayer(source);
+            cloneName = UniqueDuplicateName(name + "-copy",
+                n => doc.CompanionLayers.Any(l => string.Equals(l.Name, n, StringComparison.Ordinal)));
+            clone.Name = cloneName;
+            return new AddCompanionLayerCommand(clone);
+        }, "element_duplicate", _ => $"duplicated companion layer '{name}' as '{cloneName}'", worldChanged: true);
+        return result with { Id = cloneName };
+    }
+
+    MutationResult DuplicateFeature(int index)
+    {
+        int newIndex = -1;
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Terrain.Features.Count, "feature", nameof(index));
+            MapFeature source = doc.Terrain.Features[index];
+            // FeatureGeometry.Translated clones AND offsets the center / through-point atomically, and returns
+            // null for a custom feature type it does not know how to translate. In this tool that branch is
+            // unreachable in practice (the session's MapDocRegistry only ever resolves the four built-in feature
+            // discriminators, so an unregistered type fails to parse or load before a session could ever hold
+            // one), but the guard stays so a future registry extension still fails clean instead of silently
+            // adding an un-offset clone.
+            if (FeatureGeometry.Translated(source, DuplicateOffset, DuplicateOffset) is not { } clone)
+            {
+                throw new InvalidOperationException(
+                    $"feature at index {index} (type '{source.Type}') cannot be duplicated: its type has no known offset.");
+            }
+            // A feature Name is optional and unique-when-set, but AddFeatureCommand carries no add-time guard for
+            // that, so a straight clone of a named feature would silently collide. Uniquify it. An unnamed
+            // feature's null Name carries no key to collide on and needs no change.
+            if (!string.IsNullOrEmpty(clone.Name))
+            {
+                clone.Name = UniqueDuplicateName(clone.Name + "-copy",
+                    n => doc.Terrain.Features.Any(f => string.Equals(f.Name, n, StringComparison.Ordinal)));
+            }
+            newIndex = doc.Terrain.Features.Count;   // appended at the current tail
+            return new AddFeatureCommand(clone);
+        }, "element_duplicate", _ => $"duplicated feature at index {index} as index {newIndex}", worldChanged: true);
+        return result with { Index = newIndex };
+    }
+
+    MutationResult DuplicateExclusion(int index)
+    {
+        int newIndex = -1;
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Exclusions.Count, "exclusion", nameof(index));
+            MapExclusion source = doc.Exclusions[index];
+            var clone = new MapExclusion
+            {
+                Name = source.Name,
+                Shape = source.Shape is { } shape
+                    ? EditorToolController.CloneShapeOffset(shape, DuplicateOffset, DuplicateOffset)
+                    : null,
+                Layers = source.Layers is { } layers ? new List<string>(layers) : null,
+            };
+            // Same name-collision dodge as DuplicateFeature above: AddExclusionCommand has no add-time guard.
+            if (!string.IsNullOrEmpty(clone.Name))
+            {
+                clone.Name = UniqueDuplicateName(clone.Name + "-copy",
+                    n => doc.Exclusions.Any(e => string.Equals(e.Name, n, StringComparison.Ordinal)));
+            }
+            newIndex = doc.Exclusions.Count;   // appended at the current tail
+            return new AddExclusionCommand(clone);
+        }, "element_duplicate", _ => $"duplicated exclusion at index {index} as index {newIndex}", worldChanged: true);
+        return result with { Index = newIndex };
+    }
+
+    MutationResult DuplicateBiomeBand(int index)
+    {
+        int newIndex = -1;
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.Terrain.Biomes.Count, "biome band", nameof(index));
+            MapBiomeBand source = doc.Terrain.Biomes[index];
+            // No name, no position (a band is an elevation range, not a placed element): a plain verbatim clone,
+            // no uniquify, no offset, mirroring the GUI's own biome band duplicate.
+            var clone = new MapBiomeBand
+            {
+                Start = source.Start, End = source.End, Biome = source.Biome,
+                BaseHeight = source.BaseHeight, HillAmplitude = source.HillAmplitude,
+            };
+            newIndex = doc.Terrain.Biomes.Count;   // appended at the current tail
+            return new AddBiomeBandCommand(clone);
+        }, "element_duplicate", _ => $"duplicated biome band at index {index} as index {newIndex}", worldChanged: true);
+        return result with { Index = newIndex };
+    }
+
+    /// <summary>The first "&lt;prefix&gt;-N" (N from 1) not already taken. The same auto-naming scheme
+    /// <c>EditorToolController.UniqueName</c> uses for the GUI's Cmd+D duplicate, so an MCP-driven duplicate and a
+    /// GUI-driven duplicate land on identical names given the same starting document. A local method rather than
+    /// a call into the GUI helper: unlike <see cref="KhaozEngine.MapEditor.EditorToolController.CloneShapeOffset"/>,
+    /// this algorithm carries no shape-kind knowledge to drift, so a small local copy is simpler than exposing
+    /// another cross-assembly seam for it.</summary>
+    static string UniqueDuplicateName(string prefix, Func<string, bool> exists)
+    {
+        int n = 1;
+        string name;
+        do { name = prefix + "-" + n.ToString(CultureInfo.InvariantCulture); n++; }
+        while (exists(name));
+        return name;
+    }
+
     // ---- index + kind parsing helpers ------------------------------------------------------------------------
 
     /// <summary>Throws a precise <see cref="ArgumentException"/> when <paramref name="index"/> is outside

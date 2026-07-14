@@ -83,7 +83,7 @@ query, mutation) runs on a machine with no display or graphics device. A render 
 headless GPU device fails with a precise `McpException` naming the selected backend, instead of hanging
 or crashing the process.
 
-## Verb surface (63 tools)
+## Verb surface (64 tools)
 
 | Group | Verbs |
 |---|---|
@@ -95,7 +95,22 @@ or crashing the process.
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
 | Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
+| Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
+
+`element_duplicate(kind, id?, index?)` duplicates one document element by kind: `placement`, `spawn`,
+`player_spawn`, `region`, `scatter_layer`, `companion_layer` are addressed by `id`, while `feature`,
+`exclusion`, `biome_band` are addressed by `index` (exactly one of the two per call). It reuses the exact same clone and
+unique-identity helpers `KhaozEngine.MapEditor`'s own Ctrl+D duplicate uses (`EditorToolController`'s shape
+clone, `MapEditorScene.CloneScatterLayer`/`CloneCompanionLayer`, `FeatureGeometry.Translated`), so a GUI-driven
+and an MCP-driven duplicate can never drift apart: same `+2/+2` world-unit offset on the kinds that carry a
+position, same `<name>-copy`/`-copy-2` uniquifying for a named feature or exclusion, same generated-name
+scheme for a fresh placement/spawn/player-spawn/region id. Terrain has no duplicate verb, since it is a
+document singleton. Every failure throws a precise error instead of silently no-opping: an unknown kind, a
+missing or wrong-addressed ref (id where an index is required or vice versa), an id or index that does not
+resolve, or a feature type the clone cannot offset. Camera bookmarks (the GUI's Shift+1..9/1..9 fly-camera
+pose store/recall) have no MCP verb: they are interactive viewport state with nothing for a stateless,
+one-shot render call to persist between requests.
 
 A player spawn (`player_spawn_add(x, z, yaw?, enabled?, id?, tags?)`) is a stable-id, position-plus-yaw
 start marker with no archetype: which spawn a game actually uses at runtime is game code's own concern, so

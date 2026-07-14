@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace KhaozEngine.Render3D
@@ -68,6 +69,76 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        /// <summary>Load + normalize a manifest entry as a multi-material prop: one <see cref="GltfMeshPart"/> per
+        /// source material (via <see cref="GltfLoader.LoadPartsWithMaterials"/>), each with its own auto-read
+        /// baseColor/normal/roughness maps. This is the multi-texture-per-primitive path - a tree with a separate
+        /// bark and leaf material returns two textured parts, drawable each with its own texture, instead of the
+        /// single flattened mesh <see cref="LoadPropWithMaterial"/> returns. All parts share ONE normalization
+        /// transform computed over the whole prop's combined bounds (uniform scale to the declared
+        /// <see cref="AssetEntry.HeightMeters"/>, base dropped to y=0, X/Z re-centred), so the parts stay aligned
+        /// exactly as authored - never normalized independently. Validation (the 1.8 m human-scale guard) runs once
+        /// on the combined size. Upload the result with <see cref="Scene3D.LoadProp"/>. A single-material asset
+        /// yields one part whose geometry matches <see cref="LoadProp"/>.</summary>
+        public static IReadOnlyList<GltfMeshPart> LoadPropParts(AssetEntry entry, PropValidation? validation = null)
+            => NormalizeParts(LoadRawParts(entry), entry.HeightMeters, validation, entry.Id);
+
+        static IReadOnlyList<GltfMeshPart> LoadRawParts(AssetEntry entry)
+        {
+            try { return GltfLoader.LoadPartsWithMaterials(entry.File); }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>Normalize a set of raw material parts as ONE prop: scale + recentre every part by a single
+        /// transform derived from their combined bounds (so parts stay aligned), validated against
+        /// <paramref name="validation"/> like <see cref="Normalize(GltfMesh,float,PropValidation?)"/>. Public for a
+        /// consumer that already has parts in hand (e.g. from <see cref="GltfLoader.LoadPartsWithMaterials"/>).</summary>
+        public static IReadOnlyList<GltfMeshPart> NormalizeParts(IReadOnlyList<GltfMeshPart> parts, float heightMeters,
+                                                                 PropValidation? validation = null)
+            => NormalizeParts(parts, heightMeters, validation, null);
+
+        static IReadOnlyList<GltfMeshPart> NormalizeParts(IReadOnlyList<GltfMeshPart> parts, float heightMeters,
+                                                          PropValidation? validation, string? id)
+        {
+            if (parts == null) throw new ArgumentNullException(nameof(parts));
+            if (parts.Count == 0) throw new ArgumentException("a prop needs at least one material part.", nameof(parts));
+            PropValidation v = validation ?? PropValidation.Default;
+            string what = id == null ? "prop" : $"prop '{id}'";
+
+            if (heightMeters < v.MinHeightMeters || heightMeters > v.MaxHeightMeters)
+                throw new InvalidOperationException(
+                    $"{what} declares an implausible height {heightMeters} m (outside {v.MinHeightMeters}..{v.MaxHeightMeters} m).");
+
+            // Combined bounds over EVERY part, so a single shared transform keeps the parts aligned.
+            var mn = new Vector3(float.MaxValue);
+            var mx = new Vector3(float.MinValue);
+            foreach (GltfMeshPart part in parts)
+            {
+                ModelVertex[] verts = part.Mesh.Vertices;
+                for (int i = 0; i < verts.Length; i++) { mn = Vector3.Min(mn, verts[i].Position); mx = Vector3.Max(mx, verts[i].Position); }
+            }
+
+            float rawHeight = mx.Y - mn.Y;
+            if (rawHeight <= 1e-6f)
+                throw new InvalidOperationException($"{what} mesh has no measurable height (degenerate or non-Y-up).");
+            float scale = heightMeters / rawHeight;
+            if (scale < v.MinScale || scale > v.MaxScale)
+                throw new InvalidOperationException(
+                    $"{what} needs a {scale:G4} scale to reach {heightMeters} m from a {rawHeight:G4}-unit mesh " +
+                    $"(outside {v.MinScale:G4}..{v.MaxScale:G4}); the asset is likely in the wrong units (authored ~1u=1m).");
+
+            float cx = (mn.X + mx.X) * 0.5f;
+            float cz = (mn.Z + mx.Z) * 0.5f;
+            float baseY = mn.Y;
+
+            var outParts = new GltfMeshPart[parts.Count];
+            for (int p = 0; p < parts.Count; p++)
+                outParts[p] = new GltfMeshPart(Transform(parts[p].Mesh, cx, cz, baseY, scale), parts[p].Maps);
+            return outParts;
+        }
+
         /// <summary>Scale a raw mesh uniformly so its vertical (Y) extent equals <paramref name="heightMeters"/>,
         /// drop the base to y=0, and re-centre X/Z on the origin. Validates the declared height and the implied
         /// scale against <paramref name="validation"/> (default <see cref="PropValidation.Default"/>); throws
@@ -104,7 +175,15 @@ namespace KhaozEngine.Render3D
             float cx = (mn.X + mx.X) * 0.5f;
             float cz = (mn.Z + mx.Z) * 0.5f;
             float baseY = mn.Y;
+            return Transform(raw, cx, cz, baseY, scale);
+        }
 
+        // Apply the normalization transform (X/Z re-centred on cx/cz, base dropped to y=0, uniform scale) to a
+        // mesh's vertices, preserving indices. Uniform scale preserves normal + tangent directions, so those are
+        // left unchanged. Shared by the single-mesh and multi-part paths.
+        static GltfMesh Transform(GltfMesh mesh, float cx, float cz, float baseY, float scale)
+        {
+            ModelVertex[] verts = mesh.Vertices;
             var outVerts = new ModelVertex[verts.Length];
             for (int i = 0; i < verts.Length; i++)
             {
@@ -113,10 +192,9 @@ namespace KhaozEngine.Render3D
                     (src.Position.X - cx) * scale,
                     (src.Position.Y - baseY) * scale,
                     (src.Position.Z - cz) * scale);
-                // Uniform scale preserves normal + tangent directions; leave them unchanged.
                 outVerts[i] = src;
             }
-            return new GltfMesh(outVerts, raw.Indices32);
+            return new GltfMesh(outVerts, mesh.Indices32);
         }
     }
 }

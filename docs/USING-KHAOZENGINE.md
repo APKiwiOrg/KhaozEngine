@@ -2084,6 +2084,13 @@ foreach (AssetEntry e in manifest.Props)
 > texture-flatten where the kit uses quantization / webp. The committed `KhaozEngine.Showcase` kit was baked this
 > way (see its `assets/props/CREDITS.md`); multi-material props are flattened to per-material flat base colours
 > so the single-mesh loader colours them correctly.
+>
+> **Textures-ON bake (multi-texture-per-primitive).** To keep real textures instead of flattening, bake to plain
+> glTF but KEEP the per-material textures: `dequantize` (float POSITION/NORMAL, drops `KHR_mesh_quantization`),
+> re-encode webp textures to PNG (`gltf-transform` `webp`/`png` or an image step, drops `EXT_texture_webp`), and
+> do NOT flatten baseColor to a factor. The result is plain glTF 2.0 the loader accepts with its textures intact,
+> loaded through `PropLoader.LoadPropParts` (one textured `GltfMeshPart` per material) rather than the flat
+> single-mesh `LoadProp`. See "Textured props" below.
 
 **2. Scatter (`KhaozEngine.Terrain`, render-free leaf).** `PropScatter.Generate(field, config, area)` returns
 deterministic `PropPlacement[]` via the same coordinate hash as the terrain (`TerrainNoise.Hash2`): a jittered
@@ -2106,8 +2113,10 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 ```
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
-See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring. Mesh-LOD/impostors, textured prop materials, and animated props are
-later sub-projects. Terrain PBR splat textures are covered in "Textured terrain" below.
+See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring. Textured prop materials have
+landed (single-material via `LoadPropWithMaterial`, multi-material via `LoadPropParts` - see "Textured props"
+below); Mesh-LOD/impostors and animated props are later sub-projects. Terrain PBR splat textures are covered in
+"Textured terrain" below.
 
 ### GLB requirements for the flat kit path
 
@@ -2880,6 +2889,28 @@ MeshHandle handle = scene.LoadMesh(mesh, maps);
 If the glTF turns out to have no textures, `maps.IsEmpty` is true and the mesh renders with its flat
 per-material base colour, same as `LoadProp` - no throw, no special-casing needed at the call site.
 
+**Multi-texture-per-primitive props.** `LoadPropWithMaterial` flattens the whole prop into one mesh and reads a
+single material, so it can only texture a one-material prop. A prop whose parts are separate materials (a tree
+with a bark material + a leaf material, a signpost with a wood post + a painted sign) needs each part textured
+independently. `PropLoader.LoadPropParts(entry)` returns one `GltfMeshPart` (`{ GltfMesh Mesh, GltfMaterialMaps
+Maps }`) per source material - splitting the primitives by material via `GltfLoader.LoadPartsWithMaterials` -
+and normalizes every part by ONE shared transform over the whole prop's combined bounds, so the parts stay
+aligned exactly as authored. Upload the parts as one `Scene3D.PropHandle` and draw them as a unit:
+
+```csharp
+AssetEntry entry = manifest.Find("signpost");      // "textured": true, two materials in the glb
+Scene3D.PropHandle prop = scene.LoadProp(PropLoader.LoadPropParts(entry));
+scene.Draw(prop, worldA);                           // each part instances at this transform
+scene.Draw(prop, worldB);                           // a second draw batches as instances
+// ... scene.UnloadProp(prop) when done.
+```
+
+Each part is a normal textured mesh through the same instanced draw path, so distinct textures land on distinct
+sub-ranges and multiple draws of the same prop batch as GPU instances. A single-material asset yields one part
+(geometry matching `LoadProp`), so `LoadPropParts` is a safe superset of the single-texture path. The 3D World
+room in `KhaozEngine.Showcase` places a two-material signpost (wood post + checker sign) near spawn as a live
+demo.
+
 **Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
 `PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors
 `TerrainMaterialPresets.Procedural`). Primitive meshes (e.g. `MeshPrimitives.Box`) have UVs but no tangents, so
@@ -3119,6 +3150,7 @@ var options = new MapEditorOptions
     DocumentPath = Path.Combine(AppContext.BaseDirectory, "assets", "maps", "valley.map.json"),
     ManifestPaths = new List<string> { propsManifestPath, buildingsManifestPath },
     SpawnArchetypes = new List<string> { "wolf", "boar" },   // fills the spawn-tool dropdown
+    RequestQuit = () => app.Quit(),   // only needed when the editor is pushed as the app's only scene
 };
 sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, options));
 ```
@@ -3126,11 +3158,46 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
 Push it directly rather than wrapping it in your own `GameScene`. `GameScene.Manager` is set only by
 `SceneManager.Push` (an internal setter), so a hand-built wrapper that forwards lifecycle calls to a
 `new MapEditorScene()` it never pushes leaves that inner scene's `Manager` permanently null (its first
-`Manager!.Input` read throws). The scene pops itself on the Shift+Escape exit chord (Keys below), so no
-wrapper is needed to leave the editor either. If your game wants extra room-level behavior beyond the
-built-in keys, put a factory function next to your room list that builds the options and returns the
-ready-to-push scene, and handle the extra key in whatever outer code owns the `Push`/`Pop` call. See
-`KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example.
+`Manager!.Input` read throws). Shift+Escape opens a save-aware exit dialog rather than popping the scene
+directly (Keys and Exit dialog below), so no wrapper is needed to leave the editor either. If your game
+wants extra room-level behavior beyond the built-in keys, put a factory function next to your room list
+that builds the options and returns the ready-to-push scene, and handle the extra key in whatever outer
+code owns the `Push`/`Pop` call. See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example.
+
+**Quit seam.** Leaving the editor (through the exit dialog) goes through `MapEditorOptions.RequestQuit`:
+when the editor is the bottom scene on the `SceneManager` stack (nothing to pop back to) and a quit action
+is wired, that runs (typically a `GameApp3D` subclass calling its own protected `GameApp.Quit()`, since a
+scene never touches window APIs directly), otherwise the scene just pops, returning to whatever sits
+beneath it. Null is fine when the editor is always pushed above `MapEditorLandingScene` (below), since
+Close then pops back to the menu instead of needing to quit the app. A head that pushes the editor as its
+only scene should set `RequestQuit`, or Close leaves an empty stack (a blank screen).
+
+**Landing scene.** `MapEditorLandingScene` is a turn-key entry menu (title, New Map, Open Recent, Quit) a
+head pushes as the BOTTOM scene on its `SceneManager`, with `MapEditorLandingOptions` wiring `CreateMap`
+(name to new document path), `OpenEditor` (path to a built `MapEditorScene`), `Recent`
+(`IRecentFilesStore`), and its own `RequestQuit`:
+
+```csharp
+var landingOptions = new MapEditorLandingOptions
+{
+    Title = LocalizedText.Raw("My Game Editor"),
+    CreateMap = name => CreateMapDocument(name),
+    OpenEditor = path => BuildMapEditorScene(path),
+    Recent = new EditorRecentFiles("MyStudio", "MyGame"),
+    RequestQuit = () => app.Quit(),
+};
+sceneManager.Push(new MapEditorLandingScene().Init(whiteTexture, dpiFont, landingOptions));
+```
+
+Creating or opening a map pushes the head-built `MapEditorScene` on top and leaves the landing scene at the
+stack bottom, so the editor's exit dialog Close/Save-and-Close pops back to the menu instead of quitting the
+app. `EditorRecentFiles` is the canonical `IRecentFilesStore`, riding the engine's `GameStorage`/
+`ISettingsStorage` seam under its own `editor-recents.json` file (capped at 10 entries, most-recent-first,
+ordinal-deduplicated). A head that owns the `(publisher, appName)` overload should call `Flush()` itself
+during its own shutdown to drain the coalesced write. A `--map <path>` launch flag (or similar) can still
+push `MapEditorScene` directly ABOVE the landing scene instead of going through New Map/Open Recent, so
+Close still returns to the menu. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
+section for the full mechanics.
 
 **Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick a placement or spawn
 by ray - on a terrain-only hit, falls back to an overlay pick over features/exclusions/regions, feature beats
@@ -3270,21 +3337,50 @@ A hidden element is neither drawn nor pickable from the viewport, but stays sele
 (which reads straight off the document), so hiding something is always reversible. See the
 `KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
 
-**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection, R
-snaps the selected placement to the ground (undoable, a no-op when already grounded or nothing
-placement-shaped is selected), Ctrl+Up / Ctrl+Down reorder the selected terrain feature (see Feature apply
-order above, dragging a feature or exclusion row in the outline tree reorders it the same way), Escape
-cancels an in-flight gizmo/draw gesture and returns to `Select`. Every Ctrl chord above also accepts Cmd
-(Super) in its place (`InputState.IsCommandDown` treats the two as one modifier), so the same keys work
-unmodified on a Mac. All of the chords, plus the bare R hotkey, are suppressed while an inspector field, the
-kit-palette filter, or the spawn filter holds keyboard focus (`MapEditorScene.AnyEditorFocused`), so typing a
-name or a filter query never leaks into a document command. Escape carries extra nuance under that gate: a
-`NumberField` mid-edit cancels only its own typed value on Escape, and the suppressed tool-cancel fires on
-the following press once the field releases focus, while a focused text or choice row (or either filter) has
-no Escape handling of its own, so Escape is simply inert there until a pointer action moves focus elsewhere.
-Shift+Escape is never gated: it exits the editor (pops the scene) from inside a focused field just as it does
-anywhere else. Unsaved changes arm a status-strip warning on the first press and a second Shift+Escape
-discards and exits, while any save or document mutation disarms the warning.
+**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection
+(see Duplicate below), Delete removes the current selection, R snaps the selected placement to the ground
+(undoable, a no-op when already grounded or nothing placement-shaped is selected), Ctrl+Up / Ctrl+Down
+reorder the selected terrain feature (see Feature apply order above, dragging a feature or exclusion row in
+the outline tree reorders it the same way), bare 1..9 recalls a camera bookmark and Shift+1..9 stores one
+(see Camera bookmarks below), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Every
+Ctrl chord above also accepts Cmd (Super) in its place (`InputState.IsCommandDown` treats the two as one
+modifier), so the same keys work unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that
+one frame, since both carry a WASD letter). All of the chords, plus the bare R hotkey and the bookmark
+digits, are suppressed while an inspector field, the kit-palette filter, or the spawn filter holds keyboard
+focus (`MapEditorScene.AnyEditorFocused`), so typing a name or a filter query never leaks into a document
+command. Escape carries extra nuance under that gate: a `NumberField` mid-edit cancels only its own typed
+value on Escape, and the suppressed tool-cancel fires on the following press once the field releases focus,
+while a focused text or choice row (or either filter) has no Escape handling of its own, so Escape is simply
+inert there until a pointer action moves focus elsewhere. Shift+Escape is never gated: it opens the exit
+dialog (see Exit dialog below) from inside a focused field just as it does anywhere else, and while that
+dialog is open every other chord, tool pick, and camera step is suppressed until it is dismissed.
+
+**Exit dialog.** Shift+Escape opens a modal `PopupPanel`-based dialog (`MapEditorScene`'s own, using the
+Gui `PopupPanel.FooterButtons` seam) instead of popping the scene directly. A dirty document offers **Save
+and Close** (the default action, Enter) / **Save** / **Discard** / **Cancel**, and a clean document offers
+just **Close** / **Cancel** (Close is the Enter default). **Save** saves in place and dismisses the dialog,
+staying in the editor, only on success, leaving a failure's error in the status strip with the dialog still
+open and the work intact. **Save and Close** does the same save, then leaves the editor (through
+`MapEditorOptions.RequestQuit`, above) only if that save succeeded, so a save failure never quits. **Discard**
+/ **Close** leave without saving. Esc or Cancel dismisses with nothing changed. See the `KhaozEngine.MapEditor`
+README's "Exit dialog" section for the full mechanics.
+
+**Duplicate.** Ctrl+D (Cmd+D on a Mac) clones the current selection across all nine selectable kinds
+(placement, spawn, player spawn, feature, exclusion, region, biome band, scatter layer, companion layer)
+through `EditorToolController.DuplicateSelection()`: a deep clone with a fresh unique identity, added
+through that kind's own Add command as one undo step, then selected. A kind that carries a position offsets
+its clone by +2/+2 world units on X/Z. A named feature, exclusion, scatter layer, or companion layer gets a
+uniquified `<name>-copy` name, an unnamed one or a biome band clones as-is. Terrain (the document singleton)
+and a custom feature type the geometry helper cannot offset both no-op with a status-strip note instead of a
+mutation. `ke-mapedit`'s `element_duplicate` verb (below) reuses this exact clone logic, so a GUI-driven and
+an MCP-driven duplicate can never drift apart. See the `KhaozEngine.MapEditor` README's "Duplicate" section
+for the full mechanics.
+
+**Camera bookmarks.** Shift+1..9 stores the fly camera's pose (position, yaw, pitch) into that numbered
+slot, and a bare 1..9 recalls it. Session-only (nothing persists across a close/reopen this round), with the
+status strip confirming every store/recall or reporting an empty never-stored slot. Camera bookmarks are
+interactive viewport state, so they have no MCP equivalent: `ke-mapedit`'s render verbs are stateless,
+one-shot calls with nothing to store a camera pose between.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
 `MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A
@@ -3348,7 +3444,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (63 tools).**
+**Verb surface (64 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -3360,6 +3456,7 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
 | Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
+| Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
 
 A player spawn (`player_spawn_add(x, z, yaw?, enabled?, id?, tags?)`) is a stable-id, position-plus-yaw
@@ -3381,6 +3478,18 @@ matches every host, or when a populated `HostKinds` intersects the host layer's 
 silent no-op mismatch case). `companion_layer_add`/`companion_layer_edit` detect that same mismatch on the
 layer they just wrote and append ", host kinds match no kind in the host layer" to the result's detail when
 it applies, mirroring the GUI editor's read-only warning row.
+
+`element_duplicate(kind, id?, index?)` duplicates one document element, mirroring the GUI's own Ctrl+D
+duplicate (see Duplicate above) exactly: same `+2/+2` world-unit offset, same `<name>-copy` uniquifying for
+a named feature or exclusion, same generated-name scheme for a fresh placement/spawn/player-spawn/region id,
+reusing the GUI's own clone helpers so the two can never drift apart. `kind` is one of `placement`, `spawn`,
+`player_spawn`, `region`, `scatter_layer`, `companion_layer` (id-addressed via `id`) or `feature`,
+`exclusion`, `biome_band` (index-addressed via `index`), exactly one of the two per call. Terrain has no
+duplicate verb, since it is a document singleton. An unknown kind, a wrong-addressed or unresolved ref, or a
+feature type the clone cannot offset all throw a precise error rather than silently no-opping. The GUI's
+camera bookmarks (Shift+1..9/1..9 fly-camera pose store/recall) have no MCP verb and no equivalent here:
+they are interactive viewport state, and `ke-mapedit`'s render verbs are stateless one-shot calls with
+nothing to persist a camera pose between requests.
 
 `render_topdown` and `render_view` are the only two that need a GPU (`Render3DSnapshot.Capture`, the
 engine's one public headless render entry), and return a PNG `ImageContentBlock` directly, no files

@@ -44,10 +44,39 @@ namespace KhaozEngine.Gui
     }
 
     /// <summary>
+    /// One footer action for <see cref="PopupPanel.FooterButtons"/>: a localized button label, an optional click
+    /// callback, and an enabled flag. A disabled action draws dimmed and ignores both a pointer click and its
+    /// keyboard trigger (index 0 fires on Enter, <see cref="PopupPanel.CancelIndex"/> fires on Esc, both via
+    /// <see cref="PopupPanel.HandleKeys"/>).
+    /// </summary>
+    public sealed class PopupAction
+    {
+        /// <summary>The (lazily resolved) button caption.</summary>
+        public LocalizedText Label;
+
+        /// <summary>Invoked when the action fires. Null is a no-op action that still occupies its footer slot.</summary>
+        public Action? OnClick;
+
+        /// <summary>When false, the button draws disabled and ignores both a click and its keyboard trigger.</summary>
+        public bool Enabled;
+
+        /// <summary>Create a footer action from a localized label.</summary>
+        public PopupAction(LocalizedText label, Action? onClick = null, bool enabled = true)
+        {
+            Label = label;
+            OnClick = onClick;
+            Enabled = enabled;
+        }
+    }
+
+    /// <summary>
     /// A modal dialog: dimmed scrim, centered panel auto-sized to its rows (clamped between <see cref="MinHeight"/>
     /// and <see cref="MaxHeightFraction"/> of the viewport), a title bar, label/value content rows, and a footer
-    /// with a dismiss button (plus an optional primary action). <see cref="Update(Pointer)"/> blocks the pointer over the
-    /// panel so the screen beneath ignores clicks. Internal scroll lives in <see cref="ScrollablePanel"/>.
+    /// with a dismiss button (plus an optional primary action), or an N-button <see cref="FooterButtons"/> footer
+    /// laid out right-to-left when set (index 0 rightmost, the default action). <see cref="Update(Pointer)"/>
+    /// blocks the pointer over the panel so the screen beneath ignores clicks. Internal scroll lives in
+    /// <see cref="ScrollablePanel"/>. Keyboard defaults for <see cref="FooterButtons"/> (Enter/Esc) are handled by
+    /// <see cref="HandleKeys"/>, an additive entry point the host calls alongside the pointer-only overloads.
     /// </summary>
     public sealed class PopupPanel
     {
@@ -111,6 +140,34 @@ namespace KhaozEngine.Gui
         }
 
         public bool WasPrimaryActionClicked { get; private set; }
+
+        readonly List<PopupAction> _footerButtons = new();
+
+        /// <summary>
+        /// Footer actions, laid out right-to-left (index 0 rightmost, the default action <see cref="HandleKeys"/>
+        /// fires on Enter). Empty by default, which keeps the classic dismiss/primary footer
+        /// (<see cref="DismissContent"/>/<see cref="PrimaryActionContent"/>) rendering and hit-testing exactly as
+        /// before. A non-empty list REPLACES that footer entirely. Set via <see cref="SetFooterButtons"/>.
+        /// </summary>
+        public IReadOnlyList<PopupAction> FooterButtons => _footerButtons;
+
+        /// <summary>Replace the footer action list. Call before <see cref="Update(Pointer)"/>/<see cref="Draw"/>.</summary>
+        public void SetFooterButtons(IReadOnlyList<PopupAction> actions)
+        {
+            _footerButtons.Clear();
+            _footerButtons.AddRange(actions);
+        }
+
+        /// <summary>
+        /// Index into <see cref="FooterButtons"/> that <see cref="HandleKeys"/> fires on Esc. Default -1 resolves
+        /// to the last footer action, the conventional cancel slot (the leftmost button in the right-to-left
+        /// layout). Ignored when <see cref="FooterButtons"/> is empty.
+        /// </summary>
+        public int CancelIndex = -1;
+
+        int ResolvedCancelIndex => CancelIndex >= 0 && CancelIndex < _footerButtons.Count
+            ? CancelIndex
+            : _footerButtons.Count - 1;
 
         public Vector4 ScrimColor = new(0f, 0f, 0f, 1f);
         public Vector4 PanelColor = new(0.063f, 0.071f, 0.11f, 0.96f);
@@ -204,13 +261,21 @@ namespace KhaozEngine.Gui
             return h;
         }
 
-        /// <summary>The centered, auto-sized panel rectangle.</summary>
+        /// <summary>
+        /// The centered, auto-sized panel rectangle. Width is the greater of <see cref="WidthFraction"/> of the
+        /// viewport and the room <see cref="FooterButtons"/> need at their fixed width (clamped to the viewport),
+        /// so a wide footer widens the panel instead of shrinking its buttons.
+        /// </summary>
         public Rect PanelRect()
         {
             if (Viewport == Vector2.Zero)
                 throw new InvalidOperationException(
                     "PopupPanel.Viewport is unset (Vector2.Zero); assign the design viewport size before layout/draw.");
-            float panelW = Viewport.X * WidthFraction;
+            int footerCount = _footerButtons.Count;
+            float footerMinWidth = footerCount > 0
+                ? MathF.Min(Viewport.X, footerCount * BtnW + (footerCount - 1) * BtnGap + ContentPadding * 2f)
+                : 0f;
+            float panelW = MathF.Max(Viewport.X * WidthFraction, footerMinWidth);
             float maxH = Viewport.Y * MaxHeightFraction;
             float contentW = MathF.Max(1f, panelW - ContentPadding * 2f);
             float totalH = Math.Clamp(TitleBarHeight + ContentHeight(contentW) + FooterHeight + ContentPadding * 2f, MinHeight, maxH);
@@ -255,14 +320,41 @@ namespace KhaozEngine.Gui
             return new Rect(d.Right + BtnGap, d.Y, d.Width, BtnH);
         }
 
+        // Fixed BtnW per footer button, generalizing TwoButtonWidth to N: only shrinks below BtnW when the panel
+        // (already possibly widened by PanelRect to fit them) is still narrower than N buttons need.
+        float FooterButtonWidth(Rect p, int n) =>
+            n <= 1 ? BtnW : MathF.Min(BtnW, (p.Width - ContentPadding * 2f - BtnGap * (n - 1)) / n);
+
+        /// <summary>
+        /// Footer button rectangles when <see cref="FooterButtons"/> is non-empty, right-to-left: index 0 is the
+        /// rightmost slot (the default action), the last index is the leftmost. Empty when <see cref="FooterButtons"/>
+        /// is empty. The group is centered in the footer, matching the classic dismiss/primary layout.
+        /// </summary>
+        public IReadOnlyList<Rect> FooterButtonBounds()
+        {
+            int n = _footerButtons.Count;
+            if (n == 0) return Array.Empty<Rect>();
+            Rect p = PanelRect();
+            float w = FooterButtonWidth(p, n);
+            float total = w * n + BtnGap * (n - 1);
+            float by = p.Bottom - FooterHeight + (FooterHeight - BtnH) * 0.5f;
+            float leftX = p.X + (p.Width - total) * 0.5f;
+            var bounds = new Rect[n];
+            for (int i = 0; i < n; i++)
+                bounds[i] = new Rect(leftX + (n - 1 - i) * (w + BtnGap), by, w, BtnH);
+            return bounds;
+        }
+
         /// <summary>Reserve the panel region, hit-test the footer buttons. Returns true if dismiss was tapped.</summary>
         public bool Update(Pointer pointer) => Update(pointer, 0f);
 
         /// <summary>
         /// Reserve the panel region, scroll the content on wheel (<paramref name="wheelDelta"/>, e.g.
         /// <c>InputState.ScrollDelta</c>) and drag-to-scroll, and hit-test the footer buttons. Returns true if dismiss
-        /// was tapped. Scrolling only bites when the content overflows the content area; otherwise this is the same as
-        /// the wheel-less overload.
+        /// was tapped. Scrolling only bites when the content overflows the content area, otherwise this is the same as
+        /// the wheel-less overload. When <see cref="FooterButtons"/> is non-empty this hit-tests those buttons
+        /// instead of the classic dismiss/primary pair (firing their <see cref="PopupAction.OnClick"/> callbacks)
+        /// and always returns false, since there is no single dismiss button in that layout.
         /// </summary>
         public bool Update(Pointer pointer, float wheelDelta)
         {
@@ -282,16 +374,62 @@ namespace KhaozEngine.Gui
                 ClampScroll(content);
             }
 
+            if (_footerButtons.Count > 0)
+            {
+                UpdateFooterButtons(pointer);
+                return false;
+            }
+
             if (ShowPrimaryAction && PrimaryActionEnabled && pointer.IsTapIn(PrimaryBounds()))
                 WasPrimaryActionClicked = true;
 
             return pointer.IsTapIn(DismissBounds());
         }
 
+        // Loops to bounds.Count (a snapshot taken before any callback can run), not the live _footerButtons.Count,
+        // and breaks the moment a callback fires: only one tap is possible per gesture anyway, and breaking makes
+        // it safe for a button's OnClick to call SetFooterButtons (even with a LARGER list) from inside the loop.
+        void UpdateFooterButtons(Pointer pointer)
+        {
+            IReadOnlyList<Rect> bounds = FooterButtonBounds();
+            for (int i = 0; i < bounds.Count; i++)
+            {
+                PopupAction action = _footerButtons[i];
+                if (action.Enabled && pointer.IsTapIn(bounds[i]))
+                {
+                    action.OnClick?.Invoke();
+                    break;
+                }
+            }
+        }
+
         void ClampScroll(Rect content)
         {
             float maxScroll = MathF.Max(0f, ContentHeight(content.Width) - content.Height);
             _scrollOffset = Math.Clamp(_scrollOffset, 0f, maxScroll);
+        }
+
+        /// <summary>
+        /// Route keyboard input for <see cref="FooterButtons"/>: Esc fires the <see cref="CancelIndex"/> action,
+        /// Enter fires index 0 (the default action). A disabled action ignores its key exactly like it ignores a
+        /// click. No-op when <see cref="FooterButtons"/> is empty, so a classic dismiss/primary popup never needs
+        /// to call this. Additive: the pointer-only <see cref="Update(Pointer)"/> overloads work whether or not the
+        /// host calls this.
+        /// </summary>
+        public void HandleKeys(InputState input)
+        {
+            if (_footerButtons.Count == 0) return;
+
+            if (input.WasPressed(Key.Escape))
+            {
+                PopupAction action = _footerButtons[ResolvedCancelIndex];
+                if (action.Enabled) action.OnClick?.Invoke();
+            }
+            else if (input.WasPressed(Key.Enter))
+            {
+                PopupAction action = _footerButtons[0];
+                if (action.Enabled) action.OnClick?.Invoke();
+            }
         }
 
         /// <summary>Draw the full popup. <paramref name="white"/> is a 1x1 white texture.</summary>
@@ -319,9 +457,29 @@ namespace KhaozEngine.Gui
                 batch.ClearScissor();
             }
 
-            DrawButton(batch, white, DismissBounds(), DismissContent.Resolve(), DismissColor, true, pointer);
-            if (ShowPrimaryAction)
-                DrawButton(batch, white, PrimaryBounds(), PrimaryActionContent.Resolve(), PrimaryColor, PrimaryActionEnabled, pointer);
+            if (_footerButtons.Count > 0)
+            {
+                DrawFooterButtons(batch, white, pointer);
+            }
+            else
+            {
+                DrawButton(batch, white, DismissBounds(), DismissContent.Resolve(), DismissColor, true, pointer);
+                if (ShowPrimaryAction)
+                    DrawButton(batch, white, PrimaryBounds(), PrimaryActionContent.Resolve(), PrimaryColor, PrimaryActionEnabled, pointer);
+            }
+        }
+
+        void DrawFooterButtons(SpriteBatch batch, Texture2D white, Pointer pointer)
+        {
+            IReadOnlyList<Rect> bounds = FooterButtonBounds();
+            for (int i = 0; i < _footerButtons.Count; i++)
+            {
+                PopupAction action = _footerButtons[i];
+                // Index 0 (rightmost, the default action Enter triggers) uses the primary green, the rest use the
+                // dismiss blue, matching the classic footer's colour semantics.
+                Vector4 color = i == 0 ? PrimaryColor : DismissColor;
+                DrawButton(batch, white, bounds[i], action.Label.Resolve(), color, action.Enabled, pointer);
+            }
         }
 
         void DrawRows(SpriteBatch batch, Texture2D white, Rect c)

@@ -7,7 +7,11 @@ OAuth2 authorization-code + PKCE flow, using the system browser and a local loop
 
 - **DiscordClientProvider** - `IIdentityProvider` implementation that drives the Discord OAuth2
   auth-code flow against Discord's fixed authorize/token endpoints (no discovery document, unlike
-  generic OIDC). `CredentialToken` is the Discord `access_token`.
+  generic OIDC). `CredentialToken` is the Discord `access_token`. `RefreshAsync` follows the refresh
+  rejection contract: a 400 or 401 on the refresh grant (a revoked or expired chain, or an empty stored
+  refresh token) returns null so the caller falls back to interactive sign-in, while any other non-success
+  status (a 5xx, say) throws `IdentitySignInException` as a transient error to retry later. The interactive
+  sign-in code exchange is unchanged: a 400 there is still a hard `IdentitySignInException`.
 - **DiscordTokenValidator** - `IIdentityValidator` implementation that verifies a Discord access
   token by calling `GET https://discord.com/api/users/@me` and mapping `id`/`username`/`email` to a
   `VerifiedIdentity`.

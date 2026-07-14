@@ -1,5 +1,4 @@
 using System.Text.Json;
-using KhaozEngine.Serialization;
 
 namespace KhaozEngine.NetWorld;
 
@@ -20,9 +19,9 @@ public sealed class WorldMetaRecord
     public long NextNetId { get; set; }
 
     /// <summary>Serializes to UTF-8 JSON bytes for the world store.</summary>
-    public byte[] Encode() => JsonSerializer.SerializeToUtf8Bytes(this, JsonDefaults.IndentedWrite);
+    public byte[] Encode() => JsonSerializer.SerializeToUtf8Bytes(this, NetWorldJsonContext.Default.WorldMetaRecord);
 
     /// <summary>Deserializes from world-store bytes; tolerant of unknown / missing fields.</summary>
     public static WorldMetaRecord Decode(byte[] data) =>
-        JsonSerializer.Deserialize<WorldMetaRecord>(data, JsonDefaults.TolerantRead) ?? new WorldMetaRecord();
+        JsonSerializer.Deserialize(data, NetWorldJsonContext.Default.WorldMetaRecord) ?? new WorldMetaRecord();
 }

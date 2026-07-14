@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using KhaozEngine.Serialization;
 using KhaozEngine.WorldStore;
 
 namespace KhaozEngine.NetWorld;
@@ -79,7 +78,9 @@ public sealed class WorldStoreBanStore : IBanStore
     }
 
     // A settable DTO (not the record struct) keeps System.Text.Json round-tripping simple and forward-tolerant.
-    private sealed class BanDto
+    // Internal (not private) so the source-generated NetWorldJsonContext can reference it, keeping ban encode/decode
+    // reflection-free / NativeAOT-safe.
+    internal sealed class BanDto
     {
         public string AccountId { get; set; } = string.Empty;
         public string Reason { get; set; } = string.Empty;
@@ -87,11 +88,11 @@ public sealed class WorldStoreBanStore : IBanStore
     }
 
     private static byte[] Encode(in BanRecord r) =>
-        JsonSerializer.SerializeToUtf8Bytes(new BanDto { AccountId = r.AccountId, Reason = r.Reason, Until = r.Until }, JsonDefaults.IndentedWrite);
+        JsonSerializer.SerializeToUtf8Bytes(new BanDto { AccountId = r.AccountId, Reason = r.Reason, Until = r.Until }, NetWorldJsonContext.Default.BanDto);
 
     private static BanRecord Decode(byte[] data)
     {
-        BanDto? d = JsonSerializer.Deserialize<BanDto>(data, JsonDefaults.TolerantRead);
+        BanDto? d = JsonSerializer.Deserialize(data, NetWorldJsonContext.Default.BanDto);
         return d is null ? default : new BanRecord(d.AccountId, d.Reason, d.Until);
     }
 }

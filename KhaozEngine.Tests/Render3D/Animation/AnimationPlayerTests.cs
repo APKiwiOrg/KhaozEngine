@@ -108,6 +108,50 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(a.BonePalette()[0], b.BonePalette()[0]);
         }
 
+        // A ramp clip: bone-0 translation X == the playhead time, so the composed pose reads back how far it advanced
+        // (and, once clamped, that it holds).
+        static AnimationClip RampClip(string name, float duration = 1f)
+        {
+            var jt = new JointTrack(targetNode: 0)
+            {
+                Translation = new Vector3Track(new[] { 0f, duration }, new[] { Vector3.Zero, new Vector3(duration, 0, 0) }, InterpolationMode.Linear),
+            };
+            return new AnimationClip(name, duration, new List<JointTrack> { jt });
+        }
+
+        [Fact]
+        public void PlayOnce_ClampsPlayheadAtDuration_AndHoldsFinalFrame()
+        {
+            // PlayOnce plays a clip once: the playhead advances then CLAMPS at Duration (no wrap), holding the final
+            // frame. A looping Play would wrap 1.2 -> 0.2 and the pose would read back near 0; the clamp holds it at
+            // the end value.
+            var p = new AnimationPlayer(OneBone());
+            p.PlayOnce(RampClip("downed", duration: 1f), crossfade: 0f);
+            p.Update(0.6f);
+            Assert.Equal(0.6f, p.Time, 4);
+            p.Update(0.6f);                       // 1.2 would WRAP to 0.2 if looping; clamps to 1.0
+            Assert.Equal(1f, p.Time, 4);
+            Assert.Equal(1f, Bone0Translation(p).X, 3);   // final frame held
+            p.Update(5f);                         // stays clamped no matter how long
+            Assert.Equal(1f, p.Time, 4);
+            Assert.Equal(1f, Bone0Translation(p).X, 3);
+        }
+
+        [Fact]
+        public void Play_AfterPlayOnce_RestoresLooping()
+        {
+            // Switching back to a looping Play clip must restore wrap behaviour (the one-shot clamp is per-clip, not
+            // sticky on the player).
+            var p = new AnimationPlayer(OneBone());
+            p.PlayOnce(RampClip("downed", duration: 1f), crossfade: 0f);
+            p.Update(1.5f);
+            Assert.Equal(1f, p.Time, 4);          // clamped
+            p.Play(RampClip("idle", duration: 1f), crossfade: 0f);
+            p.Update(0.6f);
+            p.Update(0.6f);                       // 1.2 -> wraps to 0.2
+            Assert.True(p.Time >= 0f && p.Time < 1f, $"looping should wrap, got {p.Time}");
+        }
+
         [Fact]
         public void Update_SpeedMultiplier_ScalesPlayhead_ButNotCrossfadeTimer()
         {

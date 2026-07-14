@@ -15,6 +15,7 @@ namespace KhaozEngine.Render3D
 
         AnimationClip? _to;
         float _toTime;
+        bool _toLoops = true;   // false == the current clip clamps at its Duration (one-shot hold), see Play/PlayOnce
         AnimationClip? _from;
         float _fromTime;
         float _blend;        // 0..1 progress of the from->to crossfade (1 == done)
@@ -38,14 +39,26 @@ namespace KhaozEngine.Render3D
         /// playhead is not reset). Otherwise the current pose becomes the crossfade source and the new clip starts
         /// from time 0, blending in over <paramref name="crossfade"/> seconds (an immediate snap when there is no
         /// current clip or <paramref name="crossfade"/> &lt;= 0).</summary>
-        public void Play(AnimationClip clip, float crossfade = 0.15f)
+        public void Play(AnimationClip clip, float crossfade = 0.15f) => SwitchTo(clip, crossfade, loop: true);
+
+        /// <summary>Like <see cref="Play(AnimationClip, float)"/> but plays <paramref name="clip"/> ONCE: the playhead
+        /// CLAMPS at the clip's <see cref="AnimationClip.Duration"/> instead of looping, so once it reaches the end it
+        /// HOLDS the final frame (the tracks clamp to their end keys). The clean primitive for a one-shot pose that must
+        /// settle and stay - a death / knockdown pose held on its last frame. Switching to any clip via
+        /// <see cref="Play(AnimationClip, float)"/> restores looping. If it is already the current clip the playhead is
+        /// kept (no restart) but the clamp mode is (re)asserted, so re-asserting a hold on the clip already playing does
+        /// not rewind it.</summary>
+        public void PlayOnce(AnimationClip clip, float crossfade = 0.15f) => SwitchTo(clip, crossfade, loop: false);
+
+        void SwitchTo(AnimationClip clip, float crossfade, bool loop)
         {
             if (clip is null) throw new ArgumentNullException(nameof(clip));
-            if (ReferenceEquals(clip, _to)) return;   // already playing this clip: keep the playhead, no blend
+            if (ReferenceEquals(clip, _to)) { _toLoops = loop; return; }   // already playing: keep the playhead, no blend
             _from = _to;
             _fromTime = _toTime;
             _to = clip;
             _toTime = 0f;
+            _toLoops = loop;
             bool canBlend = _from != null && crossfade > 0f;
             _blendDur = canBlend ? crossfade : 0f;
             _blend = canBlend ? 0f : 1f;
@@ -68,7 +81,11 @@ namespace KhaozEngine.Render3D
         {
             if (_to is null) return;
             float clipDt = dt * speedMultiplier;   // clip playheads advance at the scaled rate...
-            _toTime = AnimationSampler.Wrap(_toTime + clipDt, _to.Duration);
+            // A looping clip wraps within its duration; a one-shot (PlayOnce) clamps at the end and HOLDS the final
+            // frame there. The FROM clip during a crossfade always wraps (it is fading out, never a held pose).
+            _toTime = _toLoops
+                ? AnimationSampler.Wrap(_toTime + clipDt, _to.Duration)
+                : MathF.Min(_toTime + clipDt, _to.Duration);
             if (_from != null)
             {
                 _fromTime = AnimationSampler.Wrap(_fromTime + clipDt, _from.Duration);

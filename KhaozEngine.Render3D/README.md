@@ -224,7 +224,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
   - `AnimationSampler` / `AnimationPlayer` - one-shot pose sampling and a stateful single-clip player with a
-    crossfade (`Play(clip, crossfade)` -> `Update(dt)` -> `GetBonePalette(buffer)`). `AnimationSampler.SampleInto`
+    crossfade (`Play(clip, crossfade)` -> `Update(dt)` -> `GetBonePalette(buffer)`). `Play` loops the clip; `PlayOnce`
+    plays it ONCE and CLAMPS the playhead at the clip duration, holding the final frame (a death / knockdown pose that
+    must settle and stay) - switching back via `Play` restores looping. `AnimationSampler.SampleInto`
     is the allocation-free sample into a reused per-node pose buffer; `AnimationPlayer.GetLocalPoses(buffer)` writes
     the composited LOCAL poses (the crossfade result before hierarchy composition) so a `LayeredAnimator` can take
     the locomotion crossfade as its base layer.

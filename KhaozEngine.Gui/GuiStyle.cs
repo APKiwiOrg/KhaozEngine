@@ -56,11 +56,19 @@ namespace KhaozEngine.Gui
         public float GlowSize;
 
         /// <summary>
-        /// True when every modern knob is at its off default, so <see cref="GuiDraw"/> takes the plain
-        /// single-quad path that renders byte-identically to pre-7.7.0.
+        /// Optional sprite skin (nine-slice frame). Default <c>null</c> = flat GuiDraw primitives (today's rendering,
+        /// byte-for-byte). When set, <see cref="GuiDraw.FillStyled"/> paints the skin instead of the flat fill /
+        /// procedural border, with the resolved state colour multiplied over the texture as a tint (the shadow still
+        /// draws). Applies family-wide since every widget fills through <see cref="GuiDraw.FillStyled"/>.
+        /// </summary>
+        public GuiSkin? Skin;
+
+        /// <summary>
+        /// True when every modern knob is at its off default AND no <see cref="Skin"/> is set, so <see cref="GuiDraw"/>
+        /// takes the plain single-quad path that renders byte-identically to pre-7.7.0.
         /// </summary>
         public bool IsFlat =>
-            CornerRadius == 0f && ShadowSize == 0f && FillMode == GuiFill.Solid && GlowSize == 0f;
+            CornerRadius == 0f && ShadowSize == 0f && FillMode == GuiFill.Solid && GlowSize == 0f && Skin == null;
 
         /// <summary>
         /// The crisp default button palette, derived from <see cref="GuiTheme.Default"/>: an accent-tinted fill,

@@ -196,7 +196,7 @@ namespace KhaozEngine.Game
 
         /// <summary>Advance the downed pose one frame - call each frame while downed (the bridge does). With a Downed
         /// clip it advances the clamped (non-looping) playhead, so the clip plays through once and then HOLDS its final
-        /// frame indefinitely; with no Downed clip the frozen fallback pose is left untouched. Actions do NOT composite
+        /// frame indefinitely. With no Downed clip the frozen fallback pose is left untouched. Actions do NOT composite
         /// while downed. <see cref="State"/> stays <see cref="LocomotionState.Downed"/>.</summary>
         public void UpdateDowned(float dt)
         {
@@ -209,7 +209,7 @@ namespace KhaozEngine.Game
         /// <summary>Leave the downed pose and return to normal locomotion - call ONCE on the downed falling edge (the
         /// bridge does, on respawn / revive). SNAPS the player back to the neutral fallback (Idle) with no crossfade so
         /// no death-pose residual lingers into the respawned character (a respawn usually teleports, so a get-up blend
-        /// is not wanted); the next <see cref="Update(float, bool, float, bool, float)"/> resumes normal locomotion
+        /// is not wanted). The next <see cref="Update(float, bool, float, bool, float)"/> resumes normal locomotion
         /// selection from there.</summary>
         public void ExitDowned()
         {

@@ -81,7 +81,7 @@ namespace KhaozEngine.Render3D
         {
             if (_to is null) return;
             float clipDt = dt * speedMultiplier;   // clip playheads advance at the scaled rate...
-            // A looping clip wraps within its duration; a one-shot (PlayOnce) clamps at the end and HOLDS the final
+            // A looping clip wraps within its duration. A one-shot (PlayOnce) clamps at the end and HOLDS the final
             // frame there. The FROM clip during a crossfade always wraps (it is fading out, never a held pose).
             _toTime = _toLoops
                 ? AnimationSampler.Wrap(_toTime + clipDt, _to.Duration)

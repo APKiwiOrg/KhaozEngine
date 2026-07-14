@@ -10,7 +10,7 @@ namespace KhaozEngine.Game
     /// state: <see cref="LocomotionStateMachine"/> never returns it (it is not picked by any movement signal).
     /// It is only ever selected by the downed pose override in <see cref="ReplicatedCharacterAnimators"/> (via
     /// the <c>Downed</c> flag on <see cref="CharacterSample"/>), so a consumer that bakes a clip named <c>Downed</c> gets it played once
-    /// and held on its final frame; a rig without it collapses procedurally instead.</summary>
+    /// and held on its final frame. A rig without it collapses procedurally instead.</summary>
     public enum LocomotionState { Idle, Walk, Run, Jump, Fall, SwimIdle, Swim, Downed }
 
     /// <summary>Speed thresholds (m/s) that split idle/walk/run and, while swimming, tread/forward-swim.

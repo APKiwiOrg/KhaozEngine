@@ -245,7 +245,7 @@ namespace KhaozEngine.Game
 
         /// <summary>Map clips keyed by name to the locomotion states by the standard convention (the state enum names:
         /// <c>Idle</c>, <c>Walk</c>, <c>Run</c>, <c>Jump</c>, <c>Fall</c>, <c>SwimIdle</c>, <c>Swim</c>, plus the
-        /// pose-override <c>Downed</c> death clip). Only the present names are mapped; a rig missing a state degrades
+        /// pose-override <c>Downed</c> death clip). Only the present names are mapped. A rig missing a state degrades
         /// gracefully at play time (a missing locomotion state falls back to Idle in <see cref="AnimatedCharacter"/>, a
         /// missing <c>Downed</c> clip makes the downed pose collapse procedurally instead). Exposed so a game can reuse
         /// the convention when it builds an <see cref="AnimatedCharacter"/> itself.</summary>

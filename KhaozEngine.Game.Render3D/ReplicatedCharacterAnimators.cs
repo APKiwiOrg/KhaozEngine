@@ -210,7 +210,7 @@ namespace KhaozEngine.Game
         /// plays the entity's baked <see cref="LocomotionState.Downed"/> clip once holding its final frame, or - with no
         /// such clip - collapses the body procedurally to prone over
         /// <see cref="CharacterAnimatorTuning.DownedCollapseSeconds"/> and settles it at ground level. Clearing it
-        /// (respawn) returns the entity to normal locomotion; a respawn usually teleports, so pair the clear with
+        /// (respawn) returns the entity to normal locomotion. A respawn usually teleports, so pair the clear with
         /// <see cref="ReplicatedCharacterAnimators.SnapRenderHeight"/> for a crisp cut (no glide from the corpse
         /// position, no prone residual). Defaults false on every constructor, so a sample never marked downed renders
         /// exactly as before. Set it orthogonally on ANY sample shape via <see cref="WithDowned"/>.</summary>
@@ -425,7 +425,7 @@ namespace KhaozEngine.Game
         /// instead, on its own timing). Over this duration the bridge rotates the drawn model about its facing-lateral
         /// axis through a smooth (smoothstep) ramp from 0 to 90 degrees so it topples forward in its facing direction
         /// and lies flat, pivoting at the feet so the whole body settles at ground level (not floating at capsule
-        /// centre); it then HOLDS prone until the downed flag clears. Default 0.5 s (a quick, readable knockdown).
+        /// centre). It then HOLDS prone until the downed flag clears. Default 0.5 s (a quick, readable knockdown).
         /// &lt;= 0 snaps to prone on the first downed frame (no ramp). Unused by an entity never marked
         /// <see cref="CharacterSample.Downed"/>, so it never affects existing rendering.</summary>
         public float DownedCollapseSeconds;
@@ -686,7 +686,7 @@ namespace KhaozEngine.Game
                 if (e.Override == PoseOverride.Downed)
                 {
                     // DOWNED: locomotion (idle/walk/run, air, swim) AND stacked action one-shots are suppressed for this
-                    // entity - the locomotion Update is not called; UpdateDowned holds the death-clip final frame (clip
+                    // entity. The locomotion Update is not called. UpdateDowned holds the death-clip final frame (clip
                     // rig) or freezes the neutral pose (procedural rig). The yaw is FROZEN at whatever the entity faced
                     // when it went down (a corpse does not turn), so no facing derivation runs here.
                     e.OverrideElapsed += dt > 0f ? dt : 0f;
@@ -710,7 +710,7 @@ namespace KhaozEngine.Game
                     if (e.Character.HasDownedClip)
                     {
                         // The Downed clip lays the body down in SKELETON space, so the world stays upright (scale +
-                        // frozen yaw + feet at ground); UpdateDowned holds the clip's final frame.
+                        // frozen yaw + feet at ground). UpdateDowned holds the clip's final frame.
                         downedWorld = Matrix4x4.CreateScale(_tuning.Scale)
                                       * Matrix4x4.CreateRotationY(e.Yaw)
                                       * Matrix4x4.CreateTranslation(s.Position.X, feetY, s.Position.Z);
@@ -720,7 +720,7 @@ namespace KhaozEngine.Game
                         // No clip: PROCEDURAL collapse. Tip the (frozen neutral) body from upright to prone over
                         // DownedCollapseSeconds via a smoothstep ramp. The tip rotates about the model's LOCAL lateral
                         // axis (RotationX BEFORE the yaw in the multiply chain), so the body topples FORWARD in its
-                        // facing direction; the yaw then carries that lie direction to the world facing. Pivoting at the
+                        // facing direction. The yaw then carries that lie direction to the world facing. Pivoting at the
                         // feet origin (the sample is feet-anchored) swings the whole body down onto the ground plane, so
                         // it lies flat at ground level rather than floating at capsule centre. At full tip (pi/2) the
                         // model's up axis is horizontal - a body on the floor, not a leaning statue.

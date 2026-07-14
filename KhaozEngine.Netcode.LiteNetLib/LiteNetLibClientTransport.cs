@@ -53,8 +53,8 @@ public sealed class LiteNetLibClientTransport : INetTransport
         listener.PeerDisconnectedEvent += (peer, info) =>
         {
             peersById.Remove(peer.Id);
-            // A rejecting server rides the framed Reject on the disconnect itself (see LiteNetLibServerTransport);
-            // surface it as the Disconnected payload so NetClient can read the terminal reason even when the
+            // A rejecting server rides the framed Reject on the disconnect itself (see LiteNetLibServerTransport).
+            // Surface it as the Disconnected payload so NetClient can read the terminal reason even when the
             // separately-sent reliable Reject was lost to the teardown.
             byte[]? reason = info.AdditionalData.AvailableBytes > 0 ? info.AdditionalData.GetRemainingBytes() : null;
             inbox.Enqueue(NetEvent.Disconnected(ToId(peer), reason));

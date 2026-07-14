@@ -6,7 +6,7 @@ namespace KhaozEngine.Netcode;
 /// A single transport event drained via <see cref="INetTransport.TryDequeueEvent"/>. For
 /// <see cref="NetEventType.Data"/> the payload is in <see cref="Data"/> and the channel it arrived on is
 /// <see cref="Reliability"/>. A <see cref="NetEventType.Disconnected"/> may carry an optional reason payload in
-/// <see cref="Data"/> (a rejecting server rides the framed Reject on the disconnect itself); a Connected event
+/// <see cref="Data"/> (a rejecting server rides the framed Reject on the disconnect itself). A Connected event
 /// and an ordinary drop carry an empty payload.
 /// </summary>
 /// <remarks>
@@ -30,7 +30,7 @@ public readonly struct NetEvent
     public NetConnectionId Connection { get; }
 
     /// <summary>The payload for a <see cref="NetEventType.Data"/> event, or the optional reason a
-    /// <see cref="NetEventType.Disconnected"/> event carries; empty otherwise.</summary>
+    /// <see cref="NetEventType.Disconnected"/> event carries. Empty otherwise.</summary>
     public byte[] Data { get; }
 
     /// <summary>The channel a <see cref="NetEventType.Data"/> event arrived on.</summary>

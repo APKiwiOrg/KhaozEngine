@@ -29,13 +29,13 @@ silently lost, so the client mistook a terminal rejection for a transient outage
   `INetTransport` gains `Disconnect(NetConnectionId, ReadOnlySpan<byte> reason)` (a default interface
   method that drops the reason and does a plain disconnect, so the loopback and any other transport need
   no change). `NetServer` carries the framed `Reject` on the disconnect as well as sending it reliably.
-  The LiteNetLib server binding rides the reason on `NetPeer.Disconnect(byte[])`; the client binding
+  The LiteNetLib server binding rides the reason on `NetPeer.Disconnect(byte[])`. The client binding
   reads it back off `DisconnectInfo.AdditionalData` and surfaces it on the `NetEvent` `Disconnected`
   payload. `NetClient` turns a disconnect that carries a `Reject` frame into a `Rejected` session event,
   so `WorldClient` classifies it terminally (no auto-reconnect for a token/version reject) exactly as it
   already did for a synchronously delivered Reject.
-- **No wire/API break for consumers.** `NetEvent.Disconnected` gains an optional reason payload;
-  the new `INetTransport` overload has a default implementation. Existing behaviour over the loopback is
+- **No wire/API break for consumers.** `NetEvent.Disconnected` gains an optional reason payload.
+  The new `INetTransport` overload has a default implementation. Existing behaviour over the loopback is
   byte-identical (the reliable Reject still lands first). No consumer code change is required: a game on
   the `WorldClient` auto-reconnect path now correctly reaches its terminal `DisconnectReason`
   (e.g. `IncompatibleVersion`, so a "client out of date, restart to update" screen) instead of an

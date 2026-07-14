@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.NetWorld;
 // Reconnect over the REAL LiteNetLib UDP transport, modelling a server deploy: a client connects, the server
 // process is killed, a fresh server rebinds the SAME port, and the client's built-in auto-reconnect must land
 // back on it. The loopback reconnect tests cannot see this because the in-memory hub hands a fresh, already
-// connected endpoint on the first poll; the real transport must complete a UDP handshake against server B.
+// connected endpoint on the first poll. The real transport must complete a UDP handshake against server B.
 public class WorldClientLiveReconnectTests
 {
     private readonly ITestOutputHelper output;
@@ -133,7 +133,7 @@ public class WorldClientLiveReconnectTests
 
     // A server that REJECTS every connect (here: a mismatched wire generation, exactly what a client hitting a
     // freshly deployed, protocol-bumped server presents) must surface a TERMINAL disconnect, not an endless
-    // reconnect loop. The server sends a reliable Reject then immediately Disconnects the peer; over loopback the
+    // reconnect loop. The server sends a reliable Reject then immediately Disconnects the peer. Over loopback the
     // Reject is delivered synchronously (terminal), but over a real transport the Disconnect can tear the peer
     // down before the reliable Reject is flushed, so the client sees only a transport drop, reads it as a
     // transient outage, and reconnects forever. That is the "reconnect never succeeds but relaunch works" bug.

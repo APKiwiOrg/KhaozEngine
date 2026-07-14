@@ -154,7 +154,7 @@ server peer. Games read it (with the snapshot rate + prediction-correction magni
 `NetServer` refuses a pending peer by sending a reliable `Reject` frame AND carrying the same framed reject on
 the disconnect via `INetTransport.Disconnect(NetConnectionId, ReadOnlySpan<byte> reason)` (a **default interface
 method** that drops the reason and does a plain disconnect, so the loopback and any external transport keep
-compiling unchanged). Over the in-memory loopback the reliable Reject lands first (unchanged); over a real socket
+compiling unchanged). Over the in-memory loopback the reliable Reject lands first (unchanged). Over a real socket
 the immediate teardown can outrun the reliable flush, so the reason on the disconnect - delivered as part of the
 shutdown handshake (LiteNetLib `NetPeer.Disconnect(byte[])` -> `DisconnectInfo.AdditionalData`, surfaced on the
 `NetEvent` `Disconnected` payload) - is what makes the reject reach the client. `NetClient` turns a disconnect that

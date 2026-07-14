@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Netcode;
 // frame is lost to an immediate teardown (the real LiteNetLib behaviour: peer.Disconnect() outruns the reliable
 // flush). Before the fix the client saw only a bare drop and, under auto-reconnect, retried forever - the
 // "reconnect never succeeds after a server restart, but a relaunch connects instantly" bug. The live-socket
-// WorldClientLiveReconnectTests prove it end-to-end over real UDP; this headless model runs in CI.
+// WorldClientLiveReconnectTests prove it end-to-end over real UDP. This headless model runs in CI.
 public class RejectDeliveryTests
 {
     [Fact]

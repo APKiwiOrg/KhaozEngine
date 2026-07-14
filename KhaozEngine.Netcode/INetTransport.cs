@@ -26,7 +26,7 @@ public interface INetTransport : IDisposable
     /// <summary>Disconnects a single connection, carrying <paramref name="reason"/> in the disconnect itself so a
     /// rejecting server conveys WHY even when a separately-sent reliable frame would be lost to the teardown. The
     /// UDP binding rides it on LiteNetLib's disconnect handshake and the peer surfaces it on the resulting
-    /// <see cref="NetEvent"/> Disconnected payload; the default drops the reason and does a plain disconnect, so a
+    /// <see cref="NetEvent"/> Disconnected payload. The default drops the reason and does a plain disconnect, so a
     /// lossless transport (the in-memory loopback, which delivers the reliable Reject anyway) needs no change.
     /// No-op if the connection is unknown.</summary>
     void Disconnect(NetConnectionId connection, ReadOnlySpan<byte> reason) => Disconnect(connection);

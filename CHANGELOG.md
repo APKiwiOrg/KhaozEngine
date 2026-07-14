@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.90.0
+
+### `KhaozEngine.ServerStatus` multi-targets `net8.0` for Azure Functions on Linux Consumption
+
+`KhaozEngine.ServerStatus` and its full `ProjectReference` chain (`KhaozEngine.Diagnostics`,
+`KhaozEngine.Primitives`) now build for `net8.0` as well as the engine-wide `net10.0`, so a game's small
+public status endpoint can be hosted as an Azure Functions isolated-worker app on the **Linux Consumption
+(Y1)** plan. Linux Consumption supports .NET 8, its newest LTS, but not .NET 10 (per the Azure Functions
+supported-languages docs, .NET 9 is the last version added to Linux Consumption and .NET 10 is not on that
+plan), so a net10.0-only package could only host the endpoint on Windows. This removes the documented
+Windows-only fleet exception the game-template server-status Function carried. Purely additive packaging:
+every other package stays `net10.0`-only, and a `net10.0` consumer keeps resolving the `net10.0` assets.
+
+- **Three packages, both TFMs.** Each of the three nupkgs now ships `lib/net8.0` and `lib/net10.0`, with
+  per-framework dependency groups, so a net8.0 Function resolves the net8.0 assets and everything else keeps
+  the net10.0 ones. No public API changed and no source needed conditional compilation. Done as a per-project
+  `<TargetFrameworks>net8.0;net10.0</TargetFrameworks>` override of the repo-wide single `<TargetFramework>`
+  in `Directory.Build.props`, scoped to only these three packages.
+- **Regression guard.** `ArchitectureTests` now pins the multi-target set: the three packages must carry
+  exactly `net8.0;net10.0` and no other project may declare a plural `<TargetFrameworks>`, so a dropped TFM
+  (which would silently break the Function consumer) or accidental spread to another package fails CI.
+
 ## 10.89.0
 
 ### Version comparison consolidated into `KhaozEngine.Primitives` (`VersionComparer`)

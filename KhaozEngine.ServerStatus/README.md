@@ -12,6 +12,12 @@ GPU-free. Pure .NET plus `KhaozEngine.Diagnostics` (logging) and `KhaozEngine.Pr
 version comparer). No cloud-specific code and no database driver, so both a game client and a headless
 server can reference it.
 
+**Frameworks: `net8.0` and `net10.0`.** This package (and its `Diagnostics` + `Primitives` chain)
+multi-targets `net8.0` alongside the engine-wide `net10.0` on purpose, so the status endpoint can run as
+an Azure Functions isolated-worker app on the **Linux Consumption (Y1) plan**. That plan supports .NET 8
+(its newest LTS) but not .NET 10, so a net10.0-only package could only host the endpoint on Windows. The
+game client and headless server keep resolving the `net10.0` assets automatically.
+
 ## Design authority split
 
 - **CI/CD** writes deploy facts to the status DB on each release (server version, min/latest client

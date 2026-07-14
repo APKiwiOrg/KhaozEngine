@@ -2,6 +2,11 @@
 
 Game-agnostic logging **and runtime telemetry**. Pure .NET, no MonoGame dependency.
 
+**Frameworks: `net8.0` and `net10.0`.** This leaf multi-targets `net8.0` alongside the engine-wide
+`net10.0` because `KhaozEngine.ServerStatus` references it and must be consumable from an Azure Functions
+app on the Linux Consumption plan, which has no .NET 10. A `net10.0` consumer resolves the `net10.0` asset
+automatically, so this is transparent to every other package.
+
 ## Quick start
 
 ```csharp

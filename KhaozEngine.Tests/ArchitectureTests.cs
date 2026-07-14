@@ -92,6 +92,20 @@ public class ArchitectureTests
         "Microsoft.SourceLink.GitHub",
     };
 
+    // The only packages multi-targeted below the repo-wide single <TargetFramework>, and the exact set each
+    // must carry. KhaozEngine.ServerStatus plus its full ProjectReference chain (Diagnostics, Primitives) ship
+    // a net8.0 lib alongside net10.0 so an Azure Functions isolated-worker app on the Linux Consumption (Y1)
+    // plan can reference them. Linux Consumption does not support .NET 10 (its newest supported LTS is .NET 8),
+    // so dropping net8.0 would silently break that Functions consumer, and adding a second TFM to any other
+    // package would bloat the fleet for no reason. Both directions are pinned here: the named packages must
+    // carry exactly this set, and no other project may declare a plural <TargetFrameworks> at all.
+    static readonly Dictionary<string, string[]> MultiTargetedPackages = new(StringComparer.Ordinal)
+    {
+        ["KhaozEngine.ServerStatus"] = new[] { "net8.0", "net10.0" },
+        ["KhaozEngine.Diagnostics"] = new[] { "net8.0", "net10.0" },
+        ["KhaozEngine.Primitives"] = new[] { "net8.0", "net10.0" },
+    };
+
     [Fact]
     public void ThirdPartyPackages_StayInTheirSeamOrBackendHome()
     {
@@ -126,6 +140,35 @@ public class ArchitectureTests
             "A third-party PackageReference is not in the containment allowlist. Add it to ThirdPartyHomes mapped to " +
             "the engine package that owns it, or to IgnoredInfraPackages if it is benign build infrastructure: " +
             string.Join("; ", unmapped.Distinct()));
+    }
+
+    [Fact]
+    public void MultiTargetedPackages_CarryTheirPinnedFrameworks_AndNoOtherPackageMultiTargets()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        var violations = new List<string>();
+        foreach (Project p in graph.Values)
+        {
+            string[] actual = p.TargetFrameworks.OrderBy(s => s, StringComparer.Ordinal).ToArray();
+            if (MultiTargetedPackages.TryGetValue(p.Name, out string[]? expected))
+            {
+                string[] want = expected.OrderBy(s => s, StringComparer.Ordinal).ToArray();
+                if (!want.SequenceEqual(actual, StringComparer.Ordinal))
+                    violations.Add($"{Short(p.Name)} must multi-target [{string.Join(", ", want)}] but declares [{string.Join(", ", actual)}]");
+            }
+            else if (actual.Length > 0)
+            {
+                violations.Add(
+                    $"{Short(p.Name)} declares <TargetFrameworks> [{string.Join(", ", actual)}] but is not in the multi-target " +
+                    "allowlist. Every package except KhaozEngine.ServerStatus and its ProjectReference chain stays on the single repo-wide TargetFramework.");
+            }
+        }
+
+        bool clean = violations.Count == 0;
+        Assert.True(clean,
+            "Multi-targeting drifted from the pinned set. KhaozEngine.ServerStatus and its ProjectReference chain (Diagnostics, " +
+            "Primitives) ship net8.0 alongside net10.0 so an Azure Functions app on Linux Consumption (which has no .NET 10) can " +
+            "reference them. Keep that set exact: " + string.Join("; ", violations));
     }
 
     [Fact]
@@ -252,9 +295,13 @@ public class ArchitectureTests
         Assert.True(noBackend, "Render3D must never reference an opt-in backend package but references: " + string.Join(", ", backendEdges));
     }
 
-    // A parsed engine project: its ProjectReference / PackageReference sets and whether it is a scan target
-    // for third-party containment (a packable engine library, not a test, sample, or Exe tool).
-    sealed record Project(string Name, bool IsPackableLibrary, IReadOnlySet<string> ProjectRefs, IReadOnlySet<string> PackageRefs);
+    // A parsed engine project: its ProjectReference / PackageReference sets, whether it is a scan target
+    // for third-party containment (a packable engine library, not a test, sample, or Exe tool), and the
+    // frameworks it declares in a plural <TargetFrameworks> (empty when it inherits the single repo-wide
+    // <TargetFramework> from Directory.Build.props).
+    sealed record Project(
+        string Name, bool IsPackableLibrary, IReadOnlySet<string> ProjectRefs, IReadOnlySet<string> PackageRefs,
+        IReadOnlySet<string> TargetFrameworks);
 
     static string Short(string stem) =>
         stem.StartsWith("KhaozEngine.", StringComparison.Ordinal) ? stem["KhaozEngine.".Length..] : stem;
@@ -290,8 +337,11 @@ public class ArchitectureTests
                     .Where(s => s is not null)
                     .Select(s => s!)
                     .ToHashSet(StringComparer.Ordinal);
+                HashSet<string> targetFrameworks = root.Descendants("TargetFrameworks")
+                    .SelectMany(e => ((string?)e ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    .ToHashSet(StringComparer.Ordinal);
 
-                graph[name] = new Project(name, hasPackageId && !nonPackable && !isExe, projRefs, pkgRefs);
+                graph[name] = new Project(name, hasPackageId && !nonPackable && !isExe, projRefs, pkgRefs, targetFrameworks);
             }
         }
         return graph;

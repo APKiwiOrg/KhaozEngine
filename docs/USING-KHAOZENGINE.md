@@ -4012,6 +4012,12 @@ access), and the **endpoint** derives `health` from the newest heartbeat's age p
 engine ships the reusable pieces (wire contract, poller, evaluator, heartbeat seam). The Function code and the
 CI/CD steps live in the game-template repo, implemented against the contract below.
 
+**Runs on Azure Functions / Linux Consumption.** `KhaozEngine.ServerStatus` (with its `Diagnostics` +
+`Primitives` chain) multi-targets `net8.0` alongside the engine-wide `net10.0`, so the endpoint Function can
+be hosted on the **Linux Consumption (Y1)** plan on .NET 8, the plan's newest supported LTS (Linux Consumption
+does not support .NET 10, so a net10.0-only package would force the Function onto Windows). Target `net8.0` in
+the Function project and reference the package normally. Everything else the engine ships stays `net10.0`-only.
+
 ### The wire contract (for the endpoint implementer)
 
 `ServerStatusReport` IS the cross-repo interface. It is a **tolerant read**: unknown fields are ignored,

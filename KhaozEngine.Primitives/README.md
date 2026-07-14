@@ -4,6 +4,11 @@ The zero-dependency leaf at the bottom of the KhaozEngine dependency graph (`Sys
 no renderer, no window). Shared value types and pure helpers every other package builds on. An RGBA
 color anywhere in the engine's public API is the `Color` from here.
 
+**Frameworks: `net8.0` and `net10.0`.** This leaf multi-targets `net8.0` alongside the engine-wide
+`net10.0` because `KhaozEngine.ServerStatus` depends on it and must run on an Azure Functions app on the
+Linux Consumption plan, which has no .NET 10. A `net10.0` consumer resolves the `net10.0` asset
+automatically, so this is transparent to every other package.
+
 - `Color` - RGBA float struct, a typed wrapper over `Vector4` (implicit to `Vector4`, explicit back).
   `FromBytes`, `FromHex`/`ToHex`, `WithAlpha`, `ScaleRgb` (scale RGB, keep alpha - dim a color without
   making it translucent, unlike `* float`), `* float`, unclamped `Lerp`.

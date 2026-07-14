@@ -2,6 +2,14 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.ServerStatus</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
+    <!-- Multi-targeted below net10.0 so an Azure Functions isolated-worker app on the Linux
+         Consumption (Y1) plan can reference it: Linux Consumption does not support .NET 10, its
+         newest LTS is .NET 8. This blanks the repo-wide single <TargetFramework> from
+         Directory.Build.props (the singular property wins over the plural one) and replaces it
+         with the plural set. Only this package and its ProjectReference chain (Diagnostics,
+         Primitives) carry the extra TFM. Every other package stays net10.0-only. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Description>Out-of-band server-status capability for a live game (an MMO first): the versioned tolerant-read ServerStatusReport wire contract a small public status endpoint serves, HttpServerStatusSource + ServerStatusClient (an async, never-throwing poller that degrades to a stale/unknown snapshot), ServerStatusEvaluator (a pure report + client-version + staleness -> actionable state map driving reconnect / forced-update / "back soon" screens), and the IServerHeartbeatSink liveness seam a game server writes on a timer. GPU-free, no cloud-specific code (the endpoint and its DB are per-game infra). Pure .NET (+ KhaozEngine.Diagnostics, KhaozEngine.Primitives).</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

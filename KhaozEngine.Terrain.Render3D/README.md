@@ -48,7 +48,10 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   list produces byte-identical submissions to the single-handle form (same `SceneInstances` path, no new
   per-instance shader indexing), so adopting the multi-part overload costs nothing for an untextured/flat
   prop. See `KhaozEngine.Render3D/README.md` ("Manifest-driven textured opt-in") for `LoadPropAuto` /
-  `LoadPropMeshes`, the load-side half of this seam.
+  `LoadPropMeshes`, the load-side half of this seam. Alpha-cutout foliage needs nothing here: the cutoff
+  rides each part's material state (set at load via `LoadPropMeshes`), so a MASK leaf-card kit scatters and
+  draws through this path with its silhouette carved, exactly like an opaque prop (see the Render3D README's
+  "Alpha cutout" bullet).
 - **`TerrainChunkCollision`** - extracts a chunk's SURFACE triangles (skirts excluded, winding flipped so
   the collidable face points up) into a static `TriangleMeshShape`. `Build(TerrainChunkMesh)` or
   `Build(GltfMesh, surfaceVertexCount)`; returns null for an empty chunk. Render-free (no GPU), so terrain

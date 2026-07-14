@@ -30,19 +30,36 @@ For each source glb, `bake.mjs`:
 2. Re-encodes every `EXT_texture_webp` image to PNG via `sharp` and drops the `EXT_texture_webp`
    extension (SharpGLTF cannot decode webp).
 3. Keeps every material's `baseColorTexture` / `normalTexture` / `metallicRoughnessTexture` as-is (no
-   flattening to a factor). Images are embedded in the output glb.
-4. Disposes the three extensions this recipe expects to be left dangling (unused but still declared) by
+   flattening to a factor), and preserves each material's `alphaMode` / `alphaCutoff`. The leaf materials
+   are `alphaMode: MASK` (the runtime alpha-cutout relies on that surviving the bake), which the transform
+   passes through untouched. The per-file report prints the alpha modes so a regression is visible.
+   Images are embedded in the output glb.
+4. Alpha-bleeds (dilates) each baseColor texture that has transparency: floods the RGB of the visible
+   (alpha at or above a small threshold) texels outward into the fully transparent texels, leaving the
+   alpha channel untouched. The Quaternius leaf-card textures store **black** RGB under their transparent
+   texels, so plain box-filter mip generation (and bilinear sampling at the cutout edge) folds that black
+   into the leaf colour: dark fringes and foliage that darkens with distance. Bleeding leaf colour into
+   those texels makes every mip average leaf-on-leaf, so the fringe is gone and colour is stable at range.
+   Because alpha is preserved to the bit, the runtime alpha-cutout (`alphaMode: MASK`) discards exactly the
+   same silhouette as before - only the colour that survives at the edges changes. Fully opaque textures
+   (bark, rock) have no transparent texels, so this is a no-op for them (they re-encode bit-identically).
+   This is the engine-side alternative (alpha-weighted mip generation at load) done once, offline, at the
+   data source instead: it also fixes the bilinear edge at mip 0, needs no per-backend mip code, and leaves
+   the flat-load `AverageAlbedo` (opaque-only) untouched.
+5. Disposes the three extensions this recipe expects to be left dangling (unused but still declared) by
    steps 1-2: `EXT_meshopt_compression`, `KHR_mesh_quantization`, `EXT_texture_webp`. This is an explicit
    allowlist, not "dispose everything used" - if a source glb still declares any OTHER extension after
    dequantize/textureCompress (draco, a material extension, `KHR_texture_transform`, ...), the bake fails
    loudly (nonzero exit, naming the extension) instead of silently stripping something this recipe was
    never designed to touch. A second check after disposal confirms zero extensions remain, so the output
    is provably plain glTF 2.0.
-5. Prints per-file verification: material count, image count, image formats, extension list, and the
-   input-to-output byte size.
+6. Prints per-file verification: material count, image count, image formats, per-material alpha modes, the
+   alpha-bled materials (and their transparent-texel count), extension list, and the input-to-output byte
+   size.
 
-The pipeline is idempotent: every run reads fresh from the source glb and overwrites the output, no
-state carries between runs.
+The pipeline is idempotent and deterministic: every run reads fresh from the source glb and overwrites the
+output with no state carried between runs, and the alpha-bleed uses a fixed neighbour order and iteration
+so a re-bake round-trips bit-for-bit.
 
 ## Usage
 

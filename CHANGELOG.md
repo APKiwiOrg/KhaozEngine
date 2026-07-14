@@ -5,6 +5,50 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Alpha-cutout foliage: MASK parse + mesh discard, bake-time leaf alpha-bleed
+
+The 10.83.0 textured foliage kits rendered their alpha-cutout leaf cards as solid quads with heavy black
+fringing, because the mesh pipeline had no alpha-cutout support and the leaf textures store black RGB under
+their transparent texels. The mesh path now reads glTF `alphaMode`/`alphaCutoff` and discards below-cutoff
+texels, and the kit-bake tool bleeds leaf colour into the transparent texels so mip/bilinear averaging stops
+folding in the black. Opaque materials are byte-identical to before (goldens included), and all existing GPU
+goldens pass unchanged on Metal.
+
+- **glTF alpha-cutout parse + plumb (`KhaozEngine.Render3D.GltfLoader`, `KhaozEngine.Render3D.Scene3D`).**
+  `GltfLoader` now reads each material's `alphaMode` into the new `GltfMaterialMaps.AlphaCutoff`: `0` for
+  OPAQUE (the default when absent, no clip), else the material's `alphaCutoff` (default 0.5 per glTF spec) for
+  MASK. glTF BLEND is out of scope for the opaque mesh pass and is treated as MASK (documented). The cutoff
+  flows through the new `Scene3D.SurfaceMaps.AlphaCutoff` and the loaded mesh's material state, and
+  `LoadPropParts` / `LoadPropAuto` / `LoadPropWithMaterial` all carry it, so a `"textured": true` MASK kit
+  needs nothing extra at the call site.
+- **Mesh fragment alpha discard (`KhaozEngine.Render3D` model pass).** The cutoff is packed into the
+  per-instance `SpecParams.z` (the model pass's previously-unused channel, and the CharDissolve pipeline
+  overloads the same channel with a different fragment shader, so they never collide within one draw) and the model
+  fragment discards any texel whose baseColor alpha is below it, after sampling all three material maps (so
+  the Metal first-sample-order and implicit-LOD derivatives are untouched). A leaf-card texture renders as its
+  silhouette instead of a solid quad. OPAQUE meshes carry cutoff 0, so the branch is never taken and the
+  render is byte-identical to the pre-cutout path. Vertex input signatures and the Metal instancing UBO are
+  unchanged (no new vertex location). Known limitation: the depth-only shadow pass does not alpha-test, so a
+  cutout prop casts its full-quad silhouette into the shadow map.
+- **Bake-time leaf alpha-bleed (`tools/kit-bake`).** `bake.mjs` now dilates (alpha-bleeds) each baseColor
+  texture that has transparency: it floods leaf RGB outward into the transparent texels, leaving alpha
+  untouched, so plain box-filter mip generation and bilinear sampling at the cutout edge average leaf-on-leaf
+  instead of folding in the black stored under the leaves (which caused dark fringes and foliage that darkened
+  with distance). Chosen over engine-side alpha-weighted mip generation because it is a one-time offline data
+  fix that also corrects the mip-0 bilinear edge, needs no per-backend mip code, and leaves the flat-load
+  `AverageAlbedo` (opaque-only) untouched. The bake preserves `alphaMode`/`alphaCutoff`, is a no-op for fully
+  opaque textures (bark, rock re-encode bit-identically), and is deterministic (fixed neighbour order and
+  iteration, so a re-bake round-trips bit-for-bit). All 7 Showcase kits were re-baked from their
+  `world-of-claudecraft` source: the five tree glbs changed (dilated leaf texture), the two rock glbs are
+  byte-identical.
+- **Rock "pixelation" diagnosis.** Investigated and found not reproducible engine-side: the source rock
+  texture is a smooth 512x512 opaque PNG, and a controlled Metal render of the rock kit is clean (the model
+  pass already samples through the anisotropic trilinear sampler). The gameplay artifact is consistent with
+  the consumer's render-scale present/blit downscaling a `FixedInternal` target to a lower-DPI window (the
+  documented terrain-shimmer mechanism), so no engine change was forced into this branch.
+
 ## 10.83.0
 
 ### Textured foliage kits: multi-part scatter instancing, load-time gamma-space albedo flatten, editor texture toggle

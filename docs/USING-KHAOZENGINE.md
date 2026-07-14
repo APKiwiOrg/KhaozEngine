@@ -604,6 +604,30 @@ GuiTheme.Default = GuiTheme.Legacy;
 override the theme (`toggle.OnColor = ...`). The Showcase "Gui" room shows the crisp look and the semantic button
 variants.
 
+**Texture skinning: `GuiStyle.Skin` + `GuiSkin` (family-wide, 10.82.0)** - `GuiStyle` has an optional `Skin` (a
+`GuiSkin`, default `null` = today's flat GuiDraw primitives, byte-for-byte). Set it and EVERY widget that fills
+through `GuiDraw.FillStyled` - Panel, Button, ProgressBar, TextInput/NumberField, ScrollablePanel, Dropdown,
+PopupPanel, SlotGrid, TreeView, ... - renders a nine-slice sprite frame instead of the flat fill, so a whole HUD can
+wear fantasy-skinned chrome. `GuiSkin` rides the same `Texture2D` + source-UV mechanism as `IconAtlas`: a nine-slice
+frame from a whole texture (`GuiSkin.NineSlice(tex, inset)` or per-edge `NineSlice(tex, l, t, r, b, center)`) or one
+cell of a shared atlas (`GuiSkin.FromAtlas(tex, source, srcPxW, srcPxH, l, t, r, b, center)`). Insets are in SOURCE
+pixels; the four corners keep their source-pixel size (never scaled) while the edges + centre `Stretch` (default) or
+`Tile` (`GuiSkinCenter`). The resolved state colour multiplies OVER the skin as a tint, so set the style's `Fill` to
+white for the skin's native colours and `Hover`/`Press` as tints (per-state skins are a future extension). A skinned
+frame owns the silhouette, so the procedural `CornerRadius`/border is skipped, but `ShadowSize` still draws its drop
+shadow. `null` skin = zero change for existing UIs. The Showcase "Gui" room's Widgets screen shows a skinned
+button/panel/bar beside the flat ones.
+
+```csharp
+// Bake or load a nine-slice frame, then skin any widget. Fill=white shows the sprite's native colours;
+// hover/press tint over it.
+GuiSkin frame = GuiSkin.NineSlice(frameTexture, inset: 12f);
+var skinned = new GuiStyle { Skin = frame, Fill = Vector4.One, Hover = new Vector4(0.85f, 0.9f, 1f, 1f),
+    Press = new Vector4(0.6f, 0.65f, 0.8f, 1f), Text = Vector4.One };
+var panel = new Panel(bounds) { Style = skinned, Color = Vector4.One };   // Color is the tint
+var button = new Button(bounds, label, font) { Style = skinned };
+```
+
 **`FocusNavigator`** - keyboard/gamepad menu focus: `SetCount`, `Focus`, `MoveNext`/`MovePrevious`, `Wrap`, and
 `Update(InputManager, PlayerIndex?)` which advances focus from menu-nav edges.
 
@@ -679,8 +703,14 @@ exposes `HoveredSlot` / `PressedSlot` (-1 = none); a valid tap fires `OnSlotClic
 index. The widget is item-agnostic: empty slots draw a themed frame, and the caller paints icons / counts through the
 `DrawSlotContent(index, rect, batch)` hook and optional per-slot `KeybindLabels` (raw input-token glyphs).
 `ProgressBar` is a thin fill bar: `Fraction` clamps 0..1, the accent `FillColor` sits inside the border frame, and an
-optional centered `OverlayText` (`LocalizedText`) labels it. Both expose pure-geometry helpers for headless tests
-(`SlotRect(i)` / `SlotAt(point)`, `FillRect` / `InnerBounds`) and carry the shared `Opacity` fade.
+optional centered `OverlayText` (`LocalizedText`) labels it. `FillDirection` picks the edge the fill grows FROM -
+`LeftToRight` (default), `RightToLeft`, `BottomToTop`, `TopToBottom` (the last two are vertical bars). `SegmentCount`
+> 1 (default 0/1 = one continuous fill) splits it into equal segments separated by `SegmentSpacing`, painted per
+`SegmentFillMode`: `Continuous` clips the proportional fill into each segment (tick-separated xp / cast bars),
+`Discrete` lights a whole segment only once fully covered (combo points / ability charges). Segmentation composes
+with every `FillDirection`. Both widgets expose pure-geometry helpers for headless tests (`SlotRect(i)` /
+`SlotAt(point)`, `FillRect` / `InnerBounds` / `SegmentRects()` / `FilledSegmentCount`) and carry the shared `Opacity`
+fade.
 
 ```csharp
 // A 10-slot hotbar (one row of 10) with keybind glyphs; icons are painted by the caller.
@@ -700,6 +730,14 @@ var xp = new ProgressBar(new Rect(hudX, hudY - 16, 240, 8), fraction: xpFrac)
     OverlayText = LocalizedText.Of(Strings.Level, playerLevel),
 };
 xp.Draw(batch, white, smallFont);
+
+// A segmented cast bar (tick separators) and a vertical resource bar filling bottom-up.
+var cast = new ProgressBar(new Rect(hudX, hudY, 240, 10), castFrac)
+{ SegmentCount = 6, SegmentSpacing = 3f };                       // Continuous is the default
+var pips = new ProgressBar(new Rect(hudX, hudY, 240, 12), comboFrac)
+{ SegmentCount = 5, SegmentFillMode = SegmentFillMode.Discrete };   // combo points light as whole pips
+var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
+{ FillDirection = FillDirection.BottomToTop };                   // vertical, grows upward
 ```
 
 ---

@@ -580,7 +580,11 @@ namespace KhaozEngine.Render3D
         /// pass (a fully-transparent / all-cutout image) it falls back to the plain average of every texel's RGB so
         /// the colour is still defined. An empty image yields white (no tint). This is the shared math the flat prop
         /// loader (<see cref="LoadFlattenedAlbedo"/>) folds into each textured material's vertex colour, exposed so an
-        /// offline baker or a future caller uses the identical rule.</summary>
+        /// offline baker or a future caller uses the identical rule.
+        /// This mean is deliberately computed in gamma space, directly on the raw sRGB byte values, and must not be
+        /// linearized. The engine's textured path uploads albedo as UNorm and the shader multiplies it by vertex
+        /// colour without linearizing either input, so keeping this average in that same gamma-space representation
+        /// is what makes the flat swatch match the visual average of the textured surface.</summary>
         public static Vector3 AverageAlbedo(DecodedImage image)
         {
             byte[] px = image.Rgba;
@@ -609,9 +613,9 @@ namespace KhaozEngine.Render3D
             var cache = new Dictionary<GltfMaterial, Vector4>();
             return mat =>
             {
-                Vector4 factor = ReadBaseColor(mat);
-                if (mat == null) return factor;
+                if (mat == null) return ReadBaseColor(mat);
                 if (cache.TryGetValue(mat, out Vector4 cached)) return cached;
+                Vector4 factor = ReadBaseColor(mat);
                 DecodedImage? albedo = DecodeChannel(mat, "BaseColor");
                 Vector4 eff = factor;
                 if (albedo is { } img)

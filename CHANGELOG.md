@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Version comparison consolidated into `KhaozEngine.Primitives` (`VersionComparer`)
+
+`KhaozEngine.Updates.UpdateVersion` and `KhaozEngine.ServerStatus.VersionOrder` carried two independent
+copies of the same numeric, dot-separated `x.y.z` version-compare rule (`VersionOrder` deliberately
+mirrored `UpdateVersion`'s code rather than referencing the heavier `Updates` package just for a poller).
+Both now delegate to a new `KhaozEngine.Primitives.VersionComparer.Compare(string?, string?)`, so the rule
+lives in exactly one place and cannot drift apart again. Non-breaking: both public types keep their existing
+signatures and behaviour.
+
+- **`VersionComparer.Compare`** (`KhaozEngine.Primitives`) - the shared core. Each dot segment compares
+  numerically (`0.7.10` orders after `0.7.9`, unlike a string compare), a missing or non-numeric segment
+  counts as 0 (`1.2` equals `1.2.0`), and a null or blank string is the empty, all-zero version.
+- **`KhaozEngine.ServerStatus.VersionOrder.Compare`/`IsBelow`** - unchanged public signatures, now thin
+  wrappers over `VersionComparer.Compare`. Byte-identical behaviour, including the existing null-tolerant
+  handling.
+- **`KhaozEngine.Updates.UpdateVersion.IsNewer`** - unchanged public signature, now a thin wrapper over
+  `VersionComparer.Compare`. One reconciled behavioural difference: the old implementation's unguarded
+  `Split` call on a null argument fell through to an incidental `NullReferenceException`. Since the shared
+  comparer is deliberately null-tolerant (needed for `VersionOrder`), `IsNewer` now guards explicitly with
+  `ArgumentNullException.ThrowIfNull` before delegating, so a null argument still fails loudly with a more
+  precise, documented exception type instead of silently comparing as `0.0.0`. No production caller passes
+  null today, and the reconciled behaviour is pinned by a new test.
+- **New dependency edges:** `KhaozEngine.Updates` and `KhaozEngine.ServerStatus` both gain a
+  `KhaozEngine.Primitives` `ProjectReference` (the zero-dependency leaf both packages already sit above in
+  the Foundation umbrella, so this adds no new heavy edge).
+
 ## 10.86.0
 
 ### Server-status capability (`KhaozEngine.ServerStatus`, new package)

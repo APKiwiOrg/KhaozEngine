@@ -186,8 +186,8 @@ backgrounds through the same seam, no new edge.
 ## Server-status seams
 
 `KhaozEngine.ServerStatus` carries two independent seams, both dependency-free (BCL + `KhaozEngine.Diagnostics`
-only), so a game client and a headless server can both reference the package without dragging in a web stack
-or a database driver.
++ `KhaozEngine.Primitives` only), so a game client and a headless server can both reference the package
+without dragging in a web stack or a database driver.
 
 - **`IServerStatusSource`** - the client-side fetch seam. The default `HttpServerStatusSource` contains a BCL
   `HttpClient` (HTTPS enforced, response size-capped, every transport/parse error swallowed to null), the same
@@ -202,11 +202,35 @@ or a database driver.
 
 ```
 KhaozEngine.ServerStatus -> KhaozEngine.Diagnostics   (logging only, no GPU, no DB, no web stack)
+KhaozEngine.ServerStatus -> KhaozEngine.Primitives    (VersionComparer: shared numeric x.y.z compare)
 ```
 
 The design authority split (CI/CD writes deploy facts, the game server heartbeats liveness, the endpoint
 derives health, the client polls + evaluates) is documented in the package README and `USING-KHAOZENGINE.md`.
 The public status endpoint itself (an Azure Function) is game infra and is NOT an engine artifact.
+
+## Version comparison: one shared leaf, two thin wrappers
+
+`KhaozEngine.Primitives.VersionComparer` is the single numeric, dot-separated `x.y.z` version-compare rule
+in the engine. `KhaozEngine.Updates.UpdateVersion.IsNewer` and `KhaozEngine.ServerStatus.VersionOrder`
+(`Compare`/`IsBelow`) both delegate to it instead of carrying their own copy:
+
+```
+KhaozEngine.Updates -> KhaozEngine.Primitives        (VersionComparer: IsNewer delegates)
+KhaozEngine.ServerStatus -> KhaozEngine.Primitives   (VersionComparer: Compare/IsBelow delegate)
+```
+
+Before this, `VersionOrder` deliberately mirrored `UpdateVersion`'s segment-compare code rather than
+referencing `KhaozEngine.Updates` directly, to avoid pulling the whole delta-update pipeline (+ `Platform`)
+into a package a status-poller-only client would reference. `Primitives` being the zero-dependency leaf both
+packages already sit above removes that trade-off: a shared home with no new heavy edge. Both public types
+keep their existing signatures, so no caller-visible change. The one behavioural difference between the two
+originals was null handling: `VersionOrder` already treated a null/blank version as the empty, all-zero
+version, while `UpdateVersion.IsNewer`'s non-nullable parameters meant a null argument fell through to an
+incidental `NullReferenceException` from an unguarded `Split` call. Since `VersionComparer` is null-tolerant
+(needed for `VersionOrder`), `UpdateVersion.IsNewer` now guards explicitly with
+`ArgumentNullException.ThrowIfNull` before delegating, so a null argument still fails loudly with a
+documented, more precise exception type instead of silently comparing as `0.0.0`.
 
 ## Three flavours of the same idea
 

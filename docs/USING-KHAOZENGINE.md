@@ -780,6 +780,26 @@ TimeFormatter.Format(300, DurationStyle.Coarse, 1);  // "5m"        (one unit)
 
 ---
 
+## Version comparison (`VersionComparer`)
+
+`KhaozEngine.Primitives.VersionComparer` is the one shared rule for comparing dot-separated `x.y.z` version
+strings numerically (a plain string compare gets `"0.7.10"` vs `"0.7.9"` wrong). Each segment parses as an
+int, a missing or non-numeric segment counts as 0 (`"1.2"` equals `"1.2.0"`), and a null or blank string is
+the empty, all-zero version, so it never throws on a missing value.
+
+```csharp
+VersionComparer.Compare("0.7.9", "0.7.10");   // -1 (numeric, not lexicographic)
+VersionComparer.Compare("1.2", "1.2.0");      //  0 (missing segment counts as 0)
+VersionComparer.Compare(null, "1.0.0");       // -1 (null = empty = all-zero)
+```
+
+Don't call it directly for an update or server-status gate: `KhaozEngine.Updates.UpdateVersion.IsNewer`
+and `KhaozEngine.ServerStatus.VersionOrder.Compare`/`IsBelow` are thin, package-local wrappers over this
+that keep their own existing call sites - they exist so `Updates` and `ServerStatus` don't need to
+reference each other just to agree on how versions order.
+
+---
+
 ## Compile-time localization enforcement (`StringId` / `LocalizedText`)
 
 The Gui text sinks accept a `LocalizedText` (from `KhaozEngine.App`), not a raw `string`. The only implicit

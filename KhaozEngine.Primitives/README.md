@@ -44,6 +44,11 @@ color anywhere in the engine's public API is the `Color` from here.
 - `TimeFormatter` / `DurationStyle` - duration formatting in two shapes: `Clock` (the ticking colon clock
   `1:02:34`, rounds up to the next whole second) and `Coarse` (the two-unit summary `2h 15m`, with a
   `coarseUnits` knob). Non-finite -> "---", non-positive -> "0s", culture-invariant.
+- `VersionComparer` - numeric, dot-separated `x.y.z` version comparison. Each segment compares
+  numerically (`0.7.10` orders after `0.7.9`, unlike a string compare), a missing or non-numeric segment
+  counts as 0 (`1.2` equals `1.2.0`), and a null or blank string is the empty all-zero version (never
+  throws). The one shared rule behind `KhaozEngine.Updates.UpdateVersion.IsNewer` and
+  `KhaozEngine.ServerStatus.VersionOrder.Compare`/`IsBelow`, both thin wrappers over `Compare` here.
 
 ```csharp
 var rng = new DeterministicRng(seed: 12345);

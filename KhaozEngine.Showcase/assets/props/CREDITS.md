@@ -54,7 +54,7 @@ textures-ON recipe and load through the multi-material path (`PropLoader.LoadPro
 Baked on 2026-07-14 from `world-of-claudecraft` main (`public/models/foliage/`), with the checked-in
 tool `tools/kit-bake/` (a `@gltf-transform` script implementing this recipe, see its README.md), and
 re-baked the same day to add the leaf alpha-bleed (step 4) once the alpha-cutout mesh path landed. The
-five tree glbs changed (dilated leaf texture); the two rock glbs are byte-identical (opaque, no bleed).
+five tree glbs changed (dilated leaf texture). The two rock glbs are byte-identical (opaque, no bleed).
 Source files and their kit ids (`tools/kit-bake/foliage-map.json`):
 
 - `pine_1.glb` -> `pine_a.glb`

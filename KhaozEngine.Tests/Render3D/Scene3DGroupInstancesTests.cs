@@ -110,7 +110,7 @@ namespace KhaozEngine.Tests.Render3D
 
             Scene3D.ApplyAlphaCutoffs(data, runs, h => h.Index == 5 ? 0.3f : 0f);
 
-            // Mesh-5 (MASK) instances carry the cutoff in .z; strength/shininess (.x/.y) are preserved.
+            // Mesh-5 (MASK) instances carry the cutoff in .z. Strength/shininess (.x/.y) are preserved.
             Assert.Equal(0.3f, data[0].SpecParams.Z, 4);
             Assert.Equal(0.3f, data[1].SpecParams.Z, 4);
             Assert.Equal(0.5f, data[0].SpecParams.X, 4);

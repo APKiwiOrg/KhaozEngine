@@ -96,7 +96,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             // BLEND is out of scope for the mesh pass and documented as treated like MASK, so a translucent-authored
             // leaf still reads as a clipped silhouette rather than a solid quad. glTF only serializes alphaCutoff for
-            // MASK, so a BLEND material reports the spec default (0.5); the load-bearing contract is that BLEND is
+            // MASK, so a BLEND material reports the spec default (0.5). The load-bearing contract is that BLEND is
             // NOT OPAQUE (cutoff > 0, clipping on), not the exact threshold.
             string path = WriteTriangleGlb(m => m.WithAlpha(AlphaMode.BLEND));
             try

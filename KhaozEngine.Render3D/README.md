@@ -29,7 +29,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
   with per-instance tint + `Material`), per-mesh albedo textures, lighting, camera-facing billboards, an
-  immediate-mode debug-draw overlay (line/ray/box/grid/axes/circle), composited into the window.
+  immediate-mode debug-draw overlay (line/ray/box/grid/axes/circle) plus depth-tested debug wire volumes
+  (sphere/dome/cylinder/circle), composited into the window.
 - `Render3DPreview(AppWindow, width, height)` - live render-to-texture: render a model into a sampleable
   `Render2D.Texture2D` on the same device and draw it inside a 2D `SpriteBatch`/Gui panel (unit inspectors, shop
   previews, item icons). Load meshes + frame the camera once via `.Scene`, then call `Capture(drawFrame)` each
@@ -141,6 +142,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   depth-tested-but-not-depth-writing, alpha-blended draw of an already-loaded mesh, colored by the mesh's
   per-vertex color. A general overlay primitive, not collision-specific: drawn after the meshes/beams and
   before the pixel post.
+- Debug wire volumes: `Scene3D.DebugWireSphere` / `DebugWireDome` (hemisphere, flat side down) /
+  `DebugWireCylinder` (vertical, `radius` + `halfHeight`) / `DebugWireCircle`, each `(..., Color color, float
+  opacity = 1, DebugDepthMode depth = DepthTested, int segments = DebugWireSegments)`. Immediate-mode (cleared each
+  `Begin`), for visualising gameplay volumes in-world (an NPC's aggro sphere / attack dome or cylinder). Default
+  `DebugDepthMode.DepthTested` draws into the lit colour + read-only scene depth before the post chain, so terrain
+  and props occlude the buried parts. `DebugDepthMode.AlwaysOnTop` routes to the crisp post-pass line overlay
+  instead. Geometry lives in `DebugShapes.Sphere/Dome/Cylinder/Circle` (pure, headless-testable endpoint builders).
+  The depth-tested draw is `Rendering.DepthLineRenderer` (line-list, depth-test-less-equal-no-write, alpha blend
+  into `ColorDepthFB`).
 - `KhaozEngine.Render3D.Debug` - the collision-shape debug overlay, the first consumer of `DrawOverlayMesh`:
   `CollisionShapeOverlay` (build once from an `IReadOnlyList<CollisionStatic>`, `Enabled`-gated `Draw`,
   `Palette`, `PresentKinds`, `IDisposable`), `CollisionShapeMesh.Build(PhysicsShape, CollisionOverlayPalette)

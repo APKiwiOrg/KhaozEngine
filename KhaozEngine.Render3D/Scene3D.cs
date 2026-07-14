@@ -29,6 +29,7 @@ namespace KhaozEngine.Render3D
         readonly ModelRenderer _model;
         readonly PixelPostProcess _post;
         readonly LineRenderer _lines;
+        readonly Rendering.DepthLineRenderer _depthLines;
         readonly FillRenderer _fills;
         readonly BillboardRenderer _billboards;
         readonly TransitionRenderer _transitions;
@@ -56,6 +57,10 @@ namespace KhaozEngine.Render3D
         // (already N-nearest-culled); the renderer clamps to MaxPointLights and zero-fills the rest.
         readonly List<ModelRenderer.PointLightData> _lights = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
+        // Depth-tested debug wire volumes (DebugDepthMode.DepthTested). Drawn into ColorDepthFB before the post
+        // chain so scene geometry occludes them. The always-on-top variant feeds _lineVerts instead. Cleared each
+        // Begin() like _lineVerts.
+        readonly List<LineRenderer.LineVertex> _depthLineVerts = new();
         readonly List<FillRenderer.FillVertex> _fillVerts = new();
         readonly List<GroundDecal> _decals = new();
         // Per-frame blob-shadow requests (ShadowMode.Blob). Cleared each Begin() like the decal queue. When the
@@ -248,6 +253,9 @@ namespace KhaozEngine.Render3D
             // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
             // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
             _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs);
+            // Depth-tested debug wire volumes draw into the same ColorDepthFB (lit colour + read-only scene depth)
+            // after the water pass, before the post chain, so scene geometry occludes their buried parts.
+            _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);
             _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
         }
 
@@ -774,6 +782,7 @@ namespace KhaozEngine.Render3D
             _boneMatrices.Clear();
             _lights.Clear();
             _lineVerts.Clear();
+            _depthLineVerts.Clear();
             _fillVerts.Clear();
             _decals.Clear();
             _shadowBlobs.Clear();
@@ -890,6 +899,99 @@ namespace KhaozEngine.Render3D
             foreach (var p in _scratch)
                 _lineVerts.Add(new LineRenderer.LineVertex(p, color));
         }
+
+        // ---- Debug wire VOLUMES (immediate-mode): closed 3D wire shapes for tuning gameplay volumes in-world
+        //      (an NPC's aggro sphere, an attack dome/cylinder, a trigger radius). Default depth-tested so scene
+        //      geometry occludes the buried parts. Pass DebugDepthMode.AlwaysOnTop for a crisp always-visible outline.
+        //      Cleared each Begin() (immediate mode). Colour + opacity per call, colours per volume type owned by the
+        //      game. The curved parts use `segments` per full circle. The structural line counts are the documented
+        //      constants below. ----
+
+        /// <summary>Default segment count for the curved rings and arcs of the debug wire volumes
+        /// (<see cref="DebugWireSphere"/> / <see cref="DebugWireDome"/> / <see cref="DebugWireCylinder"/> /
+        /// <see cref="DebugWireCircle"/>). 32 segments per full circle reads smooth at gameplay camera distances
+        /// (a few metres of radius seen from ~10-30 m). Pass fewer for far or throwaway volumes.</summary>
+        public const int DebugWireSegments = 32;
+
+        // Structural line counts for the wire volumes: fixed so a screenful of overlapping NPC volumes stays cheap
+        // while still reading clearly as the intended shape. Documented constants, deliberately not per-call knobs.
+        const int WireSphereMeridians = 12;   // vertical pole-to-pole half-circle arcs
+        const int WireSphereParallels = 5;    // horizontal latitude rings (odd => one lands on the equator)
+        const int WireDomeMeridians = 12;     // apex-to-equator quarter arcs
+        const int WireDomeParallels = 4;      // rings apex..equator (the last is the base equator circle)
+        const int WireCylinderVerticals = 8;  // side lines joining the two rim circles
+
+        /// <summary>Queue a wireframe sphere centred at <paramref name="center"/> with the given
+        /// <paramref name="radius"/> in RGBA <paramref name="color"/> (e.g. an NPC's spherical aggro/attack radius).
+        /// <paramref name="opacity"/> (0..1) scales the colour's alpha. <paramref name="depth"/> selects in-world
+        /// depth-tested (default) vs always-on-top compositing, and <paramref name="segments"/> is the per-circle
+        /// roundness. Immediate mode: cleared each <see cref="Begin"/>.</summary>
+        public void DebugWireSphere(Vector3 center, float radius, Color color, float opacity = 1f,
+            DebugDepthMode depth = DebugDepthMode.DepthTested, int segments = DebugWireSegments)
+        {
+            _scratch.Clear();
+            DebugShapes.Sphere(_scratch, center, radius, WireSphereMeridians, WireSphereParallels, segments);
+            AppendWireScratch(color, opacity, depth);
+        }
+
+        /// <summary>Queue a wireframe hemisphere DOME (flat side down) sitting on the XZ plane at
+        /// <paramref name="baseCenter"/> and bulging up to <paramref name="radius"/> in Y, in RGBA
+        /// <paramref name="color"/> (a hemispherical aggro/attack volume). The wire is meridian arcs plus latitude
+        /// rings including the base equator circle. <paramref name="opacity"/> (0..1) scales the colour's alpha,
+        /// <paramref name="depth"/> selects the compositing mode, <paramref name="segments"/> the per-circle
+        /// roundness. Immediate mode.</summary>
+        public void DebugWireDome(Vector3 baseCenter, float radius, Color color, float opacity = 1f,
+            DebugDepthMode depth = DebugDepthMode.DepthTested, int segments = DebugWireSegments)
+        {
+            _scratch.Clear();
+            DebugShapes.Dome(_scratch, baseCenter, radius, WireDomeMeridians, WireDomeParallels, segments);
+            AppendWireScratch(color, opacity, depth);
+        }
+
+        /// <summary>Queue a wireframe vertical cylinder (axis along +Y) centred at <paramref name="center"/> with the
+        /// given <paramref name="radius"/> and <paramref name="halfHeight"/> (half the total height), in RGBA
+        /// <paramref name="color"/> (a columnar attack/trigger volume). Top and bottom rim circles joined by vertical
+        /// side lines. <paramref name="opacity"/> (0..1) scales the colour's alpha, <paramref name="depth"/> selects
+        /// the compositing mode, <paramref name="segments"/> the per-circle roundness. Immediate mode.</summary>
+        public void DebugWireCylinder(Vector3 center, float radius, float halfHeight, Color color, float opacity = 1f,
+            DebugDepthMode depth = DebugDepthMode.DepthTested, int segments = DebugWireSegments)
+        {
+            _scratch.Clear();
+            DebugShapes.Cylinder(_scratch, center, radius, halfHeight, segments, WireCylinderVerticals);
+            AppendWireScratch(color, opacity, depth);
+        }
+
+        /// <summary>Queue a wireframe circle of <paramref name="radius"/> at <paramref name="center"/> in the plane
+        /// perpendicular to <paramref name="normal"/> (use <see cref="Vector3.UnitY"/> for a flat ground ring), in
+        /// RGBA <paramref name="color"/>. The depth-aware sibling of <see cref="DebugCircle"/>: <paramref name="depth"/>
+        /// selects in-world depth-tested (default) vs always-on-top, and <paramref name="opacity"/> (0..1) scales the
+        /// colour's alpha. Immediate mode.</summary>
+        public void DebugWireCircle(Vector3 center, Vector3 normal, float radius, Color color, float opacity = 1f,
+            DebugDepthMode depth = DebugDepthMode.DepthTested, int segments = DebugWireSegments)
+        {
+            _scratch.Clear();
+            DebugShapes.Circle(_scratch, center, normal, radius, segments);
+            AppendWireScratch(color, opacity, depth);
+        }
+
+        /// <summary>Append the current <see cref="_scratch"/> line endpoints to the depth-tested or always-on-top
+        /// stream with <paramref name="color"/> scaled by <paramref name="opacity"/>. No heap allocation
+        /// (<see cref="Color"/> is a value type).</summary>
+        void AppendWireScratch(Color color, float opacity, DebugDepthMode depth)
+        {
+            Vector4 c = opacity >= 1f ? color : color.WithAlpha(color.A * opacity);
+            var dst = depth == DebugDepthMode.DepthTested ? _depthLineVerts : _lineVerts;
+            foreach (var p in _scratch)
+                dst.Add(new LineRenderer.LineVertex(p, c));
+        }
+
+        /// <summary>Count of queued always-on-top debug-line vertices this frame (2 per segment). Internal: lets
+        /// tests assert <see cref="Begin"/> clears the queue and the builders route by <see cref="DebugDepthMode"/>.</summary>
+        internal int LineVertexCount => _lineVerts.Count;
+
+        /// <summary>Count of queued depth-tested debug wire-volume vertices this frame (2 per segment). Internal:
+        /// lets tests assert immediate-mode clearing and depth-mode routing.</summary>
+        internal int DepthLineVertexCount => _depthLineVerts.Count;
 
         // ---- Filled (alpha-blended) overlay: flat, world-space translucent shapes painted on a plane (ground
         //      tiles, range/zone/AoE highlights). Queued this frame, drawn after post UNDER the debug lines so an
@@ -1247,6 +1349,7 @@ namespace KhaozEngine.Render3D
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _sky.SetOutputs(_res.ColorDepthFB.Outputs);
             _water.SetOutputs(_res.ColorDepthFB.Outputs);
+            _depthLines.SetOutputs(_res.ColorDepthFB.Outputs);
         }
 
         void EnsureSize(int viewportW, int viewportH)
@@ -1599,6 +1702,16 @@ namespace KhaozEngine.Render3D
                 _water.Draw(cl, _res, CollectionsMarshal.AsSpan(_waterPlanes), ActiveCamera.ViewProjection,
                     Post.LightDirection, Post.LightColor, eye, Post.Water, EffectTimeSeconds);
 
+            // Depth-tested debug wire volumes (DebugDepthMode.DepthTested): drawn into ColorDepthFB after the sky +
+            // decals + water, which still holds the opaque meshes' depth, so terrain/props occlude the buried parts.
+            // Depth test less-or-equal, NO depth write (never touches the MRT normal/linear-depth the outline pass
+            // reads). Alpha blend. Drawing AFTER the sky pass (not with the beams before it) is deliberate: the sky
+            // fills every far-plane background pixel, and these lines don't write depth, so an earlier draw would be
+            // painted over where a volume rises above the horizon. Flows through the post chain like the model pass.
+            // The always-on-top variant instead feeds the post-pass line overlay below (_lineVerts). No-op when empty.
+            if (_depthLineVerts.Count > 0)
+                _depthLines.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_depthLineVerts), _res.ColorDepthFB);
+
             // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
             // samples (after ALL MRT writers: geometry + decals + water). No-op when not multisampled.
             _res.ResolveColorNormal(cl);
@@ -1832,6 +1945,7 @@ namespace KhaozEngine.Render3D
             _model.Dispose();
             _post.Dispose();
             _lines.Dispose();
+            _depthLines.Dispose();
             _fills.Dispose();
             _billboards.Dispose();
             _transitions.Dispose();

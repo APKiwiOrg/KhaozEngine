@@ -102,6 +102,108 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Circle_ClosesTheLoop_LastEndpointEqualsFirst()
+        {
+            var segs = new List<Vector3>();
+            DebugShapes.Circle(segs, new Vector3(1, 2, 3), Vector3.UnitY, 2f, 12);
+            // AddSeg appends (P0,P1),(P1,P2),...,(P11,P0): the final endpoint wraps back to the first vertex.
+            Assert.True(Vector3.Distance(segs[^1], segs[0]) < Eps, "circle did not close");
+        }
+
+        [Fact]
+        public void Sphere_CountsAndAllEndpointsAtRadius_WithEquatorRing()
+        {
+            var segs = new List<Vector3>();
+            var center = new Vector3(2, 3, -1);
+            float radius = 5f;
+            int meridians = 12, parallels = 5, ringSegments = 32;
+            DebugShapes.Sphere(segs, center, radius, meridians, parallels, ringSegments);
+
+            // parallels rings (each ringSegments*2 endpoints) + meridians arcs (each arcSteps*2 endpoints).
+            int arcSteps = Math.Max(2, ringSegments / 2);
+            int expected = parallels * ringSegments * 2 + meridians * arcSteps * 2;
+            Assert.Equal(expected, segs.Count);
+            Assert.Equal(0, segs.Count % 2);
+
+            // Every endpoint lies exactly on the sphere surface.
+            Assert.All(segs, p => Assert.True(Math.Abs(Vector3.Distance(p, center) - radius) < Eps,
+                $"endpoint off surface: {Vector3.Distance(p, center)}"));
+
+            // Odd parallels => a latitude ring sits exactly on the equator (y == center.Y, horizontal dist == radius).
+            Assert.Contains(segs, p => Math.Abs(p.Y - center.Y) < Eps
+                && Math.Abs(MathF.Sqrt((p.X - center.X) * (p.X - center.X) + (p.Z - center.Z) * (p.Z - center.Z)) - radius) < Eps);
+        }
+
+        [Fact]
+        public void Dome_IsUpperHemisphere_WithApexAndBaseEquatorCircle()
+        {
+            var segs = new List<Vector3>();
+            var baseCenter = new Vector3(-4, 1, 2);
+            float radius = 3f;
+            int meridians = 12, parallels = 4, ringSegments = 32;
+            DebugShapes.Dome(segs, baseCenter, radius, meridians, parallels, ringSegments);
+
+            int arcSteps = Math.Max(2, ringSegments / 4);
+            int expected = parallels * ringSegments * 2 + meridians * arcSteps * 2;
+            Assert.Equal(expected, segs.Count);
+
+            // Every endpoint on the sphere surface AND in the upper half (y >= baseCenter.Y).
+            Assert.All(segs, p =>
+            {
+                Assert.True(Math.Abs(Vector3.Distance(p, baseCenter) - radius) < Eps, "endpoint off surface");
+                Assert.True(p.Y >= baseCenter.Y - Eps, $"endpoint below the flat base: y={p.Y}");
+            });
+
+            // The apex (top pole) is reached by the meridian arcs.
+            Assert.Contains(segs, p => Vector3.Distance(p, baseCenter + new Vector3(0, radius, 0)) < Eps);
+
+            // The base equator circle is present: endpoints at y == baseCenter.Y at full radius in the XZ plane.
+            Assert.Contains(segs, p => Math.Abs(p.Y - baseCenter.Y) < Eps
+                && Math.Abs(MathF.Sqrt((p.X - baseCenter.X) * (p.X - baseCenter.X) + (p.Z - baseCenter.Z) * (p.Z - baseCenter.Z)) - radius) < Eps);
+        }
+
+        [Fact]
+        public void Cylinder_TwoRimCirclesAndVerticalSides_AtRadiusAndHalfHeight()
+        {
+            var segs = new List<Vector3>();
+            var center = new Vector3(1, 5, -2);
+            float radius = 2f, halfHeight = 4f;
+            int ringSegments = 32, verticals = 8;
+            DebugShapes.Cylinder(segs, center, radius, halfHeight, ringSegments, verticals);
+
+            // Two rim circles (ringSegments*2 each) + verticals side lines (2 endpoints each).
+            int expected = 2 * ringSegments * 2 + verticals * 2;
+            Assert.Equal(expected, segs.Count);
+
+            float top = center.Y + halfHeight, bottom = center.Y - halfHeight;
+            Assert.All(segs, p =>
+            {
+                // Every endpoint is on the top or bottom cap plane...
+                bool onCap = Math.Abs(p.Y - top) < Eps || Math.Abs(p.Y - bottom) < Eps;
+                Assert.True(onCap, $"endpoint not on a cap: y={p.Y}");
+                // ...at the cylinder radius from the axis.
+                float horiz = MathF.Sqrt((p.X - center.X) * (p.X - center.X) + (p.Z - center.Z) * (p.Z - center.Z));
+                Assert.True(Math.Abs(horiz - radius) < Eps, $"endpoint off the wall: r={horiz}");
+            });
+
+            // Both caps are actually drawn.
+            Assert.Contains(segs, p => Math.Abs(p.Y - top) < Eps);
+            Assert.Contains(segs, p => Math.Abs(p.Y - bottom) < Eps);
+        }
+
+        [Fact]
+        public void WireVolumes_DegenerateInputs_AppendNothing()
+        {
+            var segs = new List<Vector3>();
+            DebugShapes.Sphere(segs, Vector3.Zero, radius: 0f, meridians: 12, parallels: 5, ringSegments: 32);
+            DebugShapes.Sphere(segs, Vector3.Zero, radius: 1f, meridians: 1, parallels: 5, ringSegments: 32);
+            DebugShapes.Dome(segs, Vector3.Zero, radius: 1f, meridians: 12, parallels: 0, ringSegments: 32);
+            DebugShapes.Cylinder(segs, Vector3.Zero, radius: 1f, halfHeight: 0f, ringSegments: 32, verticals: 8);
+            DebugShapes.Cylinder(segs, Vector3.Zero, radius: 1f, halfHeight: 1f, ringSegments: 2, verticals: 8);
+            Assert.Empty(segs);
+        }
+
+        [Fact]
         public void AllBuilders_ProduceEvenEndpointCounts()
         {
             var segs = new List<Vector3>();
@@ -109,6 +211,9 @@ namespace KhaozEngine.Tests.Render3D
             DebugShapes.Grid(segs, Vector3.Zero, 1f, 3);
             DebugShapes.Circle(segs, Vector3.Zero, Vector3.UnitZ, 1f, 8);
             DebugShapes.Axes(segs, Vector3.Zero, 1f);
+            DebugShapes.Sphere(segs, Vector3.Zero, 1f, 12, 5, 32);
+            DebugShapes.Dome(segs, Vector3.Zero, 1f, 12, 4, 32);
+            DebugShapes.Cylinder(segs, Vector3.Zero, 1f, 1f, 32, 8);
             Assert.Equal(0, segs.Count % 2);
         }
     }

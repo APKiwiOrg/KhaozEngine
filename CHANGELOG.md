@@ -33,6 +33,78 @@ signatures and behaviour.
   `KhaozEngine.Primitives` `ProjectReference` (the zero-dependency leaf both packages already sit above in
   the Foundation umbrella, so this adds no new heavy edge).
 
+## 10.88.0
+
+### Debug wire volumes (depth-tested sphere / dome / cylinder / circle)
+
+New immediate-mode debug primitive on `Scene3D` for visualising gameplay volumes in-world, so a game can draw an
+NPC's aggro sphere or attack dome/cylinder for tuning. Depth-tested by default, so terrain and props occlude the
+buried parts and the wire reads as a shape sitting in the scene, with an always-on-top option for a fully buried
+volume. This is a debug facility but built to keep: clean API, XML docs, no player-facing strings.
+
+- **`Scene3D.DebugWireSphere` / `DebugWireDome` / `DebugWireCylinder` / `DebugWireCircle`
+  (`KhaozEngine.Render3D`).** Each takes `(..., Color color, float opacity = 1f, DebugDepthMode depth =
+  DebugDepthMode.DepthTested, int segments = Scene3D.DebugWireSegments)`. `DebugWireDome` is a hemisphere with the
+  flat side down (meridian arcs plus latitude rings including the base equator circle). `DebugWireCylinder` is a
+  vertical cylinder taking `radius` + `halfHeight`. `opacity` (0..1) scales the colour's alpha so a game keeps a
+  solid palette colour per volume type and dials a global fade. Immediate mode: cleared each `Begin()`, no retained
+  state, allocation-free in steady state (reused scratch and vertex buffers).
+- **`DebugDepthMode` enum (`KhaozEngine.Render3D`).** `DepthTested` (default) draws the wire into the lit colour +
+  read-only scene depth framebuffer (`ColorDepthFB`) after the water pass and before the post chain, with
+  depth-test-less-equal + no depth write, so geometry occludes the buried parts and the wire flows through the post
+  chain like the meshes. `AlwaysOnTop` routes the same geometry to the existing crisp post-pass line overlay.
+- **`DebugShapes.Sphere` / `Dome` / `Cylinder` (`KhaozEngine.Render3D`).** Pure, headless-testable line-endpoint
+  builders alongside the existing `Box`/`Grid`/`Circle`/`Axes`. Curves use `segments` per full circle (default 32,
+  smooth to ~30 m). The structural line counts (12 meridians, 5/4 rings, 8 cylinder verticals) are fixed constants.
+- **`Rendering.DepthLineRenderer` (internal).** The depth-tested line-list pass: alpha-blended, depth-test-less-equal
+  with no depth write into the single-attachment `ColorDepthFB` (so it never disturbs the MRT normal/linear-depth the
+  outline post-pass reads), rebuilt on MSAA sample-count change. Reuses `LineRenderer.LineVertex` and the flat line
+  shaders. Modelled on the existing beam/decal in-world overlay pattern.
+- No GPU golden added (a debug facility). Verified with a backend-agnostic GPU smoke test (depth-tested wire is
+  occluded by geometry, always-on-top is not) plus headless geometry tests (vertex/segment counts, on-surface
+  invariant, dome equator + apex, circle closure, degenerate inputs).
+
+## 10.87.0
+
+### Fix: a server reject now reaches the client terminally instead of looping auto-reconnect forever
+
+A rejecting server (version skew, server full, bad token) now surfaces on the client as the terminal
+`Rejected` / `DisconnectReason` it is, even over a real UDP socket, instead of a bare drop that
+`WorldClient` auto-reconnect retried forever. This was the "after a server restart/deploy the client
+reconnects forever and never succeeds, but relaunching connects instantly" bug: on a deploy the new
+build rejects the old client at connect (e.g. a bumped wire/protocol generation), but the reject was
+silently lost, so the client mistook a terminal rejection for a transient outage and span in
+`Reconnecting` indefinitely.
+
+- **Root cause.** `NetServer` refused a pending peer by sending a reliable `Reject` frame and then
+  immediately calling `transport.Disconnect(connection)`. Over the in-memory loopback the reliable
+  Reject is delivered synchronously (terminal, correct), but over the LiteNetLib UDP binding
+  `peer.Disconnect()` tears the peer down before the reliable Reject is flushed, so the client only
+  ever saw a transport `Disconnected`, read it as `DisconnectReason.Unreachable`, and (under the
+  factory-ctor auto-reconnect) retried without end. A relaunch worked because a fresh process is a
+  fresh connect, not because the server was unavailable.
+- **Fix (transport-agnostic).** The rejection reason now rides the disconnect itself, delivered as part
+  of the shutdown handshake rather than as a separate reliable packet that races the teardown.
+  `INetTransport` gains `Disconnect(NetConnectionId, ReadOnlySpan<byte> reason)` (a default interface
+  method that drops the reason and does a plain disconnect, so the loopback and any other transport need
+  no change). `NetServer` carries the framed `Reject` on the disconnect as well as sending it reliably.
+  The LiteNetLib server binding rides the reason on `NetPeer.Disconnect(byte[])`. The client binding
+  reads it back off `DisconnectInfo.AdditionalData` and surfaces it on the `NetEvent` `Disconnected`
+  payload. `NetClient` turns a disconnect that carries a `Reject` frame into a `Rejected` session event,
+  so `WorldClient` classifies it terminally (no auto-reconnect for a token/version reject) exactly as it
+  already did for a synchronously delivered Reject.
+- **No wire/API break for consumers.** `NetEvent.Disconnected` gains an optional reason payload.
+  The new `INetTransport` overload has a default implementation. Existing behaviour over the loopback is
+  byte-identical (the reliable Reject still lands first). No consumer code change is required: a game on
+  the `WorldClient` auto-reconnect path now correctly reaches its terminal `DisconnectReason`
+  (e.g. `IncompatibleVersion`, so a "client out of date, restart to update" screen) instead of an
+  endless reconnect banner.
+- **Tests.** `RejectDeliveryTests` (headless, CI): a reject-losing loopback that drops the un-flushed
+  reliable Reject on teardown still delivers a terminal `Rejected` via the disconnect reason.
+  `WorldClientLiveReconnectTests` (live socket): a real-UDP reconnect through a same-port server restart
+  and through a multi-attempt deploy gap both re-join, and a rejecting server over real UDP now goes
+  terminal instead of looping (this last one fails without the fix).
+
 ## 10.86.0
 
 ### Server-status capability (`KhaozEngine.ServerStatus`, new package)

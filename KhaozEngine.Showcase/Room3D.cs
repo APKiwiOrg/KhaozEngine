@@ -110,6 +110,13 @@ namespace KhaozEngine.Showcase
         MeshHandle _texturedProp;
         Matrix4x4 _texturedPropXform;
 
+        // Multi-material textured prop demo (multi-texture-per-primitive): a signpost whose wooden post and
+        // checker sign board are separate materials, each with its own baseColor texture. Drawn at two transforms
+        // to show the parts instance as a unit. See assets/props/CREDITS.md (procedurally generated, CC0).
+        Scene3D.PropHandle _signpost;
+        Matrix4x4 _signpostXformA;
+        Matrix4x4 _signpostXformB;
+
         // Collision-shape debug overlay (F2): translucent proxy meshes over the real collision (town buildings +
         // the streamed tree/rock statics of the loaded ring), plus a legend panel while it is on. Reuses the
         // room's injected _white/_hud rather than owning its own font/texture. _overlayStatics holds only the
@@ -237,6 +244,16 @@ namespace KhaozEngine.Showcase
                 PropMaterialPresets.Procedural());
             float propX = 3f, propZ = 3f;
             _texturedPropXform = Matrix4x4.CreateTranslation(propX, _terrain.GroundHeight(propX, propZ) + 0.75f, propZ);
+
+            // Multi-material textured prop: the signpost's wood post + checker sign are distinct materials, each
+            // with its own texture, loaded as a PropHandle (one textured sub-mesh per material) and drawn as a unit.
+            var signEntry = new AssetEntry("signpost", Path.Combine(propsDir, "signpost.glb"),
+                                           heightMeters: 1.8f, source: "procedural (KhaozEngine.TestModelGen)",
+                                           license: "CC0", textured: true);
+            _signpost = _scene.LoadProp(PropLoader.LoadPropParts(signEntry));
+            float sx = -3f, sz = 3f;
+            _signpostXformA = Matrix4x4.CreateTranslation(sx, _terrain.GroundHeight(sx, sz), sz);
+            _signpostXformB = Matrix4x4.CreateTranslation(sx - 2f, _terrain.GroundHeight(sx - 2f, sz), sz);
 
             // --- Collision-shape debug overlay (F2) ---------------------------------------------
             // Fixed (non-streamed) collision statics the overlay draws translucent proxies over. Town buildings
@@ -377,6 +394,8 @@ namespace KhaozEngine.Showcase
 
             // Textured prop demo: procedural mossy-stone block (albedo + normal maps).
             scene.Draw(_texturedProp, _texturedPropXform, Color.White);
+            scene.Draw(_signpost, _signpostXformA);
+            scene.Draw(_signpost, _signpostXformB);
 
             // The hand-placed town buildings (not streamed, always in range at this draw radius).
             scene.DrawProps(_buildingPlacements, _buildingMeshes, _character.Position, BuildingDrawRadius);
@@ -465,6 +484,7 @@ namespace KhaozEngine.Showcase
             _scene.UnloadMesh(_capsule);
             _scene.UnloadMesh(_platformMesh);
             _scene.UnloadMesh(_texturedProp);
+            _scene.UnloadProp(_signpost);
             foreach (MeshHandle h in _propMeshes.Values) _scene.UnloadMesh(h);
             foreach (MeshHandle h in _buildingMeshes.Values) _scene.UnloadMesh(h);
             if (_avatar is not null) _scene.UnloadSkinnedMesh(_avatar.Mesh);

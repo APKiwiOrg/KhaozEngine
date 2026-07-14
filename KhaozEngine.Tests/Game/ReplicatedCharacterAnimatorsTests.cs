@@ -716,5 +716,190 @@ namespace KhaozEngine.Tests.Game
             Vector3 fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), a.Live[0].World);
             Assert.True(fwd.Z < -0.999f, $"spawn seed must compose the offset, facing -Z on frame one, got {fwd}");
         }
+
+        // --- Downed / death pose override -------------------------------------------------------------------------
+
+        // The drawn model's UP axis (local +Y) in world space. 1 == upright, 0 == fully prone (lying flat).
+        static float UpY(Matrix4x4 world) => Vector3.TransformNormal(new Vector3(0, 1, 0), world).Y;
+
+        // A brain WITH a baked Downed clip (a ramp so the composed pose X reads back the clamped playhead), so the
+        // clip-path (play-once-hold-final-frame) branch is exercised. crossfade 0 so the pose is the downed clip alone.
+        static ReplicatedCharacterAnimators NewAnimatorsWithDownedClip(CharacterAnimatorTuning? tuning = null)
+        {
+            return new ReplicatedCharacterAnimators(() =>
+            {
+                var clips = Clips();
+                clips[LocomotionState.Downed] = Ramp("downed", duration: 0.5f);   // X(t) = t, up to 0.5
+                return new AnimatedCharacter(OneBone(), clips, LocomotionThresholds.Default, crossfade: 0f);
+            }, tuning);
+        }
+
+        [Fact]
+        public void Downed_SetClearReset_TransitionsState()
+        {
+            // The core state machine: not-downed -> downed -> cleared -> downed again. State reads Downed only while
+            // the flag is set, and returns to normal locomotion (Idle at rest) when cleared.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+
+            a.Update(new[] { Pos(1, pos) }, Dt);
+            Assert.NotEqual(LocomotionState.Downed, a.Live[0].State);
+
+            a.Update(new[] { Pos(1, pos).WithDowned(true) }, Dt);
+            Assert.Equal(LocomotionState.Downed, a.Live[0].State);
+
+            a.Update(new[] { Pos(1, pos) }, Dt);   // clear
+            Assert.Equal(LocomotionState.Idle, a.Live[0].State);
+
+            a.Update(new[] { Pos(1, pos).WithDowned(true) }, Dt);   // re-set
+            Assert.Equal(LocomotionState.Downed, a.Live[0].State);
+        }
+
+        [Fact]
+        public void Downed_SuppressesLocomotion_EvenWhileMoving()
+        {
+            // While downed, locomotion selection is suppressed: a moving position stream that would read Walk/Run stays
+            // in the Downed pose. Establish Walk first to prove the override wins over an active locomotion state.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 6; i++) { pos += new Vector3(3f * Dt, 0, 0); a.Update(new[] { Pos(1, pos) }, Dt); }
+            Assert.Equal(LocomotionState.Walk, a.Live[0].State);
+
+            for (int i = 0; i < 10; i++)
+            {
+                pos += new Vector3(3f * Dt, 0, 0);   // still "moving"
+                a.Update(new[] { Pos(1, pos).WithDowned(true) }, Dt);
+                Assert.Equal(LocomotionState.Downed, a.Live[0].State);
+            }
+        }
+
+        [Fact]
+        public void Downed_ProceduralCollapse_Progresses_ThenHoldsProne()
+        {
+            // No Downed clip -> procedural collapse. The drawn up-axis tips monotonically from upright (~1) to fully
+            // prone (~0) over DownedCollapseSeconds, then HOLDS prone. It must read as a body on the floor, not a
+            // leaning statue, so the up-axis Y must reach ~0.
+            var a = NewAnimators();   // no Downed clip
+            var pos = new Vector3(0, 0, 0);
+            a.Update(new[] { Pos(1, pos) }, Dt);
+            Assert.True(UpY(a.Live[0].World) > 0.99f, "upright before downed");
+
+            var ups = new List<float>();
+            for (int i = 0; i < 40; i++)   // 40 * (1/30) ~= 1.33 s, well past the 0.5 s collapse
+            {
+                a.Update(new[] { Pos(1, pos).WithDowned(true) }, Dt);
+                ups.Add(UpY(a.Live[0].World));
+            }
+
+            Assert.Equal(LocomotionState.Downed, a.Live[0].State);
+            for (int i = 1; i < ups.Count; i++)   // smoothstep ramp: never tips back up
+                Assert.True(ups[i] <= ups[i - 1] + 1e-4f, $"collapse must be monotonic, frame {i}: {ups[i - 1]} -> {ups[i]}");
+            Assert.True(ups[^1] < 0.02f, $"body must end fully prone (up-axis ~0), got {ups[^1]}");
+            for (int i = ups.Count - 5; i < ups.Count; i++)   // and HOLDS prone
+                Assert.True(ups[i] < 0.02f, $"prone must hold, frame {i}: {ups[i]}");
+        }
+
+        [Fact]
+        public void Downed_ProceduralCollapse_SettlesAtGroundLevel_NotFloating()
+        {
+            // The collapse settles the render height at the true feet-Y (ground), not floating at capsule centre. The
+            // sample is feet-anchored, so the drawn translation Y must equal the feet-Y throughout the collapse.
+            var a = NewAnimators();
+            var feet = new Vector3(2f, 3f, -4f);   // feet at Y = 3
+            for (int i = 0; i < 30; i++) a.Update(new[] { Pos(1, feet).WithDowned(true) }, Dt);
+            Assert.Equal(3f, a.Live[0].World.Translation.Y, 3);
+            Assert.Equal(3f, a.Live[0].RenderPosition.Y, 3);
+        }
+
+        [Fact]
+        public void Downed_ProceduralCollapse_TopplesInFacingDirection()
+        {
+            // The body topples FORWARD in its facing direction (not a fixed world axis). Face +X (explicit yaw), go
+            // down, and the drawn up-axis must lie toward +X (up.X > 0) once prone - the lateral tip rides the yaw.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            float faceX = MathF.PI / 2f;   // face +X
+            for (int i = 0; i < 40; i++)
+                a.Update(new[] { new CharacterSample(1, pos, facingYaw: faceX).WithDowned(true) }, Dt);
+
+            Vector3 up = Vector3.TransformNormal(new Vector3(0, 1, 0), a.Live[0].World);
+            Assert.True(up.Y < 0.02f, $"should be prone, up.Y = {up.Y}");
+            Assert.True(up.X > 0.99f, $"prone body should lie toward its +X facing, up = {up}");
+        }
+
+        [Fact]
+        public void Downed_ClipPath_PlaysOnce_AndHoldsFinalFrame_WorldUpright()
+        {
+            // With a Downed clip, the clip plays ONCE and holds its final frame (the clamped ramp reads back its end
+            // value 0.5, NOT a wrapped ~0), while the WORLD stays upright (the clip lays the body down in skeleton
+            // space, not via a world tip).
+            var a = NewAnimatorsWithDownedClip();
+            var pos = Vector3.Zero;
+            a.Update(new[] { Pos(1, pos) }, Dt);   // establish idle
+            for (int i = 0; i < 30; i++) a.Update(new[] { Pos(1, pos).WithDowned(true) }, Dt);   // 1 s > 0.5 s clip
+
+            Assert.Equal(LocomotionState.Downed, a.Live[0].State);
+            Assert.Equal(0.5f, a.Live[0].Pose[0].Translation.X, 3);   // held on the final frame, not looped
+            Assert.True(UpY(a.Live[0].World) > 0.99f, "clip path keeps the world upright (clip poses the collapse)");
+        }
+
+        [Fact]
+        public void Downed_ClearWithTeleportSnap_ReturnsToLocomotion_NoResidualNoGlide()
+        {
+            // Respawn: a downed entity teleports to a new spawn and clears the flag. Wired to SnapRenderHeight (as a
+            // teleport respawn is), the clear composes cleanly - upright (no prone residual), at the spawn position and
+            // height (no glide from the corpse position), and Idle (the teleport delta does not spin it into Run).
+            var a = NewAnimators();
+            var down = new Vector3(0f, 0.5f, 0f);   // small gap so only SnapRenderHeight (not the gap snap) makes it crisp
+            for (int i = 0; i < 40; i++) a.Update(new[] { Pos(1, down).WithDowned(true) }, Dt);
+            Assert.True(UpY(a.Live[0].World) < 0.02f, "prone before respawn");
+
+            var spawn = new Vector3(50f, 0f, -30f);
+            a.SnapRenderHeight(1);                              // the respawn teleport signal
+            a.Update(new[] { Pos(1, spawn) }, Dt);             // cleared + teleported same frame
+
+            Assert.Equal(LocomotionState.Idle, a.Live[0].State);   // not Run from the teleport delta
+            Assert.True(UpY(a.Live[0].World) > 0.99f, "no prone residual after respawn");
+            Assert.Equal(spawn.X, a.Live[0].World.Translation.X, 3);
+            Assert.Equal(spawn.Z, a.Live[0].World.Translation.Z, 3);
+            Assert.Equal(spawn.Y, a.Live[0].RenderPosition.Y, 3);   // snapped to spawn, no glide from Y=0.5
+        }
+
+        [Fact]
+        public void Downed_ReSet_RestartsCollapseFromUpright()
+        {
+            // Re-downing after a respawn starts a FRESH collapse, not from the previous prone hold: the first frame of
+            // the second downing is near-upright again.
+            var a = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 40; i++) a.Update(new[] { Pos(1, pos).WithDowned(true) }, Dt);
+            Assert.True(UpY(a.Live[0].World) < 0.02f, "prone after first downing");
+
+            a.SnapRenderHeight(1);
+            a.Update(new[] { Pos(1, pos) }, Dt);   // respawn (clear)
+            Assert.True(UpY(a.Live[0].World) > 0.99f, "upright after clear");
+
+            a.Update(new[] { Pos(1, pos).WithDowned(true) }, Dt);   // re-down: fresh collapse
+            Assert.True(UpY(a.Live[0].World) > 0.98f, "re-down restarts collapse from upright, not the held prone");
+        }
+
+        [Fact]
+        public void NeverDowned_IsByteIdenticalToWithDownedFalse()
+        {
+            // Defaults preserve behaviour: WithDowned(false) is byte-for-byte the same as never touching the flag. Feed
+            // the same varied stream to two sets and assert the drawn transform and state match every frame.
+            var a = NewAnimators();
+            var b = NewAnimators();
+            var pos = Vector3.Zero;
+            for (int i = 0; i < 60; i++)
+            {
+                pos += new Vector3(4f * Dt, i % 4 == 0 ? 0.05f : -0.01f, 2f * Dt);
+                a.Update(new[] { Pos(1, pos) }, Dt);
+                b.Update(new[] { Pos(1, pos).WithDowned(false) }, Dt);
+                Assert.Equal(a.Live[0].World, b.Live[0].World);
+                Assert.Equal(a.Live[0].State, b.Live[0].State);
+                Assert.Equal(a.Live[0].Pose[0], b.Live[0].Pose[0]);
+            }
+        }
     }
 }

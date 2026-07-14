@@ -26,10 +26,10 @@ namespace KhaozEngine.Game
     /// whose facing the server knows every tick but a position delta cannot reveal at rest.</summary>
     public readonly struct CharacterSample
     {
-        // Full-field constructor (private) backing WithFacingYaw: copies every field and overrides the facing yaw.
-        // Keeping it private avoids a public 11-arg overload; the public constructors below stay the documented surface.
+        // Full-field constructor (private) backing WithFacingYaw / WithDowned: copies every field and overrides one.
+        // Keeping it private avoids a public 13-arg overload; the public constructors below stay the documented surface.
         CharacterSample(long id, Vector3 position, bool isLocal, bool hasMovement, bool grounded, float verticalVelocity,
-            bool swimming, float climbRate, bool hasPlanarSpeed, float planarSpeed, float? facingYaw, float stepCumulativeY)
+            bool swimming, float climbRate, bool hasPlanarSpeed, float planarSpeed, float? facingYaw, float stepCumulativeY, bool downed)
         {
             Id = id;
             Position = position;
@@ -43,6 +43,7 @@ namespace KhaozEngine.Game
             PlanarSpeed = planarSpeed;
             FacingYaw = facingYaw;
             StepCumulativeY = stepCumulativeY;
+            Downed = downed;
         }
 
         /// <summary>Position-only sample: speed, vertical velocity, grounded, and swimming are all derived from the
@@ -62,6 +63,7 @@ namespace KhaozEngine.Game
             PlanarSpeed = 0f;
             FacingYaw = null;
             StepCumulativeY = 0f;
+            Downed = false;
         }
 
         /// <summary>Sample with exact movement (the local player, or any entity whose replicated <c>MovementState</c>
@@ -83,6 +85,7 @@ namespace KhaozEngine.Game
             PlanarSpeed = 0f;
             FacingYaw = null;
             StepCumulativeY = stepCumulativeY;
+            Downed = false;
         }
 
         /// <summary>Fullest sample (the local player): exact <see cref="Grounded"/>, <see cref="VerticalVelocity"/>,
@@ -110,6 +113,7 @@ namespace KhaozEngine.Game
             PlanarSpeed = planarSpeed;
             FacingYaw = null;
             StepCumulativeY = stepCumulativeY;
+            Downed = false;
         }
 
         /// <summary>Position + EXPLICIT facing sample: the position drives the derived planar speed / air state as the
@@ -133,6 +137,7 @@ namespace KhaozEngine.Game
             PlanarSpeed = 0f;
             FacingYaw = facingYaw;
             StepCumulativeY = 0f;
+            Downed = false;
         }
 
         /// <summary>Stable per-entity key (e.g. <c>NetId.Value</c>, 64-bit since 10.0.0). Identifies the brain across frames.</summary>
@@ -197,12 +202,35 @@ namespace KhaozEngine.Game
         /// position interpolation) and on every position-only sample, so no offset accumulates there.</summary>
         public float StepCumulativeY { get; }
 
+        /// <summary>True when the game considers this entity DOWNED (dead / knocked out) this frame, so the bridge shows
+        /// a downed pose instead of locomotion. The engine knows NOTHING about HP or death rules: a networked game
+        /// DERIVES this client-side from state it already replicates (e.g. <c>hp &lt;= 0</c> off a replicated Hp
+        /// component) with no wire change and sets it per frame. While set, <see cref="ReplicatedCharacterAnimators"/>
+        /// suppresses locomotion (idle/walk/run, air, swim, and stacked action one-shots) for this entity and either
+        /// plays the entity's baked <see cref="LocomotionState.Downed"/> clip once holding its final frame, or - with no
+        /// such clip - collapses the body procedurally to prone over
+        /// <see cref="CharacterAnimatorTuning.DownedCollapseSeconds"/> and settles it at ground level. Clearing it
+        /// (respawn) returns the entity to normal locomotion; a respawn usually teleports, so pair the clear with
+        /// <see cref="ReplicatedCharacterAnimators.SnapRenderHeight"/> for a crisp cut (no glide from the corpse
+        /// position, no prone residual). Defaults false on every constructor, so a sample never marked downed renders
+        /// exactly as before. Set it orthogonally on ANY sample shape via <see cref="WithDowned"/>.</summary>
+        public bool Downed { get; }
+
         /// <summary>Returns a copy of this sample carrying an explicit <paramref name="facingYaw"/> (world radians about
         /// +Y, 0 faces +Z), preserving every other field. The orthogonal way to add server-authoritative facing to ANY
         /// sample shape - position-only, exact-movement, or the fullest exact-speed sample - since facing is independent
         /// of the movement/speed/swim data. <see cref="CharacterAnimatorTuning.FacingYawOffset"/> still composes on top.</summary>
         public CharacterSample WithFacingYaw(float facingYaw) =>
-            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, ClimbRate, HasPlanarSpeed, PlanarSpeed, facingYaw, StepCumulativeY);
+            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, ClimbRate, HasPlanarSpeed, PlanarSpeed, facingYaw, StepCumulativeY, Downed);
+
+        /// <summary>Returns a copy of this sample with <see cref="Downed"/> set to <paramref name="downed"/>, preserving
+        /// every other field. The orthogonal way to mark ANY sample shape downed - position-only, exact-movement, the
+        /// fullest exact-speed sample, or one already carrying an explicit facing - since the downed flag is independent
+        /// of the movement/speed/swim/facing data. Mirrors <see cref="WithFacingYaw"/>. A networked game derives the
+        /// argument from its own replicated state (e.g. <c>e.Hp &lt;= 0</c>) in the same per-frame loop that builds the
+        /// sample.</summary>
+        public CharacterSample WithDowned(bool downed) =>
+            new CharacterSample(Id, Position, IsLocal, HasMovement, Grounded, VerticalVelocity, Swimming, ClimbRate, HasPlanarSpeed, PlanarSpeed, FacingYaw, StepCumulativeY, downed);
     }
 
     /// <summary>A draw-ready character produced by <see cref="ReplicatedCharacterAnimators.Update"/>: the world
@@ -392,6 +420,16 @@ namespace KhaozEngine.Game
         /// (isolated steps render raw, byte-identical to the pre-feature bridge).</para></summary>
         public float StepSmoothingRate;
 
+        /// <summary>Seconds the PROCEDURAL downed collapse takes to tip the body from upright to fully prone, used ONLY
+        /// when a downed entity's rig has no <see cref="LocomotionState.Downed"/> clip (a rig WITH one plays that clip
+        /// instead, on its own timing). Over this duration the bridge rotates the drawn model about its facing-lateral
+        /// axis through a smooth (smoothstep) ramp from 0 to 90 degrees so it topples forward in its facing direction
+        /// and lies flat, pivoting at the feet so the whole body settles at ground level (not floating at capsule
+        /// centre); it then HOLDS prone until the downed flag clears. Default 0.5 s (a quick, readable knockdown).
+        /// &lt;= 0 snaps to prone on the first downed frame (no ramp). Unused by an entity never marked
+        /// <see cref="CharacterSample.Downed"/>, so it never affects existing rendering.</summary>
+        public float DownedCollapseSeconds;
+
         /// <summary>The <see cref="LocomotionSpeedSync"/> these fields describe, applied to brains this set
         /// constructs. Disabled unless <see cref="SyncLocomotionToSpeed"/> is set.</summary>
         public readonly LocomotionSpeedSync SpeedSync() => SyncLocomotionToSpeed
@@ -421,6 +459,7 @@ namespace KhaozEngine.Game
             SlopeGlideRate = DefaultSlopeGlideRate,
             SlopeGlideSnapDistance = DefaultSlopeGlideSnapDistance,
             StepSmoothingRate = DefaultStepSmoothingRate,
+            DownedCollapseSeconds = DefaultDownedCollapseSeconds,
         };
 
         /// <summary>Default <see cref="SlopeGlideRate"/> (rad/s): 5. See that field for the derivation.</summary>
@@ -431,6 +470,9 @@ namespace KhaozEngine.Game
 
         /// <summary>Default <see cref="StepSmoothingRate"/> (1/s): 30. See that field for the derivation.</summary>
         public const float DefaultStepSmoothingRate = 30f;
+
+        /// <summary>Default <see cref="DownedCollapseSeconds"/> (seconds): 0.5.</summary>
+        public const float DefaultDownedCollapseSeconds = 0.5f;
     }
 
     /// <summary>Owns one <see cref="AnimatedCharacter"/> per replicated entity and turns a per-frame stream of
@@ -451,6 +493,12 @@ namespace KhaozEngine.Game
     /// Client-cosmetic: never feed a pose back into simulation or netcode.</summary>
     public sealed class ReplicatedCharacterAnimators
     {
+        // The active pose OVERRIDE for an entity: a whole-body pose that replaces locomotion selection for as long as
+        // it is set. None is normal locomotion. Downed (death / knockdown) is the only override today. The seam is
+        // deliberately an enum, not a bool, so a future non-locomotion pose (Stunned, Sitting, an emote, a mount ride)
+        // slots in as a new value with its own entry/hold logic without reworking the None-vs-override branch in Update.
+        enum PoseOverride { None, Downed }
+
         sealed class Entry
         {
             public AnimatedCharacter Character = null!;
@@ -475,6 +523,10 @@ namespace KhaozEngine.Game
             public float LastStepCumulative;   // last CharacterSample.StepCumulativeY consumed: the step-detect baseline.
                                         // Seeded to the first sample (no session-history dump) and re-synced on a teleport.
             public float PrevDrawnY;    // the previous frame's DRAWN feet-Y: the height the step freeze holds the mesh at.
+            public PoseOverride Override;   // the active whole-body pose override (None = normal locomotion). Set on the
+                                        // rising edge of CharacterSample.Downed, cleared on the falling edge.
+            public float OverrideElapsed;   // seconds the current Override has been active. Drives the procedural collapse
+                                        // ramp (0 -> DownedCollapseSeconds). 0 while Override == None.
         }
 
         // The disengage ease (climb -> grounded-flat) snaps exact and ends once the residual falls below this: 1 mm is
@@ -550,7 +602,10 @@ namespace KhaozEngine.Game
             if (_entries.TryGetValue(id, out Entry? e)) e.SnapPending = true;
         }
 
-        /// <summary>Advance every tracked character one frame from this frame's samples. Call once per render frame.</summary>
+        /// <summary>Advance every tracked character one frame from this frame's samples. Call once per render frame. An
+        /// entity whose sample sets <see cref="CharacterSample.Downed"/> takes the downed pose override (locomotion
+        /// suppressed; the baked <see cref="LocomotionState.Downed"/> clip held on its final frame, or a procedural
+        /// collapse to prone) instead of the locomotion path.</summary>
         public void Update(IReadOnlyList<CharacterSample> samples, float dt)
         {
             if (samples is null) throw new ArgumentNullException(nameof(samples));
@@ -614,6 +669,76 @@ namespace KhaozEngine.Game
                     e.StepOffset = 0f;
                     e.LastStepCumulative = s.StepCumulativeY;
                     e.PrevDrawnY = s.Position.Y;
+                }
+
+                // POSE OVERRIDE (downed / death). A whole-body pose that REPLACES locomotion for as long as the game
+                // marks the entity CharacterSample.Downed (derived client-side from replicated state - the engine knows
+                // nothing about HP or death rules). Detect the edges and drive the per-entity override state machine.
+                PoseOverride requested = s.Downed ? PoseOverride.Downed : PoseOverride.None;
+                if (requested != e.Override)
+                {
+                    e.Override = requested;
+                    e.OverrideElapsed = 0f;
+                    if (requested == PoseOverride.Downed) e.Character.EnterDowned();
+                    else e.Character.ExitDowned();   // falling edge (respawn / revive): back to normal locomotion
+                }
+
+                if (e.Override == PoseOverride.Downed)
+                {
+                    // DOWNED: locomotion (idle/walk/run, air, swim) AND stacked action one-shots are suppressed for this
+                    // entity - the locomotion Update is not called; UpdateDowned holds the death-clip final frame (clip
+                    // rig) or freezes the neutral pose (procedural rig). The yaw is FROZEN at whatever the entity faced
+                    // when it went down (a corpse does not turn), so no facing derivation runs here.
+                    e.OverrideElapsed += dt > 0f ? dt : 0f;
+                    e.Character.UpdateDowned(dt);
+
+                    // Settle at ground level: the render height is the TRUE feet-Y with no stair-glide / step-offset
+                    // carryover, and the glide/step smoother state is reset so a later respawn (which also snaps via
+                    // SnapRenderHeight) resumes cleanly. Freeze the velocity window too - the derived speed must read 0
+                    // when locomotion resumes, not a stale pre-death velocity.
+                    float feetY = s.Position.Y;
+                    e.SmoothedY = feetY;
+                    e.AscendGliding = false;
+                    e.StepOffset = 0f;
+                    e.LastStepCumulative = s.StepCumulativeY;
+                    e.PrevDrawnY = feetY;
+                    e.DispAccum = Vector3.Zero;
+                    e.TimeAccum = 0f;
+                    e.Velocity = Vector3.Zero;
+
+                    Matrix4x4 downedWorld;
+                    if (e.Character.HasDownedClip)
+                    {
+                        // The Downed clip lays the body down in SKELETON space, so the world stays upright (scale +
+                        // frozen yaw + feet at ground); UpdateDowned holds the clip's final frame.
+                        downedWorld = Matrix4x4.CreateScale(_tuning.Scale)
+                                      * Matrix4x4.CreateRotationY(e.Yaw)
+                                      * Matrix4x4.CreateTranslation(s.Position.X, feetY, s.Position.Z);
+                    }
+                    else
+                    {
+                        // No clip: PROCEDURAL collapse. Tip the (frozen neutral) body from upright to prone over
+                        // DownedCollapseSeconds via a smoothstep ramp. The tip rotates about the model's LOCAL lateral
+                        // axis (RotationX BEFORE the yaw in the multiply chain), so the body topples FORWARD in its
+                        // facing direction; the yaw then carries that lie direction to the world facing. Pivoting at the
+                        // feet origin (the sample is feet-anchored) swings the whole body down onto the ground plane, so
+                        // it lies flat at ground level rather than floating at capsule centre. At full tip (pi/2) the
+                        // model's up axis is horizontal - a body on the floor, not a leaning statue.
+                        float collapse = _tuning.DownedCollapseSeconds > 0f
+                            ? Math.Clamp(e.OverrideElapsed / _tuning.DownedCollapseSeconds, 0f, 1f)
+                            : 1f;
+                        float eased = collapse * collapse * (3f - 2f * collapse);   // smoothstep (monotonic 0->1)
+                        float tip = eased * (MathF.PI / 2f);
+                        downedWorld = Matrix4x4.CreateScale(_tuning.Scale)
+                                      * Matrix4x4.CreateRotationX(tip)
+                                      * Matrix4x4.CreateRotationY(e.Yaw)
+                                      * Matrix4x4.CreateTranslation(s.Position.X, feetY, s.Position.Z);
+                    }
+
+                    _live.Add(new CharacterPose(s.Id, downedWorld, e.Character.Pose, e.Character.State, s.IsLocal));
+                    e.PrevPosition = s.Position;
+                    e.HasPrev = true;
+                    continue;   // skip the locomotion path entirely while downed
                 }
 
                 // Derive velocity over a short time WINDOW, not a single frame. The rendered position PLATEAUS

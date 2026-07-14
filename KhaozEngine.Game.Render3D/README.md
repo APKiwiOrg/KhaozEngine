@@ -125,7 +125,23 @@ so the two water clips are named `Swim` and `SwimIdle`; a rig without them degra
 than crashing. The forward `Swim` clip speed-syncs (pass its authored move speed as `LocomotionSpeedSync` `swimClipSpeed`
 / `CharacterAnimatorTuning.SwimClipSpeed`); the tread always plays at 1x. Swim/tread transitions commit immediately
 (exempt from the ground-state debounce, like air states) because the enter/exit is hysteresis-debounced in the
-movement sim.
+movement sim. `LocomotionState.Downed` is a pose-OVERRIDE clip (below), not a locomotion state - the state machine
+never returns it.
+
+### Downed / death pose
+
+Setting `CharacterSample.Downed` (a game derives it client-side from its own replicated state, e.g. `hp <= 0` - the
+engine knows nothing about HP or death rules) SUPPRESSES locomotion for that entity (idle/walk/run, air, swim, and
+stacked action one-shots) and shows a downed pose instead. With a baked `Downed` clip (name-based convention, like the
+other states) the brain plays it ONCE and HOLDS its final frame (via `AnimationPlayer.PlayOnce`, which clamps the
+playhead at the clip duration instead of looping); with no `Downed` clip the bridge collapses the body PROCEDURALLY -
+it tips the model to prone about its facing-lateral axis over `CharacterAnimatorTuning.DownedCollapseSeconds` (default
+0.5 s, a smoothstep ramp), pivoting at the feet so the body settles flat on the ground rather than floating at capsule
+centre, then holds. Clearing the flag (respawn) returns to locomotion; pair it with `SnapRenderHeight(id)` (a respawn
+teleports) so the return is crisp - no glide from the corpse position, no facing spin, no prone residual. `Downed`
+defaults false on every constructor, set it orthogonally on any sample via `WithDowned` (mirrors `WithFacingYaw`), and
+an entity never marked downed renders byte-identically to before. The override is modelled as an internal
+`PoseOverride` seam so a future stunned / sitting / emote pose extends it without reworking the branch.
 
 ## One-shot and held actions over locomotion
 

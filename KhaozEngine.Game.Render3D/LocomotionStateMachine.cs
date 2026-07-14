@@ -6,8 +6,12 @@ namespace KhaozEngine.Game
     /// (<see cref="SwimIdle"/> tread / <see cref="Swim"/> forward) are picked by horizontal speed while the movement
     /// swim flag is set, and win over both ground and air just like air wins over ground. The enum names match the
     /// clip names a consumer bakes (name-based mapping), so the two new water clips are named <c>Swim</c> and
-    /// <c>SwimIdle</c>.</summary>
-    public enum LocomotionState { Idle, Walk, Run, Jump, Fall, SwimIdle, Swim }
+    /// <c>SwimIdle</c>. <see cref="Downed"/> is a POSE-OVERRIDE clip (a death / knockdown pose), NOT a locomotion
+    /// state: <see cref="LocomotionStateMachine"/> never returns it (it is not picked by any movement signal).
+    /// It is only ever selected by the downed pose override in <see cref="ReplicatedCharacterAnimators"/> (via
+    /// the <c>Downed</c> flag on <see cref="CharacterSample"/>), so a consumer that bakes a clip named <c>Downed</c> gets it played once
+    /// and held on its final frame; a rig without it collapses procedurally instead.</summary>
+    public enum LocomotionState { Idle, Walk, Run, Jump, Fall, SwimIdle, Swim, Downed }
 
     /// <summary>Speed thresholds (m/s) that split idle/walk/run and, while swimming, tread/forward-swim.
     /// <see cref="WalkSpeed"/> is the dead-zone above which the character is considered moving; at or above

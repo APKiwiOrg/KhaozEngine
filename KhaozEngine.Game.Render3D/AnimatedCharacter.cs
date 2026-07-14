@@ -40,6 +40,11 @@ namespace KhaozEngine.Game
         LayeredAnimator? _actions;
         JointPose[]? _baseLocals;   // scratch for the locomotion crossfade fed to _actions as the base each frame
 
+        // True between EnterDowned and ExitDowned WHEN a Downed clip exists: the downed clip is playing clamped (held
+        // on its final frame) and UpdateDowned advances it. Without a Downed clip the downed pose is procedural (the
+        // bridge tips the world transform to prone) and the frozen locomotion pose holds, so this stays false.
+        bool _downedClipPlaying;
+
         public LocomotionState State { get; private set; }
 
         /// <param name="skeleton">The rig the pose is evaluated on.</param>
@@ -157,6 +162,64 @@ namespace KhaozEngine.Game
         /// <summary>The rig this character poses (for building a <see cref="BoneMask"/> to pass to
         /// <see cref="PlayAction"/>).</summary>
         public Skeleton Skeleton => _skeleton;
+
+        /// <summary>True when a clip is baked for <see cref="LocomotionState.Downed"/> (a death / knockdown pose, by the
+        /// name-based clip convention). <see cref="ReplicatedCharacterAnimators"/> checks this to choose the downed
+        /// presentation: a rig WITH the clip plays it once and holds its final frame (<see cref="EnterDowned"/> +
+        /// <see cref="UpdateDowned"/>); a rig WITHOUT it collapses procedurally (the bridge tips the world transform to
+        /// prone) while this brain just freezes its pose.</summary>
+        public bool HasDownedClip => _clips.ContainsKey(LocomotionState.Downed);
+
+        /// <summary>Enter the downed / death pose - call ONCE on the downed rising edge (the bridge does). With a
+        /// <see cref="LocomotionState.Downed"/> clip present it starts that clip playing ONCE, crossfading in from the
+        /// current locomotion pose, then holding its final frame (see <see cref="UpdateDowned"/>). With no Downed clip
+        /// it SNAPS to the neutral fallback (Idle) pose and freezes there, so the bridge's procedural collapse tips a
+        /// clean rest pose to prone rather than a mid-stride limb tangle. <see cref="State"/> reads
+        /// <see cref="LocomotionState.Downed"/> from here until <see cref="ExitDowned"/>. Locomotion selection and any
+        /// stacked actions are suppressed while downed (neither <see cref="Update(float, bool, float, bool, float)"/>
+        /// nor the action compositor runs - the bridge calls <see cref="UpdateDowned"/> instead).</summary>
+        public void EnterDowned()
+        {
+            if (HasDownedClip)
+            {
+                _downedClipPlaying = true;
+                _player.PlayOnce(_clips[LocomotionState.Downed], _crossfade);
+            }
+            else
+            {
+                _downedClipPlaying = false;
+                _player.Play(_fallback, crossfade: 0f);   // snap to the neutral pose; the bridge tips it to prone
+                _player.GetBonePalette(_pose);
+            }
+            State = LocomotionState.Downed;
+        }
+
+        /// <summary>Advance the downed pose one frame - call each frame while downed (the bridge does). With a Downed
+        /// clip it advances the clamped (non-looping) playhead, so the clip plays through once and then HOLDS its final
+        /// frame indefinitely; with no Downed clip the frozen fallback pose is left untouched. Actions do NOT composite
+        /// while downed. <see cref="State"/> stays <see cref="LocomotionState.Downed"/>.</summary>
+        public void UpdateDowned(float dt)
+        {
+            State = LocomotionState.Downed;
+            if (!_downedClipPlaying) return;   // procedural: the frozen pose holds, nothing to advance
+            _player.Update(dt);
+            _player.GetBonePalette(_pose);
+        }
+
+        /// <summary>Leave the downed pose and return to normal locomotion - call ONCE on the downed falling edge (the
+        /// bridge does, on respawn / revive). SNAPS the player back to the neutral fallback (Idle) with no crossfade so
+        /// no death-pose residual lingers into the respawned character (a respawn usually teleports, so a get-up blend
+        /// is not wanted); the next <see cref="Update(float, bool, float, bool, float)"/> resumes normal locomotion
+        /// selection from there.</summary>
+        public void ExitDowned()
+        {
+            _downedClipPlaying = false;
+            _player.Play(_fallback, crossfade: 0f);   // snap to neutral, restoring looping playback
+            _player.GetBonePalette(_pose);
+            State = LocomotionState.Idle;
+            _candidate = LocomotionState.Idle;
+            _candidateAge = 0f;
+        }
 
         // Debounce ground-state transitions: a new ground state commits only after it has held continuously for the
         // debounce window, so a one-frame/one-tick flicker in the movement signal cannot restart the clip. Becoming

@@ -8,8 +8,9 @@ behaviour, forced-update prompts, and a "server is updating, back soon" waiting 
 This package ships the reusable engine pieces. The cloud infra (the Function, the CI/CD steps that write
 deploy facts) lands in the game-template repo, implemented against the wire contract below.
 
-GPU-free. Pure .NET plus `KhaozEngine.Diagnostics` (logging). No cloud-specific code and no database driver,
-so both a game client and a headless server can reference it.
+GPU-free. Pure .NET plus `KhaozEngine.Diagnostics` (logging) and `KhaozEngine.Primitives` (the shared
+version comparer). No cloud-specific code and no database driver, so both a game client and a headless
+server can reference it.
 
 ## Design authority split
 
@@ -122,7 +123,9 @@ and types are the game's). A write failure is contained (logged, surfaced via `C
   version + staleness -> actionable state map.
 - **`IServerHeartbeatSink`** / **`ServerHeartbeat`** / **`ServerHeartbeatService`** - the liveness-write seam,
   its row value type, and the cadence driver (+ `Null` / `InMemory` reference sinks).
-- **`VersionOrder`** - numeric `x.y.z` comparison for the version gates.
+- **`VersionOrder`** - numeric `x.y.z` comparison for the version gates. A thin wrapper over
+  `KhaozEngine.Primitives.VersionComparer`, the rule shared with `KhaozEngine.Updates.UpdateVersion` so
+  the two packages cannot drift apart.
 
 In the `Foundation` umbrella, so it flows to every game client (`Game2D` / `Game3D`) and headless server
 (`Server`) with one reference.

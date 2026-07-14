@@ -2,11 +2,13 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.ServerStatus</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Out-of-band server-status capability for a live game (an MMO first): the versioned tolerant-read ServerStatusReport wire contract a small public status endpoint serves, HttpServerStatusSource + ServerStatusClient (an async, never-throwing poller that degrades to a stale/unknown snapshot), ServerStatusEvaluator (a pure report + client-version + staleness -> actionable state map driving reconnect / forced-update / "back soon" screens), and the IServerHeartbeatSink liveness seam a game server writes on a timer. GPU-free, no cloud-specific code (the endpoint and its DB are per-game infra). Pure .NET (+ KhaozEngine.Diagnostics).</Description>
+    <Description>Out-of-band server-status capability for a live game (an MMO first): the versioned tolerant-read ServerStatusReport wire contract a small public status endpoint serves, HttpServerStatusSource + ServerStatusClient (an async, never-throwing poller that degrades to a stale/unknown snapshot), ServerStatusEvaluator (a pure report + client-version + staleness -> actionable state map driving reconnect / forced-update / "back soon" screens), and the IServerHeartbeatSink liveness seam a game server writes on a timer. GPU-free, no cloud-specific code (the endpoint and its DB are per-game infra). Pure .NET (+ KhaozEngine.Diagnostics, KhaozEngine.Primitives).</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <!-- VersionOrder delegates its numeric x.y.z compare to the shared VersionComparer leaf. -->
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

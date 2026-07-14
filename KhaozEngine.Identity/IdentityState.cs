@@ -15,7 +15,8 @@ public enum IdentityStatus
 }
 
 /// <summary><see cref="Subject"/> is the server-verified subject from the <c>/auth/exchange</c> result. It is null
-/// until a session token has been attached (via <see cref="IdentitySession.AttachSessionTokenAsync"/>); the
-/// provider credential alone is not a verified identity.</summary>
+/// until a session token has been attached (via
+/// <see cref="IdentitySession.AttachSessionTokenAsync(string, string, string, System.DateTimeOffset, System.Threading.CancellationToken)"/>).
+/// The provider credential alone is not a verified identity.</summary>
 public readonly record struct IdentityState(
     IdentityStatus Status, string? Subject, string? DisplayName, ProviderCredential? Credential, string? SessionToken);

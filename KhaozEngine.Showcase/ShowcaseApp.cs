@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Resources;
 using KhaozEngine.App;
 using KhaozEngine.Game;
+using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
@@ -60,6 +61,11 @@ namespace KhaozEngine.Showcase
             // parameterless constructor for the Func<GameScene> factory below.
             var checker = Surface2D.CreateTexture(Room2D.Checker(64), 64, 64);
 
+            // Procedural nine-slice frame texture (original / CC0) for RoomGui's skinned-chrome widgets.
+            var frameTex = Surface2D.CreateTexture(
+                RoomGui.BakeFramePixels(RoomGui.FrameSize, RoomGui.FrameInset), RoomGui.FrameSize, RoomGui.FrameSize);
+            var guiSkin = GuiSkin.NineSlice(frameTex, RoomGui.FrameInset);
+
             // Two font families, both crisp on HiDPI:
             //  - DpiFonts (baked at the live DPI scale, drawn 1:1) for everything that draws through the point-space
             //    UI pass: the menu, the display readout, and the rooms whose text/HUD is a point-space overlay.
@@ -77,7 +83,7 @@ namespace KhaozEngine.Showcase
             Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big3, small3)));
 
             // RoomGui / RoomMiniGame are ScreenStack widget rooms: crisp via the supersampled design-space fonts.
-            Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big3, small3)));
+            Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big3, small3, guiSkin)));
 
             Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, small3)));
 

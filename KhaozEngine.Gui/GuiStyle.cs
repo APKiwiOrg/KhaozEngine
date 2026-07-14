@@ -56,11 +56,48 @@ namespace KhaozEngine.Gui
         public float GlowSize;
 
         /// <summary>
-        /// True when every modern knob is at its off default, so <see cref="GuiDraw"/> takes the plain
-        /// single-quad path that renders byte-identically to pre-7.7.0.
+        /// Optional sprite skin (nine-slice frame). Default <c>null</c> = flat GuiDraw primitives (today's rendering,
+        /// byte-for-byte). When set, <see cref="GuiDraw.FillStyled"/> paints the skin instead of the flat fill /
+        /// procedural border, with the resolved state colour multiplied over the texture as a tint (the shadow still
+        /// draws). Applies family-wide since every widget fills through <see cref="GuiDraw.FillStyled"/>.
+        /// </summary>
+        public GuiSkin? Skin;
+
+        /// <summary>
+        /// True when every modern knob is at its off default AND no <see cref="Skin"/> is set, so <see cref="GuiDraw"/>
+        /// takes the plain single-quad path that renders byte-identically to pre-7.7.0.
         /// </summary>
         public bool IsFlat =>
-            CornerRadius == 0f && ShadowSize == 0f && FillMode == GuiFill.Solid && GlowSize == 0f;
+            CornerRadius == 0f && ShadowSize == 0f && FillMode == GuiFill.Solid && GlowSize == 0f && Skin == null;
+
+        /// <summary>
+        /// The frame insets interior content must clear for a widget drawn at <paramref name="bounds"/>, as
+        /// (X=left, Y=top, Z=right, W=bottom). The shared seam for every widget's interior-content math: when
+        /// <see cref="Skin"/> is set the skin owns the frame, so these are the skin's destination insets
+        /// (<see cref="GuiSkin.DestinationInsets"/>, exactly what the nine-slice paints, including the clamp when
+        /// the widget is smaller than two opposing corners). With no skin they are the uniform
+        /// <see cref="BorderThickness"/> (clamped at 0), matching today's flat-border behaviour byte-for-byte.
+        /// Pure geometry, headless-testable.
+        /// </summary>
+        public Vector4 ContentInsets(Primitives.Rect bounds)
+        {
+            if (Skin is { } skin) return skin.DestinationInsets(bounds);
+            float bt = BorderThickness > 0f ? BorderThickness : 0f;
+            return new Vector4(bt, bt, bt, bt);
+        }
+
+        /// <summary>
+        /// <paramref name="bounds"/> shrunk by <see cref="ContentInsets"/> (width/height clamped at 0): the
+        /// interior rect content may occupy without overpainting the frame (flat border or nine-slice skin).
+        /// </summary>
+        public Primitives.Rect ContentRect(Primitives.Rect bounds)
+        {
+            Vector4 i = ContentInsets(bounds);
+            return new Primitives.Rect(
+                bounds.X + i.X, bounds.Y + i.Y,
+                System.MathF.Max(0f, bounds.Width - i.X - i.Z),
+                System.MathF.Max(0f, bounds.Height - i.Y - i.W));
+        }
 
         /// <summary>
         /// The crisp default button palette, derived from <see cref="GuiTheme.Default"/>: an accent-tinted fill,

@@ -105,6 +105,17 @@ namespace KhaozEngine.Gui
             Vector4 bodyColor, Vector4 borderColor)
         {
             r = batch.SnapRect(r);
+
+            // Skinned: the sprite owns the silhouette, so the procedural corner/border path is skipped. The drop
+            // shadow still draws underneath (ShadowSize keeps working); the state colour multiplies over the skin.
+            if (style.Skin is { HasTexture: true } skin)
+            {
+                if (style.ShadowSize > 0f && style.ShadowColor.W > 0f)
+                    SoftRoundedQuad(batch, white, r, style.CornerRadius, style.ShadowColor, style.ShadowSize, style.ShadowOffset);
+                DrawSkin(batch, skin, r, bodyColor);
+                return;
+            }
+
             float borderThickness = style.BorderThickness > 0f ? batch.SnapLength(style.BorderThickness, minDevicePixels: 1f) : 0f;
 
             if (style.IsFlat)
@@ -133,6 +144,115 @@ namespace KhaozEngine.Gui
             // Rounded border ring.
             if (borderThickness > 0f)
                 batch.DrawRounded(white, dest, (Color)borderColor, style.CornerRadius, softness: 0f, strokeWidth: borderThickness);
+        }
+
+        /// <summary>One nine-slice patch: a destination rect and the source UV sub-rect (u0,v0,u1,v1) to sample.</summary>
+        public readonly record struct NineSlicePatch(Rect Dest, Vector4 Source);
+
+        /// <summary>
+        /// Number of native-size tiles needed to cover <paramref name="destExtent"/> with a tile of
+        /// <paramref name="tilePx"/> draw units (the last tile is partial). <c>ceil(destExtent / tilePx)</c>, at least
+        /// 1; a non-positive tile size (a degenerate skin with no centre) collapses to a single span. Pure.
+        /// </summary>
+        public static int TileCount(float destExtent, float tilePx)
+        {
+            if (tilePx <= 0f || destExtent <= 0f) return 1;
+            return (int)MathF.Ceiling(destExtent / tilePx - 1e-4f);
+        }
+
+        /// <summary>
+        /// Decompose a nine-slice <paramref name="skin"/> over destination <paramref name="dest"/> into the draw
+        /// patches (dest rect + source UV). The four corners keep their source-pixel size (never scaled); the edges +
+        /// centre stretch (<see cref="GuiSkinCenter.Stretch"/>) or repeat at native source-pixel size
+        /// (<see cref="GuiSkinCenter.Tile"/>, clipping the last row/column). When the destination is too small for both
+        /// opposing corners the destination insets scale down proportionally so the corners meet (the source stays
+        /// fixed). Zero-area cells are dropped. Pure geometry (no GPU / no texture sampling), headless-testable.
+        /// </summary>
+        public static System.Collections.Generic.List<NineSlicePatch> NineSlicePatches(Rect dest, GuiSkin skin)
+        {
+            float l = MathF.Max(0f, skin.InsetLeft), t = MathF.Max(0f, skin.InsetTop);
+            float rIn = MathF.Max(0f, skin.InsetRight), b = MathF.Max(0f, skin.InsetBottom);
+
+            // Destination border insets = source-pixel insets (corners unscaled), scaled down proportionally when
+            // the two opposing borders would overlap so the corners just meet. GuiSkin.DestinationInsets is the
+            // single source of truth, shared with GuiStyle.ContentInsets so interior-content math always matches
+            // what the nine-slice actually paints.
+            Vector4 di = skin.DestinationInsets(dest);
+            float dl = di.X, dt = di.Y, dr = di.Z, db = di.W;
+
+            float[] dx = { dest.X, dest.X + dl, dest.Right - dr, dest.Right };
+            float[] dy = { dest.Y, dest.Y + dt, dest.Bottom - db, dest.Bottom };
+
+            // Source UV column/row edges. Insets in UV = source-span * (pixel-inset / source-pixel-size). The source
+            // insets are NOT clamped (they stay fixed while the destination squishes).
+            float u0 = skin.Source.X, u1 = skin.Source.Z, v0 = skin.Source.Y, v1 = skin.Source.W;
+            float spW = skin.SourcePixelWidth, spH = skin.SourcePixelHeight;
+            float su1 = u0 + (u1 - u0) * (spW > 0f ? l / spW : 0f);
+            float su2 = u1 - (u1 - u0) * (spW > 0f ? rIn / spW : 0f);
+            float sv1 = v0 + (v1 - v0) * (spH > 0f ? t / spH : 0f);
+            float sv2 = v1 - (v1 - v0) * (spH > 0f ? b / spH : 0f);
+            float[] su = { u0, su1, su2, u1 };
+            float[] sv = { v0, sv1, sv2, v1 };
+
+            // Native tile sizes (source centre-cell pixel extents), used only in Tile mode.
+            bool tile = skin.Center == GuiSkinCenter.Tile;
+            float tilePxW = MathF.Max(0f, spW - l - rIn);
+            float tilePxH = MathF.Max(0f, spH - t - b);
+
+            var patches = new System.Collections.Generic.List<NineSlicePatch>(tile ? 16 : 9);
+            for (int row = 0; row < 3; row++)
+            {
+                for (int col = 0; col < 3; col++)
+                {
+                    var cell = new Rect(dx[col], dy[row], dx[col + 1] - dx[col], dy[row + 1] - dy[row]);
+                    if (cell.Width <= 0f || cell.Height <= 0f) continue;
+                    var uv = new Vector4(su[col], sv[row], su[col + 1], sv[row + 1]);
+
+                    // Corners (col/row 0 or 2) never tile; edges tile along their long axis; centre tiles both.
+                    bool tileX = tile && col == 1;
+                    bool tileY = tile && row == 1;
+                    AppendCell(patches, cell, uv, tilePxW, tilePxH, tileX, tileY);
+                }
+            }
+            return patches;
+        }
+
+        // Emit one nine-slice cell, either as a single stretched patch or as a grid of native-size tiles (clipping
+        // the trailing partial tile's dest + source UV). tileX/tileY select which axes repeat.
+        static void AppendCell(System.Collections.Generic.List<NineSlicePatch> outp, Rect cell, Vector4 uv,
+            float tilePxW, float tilePxH, bool tileX, bool tileY)
+        {
+            int nx = tileX ? TileCount(cell.Width, tilePxW) : 1;
+            int ny = tileY ? TileCount(cell.Height, tilePxH) : 1;
+            float u0 = uv.X, v0 = uv.Y, u1 = uv.Z, v1 = uv.W;
+
+            for (int iy = 0; iy < ny; iy++)
+            {
+                float y = cell.Y + (tileY ? iy * tilePxH : 0f);
+                float h = tileY ? MathF.Min(tilePxH, cell.Bottom - y) : cell.Height;
+                if (h <= 0f) continue;
+                float fv = tileY ? h / tilePxH : 1f;   // fraction of the tile shown (1 unless clipped)
+
+                for (int ix = 0; ix < nx; ix++)
+                {
+                    float x = cell.X + (tileX ? ix * tilePxW : 0f);
+                    float w = tileX ? MathF.Min(tilePxW, cell.Right - x) : cell.Width;
+                    if (w <= 0f) continue;
+                    float fu = tileX ? w / tilePxW : 1f;
+
+                    var src = new Vector4(u0, v0, u0 + (u1 - u0) * fu, v0 + (v1 - v0) * fv);
+                    outp.Add(new NineSlicePatch(new Rect(x, y, w, h), src));
+                }
+            }
+        }
+
+        // Draw a nine-slice skin over r, tinting every patch by tint (the resolved state colour multiplied over the
+        // sprite). Shared by FillStyled's skin path.
+        static void DrawSkin(SpriteBatch batch, GuiSkin skin, Rect r, Vector4 tint)
+        {
+            var col = (Color)tint;
+            foreach (NineSlicePatch p in NineSlicePatches(r, skin))
+                batch.Draw(skin.Texture, new Vector4(p.Dest.X, p.Dest.Y, p.Dest.Width, p.Dest.Height), p.Source, col);
         }
 
         /// <summary>

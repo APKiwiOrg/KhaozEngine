@@ -33,6 +33,25 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the
   exact old flat button). Per-widget colour fields still override the theme.
+- **Texture skinning (`GuiStyle.Skin`, family-wide).** `GuiStyle` has an optional `Skin` (a `GuiSkin`, default
+  `null` = today's flat GuiDraw primitives, byte-for-byte). Set it and EVERY widget that fills through
+  `GuiDraw.FillStyled` (Panel, Button, ProgressBar, TextInput/NumberField, ScrollablePanel, Dropdown, PopupPanel,
+  SlotGrid, TreeView, ...) renders a nine-slice sprite frame instead of the flat fill. `GuiSkin` rides the same
+  `Texture2D` + source-UV mechanism as `IconAtlas`: a `Texture` (or atlas sub-region via `Source` + its pixel size),
+  four source-pixel `Inset*` values, and `Center` (`GuiSkinCenter.Stretch` default, or `Tile`). Build one with
+  `GuiSkin.NineSlice(texture, inset)` / `NineSlice(texture, l, t, r, b, center)` for a whole texture, or
+  `GuiSkin.FromAtlas(...)` for one cell of a shared atlas. The four corners keep their source-pixel size (never
+  scaled) while the edges + centre stretch or tile; when the destination is too small for both opposing corners the
+  destination insets scale down proportionally so the corners just meet. The resolved state colour multiplies OVER
+  the skin as a tint (set the style's `Fill` to white for the skin's native colours, `Hover`/`Press` as tints -
+  per-state skins are a future extension, not per-state today). A skinned frame owns the silhouette, so the
+  procedural `CornerRadius`/border is skipped, but `ShadowSize` still draws its drop shadow underneath.
+  Interior content respects the frame through the shared seam `GuiStyle.ContentInsets(bounds)` /
+  `ContentRect(bounds)`: skinned = the skin's `GuiSkin.DestinationInsets` (exactly what the nine-slice paints,
+  including the too-small clamp), unskinned = the uniform `BorderThickness` (unchanged). `ProgressBar.InnerBounds`
+  rides it (a skinned bar's fill sits inside the frame), `TextInput`/`NumberField` pad their text past a frame
+  thicker than their fixed pad, and caller-painted content (`SlotGrid.DrawSlotContent`) can call `ContentRect` on
+  the slot rect to stay inside the frame.
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white
   texture + `SpriteBatch`:
   - `Button` - click via `IsTapIn`, hover/press visuals.
@@ -50,10 +69,17 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     themed frame; the caller paints icons/counts through the `DrawSlotContent(index, rect, batch)` hook and optional
     per-slot `KeybindLabels` (raw input-token glyphs). `SlotRect(i)`/`SlotAt(point)` are pure geometry; `Opacity`
     fades the whole grid.
-  - `ProgressBar` - a thin horizontal fill bar (health / XP / cast / load). `Fraction` is clamped 0..1; the accent
-    fill (`FillColor`) sits inside the border frame, the track is `TrackColor`, and corners/border come from `Style`.
-    Optional centered `OverlayText` (a `LocalizedText`, so a caption localizes; wrap a number/percentage in `Raw`).
-    `FillRect`/`InnerBounds` are pure geometry; non-interactive (no `Update`); `Opacity` fades the whole bar.
+  - `ProgressBar` - a thin fill bar (health / XP / cast / load / charge pips). `Fraction` is clamped 0..1; the accent
+    fill (`FillColor`) sits inside the border frame, the track is `TrackColor`, and corners/border/skin come from
+    `Style`. `FillDirection` picks the edge the fill grows FROM: `LeftToRight` (default, today's look), `RightToLeft`,
+    `BottomToTop`, or `TopToBottom` (the last two make a vertical bar). Set `SegmentCount` > 1 (default 0/1 = one
+    continuous fill, unchanged) to split the bar into equal segments separated by `SegmentSpacing`:
+    `SegmentFillMode.Continuous` clips the proportional fill into each segment so the gaps read as ticks (xp / cast
+    bars), `SegmentFillMode.Discrete` lights a whole segment only once the fill fully covers it (combo points /
+    ability charges). Segmentation composes with every `FillDirection` (a vertical pip stack works). Optional centered
+    `OverlayText` (a `LocalizedText`, so a caption localizes; wrap a number/percentage in `Raw`) stays centered in
+    `Bounds` regardless of direction. `FillRect`/`InnerBounds`/`SegmentRects()`/`FilledSegmentCount` are pure geometry;
+    non-interactive (no `Update`); `Opacity` fades the whole bar.
   - `NumberField` - numeric field for editor inspectors, driven by `InputManager` (needs the keyboard). A drag
     started inside scrubs `Value` by `DragScale` value units per pixel (grab-gated, so it keeps tracking off the
     widget). A tap under 3 draw units of travel opens typing mode (`TextEntry` with a digits/one-minus/one-dot

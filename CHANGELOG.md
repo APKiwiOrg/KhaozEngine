@@ -5,6 +5,49 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.81.0
+
+### NativeAOT world save/load: reflection-free ECS serialization registration and source-generated NetWorld persistence JSON
+
+World JSON save/load and the NetWorld persistence records are now NativeAOT-safe, closing the last
+reflection blockers behind an AOT-published dedicated server that also saves and loads world state.
+Save formats and encoded record bytes are unchanged, and JIT consumers keep the existing
+reflection-based conveniences.
+
+- **Type-keyed column-factory table (`KhaozEngine.Ecs.ComponentColumnFactory`, new).** The cohesive
+  registration seam for reflection-free component columns. The generic paths populate it by closing
+  statically over `() => new Column<T>()` plus the reflection-free tag classification
+  (`ComponentTagInfo<T>`, moved out of `ComponentRegistry`) and a boxed tag default. The non-generic
+  `ComponentRegistry.RegisterType(Type)` load path is now a table lookup. The old
+  `Type.MakeGenericType` + `Activator.CreateInstance` reflection survives only as a fallback in a
+  separate `[RequiresDynamicCode]`/`[RequiresUnreferencedCode]` method guarded by
+  `RuntimeFeature.IsDynamicCodeSupported`, so ILC trims it under NativeAOT with no warnings while
+  JIT behaviour is unchanged.
+- **AOT-safe `WorldSerializer` builder (`KhaozEngine.Ecs`).** New public
+  `WorldSerializer.Create().Add<T>()...Build(options)` registers the component set without assembly
+  scanning. The save envelope serializes via a source-generated `WorldSaveJsonContext` and component
+  values via `JsonTypeInfo` overloads (`options.GetTypeInfo(t)`), so nothing on the save/load path
+  needs reflection-based `System.Text.Json`. The `Type[]` constructor and `FromAssemblyOf<T>`
+  discovery stay reflection-based and JIT-only (now marked `[RequiresUnreferencedCode]`), and a
+  serializer built with no options falls back to guarded reflection defaults that throw an
+  actionable error under AOT. Save format is byte-for-byte unchanged, and legacy saves load (pinned
+  by tests: envelope shape, builder-vs-constructor output equivalence, legacy-save load).
+- **Source-generated NetWorld persistence JSON (`KhaozEngine.NetWorld.NetWorldJsonContext`, new).**
+  `PlayerRecord`, `WorldMetaRecord`, and the ban record DTO round-trip through a source-generated
+  `JsonSerializerContext` in metadata generation mode, chosen deliberately because the source-gen
+  fast path encodes a null `byte[]` as `""` where reflection writes `null`. Metadata mode routes
+  through the same converters, keeping the encoded bytes identical to every record already persisted
+  via `IWorldStore` (pinned by shape and equivalence tests). The context bakes the
+  `JsonDefaults.IndentedWrite` and `TolerantRead` semantics.
+- **AOT gate extended (`KhaozEngine.Server.AotProbe`).** The probe now also round-trips a world JSON
+  save/load with registered components and the three NetWorld records, on top of the existing
+  replication path. Verified on this machine: `dotnet publish -c Release -r osx-arm64`
+  (PublishAot=true) links with zero trim/AOT warnings and the native binary prints the sentinel and
+  exits 0.
+- **Docs.** `KhaozEngine.Ecs`/`KhaozEngine.NetWorld`/`KhaozEngine.Server` package READMEs and
+  `docs/USING-KHAOZENGINE.md` cover the builder and the AOT story. The NativeAOT item is removed
+  from `docs/ROADMAP.md`.
+
 ## 10.80.0
 
 ### Multi-texture-per-primitive props: per-material textured sub-parts through the prop pipeline

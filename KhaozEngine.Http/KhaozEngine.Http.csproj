@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Http</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <!-- Multi-targeted below net10.0 so an Azure Functions isolated-worker app on the Linux
+         Consumption (Y1) plan can reference it: Linux Consumption does not support .NET 10, its
+         newest LTS is .NET 8. This blanks the repo-wide single <TargetFramework> from
+         Directory.Build.props (the singular property wins over the plural one) and replaces it
+         with the plural set. This is exactly the ServerStatus / Diagnostics / Primitives
+         precedent from 10.90.0, but this package has no ProjectReference chain to carry along
+         (zero dependencies), so it multi-targets alone. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Description>A reusable bounded send-with-retry HTTP helper: HttpRetry.SendAsync / the HttpClient.SendWithRetryAsync extension wrap a caller-supplied HttpClient with a per-attempt timeout, a retryable-status and transport-fault retry loop, and an injectable backoff, so a cold or momentarily-stalled backend surfaces a real response instead of a client timeout. Field-proven in Nullwake's sign-in client (a free-tier App Service cold start returned client timeouts on roughly half of first-attempt sign-ins before this policy was added). Pure .NET, zero dependencies.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

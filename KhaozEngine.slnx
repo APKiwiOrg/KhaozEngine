@@ -58,6 +58,7 @@
   <Project Path="KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
   <Project Path="KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+  <Project Path="KhaozEngine.Http/KhaozEngine.Http.csproj" />
   <Project Path="KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
   <Project Path="KhaozEngine.Social/KhaozEngine.Social.csproj" />
   <Project Path="KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj" />

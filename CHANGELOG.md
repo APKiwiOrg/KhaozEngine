@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.91.0
+
+### New `KhaozEngine.Http` package: reusable bounded send-with-retry HTTP helper
+
+A new leaf `KhaozEngine.Http` package adds a bounded, cancellation-correct retry wrapper around
+`HttpClient.SendAsync`, promoted from Nullwake's field-proven `IdentityBootstrap` retry that absorbed
+cold-backend timeouts. `HttpRetry.SendAsync(client, requestFactory, policy?, ct)` (and the
+`client.SendWithRetryAsync(requestFactory, policy?, ct)` extension that forwards to it) send a request
+with backoff-spaced retries governed by an `HttpRetryPolicy`. Purely additive, and it operates on a
+caller-supplied `HttpClient` it never constructs.
+
+- **`HttpRetryPolicy`** (immutable record) exposes the knobs: `MaxAttempts` (default 3), a per-attempt
+  timeout enforced through a linked `CancellationTokenSource` (`PerAttemptTimeout`, default 12s, accepts
+  `Timeout.InfiniteTimeSpan` to disable it), an injectable `Backoff` delay seam (default 700/1600/3000 ms,
+  and a test can pass `_ => TimeSpan.Zero` for a no-sleep loop), and a retryable-status predicate
+  (`IsRetryableStatus`, default 408/500/502/503/504). Constructor inputs validate in their `init`
+  accessors, so a bad value throws on both `new` and `with`.
+- **Cancellation is correct by construction.** The caller's `ct` propagates immediately and is never
+  retried, kept distinct from a per-attempt timeout (which surfaces as a transport fault and IS retried)
+  by a catch filter. Transport faults and retryable statuses retry with backoff up to `MaxAttempts`, then
+  the final attempt returns the last response or rethrows.
+- **Request factory, not a shared message.** The caller passes a `Func<HttpRequestMessage>` so each
+  attempt builds and disposes its own request, because an `HttpRequestMessage` cannot be resent.
+- **Packaging.** Multi-targets `net8.0;net10.0` (like `KhaozEngine.ServerStatus`) so it is usable from an
+  Azure Functions Linux Consumption app, joins the `KhaozEngine.Foundation` umbrella, and carries zero
+  third-party dependencies. The `ArchitectureTests` multi-target guard and umbrella-membership lock were
+  extended to cover it.
+
 ## 10.90.0
 
 ### `KhaozEngine.ServerStatus` multi-targets `net8.0` for Azure Functions on Linux Consumption

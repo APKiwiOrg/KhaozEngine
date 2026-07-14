@@ -42,10 +42,10 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(scene.DepthLineVertexCount > 0, "depth-tested volumes queued nothing");
             Assert.True(scene.LineVertexCount > 0, "always-on-top volume queued nothing");
-            // Depth stream carries the sphere + cylinder; overlay stream carries only the dome.
+            // Depth stream carries the sphere + cylinder. Overlay stream carries only the dome.
             Assert.True(scene.DepthLineVertexCount > scene.LineVertexCount);
 
-            // Begin() (inside Capture) clears both streams; the empty draw adds nothing back.
+            // Begin() (inside Capture) clears both streams. The empty draw adds nothing back.
             preview.Capture(_ => { });
             Assert.Equal(0, scene.DepthLineVertexCount);
             Assert.Equal(0, scene.LineVertexCount);
@@ -54,7 +54,7 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Depth_tested_volume_is_occluded_by_geometry_but_always_on_top_is_not()
         {
-            // A big opaque box sits at the origin facing the camera; a bright wire sphere is drawn at the SAME place
+            // A big opaque box sits at the origin facing the camera, and a bright wire sphere is drawn at the SAME place
             // so the box front face fully covers it. Depth-tested => the sphere is hidden; always-on-top => it shows.
             GltfMesh box = MeshPrimitives.Box(4f);
             MeshHandle handle = default;
@@ -78,7 +78,7 @@ namespace KhaozEngine.Tests.Gpu
             }, frames: 1);
 
             int occludedRed = CountRed(occluded), onTopRed = CountRed(onTop);
-            // The always-on-top sphere draws its wire over the box; the depth-tested one is mostly hidden behind it.
+            // The always-on-top sphere draws its wire over the box. The depth-tested one is mostly hidden behind it.
             Assert.True(onTopRed > occludedRed * 3,
                 $"expected the always-on-top wire to show far more red than the occluded one: onTop={onTopRed} occluded={occludedRed}");
         }

@@ -148,8 +148,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `Begin`), for visualising gameplay volumes in-world (an NPC's aggro sphere / attack dome or cylinder). Default
   `DebugDepthMode.DepthTested` draws into the lit colour + read-only scene depth before the post chain, so terrain
   and props occlude the buried parts. `DebugDepthMode.AlwaysOnTop` routes to the crisp post-pass line overlay
-  instead. Geometry lives in `DebugShapes.Sphere/Dome/Cylinder/Circle` (pure, headless-testable endpoint builders);
-  the depth-tested draw is `Rendering.DepthLineRenderer` (line-list, depth-test-less-equal-no-write, alpha blend
+  instead. Geometry lives in `DebugShapes.Sphere/Dome/Cylinder/Circle` (pure, headless-testable endpoint builders).
+  The depth-tested draw is `Rendering.DepthLineRenderer` (line-list, depth-test-less-equal-no-write, alpha blend
   into `ColorDepthFB`).
 - `KhaozEngine.Render3D.Debug` - the collision-shape debug overlay, the first consumer of `DrawOverlayMesh`:
   `CollisionShapeOverlay` (build once from an `IReadOnlyList<CollisionStatic>`, `Enabled`-gated `Draw`,

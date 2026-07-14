@@ -1163,7 +1163,8 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 ```
 
 - `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `Draw(handle, transform[, tint[, material]])`,
-  billboards, and a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`). `LoadTexture` builds and generates a
+  billboards, a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`), and depth-tested debug wire volumes
+  (`DebugWireSphere/Dome/Cylinder/Circle`, see below). `LoadTexture` builds and generates a
   full mip chain for each texture (from 9.2.0), so model/prop surfaces stay smooth at distance instead of aliasing
   into "pixely" sparkle as the camera moves. `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
@@ -1222,6 +1223,44 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   fill a star-shaped area (e.g. a turret's line-of-sight footprint) that a quad or disc can't express. Wind the
   rim CCW about the desired facing normal (`Vector3.UnitY` for a ground fan); `closed: true` (the default) seals
   the loop with a wrap triangle, `false` leaves an open arc.
+- Debug wire VOLUMES (immediate-mode, depth-tested): closed 3D wire shapes for tuning gameplay volumes in-world -
+  an NPC's aggro sphere, an attack dome or cylinder, a trigger radius. Four builders, each `(..., Color color,
+  float opacity = 1f, DebugDepthMode depth = DebugDepthMode.DepthTested, int segments = Scene3D.DebugWireSegments)`:
+  - `DebugWireSphere(center, radius, color, ...)` - a full UV sphere (meridian arcs + latitude rings, one on the equator).
+  - `DebugWireDome(baseCenter, radius, color, ...)` - a hemisphere, flat side down, sitting on the XZ plane at
+    `baseCenter` and bulging up `radius` in Y (meridian arcs + latitude rings including the base equator circle).
+  - `DebugWireCylinder(center, radius, halfHeight, color, ...)` - a vertical cylinder (axis +Y), two rim circles
+    at `center.Y +/- halfHeight` joined by side lines.
+  - `DebugWireCircle(center, normal, radius, color, ...)` - a flat ring (the depth-aware sibling of `DebugCircle`,
+    `Vector3.UnitY` for a ground ring).
+
+  `opacity` (0..1) scales the colour's alpha, so a game keeps a solid palette colour per volume type and dials a
+  global fade. `segments` is the per-circle roundness (default 32, smooth to ~30 m). The structural line counts
+  (12 meridians, 5/4 rings, 8 cylinder verticals) are fixed constants so a screenful of overlapping volumes stays
+  cheap. `DebugDepthMode.DepthTested` (the default) draws the wire in-world before the post chain, so terrain and
+  props occlude the buried parts (and it flows through the post chain like the meshes). `DebugDepthMode.AlwaysOnTop`
+  draws it crisp over the finished frame with no depth test, for a fully buried volume you still need to see. All
+  four clear each `Begin()` (immediate mode) and carry no player-facing text. The game owns which volumes to draw
+  and when (a hotkey, colours per volume type). A Ruinborne-style NPC combat-volume overlay behind an F-key toggle:
+
+  ```csharp
+  // Colours per volume type, owned by the game.
+  static readonly Color Aggro  = new(1f, 0.3f, 0.2f, 1f);
+  static readonly Color Attack = new(0.3f, 0.7f, 1f, 1f);
+
+  // Per frame, inside OnDraw3D, when the overlay is toggled on:
+  if (showCombatVolumes)
+      foreach (var npc in NearbyNpcs(player.Position, 40f))
+      {
+          // Aggro radius: a ground dome for a hemispherical leash, or a flat ring for a 2D radius.
+          scene.DebugWireDome(npc.Position, npc.AggroRadius, Aggro, opacity: 0.55f);
+          // Attack volume: sphere or cylinder depending on how the NPC's reach is authored.
+          if (npc.AttackShape == CombatShape.Sphere)
+              scene.DebugWireSphere(npc.AttackOrigin, npc.AttackRange, Attack, opacity: 0.7f);
+          else
+              scene.DebugWireCylinder(npc.AttackOrigin, npc.AttackRange, npc.AttackHalfHeight, Attack, opacity: 0.7f);
+      }
+  ```
 - Dynamic point lights: `scene.AddLight(worldPos, color, radius, intensity)` queues a per-frame
   effect light (muzzle flashes, explosions, thrusters) that adds diffuse + cheap specular to the lit mesh pass,
   on top of the global key+fill+ambient term, with a smooth falloff to zero at `radius`. Cleared each `Begin()`

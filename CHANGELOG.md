@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Debug wire volumes (depth-tested sphere / dome / cylinder / circle)
+
+New immediate-mode debug primitive on `Scene3D` for visualising gameplay volumes in-world, so a game can draw an
+NPC's aggro sphere or attack dome/cylinder for tuning. Depth-tested by default, so terrain and props occlude the
+buried parts and the wire reads as a shape sitting in the scene, with an always-on-top option for a fully buried
+volume. This is a debug facility but built to keep: clean API, XML docs, no player-facing strings.
+
+- **`Scene3D.DebugWireSphere` / `DebugWireDome` / `DebugWireCylinder` / `DebugWireCircle`
+  (`KhaozEngine.Render3D`).** Each takes `(..., Color color, float opacity = 1f, DebugDepthMode depth =
+  DebugDepthMode.DepthTested, int segments = Scene3D.DebugWireSegments)`. `DebugWireDome` is a hemisphere with the
+  flat side down (meridian arcs plus latitude rings including the base equator circle). `DebugWireCylinder` is a
+  vertical cylinder taking `radius` + `halfHeight`. `opacity` (0..1) scales the colour's alpha so a game keeps a
+  solid palette colour per volume type and dials a global fade. Immediate mode: cleared each `Begin()`, no retained
+  state, allocation-free in steady state (reused scratch and vertex buffers).
+- **`DebugDepthMode` enum (`KhaozEngine.Render3D`).** `DepthTested` (default) draws the wire into the lit colour +
+  read-only scene depth framebuffer (`ColorDepthFB`) after the water pass and before the post chain, with
+  depth-test-less-equal + no depth write, so geometry occludes the buried parts and the wire flows through the post
+  chain like the meshes. `AlwaysOnTop` routes the same geometry to the existing crisp post-pass line overlay.
+- **`DebugShapes.Sphere` / `Dome` / `Cylinder` (`KhaozEngine.Render3D`).** Pure, headless-testable line-endpoint
+  builders alongside the existing `Box`/`Grid`/`Circle`/`Axes`. Curves use `segments` per full circle (default 32,
+  smooth to ~30 m). The structural line counts (12 meridians, 5/4 rings, 8 cylinder verticals) are fixed constants.
+- **`Rendering.DepthLineRenderer` (internal).** The depth-tested line-list pass: alpha-blended, depth-test-less-equal
+  with no depth write into the single-attachment `ColorDepthFB` (so it never disturbs the MRT normal/linear-depth the
+  outline post-pass reads), rebuilt on MSAA sample-count change. Reuses `LineRenderer.LineVertex` and the flat line
+  shaders. Modelled on the existing beam/decal in-world overlay pattern.
+- No GPU golden added (a debug facility). Verified with a backend-agnostic GPU smoke test (depth-tested wire is
+  occluded by geometry, always-on-top is not) plus headless geometry tests (vertex/segment counts, on-surface
+  invariant, dome equator + apex, circle closure, degenerate inputs).
+
 ## 10.85.0
 
 ### Downed / death rendering state for replicated characters

@@ -5,6 +5,55 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.83.0
+
+### Textured foliage kits: multi-part scatter instancing, load-time gamma-space albedo flatten, editor texture toggle
+
+Prop kits can now ship real per-material textures instead of a single flattened base color, rendered
+as multiple instanced sub-meshes at scatter time. Existing untextured props are unaffected: the
+flatten path is opt-in per material and byte-identical when a material has no texture.
+
+- **Multi-part scatter instancing (`KhaozEngine.Terrain.Render3D`).** `PropLayer.ScatterLayer` and
+  `PropLayer.CompanionLayer` gain additive overloads taking
+  `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many `MeshHandle`s per kit id,
+  keyed the same as the existing single-handle overloads). `Scene3DChunkSink` and `PropRenderer` draw
+  whichever set a layer carries, instancing every part of a multi-part kit as a unit at each
+  placement. The single-handle overloads are unchanged.
+- **Load-time gamma-space albedo flatten (`KhaozEngine.Render3D.GltfLoader`).** New
+  `GltfLoader.LoadFlattenedAlbedo` bakes a textured material down to one flat per-vertex color by
+  folding in `AverageAlbedo`, the alpha-weighted mean of the material's decoded baseColor texture (new
+  public helper, texels below alpha 0.5 excluded, falls back to a plain mean if none pass). A material
+  with no baseColor texture is untouched, so the existing untextured assets stay byte-identical to
+  before, goldens included. `PropLoader.LoadProp` now calls this path instead of the old plain `Load`.
+- **`AssetEntry.Textured` goes live (`KhaozEngine.Render3D.PropLoader`, `KhaozEngine.Render3D.Scene3D`).**
+  New `PropLoader.LoadPropAuto` reads the manifest flag and returns a uniform
+  `IReadOnlyList<GltfMeshPart>` either way: textured loads through the existing `LoadPropParts`
+  (one part per source material), untextured wraps the flattened mesh as a single part with absent
+  material maps. `Scene3D.LoadPropMeshes` is the matching upload-side helper, so a call site only
+  needs the manifest flag to pick textured vs flat.
+- **`tools/kit-bake` (new).** A pinned `@gltf-transform` Node script implementing the textures-on bake
+  recipe (decode meshopt, dequantize, re-encode `EXT_texture_webp` images to PNG and drop the
+  extension, keep per-material baseColor/normal/metallicRoughness). Allowlist-hardened against
+  unexpected glTF extensions and file types, and byte-reproducible given the same source and pinned
+  tool versions. See `tools/kit-bake/README.md`.
+- **7 Showcase foliage kits re-baked textures-ON** (`pine_a/b/c`, `oak_a/b`, `rock_a/b`, roughly +3.7MB
+  total), baked from `world-of-claudecraft` (CC0 Quaternius stylized nature assets) via
+  `tools/kit-bake`. `props.manifest.json` sets `"textured": true` on all 7 entries. `Showcase.Room3D`
+  now loads them through `PropLoader.LoadPropAuto` / `Scene3D.LoadPropMeshes`, the first live adopter
+  of the multi-part textured path.
+- **Editor texture toggle (`KhaozEngine.MapEditor.MapEditorOptions.TexturedProps`, default true).** A
+  session-level Layers-panel "Textured props" row under a new Rendering section. On (the default,
+  matching gameplay) a flagged kit renders its baked materials in the viewport, off renders every prop
+  flattened, which can be easier to read while placing a dense textured forest. Flipping it rebuilds
+  the streamed world to take effect and never touches the saved document.
+- **MCP render parity (`KhaozEngine.MapEdit.Tool`).** `render_topdown` and `render_view` gain a
+  `textured` bool parameter (default true, matching the editor toggle and gameplay), so a rendered
+  preview can show either mode. The `render_view` verb pin (64) is unchanged.
+- **Docs.** Full sweep across `KhaozEngine.Render3D/README.md`, `KhaozEngine.Terrain.Render3D/README.md`,
+  `KhaozEngine.MapEditor/README.md`, `KhaozEngine.MapEdit.Tool/README.md`, `docs/USING-KHAOZENGINE.md`,
+  and `docs/MAP-EDITOR-DESIGN.md` for the new API and the editor toggle. `docs/ROADMAP.md` drops the
+  visual-fidelity item now that textured props have shipped.
+
 ## 10.82.0
 
 ### Gui flexibility round: ProgressBar orientation and segments, family-wide texture skinning

@@ -5,6 +5,47 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Turn-key boot / startup screen pipeline in `KhaozEngine.Game`
+
+A game gets an instant-on startup screen: the window shows a progress bar in the first frames, then a staged
+boot pipeline runs while the bar advances (update check + apply, server-status min-version gate, then the
+game's own asset-warm-up steps), and finally hands off to the game's first scene. The heavy work is deferred
+into the pipeline so no game asset loading precedes the bar (process start + window creation still precede it,
+by design). It is a scene plus a pipeline: `KhaozEngine.Game` gains new project references on
+`KhaozEngine.Updates` (previously transitive via Gui) and `KhaozEngine.ServerStatus`.
+
+- **`IBootStep`** (`LocalizedText Name`, `float Weight`, `Task<BootStepResult> RunAsync(IBootProgress, CancellationToken)`)
+  is the step seam. Steps run sequentially, each mapped onto its weighted slice of one overall bar. A step
+  reports a determinate fraction or marks its slice indeterminate through `IBootProgress`. Return
+  `BootStepResult.Proceed` to continue or `BootStepResult.Restarting` when the process is relaunching (the
+  update-apply path). Throw `BootStepException` (carrying a `LocalizedText`) to fail with a localized message.
+  Build a game step from a delegate with `BootStep.Create`.
+- **`BootPipeline`** runs the steps on a main-thread pump: `Start` kicks the sequence off and `Pump` (once per
+  frame) resumes continuations, so step bodies (and game asset warm-up) run on the render thread and may touch
+  the GPU, while awaited I/O runs off-thread so the bar keeps animating. `Snapshot()` returns an immutable
+  `BootView` (state, fraction, indeterminate, step label, failure message) safe to read while steps advance.
+  Terminal states: `Completed`, `Failed`, `Restarting`, `Cancelled`. `Retry()` re-runs after a failure.
+- **Built-in steps, each individually optional:** `UpdateBootStep` wraps the existing
+  `UpdateService.EnsureUpToDateAsync` gate (feed connect + check + download + apply-and-restart, with the Windows
+  updater self-relocation unchanged), mapping `Updating` to a restart and `UpToDate`/`FeedUnreachable`/`Failed`
+  to proceeding. `ServerStatusBootStep` wraps `ServerStatusClient.PollOnceAsync` + `ServerStatusEvaluator` (one
+  blocking fetch, graceful degrade to proceeding when unreachable). `ServerStatusState.UpdateRequired` (the
+  min-version gate) fails the boot with a localized message and a quit affordance rather than a silent hang.
+- **`BootScreen : GameScene`** is the first scene: it renders (logo-optional) a `ProgressBar`, the current
+  step's localized label, and a failure state with retry / quit affordances, using only the engine-internal
+  font + a 1x1 white texture (zero game assets). On success it replaces itself with the game's first scene (a
+  factory the game provides). `BootScreen.Create(white, font, BootOptions, firstScene, onQuit)` assembles the
+  pipeline (update -> server-status -> game steps) from options. `BootScreenTheme` injects every colour, the bar
+  geometry, an optional logo, and an optional custom-background hook, so a game restyles without forking the
+  scene. `BootScreenRenderer` is the shared draw path (also used for headless PNG capture).
+- **`BootStrings`** holds the engine-owned `boot.*` localization keys (step labels, status lines, error
+  messages, button captions) with a built-in English fallback (`FallbackCatalog`), mirroring
+  `UpdateOverlayStrings`. All boot copy resolves through the catalog.
+- Showcase: a "Boot screen" room drives the real pipeline with fake delayed steps (instant-on bar, staged
+  progress, indeterminate slice, error + retry).
+
 ## 10.92.0
 
 ### Durable silent credential refresh in `KhaozEngine.Identity` (rotated refresh token no longer lost)

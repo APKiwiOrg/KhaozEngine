@@ -77,10 +77,56 @@ is empty by default, so a game that only overrides `OnDraw2D` is completely unaf
 `SceneManager` gains `UiViewport`, `UiPointer`, and `DrawUi(SpriteBatch)`, and `GameScene` gains a virtual
 `OnDrawUi(SpriteBatch)`. A scene draws its DPI-aware UI in `OnDrawUi` and hit-tests via `Manager.UiPointer`.
 
-It sits above `KhaozEngine.Windowing` + `Render2D` + `Gui` - **no 3D renderer dependency**, so a 2D
-game pulls no Render3D. For a 3D world pass, use `KhaozEngine.Game.Render3D` (`GameApp3D`, plus the
-`IGameScene3D` scene hook and the `SceneManager.Draw3D` extension). It is the optional convenience
-layer: a game with special needs can still drive `AppWindow.Run` directly.
+**Boot / startup screen** (the `Boot/` folder): a turn-key instant-on startup experience. Push `BootScreen` as
+the FIRST scene and it shows a progress bar in the first frames, then runs a staged `BootPipeline` while the bar
+advances (update check + apply, server-status min-version gate, then the game's own asset-warm-up steps), and
+replaces itself with the game's first scene on success. The heavy work is deferred into the pipeline, so no game
+asset loading precedes the bar (process start + window creation still precede it - that is the honest floor). The
+boot screen renders with only the engine-internal default font + a 1x1 white texture, so it needs zero game
+assets.
+
+- `IBootStep` (`Name`, `Weight`, `RunAsync(IBootProgress, CancellationToken)`) is the step seam. Steps run in
+  order, each mapped onto its weighted slice of one overall bar, and may report a determinate fraction or mark
+  their slice indeterminate. Build a game step from a delegate with `BootStep.Create`. Throw `BootStepException`
+  (with a `LocalizedText`) to fail with a localized message.
+- `BootPipeline` runs the async steps on a main-thread pump (`Start` + `Pump` per frame), so a step body and any
+  game asset warm-up run on the render thread (GPU-safe) while awaited I/O runs off-thread and the bar keeps
+  animating. `Snapshot()` gives an immutable `BootView` to render.
+- Built-in steps (each optional): `UpdateBootStep` wraps `UpdateService.EnsureUpToDateAsync` (feed check +
+  download + apply-and-restart). `ServerStatusBootStep` wraps `ServerStatusClient` + `ServerStatusEvaluator`
+  (one blocking fetch, min-version gate). Both degrade gracefully when the feed / endpoint is unreachable.
+- `BootScreen.Create(white, font, options, firstScene, onQuit)` assembles the pipeline from `BootOptions` and
+  returns the scene. `BootScreenTheme` restyles it (colours, bar geometry, optional logo + custom-background
+  hook) without forking. `BootStrings` holds the localized `boot.*` copy with an English fallback.
+
+```csharp
+protected override void OnLoad()
+{
+    var white = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
+    var font = Surface2D.LoadDefaultFont(28f, oversample: 2);   // engine-internal font, no game asset
+
+    var options = new BootOptions
+    {
+        UpdateService = _updates,                                // optional: null skips the update step
+        ServerStatusClient = _status, LocalClientVersion = "1.4.0", // optional: null skips server status
+        GameSteps = new[]
+        {
+            BootStep.Create(MyStrings.LoadTextures, weight: 3f, async (progress, ct) =>
+            {
+                for (int i = 0; i <= total; i++) { LoadTexture(i); progress.Report(i / (float)total); await Task.Yield(); }
+            }),
+        },
+    };
+
+    _scenes.Push(BootScreen.Create(white, font, options, firstScene: () => new MainMenuScene(...), onQuit: Quit));
+}
+```
+
+It sits above `KhaozEngine.Windowing` + `Render2D` + `Gui`, and (for the boot steps) `KhaozEngine.Updates` +
+`KhaozEngine.ServerStatus` - **no 3D renderer dependency**, so a 2D game pulls no Render3D. For a 3D world pass,
+use `KhaozEngine.Game.Render3D` (`GameApp3D`, plus the `IGameScene3D` scene hook and the `SceneManager.Draw3D`
+extension). It is the optional convenience layer: a game with special needs can still drive `AppWindow.Run`
+directly.
 
 ```csharp
 sealed class Demo : GameApp

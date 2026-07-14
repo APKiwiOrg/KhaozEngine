@@ -302,6 +302,58 @@ For multi-screen games, push `GameScene`s onto a `SceneManager` (full-frame scen
 menu over a still-rendered match). Feed the manager `Input`/`Pointer`/`Viewport`/`FrameWidth`/`FrameHeight` each
 frame, then `Update(dt)` and `Draw2D(batch)`.
 
+### Boot / startup screen (`BootScreen` / `BootPipeline` / `IBootStep`)
+
+Give the game an instant-on startup: push `BootScreen` as the FIRST scene and the window shows a progress bar in
+the first frames, then a staged pipeline runs while the bar advances (update check + apply, server-status
+min-version gate, then the game's own asset warm-up), and hands off to the game's first scene on success. The
+heavy work is deferred into the pipeline, so no game asset loading precedes the bar (process start + window
+creation still precede it - the honest floor). The screen renders with only the engine-internal default font +
+a 1x1 white texture, so it needs zero game assets.
+
+Create the two cheap resources on the app's `Surface2D` (a `GameScene` cannot reach the device), then build the
+screen from a `BootOptions`. Each built-in step is individually optional: leave `UpdateService` null to skip the
+update step, leave `ServerStatusClient` null to skip the server-status step (it is off unless a status endpoint
+is configured). The game's own steps go in `GameSteps` via `BootStep.Create`. A step reports a determinate
+fraction with `progress.Report(0..1)` or marks its slice indeterminate with `progress.ReportIndeterminate()`.
+
+```csharp
+readonly SceneManager _scenes = new();
+
+protected override void OnLoad()
+{
+    var white = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
+    var font = Surface2D.LoadDefaultFont(28f, oversample: 2);   // engine-internal font, no game asset
+
+    var options = new BootOptions
+    {
+        UpdateService = _updates,                                   // optional, null skips the update step
+        ServerStatusClient = _status, LocalClientVersion = "1.4.0", // optional, null skips server status
+        GameSteps = new[]
+        {
+            BootStep.Create(MyStrings.LoadTextures, weight: 3f, async (progress, ct) =>
+            {
+                for (int i = 0; i <= count; i++) { LoadTexture(i); progress.Report(i / (float)count); await Task.Yield(); }
+            }),
+        },
+        // AllowRetryOnFailure / AllowQuitOnFailure default true. Theme = BootScreenTheme.Default.
+    };
+
+    _scenes.Push(BootScreen.Create(white, font, options,
+        firstScene: () => new MainMenuScene(...),   // built + shown when the pipeline completes
+        onQuit: Quit));                             // wired to the quit affordance in the failure state
+}
+```
+
+Then drive the manager as usual: forward `Input`/`Pointer`/`UiViewport`/`UiPointer`/`FrameWidth`/`FrameHeight` and
+call `_scenes.Update(dt)` in `OnUpdate`, and `_scenes.DrawUi(batch)` in `OnDrawUi` (the boot screen draws through
+the DPI-aware `OnDrawUi` pass). A step signals failure by throwing `BootStepException(localizedMessage)` (the
+screen shows it with retry / quit affordances). The server-status min-version gate does this automatically for
+`ServerStatusState.UpdateRequired`. A required update applied by `UpdateBootStep` restarts the app by design
+(not a failure). Restyle without forking via `BootScreenTheme` (colours, bar geometry, optional logo + a custom
+`DrawBackground` hook). All player-facing copy lives in `BootStrings` (`boot.*` keys) with a built-in English
+fallback, so add those keys to your catalog to localize.
+
 ### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam

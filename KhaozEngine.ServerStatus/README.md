@@ -92,7 +92,7 @@ that wants a different policy can read the raw report off `view.Report`.
 
 ## Server heartbeat wiring
 
-The engine ships only the seam plus a cadence driver; the game owns the SQL. Implement `IServerHeartbeatSink`
+The engine ships only the seam plus a cadence driver. The game owns the SQL. Implement `IServerHeartbeatSink`
 against your status DB (a one-row upsert), then drive it:
 
 ```csharp

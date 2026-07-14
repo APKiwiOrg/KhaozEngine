@@ -19,16 +19,16 @@ public enum ServerStatusState
     /// <summary>Server is up and this client may connect.</summary>
     ServerOk = 1,
 
-    /// <summary>Server is mid-deploy inside a downtime window; show a "back soon" screen (see ExpectedBackUtc).</summary>
+    /// <summary>Server is mid-deploy inside a downtime window. Show a "back soon" screen (see ExpectedBackUtc).</summary>
     ServerRestarting = 2,
 
-    /// <summary>Server is down outside any planned window; back off and retry.</summary>
+    /// <summary>Server is down outside any planned window. Back off and retry.</summary>
     ServerDown = 3,
 
     /// <summary>This client is below the server's minimum version and must update before it can connect.</summary>
     UpdateRequired = 4,
 
-    /// <summary>A newer client exists but this one can still connect; offer an optional update.</summary>
+    /// <summary>A newer client exists but this one can still connect. Offer an optional update.</summary>
     UpdateAvailable = 5,
 }
 

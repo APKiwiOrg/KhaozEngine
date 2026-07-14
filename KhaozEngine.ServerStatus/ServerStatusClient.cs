@@ -34,7 +34,7 @@ public sealed class ServerStatusClient
 
     /// <summary>
     /// Builds a client. <paramref name="clock"/> and <paramref name="delay"/> are injectable seams so the
-    /// poll loop is headless-testable with no real wall-clock or timer; both default to the system clock and
+    /// poll loop is headless-testable with no real wall-clock or timer. Both default to the system clock and
     /// <see cref="Task.Delay(TimeSpan, CancellationToken)"/>.
     /// </summary>
     public ServerStatusClient(
@@ -57,7 +57,7 @@ public sealed class ServerStatusClient
 
     /// <summary>
     /// Fetches once and folds the result into <see cref="Current"/>. On success the fresh report replaces the
-    /// retained one and the failure counter resets; on a miss the retained report survives and the attempt/
+    /// retained one and the failure counter resets. On a miss the retained report survives and the attempt/
     /// failure counters advance. Returns the resulting snapshot. Never throws (barring cancellation).
     /// </summary>
     public async Task<ServerStatusSnapshot> PollOnceAsync(CancellationToken cancellationToken = default)

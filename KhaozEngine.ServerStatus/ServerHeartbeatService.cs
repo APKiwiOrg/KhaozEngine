@@ -44,7 +44,7 @@ public sealed class ServerHeartbeatService
     /// <summary>
     /// Builds the service. <paramref name="versionProvider"/> is read fresh on each beat so a live server can
     /// report a rolling version. <paramref name="delay"/> is an injectable seam so <see cref="RunAsync"/> is
-    /// headless-testable; it defaults to <see cref="Task.Delay(TimeSpan, CancellationToken)"/>.
+    /// headless-testable. It defaults to <see cref="Task.Delay(TimeSpan, CancellationToken)"/>.
     /// </summary>
     public ServerHeartbeatService(
         IServerHeartbeatSink sink,

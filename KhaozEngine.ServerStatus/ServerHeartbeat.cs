@@ -24,7 +24,7 @@ public interface IServerHeartbeatSink
 {
     /// <summary>
     /// Persists <paramref name="heartbeat"/> (an upsert of the single liveness row keyed by, typically, the
-    /// server/shard id). Implementations decide their own error policy; <see cref="ServerHeartbeatService"/>
+    /// server/shard id). Implementations decide their own error policy: <see cref="ServerHeartbeatService"/>
     /// contains any thrown exception rather than letting it break the server loop.
     /// </summary>
     Task WriteAsync(ServerHeartbeat heartbeat, CancellationToken cancellationToken = default);

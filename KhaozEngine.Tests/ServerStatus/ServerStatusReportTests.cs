@@ -51,7 +51,7 @@ public class ServerStatusReportTests
     [Fact]
     public void TolerantRead_IgnoresUnknownFields()
     {
-        // The endpoint added a field a shipped client never heard of; the client must still parse the rest.
+        // The endpoint added a field a shipped client never heard of. The client must still parse the rest.
         const string json = """
             { "health": "healthy", "serverVersion": "2.0.0", "regionCode": "ap-southeast", "shardCount": 12 }
             """;

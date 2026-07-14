@@ -48,7 +48,7 @@ public sealed class HttpServerStatusSource : IServerStatusSource, IDisposable
 
     /// <summary>
     /// Builds a source. Pass an existing <paramref name="httpClient"/> to share a pooled client (its lifetime
-    /// is the caller's); omit it and the source owns a client configured with <see cref="HttpServerStatusSourceOptions.HttpTimeout"/>.
+    /// is the caller's). Omit it and the source owns a client configured with <see cref="HttpServerStatusSourceOptions.HttpTimeout"/>.
     /// </summary>
     public HttpServerStatusSource(HttpServerStatusSourceOptions options, HttpClient? httpClient = null)
     {
@@ -107,7 +107,7 @@ public sealed class HttpServerStatusSource : IServerStatusSource, IDisposable
         }
     }
 
-    /// <summary>Parses the configured URL into an absolute https Uri (bare host implies https); null if not https/absolute.</summary>
+    /// <summary>Parses the configured URL into an absolute https Uri (bare host implies https). Null if not https/absolute.</summary>
     private static Uri? ParseHttps(string statusUrl)
     {
         if (string.IsNullOrWhiteSpace(statusUrl))

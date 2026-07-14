@@ -14,7 +14,7 @@ namespace KhaozEngine.ServerStatus;
 // NOTE: deliberately mirrors KhaozEngine.Updates.UpdateVersion's numeric-segment rule rather than depending
 // on it - pulling the whole delta-update pipeline (+ Platform) into a package clients reference just for the
 // poller would violate the "no heavy deps in low packages" layering rule. A future shared version-primitive
-// leaf could host both; kept separate for phase 1.
+// leaf could host both. Kept separate for phase 1.
 public static class VersionOrder
 {
     /// <summary>

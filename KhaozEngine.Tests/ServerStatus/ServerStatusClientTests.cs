@@ -44,7 +44,7 @@ public class ServerStatusClientTests
         now = t0 + TimeSpan.FromSeconds(30);
         ServerStatusSnapshot snap = await client.PollOnceAsync();
 
-        // The last good report survives the miss; staleness now measures from the last SUCCESS.
+        // The last good report survives the miss. Staleness now measures from the last SUCCESS.
         Assert.True(snap.HasReport);
         Assert.Equal("5.0.0", snap.LastReport!.ServerVersion);
         Assert.Equal(t0, snap.LastSuccessUtc);

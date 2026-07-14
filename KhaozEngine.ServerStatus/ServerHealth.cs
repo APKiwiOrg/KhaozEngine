@@ -36,7 +36,7 @@ internal sealed class ServerHealthJsonConverter : JsonConverter<ServerHealth>
 {
     public override ServerHealth Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        // Tolerant read: only a string token is meaningful; anything else degrades to Unknown (never throws).
+        // Tolerant read: only a string token is meaningful. Anything else degrades to Unknown (never throws).
         if (reader.TokenType != JsonTokenType.String)
         {
             return ServerHealth.Unknown;

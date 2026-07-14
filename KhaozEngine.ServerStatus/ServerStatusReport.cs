@@ -17,7 +17,7 @@ namespace KhaozEngine.ServerStatus;
 /// </summary>
 public sealed record ServerStatusReport
 {
-    /// <summary>Contract schema version. Bump only on a breaking shape change; additive fields do not bump it.</summary>
+    /// <summary>Contract schema version. Bump only on a breaking shape change: additive fields do not bump it.</summary>
     [JsonPropertyName("schemaVersion")]
     public int SchemaVersion { get; init; } = 1;
 
@@ -49,7 +49,7 @@ public sealed record ServerStatusReport
     [JsonPropertyName("expectedBackUtc")]
     public DateTimeOffset? ExpectedBackUtc { get; init; }
 
-    /// <summary>Optional operator message-of-the-day. The engine never renders it; a game localizes/echoes it as it sees fit.</summary>
+    /// <summary>Optional operator message-of-the-day. The engine never renders it: a game localizes/echoes it as it sees fit.</summary>
     [JsonPropertyName("motd")]
     public string? Motd { get; init; }
 

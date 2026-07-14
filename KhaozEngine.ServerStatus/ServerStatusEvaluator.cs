@@ -34,7 +34,7 @@ public static class ServerStatusEvaluator
     /// <param name="snapshot">The poller's latest snapshot (retained report + staleness).</param>
     /// <param name="localClientVersion">This build's version (x.y.z) for the update gates.</param>
     /// <param name="nowUtc">Current UTC instant, used only to measure staleness.</param>
-    /// <param name="options">Staleness tuning; a default 90 s window is used when null.</param>
+    /// <param name="options">Staleness tuning. A default 90 s window is used when null.</param>
     public static ServerStatusView Evaluate(
         ServerStatusSnapshot snapshot,
         string localClientVersion,

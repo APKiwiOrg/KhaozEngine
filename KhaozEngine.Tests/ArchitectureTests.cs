@@ -189,7 +189,7 @@ public class ArchitectureTests
             {
                 "App", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon", "Ecs", "Identity",
                 "Locomotion", "MapDoc", "Objectives", "Persistence", "Physics", "Platform", "Primitives",
-                "Progression", "Serialization", "Social", "Terrain", "Updates",
+                "Progression", "Serialization", "ServerStatus", "Social", "Terrain", "Updates",
             }
         },
         {

@@ -4,13 +4,21 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.85.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.86.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. Physics: ragdolls and vehicles (pull-gated)
+### 1. NPC navigation / pathfinding
+
+Engine-owned pathfinding that respects terrain walkability (the walkable slice shipped in 10.x) plus prop and
+static collision, so game NPC brains consume a path instead of hardcoded pursuit. Current behavior: NPCs chase
+in straight lines and get stuck on every prop (playtest finding, 2026-07-14: Ruinborne wolves pinned behind
+rocks). Scope question to record: grid A* over the walkable slice vs a pre-baked navmesh, decide at design time.
+First consumer: Ruinborne wolves.
+
+### 2. Physics: ragdolls and vehicles (pull-gated)
 
 The joint foundation shipped in 10.30.0 (ball socket, hinge and slider with limits, distance, weld, plus
 hinge/slider motors and servos and the distance winch on the `IPhysicsWorld` seam), on top of 10.29.0's
@@ -49,7 +57,7 @@ StepHeight above terrain still fails the gate and dead-stalls. Pre-existing beha
 rather than regressed (the near-vertical band is unaffected), but the proper fix is to track the capsule's
 current support height including props and gate against that. Documented in the `StepUpEligible` doc comment.
 
-### 2. Map editor (design approved 2026-07-09, in flight)
+### 3. Map editor (design approved 2026-07-09, in flight)
 
 The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain config, authored
 placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine
@@ -195,6 +203,8 @@ Also here, unchanged:
   stays game-specific.
 
 ## Explicitly last priority (deferred by design)
+
+- **Close-range texture fidelity via detail maps.** Kit source textures are 512x512 and blur when magnified on camera (playtest finding, 2026-07-14). Detail maps or a triplanar micro-detail overlay for props and terrain provide the engineered alternative to sourcing higher-res art.
 
 - **Per-foot ray-probe IK in the animation bridge.** The AAA richness layer OVER the smooth root the presentation
   smoothers already produce (the signal-driven stair glide + the UE-style discrete-step mesh offset): per-foot

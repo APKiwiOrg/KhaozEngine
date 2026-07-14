@@ -3977,6 +3977,117 @@ connection-attempt limiting is out of scope: the `INetTransport` seam exposes no
 
 ---
 
+## Server status (`KhaozEngine.ServerStatus`)
+
+An **out-of-band** health + version channel for a live game, separate from the game connection itself. A small
+public HTTP endpoint (hosted per game as cloud infra, e.g. an Azure Function reading a status DB, **not** part
+of the game server process) reports whether the server is up, what version it runs, and the client-version
+floor. The client polls it to drive accurate reconnect behaviour, forced-update prompts, and a "server is
+updating, back soon" waiting screen - decisions it cannot make from a dropped socket alone (a failed connect
+looks the same whether the server is deploying, down, or the client is too old).
+
+The design authority split: **CI/CD** writes deploy facts (versions, the expected downtime window) to the
+status DB on release, the **game server** heartbeats a liveness row (`IServerHeartbeatSink`, it already has SQL
+access), and the **endpoint** derives `health` from the newest heartbeat's age plus the deploy window. The
+engine ships the reusable pieces (wire contract, poller, evaluator, heartbeat seam). The Function code and the
+CI/CD steps live in the game-template repo, implemented against the contract below.
+
+### The wire contract (for the endpoint implementer)
+
+`ServerStatusReport` IS the cross-repo interface. It is a **tolerant read**: unknown fields are ignored,
+missing optional fields default, and an unrecognized `health` token degrades to `unknown`, so the endpoint can
+add fields and evolve ahead of already-shipped clients. The Function serves exactly this shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "health": "healthy",
+  "serverVersion": "1.4.2",
+  "minClientVersion": "1.4.0",
+  "latestClientVersion": "1.4.2",
+  "lastHeartbeatUtc": "2026-07-14T09:41:12Z",
+  "lastDeployUtc": "2026-07-14T09:30:00Z",
+  "expectedBackUtc": null,
+  "motd": "Double XP weekend is live."
+}
+```
+
+`health` is `healthy` | `restarting` | `down` | `unknown`. During a deploy window serve `restarting` with
+`expectedBackUtc` set to the ETA. Outside a window with a stale heartbeat serve `down`. Version fields are the
+games' `x.y.z` scheme, compared numerically (so `0.7.10` is newer than `0.7.9`). In code, `ServerStatusReport.TryParse(...)`
+(never throws, null on garbage) and `report.ToJson()` round-trip it.
+
+### Client wiring (poll + evaluate)
+
+```csharp
+using KhaozEngine.ServerStatus;
+
+var source = new HttpServerStatusSource(new HttpServerStatusSourceOptions
+{
+    StatusUrl = "https://status.mygame.example.com/status",   // https enforced, response size-capped
+});
+var statusClient = new ServerStatusClient(source);            // default 30 s poll interval (configurable)
+_ = statusClient.RunAsync(appLifetime);                       // background loop; or call PollOnceAsync() from your tick
+
+// Before a (re)connect attempt, or each frame on a waiting screen:
+ServerStatusView view = ServerStatusEvaluator.Evaluate(
+    statusClient.Current, BuildConfig.Version, DateTimeOffset.UtcNow);
+
+switch (view.State)
+{
+    case ServerStatusState.ServerOk:         /* connect / reconnect normally */                  break;
+    case ServerStatusState.ServerRestarting: /* "back soon" screen; countdown to view.ExpectedBackUtc */ break;
+    case ServerStatusState.ServerDown:       /* back off + retry, do not hammer connect */       break;
+    case ServerStatusState.UpdateRequired:   /* forced-update prompt: client below minClientVersion */ break;
+    case ServerStatusState.UpdateAvailable:  /* optional update nudge, still playable */          break;
+    case ServerStatusState.StatusUnknown:    /* endpoint unreachable / report stale: fall back to blind retry */ break;
+}
+```
+
+The poller **never throws**: a failed fetch keeps the last-known report and advances a staleness/failure clock
+(`ServerStatusSnapshot`) instead of surfacing an error, so the UI keeps rendering the last state while the
+endpoint is briefly unreachable. `ServerStatusEvaluator` is a pure function (no IO, caller passes `nowUtc`), so
+the whole state machine is unit-testable. It treats a report older than `MaxStaleness` (default 90 s = three
+poll intervals) as `StatusUnknown`, so one dropped poll does not flip the screen but a real outage does.
+**Precedence** (first match wins): `StatusUnknown` -> `ServerDown` -> `ServerRestarting` -> `UpdateRequired` ->
+`UpdateAvailable` -> `ServerOk`. Transient health beats the version gates on purpose - during a deploy the
+"back soon" screen wins, and the update gate applies once the server is healthy again. `view.Motd` and
+`view.ExpectedBackUtc` are surfaced in every state that has a report, so a game can show an operator message or
+a countdown regardless of the headline state. No display strings ship from the engine - the states are enums,
+the game owns and localizes the words.
+
+### Server heartbeat wiring
+
+The engine ships the seam and the cadence driver, and the game owns the SQL. Implement `IServerHeartbeatSink`
+against the status DB (a one-row upsert), then drive it:
+
+```csharp
+IServerHeartbeatSink sink = new MyStatusDbHeartbeatSink(connectionString); // game-side upsert
+var heartbeat = new ServerHeartbeatService(sink, BuildConfig.Version);      // default 15 s interval
+
+// From the server's fixed-tick loop (writes only when an interval has elapsed, else no-ops):
+await heartbeat.TickAsync(DateTimeOffset.UtcNow, ct);
+// ...or run it on its own loop: _ = heartbeat.RunAsync(() => DateTimeOffset.UtcNow, ct);
+```
+
+`ServerHeartbeat` is the whole row the engine defines: `TimestampUtc` + `ServerVersion`. The expected DB row
+(keyed by server/shard id) is `{ serverId, lastHeartbeatUtc, serverVersion }` (column names/types are the
+game's). A write failure is contained (logged, surfaced via `ConsecutiveFailures` / `LastError`, never rethrown
+into the tick loop) and skips at most one beat - a skipped beat is truthful, the endpoint sees a staler
+heartbeat and reports `down` accordingly. `NullServerHeartbeatSink` (local runs) and `InMemoryServerHeartbeatSink`
+(tests) are the reference sinks.
+
+### Follow-up: reconnect integration
+
+The reconnect loop itself (`WorldClient`, the Netcode/NetWorld connect path) is deliberately **not** wired to
+this yet. `ServerStatusEvaluator` is designed so that integration is a small **consumer-side** change: before
+`WorldClient` attempts a (re)connect, read `statusClient.Current`, `Evaluate` it, and branch - skip the connect
+and show the waiting screen on `ServerRestarting` / `ServerDown`, block on `UpdateRequired`, otherwise proceed.
+No engine change to the connect path is required. The state derivation is intentionally standalone so it can be
+adopted incrementally without touching the movement/replication code.
+
+---
+
 ## ECS (`KhaozEngine.Ecs`)
 
 Independent of input/rendering. A struct-based archetype ECS: components are **structs** implementing

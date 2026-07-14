@@ -102,6 +102,7 @@
     <ProjectReference Include="../SnapshotTool/SnapshotTool.csproj" />
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
     <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
     <ProjectReference Include="../KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />

@@ -95,6 +95,49 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void ApplyAlphaCutoffs_WritesMaskCutoffIntoSpecParamsZ_PerRun_LeavesOpaqueUntouched()
+        {
+            // Two runs: mesh 5 is MASK (cutoff 0.3), mesh 2 is OPAQUE (cutoff 0). Interleaved -> contiguous runs.
+            var items = new List<SceneInstances.Instance>
+            {
+                new(new MeshHandle(5), Matrix4x4.Identity, Color.White, new Material(Color.Transparent, 0.5f, 40f)),
+                new(new MeshHandle(2), Matrix4x4.Identity, Color.White, new Material(Color.Transparent, 0.5f, 40f)),
+                new(new MeshHandle(5), Matrix4x4.Identity, Color.White, new Material(Color.Transparent, 0.5f, 40f)),
+            };
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            Scene3D.GroupInstances(items, data, runs);
+
+            Scene3D.ApplyAlphaCutoffs(data, runs, h => h.Index == 5 ? 0.3f : 0f);
+
+            // Mesh-5 (MASK) instances carry the cutoff in .z; strength/shininess (.x/.y) are preserved.
+            Assert.Equal(0.3f, data[0].SpecParams.Z, 4);
+            Assert.Equal(0.3f, data[1].SpecParams.Z, 4);
+            Assert.Equal(0.5f, data[0].SpecParams.X, 4);
+            Assert.Equal(40f, data[0].SpecParams.Y, 4);
+            // Mesh-2 (OPAQUE) instance is untouched: .z stays 0 (byte-identical to the pre-cutout packing).
+            Assert.Equal(0f, data[2].SpecParams.Z, 4);
+        }
+
+        [Fact]
+        public void ApplyAlphaCutoffs_AllOpaque_IsNoOp()
+        {
+            var items = new List<SceneInstances.Instance>
+            {
+                Inst(0, 1f, Color.White),
+                Inst(0, 2f, Color.White),
+            };
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            Scene3D.GroupInstances(items, data, runs);
+
+            Scene3D.ApplyAlphaCutoffs(data, runs, _ => 0f);   // every mesh OPAQUE
+
+            Assert.Equal(0f, data[0].SpecParams.Z, 4);
+            Assert.Equal(0f, data[1].SpecParams.Z, 4);
+        }
+
+        [Fact]
         public void Empty_ClearsBuffers()
         {
             var data = new List<ModelRenderer.InstanceData> { default, default };

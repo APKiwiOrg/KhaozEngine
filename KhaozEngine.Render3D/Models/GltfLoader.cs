@@ -29,7 +29,8 @@ namespace KhaozEngine.Render3D
     /// <c>null</c> (absent, never a throw), so a material with no textures yields an all-null
     /// <see cref="GltfMaterialMaps"/>. <see cref="Roughness"/> is glTF's packed ORM-style texture passed
     /// through unchanged (the model shader samples <c>.g</c> for roughness); <see cref="Normal"/> is the
-    /// tangent-space RGB normal map unchanged. Feed the bundle to <see cref="Scene3D.LoadSurfaceMaps"/> (or the
+    /// tangent-space RGB normal map unchanged. <see cref="AlphaCutoff"/> carries the material's alpha-cutout
+    /// threshold (0 = OPAQUE, no clip). Feed the bundle to <see cref="Scene3D.LoadSurfaceMaps"/> (or the
     /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> overload) to upload only the present maps.</summary>
     public readonly struct GltfMaterialMaps
     {
@@ -40,11 +41,18 @@ namespace KhaozEngine.Render3D
         /// <summary>Decoded glTF metallic-roughness texture, passed through unchanged (roughness in <c>.g</c>), or
         /// <c>null</c> if the material has none.</summary>
         public DecodedImage? Roughness { get; }
-        public GltfMaterialMaps(DecodedImage? albedo, DecodedImage? normal, DecodedImage? roughness)
+        /// <summary>The alpha-cutout threshold read from the glTF material's alphaMode: <c>0</c> for OPAQUE (the
+        /// default when absent, so no fragment is clipped and the render is unchanged), else the material's
+        /// <c>alphaCutoff</c> (default 0.5 per spec) for MASK. glTF BLEND is out of scope and treated as MASK
+        /// (its cutoff, default 0.5). The model fragment discards a texel whose sampled baseColor alpha is below
+        /// this value, so a leaf-card / foliage texture reads as its silhouette instead of a solid quad.</summary>
+        public float AlphaCutoff { get; }
+        public GltfMaterialMaps(DecodedImage? albedo, DecodedImage? normal, DecodedImage? roughness, float alphaCutoff = 0f)
         {
-            Albedo = albedo; Normal = normal; Roughness = roughness;
+            Albedo = albedo; Normal = normal; Roughness = roughness; AlphaCutoff = alphaCutoff;
         }
-        /// <summary>True when the material referenced (and the loader decoded) no textures at all.</summary>
+        /// <summary>True when the material referenced (and the loader decoded) no textures at all. (The alpha-cutout
+        /// threshold is metadata, not a texture, so it does not affect emptiness.)</summary>
         public bool IsEmpty => Albedo is null && Normal is null && Roughness is null;
     }
 
@@ -654,12 +662,22 @@ namespace KhaozEngine.Render3D
         /// through unchanged (the shader reads roughness from .g); normal stays tangent-space RGB.</summary>
         static GltfMaterialMaps ReadMaterialMaps(GltfMaterial? mat)
         {
-            if (mat == null) return default;   // all-null
+            if (mat == null) return default;   // all-null (alpha cutoff 0 = OPAQUE)
             return new GltfMaterialMaps(
                 DecodeChannel(mat, "BaseColor"),
                 DecodeChannel(mat, "Normal"),
-                DecodeChannel(mat, "MetallicRoughness"));
+                DecodeChannel(mat, "MetallicRoughness"),
+                ReadAlphaCutoff(mat));
         }
+
+        /// <summary>The alpha-cutout threshold for a glTF material: <c>0</c> for OPAQUE (the spec default when
+        /// alphaMode is absent, so nothing is clipped and the render is byte-identical to the pre-cutout path),
+        /// else the material's <c>alphaCutoff</c> (default 0.5) for MASK. BLEND is out of scope for the mesh pass,
+        /// so it is treated as MASK (its cutoff, default 0.5) rather than left as translucent - a foliage card
+        /// still reads as its silhouette. A MASK material with cutoff 0 collapses to OPAQUE (nothing clipped),
+        /// which is why 0 doubles as the "no clip" sentinel downstream.</summary>
+        static float ReadAlphaCutoff(GltfMaterial mat) =>
+            mat.Alpha == SharpGLTF.Schema2.AlphaMode.OPAQUE ? 0f : mat.AlphaCutoff;
 
         /// <summary>The encoded image bytes (PNG/JPG/...) for a material channel's texture, or null if the channel
         /// has no texture / no primary image / the image is empty or unresolved (e.g. an external file that did not

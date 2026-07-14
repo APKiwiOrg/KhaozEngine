@@ -172,6 +172,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   Scene3D.PropHandle`, draw as a unit with `Scene3D.Draw(PropHandle, world[, tint])` (each part is a normal
   instanced mesh sharing the transform, so drawing a prop at several transforms batches as instances), and free
   with `Scene3D.UnloadProp`.
+- Alpha cutout (foliage / leaf cards): `GltfLoader` reads each material's glTF `alphaMode` into
+  `GltfMaterialMaps.AlphaCutoff` - `0` for OPAQUE (the default when absent, no clip), else the material's
+  `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and treated as
+  MASK. The value flows through `Scene3D.SurfaceMaps.AlphaCutoff` and the loaded mesh's material state, and the
+  model fragment discards any texel whose sampled baseColor alpha is below it, so an alpha-cutout leaf-card
+  texture renders as its silhouette instead of a solid (and, for the Quaternius kits, black-fringed) quad. An
+  OPAQUE mesh (cutoff 0) is byte-identical to the pre-cutout render. Shadow casters do not alpha-test (a
+  cutout prop casts its full-quad silhouette). Baked kits pair this with a bake-time RGB dilation (alpha bleed)
+  in `tools/kit-bake` so mip/bilinear averaging pulls leaf colour, not the black stored under the leaves.
   - `MeshOps.WithTangents(GltfMesh) -> GltfMesh` computes a per-vertex tangent from UV + position (Lengyel
     accumulate, then Gram-Schmidt against the normal) so a UV-mapped primitive mesh (e.g. `MeshPrimitives.Box`)
     can be normal-mapped. A vertex whose faces have no UV gradient keeps a zero tangent, which the shader reads

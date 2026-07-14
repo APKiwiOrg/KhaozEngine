@@ -1201,6 +1201,17 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   a missing/undecodable image - yields an all-absent bundle (`maps.IsEmpty`) and falls back to the renderer
   defaults, never a throw. The default explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience
   on top.
+- Alpha cutout (foliage / leaf cards): `GltfMaterialMaps.AlphaCutoff` (and `SurfaceMaps.AlphaCutoff`) carries the
+  glTF material's `alphaMode`: `0` for OPAQUE (the default when absent - no clip, byte-identical render), else the
+  material's `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and is
+  treated as MASK. The auto-read / `LoadPropParts` / `LoadPropAuto` paths all fill it, so a textured foliage kit
+  needs nothing extra: the loaded mesh's material state carries the cutoff, and the model fragment discards any
+  texel whose baseColor alpha is below it, rendering a leaf-card texture as its silhouette instead of a solid
+  quad. To force a mesh opaque (ignore a MASK material's cutout) upload it via an explicit `SurfaceMaps` with
+  `alphaCutoff: 0`. Shadow casters do not alpha-test yet, so a cutout prop casts its full-quad silhouette. Kits
+  baked with `tools/kit-bake` additionally dilate (alpha-bleed) leaf colour under the transparent texels so mip
+  and bilinear averaging stop folding the black-under-leaf RGB into the leaves (no dark fringe, stable colour at
+  distance).
 - Smooth / realistic look: a realistic material is still quantized + outlined by the FULLSCREEN post passes
   (palette, edge outline, cel bands), so call `scene.Post.UseSmoothPreset()` to turn those off
   (cel bands / quantize / dither / outline / starfield / pixelated) in one call for a smooth look. Lighting and
@@ -2992,6 +3003,20 @@ per-instance shader indexing, both forms ride the same `SceneInstances` path. Th
 `Room3D` scatters the re-baked textured pine/oak/rock kit (see `tools/kit-bake/`) and how `ke-mapedit`'s editor
 viewport renders the same kit with its **Textured props** toggle (see `KhaozEngine.MapEditor/README.md`) and the
 `render_topdown`/`render_view` MCP verbs' `textured` parameter (see `KhaozEngine.MapEdit.Tool/README.md`).
+
+**Alpha-cutout foliage.** Leaf-card foliage (the Quaternius pine/oak/bush kits) stores an alpha-cutout mask in
+its baseColor texture and declares glTF `alphaMode: MASK`. `LoadPropParts` / `LoadPropAuto` (and the
+single-material `LoadPropWithMaterial`) read that mask into `GltfMaterialMaps.AlphaCutoff`, which flows through
+`SurfaceMaps.AlphaCutoff` to the loaded mesh, and the model fragment discards texels below the cutoff - so a leaf
+card renders as its needle/leaf silhouette, not a solid quad. Nothing extra is needed at the call site: a
+`"textured": true` MASK kit picks this up through the normal load path. OPAQUE materials carry cutoff 0 and are
+byte-identical to the pre-cutout render. Two gotchas: shadow casters do not alpha-test (a cutout prop casts its
+full-quad silhouette into the shadow map), and the cutout alone does not fix the *colour* under the leaves - the
+Quaternius textures store black RGB in their transparent texels, so `tools/kit-bake` dilates (alpha-bleeds) leaf
+colour into those texels at bake time. Without that bleed, plain box-filter mip generation and bilinear sampling
+at the cutout edge fold the black in, giving dark leaf fringes and foliage that darkens with distance. With it,
+every mip averages leaf-on-leaf. Re-bake a kit through `tools/kit-bake` (not by hand) so the bleed and the
+preserved `alphaMode`/`alphaCutoff` stay correct.
 
 **Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
 `PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors

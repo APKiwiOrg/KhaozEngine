@@ -183,7 +183,7 @@ layout(location=3) in vec3 vWorldPos;
 layout(location=4) in vec2 vUv;
 layout(location=5) in vec4 vTint;
 layout(location=6) in vec4 vEmissive;
-layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent
+layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent, z = alpha-cutout threshold (0 = OPAQUE, no clip)
 layout(location=8) in vec4 vTangent;    // world-space tangent (xyz) + handedness (w); zero => geometric normal
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
@@ -197,9 +197,16 @@ void main() {
     // albedo sampler read the normal map - untextured meshes came out flat-normal coloured (R,G ~0.5). Sampling
     // binding 0 (Albedo) first and unconditionally keeps the indices matching the resource layout. (D3D11/Vulkan
     // bind by explicit decoration and are order-insensitive; this is purely the Metal path.) Mirrors EdgeFrag.
-    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb;       // white (1,1,1) for untextured meshes
+    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);          // white (1,1,1,1) for untextured meshes
+    vec3 texRgb = texRgba.rgb;
     vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz; // flat (0.5,0.5,1.0) default => (0,0,1)
     float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;   // 0 default => per-instance spec unchanged
+    // Alpha cutout (MASK materials, e.g. foliage/leaf cards): vSpecParams.z carries the cutoff, and we discard a
+    // texel whose baseColor alpha is below it so the quad reads as its silhouette instead of a solid (often black)
+    // card. Done AFTER all three samples so the implicit-LOD derivatives stay well-defined and the Metal
+    // first-sample-order is untouched. OPAQUE meshes carry cutoff 0, so the branch is never taken and the render
+    // is byte-identical to the pre-cutout path (the 1x1 white default has alpha 1, so untextured meshes are safe).
+    if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
     // Perturb the lighting normal via a TBN only when a tangent exists. Zero tangent (primitives, skinned,
     // untangented meshes) => geometric normal, bit-identical to the pre-PBR pass. A flat normal sample
     // (0,0,1) also yields Ngeo, so a tangent-bearing mesh with no normal map is unchanged too.

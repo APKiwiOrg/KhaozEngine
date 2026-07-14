@@ -284,15 +284,22 @@ namespace KhaozEngine.Render3D
         /// albedo, tangent-space normal, and roughness (glTF metallic-roughness .g convention). Any invalid
         /// (<c>default</c>) handle falls back to the renderer's default for that slot (white albedo, flat
         /// normal, zero roughness), so binding only some maps is fine. Load each map with
-        /// <see cref="LoadTexture(string)"/> / <see cref="LoadTexture(byte[],int,int)"/>.</summary>
+        /// <see cref="LoadTexture(string)"/> / <see cref="LoadTexture(byte[],int,int)"/>. <see cref="AlphaCutoff"/>
+        /// carries the material's alpha-cutout threshold (0 = OPAQUE, no clip, see
+        /// <see cref="GltfMaterialMaps.AlphaCutoff"/>).</summary>
         public readonly struct SurfaceMaps
         {
             public readonly TextureHandle Albedo;
             public readonly TextureHandle Normal;
             public readonly TextureHandle Roughness;
-            public SurfaceMaps(TextureHandle albedo, TextureHandle normal = default, TextureHandle roughness = default)
+            /// <summary>Alpha-cutout threshold: 0 = OPAQUE (no clip), else the MASK cutoff. The model fragment
+            /// discards a texel whose albedo alpha is below this, so a foliage/leaf-card texture renders as its
+            /// silhouette instead of a solid quad. OPAQUE (0) is byte-identical to the pre-cutout render.</summary>
+            public readonly float AlphaCutoff;
+            public SurfaceMaps(TextureHandle albedo, TextureHandle normal = default, TextureHandle roughness = default,
+                float alphaCutoff = 0f)
             {
-                Albedo = albedo; Normal = normal; Roughness = roughness;
+                Albedo = albedo; Normal = normal; Roughness = roughness; AlphaCutoff = alphaCutoff;
             }
         }
 
@@ -324,7 +331,7 @@ namespace KhaozEngine.Render3D
             IGpuResourceSet? material = (a != null || n != null || r != null)
                 ? _model.CreateMaterialSet(a, n, r)
                 : null;
-            return LoadMeshInternal(mesh, material);
+            return LoadMeshInternal(mesh, material, alphaCutoff: maps.AlphaCutoff);
         }
 
         /// <summary>Upload a mesh and draw it through the splat-terrain pipeline with <paramref name="material"/>
@@ -336,7 +343,7 @@ namespace KhaozEngine.Render3D
             return LoadMeshInternal(mesh, null, material.ListIndex);
         }
 
-        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material, int splatMaterial = -1)
+        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material, int splatMaterial = -1, float alphaCutoff = 0f)
         {
             var f = _gd.Factory;
             var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
@@ -345,7 +352,7 @@ namespace KhaozEngine.Render3D
 
             MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
             int index = _slots.Alloc(out int generation);
-            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds, material, splatMaterial);
+            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds, material, splatMaterial, alphaCutoff);
             if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
             else _meshes.Add(slot);                              // fresh appended slot
             return new MeshHandle(index, generation);
@@ -463,7 +470,7 @@ namespace KhaozEngine.Render3D
         {
             TextureHandle Upload(DecodedImage? img) =>
                 img is { } i ? LoadTexture(i.Rgba, i.Width, i.Height) : default;
-            return new SurfaceMaps(Upload(maps.Albedo), Upload(maps.Normal), Upload(maps.Roughness));
+            return new SurfaceMaps(Upload(maps.Albedo), Upload(maps.Normal), Upload(maps.Roughness), maps.AlphaCutoff);
         }
 
         /// <summary>Opt-in convenience: upload a mesh and bind a glTF material's auto-read
@@ -1350,6 +1357,10 @@ namespace KhaozEngine.Render3D
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
             // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
             GroupInstances(_instances.Items, _instanceData, _runs);
+            // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
+            // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
+            // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
+            ApplyAlphaCutoffs(_instanceData, _runs, _meshes);
             if (_instanceData.Count > 0)
                 _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
 
@@ -1862,9 +1873,13 @@ namespace KhaozEngine.Render3D
             /// for frustum culling. The renderer transforms these by the per-instance world matrix (no per-frame
             /// vertex scan).</summary>
             public readonly MeshBounds Bounds;
-            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null, int splatMaterial = -1)
+            /// <summary>Alpha-cutout threshold for this mesh's material (0 = OPAQUE, no clip). Packed into each of
+            /// this mesh's per-instance <c>SpecParams.z</c> by <c>ApplyAlphaCutoffs</c> so the model fragment
+            /// discards texels below it (MASK foliage renders as its silhouette). 0 keeps the render byte-identical.</summary>
+            public readonly float AlphaCutoff;
+            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null, int splatMaterial = -1, float alphaCutoff = 0f)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet; SplatMaterial = splatMaterial;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet; SplatMaterial = splatMaterial; AlphaCutoff = alphaCutoff;
             }
         }
 
@@ -2164,6 +2179,35 @@ namespace KhaozEngine.Render3D
                     Emissive = inst.Material.Emissive,
                     SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
                 };
+            }
+        }
+
+        // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z, reading the cutoff from the
+        // loaded mesh slot (stale-handle runs resolve to 0 = no clip, matching the draw loop's stale skip). Thin
+        // wrapper over the pure overload below so the cutoff lookup stays private to Scene3D.
+        void ApplyAlphaCutoffs(List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs, List<Mesh?> meshes)
+            => ApplyAlphaCutoffs(instanceData, runs, h =>
+                _slots.IsValid(h.Index, h.Generation) && meshes[h.Index] is { } m ? m.AlphaCutoff : 0f);
+
+        /// <summary>Write each run's mesh alpha-cutout threshold (<paramref name="cutoffFor"/>) into that run's
+        /// contiguous slice of <paramref name="instanceData"/> at <c>SpecParams.z</c>, so the model fragment
+        /// discards texels whose baseColor alpha is below it (MASK foliage renders as its silhouette). A run whose
+        /// cutoff is 0 (OPAQUE, the default) is left untouched, so the instance data is byte-identical to the
+        /// pre-cutout path. Pure over its inputs (no GPU), so the packing is headless-testable with a fake lookup.</summary>
+        internal static void ApplyAlphaCutoffs(List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs,
+            Func<MeshHandle, float> cutoffFor)
+        {
+            foreach (MeshRun run in runs)
+            {
+                float cutoff = cutoffFor(run.Mesh);
+                if (cutoff <= 0f) continue;
+                for (uint s = 0; s < run.Count; s++)
+                {
+                    int i = (int)(run.Start + s);
+                    ModelRenderer.InstanceData d = instanceData[i];
+                    d.SpecParams.Z = cutoff;
+                    instanceData[i] = d;
+                }
             }
         }
     }

@@ -72,7 +72,10 @@ namespace KhaozEngine.Render3D.Rendering
             public Matrix4x4 Model;       // 64 bytes (4 rows -> 4 Float4 instance attributes)
             public Vector4 Tint;          // 16
             public Vector4 Emissive;      // 16
-            public Vector4 SpecParams;    // 16 (x = strength, y = shininess)
+            // x = strength, y = shininess, z = alpha-cutout threshold (0 = OPAQUE/no clip, and ModelFrag discards
+            // texels with albedo alpha below it). The CharDissolve pipeline instead overloads z = dissolve
+            // threshold + w = edge width (a different fragment shader), so the two never collide within one draw.
+            public Vector4 SpecParams;    // 16
             public const uint SizeInBytes = 112;
         }
 

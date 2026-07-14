@@ -5,6 +5,51 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Server-status capability (`KhaozEngine.ServerStatus`, new package)
+
+New GPU-free Foundation package for an out-of-band server-status channel: a small public HTTP status endpoint
+(per-game cloud infra, an Azure Function reading a status DB, NOT part of the game server process) reports
+health + version facts, and the game client polls it to drive reconnect behaviour, forced-update prompts, and a
+"server is updating, back soon" waiting screen. The engine ships the reusable pieces. The endpoint code and the
+CI/CD deploy-fact writes land in the game-template repo against this contract. Phase 1, additive, no version
+consumer touched.
+
+- **`ServerStatusReport` + `ServerHealth` - the wire contract.** A versioned, tolerant-read JSON payload
+  (`schemaVersion`, `health`, `serverVersion`, `minClientVersion`, `latestClientVersion`, `lastHeartbeatUtc`,
+  `lastDeployUtc`, nullable `expectedBackUtc`, nullable `motd`). Tolerant read is deliberate so the endpoint can
+  evolve ahead of shipped clients: unknown fields are ignored, missing optionals default, and an unrecognized
+  `health` token degrades to `Unknown` instead of throwing. `TryParse` (never throws, null on garbage) and
+  `ToJson` round-trip it. The documented JSON example is the cross-repo interface the game-template Function
+  implements against (package README + `docs/USING-KHAOZENGINE.md`).
+- **`IServerStatusSource` + `HttpServerStatusSource` - the fetch seam.** Default HTTPS transport (TLS enforced,
+  response size-capped as a memory-exhaustion guard, every transport/parse error swallowed to null), mirroring
+  `HttpUpdateSource`'s hardening. Injectable so tests run headless with no sockets.
+- **`ServerStatusClient` + `ServerStatusSnapshot` - the poller.** Async, polls a configured URL on an interval
+  (default 30 s, configurable), and NEVER throws to the caller: a failed fetch retains the last-known report and
+  advances a staleness/failure clock instead of surfacing an error. Injectable clock + delay seams keep the poll
+  loop headless-testable.
+- **`ServerStatusEvaluator` + `ServerStatusState` + `ServerStatusView` - client-side state derivation.** A pure
+  function mapping (report + local client version + poll staleness) to an actionable state: `ServerOk`,
+  `ServerRestarting` (with `ExpectedBackUtc`), `ServerDown`, `UpdateRequired` (client below `minClientVersion`),
+  `UpdateAvailable` (below `latestClientVersion`), `StatusUnknown` (stale/unreachable/unknown health). Numeric
+  `x.y.z` version gates via `VersionOrder` (so `0.7.10` correctly outranks `0.7.9`). This is the piece a waiting
+  screen and the future reconnect integration consume. The reconnect wiring is left as a documented consumer-side
+  follow-up so it does not touch the Netcode/NetWorld connect path.
+- **`IServerHeartbeatSink` + `ServerHeartbeat` + `ServerHeartbeatService` - the heartbeat seam.** The game server
+  calls the cadence driver on a timer to write a liveness row (now-utc + serverVersion). The engine ships only the
+  seam plus `Null` / `InMemory` reference sinks: the durable SQL upsert is game-side (the status DB schema is
+  per-game infra), which is what lets a game client reference the package for the poller without pulling a database
+  driver. A write failure is contained (logged, surfaced via `ConsecutiveFailures` / `LastError`, never rethrown)
+  and skips at most one beat rather than storming.
+- **Placement.** In the `Foundation` umbrella (alongside `Updates`), so it flows transitively to `Game2D` /
+  `Game3D` clients and the `Server` head with one reference. Depends only on `KhaozEngine.Diagnostics`. No display
+  strings ship from the engine (states are enums, games own the words). Docs swept: README package catalog +
+  Foundation umbrella row + repo layout, the new per-package README, `docs/USING-KHAOZENGINE.md` (client + server +
+  contract), `docs/DEPENDENCY-SEAMS.md` (two new seams + the game-side-SQL rationale), and the `ArchitectureTests`
+  locked Foundation membership.
+
 ## 10.85.0
 
 ### Downed / death rendering state for replicated characters

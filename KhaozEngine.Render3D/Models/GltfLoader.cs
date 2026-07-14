@@ -48,6 +48,23 @@ namespace KhaozEngine.Render3D
         public bool IsEmpty => Albedo is null && Normal is null && Roughness is null;
     }
 
+    /// <summary>One material sub-range of a multi-material prop loaded by
+    /// <see cref="GltfLoader.LoadPartsWithMaterials"/> (and normalized by <see cref="PropLoader.LoadPropParts"/>):
+    /// the welded geometry of the primitives that reference a single glTF material (<see cref="Mesh"/>) paired with
+    /// that material's decoded <see cref="Maps"/>. A whole prop is a list of these - a tree trunk part (bark
+    /// texture) + a leaf part (foliage texture), each drawn with its own texture binding. Upload each part with
+    /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> (or the turn-key <see cref="Scene3D.LoadProp"/>).
+    /// A single-material asset yields exactly one part whose <see cref="Mesh"/> is byte-identical to
+    /// <see cref="GltfLoader.Load"/>'s.</summary>
+    public readonly struct GltfMeshPart
+    {
+        /// <summary>The welded geometry of one material's primitives.</summary>
+        public GltfMesh Mesh { get; }
+        /// <summary>That material's decoded baseColor/normal/roughness textures (all-absent when it has none).</summary>
+        public GltfMaterialMaps Maps { get; }
+        public GltfMeshPart(GltfMesh mesh, GltfMaterialMaps maps) { Mesh = mesh; Maps = maps; }
+    }
+
     /// <summary>Loads a glTF/GLB at runtime via SharpGLTF into a flat-shaded <see cref="GltfMesh"/>.
     /// Reads POSITION/NORMAL/TEXCOORD_0/TANGENT; a missing TANGENT is computed from UV+position by
     /// MeshAssembler. By default material textures (normal/roughness) are NOT auto-read - bind them explicitly via
@@ -109,6 +126,61 @@ namespace KhaozEngine.Render3D
             return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
         }
 
+        /// <summary>Load a rigid glb/glTF as one welded <see cref="GltfMeshPart"/> per source material, each part
+        /// carrying that material's geometry (node world transforms baked exactly as <see cref="Load"/>) plus its
+        /// auto-read <see cref="GltfMaterialMaps"/> (baseColor/normal/metallicRoughness, decoded to raw RGBA8, no
+        /// GPU). This is the multi-texture-per-primitive path: a tree whose bark and leaves are separate
+        /// primitives/materials returns two parts, each drawable with its own texture, instead of the single
+        /// flattened mesh <see cref="Load"/> / <see cref="LoadWithMaterial"/> produce. Parts are in stable
+        /// first-use material order (the order materials are first referenced walking meshes then primitives), so a
+        /// re-load is reproducible. A single-material asset yields exactly one part whose mesh is byte-identical to
+        /// <see cref="Load"/>'s and whose maps equal <see cref="LoadWithMaterial"/>'s. Primitives with no material
+        /// form their own (untextured) part. Throws <see cref="InvalidOperationException"/> if the glTF has no
+        /// triangles. Upload with <see cref="Scene3D.LoadProp"/> (or one
+        /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> per part); normalize a prop kit asset to its
+        /// real-world height first with <see cref="PropLoader.LoadPropParts"/>.</summary>
+        public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(string path)
+            => BuildParts(ModelRoot.Load(path), path);
+
+        static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path)
+        {
+            // Distinct materials in first-use order (a null material - primitives with none - is a valid key). Walk
+            // meshes then primitives, the same traversal BuildRigid uses, so the single-material part's corner order
+            // (and thus its weld) matches Load exactly.
+            var order = new List<GltfMaterial?>();
+            bool sawNull = false;
+            foreach (var mesh in root.LogicalMeshes)
+            foreach (var prim in mesh.Primitives)
+            {
+                GltfMaterial? mat = prim.Material;
+                if (mat == null) { if (!sawNull) { sawNull = true; order.Add(null); } continue; }
+                if (!order.Contains(mat)) order.Add(mat);
+            }
+
+            var parts = new List<GltfMeshPart>(order.Count);
+            foreach (GltfMaterial? material in order)
+            {
+                var corners = new List<MeshCorner>();
+                // Same scene-graph walk as BuildRigid (a mesh referenced by several nodes emits one copy per node;
+                // an un-noded mesh loads once at identity), but restricted to this material's primitives.
+                foreach (var mesh in root.LogicalMeshes)
+                {
+                    bool placed = false;
+                    foreach (var node in root.LogicalNodes)
+                    {
+                        if (node.Mesh != mesh) continue;
+                        placed = true;
+                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, material);
+                    }
+                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, material);
+                }
+                if (corners.Count > 0) parts.Add(new GltfMeshPart(MeshAssembler.Build(corners), ReadMaterialMaps(material)));
+            }
+
+            if (parts.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
+            return parts;
+        }
+
         static GltfMesh BuildRigid(ModelRoot root, string path)
         {
             var corners = new List<MeshCorner>();
@@ -144,53 +216,79 @@ namespace KhaozEngine.Render3D
         // POSITION); a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
         static void AppendMeshCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world)
         {
-            bool identity = world.IsIdentity;
-            // Normal matrix = transpose(inverse(world)); TransformNormal uses its upper 3x3 = (A^-1)^T, the
-            // correct map for normals/tangents under non-uniform scale. A non-invertible (zero-scale) matrix
-            // falls back to the world matrix itself (degenerate either way).
-            Matrix4x4 normalMatrix = identity
-                ? Matrix4x4.Identity
-                : (Matrix4x4.Invert(world, out Matrix4x4 inv) ? Matrix4x4.Transpose(inv) : world);
-
+            (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
+                AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity);
+        }
+
+        // As AppendMeshCorners, but only primitives that reference exactly <paramref name="material"/>
+        // (reference-equality; a null target matches primitives with no material) contribute. Used by
+        // LoadPartsWithMaterials to split a multi-material prop into one welded sub-mesh per source material,
+        // reusing the identical transform + corner-emit math, so a single-material part is byte-identical to the
+        // flattened Load path.
+        static void AppendMaterialCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, GltfMaterial? material)
+        {
+            (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
+            foreach (var prim in mesh.Primitives)
+                if (ReferenceEquals(prim.Material, material))
+                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity);
+        }
+
+        // The identity fast-path flag + normal matrix for a node world transform. Normal matrix =
+        // transpose(inverse(world)); TransformNormal uses its upper 3x3 = (A^-1)^T, the correct map for
+        // normals/tangents under non-uniform scale. A non-invertible (zero-scale) matrix falls back to the world
+        // matrix itself (degenerate either way). An exact-identity world matrix is a no-op fast path.
+        static (bool Identity, Matrix4x4 NormalMatrix) TransformFor(Matrix4x4 world)
+        {
+            if (world.IsIdentity) return (true, Matrix4x4.Identity);
+            return (false, Matrix4x4.Invert(world, out Matrix4x4 inv) ? Matrix4x4.Transpose(inv) : world);
+        }
+
+        // Emit one primitive's triangles as transformed MeshCorners. POSITION goes through the node world matrix;
+        // NORMAL and TANGENT.xyz go through the normal matrix, renormalized, so they stay correct under non-uniform
+        // scale (TANGENT.w / bitangent sign preserved). Under an identity transform raw accessor values pass
+        // straight through, so an identity-node asset is byte-identical to the old mesh-walk loader. Per-primitive
+        // material base color is read per primitive exactly as before. SharpGLTF exposes the standard glTF
+        // attributes by name; a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
+        static void AppendPrimitiveCorners(List<MeshCorner> corners, MeshPrimitive prim, Matrix4x4 world,
+                                           Matrix4x4 normalMatrix, bool identity)
+        {
+            var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
+            if (pos == null) return;
+            // Source normals are honoured so the artist's hard edges survive; TANGENT is a vec4 (xyz =
+            // tangent direction, w = bitangent sign per glTF spec). When absent, MeshAssembler computes them.
+            var srcNormals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
+            var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
+            var srcTangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
+            Vector4 baseColor = ReadBaseColor(prim.Material);
+
+            Vector3 Pos(int i) => identity ? pos[i] : Vector3.Transform(pos[i], world);
+            Vector3? Norm(int i)
             {
-                var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
-                if (pos == null) continue;
-                // Source normals are honoured so the artist's hard edges survive; TANGENT is a vec4 (xyz =
-                // tangent direction, w = bitangent sign per glTF spec). When absent, MeshAssembler computes them.
-                var srcNormals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
-                var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
-                var srcTangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
-                Vector4 baseColor = ReadBaseColor(prim.Material);
+                if (srcNormals == null || i >= srcNormals.Count) return null;
+                Vector3 n = srcNormals[i];
+                if (identity) return n;
+                Vector3 t = Vector3.TransformNormal(n, normalMatrix);
+                float len2 = t.LengthSquared();
+                return len2 > 1e-12f ? t / MathF.Sqrt(len2) : n;   // degenerate transform => keep source dir
+            }
+            Vector2 Uv(int i) => texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero;
+            Vector4? Tan(int i)
+            {
+                if (srcTangents == null || i >= srcTangents.Count) return null;
+                Vector4 src = srcTangents[i];
+                if (identity) return src;
+                Vector3 t = Vector3.TransformNormal(new Vector3(src.X, src.Y, src.Z), normalMatrix);
+                float len2 = t.LengthSquared();
+                if (len2 > 1e-12f) t /= MathF.Sqrt(len2);
+                return new Vector4(t, src.W);   // keep the bitangent-sign handedness
+            }
 
-                Vector3 Pos(int i) => identity ? pos[i] : Vector3.Transform(pos[i], world);
-                Vector3? Norm(int i)
-                {
-                    if (srcNormals == null || i >= srcNormals.Count) return null;
-                    Vector3 n = srcNormals[i];
-                    if (identity) return n;
-                    Vector3 t = Vector3.TransformNormal(n, normalMatrix);
-                    float len2 = t.LengthSquared();
-                    return len2 > 1e-12f ? t / MathF.Sqrt(len2) : n;   // degenerate transform => keep source dir
-                }
-                Vector2 Uv(int i) => texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero;
-                Vector4? Tan(int i)
-                {
-                    if (srcTangents == null || i >= srcTangents.Count) return null;
-                    Vector4 src = srcTangents[i];
-                    if (identity) return src;
-                    Vector3 t = Vector3.TransformNormal(new Vector3(src.X, src.Y, src.Z), normalMatrix);
-                    float len2 = t.LengthSquared();
-                    if (len2 > 1e-12f) t /= MathF.Sqrt(len2);
-                    return new Vector4(t, src.W);   // keep the bitangent-sign handedness
-                }
-
-                foreach (var (a, b, c) in prim.GetTriangleIndices())
-                {
-                    corners.Add(new MeshCorner(Pos(a), Norm(a), baseColor, Uv(a), Tan(a)));
-                    corners.Add(new MeshCorner(Pos(b), Norm(b), baseColor, Uv(b), Tan(b)));
-                    corners.Add(new MeshCorner(Pos(c), Norm(c), baseColor, Uv(c), Tan(c)));
-                }
+            foreach (var (a, b, c) in prim.GetTriangleIndices())
+            {
+                corners.Add(new MeshCorner(Pos(a), Norm(a), baseColor, Uv(a), Tan(a)));
+                corners.Add(new MeshCorner(Pos(b), Norm(b), baseColor, Uv(b), Tan(b)));
+                corners.Add(new MeshCorner(Pos(c), Norm(c), baseColor, Uv(c), Tan(c)));
             }
         }
 

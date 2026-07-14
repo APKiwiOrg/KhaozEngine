@@ -478,6 +478,58 @@ namespace KhaozEngine.Render3D
         public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, GltfMaterialMaps maps) =>
             LoadSkinnedMesh(mesh, LoadSurfaceMaps(maps));
 
+        /// <summary>An opaque handle to a multi-material prop loaded with <see cref="LoadProp"/>: one textured
+        /// sub-mesh per source material (bark + leaves, post + sign, ...), each with its own texture binding.
+        /// <see cref="Draw(PropHandle,Matrix4x4,Color)"/> queues every part at one world transform (so the whole
+        /// prop instances as a unit); <see cref="UnloadProp"/> frees them all. Wraps the per-part
+        /// <see cref="MeshHandle"/>s; the array is owned by the handle.</summary>
+        public readonly struct PropHandle
+        {
+            internal readonly MeshHandle[] Parts;
+            internal PropHandle(MeshHandle[] parts) { Parts = parts; }
+            /// <summary>True when this handle refers to a loaded prop (not the <c>default</c>/empty handle).</summary>
+            public bool IsValid => Parts is { Length: > 0 };
+            /// <summary>The number of textured sub-meshes (material parts) this prop is drawn as.</summary>
+            public int PartCount => Parts?.Length ?? 0;
+        }
+
+        /// <summary>Upload a multi-material prop (one textured sub-mesh per source material, from
+        /// <see cref="PropLoader.LoadPropParts"/> or <see cref="GltfLoader.LoadPartsWithMaterials"/>) and return a
+        /// <see cref="PropHandle"/> that draws them as one unit. Each part is a normal textured mesh
+        /// (<see cref="LoadMesh(GltfMesh,GltfMaterialMaps)"/>), so it flows through the same instanced draw path -
+        /// this is the multi-texture-per-primitive render path: distinct textures on distinct sub-ranges, instanced
+        /// correctly. Throws <see cref="ArgumentException"/> if <paramref name="parts"/> is empty.</summary>
+        public PropHandle LoadProp(IReadOnlyList<GltfMeshPart> parts)
+        {
+            if (parts == null) throw new ArgumentNullException(nameof(parts));
+            if (parts.Count == 0) throw new ArgumentException("a prop needs at least one material part.", nameof(parts));
+            var handles = new MeshHandle[parts.Count];
+            for (int i = 0; i < parts.Count; i++) handles[i] = LoadMesh(parts[i].Mesh, parts[i].Maps);
+            return new PropHandle(handles);
+        }
+
+        /// <summary>Queue every part of <paramref name="prop"/> at <paramref name="world"/> with a white tint. Each
+        /// part is a separate instanced mesh sharing the transform, so the whole prop moves as one and multiple
+        /// draws of the same prop batch as instances. A <c>default</c>/invalid handle is a no-op.</summary>
+        public void Draw(PropHandle prop, Matrix4x4 world) => Draw(prop, world, Color.White);
+
+        /// <summary>Queue every part of <paramref name="prop"/> at <paramref name="world"/> tinted by
+        /// <paramref name="tint"/> (multiplied into each part's albedo). A <c>default</c>/invalid handle is a
+        /// no-op.</summary>
+        public void Draw(PropHandle prop, Matrix4x4 world, Color tint)
+        {
+            if (prop.Parts == null) return;
+            foreach (MeshHandle part in prop.Parts) _instances.Add(part, world, tint);
+        }
+
+        /// <summary>Free every sub-mesh of <paramref name="prop"/> (each via <see cref="UnloadMesh"/>) and its
+        /// textures' owning scope. A <c>default</c>/invalid handle is a no-op.</summary>
+        public void UnloadProp(PropHandle prop)
+        {
+            if (prop.Parts == null) return;
+            foreach (MeshHandle part in prop.Parts) UnloadMesh(part);
+        }
+
         /// <summary>
         /// Free the GPU buffers backing <paramref name="h"/> and release its slot for reuse. A <c>default</c>
         /// handle is a no-op. A stale or bogus handle (its generation no longer matches the slot, e.g. a

@@ -1155,8 +1155,11 @@ public sealed class EditorToolController
     // exclusion / region (decision 8). Unlike MapEditorScene's shape-row CloneShape (editable disc / rect only,
     // a polygon row is read-only v1 there), Duplicate must round-trip every shape kind a document can legally
     // hold, so this is a local clone rather than a reuse: a hand-authored polygon exclusion or region is a legal
-    // duplicate target even though the inspector cannot edit its points.
-    static MapShapeDoc CloneShapeOffset(MapShapeDoc shape, float dx, float dz)
+    // duplicate target even though the inspector cannot edit its points. Internal (not private), like
+    // MapEditorScene.CloneScatterLayer / CloneCompanionLayer, so MutationService.ElementDuplicate (the MCP
+    // element_duplicate verb, KhaozEngine.MapEdit.Tool, same InternalsVisibleTo grant) reuses this exact
+    // polygon-aware clone rather than a second copy that could drift from the GUI's own duplicate.
+    internal static MapShapeDoc CloneShapeOffset(MapShapeDoc shape, float dx, float dz)
     {
         switch (shape)
         {

@@ -5,6 +5,54 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.82.0
+
+### Gui flexibility round: ProgressBar orientation and segments, family-wide texture skinning
+
+Three additive Gui capabilities scoped by the first consumer (Ruinborne HUD: segmented cast bars,
+charge pips, vertical resource bars, fantasy-skinned frames) but designed family-wide. Defaults
+preserve current rendering byte-for-byte, so existing consumers are untouched.
+
+- **`ProgressBar.FillDirection` (`KhaozEngine.Gui`).** New enum (LeftToRight default, RightToLeft,
+  BottomToTop, TopToBottom). `FillRect` grows from the direction's origin edge over `InnerBounds`,
+  and `OverlayText` stays centered in `Bounds` regardless of direction. LeftToRight is byte-identical
+  to the previous behavior.
+- **`ProgressBar` segmented fill (`KhaozEngine.Gui`).** `SegmentCount` (0 or 1 = continuous,
+  unchanged default), `SegmentSpacing`, and `SegmentFillMode`: `Continuous` clips the whole-bar
+  proportional fill into each segment (an xp or cast bar with tick separators), `Discrete` fills only
+  fully covered segments (charge pips, combo points). Segment rects are laid out in fill order from
+  the direction's origin edge, so both modes compose with every `FillDirection`. Pure helpers
+  `SegmentRects()` and `FilledSegmentCount` are public for headless callers.
+- **`GuiSkin` texture skinning, family-wide (`KhaozEngine.Gui`).** `GuiStyle` gains an optional
+  `Skin`: a `GuiSkin` referencing a `Render2D` `Texture2D` (or atlas region via `FromAtlas`) with
+  nine-slice insets and a `Stretch` or `Tile` center mode. The skin branch lives in
+  `GuiDraw.FillStyled`, the single funnel every widget already draws through, so Panel, Button,
+  ProgressBar, TextInput, NumberField, ScrollablePanel, Dropdown, PopupPanel, SlotGrid, and TreeView
+  all render textured frames with no per-widget changes. Corners draw at native pixel size, edges and
+  center stretch or tile (tiles clip at the far edge), degenerate insets clamp so corners meet.
+  Hover and press states multiply the existing state colors over the skin (per-state skin overrides
+  are a documented future extension, not built). A skinned frame skips the procedural
+  CornerRadius/border drawing (the skin owns the silhouette) while `ShadowSize` keeps working.
+  `Skin` null (the default) renders today's flat path byte-for-byte.
+- **Interior content respects the frame (`GuiStyle.ContentInsets`/`ContentRect`,
+  `GuiSkin.DestinationInsets`).** The shared seam for interior geometry: skin set means the skin's
+  destination insets (including the proportional clamp when a widget is smaller than two opposing
+  corners), no skin means the uniform `BorderThickness` inset as before. `ProgressBar.InnerBounds`
+  (fill and segments) and the TextInput/NumberField text pad resolve through it, so a fill or text
+  never overpaints a skinned frame, and `GuiDraw.NineSlicePatches` shares the same inset math so the
+  painted frame and the content rect cannot desync. Callers drawing inside a skinned `SlotGrid` slot
+  use `Style.ContentRect(slotRect)`.
+- **Showcase.** The Widgets screen in the GUI room shows skinned button, panel, and progress bar
+  beside their flat equivalents (frame texture generated procedurally, no committed asset), plus
+  segmented and vertical bars. Verified on Metal by PNG capture: nine-slice corners stay native-size
+  across widget sizes, fill sits inside the skinned frame, and both segment modes render correctly in
+  all four directions.
+- **Headless coverage (`KhaozEngine.Tests`).** `ProgressBarTests` (+22: per-direction FillRect at
+  0/0.5/1, clamping, segment rect math, discrete boundary behavior, direction composition, skinned
+  inner bounds including zero-inset and over-half insets) and new `GuiSkinTests` (nine-slice
+  decomposition for representative and degenerate insets, tile counts, destination-inset clamp, a
+  patches-match-insets pin, flat-path fallback untouched when `Skin` is unset).
+
 ## 10.81.0
 
 ### NativeAOT world save/load: reflection-free ECS serialization registration and source-generated NetWorld persistence JSON

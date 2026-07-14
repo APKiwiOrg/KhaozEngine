@@ -79,6 +79,52 @@ public class WorldSerializerTests
     }
 
     [Fact]
+    public void SaveProducesStableEnvelopeShape()
+    {
+        // Pins the save-format wire shape (envelope member order + component key + value). Changing this string is a
+        // save-format break and needs a FormatVersion bump + migration. The AOT refactor (source-generated envelope,
+        // JsonTypeInfo component codecs) must stay byte-for-byte identical to the historical reflection encoding.
+        var w = new World();
+        w.Set(w.Spawn(), new SrHealth { Hp = 9 });
+        string json = new WorldSerializer(typeof(SrHealth)).Save(w);
+        Assert.Equal(
+            "{\"FormatVersion\":1,\"NextId\":1,\"FreeIds\":[],\"Entities\":[" +
+            "{\"Id\":0,\"Version\":1,\"Components\":{\"KhaozEngine.Tests.SrHealth\":{\"Hp\":9}}}]}",
+            json);
+    }
+
+    [Fact]
+    public void LoadsLegacySaveWithoutFormatVersion()
+    {
+        // A pre-existing save (written before the AOT refactor, and old enough to omit FormatVersion) must still load:
+        // a missing FormatVersion is treated as version 1, and the envelope + component shape is unchanged.
+        const string legacy =
+            "{\"NextId\":1,\"FreeIds\":[],\"Entities\":[" +
+            "{\"Id\":0,\"Version\":1,\"Components\":{\"KhaozEngine.Tests.SrHealth\":{\"Hp\":9}}}]}";
+        World loaded = new WorldSerializer(typeof(SrHealth)).Load(legacy);
+        var e = new Entity(0, 1);
+        Assert.True(loaded.IsAlive(e));
+        Assert.Equal(9, loaded.Get<SrHealth>(e).Hp);
+        Assert.Equal(1, loaded.Spawn().Id);   // allocator resumed at NextId
+    }
+
+    [Fact]
+    public void GenericBuilderMatchesConstructorOutput()
+    {
+        // The generic Create().Add<T>() seam must produce the same save bytes as the Type[] constructor, so adopting
+        // the AOT-safe registration path never changes the on-disk format.
+        var w = new World();
+        Entity a = w.Spawn();
+        w.Set(a, new SrTransform { X = 1, Y = 2 });
+        w.Set(a, new SrHealth { Hp = 3 });
+        w.Set(a, new SrMarker());
+
+        string viaCtor = new WorldSerializer(typeof(SrTransform), typeof(SrHealth), typeof(SrMarker)).Save(w);
+        string viaBuilder = WorldSerializer.Create().Add<SrTransform>().Add<SrHealth>().Add<SrMarker>().Build().Save(w);
+        Assert.Equal(viaCtor, viaBuilder);
+    }
+
+    [Fact]
     public void FromAssemblyOfDiscoversComponents()
     {
         // FromAssemblyOf scans KhaozEngine.Ecs (the Parent component lives there) to verify the

@@ -95,8 +95,10 @@ public class ArchitectureTests
     // The only packages multi-targeted below the repo-wide single <TargetFramework>, and the exact set each
     // must carry. KhaozEngine.ServerStatus plus its full ProjectReference chain (Diagnostics, Primitives) ship
     // a net8.0 lib alongside net10.0 so an Azure Functions isolated-worker app on the Linux Consumption (Y1)
-    // plan can reference them. Linux Consumption does not support .NET 10 (its newest supported LTS is .NET 8),
-    // so dropping net8.0 would silently break that Functions consumer, and adding a second TFM to any other
+    // plan can reference them. KhaozEngine.Http joins them on its own (it has no ProjectReference chain to
+    // carry along, being a zero-dependency leaf): the same bounded-retry helper is exactly what a Functions
+    // consumer also wants. Linux Consumption does not support .NET 10 (its newest supported LTS is .NET 8),
+    // so dropping net8.0 would silently break those Functions consumers, and adding a second TFM to any other
     // package would bloat the fleet for no reason. Both directions are pinned here: the named packages must
     // carry exactly this set, and no other project may declare a plural <TargetFrameworks> at all.
     static readonly Dictionary<string, string[]> MultiTargetedPackages = new(StringComparer.Ordinal)
@@ -104,6 +106,7 @@ public class ArchitectureTests
         ["KhaozEngine.ServerStatus"] = new[] { "net8.0", "net10.0" },
         ["KhaozEngine.Diagnostics"] = new[] { "net8.0", "net10.0" },
         ["KhaozEngine.Primitives"] = new[] { "net8.0", "net10.0" },
+        ["KhaozEngine.Http"] = new[] { "net8.0", "net10.0" },
     };
 
     [Fact]
@@ -160,15 +163,16 @@ public class ArchitectureTests
             {
                 violations.Add(
                     $"{Short(p.Name)} declares <TargetFrameworks> [{string.Join(", ", actual)}] but is not in the multi-target " +
-                    "allowlist. Every package except KhaozEngine.ServerStatus and its ProjectReference chain stays on the single repo-wide TargetFramework.");
+                    "allowlist. Every package except KhaozEngine.ServerStatus (+ its ProjectReference chain) and KhaozEngine.Http " +
+                    "stays on the single repo-wide TargetFramework.");
             }
         }
 
         bool clean = violations.Count == 0;
         Assert.True(clean,
             "Multi-targeting drifted from the pinned set. KhaozEngine.ServerStatus and its ProjectReference chain (Diagnostics, " +
-            "Primitives) ship net8.0 alongside net10.0 so an Azure Functions app on Linux Consumption (which has no .NET 10) can " +
-            "reference them. Keep that set exact: " + string.Join("; ", violations));
+            "Primitives), plus the dependency-free KhaozEngine.Http, ship net8.0 alongside net10.0 so an Azure Functions app on " +
+            "Linux Consumption (which has no .NET 10) can reference them. Keep that set exact: " + string.Join("; ", violations));
     }
 
     [Fact]
@@ -230,7 +234,7 @@ public class ArchitectureTests
             "KhaozEngine.Foundation",
             new[]
             {
-                "App", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon", "Ecs", "Identity",
+                "App", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon", "Ecs", "Http", "Identity",
                 "Locomotion", "MapDoc", "Objectives", "Persistence", "Physics", "Platform", "Primitives",
                 "Progression", "Serialization", "ServerStatus", "Social", "Terrain", "Updates",
             }

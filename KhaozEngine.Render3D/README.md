@@ -182,6 +182,25 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   - `PropMaterialPresets.Procedural(int size = 256, int seed = 1337) -> GltfMaterialMaps` generates a
     deterministic, asset-free mossy-stone albedo + derived tangent-space normal (raw RGBA, no PNG encoder, no
     asset file) for samples and tests, mirroring `TerrainMaterialPresets.Procedural`.
+- Load-time flatten: `GltfLoader.LoadFlattenedAlbedo(path) -> GltfMesh` is what `PropLoader.LoadProp` calls.
+  When a source material carries a `baseColorTexture`, it decodes the texture and folds
+  `GltfLoader.AverageAlbedo`'s alpha-weighted average colour (texels with alpha >= 0.5, falling back to a
+  plain average when fully transparent) into that material's flattened `baseColorFactor`, so a textures-ON
+  kit still renders a sensible flat colour through the flat single-mesh path. **The average is computed on
+  the decoded gamma-space (sRGB-encoded) texel bytes directly - do NOT linearize first**, the result feeds
+  the same gamma-space `baseColorFactor` slot a hand-authored flat material uses. A material with no texture
+  is untouched, so an existing untextured prop is byte-identical to before.
+- Manifest-driven textured opt-in: `PropLoader.LoadPropAuto(AssetEntry, PropValidation?) ->
+  IReadOnlyList<GltfMeshPart>` reads the entry's `AssetEntry.Textured` flag so a call site never has to
+  branch itself. `Textured == true` returns `LoadPropParts`' multi-material part list (one textured
+  sub-mesh per source material). `Textured == false` returns the flat `LoadProp` mesh wrapped as a single
+  part with all-absent `GltfMaterialMaps`, rendering untextured exactly as `LoadProp` would. Either way the
+  result is a uniform `IReadOnlyList<GltfMeshPart>` a caller uploads the same way regardless of mode.
+  `Scene3D.LoadPropMeshes(IReadOnlyList<GltfMeshPart>) -> IReadOnlyList<MeshHandle>` uploads that list and
+  returns the raw per-part handles (rather than bundling them into one `Scene3D.PropHandle`) - this is the
+  shape the multi-part **scatter** path wants (`KhaozEngine.Terrain.PropLayer` / `Scene3DChunkSink` /
+  `PropRenderer.DrawProps`, in `KhaozEngine.Terrain.Render3D` - see that package's README). A single-part
+  list uploads to one handle, identical to a plain `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`.
 - `PropCollisionBake` - offline bakes a `PhysicsShape` from a normalized prop mesh for the `.coll` format.
   Classification: trees -> `BakeTrunkCylinder` (a thin trunk cylinder, `BakeTrunkHull` retained but no longer
   the default); buildings -> `TriangleMeshShape`; rocks/short solids -> `BakeConvexHull`. `PropBakePlan.For`

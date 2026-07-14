@@ -83,6 +83,13 @@ query, mutation) runs on a machine with no display or graphics device. A render 
 headless GPU device fails with a precise `McpException` naming the selected backend, instead of hanging
 or crashing the process.
 
+Both renders take a `textured` bool (default `true`), mirroring the editor's `MapEditorOptions.TexturedProps`
+toggle: `true` renders a manifest entry's textured multi-material parts when it declares `"textured": true`,
+`false` renders every prop flattened regardless of the manifest flag. `RenderService.ConfigureWorld` threads
+it into the throwaway `ViewportWorld` the render call builds (`ViewportWorld.TexturedPropsEnabled`), so a
+render call gets the same textured-vs-flat choice the GUI viewport does without a live editor session
+open. Additive parameter, no new verb - the verb count stays 64.
+
 ## Verb surface (64 tools)
 
 | Group | Verbs |

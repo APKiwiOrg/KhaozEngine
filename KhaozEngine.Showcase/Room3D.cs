@@ -77,8 +77,10 @@ namespace KhaozEngine.Showcase
         FollowCamera3D _camera = null!;
         FollowCameraController _camController = null!;
 
-        // One uploaded mesh per prop-kit id. The streamer scatters per-chunk props from these on demand.
-        readonly Dictionary<string, MeshHandle> _propMeshes = new();
+        // One-or-many uploaded meshes per prop-kit id (one part per source material for a textured entry, one part
+        // for a flat entry), loaded via PropLoader.LoadPropAuto so the manifest's Textured flag alone picks textured
+        // vs flat per id. The streamer scatters per-chunk props from these on demand.
+        readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new();
 
         // Hand-placed town buildings (CC0 Quaternius Medieval Village): one uploaded mesh per building id, plus
         // the fixed placement list built once in OnEnter. Not streamed - drawn directly every frame like the
@@ -174,10 +176,15 @@ namespace KhaozEngine.Showcase
             _collisionShapes = PropCollisionFormat.LoadDirectory(propsDir);
 
             // Load the committed CC0 prop kit through the asset pipeline (decompressed glTF -> normalized to its
-            // manifest heightMeters with the origin dropped to the base), one uploaded mesh per id.
+            // manifest heightMeters with the origin dropped to the base), one-or-many uploaded meshes per id.
+            // PropLoader.LoadPropAuto reads each entry's Textured flag: the re-baked pine/oak/rock ids (textured:
+            // true in props.manifest.json) load as one textured sub-mesh per source material (bark + leaves, ...),
+            // everything else loads as the flattened single part exactly as before. Scene3D.LoadPropMeshes uploads
+            // whichever list comes back, so the demo shows the textured kit without a separate flat/textured branch
+            // here (the same seam ke-mapedit's ViewportWorld.LoadKitMeshes uses).
             AssetManifest manifest = AssetManifest.Load(Path.Combine(propsDir, "props.manifest.json"));
             foreach (AssetEntry entry in manifest.Props)
-                _propMeshes[entry.Id] = _scene.LoadMesh(PropLoader.LoadProp(entry));
+                _propMeshes[entry.Id] = _scene.LoadPropMeshes(PropLoader.LoadPropAuto(entry));
 
             // Load the CC0 town buildings (Quaternius Medieval Village) through the same asset pipeline as the
             // forest props, one uploaded mesh per id, and build their fixed world placements. Buildings are not
@@ -291,9 +298,12 @@ namespace KhaozEngine.Showcase
             _scatterConfig.ClearingRadius = TownRadius;
             _scatterConfig.ClearingCenter = TownCenter;
 
-            _sink = new Scene3DChunkSink(_scene, _field, _scatterConfig, _propMeshes,
-                chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: PropDrawRadius, material: terrainMaterial,
-                ownsMaterial: true, physics: _physics, collisionShapes: _collisionShapes);
+            // Single scatter layer, multi-part meshes: PropLayer.ScatterLayer's IReadOnlyDictionary<string,
+            // IReadOnlyList<MeshHandle>> overload draws every part of a textured id's mesh set as a unit at each
+            // placement (a flat id's single-part list stays byte-identical to the old single-MeshHandle draw).
+            var propLayers = new[] { PropLayer.ScatterLayer(_scatterConfig, _propMeshes, PropDrawRadius) };
+            _sink = new Scene3DChunkSink(_scene, _field, propLayers, TerrainChunkRegion.DefaultSize,
+                material: terrainMaterial, ownsMaterial: true, physics: _physics, collisionShapes: _collisionShapes);
             _streamer = new TerrainStreamer(StreamerConfig.Default, _sink);
 
             // Prime the FULL initial ring at load time (this is the loading moment, not a frame, so the per-frame
@@ -485,7 +495,8 @@ namespace KhaozEngine.Showcase
             _scene.UnloadMesh(_platformMesh);
             _scene.UnloadMesh(_texturedProp);
             _scene.UnloadProp(_signpost);
-            foreach (MeshHandle h in _propMeshes.Values) _scene.UnloadMesh(h);
+            foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values)
+                foreach (MeshHandle h in parts) _scene.UnloadMesh(h);
             foreach (MeshHandle h in _buildingMeshes.Values) _scene.UnloadMesh(h);
             if (_avatar is not null) _scene.UnloadSkinnedMesh(_avatar.Mesh);
 

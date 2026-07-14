@@ -1602,8 +1602,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     // The empty-selection inspector is the Layers panel: a Visible toggle per group, a Rendering section (the
-    // Textured props toggle), then one per named scatter layer. Group toggles only gate draws / picks (no rebuild);
-    // the Textured props toggle and a scatter-layer toggle both rebuild the streamed world (RebuildWorldForVisibility)
+    // Textured props toggle), then one per named scatter layer. Group toggles only gate draws / picks (no rebuild).
+    // The Textured props toggle and a scatter-layer toggle both rebuild the streamed world (RebuildWorldForVisibility)
     // since each is read at load time. Raw dev-tool labels (the editor is not player-facing). Rebuilt on every
     // selection change, so the panel tracks the live scatter-layer set.
     void BuildLayersInspector()

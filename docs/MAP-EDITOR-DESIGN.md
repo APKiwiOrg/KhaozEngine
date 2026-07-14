@@ -260,6 +260,22 @@ questions above, which predate implementation. This section is what later review
 dispatches keep appending to. Same convention as the rest of the roadmap: delete an item
 once it ships, the detail moves to `CHANGELOG.md`.
 
+**Resolved (textured-kits, T3)**: the editor viewport rendered every prop kit flat regardless of a manifest
+entry's `"textured": true` flag. `MapEditorOptions.TexturedProps` (default true, matching gameplay) now gates
+whether `ViewportWorld.LoadKitMeshes` loads a textured entry's multi-material parts (`PropLoader.LoadPropAuto`)
+or its flattened single-part form, surfaced as a "Textured props" `BoolRow` in the Layers panel's new Rendering
+section and threaded to `ke-mapedit`'s `render_topdown`/`render_view` as a `textured` parameter. Both the
+toggle and a scatter-layer visibility toggle rebuild the streamed world (`RebuildWorldForVisibility`), since
+both are read at prop-mesh load time, not live.
+
+**Deferred out of that round**: `ViewportWorld.WithTextured` (the internal helper that overrides one entry's
+`Textured` flag for a single load, when the toggle disagrees with the manifest) copies `AssetEntry` by calling
+its full positional constructor. `AssetEntry` is a plain `readonly struct`, not a record, so it has no `with`
+expression support. A future field added to `AssetEntry` needs a matching update to `WithTextured` or it
+silently drops out of the copy (worse if the new parameter is optional-with-default, since the call still
+compiles). Not fixed this round since `AssetEntry` is stable today - flagged so a future `AssetEntry` field
+addition checks this call site.
+
 **Resolved this round (editor-round7)**: Shift+Escape used to pop the scene with no way back (a head that
 pushed the editor as its only scene was left with a blank screen once the stack emptied), now goes through
 `MapEditorOptions.RequestQuit` (invoked only when the editor is the bottom scene, otherwise the scene just

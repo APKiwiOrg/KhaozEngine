@@ -33,6 +33,22 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   path (raycasts, capsule sweeps, dynamic-body rest all see it) instead of only the analytic
   `TerrainCollision` ground-follow delegate. Off by default: a game keeps the analytic delegate path exactly
   as before.
+- **`PropLayer`** - one scatter or companion layer's config + mesh set + draw radius.
+  `PropLayer.ScatterLayer(scatter, meshes, drawRadius)` / `CompanionLayer(hostLayerIndex, companions, meshes,
+  drawRadius)` each have two overloads: the original `IReadOnlyDictionary<string, MeshHandle>` (one mesh per
+  kit id) and a multi-part `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many mesh PARTS
+  per kit id - a multi-material textured prop split into one textured sub-mesh per source material, from
+  `Scene3D.LoadPropMeshes`). Exactly one of a layer's `Meshes`/`PartMeshes` is set. `Scene3DChunkSink.Draw`
+  reads whichever is set.
+- **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
+  extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
+  overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a
+  multi-part map (`IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>`) queues every part of an id at the
+  placement's shared scale/yaw/translation transform, so the whole prop instances as a unit. A single-part
+  list produces byte-identical submissions to the single-handle form (same `SceneInstances` path, no new
+  per-instance shader indexing), so adopting the multi-part overload costs nothing for an untextured/flat
+  prop. See `KhaozEngine.Render3D/README.md` ("Manifest-driven textured opt-in") for `LoadPropAuto` /
+  `LoadPropMeshes`, the load-side half of this seam.
 - **`TerrainChunkCollision`** - extracts a chunk's SURFACE triangles (skirts excluded, winding flipped so
   the collidable face points up) into a static `TriangleMeshShape`. `Build(TerrainChunkMesh)` or
   `Build(GltfMesh, surfaceVertexCount)`; returns null for an empty chunk. Render-free (no GPU), so terrain
@@ -65,7 +81,20 @@ sink.Draw(player.Position);             // queue chunks + in-range props
 streamer.Dispose();                     // teardown: frees the ring and the sink
 ```
 
+For a scatter layer of multi-material textured props (e.g. a re-baked pine/oak kit with a separate bark and
+leaf material), pass `Scene3D.LoadPropMeshes` output through `PropLayer.ScatterLayer` instead of the plain
+`propMeshes` dictionary above:
+
+```csharp
+var partMeshes = new Dictionary<string, IReadOnlyList<MeshHandle>>();
+foreach (AssetEntry e in manifest.Props)
+    partMeshes[e.Id] = scene.LoadPropMeshes(PropLoader.LoadPropAuto(e));
+var layers = new[] { PropLayer.ScatterLayer(scatter, partMeshes, drawRadius: 90f) };
+var sink = new Scene3DChunkSink(scene, field, layers, chunkSize: StreamerConfig.Default.ChunkSize, material: material);
+```
+
 Depends on `KhaozEngine.Terrain`, `KhaozEngine.Render3D`, and `KhaozEngine.Physics` (chunk collision
-statics). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the walkable streamed overworld.
+statics). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the walkable streamed overworld
+(its foliage scatter uses this multi-part form so the re-baked textured pine/oak/rock kit renders textured).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

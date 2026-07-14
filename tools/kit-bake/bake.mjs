@@ -52,6 +52,17 @@ function parseArgs(argv) {
   return args;
 }
 
+// The only three extensions this recipe expects to still be declared (but unused) after dequantize +
+// textureCompress: the decode/re-encode steps consume what they represent (compressed mesh data,
+// quantized attributes, webp images) without removing the now-dangling extension declaration. Disposing
+// is scoped to exactly this allowlist, not "everything used", so a source glb carrying some OTHER
+// extension (draco, a material extension, KHR_texture_transform, ...) is never silently dropped.
+const EXPECTED_DISPOSED_EXTENSIONS = new Set([
+  'EXT_meshopt_compression',
+  'KHR_mesh_quantization',
+  'EXT_texture_webp',
+]);
+
 async function bakeOne(io, sourcePath, outPath) {
   const document = await io.read(sourcePath);
 
@@ -60,12 +71,26 @@ async function bakeOne(io, sourcePath, outPath) {
     textureCompress({ encoder: sharp, targetFormat: 'png', formats: /webp/ }),
   );
 
-  // The decode + re-encode above leaves EXT_meshopt_compression,
-  // EXT_texture_webp, and KHR_mesh_quantization declared but unused (nothing
-  // in the document still references compressed/quantized/webp data). Drop
-  // them explicitly so the output is plain glTF 2.0 with no extensions.
+  // Dispose only the allowlisted extensions left dangling by the transform above, so the output is
+  // plain glTF 2.0 with no extensions. Fail loudly (rather than silently dropping unknown extension
+  // data) if the source carried anything else this recipe was never designed to strip.
   for (const ext of document.getRoot().listExtensionsUsed()) {
+    if (!EXPECTED_DISPOSED_EXTENSIONS.has(ext.extensionName)) {
+      throw new Error(
+        `${path.basename(sourcePath)}: unexpected extension '${ext.extensionName}' survived dequantize/textureCompress. ` +
+        `This recipe only knows how to strip ${[...EXPECTED_DISPOSED_EXTENSIONS].join(', ')}. ` +
+        'Extend EXPECTED_DISPOSED_EXTENSIONS (and verify the bake is still correct) before re-running.',
+      );
+    }
     ext.dispose();
+  }
+
+  const remaining = document.getRoot().listExtensionsUsed();
+  if (remaining.length > 0) {
+    throw new Error(
+      `${path.basename(sourcePath)}: ${remaining.length} extension(s) still present after dispose: ` +
+      `${remaining.map((ext) => ext.extensionName).join(', ')}.`,
+    );
   }
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });

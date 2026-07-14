@@ -2068,7 +2068,15 @@ provenance record). `PropLoader.LoadProp(entry)` loads the glTF via `GltfLoader`
 the declared `heightMeters`, drops the origin to the base (feet on the ground), and re-centres X/Z on the
 origin. Validation throws loudly on an implausible declared-vs-actual size (the 1.8 m human-scale guard): a
 height outside `PropValidation.MinHeightMeters..MaxHeightMeters`, or an implied raw-to-declared scale outside
-`MinScale..MaxScale` (the asset is in the wrong units). `using KhaozEngine.Render3D;`:
+`MinScale..MaxScale` (the asset is in the wrong units).
+
+When a source material carries a `baseColorTexture`, `LoadProp` (via `GltfLoader.LoadFlattenedAlbedo`) folds that
+texture's alpha-weighted average colour (`GltfLoader.AverageAlbedo`, averaged over texels with alpha >= 0.5,
+falling back to a plain average when fully transparent) into the flattened mesh's `baseColorFactor`, so a
+textures-ON kit still renders a sensible flat colour through the flat path. The average is computed directly on
+the decoded gamma-space (sRGB-encoded) texel bytes - do NOT linearize before averaging, the flat path's output
+feeds the same gamma-space `baseColorFactor` a hand-authored flat material would use. A material with no texture
+is untouched, so an existing untextured prop stays byte-identical. `using KhaozEngine.Render3D;`:
 
 ```csharp
 var manifest = AssetManifest.Load(Path.Combine(AppContext.BaseDirectory, "assets/props/props.manifest.json"));
@@ -2083,14 +2091,18 @@ foreach (AssetEntry e in manifest.Props)
 > `npx --yes @gltf-transform/cli@latest cp <in>.glb <out>.glb` (drops meshopt), plus `dequantize` and a
 > texture-flatten where the kit uses quantization / webp. The committed `KhaozEngine.Showcase` kit was baked this
 > way (see its `assets/props/CREDITS.md`); multi-material props are flattened to per-material flat base colours
-> so the single-mesh loader colours them correctly.
+> so the single-mesh loader colours them correctly. `tools/kit-bake/` is the checked-in, pinned
+> [`gltf-transform`](https://gltf-transform.dev) script implementing both the flat and the textures-ON recipe
+> byte-reproducibly (see its README.md) - prefer it over an ad hoc CLI invocation for a new kit re-ingest.
 >
 > **Textures-ON bake (multi-texture-per-primitive).** To keep real textures instead of flattening, bake to plain
 > glTF but KEEP the per-material textures: `dequantize` (float POSITION/NORMAL, drops `KHR_mesh_quantization`),
 > re-encode webp textures to PNG (`gltf-transform` `webp`/`png` or an image step, drops `EXT_texture_webp`), and
 > do NOT flatten baseColor to a factor. The result is plain glTF 2.0 the loader accepts with its textures intact,
 > loaded through `PropLoader.LoadPropParts` (one textured `GltfMeshPart` per material) rather than the flat
-> single-mesh `LoadProp`. See "Textured props" below.
+> single-mesh `LoadProp`. Set `"textured": true` on the manifest entry for a kit baked this way, so a caller
+> using `PropLoader.LoadPropAuto` (see "Manifest-driven textured opt-in" below) picks up the textured parts
+> automatically. See "Textured props" below.
 
 **2. Scatter (`KhaozEngine.Terrain`, render-free leaf).** `PropScatter.Generate(field, config, area)` returns
 deterministic `PropPlacement[]` via the same coordinate hash as the terrain (`TerrainNoise.Hash2`): a jittered
@@ -2113,10 +2125,12 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 ```
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
-See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring. Textured prop materials have
-landed (single-material via `LoadPropWithMaterial`, multi-material via `LoadPropParts` - see "Textured props"
-below); Mesh-LOD/impostors and animated props are later sub-projects. Terrain PBR splat textures are covered in
-"Textured terrain" below.
+`DrawProps`/`Queue` also overload on `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many
+mesh parts per kit id, from `Scene3D.LoadPropMeshes`) for scattering multi-material textured props - see
+"Manifest-driven textured opt-in and multi-part scatter" below. See the 3D World room (`Room3D`) in
+`KhaozEngine.Showcase` for the full wiring. Textured prop materials have landed (single-material via
+`LoadPropWithMaterial`, multi-material via `LoadPropParts` - see "Textured props" below). Mesh-LOD/impostors
+and animated props are later sub-projects. Terrain PBR splat textures are covered in "Textured terrain" below.
 
 ### GLB requirements for the flat kit path
 
@@ -2910,6 +2924,30 @@ sub-ranges and multiple draws of the same prop batch as GPU instances. A single-
 (geometry matching `LoadProp`), so `LoadPropParts` is a safe superset of the single-texture path. The 3D World
 room in `KhaozEngine.Showcase` places a two-material signpost (wood post + checker sign) near spawn as a live
 demo.
+
+**Manifest-driven textured opt-in (`PropLoader.LoadPropAuto`) and multi-part scatter.** A call site rarely wants
+to branch on `AssetEntry.Textured` itself - `PropLoader.LoadPropAuto(entry)` does that once: when the entry
+declares `"textured": true` it returns `LoadPropParts`' multi-material part list, otherwise it returns the flat
+`LoadProp` mesh wrapped as a single part with all-absent `GltfMaterialMaps` (so it renders untextured exactly as
+`LoadProp` would). Either way the caller gets a uniform `IReadOnlyList<GltfMeshPart>` it uploads the same way,
+so the manifest flag alone chooses textured vs flat:
+
+```csharp
+foreach (AssetEntry e in manifest.Props)
+    partMeshes[e.Id] = scene.LoadPropMeshes(PropLoader.LoadPropAuto(e));   // IReadOnlyList<MeshHandle> per id
+```
+
+`Scene3D.LoadPropMeshes` uploads the parts and returns the raw per-part `MeshHandle` list (rather than bundling
+them into one `PropHandle`), which is the shape the scatter path wants: `PropLayer.ScatterLayer` /
+`PropLayer.CompanionLayer`, `Scene3DChunkSink`'s multi-layer constructor, and `Scene3D.DrawProps` /
+`PropRenderer.Queue` all overload on `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` alongside their
+original `IReadOnlyDictionary<string, MeshHandle>` form. Each in-range placement queues every part of its kit
+id at the placement's shared transform, so the whole prop instances as a unit. A single-part id (a flat prop)
+queues exactly one instance per placement, byte-identical to the original single-handle draw - no new
+per-instance shader indexing, both forms ride the same `SceneInstances` path. This is how `KhaozEngine.Showcase`'s
+`Room3D` scatters the re-baked textured pine/oak/rock kit (see `tools/kit-bake/`) and how `ke-mapedit`'s editor
+viewport renders the same kit with its **Textured props** toggle (see `KhaozEngine.MapEditor/README.md`) and the
+`render_topdown`/`render_view` MCP verbs' `textured` parameter (see `KhaozEngine.MapEdit.Tool/README.md`).
 
 **Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
 `PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors

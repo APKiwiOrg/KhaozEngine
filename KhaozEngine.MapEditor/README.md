@@ -40,6 +40,11 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   stamps the chosen one onto a new `MapSpawn.ArchetypeId`.
 - `ShowOverlays` (default true) draws the translucent viewport overlays for exclusions, regions, and
   terrain-feature markers (see Viewport overlays below). Set false to hide them.
+- `TexturedProps` (default true, matching gameplay) gates whether a manifest entry with `"textured": true`
+  loads its multi-material textured parts (`PropLoader.LoadPropAuto`) or the flattened single-part form, in
+  the viewport `ViewportWorld` renders. Read at prop-mesh load time, so flipping it (in code, or via the
+  Layers panel's "Textured props" toggle below) triggers a viewport world rebuild rather than taking effect
+  live. Session-level only, not persisted to the document.
 - `StatusBottomOffset` (default 0) reserves that many points of clearance at the window bottom for a host
   that draws its own bottom chrome (the Showcase's F7-F10 display readout line), shifting the status strip
   and editor body up so the editor never stacks on the host's pixels.
@@ -385,12 +390,15 @@ dirties the document (no leading `*` in the status strip) and never lands an und
 
 **Layers panel.** The empty-selection inspector (`MapEditorScene.BuildLayersInspector`) is the Layers
 panel: one `BoolRow` per `VisibilityGroup` (raw dev-tool labels, `FeatureMarkers` reads "Feature markers"),
+a **Rendering** section holding the "Textured props" `BoolRow` bound to `MapEditorOptions.TexturedProps`,
 then one `BoolRow` per named scatter layer in the open document. A group toggle only gates draws and picks,
-no rebuild. A scatter-layer toggle also calls `ViewportWorld.Rebuild` (`RebuildWorldForVisibility`), so a
-hidden layer's props actually drop out of the streamed world, taking its companion layers with it (their
-host is gone). The panel rebuilds on every selection change, so it always tracks the document's live
-scatter-layer set. `Water` has no matching selection kind or per-element hide: its toggle turns the single
-water-plane draw on or off outright.
+no rebuild. The "Textured props" toggle and a scatter-layer toggle both also call `ViewportWorld.Rebuild`
+(`RebuildWorldForVisibility`), since both are read at prop-mesh load time rather than live: flipping
+"Textured props" reloads every manifest entry's mesh through `PropLoader.LoadPropAuto` under the new
+setting, and a hidden scatter layer's props actually drop out of the streamed world, taking its companion
+layers with it (their host is gone). The panel rebuilds on every selection change, so it always tracks the
+document's live scatter-layer set. `Water` has no matching selection kind or per-element hide: its toggle
+turns the single water-plane draw on or off outright.
 
 **Per-element hide.** Every placement, spawn, feature, exclusion, and region inspector ends with a
 "Visible" `BoolRow` (`MapEditorScene.AddVisibleRow`) bound to that one element's hidden flag, independent

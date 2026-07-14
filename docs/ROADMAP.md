@@ -49,20 +49,7 @@ StepHeight above terrain still fails the gate and dead-stalls. Pre-existing beha
 rather than regressed (the near-vertical band is unaffected), but the proper fix is to track the capsule's
 current support height including props and gate against that. Documented in the `StepUpEligible` doc comment.
 
-### 2. Visual fidelity (textures + materials)
-
-Terrain PBR splat, per-prop albedo/normal/roughness materials (`PropLoader.LoadPropWithMaterial`), and
-multi-texture-per-primitive props (`PropLoader.LoadPropParts` / `GltfLoader.LoadPartsWithMaterials` /
-`Scene3D.LoadProp`, one textured sub-mesh per source material) have landed. Goal: make props, trees, and
-buildings actually look good, not just read as shapes.
-
-- Real Quaternius kit re-ingest with textures on: bake the committed kit `.glb`s textures-ON (the recipe is in
-  `assets/props/CREDITS.md`) and switch the tree/building load path to `LoadPropParts` so bark/leaf materials
-  render textured. Blocked only on having the original kit sources locally; the engine capability and bake
-  recipe are done (proven by the `signpost.glb` two-material demo).
-- CC0-asset-friendly throughout (ambientCG terrain textures, the kit textures), no new heavy dependencies.
-
-### 3. Map editor (design approved 2026-07-09, in flight)
+### 2. Map editor (design approved 2026-07-09, in flight)
 
 The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain config, authored
 placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine
@@ -90,7 +77,6 @@ duplicated here.
   2.5D rigged-creature direction can adopt it directly. Only reopen an engine item here if a concrete new gain
   surfaces from that adoption (e.g. blend trees or IK the current player can't express: additive layers and
   bone masks shipped in 10.31.0's `LayeredAnimator`).
-- Visual fidelity (real Quaternius kit re-ingest with textures on): see Near-term item #2 above.
 
 ## Rendering
 

@@ -3,7 +3,9 @@
 Bakes CC0 prop-kit glTF sources (meshopt-compressed, `KHR_mesh_quantization` + `EXT_texture_webp`) into
 plain glb files that `KhaozEngine.Render3D.GltfLoader` (SharpGLTF-based) can load with real per-material
 textures. See `KhaozEngine.Showcase/assets/props/CREDITS.md` ("Textures-ON re-ingest") for the canonical
-recipe writeup and provenance. This tool implements that recipe.
+recipe writeup and provenance. This tool implements that recipe. See also `docs/USING-KHAOZENGINE.md`
+("Decompress kit glTF offline" and "Manifest-driven textured opt-in") for how a re-baked kit's
+`"textured": true` manifest entries flow through `PropLoader.LoadPropAuto` at runtime.
 
 ## Requirements
 
@@ -29,7 +31,13 @@ For each source glb, `bake.mjs`:
    extension (SharpGLTF cannot decode webp).
 3. Keeps every material's `baseColorTexture` / `normalTexture` / `metallicRoughnessTexture` as-is (no
    flattening to a factor). Images are embedded in the output glb.
-4. Disposes any now-unused extension declarations, so the output is plain glTF 2.0 with no extensions.
+4. Disposes the three extensions this recipe expects to be left dangling (unused but still declared) by
+   steps 1-2: `EXT_meshopt_compression`, `KHR_mesh_quantization`, `EXT_texture_webp`. This is an explicit
+   allowlist, not "dispose everything used" - if a source glb still declares any OTHER extension after
+   dequantize/textureCompress (draco, a material extension, `KHR_texture_transform`, ...), the bake fails
+   loudly (nonzero exit, naming the extension) instead of silently stripping something this recipe was
+   never designed to touch. A second check after disposal confirms zero extensions remain, so the output
+   is provably plain glTF 2.0.
 5. Prints per-file verification: material count, image count, image formats, extension list, and the
    input-to-output byte size.
 

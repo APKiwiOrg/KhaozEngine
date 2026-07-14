@@ -23,10 +23,13 @@ KhaozEngine's glTF loader (`KhaozEngine.Render3D.GltfLoader`, SharpGLTF-based) l
    render correctly as one flat-colored mesh (the engine flattens primitives into a single mesh and
    reads the per-material base-color factor).
 
-Result: each `.glb` is plain glTF 2.0 (no extensions, f32 attributes) with brown-trunk / green-leaf
-/ grey-rock flat colors. The loader then scales each to its manifest `heightMeters` and drops the
-origin to the base. See `props.manifest.json` and `docs/USING-KHAOZENGINE.md` (Prop scatter +
-asset pipeline).
+Result (historical, now superseded by the textures-ON re-ingest below for all 7 ids): each `.glb`
+was baked to plain glTF 2.0 (no extensions, f32 attributes) with brown-trunk / green-leaf / grey-rock
+flat colors and no textures. The committed files today ship from that later re-ingest instead, so
+they carry their per-material textures again. `PropLoader.LoadProp` still renders a sensible flat
+color from them via the load-time averaged albedo rather than a baked `baseColorFactor` (see
+docs/USING-KHAOZENGINE.md). The loader still scales each to its manifest `heightMeters` and drops
+the origin to the base either way. See `props.manifest.json`.
 
 ### Textures-ON re-ingest (multi-texture-per-primitive)
 

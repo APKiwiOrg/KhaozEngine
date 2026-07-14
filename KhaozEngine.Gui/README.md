@@ -106,6 +106,16 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     fixed width). Opt-in additive: `WrapLongLabels` wraps a stat row with an empty value across the content width (row
     grows to fit); `PopupRow.Stat(..., iconColor)` draws a small colour swatch before the label; `Opacity` fades the
     whole popup for a host transition. Defaults keep every existing consumer byte-identical.
+    **N-button footer** (`SetFooterButtons(IReadOnlyList<PopupAction>)`): an additive alternative to the classic
+    dismiss/primary pair. A `PopupAction` is a `LocalizedText` label, an optional `Action` callback, and an
+    `Enabled` flag. A non-empty `FooterButtons` list REPLACES the dismiss/primary footer entirely and lays the
+    buttons out right-to-left, with index 0 the rightmost slot and the default action (the one Enter fires,
+    rendered in the primary green). `CancelIndex` (default -1, resolving to the last footer action) names which
+    one Esc fires. `HandleKeys(InputState)` is the additive keyboard entry point a host calls alongside the
+    existing pointer-only `Update` overloads to wire Enter/Esc without hand-rolling the key checks itself. A
+    footer callback is safe to mutate the list mid-fire (for example closing the dialog from inside the very
+    action it just ran). An empty `FooterButtons` list leaves the classic dismiss/primary footer completely
+    unchanged, so every existing consumer stays byte-identical.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
     hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
     byte-identical): a header band (`HeaderHeight` + `DrawHeader`) above the scroll region; a slide-up animation

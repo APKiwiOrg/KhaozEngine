@@ -415,4 +415,13 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
     public MutationResult RegionRemove(
         [Description("Name of the region to remove.")] string name)
         => ToolGuard.Guard(() => mutation.RegionRemove(name));
+
+    // ---- element duplicate (cross-kind) --------------------------------------------------------------------
+
+    [McpServerTool(Name = "element_duplicate"), Description("Duplicates one document element: a deep clone with a fresh unique identity, offset +2/+2 world units on X/Z for the kinds that carry a position. Mirrors the editor's own Cmd+D duplicate exactly (same id/name prefixes, same offset, named features/exclusions get a uniquified '-copy' suffix while unnamed ones stay unnamed). Terrain has no duplicate, since it is a document singleton. Exactly one of id or index must be supplied, matching the kind's own addressing.")]
+    public MutationResult ElementDuplicate(
+        [Description("Element kind: placement, spawn, player_spawn, region, scatter_layer, or companion_layer (id/name-keyed), or feature, exclusion, or biome_band (index-keyed).")] string kind,
+        [Description("Id or name of the element to duplicate, for an id/name-keyed kind. Null for an index-keyed kind.")] string? id = null,
+        [Description("Zero-based index of the element to duplicate, for an index-keyed kind (feature, exclusion, biome_band). Null for an id/name-keyed kind.")] int? index = null)
+        => ToolGuard.Guard(() => mutation.ElementDuplicate(kind, id, index));
 }

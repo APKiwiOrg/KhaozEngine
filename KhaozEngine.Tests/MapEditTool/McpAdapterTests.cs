@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 63 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 64 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -36,7 +36,10 @@ namespace KhaozEngine.Tests.MapEditTool
         /// verb family (add/move/set_yaw/set_enabled/rename/remove). player_spawn_set_yaw stays its own verb
         /// rather than folding yaw into player_spawn_move, mirroring how placement_rotate stays a separate verb
         /// from placement_move (the underlying commands are already distinct with independent TryMerge
-        /// coalescing, so the MCP verb granularity follows the command granularity).</summary>
+        /// coalescing, so the MCP verb granularity follows the command granularity). element_duplicate (editor
+        /// round 7, decision 10) closes the duplicate MCP parity gap: one verb spanning all nine duplicatable
+        /// kinds, mirroring the editor's own Cmd+D exactly (Terrain has no duplicate, it is a document
+        /// singleton).</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
@@ -63,6 +66,9 @@ namespace KhaozEngine.Tests.MapEditTool
             "companion_layer_add", "companion_layer_edit", "companion_layer_remove", "companion_layer_rename",
             // Regions
             "region_add", "region_edit_shape", "region_rename", "region_remove",
+            // Element duplicate (cross-kind: placement, spawn, player spawn, feature, exclusion, region,
+            // biome band, scatter layer, companion layer)
+            "element_duplicate",
             // Renders
             "render_topdown", "render_view",
         };
@@ -239,6 +245,40 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal(BiomeId.Desert, added.Biome);
                 Assert.Equal(4f, added.BaseHeight);
                 Assert.Equal(0.5f, added.HillAmplitude);
+                Assert.True(session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public async Task ElementDuplicate_ThroughMcp_DuplicatesPlacementAndReportsId()
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            string dir = NewTempDir();
+            try
+            {
+                string path = Path.Combine(dir, "zone.map.json");
+                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
+
+                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+
+                await harness.Client.CallToolAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+
+                CallToolResult result = await harness.Client.CallToolAsync("element_duplicate",
+                    new Dictionary<string, object?> { ["kind"] = "placement", ["id"] = "inn" },
+                    cancellationToken: cts.Token);
+                Assert.NotEqual(true, result.IsError);
+
+                MutationResult mutation = Deserialize<MutationResult>(result);
+                Assert.Equal("element_duplicate", mutation.Verb);
+                Assert.Equal("placement-1", mutation.Id);
+
+                var session = harness.Services.GetRequiredService<MapEditSession>();
+                MapPlacement clone = session.WithDocument((doc, _) => doc.Placements.Single(p => p.Id == "placement-1"));
+                Assert.Equal("building_inn", clone.Kind);
+                Assert.Equal(-28f, clone.X);
+                Assert.Equal(22f, clone.Z);
                 Assert.True(session.IsDirty);
             }
             finally { Directory.Delete(dir, recursive: true); }

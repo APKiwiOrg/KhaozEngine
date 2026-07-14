@@ -260,6 +260,34 @@ questions above, which predate implementation. This section is what later review
 dispatches keep appending to. Same convention as the rest of the roadmap: delete an item
 once it ships, the detail moves to `CHANGELOG.md`.
 
+**Resolved this round (editor-round7)**: Shift+Escape used to pop the scene with no way back (a head that
+pushed the editor as its only scene was left with a blank screen once the stack emptied), now goes through
+`MapEditorOptions.RequestQuit` (invoked only when the editor is the bottom scene, otherwise the scene just
+pops), with a per-game head wiring it to its own `GameApp.Quit()`. Saving used to be reachable only through
+Ctrl+S/Cmd+S with no visible affordance, now the toolbar carries an always-visible Save button (`Save*` while
+dirty) beside the existing chord. The old silent double-press discard (a first Shift+Escape armed a
+status-strip warning, a second one discarded and exited, with no dialog and no visible list of the actual
+choices) is replaced by a `PopupPanel`-based modal exit dialog offering Save and Close / Save / Discard /
+Cancel when dirty, Close / Cancel when clean, blocking every other input while open. The engine also gained a
+turn-key `MapEditorLandingScene` (New Map / Open Recent / Quit) a head pushes beneath the editor so Close
+always has somewhere to land, a Ctrl+D duplicate across all nine selectable kinds (mirrored exactly by the
+new `element_duplicate` MCP verb), and session-only camera bookmarks (Shift+1..9 store, bare 1..9 recall).
+
+**Deferred out of this round**: camera bookmarks do not persist across an editor close/reopen (session-only
+by design this round, a future round could ride the same `EditorRecentFiles`/`GameStorage` seam). Autosave
+was proposed and explicitly declined by the user for this round (the exit dialog's Save/Save-and-Close cover
+the discoverability gap without it). `MapEditorLandingScene` draws with its own fixed palette rather than
+picking up `GuiStyle`/a host theme. The fly camera's aspect ratio still updates every frame even while the
+exit dialog is open, so a resize mid-dialog is applied to a camera the dialog is currently blocking (cosmetic
+only, the dialog itself is unaffected). An end-to-end pointer-tap test that drives a real tap against the
+exit dialog's footer buttons (today's coverage drives the actions directly and through `HandleKeys`) is
+optional follow-up. A registry-extensibility test for `element_duplicate`/`DuplicateSelection` against a
+custom `MapDocRegistry` feature type is only worth adding if `MapEditSession` ever takes a custom registry
+(it does not today). `EditorToolController.CloneShapeOffset` (all shape kinds, used by Duplicate) and
+`ShapeGeometry.Translated` (disc/rect only, used by the gizmo drag) are two separate shape-translate
+implementations that happen to agree on disc/rect today. Unifying them is future cleanup, not a bug: the
+polygon case `ShapeGeometry.Translated` does not need to handle is why they are not just one function today.
+
 **Resolved this round (editor-round6)**: the outline highlight used to orphan against a node no longer in
 `Roots` on every document edit (`RebuildOutline` news up a fresh `TreeNode` set each time), now fixed by
 `MapEditorScene.SyncOutlineSelection` re-resolving the selection via `TreeView.FindByTag` and `ScrollTo`

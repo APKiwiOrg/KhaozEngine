@@ -80,14 +80,12 @@ public sealed class NetServer
         byte[] token = SessionFrame.ReadBody(ev.Data);
         if (!authenticator.TryAuthenticate(token, out string subject, out string reason))
         {
-            transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Reject, Encoding.UTF8.GetBytes(reason)), NetChannelReliability.ReliableOrdered);
-            transport.Disconnect(ev.Connection);
+            RejectAndDisconnect(ev.Connection, reason);
             return;
         }
         if (!slots.TryAllocate(out int newSlot))
         {
-            transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Reject, Encoding.UTF8.GetBytes("server full")), NetChannelReliability.ReliableOrdered);
-            transport.Disconnect(ev.Connection);
+            RejectAndDisconnect(ev.Connection, "server full");
             return;
         }
         connectionBySlot[newSlot] = ev.Connection;
@@ -98,6 +96,18 @@ public sealed class NetServer
         // Surface a verified display name from the token when the authenticator can provide one (opt-in seam).
         string displayName = authenticator is IConnectionDisplayName named ? named.ReadDisplayName(token) : string.Empty;
         inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token, subject, displayName));
+    }
+
+    // Refuse a pending peer: send the reliable Reject (delivered as-is over a lossless transport such as the
+    // loopback) AND carry the SAME framed Reject on the disconnect itself, so the reason still reaches the client
+    // when the immediate teardown outruns the reliable flush (the real-UDP path). Without the reason on the
+    // disconnect the client saw only a bare transport drop, read it as a transient outage, and auto-reconnected
+    // forever instead of surfacing the terminal rejection - the "reconnect never succeeds after a deploy" bug.
+    private void RejectAndDisconnect(NetConnectionId connection, string reason)
+    {
+        byte[] frame = SessionFrame.Write(SessionOpcode.Reject, Encoding.UTF8.GetBytes(reason));
+        transport.Send(connection, frame, NetChannelReliability.ReliableOrdered);
+        transport.Disconnect(connection, frame);
     }
 
     private void RemovePeer(NetConnectionId conn, int slot)

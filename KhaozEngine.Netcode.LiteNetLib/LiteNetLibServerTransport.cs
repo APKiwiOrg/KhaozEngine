@@ -84,5 +84,16 @@ public sealed class LiteNetLibServerTransport : INetTransport
             peer.Disconnect();
     }
 
+    /// <summary>Disconnects the peer, riding <paramref name="reason"/> on LiteNetLib's disconnect handshake (the
+    /// remote reads it back as the disconnect's additional data). This is how a server reject reaches the client
+    /// reliably: a separately-sent reliable Reject can be lost when the teardown outruns its flush, but the
+    /// disconnect payload is part of the shutdown itself.</summary>
+    public void Disconnect(NetConnectionId connection, ReadOnlySpan<byte> reason)
+    {
+        if (!peersById.TryGetValue(connection.Value - 1, out NetPeer? peer)) return;
+        if (reason.IsEmpty) peer.Disconnect();
+        else peer.Disconnect(reason.ToArray());
+    }
+
     public void Dispose() => manager.Stop();
 }

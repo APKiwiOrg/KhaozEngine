@@ -44,7 +44,13 @@ public sealed class NetClient
                     }
                     break;
                 case NetEventType.Disconnected:
-                    inbox.Enqueue(ClientSessionEvent.Disconnected());
+                    // A disconnect may carry the server's framed Reject as its reason payload (the robust path when
+                    // a separately-sent reliable Reject is lost to the teardown over a real socket). Surface it as
+                    // the terminal Rejected it is, not a bare drop the consumer would auto-reconnect on.
+                    if (SessionFrame.ReadOpcode(ev.Data) == SessionOpcode.Reject)
+                        inbox.Enqueue(ClientSessionEvent.Rejected(Encoding.UTF8.GetString(SessionFrame.ReadBody(ev.Data))));
+                    else
+                        inbox.Enqueue(ClientSessionEvent.Disconnected());
                     break;
                 case NetEventType.Data:
                     HandleData(ev);

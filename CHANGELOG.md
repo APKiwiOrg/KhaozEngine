@@ -5,6 +5,47 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Fix: a server reject now reaches the client terminally instead of looping auto-reconnect forever
+
+A rejecting server (version skew, server full, bad token) now surfaces on the client as the terminal
+`Rejected` / `DisconnectReason` it is, even over a real UDP socket, instead of a bare drop that
+`WorldClient` auto-reconnect retried forever. This was the "after a server restart/deploy the client
+reconnects forever and never succeeds, but relaunching connects instantly" bug: on a deploy the new
+build rejects the old client at connect (e.g. a bumped wire/protocol generation), but the reject was
+silently lost, so the client mistook a terminal rejection for a transient outage and span in
+`Reconnecting` indefinitely.
+
+- **Root cause.** `NetServer` refused a pending peer by sending a reliable `Reject` frame and then
+  immediately calling `transport.Disconnect(connection)`. Over the in-memory loopback the reliable
+  Reject is delivered synchronously (terminal, correct), but over the LiteNetLib UDP binding
+  `peer.Disconnect()` tears the peer down before the reliable Reject is flushed, so the client only
+  ever saw a transport `Disconnected`, read it as `DisconnectReason.Unreachable`, and (under the
+  factory-ctor auto-reconnect) retried without end. A relaunch worked because a fresh process is a
+  fresh connect, not because the server was unavailable.
+- **Fix (transport-agnostic).** The rejection reason now rides the disconnect itself, delivered as part
+  of the shutdown handshake rather than as a separate reliable packet that races the teardown.
+  `INetTransport` gains `Disconnect(NetConnectionId, ReadOnlySpan<byte> reason)` (a default interface
+  method that drops the reason and does a plain disconnect, so the loopback and any other transport need
+  no change). `NetServer` carries the framed `Reject` on the disconnect as well as sending it reliably.
+  The LiteNetLib server binding rides the reason on `NetPeer.Disconnect(byte[])`; the client binding
+  reads it back off `DisconnectInfo.AdditionalData` and surfaces it on the `NetEvent` `Disconnected`
+  payload. `NetClient` turns a disconnect that carries a `Reject` frame into a `Rejected` session event,
+  so `WorldClient` classifies it terminally (no auto-reconnect for a token/version reject) exactly as it
+  already did for a synchronously delivered Reject.
+- **No wire/API break for consumers.** `NetEvent.Disconnected` gains an optional reason payload;
+  the new `INetTransport` overload has a default implementation. Existing behaviour over the loopback is
+  byte-identical (the reliable Reject still lands first). No consumer code change is required: a game on
+  the `WorldClient` auto-reconnect path now correctly reaches its terminal `DisconnectReason`
+  (e.g. `IncompatibleVersion`, so a "client out of date, restart to update" screen) instead of an
+  endless reconnect banner.
+- **Tests.** `RejectDeliveryTests` (headless, CI): a reject-losing loopback that drops the un-flushed
+  reliable Reject on teardown still delivers a terminal `Rejected` via the disconnect reason.
+  `WorldClientLiveReconnectTests` (live socket): a real-UDP reconnect through a same-port server restart
+  and through a multi-attempt deploy gap both re-join, and a rejecting server over real UDP now goes
+  terminal instead of looping (this last one fails without the fix).
+
 ## 10.85.0
 
 ### Downed / death rendering state for replicated characters

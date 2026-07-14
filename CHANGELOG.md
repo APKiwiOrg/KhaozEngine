@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## Unreleased
+
+### Downed / death rendering state for replicated characters
+
+`ReplicatedCharacterAnimators` gains a downed pose override so a client can render a dead / knocked-out avatar as a
+body on the floor instead of standing in idle. The engine stays free of any HP or death knowledge: a game derives
+"downed" client-side from state it already replicates (e.g. `hp <= 0`) with no wire change and sets a per-frame flag.
+Defaults preserve behaviour byte-for-byte: an entity never marked downed renders exactly as before.
+
+- **`CharacterSample.Downed` + `WithDowned(bool)` (`KhaozEngine.Game.Render3D`).** A new per-frame flag on the sample,
+  chosen over an imperative `SetDowned(id, ...)` latch because the bridge is sample-driven: the consumer already builds
+  one sample per entity per frame, so downed is just another orthogonal bit of that snapshot (like `Swimming` /
+  `FacingYaw`). `WithDowned` mirrors `WithFacingYaw` so it composes with any sample shape, it defaults false on every
+  constructor, and it clears automatically on respawn (`hp > 0`) with no latch to reset. While set, the bridge
+  suppresses locomotion for that entity (idle/walk/run, air, swim, and stacked action one-shots).
+- **Two downed presentations.** With a baked clip named `Downed` (the same name-based clip convention, new
+  `LocomotionState.Downed` - a pose-override value the locomotion state machine never returns), the brain plays it once
+  and holds the final frame. With no such clip the bridge collapses the body PROCEDURALLY: it tips the model to prone
+  about its facing-lateral axis over `CharacterAnimatorTuning.DownedCollapseSeconds` (new field, default 0.5 s,
+  smoothstep ramp) and pivots at the feet so the body settles flat on the ground rather than floating at capsule
+  centre, then holds.
+- **`AnimationPlayer.PlayOnce` (`KhaozEngine.Render3D`).** New non-looping playback primitive backing the held death
+  pose: it plays a clip once and clamps the playhead at the clip duration (holding the final frame) instead of looping.
+  `Play` still loops and is byte-identical; switching back to a `Play` clip restores looping. `AnimatedCharacter` gains
+  `HasDownedClip` / `EnterDowned` / `UpdateDowned` / `ExitDowned` to drive it.
+- **Composes with the teleport-snap machinery.** Clearing downed (respawn) returns to locomotion; because a respawn
+  usually teleports, pairing the clear with `SnapRenderHeight(id)` (already the teleport hook) makes the return crisp -
+  no glide from the corpse position, no facing spin from the teleport delta, and no prone residual.
+- **Extensible seam.** The override is an internal `PoseOverride` enum (`None` / `Downed`), not a bool, so a future
+  stunned / sitting / emote pose extends the same branch without redesign.
+
 ## 10.83.0
 
 ### Textured foliage kits: multi-part scatter instancing, load-time gamma-space albedo flatten, editor texture toggle

@@ -1776,6 +1776,31 @@ samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.Verti
 `CharacterSample.FacingYaw` is a nullable `float?` (world radians about +Y, 0 faces +Z); every existing constructor
 leaves it null, so a consumer that never supplies it derives facing exactly as before.
 
+**Downed / death pose.** When a game marks an entity dead or knocked out, every OTHER client would otherwise keep
+drawing that avatar standing in idle. The bridge shows a downed pose instead, and the engine knows NOTHING about HP
+or death rules: a networked game DERIVES "downed" client-side from state it already replicates (e.g. an Hp
+component) with no wire change, and sets the `CharacterSample.Downed` flag per frame. While it is set the bridge
+SUPPRESSES locomotion for that entity (idle/walk/run, air, swim, and stacked action one-shots) and either plays the
+entity's baked `Downed` clip once holding its final frame, or - with no such clip - collapses the body procedurally:
+it tips the model to prone about its facing-lateral axis over `CharacterAnimatorTuning.DownedCollapseSeconds`
+(default 0.5 s, a smoothstep ramp), pivoting at the feet so the body settles flat on the ground rather than floating
+at capsule centre, then holds. The `Downed` clip follows the same name-based convention as the locomotion clips
+(bake one named `Downed`); a rig without it just collapses procedurally.
+
+```csharp
+// In the same per-frame loop that maps render states to samples, derive downed from your own replicated state.
+// The flag is orthogonal to movement/facing, so WithDowned composes with ANY sample shape (like WithFacingYaw):
+samples.Add(new CharacterSample(e.Id.Value, feet, e.IsLocal, e.Grounded, e.VerticalVelocity, e.Swimming, e.ClimbRate)
+    .WithDowned(e.Hp <= 0));   // your game's death rule; the engine only renders the pose
+```
+
+Clearing the flag (respawn / revive) returns the entity to normal locomotion. A respawn usually TELEPORTS, so pair
+the clear with **`SnapRenderHeight(id)`** (as you already do for any teleport, above): that makes the return crisp -
+no glide from the corpse position, no facing spin from the teleport delta, and no prone residual on the respawned
+character. `CharacterSample.Downed` defaults false on every constructor, so an entity never marked downed renders
+exactly as before. The `Downed` flag is a whole-body POSE OVERRIDE; a future stunned / sitting / emote override
+would extend the same seam.
+
 Even windowed, the derived speed ripples a little - the prediction/reconcile render stream is not perfectly
 smooth, and a remote's replicated position arrives as a ~30 Hz staircase - enough to occasionally cross a band
 threshold and, since `AnimationPlayer.Play` restarts a clip on every state change, reset the walk/run cycle to

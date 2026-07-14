@@ -2084,6 +2084,13 @@ foreach (AssetEntry e in manifest.Props)
 > texture-flatten where the kit uses quantization / webp. The committed `KhaozEngine.Showcase` kit was baked this
 > way (see its `assets/props/CREDITS.md`); multi-material props are flattened to per-material flat base colours
 > so the single-mesh loader colours them correctly.
+>
+> **Textures-ON bake (multi-texture-per-primitive).** To keep real textures instead of flattening, bake to plain
+> glTF but KEEP the per-material textures: `dequantize` (float POSITION/NORMAL, drops `KHR_mesh_quantization`),
+> re-encode webp textures to PNG (`gltf-transform` `webp`/`png` or an image step, drops `EXT_texture_webp`), and
+> do NOT flatten baseColor to a factor. The result is plain glTF 2.0 the loader accepts with its textures intact,
+> loaded through `PropLoader.LoadPropParts` (one textured `GltfMeshPart` per material) rather than the flat
+> single-mesh `LoadProp`. See "Textured props" below.
 
 **2. Scatter (`KhaozEngine.Terrain`, render-free leaf).** `PropScatter.Generate(field, config, area)` returns
 deterministic `PropPlacement[]` via the same coordinate hash as the terrain (`TerrainNoise.Hash2`): a jittered
@@ -2106,8 +2113,10 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 ```
 
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
-See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring. Mesh-LOD/impostors, textured prop materials, and animated props are
-later sub-projects. Terrain PBR splat textures are covered in "Textured terrain" below.
+See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring. Textured prop materials have
+landed (single-material via `LoadPropWithMaterial`, multi-material via `LoadPropParts` - see "Textured props"
+below); Mesh-LOD/impostors and animated props are later sub-projects. Terrain PBR splat textures are covered in
+"Textured terrain" below.
 
 ### GLB requirements for the flat kit path
 
@@ -2879,6 +2888,28 @@ MeshHandle handle = scene.LoadMesh(mesh, maps);
 
 If the glTF turns out to have no textures, `maps.IsEmpty` is true and the mesh renders with its flat
 per-material base colour, same as `LoadProp` - no throw, no special-casing needed at the call site.
+
+**Multi-texture-per-primitive props.** `LoadPropWithMaterial` flattens the whole prop into one mesh and reads a
+single material, so it can only texture a one-material prop. A prop whose parts are separate materials (a tree
+with a bark material + a leaf material, a signpost with a wood post + a painted sign) needs each part textured
+independently. `PropLoader.LoadPropParts(entry)` returns one `GltfMeshPart` (`{ GltfMesh Mesh, GltfMaterialMaps
+Maps }`) per source material - splitting the primitives by material via `GltfLoader.LoadPartsWithMaterials` -
+and normalizes every part by ONE shared transform over the whole prop's combined bounds, so the parts stay
+aligned exactly as authored. Upload the parts as one `Scene3D.PropHandle` and draw them as a unit:
+
+```csharp
+AssetEntry entry = manifest.Find("signpost");      // "textured": true, two materials in the glb
+Scene3D.PropHandle prop = scene.LoadProp(PropLoader.LoadPropParts(entry));
+scene.Draw(prop, worldA);                           // each part instances at this transform
+scene.Draw(prop, worldB);                           // a second draw batches as instances
+// ... scene.UnloadProp(prop) when done.
+```
+
+Each part is a normal textured mesh through the same instanced draw path, so distinct textures land on distinct
+sub-ranges and multiple draws of the same prop batch as GPU instances. A single-material asset yields one part
+(geometry matching `LoadProp`), so `LoadPropParts` is a safe superset of the single-texture path. The 3D World
+room in `KhaozEngine.Showcase` places a two-material signpost (wood post + checker sign) near spawn as a live
+demo.
 
 **Asset-free procedural placeholder.** For samples, tests, or prototyping without shipping binary textures,
 `PropMaterialPresets.Procedural()` generates a deterministic mossy-stone albedo + normal in memory (mirrors

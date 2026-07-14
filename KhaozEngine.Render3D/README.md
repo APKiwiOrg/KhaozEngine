@@ -160,6 +160,18 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   exactly as `LoadProp`. Upload the result with `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`. Opt in per-asset
   via the manifest `"textured": true` flag (`AssetEntry.Textured`, default false: renders with the flat
   per-material base colour as before).
+- Multi-texture-per-primitive props: a prop whose parts are separate materials (a tree with a bark material +
+  a leaf material, a signpost with a wood post + a painted sign) renders each part with its own texture instead
+  of one flattened mesh. `GltfLoader.LoadPartsWithMaterials(path) -> IReadOnlyList<GltfMeshPart>` splits the glTF
+  into one welded `GltfMeshPart` (`{ GltfMesh Mesh, GltfMaterialMaps Maps }`) per source material, in stable
+  first-use order; a single-material asset yields exactly one part byte-identical to `Load` /
+  `LoadWithMaterial`, and primitives with no material form their own untextured part.
+  `PropLoader.LoadPropParts(AssetEntry, PropValidation?) -> IReadOnlyList<GltfMeshPart>` normalizes all parts by
+  ONE shared transform over the whole prop's combined bounds (scaled to `HeightMeters`, base dropped to y=0),
+  so the parts stay aligned exactly as authored (never per-part). Upload with `Scene3D.LoadProp(parts) ->
+  Scene3D.PropHandle`, draw as a unit with `Scene3D.Draw(PropHandle, world[, tint])` (each part is a normal
+  instanced mesh sharing the transform, so drawing a prop at several transforms batches as instances), and free
+  with `Scene3D.UnloadProp`.
   - `MeshOps.WithTangents(GltfMesh) -> GltfMesh` computes a per-vertex tangent from UV + position (Lengyel
     accumulate, then Gram-Schmidt against the normal) so a UV-mapped primitive mesh (e.g. `MeshPrimitives.Box`)
     can be normal-mapped. A vertex whose faces have no UV gradient keeps a zero tangent, which the shader reads

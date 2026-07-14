@@ -51,11 +51,15 @@ current support height including props and gate against that. Documented in the 
 
 ### 2. Visual fidelity (textures + materials)
 
-Terrain PBR splat and per-prop albedo/normal/roughness materials (`PropLoader.LoadPropWithMaterial`) have
-landed. Goal: make props, trees, and buildings actually look good, not just read as shapes.
+Terrain PBR splat, per-prop albedo/normal/roughness materials (`PropLoader.LoadPropWithMaterial`), and
+multi-texture-per-primitive props (`PropLoader.LoadPropParts` / `GltfLoader.LoadPartsWithMaterials` /
+`Scene3D.LoadProp`, one textured sub-mesh per source material) have landed. Goal: make props, trees, and
+buildings actually look good, not just read as shapes.
 
-- Real Quaternius kit re-ingest with textures on (today's samples use the `PropMaterialPresets.Procedural`
-  preset or opt in per-asset via the `textured` manifest flag), plus multi-texture-per-primitive support.
+- Real Quaternius kit re-ingest with textures on: bake the committed kit `.glb`s textures-ON (the recipe is in
+  `assets/props/CREDITS.md`) and switch the tree/building load path to `LoadPropParts` so bark/leaf materials
+  render textured. Blocked only on having the original kit sources locally; the engine capability and bake
+  recipe are done (proven by the `signpost.glb` two-material demo).
 - CC0-asset-friendly throughout (ambientCG terrain textures, the kit textures), no new heavy dependencies.
 
 ### 3. Map editor (design approved 2026-07-09, in flight)

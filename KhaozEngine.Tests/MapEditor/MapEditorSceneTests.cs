@@ -61,6 +61,22 @@ namespace KhaozEngine.Tests.MapEditor
             protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
         }
 
+        // The DocScene idiom plus a RebuildWorldForVisibility spy: BuildWorld/TeardownWorld stay no-ops (so the
+        // viewport is never actually built, matching DocScene), but the protected rebuild seam a Layers-panel
+        // scatter-layer or Textured-props toggle calls is counted instead of running (which would no-op anyway
+        // since _viewport.IsBuilt is false headless). Lets a toggle test assert the rebuild call fired without a
+        // Scene3D device.
+        sealed class RebuildSpyDocScene : MapEditorScene
+        {
+            readonly Func<MapDocument> _factory;
+            public int Rebuilds;
+            public RebuildSpyDocScene(Func<MapDocument> factory) => _factory = factory;
+            protected override void BuildWorld() { }
+            protected override void TeardownWorld() { }
+            protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+            protected override void RebuildWorldForVisibility() => Rebuilds++;
+        }
+
         // Injects a caller-supplied document AND a pure flat field on the controller (no GPU), so a viewport pick
         // can be driven straight on the controller headless. Everything else is the DocScene idiom.
         sealed class FieldDocScene : MapEditorScene
@@ -2013,19 +2029,20 @@ namespace KhaozEngine.Tests.MapEditor
                 return doc;
             });
 
-            // Nothing is selected at startup, so the inspector is the Layers panel: one BoolRow per visibility group
-            // then one per named scatter layer.
+            // Nothing is selected at startup, so the inspector is the Layers panel: one BoolRow per visibility group,
+            // one Rendering toggle (Textured props), then one per named scatter layer.
             Assert.Equal(SelectionKind.None, scene.Document.Selection.Kind);
             List<BoolRow> bools = scene.Inspector.Rows.OfType<BoolRow>().ToList();
             List<string> labels = bools.Select(b => b.Label.Resolve()).ToList();
 
-            Assert.Equal(6 + 2, bools.Count);   // six groups + two scatter layers
+            Assert.Equal(6 + 1 + 2, bools.Count);   // six groups + Textured props + two scatter layers
             Assert.Contains("Placements", labels);
             Assert.Contains("Spawns", labels);
             Assert.Contains("Water", labels);
             Assert.Contains("Exclusions", labels);
             Assert.Contains("Regions", labels);
             Assert.Contains("Feature markers", labels);
+            Assert.Contains("Textured props", labels);
             Assert.Contains("trees", labels);
             Assert.Contains("rocks", labels);
         }
@@ -2053,6 +2070,51 @@ namespace KhaozEngine.Tests.MapEditor
             // Tapping again shows it: the hidden entry is removed.
             Assert.True(TapBool(visible));
             Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "hut"));
+        }
+
+        // ---- Layers panel: Textured props toggle ---------------------------------------------------------
+
+        static RebuildSpyDocScene PushRebuildSpyDocScene(Func<MapDocument> factory, MapEditorOptions options)
+        {
+            var scene = new RebuildSpyDocScene(factory);
+            scene.Init(null!, null!, null!, options);
+            new SceneManager().Push(scene);
+            return scene;
+        }
+
+        [Fact]
+        public void TexturedRow_InLayersPanel_HasDescription()
+        {
+            var scene = PushDocScene(ValidDoc);
+            scene.Document.Selection.Clear();
+
+            BoolRow textured = BoolRowByLabel(scene.Inspector, "Textured props");
+
+            Assert.True(textured.Description.HasValue);
+            Assert.False(string.IsNullOrWhiteSpace(textured.Description!.Value.Resolve()));
+        }
+
+        [Fact]
+        public void TexturedToggle_Flip_TriggersRebuild()
+        {
+            var options = new MapEditorOptions();
+            var scene = PushRebuildSpyDocScene(ValidDoc, options);
+            scene.Document.Selection.Clear();
+
+            BoolRow textured = BoolRowByLabel(scene.Inspector, "Textured props");
+            Assert.True(options.TexturedProps);      // default true, matching gameplay
+            Assert.Equal(0, scene.Rebuilds);
+
+            // Flip off: the option updates and the Layers-panel toggle rebuilds the streamed world, mirroring how
+            // a scatter-layer visibility toggle rebuilds (RebuildWorldForVisibility).
+            Assert.True(TapBool(textured));
+            Assert.False(options.TexturedProps);
+            Assert.Equal(1, scene.Rebuilds);
+
+            // Flip back on: rebuilds again.
+            Assert.True(TapBool(textured));
+            Assert.True(options.TexturedProps);
+            Assert.Equal(2, scene.Rebuilds);
         }
 
         // ---- categorized palette + filters ---------------------------------------------------------------

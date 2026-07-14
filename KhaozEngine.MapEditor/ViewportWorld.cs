@@ -50,10 +50,11 @@ public sealed class ViewportWorld : IDisposable
     readonly IReadOnlyList<AssetEntry> _entries;
     readonly Dictionary<string, float> _kindHeights;
     readonly Dictionary<string, string> _kindCategories;
-    readonly Dictionary<string, MeshHandle> _propMeshes = new();
+    readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new();
     readonly PlacementCache _placements = new();
 
     Func<string, bool> _scatterLayerVisible = static _ => true;
+    Func<bool> _texturedPropsEnabled = static () => true;
 
     bool _built;
     bool _disposed;
@@ -105,6 +106,19 @@ public sealed class ViewportWorld : IDisposable
     {
         get => _scatterLayerVisible;
         set => _scatterLayerVisible = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>Predicate deciding whether a manifest entry's <see cref="AssetEntry.Textured"/> flag is honoured on
+    /// the next <see cref="Build"/> / <see cref="Rebuild"/>: <see cref="LoadKitMeshes"/> reads it once per rebuild
+    /// (see <see cref="ResolvePropParts"/>), so an entry loads its textured parts only while this returns true AND
+    /// the entry itself declares <see cref="AssetEntry.Textured"/>, otherwise it loads the flattened single-part
+    /// form. Defaults to always-on, matching gameplay. The editor scene points it at its
+    /// <see cref="MapEditorOptions.TexturedProps"/> option and calls <see cref="Rebuild"/> when the toggle
+    /// flips, mirroring <see cref="ScatterLayerVisible"/>.</summary>
+    public Func<bool> TexturedPropsEnabled
+    {
+        get => _texturedPropsEnabled;
+        set => _texturedPropsEnabled = value ?? throw new ArgumentNullException(nameof(value));
     }
 
     /// <summary>The built terrain field, or null before <see cref="Build"/> (and after <see cref="Dispose"/>).</summary>
@@ -267,10 +281,35 @@ public sealed class ViewportWorld : IDisposable
 
     void LoadKitMeshes()
     {
+        bool texturedProps = _texturedPropsEnabled();
         foreach (AssetEntry entry in _entries)
             if (!_propMeshes.ContainsKey(entry.Id))   // first mesh wins on a duplicate id across manifests (no leak)
-                _propMeshes[entry.Id] = _scene.LoadMesh(PropLoader.LoadProp(entry));
+                _propMeshes[entry.Id] = _scene.LoadPropMeshes(ResolvePropParts(entry, texturedProps));
     }
+
+    /// <summary>Resolves the glTF parts <see cref="LoadKitMeshes"/> would upload for one manifest entry, honouring
+    /// <paramref name="texturedProps"/>: the entry loads its textured multi-part form (via
+    /// <see cref="PropLoader.LoadPropParts"/>) only when it declares <see cref="AssetEntry.Textured"/> AND
+    /// <paramref name="texturedProps"/> is true, otherwise it loads the flattened single-part form (via
+    /// <see cref="PropLoader.LoadProp"/>) exactly as an untextured entry would. Delegates to
+    /// <see cref="PropLoader.LoadPropAuto"/> so the manifest flag stays the single source of truth for the decision.
+    /// Only the CPU-side glTF decode runs here, no GPU upload, so the branch a rebuild takes is
+    /// headless-testable without a <see cref="Scene3D"/> device.</summary>
+    internal static IReadOnlyList<GltfMeshPart> ResolvePropParts(
+        AssetEntry entry, bool texturedProps, PropValidation? validation = null)
+    {
+        bool effectiveTextured = entry.Textured && texturedProps;
+        AssetEntry effective = effectiveTextured == entry.Textured ? entry : WithTextured(entry, effectiveTextured);
+        return PropLoader.LoadPropAuto(effective, validation);
+    }
+
+    // A copy of entry with only its Textured flag replaced, so ResolvePropParts can force the flattened path for an
+    // entry the manifest declares textured when the editor's TexturedPropsEnabled predicate says no, without a
+    // PropLoader/AssetEntry change (AssetEntry.Textured has no public setter, so a copy via the full ctor is the
+    // only way to override it for this one load).
+    static AssetEntry WithTextured(AssetEntry entry, bool textured) =>
+        new(entry.Id, entry.File, entry.HeightMeters, entry.Source, entry.License, entry.Collider,
+            entry.Surface, entry.Heightmap, entry.CollisionShape, entry.CollisionProxy, textured, entry.Category);
 
     // Turns the document's scatter + companion layers into the sink's index-aligned PropLayer list: the VISIBLE
     // scatter layers first (recording each name's index), then companions pointing at their host scatter layer. A
@@ -366,7 +405,8 @@ public sealed class ViewportWorld : IDisposable
     void TeardownGpu()
     {
         _streamer?.Dispose();
-        foreach (MeshHandle handle in _propMeshes.Values) _scene.UnloadMesh(handle);
+        foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values)
+            foreach (MeshHandle handle in parts) _scene.UnloadMesh(handle);
         _propMeshes.Clear();
         _placements.Invalidate();
         _sink = null;
@@ -385,11 +425,11 @@ public sealed class ViewportWorld : IDisposable
 
     void DrawHighlighted(EditorPlacement ep, Color tint)
     {
-        if (!_propMeshes.TryGetValue(ep.Prop.Id, out MeshHandle mesh)) return;
+        if (!_propMeshes.TryGetValue(ep.Prop.Id, out IReadOnlyList<MeshHandle>? parts)) return;
         Matrix4x4 world = Matrix4x4.CreateScale(ep.Prop.Scale)
                           * Matrix4x4.CreateRotationY(ep.Prop.Yaw)
                           * Matrix4x4.CreateTranslation(ep.Prop.X, ep.Prop.Y, ep.Prop.Z);
-        _scene.Draw(mesh, world, tint);
+        foreach (MeshHandle mesh in parts) _scene.Draw(mesh, world, tint);
     }
 
     void DrawSpawnMarkers(EditorVisibility visibility)

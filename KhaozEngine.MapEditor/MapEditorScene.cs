@@ -51,6 +51,14 @@ public sealed class MapEditorOptions
     /// regions (blue), and terrain-feature centers (amber), with the selected element brightened, so those
     /// otherwise-invisible authoring shapes are findable while editing. Set false to hide them.</summary>
     public bool ShowOverlays = true;
+
+    /// <summary>When true (the default, matching gameplay) a manifest entry flagged <see cref="AssetEntry.Textured"/>
+    /// loads its textured multi-part form in the viewport, same as the game. Set false to render every prop in its
+    /// flattened, load-time-averaged colour instead, regardless of the manifest flag, for editing clarity (a dense
+    /// textured forest can be harder to read while placing props than its flat silhouette). Session-level state
+    /// only, read at load time via <see cref="ViewportWorld.TexturedPropsEnabled"/>, so flipping it rebuilds the
+    /// streamed world (see the Layers-panel "Textured props" row).</summary>
+    public bool TexturedProps = true;
 }
 
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
@@ -316,7 +324,11 @@ public class MapEditorScene : GameScene, IGameScene3D
             IsVisible = _visibility.IsElementVisible,
             OnIndexRemoved = _visibility.RemoveIndex,
         };
-        _viewport = new ViewportWorld(_scene, _options.ManifestPaths) { ScatterLayerVisible = _visibility.GetLayer };
+        _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
+        {
+            ScatterLayerVisible = _visibility.GetLayer,
+            TexturedPropsEnabled = () => _options.TexturedProps,
+        };
         _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f };
         _camController = new FlyCameraController(_camera);
 
@@ -1589,10 +1601,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    // The empty-selection inspector is the Layers panel: a Visible toggle per group, then one per named scatter
-    // layer. Group toggles only gate draws / picks (no rebuild); a scatter-layer toggle also rebuilds the streamed
-    // world so the hidden layer's props drop out (RebuildWorldForVisibility). Raw dev-tool labels (the editor is
-    // not player-facing). Rebuilt on every selection change, so the panel tracks the live scatter-layer set.
+    // The empty-selection inspector is the Layers panel: a Visible toggle per group, a Rendering section (the
+    // Textured props toggle), then one per named scatter layer. Group toggles only gate draws / picks (no rebuild);
+    // the Textured props toggle and a scatter-layer toggle both rebuild the streamed world (RebuildWorldForVisibility)
+    // since each is read at load time. Raw dev-tool labels (the editor is not player-facing). Rebuilt on every
+    // selection change, so the panel tracks the live scatter-layer set.
     void BuildLayersInspector()
     {
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Groups"), LocalizedText.Raw(
@@ -1607,6 +1620,17 @@ public class MapEditorScene : GameScene, IGameScene3D
                 LocalizedText.Raw($"Shows or hides every {GroupLabel(g)} in the viewport. Editor view only, " +
                     "does not affect the saved document or the game.")));
         }
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Rendering"), LocalizedText.Raw(
+            "Viewport rendering options. Editor view only, these never change the saved document or what the " +
+            "game loads.")));
+        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Textured props"),
+            () => _options.TexturedProps,
+            v => { _options.TexturedProps = v; RebuildWorldForVisibility(); },
+            LocalizedText.Raw("When on (the default, matching gameplay) a kit prop flagged textured shows its " +
+                "baked materials in the viewport. Turn off to render every prop in its flattened average colour " +
+                "instead, which can be easier to read while placing a dense textured forest. Editor view only, " +
+                "does not affect the saved document or the game, and rebuilds the streamed world to take effect.")));
+
         if (_document.Doc.ScatterLayers.Count > 0)
             _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Scatter Layers"), LocalizedText.Raw(
                 "Streams or hides one named scatter layer's placed props in the viewport, independent of the " +

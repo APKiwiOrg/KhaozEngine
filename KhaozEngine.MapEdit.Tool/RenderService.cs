@@ -34,10 +34,13 @@ public sealed class RenderService(MapEditSession session)
 
     /// <summary>Top-down orthographic PNG over the world rect (defaulting to the document bounds). The camera looks
     /// straight down with azimuth zero, so world +Z runs up the image and world +X runs to the right.
-    /// <paramref name="includeOverlays"/> paints the exclusion, region, and feature fills over the terrain. Throws
-    /// <see cref="InvalidOperationException"/> when no document is open or no headless GPU device exists.</summary>
+    /// <paramref name="includeOverlays"/> paints the exclusion, region, and feature fills over the terrain.
+    /// <paramref name="textured"/> mirrors the editor's TexturedProps toggle: true (the default) renders a manifest
+    /// entry's textured parts when it declares them, false renders every prop flattened regardless of the manifest
+    /// flag. Throws <see cref="InvalidOperationException"/> when no document is open or no headless GPU device
+    /// exists.</summary>
     public byte[] RenderTopDown(float? minX = null, float? minZ = null, float? maxX = null, float? maxZ = null,
-        int width = 1024, int height = 1024, bool includeOverlays = true)
+        int width = 1024, int height = 1024, bool includeOverlays = true, bool textured = true)
     {
         return session.WithDocument((doc, registry) =>
         {
@@ -61,7 +64,7 @@ public sealed class RenderService(MapEditSession session)
             return CaptureToPng(width, height,
                 setup: scene =>
                 {
-                    world = new ViewportWorld(scene, session.ManifestPaths);
+                    world = ConfigureWorld(scene, textured);
                     world.Build(doc, registry);
                     IsoCamera3D cam = scene.Camera;
                     cam.Elevation = TopDownElevation;
@@ -82,11 +85,13 @@ public sealed class RenderService(MapEditSession session)
     /// <summary>Perspective PNG from <paramref name="eyeX"/>,<paramref name="eyeY"/>,<paramref name="eyeZ"/> looking
     /// toward the target point, with a vertical field of view of <paramref name="fovDegrees"/>. Rejects a
     /// zero-length look direction (eye and target coincide) with an <see cref="ArgumentException"/> before any GPU
-    /// work. Throws <see cref="InvalidOperationException"/> when no document is open or no headless GPU device
-    /// exists.</summary>
+    /// work. <paramref name="textured"/> mirrors the editor's TexturedProps toggle: true (the default) renders a
+    /// manifest entry's textured parts when it declares them, false renders every prop flattened regardless of the
+    /// manifest flag. Throws <see cref="InvalidOperationException"/> when no document is open or no headless GPU
+    /// device exists.</summary>
     public byte[] RenderView(float eyeX, float eyeY, float eyeZ,
         float targetX, float targetY, float targetZ,
-        int width = 1024, int height = 720, float fovDegrees = 60f)
+        int width = 1024, int height = 720, float fovDegrees = 60f, bool textured = true)
     {
         var eye = new Vector3(eyeX, eyeY, eyeZ);
         var target = new Vector3(targetX, targetY, targetZ);
@@ -110,7 +115,7 @@ public sealed class RenderService(MapEditSession session)
             return CaptureToPng(width, height,
                 setup: scene =>
                 {
-                    world = new ViewportWorld(scene, session.ManifestPaths);
+                    world = ConfigureWorld(scene, textured);
                     world.Build(doc, registry);
                     scene.CameraOverride = new FlyCamera3D
                     {
@@ -128,6 +133,14 @@ public sealed class RenderService(MapEditSession session)
                 });
         });
     }
+
+    /// <summary>Constructs the throwaway <see cref="ViewportWorld"/> a render uses and wires the MCP
+    /// <c>textured</c> parameter into its <see cref="ViewportWorld.TexturedPropsEnabled"/> BEFORE the caller runs
+    /// <see cref="ViewportWorld.Build"/> (Build is the only GPU-touching step of the two), so a test can pin that
+    /// <see cref="RenderTopDown"/> / <see cref="RenderView"/> thread the parameter through without a headless GPU
+    /// device.</summary>
+    public ViewportWorld ConfigureWorld(Scene3D scene, bool textured) =>
+        new(scene, session.ManifestPaths) { TexturedPropsEnabled = () => textured };
 
     // Runs the headless capture and encodes it to a PNG, mapping any capture failure (no device, no driver) to a
     // precise InvalidOperationException naming the selected backend so the client learns why the render failed and

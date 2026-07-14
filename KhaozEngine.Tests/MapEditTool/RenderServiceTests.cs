@@ -160,5 +160,22 @@ namespace KhaozEngine.Tests.MapEditTool
                 render.RenderTopDown(width: 64, height: 64));
             Assert.Contains("map_open", ex.Message, StringComparison.Ordinal);
         }
+
+        // The MCP `textured` parameter on render_topdown/render_view threads into the throwaway ViewportWorld's
+        // TexturedPropsEnabled via RenderService.ConfigureWorld, which runs strictly BEFORE ViewportWorld.Build (the
+        // only GPU-touching step of a render). So the threading itself is headless-testable: construct with a null
+        // Scene3D (the existing ViewportWorld ctor idiom, GPU-free until Build) and read the option straight back,
+        // never running an actual render or touching pixels.
+        [Fact]
+        public void RenderVerbs_TexturedParam_ThreadsToWorld()
+        {
+            var render = new RenderService(new MapEditSession());
+
+            using (KhaozEngine.MapEditor.ViewportWorld off = render.ConfigureWorld(null!, textured: false))
+                Assert.False(off.TexturedPropsEnabled());
+
+            using (KhaozEngine.MapEditor.ViewportWorld on = render.ConfigureWorld(null!, textured: true))
+                Assert.True(on.TexturedPropsEnabled());
+        }
     }
 }

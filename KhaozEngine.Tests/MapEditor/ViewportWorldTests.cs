@@ -7,6 +7,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
+using KhaozEngine.Tests.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapEditor
@@ -399,6 +400,86 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.True(cache.IsDirty);
             Assert.Equal(2, cache.Get(doc, field).Count);
+        }
+
+        // ---- TexturedProps toggle: ResolvePropParts is the GPU-free decision LoadKitMeshes makes each rebuild -----
+
+        // A single-material textured glb (red albedo + flat normal + packed metal-rough), the
+        // GltfMaterialAutoReadTests fixture idiom reused here rather than a new PNG-embedding helper. One material,
+        // so LoadPropAuto's textured branch and its flat branch both yield exactly one GltfMeshPart, differing only
+        // in whether Maps is populated: the decisive, GPU-free signal for "loaded textured" vs "loaded flat".
+        // The name mirrors the plan's binding test: with the editor's TexturedProps option off, a rebuild's
+        // LoadKitMeshes loads the flat variant for a textured-flagged entry (asserted here via the internal
+        // ResolvePropParts seam it calls). The "RebuildFires" half of the scenario, that flipping the Layers-panel
+        // toggle actually triggers a ViewportWorld.Rebuild, is covered at the MapEditorScene level by
+        // TexturedToggle_Flip_TriggersRebuild (this seam has no Scene3D, so it cannot build/rebuild a real world).
+        [Fact]
+        public void TexturedToggle_Off_LoadsFlat_RebuildFires()
+        {
+            string path = GltfMaterialAutoReadTests.WriteTexturedTriangleGlb();
+            try
+            {
+                var entry = new AssetEntry("hut", path, heightMeters: 2f, source: "", license: "", textured: true);
+
+                // The option is off, so even though the entry itself declares Textured, ResolvePropParts must
+                // still fall back to the flattened single-part form (the same one an untextured entry produces).
+                IReadOnlyList<GltfMeshPart> parts = ViewportWorld.ResolvePropParts(entry, texturedProps: false);
+
+                Assert.Single(parts);
+                Assert.True(parts[0].Maps.IsEmpty);
+            }
+            finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void TexturedToggle_DefaultTrue()
+        {
+            string path = GltfMaterialAutoReadTests.WriteTexturedTriangleGlb();
+            try
+            {
+                var entry = new AssetEntry("hut", path, heightMeters: 2f, source: "", license: "", textured: true);
+
+                // MapEditorOptions.TexturedProps defaults true (matching gameplay): a textured entry loads its
+                // textured parts, with maps present, when the option is left on.
+                IReadOnlyList<GltfMeshPart> parts = ViewportWorld.ResolvePropParts(entry, texturedProps: true);
+
+                Assert.Single(parts);
+                Assert.False(parts[0].Maps.IsEmpty);
+                Assert.NotNull(parts[0].Maps.Albedo);
+            }
+            finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void TexturedToggle_UntexturedEntry_AlwaysFlat_RegardlessOfOption()
+        {
+            // An entry that never declared Textured must stay flat even when the option is on: the option can only
+            // ever turn a textured entry's parts OFF, never turn an untextured entry's parts on.
+            string path = GltfMaterialAutoReadTests.WriteUntexturedTriangleGlb();
+            try
+            {
+                var entry = new AssetEntry("rock", path, heightMeters: 1f, source: "", license: "", textured: false);
+
+                IReadOnlyList<GltfMeshPart> parts = ViewportWorld.ResolvePropParts(entry, texturedProps: true);
+
+                Assert.Single(parts);
+                Assert.True(parts[0].Maps.IsEmpty);
+            }
+            finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void TexturedPropsEnabled_DefaultsToAlwaysOn()
+        {
+            ViewportWorld vw = Construct(TwoPropManifest);
+            Assert.True(vw.TexturedPropsEnabled());
+        }
+
+        [Fact]
+        public void TexturedPropsEnabled_NullSetter_Throws()
+        {
+            ViewportWorld vw = Construct(TwoPropManifest);
+            Assert.Throws<ArgumentNullException>(() => vw.TexturedPropsEnabled = null!);
         }
     }
 }

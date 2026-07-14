@@ -24,8 +24,9 @@ public sealed class RenderTools(RenderService render)
         [Description("Maximum world Z of the rect in meters. Null uses the document bounds.")] float? maxZ = null,
         [Description("Image width in pixels. Defaults to 1024.")] int width = 1024,
         [Description("Image height in pixels. Defaults to 1024.")] int height = 1024,
-        [Description("When true, draw the exclusion, region, and feature overlay fills. Defaults to true.")] bool includeOverlays = true)
-        => ToolGuard.Guard(() => TopDownBlocks(minX, minZ, maxX, maxZ, width, height, includeOverlays));
+        [Description("When true, draw the exclusion, region, and feature overlay fills. Defaults to true.")] bool includeOverlays = true,
+        [Description("When true (the default), a manifest entry flagged textured shows its baked materials, matching the editor's TexturedProps toggle. When false, every prop renders flattened regardless of the manifest flag.")] bool textured = true)
+        => ToolGuard.Guard(() => TopDownBlocks(minX, minZ, maxX, maxZ, width, height, includeOverlays, textured));
 
     [McpServerTool(Name = "render_view"), Description("Renders a perspective PNG of the open map from an eye point looking toward a target point, with a vertical field of view. Returns a text block naming the eye, target, image size, and field of view, then the PNG image. Eye and target must not coincide. Renders terrain only when no asset manifests were supplied. Needs a headless GPU device.")]
     public IEnumerable<ContentBlock> RenderView(
@@ -37,13 +38,14 @@ public sealed class RenderTools(RenderService render)
         [Description("Target world Z in meters.")] float targetZ,
         [Description("Image width in pixels. Defaults to 1024.")] int width = 1024,
         [Description("Image height in pixels. Defaults to 720.")] int height = 720,
-        [Description("Vertical field of view in degrees. Defaults to 60.")] float fovDegrees = 60f)
-        => ToolGuard.Guard(() => ViewBlocks(eyeX, eyeY, eyeZ, targetX, targetY, targetZ, width, height, fovDegrees));
+        [Description("Vertical field of view in degrees. Defaults to 60.")] float fovDegrees = 60f,
+        [Description("When true (the default), a manifest entry flagged textured shows its baked materials, matching the editor's TexturedProps toggle. When false, every prop renders flattened regardless of the manifest flag.")] bool textured = true)
+        => ToolGuard.Guard(() => ViewBlocks(eyeX, eyeY, eyeZ, targetX, targetY, targetZ, width, height, fovDegrees, textured));
 
     IEnumerable<ContentBlock> TopDownBlocks(float? minX, float? minZ, float? maxX, float? maxZ,
-        int width, int height, bool includeOverlays)
+        int width, int height, bool includeOverlays, bool textured)
     {
-        byte[] png = render.RenderTopDown(minX, minZ, maxX, maxZ, width, height, includeOverlays);
+        byte[] png = render.RenderTopDown(minX, minZ, maxX, maxZ, width, height, includeOverlays, textured);
         string rect = "rect x[" + Fmt(minX) + ", " + Fmt(maxX) + "] z[" + Fmt(minZ) + ", " + Fmt(maxZ)
             + "] (null = document bounds).";
         // The orthographic view has one meters-per-pixel scale, known only when the X span is explicit. It is
@@ -58,9 +60,9 @@ public sealed class RenderTools(RenderService render)
     }
 
     IEnumerable<ContentBlock> ViewBlocks(float eyeX, float eyeY, float eyeZ,
-        float targetX, float targetY, float targetZ, int width, int height, float fovDegrees)
+        float targetX, float targetY, float targetZ, int width, int height, float fovDegrees, bool textured)
     {
-        byte[] png = render.RenderView(eyeX, eyeY, eyeZ, targetX, targetY, targetZ, width, height, fovDegrees);
+        byte[] png = render.RenderView(eyeX, eyeY, eyeZ, targetX, targetY, targetZ, width, height, fovDegrees, textured);
         string text = "perspective render. eye (" + Fmt(eyeX) + ", " + Fmt(eyeY) + ", " + Fmt(eyeZ)
             + ") target (" + Fmt(targetX) + ", " + Fmt(targetY) + ", " + Fmt(targetZ) + ") image "
             + Size(width, height) + ", fov " + Fmt(fovDegrees) + " degrees.";

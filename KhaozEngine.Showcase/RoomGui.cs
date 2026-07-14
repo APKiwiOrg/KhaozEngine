@@ -25,11 +25,41 @@ namespace KhaozEngine.Showcase
         ScreenStack _stack = null!;
 
         /// <summary>Wire in the textures/fonts created on the app's Surface2D. Call once, right after
-        /// construction and before the room is pushed.</summary>
-        public RoomGui Init(Texture2D white, SpriteFont big, SpriteFont small)
+        /// construction and before the room is pushed. <paramref name="skin"/> is the nine-slice frame skin used by
+        /// the "skinned chrome" widgets on the Widgets screen (baked via <see cref="BakeFramePixels"/>).</summary>
+        public RoomGui Init(Texture2D white, SpriteFont big, SpriteFont small, GuiSkin skin)
         {
-            _assets = new GuiAssets(white, big, small);
+            _assets = new GuiAssets(white, big, small, skin);
             return this;
+        }
+
+        /// <summary>Source pixel size / inset of the demo nine-slice frame texture (<see cref="BakeFramePixels"/>).</summary>
+        public const int FrameSize = 48, FrameInset = 12;
+
+        /// <summary>
+        /// Bake an original, procedural CC0 nine-slice frame (a beveled gold border with bright corner studs over a
+        /// translucent centre) into an RGBA8 pixel buffer, mirroring how <c>tools/TestModelGen</c> emits assets in
+        /// code rather than shipping a file. Feed it to <c>Surface2D.CreateTexture</c> then
+        /// <see cref="GuiSkin.NineSlice(Texture2D, float)"/> with <see cref="FrameInset"/>.
+        /// </summary>
+        public static byte[] BakeFramePixels(int size, int inset)
+        {
+            var px = new byte[size * size * 4];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    int e = Math.Min(Math.Min(x, y), Math.Min(size - 1 - x, size - 1 - y));   // dist to nearest edge
+                    (byte r, byte g, byte b, byte a) c =
+                        e >= inset ? ((byte)35, (byte)50, (byte)75, (byte)205)   // translucent centre
+                        : e < 2 ? ((byte)25, (byte)20, (byte)15, (byte)255)      // dark rim
+                        : e < 7 ? ((byte)210, (byte)170, (byte)70, (byte)255)    // gold
+                        : ((byte)120, (byte)95, (byte)55, (byte)255);            // brown inner frame
+                    if (Math.Min(x, size - 1 - x) < 6 && Math.Min(y, size - 1 - y) < 6)
+                        c = (255, 240, 190, 255);                                // bright corner stud
+                    int i = (y * size + x) * 4;
+                    px[i] = c.r; px[i + 1] = c.g; px[i + 2] = c.b; px[i + 3] = c.a;
+                }
+            return px;
         }
 
         public override void OnEnter()
@@ -57,12 +87,33 @@ namespace KhaozEngine.Showcase
         public override void OnDraw2D(SpriteBatch batch) => _stack.Draw(batch);
     }
 
-    /// <summary>Shared white texture + two font sizes, mirroring <c>GuiSample</c>'s <c>GuiAssets</c>.</summary>
+    /// <summary>Shared white texture + two font sizes + the demo nine-slice skin, mirroring <c>GuiSample</c>'s
+    /// <c>GuiAssets</c>.</summary>
     sealed class GuiAssets
     {
         public readonly Texture2D White;
         public readonly SpriteFont Big, Small;
-        public GuiAssets(Texture2D white, SpriteFont big, SpriteFont small) { White = white; Big = big; Small = small; }
+        public readonly GuiSkin Skin;
+        public GuiAssets(Texture2D white, SpriteFont big, SpriteFont small, GuiSkin skin)
+        {
+            White = white; Big = big; Small = small; Skin = skin;
+        }
+
+        /// <summary>A button/panel/bar style backed by <see cref="Skin"/>: the resting fill is white (skin native),
+        /// hover/press are light/dim tints multiplied over the sprite, and the label is the gold frame accent.</summary>
+        public GuiStyle SkinStyle => new()
+        {
+            Skin = Skin,
+            Fill = Vector4.One,
+            Hover = new Vector4(0.82f, 0.88f, 1f, 1f),
+            Press = new Vector4(0.62f, 0.68f, 0.8f, 1f),
+            SelectedFill = new Vector4(0.9f, 0.95f, 1f, 1f),
+            Border = Vector4.One,
+            SelectedBorder = Vector4.One,
+            Text = new Vector4(0.98f, 0.94f, 0.78f, 1f),
+            DisabledFill = new Vector4(0.5f, 0.5f, 0.5f, 1f),
+            DisabledText = new Vector4(0.65f, 0.65f, 0.65f, 1f),
+        };
     }
 
     /// <summary>Root screen: buttons push the modal Settings / heavy Widgets / immediate-mode screens, the
@@ -241,6 +292,14 @@ namespace KhaozEngine.Showcase
         SlotGrid _slots = null!;
         ProgressBar _progress = null!;
 
+        // Item 1-3 coverage: a skinned button/panel/bar (beside the flat widgets above), a segmented cast/pip bar,
+        // and a vertical bar.
+        Label _skinLabel = null!;
+        Button _skinButton = null!;
+        Panel _skinPanel = null!;
+        Label _skinPanelLabel = null!;
+        ProgressBar _skinBar = null!, _segContinuous = null!, _segDiscrete = null!, _vertBar = null!, _vertPips = null!;
+
         public WidgetsScreen(GuiAssets a, IDesignViewport vp)
         {
             _a = a; _vp = vp;
@@ -290,6 +349,33 @@ namespace KhaozEngine.Showcase
             {
                 OverlayText = LocalizedText.Of(ShowcaseStrings.WidgetsLoading, 65),
             };
+
+            // Skinned chrome (nine-slice) beside the flat widgets, plus a segmented + a vertical bar.
+            GuiStyle skinStyle = _a.SkinStyle;
+            var accent = new Vector4(0.35f, 0.85f, 1f, 1f);
+
+            _skinLabel = new Label(new Rect(620, 148, 170, 18), ShowcaseStrings.WidgetsSkinTitle, _a.Small);
+            _skinButton = new Button(new Rect(620, 168, 160, 32), ShowcaseStrings.WidgetsSkinButton, _a.Small) { Style = skinStyle };
+            _skinPanel = new Panel(new Rect(620, 206, 160, 40)) { Style = skinStyle, Color = Vector4.One };
+            _skinPanelLabel = new Label(new Rect(620, 206, 160, 40), ShowcaseStrings.WidgetsSkinPanel, _a.Small)
+            { Align = TextAlign.Center, Color = new Vector4(0.98f, 0.94f, 0.78f, 1f) };
+            _skinBar = new ProgressBar(new Rect(620, 254, 160, 18), 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
+
+            // Segmented cast bar (continuous, tick separators) and a discrete pip bar, both at 0.6.
+            _segContinuous = new ProgressBar(new Rect(620, 282, 160, 12), 0.6f)
+            { SegmentCount = 6, SegmentSpacing = 3f, FillColor = accent };
+            _segDiscrete = new ProgressBar(new Rect(620, 300, 160, 12), 0.6f)
+            { SegmentCount = 5, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete, FillColor = new Vector4(1f, 0.8f, 0.3f, 1f) };
+
+            // Vertical resource bars (BottomToTop): a continuous one and a discrete pip stack.
+            _vertBar = new ProgressBar(new Rect(620, 324, 14, 52), 0.5f)
+            { FillDirection = FillDirection.BottomToTop, FillColor = new Vector4(0.5f, 1f, 0.6f, 1f) };
+            _vertPips = new ProgressBar(new Rect(642, 324, 14, 52), 0.5f)
+            {
+                FillDirection = FillDirection.BottomToTop,
+                SegmentCount = 4, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete,
+                FillColor = new Vector4(1f, 0.5f, 0.5f, 1f),
+            };
         }
 
         public override bool Update(float dt, bool receivesInput)
@@ -303,6 +389,7 @@ namespace KhaozEngine.Showcase
             _confirm.Update(p);
             _back.Update(p);
             _slots.Update(p);
+            _skinButton.Update(p);
 
             if (p.IsHoveringIn(_info.Bounds))
                 _tip.Show(ShowcaseStrings.WidgetsTipTitle,
@@ -344,6 +431,17 @@ namespace KhaozEngine.Showcase
             _slotsLabel.Draw(batch);
             _slots.Draw(batch, _a.White, _a.Small);
             _progress.Draw(batch, _a.White, _a.Small);
+
+            // Skinned chrome + segmented / vertical bars.
+            _skinLabel.Draw(batch);
+            _skinButton.Draw(batch, _a.White);
+            _skinPanel.Draw(batch, _a.White);
+            _skinPanelLabel.Draw(batch);
+            _skinBar.Draw(batch, _a.White);
+            _segContinuous.Draw(batch, _a.White);
+            _segDiscrete.Draw(batch, _a.White);
+            _vertBar.Draw(batch, _a.White);
+            _vertPips.Draw(batch, _a.White);
 
             _difficulty.DrawOverlay(batch, _a.White, _a.Small, Manager.Pointer);   // open list on top
             _tip.Draw(batch, _a.White);                                            // tooltip on top of all

@@ -23,6 +23,18 @@ has no `Microsoft.IdentityModel` dependency. It is opt-in and not part of any um
 reference it directly when a game wants Discord sign-in. `KhaozEngine.Identity.Oidc` and other
 provider-specific integrations are separate sibling packages.
 
+## Public clients and refresh-token rotation
+
+- Secretless PKCE sign-in and the refresh grant (no client secret) both require the "Public Client"
+  toggle to be enabled in the Discord application's Developer Portal, on the OAuth2 tab. Without it
+  the token endpoint rejects both grants.
+- Discord refresh tokens are single-use. Every refresh grant rotates the token and invalidates the
+  prior one immediately, with no reuse window. That is why the engine persists the rotated credential
+  right away on a successful refresh, before any server exchange.
+- A stale, already-rotated-away refresh token is documented by Discord as a 400 `invalid_grant`. A 401
+  has also been observed in the field for the same case. Both are treated as a definitive rejection:
+  `RefreshAsync` returns null and the caller falls back to interactive sign-in.
+
 ## Usage
 
 ```csharp

@@ -133,6 +133,16 @@ public sealed class IdentitySession
     /// moves <c>LastAuthenticatedUtc</c> forward. <see cref="Current"/> is updated to carry the rotated credential
     /// at the SAME status. A refresh renews the credential, it does not sign the player in.
     ///
+    /// The one carve-out is the degenerate empty-cache fallback: if the cache was lost out-of-band while
+    /// <see cref="Current"/> still holds a credential, there is no stored session to preserve, so the rebuilt
+    /// <see cref="CachedSession"/> anchors <c>LastAuthenticatedUtc</c> at now instead.
+    ///
+    /// If the cache save throws after the provider refresh already succeeded, the rotated credential is not
+    /// retained and the exception propagates unchanged. The next refresh attempt then presents the old, now
+    /// invalidated, token and comes back <see cref="CredentialRefreshOutcome.Rejected"/>, sending the consumer to
+    /// interactive sign-in. This fails safe rather than letting the cache and <see cref="Current"/> silently
+    /// diverge.
+    ///
     /// Outcomes (see <see cref="CredentialRefreshResult"/>):
     /// <list type="bullet">
     /// <item>the provider returns a fresh credential -> <see cref="CredentialRefreshOutcome.Refreshed"/></item>

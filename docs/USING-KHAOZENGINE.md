@@ -4155,6 +4155,34 @@ into the tick loop) and skips at most one beat - a skipped beat is truthful, the
 heartbeat and reports `down` accordingly. `NullServerHeartbeatSink` (local runs) and `InMemoryServerHeartbeatSink`
 (tests) are the reference sinks.
 
+### Status readout (in-game status page)
+
+`ServerStatusReadout.Build(snapshot, view, clientVersion, nowUtc)` turns a poller snapshot + evaluated view
+into the pure structure for an Esc-menu "server status" page: an ordered `IReadOnlyList<ServerStatusReadoutRow>`.
+GPU-free and Gui-free - this package has no Gui dependency, so the engine ships the row structure as data and
+a game supplies the labels and the widgets:
+
+```csharp
+IReadOnlyList<ServerStatusReadoutRow> rows = ServerStatusReadout.Build(
+    statusClient.Current, view, BuildConfig.Version, DateTimeOffset.UtcNow);
+
+foreach (ServerStatusReadoutRow row in rows)
+{
+    string label = MyLocalization.Get(row.Key);   // row.Key is one of ServerStatusReadoutKeys
+    MyStatusPage.DrawRow(label, row.Value);        // row.Value is preformatted, ready to draw
+}
+```
+
+Each row is `(string Key, string Value, object? Raw)`. `ServerStatusReadoutKeys` exposes the 11 keys (`Health`,
+`ServerVersion`, `MinClientVersion`, `LatestClientVersion`, `ClientVersion`, `LastHeartbeat`, `LastDeploy`,
+`ExpectedBack`, `Staleness`, `State`, `Motd`, in that order via `ServerStatusReadoutKeys.All`) publicly, so a
+game never string-matches a row key by hand. The row set is stable: a fact with nothing to show (no report
+ever, or an optional field left unset) emits an empty `Value` and a null `Raw` rather than dropping the row.
+Duration rows are preformatted as compact, invariant-culture, English strings ("12 s ago", "in 5 min") on
+purpose (no localization catalog dependency here). A game wanting a fully localized duration formats it from
+`Raw` (a `DateTimeOffset?` or `TimeSpan?`, per key) instead of `Value`. `Build` takes no clock of its own
+(`nowUtc` is a parameter) and does no IO, so it is fully deterministic.
+
 ### Follow-up: reconnect integration
 
 The reconnect loop itself (`WorldClient`, the Netcode/NetWorld connect path) is deliberately **not** wired to

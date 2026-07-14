@@ -46,6 +46,33 @@ by design). It is a scene plus a pipeline: `KhaozEngine.Game` gains new project 
 - Showcase: a "Boot screen" room drives the real pipeline with fake delayed steps (instant-on bar, staged
   progress, indeterminate slice, error + retry).
 
+## 10.93.0
+
+### Pure status readout view-model in `KhaozEngine.ServerStatus`
+
+`ServerStatusReadout.Build(ServerStatusSnapshot, ServerStatusView, string clientVersion, DateTimeOffset nowUtc)`
+returns an ordered `IReadOnlyList<ServerStatusReadoutRow>`, the structure for an in-game Esc-menu "server
+status" page. GPU-free and Gui-free (this package has no Gui dependency): the engine ships the row structure
+as pure data, a game supplies the labels and the widgets.
+
+- **`ServerStatusReadoutRow(string Key, string Value, object? Raw)`** - a stable machine `Key` (never
+  string-matched by hand, see `ServerStatusReadoutKeys`), a preformatted invariant-culture `Value` ready to
+  draw as-is, and the underlying typed `Raw` value for a game that wants to format it itself.
+- **`ServerStatusReadoutKeys`** publicly exposes the 11 row keys (`Health`, `ServerVersion`,
+  `MinClientVersion`, `LatestClientVersion`, `ClientVersion`, `LastHeartbeat`, `LastDeploy`, `ExpectedBack`,
+  `Staleness`, `State`, `Motd`) plus `All`, the exact emission order.
+  Report-derived rows read `view.Report` (which, per `ServerStatusEvaluator`, can still be a stale-but-present
+  report while `State` reads `StatusUnknown`), so a "back soon" note and the last-known health keep showing
+  through a brief outage. `Staleness` reads `snapshot` directly, the client's own poll clock.
+- **Stable row set, never dropped.** A row with nothing to show (no report ever, or an optional field left
+  unset) emits an empty `Value` and a null `Raw` rather than disappearing, so a game can render a fixed layout.
+- **Duration formatting is compact, invariant, English, and deliberately not localized** ("12 s ago",
+  "3 min ago", "2 h ago", "in 5 min"): this package has no localization catalog dependency, and these strings
+  feed a game-localized page anyway. A game that wants a fully localized duration formats it from the row's
+  `Raw` value instead of `Value`.
+- Pure and deterministic: no clock reads inside (`nowUtc` is a parameter), no IO, same inputs always produce
+  the same 11 rows in the same order.
+
 ## 10.92.0
 
 ### Durable silent credential refresh in `KhaozEngine.Identity` (rotated refresh token no longer lost)

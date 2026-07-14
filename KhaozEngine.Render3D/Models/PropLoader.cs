@@ -32,15 +32,19 @@ namespace KhaozEngine.Render3D
     /// must be decompressed offline first (see <see cref="AssetManifest"/> / docs/USING-KHAOZENGINE.md).</summary>
     public static class PropLoader
     {
-        /// <summary>Load + normalize a manifest entry's glTF to its declared height (geometry only). Throws
-        /// <see cref="InvalidOperationException"/> (with the entry id in the message) if the file cannot be loaded
-        /// or the size is implausible.</summary>
+        /// <summary>Load + normalize a manifest entry's glTF to its declared height as ONE flat mesh. When a source
+        /// material carries a <c>baseColorTexture</c>, that texture's alpha-weighted average albedo
+        /// (<see cref="GltfLoader.AverageAlbedo"/>) is folded into the material's flattened per-vertex colour, so a
+        /// textures-ON kit still renders a sensible flat colour here (the same glb renders textured via
+        /// <see cref="LoadPropParts"/>). A material WITHOUT a texture is untouched, so an existing untextured prop is
+        /// byte-identical to before (the goldens-hold guarantee). Throws <see cref="InvalidOperationException"/>
+        /// (with the entry id in the message) if the file cannot be loaded or the size is implausible.</summary>
         public static GltfMesh LoadProp(AssetEntry entry, PropValidation? validation = null)
             => Normalize(LoadRaw(entry), entry.HeightMeters, validation, entry.Id);
 
         static GltfMesh LoadRaw(AssetEntry entry)
         {
-            try { return GltfLoader.Load(entry.File); }
+            try { return GltfLoader.LoadFlattenedAlbedo(entry.File); }
             catch (Exception ex)
             {
                 throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);
@@ -81,6 +85,19 @@ namespace KhaozEngine.Render3D
         /// yields one part whose geometry matches <see cref="LoadProp"/>.</summary>
         public static IReadOnlyList<GltfMeshPart> LoadPropParts(AssetEntry entry, PropValidation? validation = null)
             => NormalizeParts(LoadRawParts(entry), entry.HeightMeters, validation, entry.Id);
+
+        /// <summary>Manifest-driven convenience: load a prop the way its <see cref="AssetEntry.Textured"/> flag asks,
+        /// always returning a uniform <see cref="GltfMeshPart"/> list a caller can upload the same way regardless of
+        /// mode (<see cref="Scene3D.LoadPropMeshes"/> / <see cref="Scene3D.LoadProp(IReadOnlyList{GltfMeshPart})"/>).
+        /// When <see cref="AssetEntry.Textured"/> is true this is <see cref="LoadPropParts"/> - one textured sub-mesh
+        /// per source material (bark + leaves, ...), each with its own decoded maps. When false it is the flat
+        /// <see cref="LoadProp"/> wrapped as a SINGLE part with all-absent <see cref="GltfMaterialMaps"/>, so it
+        /// renders untextured exactly as before (a textured glb still degrades to its flattened average colour). This
+        /// keeps prop-loading call sites a one-liner: the manifest flag alone chooses textured vs flat.</summary>
+        public static IReadOnlyList<GltfMeshPart> LoadPropAuto(AssetEntry entry, PropValidation? validation = null)
+            => entry.Textured
+                ? LoadPropParts(entry, validation)
+                : new[] { new GltfMeshPart(LoadProp(entry, validation), default) };
 
         static IReadOnlyList<GltfMeshPart> LoadRawParts(AssetEntry entry)
         {

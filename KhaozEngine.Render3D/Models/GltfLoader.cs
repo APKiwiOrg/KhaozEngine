@@ -126,6 +126,21 @@ namespace KhaozEngine.Render3D
             return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
         }
 
+        /// <summary>Load a rigid glb/glTF as ONE flattened <see cref="GltfMesh"/> exactly like <see cref="Load"/>,
+        /// except each source material that carries a <c>baseColorTexture</c> has that texture's alpha-weighted
+        /// average albedo (<see cref="AverageAlbedo"/>) multiplied into its flattened per-vertex base colour. This is
+        /// the flat path for a textured prop: it bakes a sensible single colour from the texture so the same
+        /// textures-ON glb can render either textured (via <see cref="LoadPartsWithMaterials"/>) or flat (here) with
+        /// no separate flattened asset. A material with NO baseColorTexture is untouched, so the whole-scene weld,
+        /// topology, and every vertex attribute are byte-identical to <see cref="Load"/> for an untextured asset (the
+        /// existing-goldens-hold guarantee). Throws <see cref="InvalidOperationException"/> if the glTF has no
+        /// triangles.</summary>
+        public static GltfMesh LoadFlattenedAlbedo(string path)
+        {
+            ModelRoot root = ModelRoot.Load(path);
+            return BuildRigid(root, path, MakeAlbedoFlattenResolver());
+        }
+
         /// <summary>Load a rigid glb/glTF as one welded <see cref="GltfMeshPart"/> per source material, each part
         /// carrying that material's geometry (node world transforms baked exactly as <see cref="Load"/>) plus its
         /// auto-read <see cref="GltfMaterialMaps"/> (baseColor/normal/metallicRoughness, decoded to raw RGBA8, no
@@ -181,7 +196,10 @@ namespace KhaozEngine.Render3D
             return parts;
         }
 
-        static GltfMesh BuildRigid(ModelRoot root, string path)
+        // The flat scene weld. <paramref name="baseColorFor"/> resolves a primitive's per-vertex base colour. When
+        // null the default per-material factor (<see cref="ReadBaseColor"/>) is used, so Load / LoadWithMaterial stay
+        // byte-identical. LoadFlattenedAlbedo passes a resolver that folds averaged albedo in.
+        static GltfMesh BuildRigid(ModelRoot root, string path, Func<GltfMaterial?, Vector4>? baseColorFor = null)
         {
             var corners = new List<MeshCorner>();
 
@@ -197,9 +215,9 @@ namespace KhaozEngine.Render3D
                 {
                     if (node.Mesh != mesh) continue;
                     placed = true;
-                    AppendMeshCorners(corners, mesh, node.WorldMatrix);
+                    AppendMeshCorners(corners, mesh, node.WorldMatrix, baseColorFor);
                 }
-                if (!placed) AppendMeshCorners(corners, mesh, Matrix4x4.Identity);
+                if (!placed) AppendMeshCorners(corners, mesh, Matrix4x4.Identity, baseColorFor);
             }
             if (corners.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
 
@@ -214,11 +232,12 @@ namespace KhaozEngine.Render3D
         // is read per primitive exactly as before, so LoadWithMaterial's material mapping stays aligned with the
         // transformed corners. SharpGLTF exposes the standard glTF attributes by name (same accessor pattern as
         // POSITION); a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
-        static void AppendMeshCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world)
+        static void AppendMeshCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world,
+                                      Func<GltfMaterial?, Vector4>? baseColorFor = null)
         {
             (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
-                AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity);
+                AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, baseColorFor);
         }
 
         // As AppendMeshCorners, but only primitives that reference exactly <paramref name="material"/>
@@ -251,7 +270,8 @@ namespace KhaozEngine.Render3D
         // material base color is read per primitive exactly as before. SharpGLTF exposes the standard glTF
         // attributes by name; a missing NORMAL/TANGENT is left null for MeshAssembler to compute from winding / UV.
         static void AppendPrimitiveCorners(List<MeshCorner> corners, MeshPrimitive prim, Matrix4x4 world,
-                                           Matrix4x4 normalMatrix, bool identity)
+                                           Matrix4x4 normalMatrix, bool identity,
+                                           Func<GltfMaterial?, Vector4>? baseColorFor = null)
         {
             var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
             if (pos == null) return;
@@ -260,7 +280,9 @@ namespace KhaozEngine.Render3D
             var srcNormals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
             var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
             var srcTangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
-            Vector4 baseColor = ReadBaseColor(prim.Material);
+            // Default: the material's flat base-color factor. LoadFlattenedAlbedo passes a resolver that multiplies
+            // the averaged albedo in. A null resolver keeps the historical per-material factor byte-for-byte.
+            Vector4 baseColor = baseColorFor != null ? baseColorFor(prim.Material) : ReadBaseColor(prim.Material);
 
             Vector3 Pos(int i) => identity ? pos[i] : Vector3.Transform(pos[i], world);
             Vector3? Norm(int i)
@@ -551,6 +573,55 @@ namespace KhaozEngine.Render3D
             var ch = mat.FindChannel("BaseColor");
             if (ch == null) return fallback;
             return ch.Value.Color;
+        }
+
+        /// <summary>The alpha-weighted average albedo (RGB, normalized [0,1]) of a decoded baseColor image, for
+        /// baking a textured material down to one flat colour. Texels with alpha &gt;= 0.5 are averaged. When NONE
+        /// pass (a fully-transparent / all-cutout image) it falls back to the plain average of every texel's RGB so
+        /// the colour is still defined. An empty image yields white (no tint). This is the shared math the flat prop
+        /// loader (<see cref="LoadFlattenedAlbedo"/>) folds into each textured material's vertex colour, exposed so an
+        /// offline baker or a future caller uses the identical rule.</summary>
+        public static Vector3 AverageAlbedo(DecodedImage image)
+        {
+            byte[] px = image.Rgba;
+            int texels = image.Width * image.Height;
+            if (px == null || texels <= 0 || px.Length < texels * 4) return Vector3.One;
+
+            long r = 0, g = 0, b = 0, opaque = 0;      // texels with alpha >= 0.5
+            long ra = 0, ga = 0, ba = 0;               // all texels (fallback)
+            for (int i = 0; i < texels; i++)
+            {
+                byte pr = px[i * 4], pg = px[i * 4 + 1], pb = px[i * 4 + 2], pa = px[i * 4 + 3];
+                ra += pr; ga += pg; ba += pb;
+                if (pa / 255f >= 0.5f) { r += pr; g += pg; b += pb; opaque++; }
+            }
+            if (opaque > 0) return new Vector3(r / (float)opaque, g / (float)opaque, b / (float)opaque) / 255f;
+            return new Vector3(ra / (float)texels, ga / (float)texels, ba / (float)texels) / 255f;
+        }
+
+        // A per-load base-colour resolver for LoadFlattenedAlbedo: a material's flattened colour = its baseColor
+        // factor, times the alpha-weighted average of its decoded baseColorTexture when it has one (RGB only, factor
+        // alpha preserved). Memoized per material so a multi-primitive material decodes its albedo once, not per
+        // primitive. A material with no baseColorTexture returns the factor unchanged, so the flattened mesh is
+        // byte-identical to Load for untextured assets.
+        static Func<GltfMaterial?, Vector4> MakeAlbedoFlattenResolver()
+        {
+            var cache = new Dictionary<GltfMaterial, Vector4>();
+            return mat =>
+            {
+                Vector4 factor = ReadBaseColor(mat);
+                if (mat == null) return factor;
+                if (cache.TryGetValue(mat, out Vector4 cached)) return cached;
+                DecodedImage? albedo = DecodeChannel(mat, "BaseColor");
+                Vector4 eff = factor;
+                if (albedo is { } img)
+                {
+                    Vector3 avg = AverageAlbedo(img);
+                    eff = new Vector4(factor.X * avg.X, factor.Y * avg.Y, factor.Z * avg.Z, factor.W);
+                }
+                cache[mat] = eff;
+                return eff;
+            };
         }
 
         /// <summary>The first logical material that references at least one of the auto-read texture channels

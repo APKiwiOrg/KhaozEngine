@@ -499,13 +499,27 @@ namespace KhaozEngine.Render3D
         /// (<see cref="LoadMesh(GltfMesh,GltfMaterialMaps)"/>), so it flows through the same instanced draw path -
         /// this is the multi-texture-per-primitive render path: distinct textures on distinct sub-ranges, instanced
         /// correctly. Throws <see cref="ArgumentException"/> if <paramref name="parts"/> is empty.</summary>
-        public PropHandle LoadProp(IReadOnlyList<GltfMeshPart> parts)
+        public PropHandle LoadProp(IReadOnlyList<GltfMeshPart> parts) => new PropHandle(LoadPartHandles(parts));
+
+        /// <summary>Upload a multi-material prop's parts (from <see cref="PropLoader.LoadPropParts"/> /
+        /// <see cref="PropLoader.LoadPropAuto"/> / <see cref="GltfLoader.LoadPartsWithMaterials"/>) and return the raw
+        /// per-part <see cref="MeshHandle"/> list, one textured sub-mesh per source material. This is the multi-part
+        /// scatter form: drop the list into a <c>id -&gt; parts</c> map for
+        /// <c>KhaozEngine.Terrain.PropRenderer</c>'s multi-part draw path, where each part instances at the shared
+        /// placement transform. A single-part list (a flat prop) yields one handle, drawn byte-identically to a plain
+        /// <see cref="LoadMesh(GltfMesh,GltfMaterialMaps)"/>. Prefer <see cref="LoadProp(IReadOnlyList{GltfMeshPart})"/>
+        /// when you want the parts bundled as one <see cref="PropHandle"/> (owned/unloaded as a unit). Prefer this
+        /// when the caller owns the handles (e.g. shared across streamed chunks). Throws
+        /// <see cref="ArgumentException"/> if <paramref name="parts"/> is empty.</summary>
+        public IReadOnlyList<MeshHandle> LoadPropMeshes(IReadOnlyList<GltfMeshPart> parts) => LoadPartHandles(parts);
+
+        MeshHandle[] LoadPartHandles(IReadOnlyList<GltfMeshPart> parts)
         {
             if (parts == null) throw new ArgumentNullException(nameof(parts));
             if (parts.Count == 0) throw new ArgumentException("a prop needs at least one material part.", nameof(parts));
             var handles = new MeshHandle[parts.Count];
             for (int i = 0; i < parts.Count; i++) handles[i] = LoadMesh(parts[i].Mesh, parts[i].Maps);
-            return new PropHandle(handles);
+            return handles;
         }
 
         /// <summary>Queue every part of <paramref name="prop"/> at <paramref name="world"/> with a white tint. Each

@@ -217,7 +217,15 @@ namespace KhaozEngine.Terrain
             {
                 _scene.DrawTerrainChunk(load.Mesh);
                 for (int i = 0; i < _layers.Count; i++)
-                    _scene.DrawProps(load.LayerProps[i], _layers[i].Meshes, focus, _layers[i].DrawRadius);
+                {
+                    PropLayer layer = _layers[i];
+                    // A multi-part layer draws every kit id's sub-meshes as a unit. A single-handle layer draws one
+                    // mesh per id (byte-identical to before). Exactly one representation is set per layer.
+                    if (layer.PartMeshes is { } partMeshes)
+                        _scene.DrawProps(load.LayerProps[i], partMeshes, focus, layer.DrawRadius);
+                    else
+                        _scene.DrawProps(load.LayerProps[i], layer.Meshes, focus, layer.DrawRadius);
+                }
             }
         }
 

@@ -76,6 +76,7 @@ namespace KhaozEngine.Showcase
             var dpi22 = Surface2D.LoadDefaultDpiFont(22f);
             var big3 = Surface2D.LoadDefaultFont(40f, oversample: 3);
             var small3 = Surface2D.LoadDefaultFont(22f, oversample: 3);
+            var bootFont = Surface2D.LoadDefaultFont(28f, oversample: 2);
             _readoutFont = dpi22; // crisp point-space overlay text
 
             // Room2D / RoomInput are fixed-layout design-space demos (they scale + centre as a unit on resize):
@@ -88,6 +89,10 @@ namespace KhaozEngine.Showcase
             Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, small3)));
 
             Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big3, small3)));
+
+            // Boot screen: the turn-key startup pipeline (KhaozEngine.Game.Boot) driven with fake delayed steps, so
+            // the instant-on bar + staged progress + error/retry state can be seen without a real update feed.
+            Rooms.Add(("Boot screen", () => new RoomBoot().Init(_white, bootFont)));
 
             // Room3D is the walkable streamed 3D overworld ported from TerrainWalkSample. It renders through
             // the app's shared Scene3D (injected here, since a GameScene cannot reach Surface3D itself); its

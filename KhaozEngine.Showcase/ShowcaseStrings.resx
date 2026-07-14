@@ -102,4 +102,8 @@
   <data name="Popup.Note" xml:space="preserve"><value>Note</value></data>
   <data name="Popup.NoteBody" xml:space="preserve"><value>Cancel or Start below.</value></data>
   <data name="Common.Back" xml:space="preserve"><value>Back</value></data>
+  <data name="Boot.StepAssets" xml:space="preserve"><value>Loading textures</value></data>
+  <data name="Boot.StepAudio" xml:space="preserve"><value>Loading audio</value></data>
+  <data name="Boot.StepWorld" xml:space="preserve"><value>Warming shaders</value></data>
+  <data name="Boot.Hint" xml:space="preserve"><value>Esc: menu    Enter: replay    F: toggle a forced failure</value></data>
 </root>

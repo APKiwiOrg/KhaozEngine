@@ -67,5 +67,11 @@ namespace KhaozEngine.Showcase
 
         // Shared
         public static readonly StringId CommonBack = new("Common.Back");
+
+        // Boot screen demo
+        public static readonly StringId BootStepAssets = new("Boot.StepAssets");
+        public static readonly StringId BootStepAudio = new("Boot.StepAudio");
+        public static readonly StringId BootStepWorld = new("Boot.StepWorld");
+        public static readonly StringId BootHint = new("Boot.Hint");
     }
 }

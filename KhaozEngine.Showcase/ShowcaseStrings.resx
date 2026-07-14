@@ -79,6 +79,8 @@
   <data name="Widgets.TipTitle" xml:space="preserve"><value>Tooltip</value></data>
   <data name="Widgets.TipLine1" xml:space="preserve"><value>Auto-sized, flips when</value></data>
   <data name="Widgets.TipLine2" xml:space="preserve"><value>it would clip the top.</value></data>
+  <data name="Widgets.Hotbar" xml:space="preserve"><value>Slot grid + progress</value></data>
+  <data name="Widgets.Loading" xml:space="preserve"><value>Loading {0}%</value></data>
   <data name="Overlay.Title" xml:space="preserve"><value>Overlay demo</value></data>
   <data name="Overlay.Hint" xml:space="preserve"><value>Push overlay puts a transparent, dismissable pause screen on top of this one.</value></data>
   <data name="Overlay.Push" xml:space="preserve"><value>Push overlay</value></data>

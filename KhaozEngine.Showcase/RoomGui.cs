@@ -237,6 +237,9 @@ namespace KhaozEngine.Showcase
         ScrollablePanel _list = null!;
         Tooltip _tip = null!;
         Button _info = null!, _confirm = null!, _back = null!;
+        Label _slotsLabel = null!;
+        SlotGrid _slots = null!;
+        ProgressBar _progress = null!;
 
         public WidgetsScreen(GuiAssets a, IDesignViewport vp)
         {
@@ -266,6 +269,27 @@ namespace KhaozEngine.Showcase
             _info = new Button(new Rect(620, 112, 160, 32), ShowcaseStrings.WidgetsHoverForTip, _a.Small);
             _confirm = new Button(new Rect(620, 380, 160, 48), ShowcaseStrings.WidgetsConfirm, _a.Small, () => Manager.Add(new PopupScreen(_a, _vp, _name.Text, _difficulty.SelectedLabel)));
             _back = new Button(new Rect(620, 440, 160, 40), ShowcaseStrings.CommonBack, _a.Small, ExitScreen);
+
+            _slotsLabel = new Label(new Rect(440, 92, 220, 18), ShowcaseStrings.WidgetsHotbar, _a.Small);
+            _slots = new SlotGrid(new Rect(440, 112, 0, 0), count: 10, columns: 5)
+            {
+                SlotSize = 32f,
+                Spacing = 4f,
+                KeybindLabels = new[] { "1", "2", "3", "4", "5", "Q", "E", "R", "F", "G" },
+                KeybindLabelScale = 0.7f,
+            };
+            // Content hook: the widget knows nothing about items, so the caller paints two "icons" as coloured squares.
+            _slots.DrawSlotContent = (slot, rect, b) =>
+            {
+                if (slot != 0 && slot != 3) return;
+                Color c = slot == 0 ? new Color(0.4f, 0.7f, 1f, 1f) : new Color(0.9f, 0.6f, 0.3f, 1f);
+                b.Draw(_a.White, new Vector4(rect.X + 8, rect.Y + 8, rect.Width - 16, rect.Height - 16), c);
+            };
+
+            _progress = new ProgressBar(new Rect(440, 200, 176, 16), 0.65f)
+            {
+                OverlayText = LocalizedText.Of(ShowcaseStrings.WidgetsLoading, 65),
+            };
         }
 
         public override bool Update(float dt, bool receivesInput)
@@ -278,6 +302,7 @@ namespace KhaozEngine.Showcase
             _info.Update(p);
             _confirm.Update(p);
             _back.Update(p);
+            _slots.Update(p);
 
             if (p.IsHoveringIn(_info.Bounds))
                 _tip.Show(ShowcaseStrings.WidgetsTipTitle,
@@ -315,6 +340,10 @@ namespace KhaozEngine.Showcase
             _info.Draw(batch, _a.White);
             _confirm.Draw(batch, _a.White);
             _back.Draw(batch, _a.White);
+
+            _slotsLabel.Draw(batch);
+            _slots.Draw(batch, _a.White, _a.Small);
+            _progress.Draw(batch, _a.White, _a.Small);
 
             _difficulty.DrawOverlay(batch, _a.White, _a.Small, Manager.Pointer);   // open list on top
             _tip.Draw(batch, _a.White);                                            // tooltip on top of all

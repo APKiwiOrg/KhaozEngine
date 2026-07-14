@@ -43,6 +43,17 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `Update` return for callers that inspect it later in the frame; `Opacity` fades the whole slider for a host transition.
   - `Toggle` - two-state switch flipped by a valid tap; fires `OnChanged`. `WasToggled` mirrors the `Update` return;
     `Opacity` fades the whole toggle for a host transition.
+  - `SlotGrid` - a grid of uniform square slots (hotbar / inventory / equipment) over `Pointer`. `Bounds`.X/Y is
+    the origin; the footprint is derived from `Columns`/`SlotSize`/`Spacing` and the slot `Count` (read `ContentSize`
+    / `ContentBounds`). Each slot hit-tests through the press-origin invariant; `HoveredSlot`/`PressedSlot` expose the
+    live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). Empty slots draw a
+    themed frame; the caller paints icons/counts through the `DrawSlotContent(index, rect, batch)` hook and optional
+    per-slot `KeybindLabels` (raw input-token glyphs). `SlotRect(i)`/`SlotAt(point)` are pure geometry; `Opacity`
+    fades the whole grid.
+  - `ProgressBar` - a thin horizontal fill bar (health / XP / cast / load). `Fraction` is clamped 0..1; the accent
+    fill (`FillColor`) sits inside the border frame, the track is `TrackColor`, and corners/border come from `Style`.
+    Optional centered `OverlayText` (a `LocalizedText`, so a caption localizes; wrap a number/percentage in `Raw`).
+    `FillRect`/`InnerBounds` are pure geometry; non-interactive (no `Update`); `Opacity` fades the whole bar.
   - `NumberField` - numeric field for editor inspectors, driven by `InputManager` (needs the keyboard). A drag
     started inside scrubs `Value` by `DragScale` value units per pixel (grab-gated, so it keeps tracking off the
     widget). A tap under 3 draw units of travel opens typing mode (`TextEntry` with a digits/one-minus/one-dot

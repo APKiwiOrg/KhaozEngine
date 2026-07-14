@@ -1,5 +1,5 @@
 {
-  "_comment": "Prop-kit asset manifest for KhaozEngine.Showcase. heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Collision uses the authored, mesh-baked collisionShape .coll per entry (imported from Ruinborne, baked by ke-propbake): trees are thin trunk cylinders, rocks are hulls. Room3D loads them headless via PropCollisionFormat.LoadDirectory. CC0 Quaternius nature props, decompressed + flattened to plain glTF offline (see CREDITS.md). Ids are referenced by ScatterConfig.ForestRing().",
+  "_comment": "Prop-kit asset manifest for KhaozEngine.Showcase. heightMeters is the real-world height the loader normalizes each mesh to (origin dropped to the base). Collision uses the authored, mesh-baked collisionShape .coll per entry (imported from Ruinborne, baked by ke-propbake): trees are thin trunk cylinders, rocks are hulls. Room3D loads them headless via PropCollisionFormat.LoadDirectory. CC0 Quaternius nature props, decompressed offline (see CREDITS.md): textured entries keep their per-material baseColor/normal textures (tools/kit-bake), everything else is flattened to plain glTF with a per-material base color. Ids are referenced by ScatterConfig.ForestRing().",
   "props": [
     {
       "id": "pine_a",
@@ -8,6 +8,7 @@
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
       "collisionShape": "pine_a.coll",
+      "textured": true,
       "category": "trees"
     },
     {
@@ -17,6 +18,7 @@
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
       "collisionShape": "pine_b.coll",
+      "textured": true,
       "category": "trees"
     },
     {
@@ -26,6 +28,7 @@
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
       "collisionShape": "pine_c.coll",
+      "textured": true,
       "category": "trees"
     },
     {
@@ -35,6 +38,7 @@
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
       "collisionShape": "oak_a.coll",
+      "textured": true,
       "category": "trees"
     },
     {
@@ -44,6 +48,7 @@
       "source": "Quaternius Stylized Nature (via world-of-claudecraft)",
       "license": "CC0",
       "collisionShape": "oak_b.coll",
+      "textured": true,
       "category": "trees"
     },
     {
@@ -55,6 +60,7 @@
       "surface": true,
       "heightmap": "rock_a.surf",
       "collisionShape": "rock_a.coll",
+      "textured": true,
       "category": "rocks"
     },
     {
@@ -66,6 +72,7 @@
       "surface": true,
       "heightmap": "rock_b.surf",
       "collisionShape": "rock_b.coll",
+      "textured": true,
       "category": "rocks"
     }
   ]

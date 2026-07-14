@@ -68,5 +68,156 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(Bar.X + bt, bar.InnerBounds.X, 3);
             Assert.Equal(Bar.Width - 2f * bt, bar.InnerBounds.Width, 3);
         }
+
+        // ---- Item 1: FillDirection orientation -------------------------------------------------------------
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(0.5f)]
+        [InlineData(1f)]
+        public void LeftToRight_is_the_default_and_grows_from_the_left_edge(float f)
+        {
+            var bar = new ProgressBar(Bar) { Fraction = f };
+            Assert.Equal(FillDirection.LeftToRight, bar.FillDirection);
+            Rect inner = bar.InnerBounds, fill = bar.FillRect;
+            Assert.Equal(inner.X, fill.X, 3);
+            Assert.Equal(inner.Y, fill.Y, 3);
+            Assert.Equal(inner.Width * f, fill.Width, 3);
+            Assert.Equal(inner.Height, fill.Height, 3);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(0.5f)]
+        [InlineData(1f)]
+        public void RightToLeft_grows_from_the_right_edge(float f)
+        {
+            var bar = new ProgressBar(Bar) { FillDirection = FillDirection.RightToLeft, Fraction = f };
+            Rect inner = bar.InnerBounds, fill = bar.FillRect;
+            Assert.Equal(inner.Width * f, fill.Width, 3);
+            Assert.Equal(inner.Height, fill.Height, 3);
+            Assert.Equal(inner.Right, fill.Right, 3);   // pinned to the right edge
+            Assert.Equal(inner.Y, fill.Y, 3);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(0.5f)]
+        [InlineData(1f)]
+        public void BottomToTop_grows_from_the_bottom_edge(float f)
+        {
+            var bar = new ProgressBar(new Rect(10, 10, 16, 200)) { FillDirection = FillDirection.BottomToTop, Fraction = f };
+            Rect inner = bar.InnerBounds, fill = bar.FillRect;
+            Assert.Equal(inner.Width, fill.Width, 3);
+            Assert.Equal(inner.Height * f, fill.Height, 3);
+            Assert.Equal(inner.Bottom, fill.Bottom, 3);   // pinned to the bottom edge
+            Assert.Equal(inner.X, fill.X, 3);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(0.5f)]
+        [InlineData(1f)]
+        public void TopToBottom_grows_from_the_top_edge(float f)
+        {
+            var bar = new ProgressBar(new Rect(10, 10, 16, 200)) { FillDirection = FillDirection.TopToBottom, Fraction = f };
+            Rect inner = bar.InnerBounds, fill = bar.FillRect;
+            Assert.Equal(inner.Width, fill.Width, 3);
+            Assert.Equal(inner.Height * f, fill.Height, 3);
+            Assert.Equal(inner.Y, fill.Y, 3);   // pinned to the top edge
+        }
+
+        [Fact]
+        public void Fraction_still_clamps_regardless_of_direction()
+        {
+            var bar = new ProgressBar(Bar) { FillDirection = FillDirection.BottomToTop };
+            bar.Fraction = 2f;
+            Assert.Equal(1f, bar.Fraction, 3);
+            bar.Fraction = -1f;
+            Assert.Equal(0f, bar.Fraction, 3);
+        }
+
+        // ---- Item 2: segmented fill ------------------------------------------------------------------------
+
+        [Fact]
+        public void SegmentRects_partitions_the_inner_track_by_count_and_spacing()
+        {
+            var bar = new ProgressBar(Bar) { SegmentCount = 4, SegmentSpacing = 6f };
+            Rect inner = bar.InnerBounds;
+            Rect[] segs = bar.SegmentRects();
+            Assert.Equal(4, segs.Length);
+
+            float expectedSegW = (inner.Width - 6f * 3) / 4f;
+            foreach (Rect s in segs)
+            {
+                Assert.Equal(expectedSegW, s.Width, 3);
+                Assert.Equal(inner.Height, s.Height, 3);   // full cross-axis extent
+            }
+            // Segments abut with exactly SegmentSpacing between them, spanning the inner track end to end.
+            Assert.Equal(inner.X, segs[0].X, 3);
+            Assert.Equal(inner.Right, segs[3].Right, 3);
+            Assert.Equal(6f, segs[1].X - segs[0].Right, 3);
+        }
+
+        [Fact]
+        public void SegmentCount_of_one_or_zero_is_a_single_continuous_segment()
+        {
+            var bar = new ProgressBar(Bar) { SegmentCount = 0 };
+            Assert.Single(bar.SegmentRects());
+            Assert.Equal(bar.InnerBounds, bar.SegmentRects()[0]);
+            bar.SegmentCount = 1;
+            Assert.Single(bar.SegmentRects());
+        }
+
+        [Theory]
+        [InlineData(0f, 0)]
+        [InlineData(0.24f, 0)]
+        [InlineData(0.25f, 1)]     // exactly the first-segment boundary lights it
+        [InlineData(0.5f, 2)]
+        [InlineData(0.74f, 2)]
+        [InlineData(0.75f, 3)]
+        [InlineData(1f, 4)]
+        public void Discrete_lights_a_segment_only_when_fully_covered(float f, int expected)
+        {
+            var bar = new ProgressBar(Bar) { SegmentCount = 4, SegmentFillMode = SegmentFillMode.Discrete, Fraction = f };
+            Assert.Equal(expected, bar.FilledSegmentCount);
+        }
+
+        [Fact]
+        public void Discrete_fill_order_follows_the_direction_origin_edge()
+        {
+            // In every direction, SegmentRects index 0 is the segment at the fill origin, so the first-lit segment
+            // hugs that edge. Verify by geometry: seg[0] touches the origin edge for each direction.
+            Rect h = new(10, 10, 200, 12), v = new(10, 10, 12, 200);
+
+            var ltr = new ProgressBar(h) { SegmentCount = 3, FillDirection = FillDirection.LeftToRight };
+            Assert.Equal(ltr.InnerBounds.X, ltr.SegmentRects()[0].X, 3);
+
+            var rtl = new ProgressBar(h) { SegmentCount = 3, FillDirection = FillDirection.RightToLeft };
+            Assert.Equal(rtl.InnerBounds.Right, rtl.SegmentRects()[0].Right, 3);
+
+            var btt = new ProgressBar(v) { SegmentCount = 3, FillDirection = FillDirection.BottomToTop };
+            Assert.Equal(btt.InnerBounds.Bottom, btt.SegmentRects()[0].Bottom, 3);
+
+            var ttb = new ProgressBar(v) { SegmentCount = 3, FillDirection = FillDirection.TopToBottom };
+            Assert.Equal(ttb.InnerBounds.Y, ttb.SegmentRects()[0].Y, 3);
+        }
+
+        [Fact]
+        public void Vertical_segments_partition_along_the_y_axis()
+        {
+            var bar = new ProgressBar(new Rect(10, 10, 16, 200)) { SegmentCount = 5, SegmentSpacing = 4f, FillDirection = FillDirection.BottomToTop };
+            Rect inner = bar.InnerBounds;
+            Rect[] segs = bar.SegmentRects();
+            Assert.Equal(5, segs.Length);
+            float expectedH = (inner.Height - 4f * 4) / 5f;
+            foreach (Rect s in segs)
+            {
+                Assert.Equal(inner.Width, s.Width, 3);     // full cross-axis extent
+                Assert.Equal(expectedH, s.Height, 3);
+            }
+            Assert.Equal(inner.Bottom, segs[0].Bottom, 3); // seg 0 at the bottom origin
+            Assert.Equal(inner.Y, segs[4].Y, 3);           // last seg reaches the top
+        }
     }
 }

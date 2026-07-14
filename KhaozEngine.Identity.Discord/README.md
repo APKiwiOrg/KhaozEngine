@@ -7,7 +7,11 @@ OAuth2 authorization-code + PKCE flow, using the system browser and a local loop
 
 - **DiscordClientProvider** - `IIdentityProvider` implementation that drives the Discord OAuth2
   auth-code flow against Discord's fixed authorize/token endpoints (no discovery document, unlike
-  generic OIDC). `CredentialToken` is the Discord `access_token`.
+  generic OIDC). `CredentialToken` is the Discord `access_token`. `RefreshAsync` follows the refresh
+  rejection contract: a 400 or 401 on the refresh grant (a revoked or expired chain, or an empty stored
+  refresh token) returns null so the caller falls back to interactive sign-in, while any other non-success
+  status (a 5xx, say) throws `IdentitySignInException` as a transient error to retry later. The interactive
+  sign-in code exchange is unchanged: a 400 there is still a hard `IdentitySignInException`.
 - **DiscordTokenValidator** - `IIdentityValidator` implementation that verifies a Discord access
   token by calling `GET https://discord.com/api/users/@me` and mapping `id`/`username`/`email` to a
   `VerifiedIdentity`.
@@ -18,6 +22,18 @@ Discord is opaque-token OAuth2, not OIDC: there is no ID token or JWKS to valida
 has no `Microsoft.IdentityModel` dependency. It is opt-in and not part of any umbrella package;
 reference it directly when a game wants Discord sign-in. `KhaozEngine.Identity.Oidc` and other
 provider-specific integrations are separate sibling packages.
+
+## Public clients and refresh-token rotation
+
+- Secretless PKCE sign-in and the refresh grant (no client secret) both require the "Public Client"
+  toggle to be enabled in the Discord application's Developer Portal, on the OAuth2 tab. Without it
+  the token endpoint rejects both grants.
+- Discord refresh tokens are single-use. Every refresh grant rotates the token and invalidates the
+  prior one immediately, with no reuse window. That is why the engine persists the rotated credential
+  right away on a successful refresh, before any server exchange.
+- A stale, already-rotated-away refresh token is documented by Discord as a 400 `invalid_grant`. A 401
+  has also been observed in the field for the same case. Both are treated as a definitive rejection:
+  `RefreshAsync` returns null and the caller falls back to interactive sign-in.
 
 ## Usage
 

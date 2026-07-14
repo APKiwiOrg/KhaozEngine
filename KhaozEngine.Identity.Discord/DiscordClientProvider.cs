@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -67,7 +68,7 @@ public sealed class DiscordClientProvider(
             ["code_verifier"] = verifier,
         };
 
-        return await PostTokenAsync(form, ct).ConfigureAwait(false);
+        return (await PostTokenAsync(form, rejectDeadChain: false, ct).ConfigureAwait(false))!.Value;
     }
 
     public async Task<ProviderCredential?> RefreshAsync(ProviderCredential expired, CancellationToken ct = default)
@@ -82,15 +83,25 @@ public sealed class DiscordClientProvider(
             ["client_id"] = options.ClientId,
         };
 
-        return await PostTokenAsync(form, ct).ConfigureAwait(false);
+        return await PostTokenAsync(form, rejectDeadChain: true, ct).ConfigureAwait(false);
     }
 
-    private async Task<ProviderCredential> PostTokenAsync(Dictionary<string, string> form, CancellationToken ct)
+    /// <summary>Posts the token form and parses the credential. With <paramref name="rejectDeadChain"/> set (the
+    /// refresh grant), a 400 or 401 is a dead refresh chain and returns null. Every other non-success status, and
+    /// any non-success during the interactive sign-in code exchange, throws <see cref="IdentitySignInException"/>.
+    /// A success always yields a credential, so the non-null return is safe when <paramref name="rejectDeadChain"/>
+    /// is false.</summary>
+    private async Task<ProviderCredential?> PostTokenAsync(
+        Dictionary<string, string> form, bool rejectDeadChain, CancellationToken ct)
     {
         using FormUrlEncodedContent content = new(form);
         using HttpResponseMessage response = await http.PostAsync(new Uri(TokenEndpoint), content, ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
+        {
+            if (rejectDeadChain && response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized)
+                return null;
             throw new IdentitySignInException($"token endpoint returned an error ({(int)response.StatusCode})");
+        }
 
         using System.IO.Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         using JsonDocument doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);

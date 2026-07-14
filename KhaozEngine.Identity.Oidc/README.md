@@ -9,6 +9,11 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   (RFC 7636) flow against any standards-compliant OIDC authority: discovers the authorize/token endpoints
   from the authority's well-known document, launches the system browser, and exchanges the returned code
   (with the PKCE verifier and a checked `state`) for an id_token. `CredentialToken` is the OIDC `id_token`.
+  `RefreshAsync` follows the refresh rejection contract: a 400 or 401 on the refresh grant (a revoked or
+  expired chain, or an empty stored refresh token) returns null so the caller falls back to interactive
+  sign-in, while any other non-success status (a 5xx, say) throws `IdentitySignInException` as a transient
+  error to retry later. The interactive sign-in code exchange is unchanged: a 400 there is still a hard
+  `IdentitySignInException`.
 - **OidcTokenValidator** - `IIdentityValidator` implementation that validates an id_token against the
   issuer's discovery document + JWKS (via `Microsoft.IdentityModel.Protocols.OpenIdConnect` /
   `JsonWebTokens`), checks issuer/audience/lifetime/signature, and maps the `sub` claim (+ `name` or

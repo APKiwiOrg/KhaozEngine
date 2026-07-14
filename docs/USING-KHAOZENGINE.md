@@ -5026,6 +5026,60 @@ unexpired session token -> `SignedIn`; an expired token still within `IdentitySe
 continues offline); beyond the window -> `RequiresSignIn`. A game reads `IdentityState.Status` once at
 launch and again after any sign-in/exchange step; it never needs to poll the network to decide what to show.
 
+### Silent refresh (durable across days)
+
+When a returning player restores into `OfflineGrace`, the game renews the held credential silently rather
+than forcing a fresh interactive sign-in. `IdentitySession.RefreshCredentialAsync` is the turn-key path:
+
+```csharp
+if (state.Status == IdentityStatus.OfflineGrace)
+{
+    CredentialRefreshResult result;
+    try
+    {
+        result = await session.RefreshCredentialAsync(ct);
+    }
+    catch (Exception ex) when (ex is HttpRequestException or IdentitySignInException)
+    {
+        // Transient (a 5xx or a transport fault): stay in offline grace and retry on the next launch/interval.
+        return;
+    }
+
+    if (result.Outcome == CredentialRefreshOutcome.Rejected)
+    {
+        // The refresh chain is dead (revoked or expired). Fall back to interactive sign-in.
+        state = await session.SignInAsync(ct);
+    }
+
+    // Refreshed: session.Current now carries the rotated credential and the cache already holds it.
+    // Exchange it with the server, then complete sign-in via the turn-key attach overload.
+    ProviderCredential credential = session.Current.Credential!.Value;
+    ExchangeResponse exchange = await PostToAuthExchangeAsync(credential.CredentialToken, ct);
+    state = await session.AttachSessionTokenAsync(
+        exchange.Subject, exchange.DisplayName, exchange.SessionToken, exchange.ExpiresAtUtc, ct);
+}
+```
+
+The durability comes from two contracts:
+
+- **Persist before exchange.** Discord (and most OAuth providers) rotate the refresh token on every use and
+  invalidate the previous one the instant the refresh succeeds. `RefreshCredentialAsync` writes the rotated
+  credential to the `ITokenCache` immediately, before the server exchange, so a crash in between cannot lose
+  it and leave the next refresh presenting a dead token. Without this, silent reconnect works at most once.
+  The write replaces only the credential slot: the subject, session token, session-token expiry, and
+  `LastAuthenticatedUtc` are preserved, so a provider-level refresh never extends the offline-grace window.
+  Only a successful `AttachSessionTokenAsync` re-anchors that window.
+- **Rejected vs transient.** A `Rejected` outcome (the provider returned null: a 400/401 `invalid_grant` on
+  the refresh grant, or an empty stored refresh token) means the chain is dead and interactive sign-in is
+  required. A thrown exception (a 5xx or a transport fault) is transient, so the consumer keeps the cached
+  session and retries later rather than forcing a sign-in. See each backend's `RefreshAsync` for the status
+  mapping.
+
+A consumer that orchestrates its own `IIdentityProvider.RefreshAsync` call (outside `RefreshCredentialAsync`)
+persists the rotated credential with the explicit-credential attach overload
+`AttachSessionTokenAsync(subject, displayName, credential, sessionToken, expiryUtc, ct)`, passing the fresh
+credential so the rotated token is the one saved.
+
 ### Choosing a provider backend
 
 - **`KhaozEngine.Identity.Oidc`** - any standards-compliant OIDC provider (Auth0, Okta, Azure AD, ...).

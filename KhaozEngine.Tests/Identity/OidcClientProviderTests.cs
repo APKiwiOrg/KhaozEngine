@@ -138,4 +138,64 @@ public class OidcClientProviderTests
         Assert.Equal("the-refresh", refreshed.Value.RefreshToken);
         Assert.Equal("refresh_token", handler.SeenGrantType);
     }
+
+    /// <summary>Serves the well-known discovery document, then a fixed status for the token POST, so the
+    /// refresh rejection contract is testable the same way as the Discord provider.</summary>
+    private sealed class StatusTokenHandler(HttpStatusCode tokenStatus) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            if (req.RequestUri!.AbsolutePath.Contains("well-known"))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"issuer\":\"https://issuer.test\",\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":\"https://issuer.test/token\"}",
+                        Encoding.UTF8, "application/json"),
+                });
+            return Task.FromResult(new HttpResponseMessage(tokenStatus)
+            {
+                Content = new StringContent("{\"error\":\"invalid_grant\"}", Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    private static OidcClientProvider ProviderWith(HttpMessageHandler handler)
+        => new(new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(new StateHolder()), _ => new FakeListener(new StateHolder()), new HttpClient(handler));
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    public async Task RefreshAsync_returns_null_on_dead_chain(HttpStatusCode status)
+    {
+        OidcClientProvider provider = ProviderWith(new StatusTokenHandler(status));
+        ProviderCredential expired = new("oidc", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
+
+        ProviderCredential? refreshed = await provider.RefreshAsync(expired, CancellationToken.None);
+
+        Assert.Null(refreshed);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_throws_on_transient_status()
+    {
+        OidcClientProvider provider = ProviderWith(new StatusTokenHandler(HttpStatusCode.ServiceUnavailable));
+        ProviderCredential expired = new("oidc", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
+
+        await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.RefreshAsync(expired, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignIn_still_throws_on_token_endpoint_bad_request()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        HttpClient http = new(new StatusTokenHandler(HttpStatusCode.BadRequest));
+        OidcClientProvider provider = new(
+            new OidcProviderOptions { Authority = "https://issuer.test", ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder), http);
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+    }
 }

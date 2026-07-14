@@ -14,7 +14,8 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 - **VerifiedIdentity** - Server-verified subject + claims
 - **CachedSession** / **IdentityState** - The persisted and in-memory session shapes `IdentitySession` reads and writes
 - **SessionToken** - A stateless HMAC-SHA256 session token: mint it on the server after validating a credential, verify it on every subsequent request
-- **IdentitySession** - The client-side orchestrator: restores the cached session at launch (`RequiresSignIn` / `OfflineGrace` / `SignedIn`), drives interactive sign-in, and completes the exchange handshake via `AttachSessionTokenAsync`
+- **IdentitySession** - The client-side orchestrator: restores the cached session at launch (`RequiresSignIn` / `OfflineGrace` / `SignedIn`), drives interactive sign-in, renews a lapsed credential silently via `RefreshCredentialAsync`, and completes the exchange handshake via `AttachSessionTokenAsync`
+- **CredentialRefreshResult** / **CredentialRefreshOutcome** - The result of `RefreshCredentialAsync`: `Refreshed` (a new rotated credential, already persisted) or `Rejected` (a dead chain, fall back to interactive sign-in)
 
 Provider implementations (OIDC, Discord) are opt-in sibling packages. This core package depends only on `KhaozEngine.Diagnostics` and `KhaozEngine.Serialization`; it has no HTTP/ASP.NET dependency of its own.
 
@@ -52,6 +53,44 @@ A consumer that supports multiple providers at once builds its own lookup, e.g. 
 `IReadOnlyDictionary<string, IIdentityValidator>` keyed by provider id, and dispatches to
 `validator.ValidateAsync` for whichever provider the client used. `KhaozEngine.Identity` itself has no
 such registry: it is a pair of interfaces plus the orchestration types above, not a service locator.
+
+## Durable silent refresh
+
+When a cached session lapses to `OfflineGrace`, the game silently renews the held credential instead of
+prompting for a fresh interactive sign-in. `RefreshCredentialAsync` is the turn-key path:
+
+```csharp
+CredentialRefreshResult result = await session.RefreshCredentialAsync(ct);
+if (result.Outcome == CredentialRefreshOutcome.Rejected)
+{
+    // The refresh chain is dead (revoked or expired). Fall back to interactive sign-in.
+    state = await session.SignInAsync(ct);
+}
+// Refreshed: session.Current now carries the rotated credential and the cache already holds it.
+// Exchange it with the server and complete sign-in via the turn-key attach overload.
+ProviderCredential credential = session.Current.Credential!.Value;
+ExchangeResponse exchange = await PostToAuthExchangeAsync(credential.CredentialToken, ct);
+state = await session.AttachSessionTokenAsync(
+    exchange.Subject, exchange.DisplayName, exchange.SessionToken, exchange.ExpiresAtUtc, ct);
+```
+
+Two contracts make this durable across days and weeks:
+
+- **Persist before exchange.** Most OAuth providers (Discord included) rotate the refresh token on every use
+  and invalidate the old one the instant the refresh succeeds. `RefreshCredentialAsync` writes the rotated
+  credential to the `ITokenCache` immediately, before the server exchange, so a crash in between cannot lose
+  it and leave the next refresh presenting a dead token. The write replaces only the credential slot: the
+  subject, session token, session-token expiry, and `LastAuthenticatedUtc` are preserved. A provider-level
+  refresh does not extend the offline-grace window, only a successful `AttachSessionTokenAsync` re-anchors it.
+- **Rejected vs transient.** A `Rejected` outcome (the provider returned null) means the chain is dead and
+  interactive sign-in is required. A thrown exception (a 5xx or a transport fault) is transient: the consumer
+  keeps the cached session and retries later rather than forcing a sign-in.
+
+A consumer that orchestrates its own provider refresh (calling `IIdentityProvider.RefreshAsync` directly)
+uses the `AttachSessionTokenAsync(subject, displayName, credential, sessionToken, expiryUtc, ct)` overload,
+passing the freshly refreshed credential so the rotated token is the one persisted. The turn-key
+`RefreshCredentialAsync` path already updates `session.Current`, so the shorter attach overload is correct
+there too.
 
 See [USING-KHAOZENGINE.md "Identity / sign-in"](../docs/USING-KHAOZENGINE.md) for the full exchange-model
 walkthrough and [SECURITY-BASELINE.md](../docs/SECURITY-BASELINE.md) for the security posture (PKCE, the

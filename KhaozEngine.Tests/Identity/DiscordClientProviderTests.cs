@@ -134,4 +134,54 @@ public class DiscordClientProviderTests
         Assert.Equal("the-refresh", refreshed.Value.RefreshToken);
         Assert.Equal("refresh_token", handler.SeenGrantType);
     }
+
+    /// <summary>Returns a fixed status for the token POST, so the refresh rejection contract is testable.</summary>
+    private sealed class StatusTokenHandler(HttpStatusCode status) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent("{\"error\":\"invalid_grant\"}", Encoding.UTF8, "application/json"),
+            });
+    }
+
+    private static DiscordClientProvider ProviderWith(HttpMessageHandler handler)
+        => new(new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            new FakeBrowser(new StateHolder()), _ => new FakeListener(new StateHolder()), new HttpClient(handler));
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    public async Task RefreshAsync_returns_null_on_dead_chain(HttpStatusCode status)
+    {
+        DiscordClientProvider provider = ProviderWith(new StatusTokenHandler(status));
+        ProviderCredential expired = new("discord", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
+
+        ProviderCredential? refreshed = await provider.RefreshAsync(expired, CancellationToken.None);
+
+        Assert.Null(refreshed);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_throws_on_transient_status()
+    {
+        DiscordClientProvider provider = ProviderWith(new StatusTokenHandler(HttpStatusCode.ServiceUnavailable));
+        ProviderCredential expired = new("discord", "old-token", "old-refresh", DateTimeOffset.UnixEpoch);
+
+        await Assert.ThrowsAsync<IdentitySignInException>(
+            () => provider.RefreshAsync(expired, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignIn_still_throws_on_token_endpoint_bad_request()
+    {
+        StateHolder holder = new();
+        FakeBrowser browser = new(holder);
+        HttpClient http = new(new StatusTokenHandler(HttpStatusCode.BadRequest));
+        DiscordClientProvider provider = new(
+            new DiscordProviderOptions { ClientId = "client-1", LoopbackPort = 12345 },
+            browser, _ => new FakeListener(holder), http);
+
+        await Assert.ThrowsAsync<IdentitySignInException>(() => provider.SignInAsync(CancellationToken.None));
+    }
 }

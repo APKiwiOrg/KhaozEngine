@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.92.0
+
+### Durable silent credential refresh in `KhaozEngine.Identity` (rotated refresh token no longer lost)
+
+`IdentitySession.RefreshCredentialAsync(CancellationToken)` persists the rotated provider credential to the
+token cache immediately on refresh success, before any server exchange, so a rotated single-use refresh token
+can never be lost. It returns a `CredentialRefreshResult` whose `CredentialRefreshOutcome` distinguishes
+`Refreshed` (the chain renewed, the rotated token was persisted) from `Rejected` (the chain is dead,
+interactive sign-in is required). This fixes the one-shot silent-refresh bug where silent reconnect worked at
+most once against a rotating-token provider such as Discord.
+
+- **`IdentitySession.RefreshCredentialAsync`** loads the current `CachedSession` and saves it carrying the
+  rotated credential, preserving `Subject`, `SessionToken`, `SessionTokenExpiresUtc`, and
+  `LastAuthenticatedUtc` exactly (a provider refresh does not extend offline grace). `Current` is updated to
+  carry the rotated credential at the same status. A null provider result returns `Rejected` and touches
+  nothing, a provider exception propagates as a transient failure, and a call with no `Current.Credential`
+  throws `InvalidOperationException`.
+- **New `AttachSessionTokenAsync(string subject, string? displayName, ProviderCredential credential, string
+  sessionToken, DateTimeOffset expiryUtc, CancellationToken)` overload** persists the passed credential
+  explicitly. The prior 5-param overload re-persisted the stale pre-refresh `Current.Credential`, which
+  discarded the rotated refresh token and limited silent reconnect to exactly one success with rotating
+  providers. Its signature and behaviour are unchanged, now delegating to the new overload with
+  `Current.Credential`.
+- **Refresh rejection contract on the Discord and Oidc providers.** `RefreshAsync` returns null on a
+  token-endpoint 400 or 401 (the refresh chain is dead, interactive sign-in is required) and still throws
+  `IdentitySignInException` on transient statuses. The sign-in code exchange is unchanged: its 400 stays a
+  hard failure. `IIdentityProvider.RefreshAsync` now documents the contract (non-null renewed, null dead,
+  throw transient).
+- **Docs.** The Discord README documents the Developer Portal "Public Client" requirement for secretless
+  PKCE sign-in and Discord's single-use refresh-token rotation, which is why the engine persists the rotated
+  credential immediately.
+
 ## 10.91.0
 
 ### New `KhaozEngine.Http` package: reusable bounded send-with-retry HTTP helper

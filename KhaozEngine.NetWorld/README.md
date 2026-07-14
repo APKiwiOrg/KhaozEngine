@@ -194,6 +194,13 @@ the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keys
 synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor
 arg on `WorldServer` or `ShardedWorldServer`. Bans key on the verified account id; guests are not bannable.
 
+**NativeAOT.** The durable persistence DTOs (`PlayerRecord`, `WorldMetaRecord`, and the `WorldStoreBanStore` ban
+record) encode and decode through a source-generated `System.Text.Json` context, so they round-trip under
+`PublishAot` without reflection. The context runs in metadata mode, so the encoding is byte-for-byte identical to
+the previous reflection output - records already stored via `IWorldStore` keep loading, and a null game blob still
+encodes as `null`. The gate is `KhaozEngine.Server.AotProbe`, which exercises these round-trips in its published
+native run.
+
 The **`ServerAdmin`** facade composes an `IAdminControllable` server, an optional `IBanStore`, and an optional
 `IEnumerableWorldStore`: `BanAsync` persists and kicks if the account is online; `ListAccountsAsync(prefix)`
 materializes the account enumeration. Unwired capabilities throw `NotSupportedException` (feature-detect via

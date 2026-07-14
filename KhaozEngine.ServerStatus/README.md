@@ -97,6 +97,41 @@ counter (`ServerStatusSnapshot`). The evaluator treats a report older than its `
 deploy the "back soon" screen wins, and the update gate applies once the server is healthy again. A consumer
 that wants a different policy can read the raw report off `view.Report`.
 
+## Status readout (for an in-game status page)
+
+`ServerStatusReadout.Build` is the pure structure for an Esc-menu "server status" page: it turns a snapshot
++ evaluated view into an ordered, stable list of rows, one per fact a page typically shows. GPU-free and
+Gui-free (this package has no Gui dependency) - the engine ships the row structure as data, a game supplies
+the labels and the widgets.
+
+```csharp
+IReadOnlyList<ServerStatusReadoutRow> rows = ServerStatusReadout.Build(
+    client.Current, view, BuildConfig.Version, DateTimeOffset.UtcNow);
+
+foreach (ServerStatusReadoutRow row in rows)
+{
+    string label = Localize(row.Key);       // map the key to your localized label (row.Key is one of
+                                             // ServerStatusReadoutKeys, never string-match by hand)
+    DrawStatusRow(label, row.Value);        // row.Value is already a preformatted, ready-to-draw string
+}
+```
+
+Each row is `(string Key, string Value, object? Raw)`. `Key` is one of the constants in
+`ServerStatusReadoutKeys` (`Health`, `ServerVersion`, `MinClientVersion`, `LatestClientVersion`,
+`ClientVersion`, `LastHeartbeat`, `LastDeploy`, `ExpectedBack`, `Staleness`, `State`, `Motd`, in that order -
+see `ServerStatusReadoutKeys.All`). The row set is stable: a fact with nothing to show (no report ever, or an
+optional field left unset) emits an empty `Value` and a null `Raw` instead of dropping the row, so a page can
+render a fixed layout and just gray out an empty row.
+
+Duration rows (`LastHeartbeat`, `LastDeploy`, `ExpectedBack`, `Staleness`) are preformatted as compact,
+invariant-culture, English strings ("12 s ago", "3 min ago", "2 h ago", "in 5 min") - deliberately not
+localized, since this package has no localization catalog dependency and these strings feed a
+game-localized page anyway. A game that wants a fully localized duration formats it from the row's `Raw`
+value (a `DateTimeOffset?` or `TimeSpan?`, per key) instead of `Value`.
+
+`Build` takes no clock of its own (`nowUtc` is a parameter) and does no IO, so it is fully deterministic:
+same inputs always produce the same 11 rows in the same order.
+
 ## Server heartbeat wiring
 
 The engine ships only the seam plus a cadence driver. The game owns the SQL. Implement `IServerHeartbeatSink`
@@ -127,6 +162,8 @@ and types are the game's). A write failure is contained (logged, surfaced via `C
   last-known snapshot.
 - **`ServerStatusEvaluator`** / **`ServerStatusState`** / **`ServerStatusView`** - the pure report +
   version + staleness -> actionable state map.
+- **`ServerStatusReadout`** / **`ServerStatusReadoutRow`** / **`ServerStatusReadoutKeys`** - the pure,
+  ordered row list for an in-game "server status" page (GPU-free, Gui-free).
 - **`IServerHeartbeatSink`** / **`ServerHeartbeat`** / **`ServerHeartbeatService`** - the liveness-write seam,
   its row value type, and the cadence driver (+ `Null` / `InMemory` reference sinks).
 - **`VersionOrder`** - numeric `x.y.z` comparison for the version gates. A thin wrapper over

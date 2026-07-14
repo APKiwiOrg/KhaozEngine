@@ -135,5 +135,71 @@ namespace KhaozEngine.Tests.Gui
             style.Skin = Skin(8f);
             Assert.False(style.IsFlat);   // a skin is never the flat quad path
         }
+
+        // ---- Content insets (the shared interior-content seam) ---------------------------------------------
+
+        [Fact]
+        public void DestinationInsets_equal_the_source_insets_when_the_rect_is_big_enough()
+        {
+            Assert.Equal(new Vector4(8f, 8f, 8f, 8f), Skin(8f).DestinationInsets(new Rect(0, 0, 100, 100)));
+        }
+
+        [Fact]
+        public void DestinationInsets_clamp_proportionally_when_the_rect_is_smaller_than_two_corners()
+        {
+            // Height 10 with 8+8 vertical insets scales to 5+5 (corners meet); the wide axis keeps 8+8. This is
+            // exactly the clamp NineSlicePatches paints with, so content math can never overpaint the frame.
+            Vector4 i = Skin(8f).DestinationInsets(new Rect(0, 0, 100, 10));
+            Assert.Equal(8f, i.X, 3);
+            Assert.Equal(5f, i.Y, 3);
+            Assert.Equal(8f, i.Z, 3);
+            Assert.Equal(5f, i.W, 3);
+        }
+
+        [Fact]
+        public void DestinationInsets_match_what_NineSlicePatches_paints()
+        {
+            // The top-left corner patch's size IS the destination inset, for a normal and a squished rect.
+            foreach (Rect dest in new[] { new Rect(0, 0, 100, 100), new Rect(0, 0, 10, 100) })
+            {
+                GuiSkin skin = Skin(8f);
+                Vector4 ins = skin.DestinationInsets(dest);
+                List<GuiDraw.NineSlicePatch> patches = GuiDraw.NineSlicePatches(dest, skin);
+                GuiDraw.NineSlicePatch tl = patches.First(p => p.Dest.X == dest.X && p.Dest.Y == dest.Y);
+                Assert.Equal(ins.X, tl.Dest.Width, 3);
+                Assert.Equal(ins.Y, tl.Dest.Height, 3);
+            }
+        }
+
+        [Fact]
+        public void ContentInsets_without_a_skin_are_the_uniform_border_thickness()
+        {
+            var style = new GuiStyle { BorderThickness = 2.5f };
+            Assert.Equal(new Vector4(2.5f, 2.5f, 2.5f, 2.5f), style.ContentInsets(new Rect(0, 0, 100, 40)));
+            style.BorderThickness = -1f;   // negative clamps to 0, matching the old InnerBounds guard
+            Assert.Equal(Vector4.Zero, style.ContentInsets(new Rect(0, 0, 100, 40)));
+        }
+
+        [Fact]
+        public void ContentInsets_with_a_skin_are_the_skin_destination_insets_ignoring_border_thickness()
+        {
+            var style = new GuiStyle { BorderThickness = 2f, Skin = Skin(8f) };
+            Assert.Equal(new Vector4(8f, 8f, 8f, 8f), style.ContentInsets(new Rect(0, 0, 100, 100)));
+
+            style.Skin = Skin(0f);   // zero-inset skin: content owns the whole rect (the skin has no frame)
+            Assert.Equal(Vector4.Zero, style.ContentInsets(new Rect(0, 0, 100, 100)));
+        }
+
+        [Fact]
+        public void ContentRect_shrinks_by_the_insets_and_clamps_at_zero()
+        {
+            var style = new GuiStyle { Skin = Skin(8f) };
+            Assert.Equal(new Rect(18, 14, 84, 24), style.ContentRect(new Rect(10, 6, 100, 40)));
+
+            // Inset larger than half the rect: the squeezed axis collapses to zero size, never negative.
+            Rect tiny = style.ContentRect(new Rect(0, 0, 100, 10));
+            Assert.Equal(0f, tiny.Height, 3);
+            Assert.Equal(84f, tiny.Width, 3);
+        }
     }
 }

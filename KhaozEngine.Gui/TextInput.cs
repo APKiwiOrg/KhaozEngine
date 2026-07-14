@@ -119,7 +119,8 @@ namespace KhaozEngine.Gui
             GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f },
                 GuiDraw.WithOpacity(Background, Opacity), GuiDraw.WithOpacity(IsFocused ? BorderFocused : Border, Opacity));
 
-            float textX = Bounds.X + PadX;
+            // A nine-slice skin's frame can be thicker than the fixed pad, so clear it (no-skin: PadX, unchanged).
+            float textX = Bounds.X + (Style.Skin != null ? MathF.Max(PadX, Style.ContentInsets(Bounds).X) : PadX);
             float textY = Bounds.Y + (Bounds.Height - Font.LineHeight) * 0.5f;
             bool empty = Text.Length == 0;
             string shown = empty ? PlaceholderContent.Resolve() : Text;

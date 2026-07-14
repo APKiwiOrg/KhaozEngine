@@ -173,12 +173,12 @@ namespace KhaozEngine.Gui
             float l = MathF.Max(0f, skin.InsetLeft), t = MathF.Max(0f, skin.InsetTop);
             float rIn = MathF.Max(0f, skin.InsetRight), b = MathF.Max(0f, skin.InsetBottom);
 
-            // Destination border insets = source-pixel insets (corners unscaled), scaled down proportionally when the
-            // two opposing borders would overlap so the corners just meet.
-            float dl = l, dr = rIn;
-            if (dl + dr > dest.Width && dl + dr > 0f) { float k = dest.Width / (dl + dr); dl *= k; dr *= k; }
-            float dt = t, db = b;
-            if (dt + db > dest.Height && dt + db > 0f) { float k = dest.Height / (dt + db); dt *= k; db *= k; }
+            // Destination border insets = source-pixel insets (corners unscaled), scaled down proportionally when
+            // the two opposing borders would overlap so the corners just meet. GuiSkin.DestinationInsets is the
+            // single source of truth, shared with GuiStyle.ContentInsets so interior-content math always matches
+            // what the nine-slice actually paints.
+            Vector4 di = skin.DestinationInsets(dest);
+            float dl = di.X, dt = di.Y, dr = di.Z, db = di.W;
 
             float[] dx = { dest.X, dest.X + dl, dest.Right - dr, dest.Right };
             float[] dy = { dest.Y, dest.Y + dt, dest.Bottom - db, dest.Bottom };

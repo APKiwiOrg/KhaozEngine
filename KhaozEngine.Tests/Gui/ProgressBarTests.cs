@@ -69,6 +69,60 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(Bar.Width - 2f * bt, bar.InnerBounds.Width, 3);
         }
 
+        static GuiSkin SkinWithInset(float inset) => new()
+        {
+            SourcePixelWidth = 48f,
+            SourcePixelHeight = 48f,
+            InsetLeft = inset,
+            InsetTop = inset,
+            InsetRight = inset,
+            InsetBottom = inset,
+        };
+
+        [Fact]
+        public void Skinned_InnerBounds_insets_by_the_skin_frame_not_the_border_thickness()
+        {
+            // A 12px-inset skin on a 200x40 bar: the fill lives inside the painted frame, so it can never
+            // overpaint the nine-slice edges (this was the release-blocking bug: it inset by BorderThickness only).
+            var bar = new ProgressBar(new Rect(10, 10, 200, 40)) { Style = new GuiStyle { BorderThickness = 1f, Skin = SkinWithInset(12f) } };
+            Assert.Equal(new Rect(22, 22, 176, 16), bar.InnerBounds);
+            bar.Fraction = 1f;
+            Assert.Equal(bar.InnerBounds, bar.FillRect);   // full fill stays inside the frame
+        }
+
+        [Fact]
+        public void Skinned_InnerBounds_with_a_zero_inset_skin_is_the_whole_bounds()
+        {
+            // The skin owns the frame; zero insets mean no frame, so content gets everything (BorderThickness is
+            // NOT applied on the skinned path).
+            var bar = new ProgressBar(Bar) { Style = new GuiStyle { BorderThickness = 3f, Skin = SkinWithInset(0f) } };
+            Assert.Equal(Bar, bar.InnerBounds);
+        }
+
+        [Fact]
+        public void Skinned_InnerBounds_collapses_when_the_inset_exceeds_half_the_bar()
+        {
+            // An 18-tall bar under 12+12 vertical insets: the destination insets clamp to 9+9 (corners meet), so
+            // the inner height is exactly zero, never negative, while the width keeps its full 12+12 inset.
+            var bar = new ProgressBar(new Rect(0, 0, 200, 18)) { Style = new GuiStyle { Skin = SkinWithInset(12f) } };
+            Assert.Equal(0f, bar.InnerBounds.Height, 3);
+            Assert.Equal(200f - 24f, bar.InnerBounds.Width, 3);
+            bar.Fraction = 0.5f;
+            Assert.Equal(0f, bar.FillRect.Height, 3);      // nothing to fill, nothing overpainted
+        }
+
+        [Fact]
+        public void Skinned_segments_partition_the_skin_content_rect()
+        {
+            var bar = new ProgressBar(new Rect(0, 0, 200, 40))
+            { Style = new GuiStyle { Skin = SkinWithInset(12f) }, SegmentCount = 4, SegmentSpacing = 4f };
+            Rect inner = bar.InnerBounds;                  // (12, 12, 176, 16)
+            Rect[] segs = bar.SegmentRects();
+            Assert.Equal(inner.X, segs[0].X, 3);
+            Assert.Equal(inner.Right, segs[3].Right, 3);   // segments span the content rect, inside the frame
+            Assert.Equal((inner.Width - 3 * 4f) / 4f, segs[0].Width, 3);
+        }
+
         // ---- Item 1: FillDirection orientation -------------------------------------------------------------
 
         [Theory]

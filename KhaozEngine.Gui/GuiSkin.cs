@@ -67,6 +67,23 @@ namespace KhaozEngine.Gui
         public bool HasTexture => Texture != null;
 
         /// <summary>
+        /// The skin's frame insets in DESTINATION space for a widget of <paramref name="dest"/> size, as
+        /// (X=left, Y=top, Z=right, W=bottom). This is the exact inset the nine-slice draws its corners/edges at:
+        /// the source-pixel insets (corners render unscaled), scaled down proportionally on an axis when the
+        /// destination is too small for both opposing corners (so the corners just meet). It is the single source
+        /// of truth shared with <c>GuiDraw.NineSlicePatches</c>, so interior-content math can never drift from
+        /// what the skin actually paints. Pure geometry, headless-testable.
+        /// </summary>
+        public Vector4 DestinationInsets(Primitives.Rect dest)
+        {
+            float l = System.MathF.Max(0f, InsetLeft), t = System.MathF.Max(0f, InsetTop);
+            float r = System.MathF.Max(0f, InsetRight), b = System.MathF.Max(0f, InsetBottom);
+            if (l + r > dest.Width && l + r > 0f) { float k = System.MathF.Max(0f, dest.Width) / (l + r); l *= k; r *= k; }
+            if (t + b > dest.Height && t + b > 0f) { float k = System.MathF.Max(0f, dest.Height) / (t + b); t *= k; b *= k; }
+            return new Vector4(l, t, r, b);
+        }
+
+        /// <summary>
         /// A nine-slice skin over the WHOLE of <paramref name="texture"/> with a uniform pixel <paramref name="inset"/>
         /// on all four edges. Source pixel dims come from the texture.
         /// </summary>

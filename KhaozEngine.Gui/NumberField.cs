@@ -264,7 +264,9 @@ namespace KhaozEngine.Gui
 
             string shown = IsEditing ? _editBuffer : FormatValue(Value);
             Vector4 textColor = !Enabled ? DisabledTextColor : TextColor;
-            Vector2 pos = GuiDraw.AlignedTextPos(Bounds, font.Measure(shown), font.LineHeight, GuiAlign.Left, 1f, PadX);
+            // A nine-slice skin's frame can be thicker than the fixed pad, so clear it (no-skin: PadX, unchanged).
+            float pad = Style.Skin != null ? MathF.Max(PadX, Style.ContentInsets(Bounds).X) : PadX;
+            Vector2 pos = GuiDraw.AlignedTextPos(Bounds, font.Measure(shown), font.LineHeight, GuiAlign.Left, 1f, pad);
             batch.DrawString(font, shown, new Vector2(MathF.Floor(pos.X), MathF.Floor(pos.Y)),
                 (Color)GuiDraw.WithOpacity(textColor, Opacity));
 

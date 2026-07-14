@@ -359,18 +359,19 @@ namespace KhaozEngine.Showcase
             _skinPanel = new Panel(new Rect(620, 206, 160, 40)) { Style = skinStyle, Color = Vector4.One };
             _skinPanelLabel = new Label(new Rect(620, 206, 160, 40), ShowcaseStrings.WidgetsSkinPanel, _a.Small)
             { Align = TextAlign.Center, Color = new Vector4(0.98f, 0.94f, 0.78f, 1f) };
-            _skinBar = new ProgressBar(new Rect(620, 254, 160, 18), 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
+            // Tall enough for the fill to show inside the skin's 12px frame insets (the fill respects them).
+            _skinBar = new ProgressBar(new Rect(620, 254, 160, 34), 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
 
             // Segmented cast bar (continuous, tick separators) and a discrete pip bar, both at 0.6.
-            _segContinuous = new ProgressBar(new Rect(620, 282, 160, 12), 0.6f)
+            _segContinuous = new ProgressBar(new Rect(620, 296, 160, 12), 0.6f)
             { SegmentCount = 6, SegmentSpacing = 3f, FillColor = accent };
-            _segDiscrete = new ProgressBar(new Rect(620, 300, 160, 12), 0.6f)
+            _segDiscrete = new ProgressBar(new Rect(620, 314, 160, 12), 0.6f)
             { SegmentCount = 5, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete, FillColor = new Vector4(1f, 0.8f, 0.3f, 1f) };
 
             // Vertical resource bars (BottomToTop): a continuous one and a discrete pip stack.
-            _vertBar = new ProgressBar(new Rect(620, 324, 14, 52), 0.5f)
+            _vertBar = new ProgressBar(new Rect(620, 334, 14, 42), 0.5f)
             { FillDirection = FillDirection.BottomToTop, FillColor = new Vector4(0.5f, 1f, 0.6f, 1f) };
-            _vertPips = new ProgressBar(new Rect(642, 324, 14, 52), 0.5f)
+            _vertPips = new ProgressBar(new Rect(642, 334, 14, 42), 0.5f)
             {
                 FillDirection = FillDirection.BottomToTop,
                 SegmentCount = 4, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete,

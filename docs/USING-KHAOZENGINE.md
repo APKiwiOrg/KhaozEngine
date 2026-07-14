@@ -615,7 +615,12 @@ pixels; the four corners keep their source-pixel size (never scaled) while the e
 `Tile` (`GuiSkinCenter`). The resolved state colour multiplies OVER the skin as a tint, so set the style's `Fill` to
 white for the skin's native colours and `Hover`/`Press` as tints (per-state skins are a future extension). A skinned
 frame owns the silhouette, so the procedural `CornerRadius`/border is skipped, but `ShadowSize` still draws its drop
-shadow. `null` skin = zero change for existing UIs. The Showcase "Gui" room's Widgets screen shows a skinned
+shadow. Interior content respects the frame through the shared seam `GuiStyle.ContentInsets(bounds)` /
+`ContentRect(bounds)` (skinned = the skin's `GuiSkin.DestinationInsets`, exactly what the nine-slice paints,
+unskinned = the uniform `BorderThickness`, unchanged): `ProgressBar.InnerBounds` rides it so a skinned bar's fill
+sits inside the frame, `TextInput`/`NumberField` pad their text past a frame thicker than their fixed pad, and
+caller-painted content (e.g. `SlotGrid.DrawSlotContent`) can call `ContentRect` on the slot rect to stay inside the
+frame. `null` skin = zero change for existing UIs. The Showcase "Gui" room's Widgets screen shows a skinned
 button/panel/bar beside the flat ones.
 
 ```csharp
@@ -626,6 +631,7 @@ var skinned = new GuiStyle { Skin = frame, Fill = Vector4.One, Hover = new Vecto
     Press = new Vector4(0.6f, 0.65f, 0.8f, 1f), Text = Vector4.One };
 var panel = new Panel(bounds) { Style = skinned, Color = Vector4.One };   // Color is the tint
 var button = new Button(bounds, label, font) { Style = skinned };
+Rect content = skinned.ContentRect(panel.Bounds);   // lay interior content out inside the frame
 ```
 
 **`FocusNavigator`** - keyboard/gamepad menu focus: `SetCount`, `Focus`, `MoveNext`/`MovePrevious`, `Wrap`, and

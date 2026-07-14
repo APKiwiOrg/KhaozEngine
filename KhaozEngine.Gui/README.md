@@ -46,6 +46,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   the skin as a tint (set the style's `Fill` to white for the skin's native colours, `Hover`/`Press` as tints -
   per-state skins are a future extension, not per-state today). A skinned frame owns the silhouette, so the
   procedural `CornerRadius`/border is skipped, but `ShadowSize` still draws its drop shadow underneath.
+  Interior content respects the frame through the shared seam `GuiStyle.ContentInsets(bounds)` /
+  `ContentRect(bounds)`: skinned = the skin's `GuiSkin.DestinationInsets` (exactly what the nine-slice paints,
+  including the too-small clamp), unskinned = the uniform `BorderThickness` (unchanged). `ProgressBar.InnerBounds`
+  rides it (a skinned bar's fill sits inside the frame), `TextInput`/`NumberField` pad their text past a frame
+  thicker than their fixed pad, and caller-painted content (`SlotGrid.DrawSlotContent`) can call `ContentRect` on
+  the slot rect to stay inside the frame.
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white
   texture + `SpriteBatch`:
   - `Button` - click via `IsTapIn`, hover/press visuals.

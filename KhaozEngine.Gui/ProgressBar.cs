@@ -88,19 +88,10 @@ namespace KhaozEngine.Gui
             Fraction = fraction;
         }
 
-        /// <summary>The area inside the border frame, where the accent fill lives (inset by <see cref="Style"/>'s
-        /// border thickness). Pure geometry.</summary>
-        public Rect InnerBounds
-        {
-            get
-            {
-                float bt = Style.BorderThickness > 0f ? Style.BorderThickness : 0f;
-                return new Rect(
-                    Bounds.X + bt, Bounds.Y + bt,
-                    MathF.Max(0f, Bounds.Width - 2f * bt),
-                    MathF.Max(0f, Bounds.Height - 2f * bt));
-            }
-        }
+        /// <summary>The area inside the frame, where the accent fill lives: <see cref="GuiStyle.ContentRect"/> of
+        /// <see cref="Bounds"/>, so a flat bar insets by the border thickness (unchanged) and a skinned bar insets
+        /// by the nine-slice frame's destination insets so the fill never overpaints the skin. Pure geometry.</summary>
+        public Rect InnerBounds => Style.ContentRect(Bounds);
 
         /// <summary>True when <see cref="FillDirection"/> runs along the X axis (Left/Right).</summary>
         bool IsHorizontal => FillDirection is FillDirection.LeftToRight or FillDirection.RightToLeft;

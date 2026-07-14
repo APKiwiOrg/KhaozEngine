@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## Unreleased
+## 10.84.0
 
 ### Alpha-cutout foliage: MASK parse + mesh discard, bake-time leaf alpha-bleed
 

@@ -43,6 +43,11 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
 - `StatusBottomOffset` (default 0) reserves that many points of clearance at the window bottom for a host
   that draws its own bottom chrome (the Showcase's F7-F10 display readout line), shifting the status strip
   and editor body up so the editor never stacks on the host's pixels.
+- `RequestQuit` (default null) is how the editor leaves when it is the bottom scene on the stack (nothing to
+  pop back to): the head wires it to its own quit path (a `GameApp3D` subclass calling the protected
+  `GameApp.Quit()`), since a scene never touches window APIs directly. Leave it null when the head always
+  pushes the editor above a landing scene (see Landing scene and recent files below). A head that pushes the
+  editor as its only scene should set it, or the exit dialog's Close leaves an empty stack (a blank screen).
 
 **Push it directly, do not wrap it.** `MapEditorScene` already IS a complete `GameScene` + `IGameScene3D`
 (its own `Init` chain mirrors any other room's Init-injection pattern). `GameScene.Manager` is set only by
@@ -58,30 +63,140 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 
 ## Keys
 
-Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Delete removes the current selection. R snaps the
-selected placement to the ground (an undoable re-move with a null Y, a no-op when nothing placement-shaped
-is selected or the placement is already grounded). Ctrl+Up and Ctrl+Down reorder the selected terrain feature
-one step earlier or later in the fold order (see Feature apply order below), clamped at the list ends so a
-boundary press lands no command. Escape cancels an in-flight gizmo/draw gesture and returns to Select. Every
-Ctrl chord above also fires on Cmd (Super): `InputState.IsCommandDown` treats the two as the same modifier,
-so the Windows/Linux chords work unmodified on a Mac. All of them, plus the bare R hotkey, are suppressed
-while an inspector field, the kit-palette filter, or the spawn filter holds keyboard focus
-(`PropertyGrid.HasActiveEditor` ORed with the two filters' own `IsFocused`, see `MapEditorScene.AnyEditorFocused`),
-so typing an "R" or a Ctrl-chord letter into a name or a filter box types instead of firing the shortcut. A
-`NumberField` mid-edit is its own case: it cancels only its own typed value on Escape, and the tool's Escape
-cancel is suppressed for that same press so the two never double-fire, picking back up on the next press once
-the field releases focus. A focused `TextRow`, `ChoiceRow`, or filter has no Escape handling of its own at
-all, so Escape is simply inert while one of those holds focus, until a pointer action elsewhere moves focus
-away. Shift+Escape is the one chord never gated by focus: it exits the editor by popping the scene off the
-`SceneManager` even from inside a focused field, since it is the one chord a user needs reachable from
-there. With no unsaved changes it pops immediately, and with unsaved changes the first press arms a
-status-strip warning ("Shift+Escape again to discard and exit") and a second Shift+Escape discards and
-exits. Any Ctrl+S or any document mutation (an edit, an undo, a redo) disarms the warning, so a stale discard
-confirmation can never fire after the user resumed working.
+Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection (see
+Duplicate below), Delete removes the current selection. R snaps the selected placement to the ground (an
+undoable re-move with a null Y, a no-op when nothing placement-shaped is selected or the placement is
+already grounded). Ctrl+Up and Ctrl+Down reorder the selected terrain feature one step earlier or later in
+the fold order (see Feature apply order below), clamped at the list ends so a boundary press lands no
+command. Bare 1..9 recalls a camera bookmark and Shift+1..9 stores one (see Camera bookmarks below). Escape
+cancels an in-flight gizmo/draw gesture and returns to Select. Every Ctrl chord above also fires on Cmd
+(Super): `InputState.IsCommandDown` treats the two as the same modifier, so the Windows/Linux chords work
+unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that one frame, since both chords
+carry a WASD letter, see Camera bookmarks below for the Command-modifier suppression). All of them, plus the
+bare R hotkey and the bookmark digits, are suppressed while an inspector field, the kit-palette filter, or
+the spawn filter holds keyboard focus (`PropertyGrid.HasActiveEditor` ORed with the two filters' own
+`IsFocused`, see `MapEditorScene.AnyEditorFocused`), so typing an "R" or a Ctrl-chord letter into a name or a
+filter box types instead of firing the shortcut. A `NumberField` mid-edit is its own case: it cancels only
+its own typed value on Escape, and the tool's Escape cancel is suppressed for that same press so the two
+never double-fire, picking back up on the next press once the field releases focus. A focused `TextRow`,
+`ChoiceRow`, or filter has no Escape handling of its own at all, so Escape is simply inert while one of those
+holds focus, until a pointer action elsewhere moves focus away. Shift+Escape is the one chord never gated by
+focus: it opens the exit dialog (see Exit dialog below) even from inside a focused field, since it is the
+one chord a user needs reachable from there. While the dialog is open, every other editor chord, tool pick,
+and camera step is suppressed until the dialog is dismissed.
 The status strip leads with the active tool name and its `ModeHint` one-liner, then the undo/redo labels
 and the exit chord as a standing hint. The toolbar tab bar is mirrored back onto the live controller mode
 every frame, so a one-shot draw / bake tool returning to Select on completion (or an Escape cancel)
-re-highlights the Select tab on its own, without a tap.
+re-highlights the Select tab on its own, without a tap. A Save button sits at the right end of the toolbar
+(after the tab bar), its label showing `Save*` while the document is dirty and plain `Save` once clean, as
+an always-visible alternative to Ctrl+S/Cmd+S.
+
+## Exit dialog
+
+Shift+Escape opens a modal exit dialog (a scene-owned `PopupPanel` using its `FooterButtons`, see the
+`KhaozEngine.Gui` README): a dirty document offers **Save and Close** (the default action, fires on Enter) /
+**Save** / **Discard** / **Cancel**, a clean document just **Close** / **Cancel** (fires on Enter). Esc or
+Cancel dismisses the dialog and returns to the editor with nothing changed. **Save** saves in place and
+dismisses the dialog, staying in the editor, only when the save succeeds: a failure leaves the dialog open
+with the error in the status strip and the unsaved work intact. **Save and Close** does the same save, then
+leaves the editor (see below) only if that save succeeded, so a save failure never quits and never dismisses
+the dialog. **Discard** / **Close** leave the editor with no save at all. While the dialog is open it blocks
+every other editor chord, tool pick, and camera step (the `PopupPanel` scrim + pointer block), and its own
+`HandleKeys` call routes Esc to Cancel and Enter to the default action.
+
+Leaving the editor (`Save and Close` / `Discard` / `Close`) goes through `MapEditorOptions.RequestQuit`: when
+the editor is the bottom scene on the stack (nothing beneath it to pop back to) and a quit action is wired,
+that runs, otherwise the scene just pops (returning to whatever sits beneath it, for example the landing
+scene, see below). A head that pushes `MapEditorScene` as its only scene must set `RequestQuit`, or Close
+leaves an empty stack (a blank screen, since a scene never touches window APIs directly).
+
+## Landing scene and recent files
+
+`MapEditorLandingScene` is a turn-key entry menu a per-game head pushes as the BOTTOM scene on its
+`SceneManager`, so an editor pushed on top of it later pops back to the menu instead of leaving the app with
+nothing to show. It draws a title, a New Map row (a name field plus a Create button), an Open Recent list
+(one button per recent path, most-recent first, a missing file's button greyed but still clickable so a tap
+prunes it instead of erroring), and a Quit button. It is 2D-only chrome (no `IGameScene3D`) and runs
+headless: every action (`TryCreateMap`/`CreateMapNamed`, `ActivateRecent`, `RequestQuitLanding`) is reachable
+directly, with no live viewport required.
+
+```csharp
+var landingOptions = new MapEditorLandingOptions
+{
+    Title = LocalizedText.Raw("My Game Editor"),
+    CreateMap = name => CreateMapDocument(name),         // head owns file IO, returns the new path or null
+    OpenEditor = path => BuildMapEditorScene(path),       // head assembles a fully-initialized MapEditorScene
+    Recent = new EditorRecentFiles("MyStudio", "MyGame"), // rides GameStorage under the publisher/app pair
+    RequestQuit = () => app.Quit(),
+};
+sceneManager.Push(new MapEditorLandingScene().Init(whiteTexture, dpiFont, landingOptions));
+```
+
+- `CreateMap` (`Func<string, string?>`) receives the validated, trimmed name (non-empty, no path
+  separators, the scene checks both before calling it) and returns the created document's path, or null on
+  failure (the scene shows an inline note and pushes nothing). On success the scene touches the recent-files
+  store and pushes the built editor.
+- `OpenEditor` (`Func<string, GameScene>`) builds the fully-initialized `MapEditorScene` for a path (Scene3D,
+  manifests, registry, all head concerns). The landing scene only `Push`es the result and stays underneath
+  it, so the editor's own exit dialog pops back to this menu (see Exit dialog above).
+- `Recent` (`IRecentFilesStore`, nullable) backs the Open Recent list. Null renders an empty list.
+- `RequestQuit` mirrors `MapEditorOptions.RequestQuit`: null leaves the Quit button an inline no-op note
+  instead of touching window APIs directly.
+
+`IRecentFilesStore` is the seam (`Paths`, `Touch`, `Remove`, `Flush`): `Paths` is the most-recent-first list a
+test or a fake can substitute, `Touch`/`Remove` mutate it (ordinal, case-sensitive dedup), and `Flush` drains
+any coalesced pending write so the on-disk file is current before shutdown. `EditorRecentFiles` is the
+canonical implementation, riding the engine's `ISettingsStorage` seam under its own `editor-recents.json`
+file name (`EditorRecentFiles.FileName`, distinct from a game's own `settings.json`), capped at
+`EditorRecentFiles.MaxPaths` (10) entries. Construct it either from an already-built `ISettingsStorage`
+(the testable shape, optionally passing the `IPersistenceQueue` it writes through so `Flush` can drain it),
+or with a `(publisher, appName)` pair, which builds and owns a `GameStorage` internally (following
+`AppDataPaths`' `<os-base>/<publisher>/<appName>/` layout) so `Flush` always has a queue to drain. A head
+that owns the `GameStorage` overload should call `Flush()` itself during its own quit/shutdown, since a scene
+never touches persistence directly. `RecentFilesRecord` is the plain `Paths` list the JSON file round-trips.
+
+The landing scene self-heals if the store changes while it is not the one driving the actions (for example a
+future Save-As pushed from the editor scene on top): it re-diffs the store's live paths every driven frame
+and rebuilds its button list on a mismatch, so the Open Recent list never goes stale.
+
+## Duplicate
+
+Ctrl+D (Cmd+D on a Mac) duplicates the current selection through `EditorToolController.DuplicateSelection()`,
+mirroring the `DeleteSelection` dispatcher's shape across all nine selectable kinds (placement, spawn, player
+spawn, feature, exclusion, region, biome band, scatter layer, companion layer). Each duplicate is a deep
+clone with a fresh, unique identity, added through that kind's own `Add` command and immediately sealed as
+its own undo step, then selected: a placement, spawn, or player spawn gets a fresh id off the same
+`placement-N` / `spawn-N` / `player-N` generated-name scheme a freshly placed element already uses, not a
+name derived from the source id. A named feature or exclusion gets a uniquified `<name>-copy`/`-copy-2`
+suffix while an unnamed one stays unnamed (index-keyed, no collision to dodge). A region always takes a fresh
+generated name, the same as a freshly drawn one, and a scatter or companion layer gets `<name>-copy` uniquified
+the same way. Every kind that carries a position (placement, spawn, player spawn, feature, exclusion, region)
+offsets its clone by +2/+2 world units on X/Z so it never lands exactly on top of its source. A biome band,
+a scatter layer, and a companion layer have no position: a biome band clones verbatim (it has no name
+either), while a scatter or companion layer still takes the uniquified `<name>-copy` name described above.
+
+`DuplicateSelection()` returns a `DuplicateResult?` (the duplicated kind plus its fresh id/name/index), or
+null when nothing was duplicated: an empty selection, the Terrain singleton (nothing to clone), or a custom
+feature type `FeatureGeometry.Translated` does not know how to offset. Both no-op cases stay silent in the
+controller itself, the same as `DeleteSelection`'s own default branch. `MapEditorScene`'s Ctrl+D handler is
+what surfaces a status-strip note for the two skip cases ("Nothing to duplicate: Terrain is the document
+singleton." / "Cannot duplicate this feature type."), telling a real skip apart from an ordinary empty
+selection. `KhaozEngine.MapEdit.Tool`'s `element_duplicate` MCP verb reuses this exact same clone and
+unique-identity logic (see the `ke-mapedit` README), so a GUI-driven and an MCP-driven duplicate can never
+drift apart.
+
+## Camera bookmarks
+
+Shift+1 through Shift+9 stores the fly camera's current pose (`Position`/`Yaw`/`Pitch`) into that numbered
+slot, overwriting whatever was there. A bare 1 through 9 recalls a previously stored slot, snapping the
+camera straight back to it. Both are session-only (nothing persists across an editor close/reopen this
+round, see the design ledger for the deferred persistence follow-up), and the status strip confirms every
+store/recall, or reports an empty slot when a bare digit hits a slot never stored this session. Both are
+gated below `MapEditorScene.AnyEditorFocused` like every other chord, so typing a digit into a name or filter
+field never fires a bookmark. Cmd+S and Cmd+D carry a WASD letter (S and D), so the fly camera's own
+`_camController.Update` is skipped for any frame `InputState.IsCommandDown` is true, keeping those chords
+from also nudging the view one frame. The camera's aspect-ratio upkeep still runs every frame regardless, so
+a resize during a held modifier is never missed.
 
 ## Kit palette
 

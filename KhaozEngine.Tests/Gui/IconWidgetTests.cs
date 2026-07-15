@@ -81,5 +81,80 @@ namespace KhaozEngine.Tests.Gui
             ui.StatChip(rect, Icons.Coin, LocalizedText.Raw("Gold"), LocalizedText.Raw("120"), font: null!, GuiStyle.Default);
             Assert.True(ui.PointerCaptured);
         }
+
+        // -- StatChip's "label  value" memoization (FormatStatChipText) --
+        // Exercised directly (not through StatChip, which only reaches the formatter when font is non-null -
+        // needing a GPU-backed SpriteFont) since the caching/formatting logic itself is font-independent.
+
+        [Fact]
+        public void FormatStatChipText_JoinsLabelAndValueWithTwoSpaces()
+        {
+            var ui = Surface();
+            Assert.Equal("Gold  120", ui.FormatStatChipText("Gold", "120"));
+        }
+
+        [Fact]
+        public void FormatStatChipText_EmptyValue_ReturnsLabelAlone()
+        {
+            var ui = Surface();
+            Assert.Equal("Gold", ui.FormatStatChipText("Gold", ""));
+        }
+
+        [Fact]
+        public void FormatStatChipText_RepeatedCall_SameKey_ReturnsTheSameCachedInstance()
+        {
+            var ui = Surface();
+            string first = ui.FormatStatChipText("HP", "100/100");
+            string second = ui.FormatStatChipText("HP", "100/100");
+
+            Assert.Same(first, second);   // a cache hit returns the memoized string, not a fresh interpolation
+        }
+
+        [Fact]
+        public void FormatStatChipText_DifferentValue_DoesNotReuseAStaleEntry()
+        {
+            var ui = Surface();
+            string atFull = ui.FormatStatChipText("HP", "100/100");
+            string afterDamage = ui.FormatStatChipText("HP", "80/100");
+            string backToFull = ui.FormatStatChipText("HP", "100/100");   // e.g. a heal back to full
+
+            Assert.Equal("HP  100/100", atFull);
+            Assert.Equal("HP  80/100", afterDamage);
+            Assert.Equal(atFull, backToFull);
+        }
+
+        [Fact]
+        public void FormatStatChipText_DifferentLabel_SameValue_AreDistinctEntries()
+        {
+            var ui = Surface();
+            Assert.Equal("HP  10", ui.FormatStatChipText("HP", "10"));
+            Assert.Equal("MP  10", ui.FormatStatChipText("MP", "10"));
+        }
+
+        [Fact]
+        public void FormatStatChipText_MultipleChipsPerFrame_AllStayIndependentlyCorrect()
+        {
+            // A HUD typically draws several distinct stat chips per frame on the same surface (HP, MP, Gold),
+            // interleaved: a single-slot "last value" cache would thrash on every call here and never hit.
+            var ui = Surface();
+            for (int frame = 0; frame < 3; frame++)
+            {
+                Assert.Equal("HP  100/100", ui.FormatStatChipText("HP", "100/100"));
+                Assert.Equal("MP  40/40", ui.FormatStatChipText("MP", "40/40"));
+                Assert.Equal("Gold  9999", ui.FormatStatChipText("Gold", "9999"));
+            }
+        }
+
+        [Fact]
+        public void FormatStatChipText_PastCapacity_ClearsAndKeepsWorking()
+        {
+            var ui = Surface();
+            for (int i = 0; i < GuiSurface.StatChipTextCacheCapacity + 8; i++)
+                ui.FormatStatChipText("Score", i.ToString());
+
+            Assert.True(ui.StatChipTextCacheCount <= GuiSurface.StatChipTextCacheCapacity);
+            // Still correct after the cache has been cleared and rebuilt at least once.
+            Assert.Equal("Score  41", ui.FormatStatChipText("Score", "41"));
+        }
     }
 }

@@ -5,6 +5,58 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.99.0
+
+### 2D render + GUI CPU-cost fixes
+
+Seven CPU-cost fixes across the 2D render and GUI stack: zero-allocation quad batching, opt-in SpriteBatch
+texture grouping, O(live) 2D particles, memoized text wrapping, cached patch-notes layout, memoized stat-chip
+text, and cheaper gradient and filled-circle primitives.
+
+- **Zero-alloc batching.** `SpriteBatch` / `QuadRunBuilder` no longer allocate a per-run `List` in the steady
+  state. A single backing list holds every quad and each run is a range slice into it.
+- **Texture grouping.** New opt-in `SpriteBatch.GroupByTexture` (off by default, reset by every `Begin`) merges
+  non-consecutive same-texture runs into one draw call, trading cross-texture painter's order for fewer draw
+  calls (order stays intact within a texture group). Only enable it for a pass whose correctness does not depend
+  on cross-texture draw order.
+- **O(live) particles.** `Particle2DSystem` `Update` / `Draw` / `ActiveCount` are now O(live particles) via a
+  sparse-set live index instead of O(`Capacity`), so a large pool holding few live particles is not scanned in
+  full each frame.
+- **Span Measure + memoized wrap.** `ITextMeasurer` / `SpriteFont` / `TextLayout` gain a span-based `Measure`
+  overload (a default interface method, non-breaking) and a bounded LRU cache for `Wrap` keyed on font identity,
+  text, width, and hard breaks. The returned list is always a fresh copy, so a caller mutating it cannot corrupt
+  the cache.
+- **Cached patch-notes layout.** `PatchNotesView` caches per-note word-wrap layout, invalidated on a width or
+  measurer change.
+- **Memoized stat chip.** `GuiSurface.StatChip` memoizes its composed text per label and value.
+- **Cheaper primitives.** `PrimitiveRenderer.DrawVerticalGradient` is one GPU-interpolated quad instead of up to
+  12 CPU-lerped bands, and `DrawFilledCircle` caps its row count at 128 (`MaxFilledCircleRows`), mirroring the
+  other clamped primitives.
+- GPU goldens verified unchanged on Metal.
+
+## 10.98.0
+
+### Batched IWorldStore saves + MmoServerSample server hygiene
+
+Batched IWorldStore saves and MmoServerSample server hygiene: dedicated servers no longer pay one store
+round trip per dirty record, and the reference sample now ships with cell parallelism, Server GC, and
+adaptive tick pacing on by default.
+
+- **Batched store API.** Added `IWorldStore.SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)>, CancellationToken)`,
+  a default interface member that loops `SaveAsync` so existing implementations keep compiling unchanged.
+  `SqliteWorldStore` overrides it with a single transaction and a prepared multi-row upsert. `SqlServerWorldStore`
+  overrides it with one pooled connection and a chunked multi-row `MERGE` (500 rows per statement). `InMemoryWorldStore`
+  overrides it for one consistent `UpdatedAt` per batch.
+- **Batched dirty passes.** `WorldPersistence.SaveDirtyPass` and `CellPersistence.SaveDirtyPass` now issue one
+  `SaveManyAsync` per periodic pass instead of one `SaveAsync` per dirty record. A faulted batch leaves every record
+  in it dirty for retry, the unchanged data-safety guarantee, and `OnStoreError` now fires once per pass rather than
+  once per record.
+- **Adaptive host pacing.** Added `FixedTickHost.SecondsUntilNextTick` and the pure static
+  `FixedTickHost.ComputeIdleWaitSeconds` for adaptive host-loop pacing.
+- **Reference sample hygiene.** `MmoServerSample` now wires `ThreadPoolJobScheduler` for cell parallelism (measured
+  3.2x tick speedup at 256 cells on 12 cores), enables Server plus Concurrent GC, and replaces its fixed
+  `Thread.Sleep(5)` with adaptive pacing.
+
 ## 10.97.0
 
 ### O(interestSet) AoI projection + indexed filtered snapshots

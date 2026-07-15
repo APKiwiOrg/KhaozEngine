@@ -9,6 +9,16 @@ namespace KhaozEngine.Telegraphs
     /// <summary>Compositing for a telegraph (matches the renderer blend states).</summary>
     public enum TelegraphBlend { Alpha, Additive }
 
+    /// <summary>Fill pattern for the telegraph interior. Solid is the legacy flat tint.</summary>
+    public enum TelegraphFillPattern
+    {
+        Solid = 0,
+        /// <summary>Value noise scrolling across the shape, tinted by the fill color.</summary>
+        ScrollingNoise = 1,
+        /// <summary>Value noise flowing radially outward from the shape center.</summary>
+        RadialNoise = 2,
+    }
+
     /// <summary>
     /// Whether the shape marks the DANGER area (default) or, RESERVED for a future version, the SAFE area
     /// (everything-dangerous-except-here). v1 renders <see cref="Safe"/> exactly like <see cref="Danger"/>.
@@ -28,6 +38,12 @@ namespace KhaozEngine.Telegraphs
         FillSweep = 1 << 1,
         ColorRamp = 1 << 2,
         ImpactFlash = 1 << 3,
+        /// <summary>Soft glow hugging the shape boundary, pulsing with cast progress.</summary>
+        RimGlow = 1 << 4,
+        /// <summary>Bright soft leading edge on the FillSweep front. Requires FillSweep.</summary>
+        SweepGlow = 1 << 5,
+        /// <summary>Sparse animated sparkle cells along the shape boundary.</summary>
+        EdgeSparkle = 1 << 6,
     }
 
     /// <summary>
@@ -56,6 +72,24 @@ namespace KhaozEngine.Telegraphs
         /// <see cref="ZoneSense.Danger"/>. Kept so styles / presets can declare intent ahead of the feature.</summary>
         public ZoneSense ZoneSense;
 
+        /// <summary>Soft feather band on the shape boundary, as a fraction of the shape's
+        /// characteristic size. 0 keeps the legacy hard anti-aliased edge. Modern presets use
+        /// roughly 0.06 (crisp) to 0.18 (soft).</summary>
+        public float FeatherWidth;
+
+        /// <summary>Interior fill pattern. Solid keeps the legacy flat tint.</summary>
+        public TelegraphFillPattern Pattern;
+
+        /// <summary>Pattern animation speed in cycles per second of the scene effect clock.</summary>
+        public float PatternSpeed;
+
+        /// <summary>Noise cells across the shape's characteristic size. 0 falls back to 6.</summary>
+        public float PatternScale;
+
+        /// <summary>Master strength multiplier for RimGlow, SweepGlow and EdgeSparkle.
+        /// 0 means the default full strength of 1. Explicit values scale the effects.</summary>
+        public float EdgeEnergy;
+
         /// <summary>Neutral red-orange danger zone: alpha-blended outline + fill, all animations on.</summary>
         public static TelegraphStyle Generic => new()
         {
@@ -65,9 +99,14 @@ namespace KhaozEngine.Telegraphs
             EdgeThickness = 2f,
             Opacity = 1f,
             FillMode = FillMode.OutlineAndFill,
-            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash,
+            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash
+                      | TelegraphAnim.RimGlow | TelegraphAnim.SweepGlow,
             Blend = TelegraphBlend.Alpha,
             ZoneSense = ZoneSense.Danger,
+            FeatherWidth = 0.10f,
+            Pattern = TelegraphFillPattern.ScrollingNoise,
+            PatternSpeed = 0.35f,
+            PatternScale = 6f,
         };
 
         /// <summary>Fiery additive variant (warm ramp, glows over the scene).</summary>
@@ -79,9 +118,14 @@ namespace KhaozEngine.Telegraphs
             EdgeThickness = 2f,
             Opacity = 1f,
             FillMode = FillMode.OutlineAndFill,
-            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash | TelegraphAnim.OutlinePulse,
+            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash | TelegraphAnim.OutlinePulse
+                      | TelegraphAnim.RimGlow | TelegraphAnim.SweepGlow | TelegraphAnim.EdgeSparkle,
             Blend = TelegraphBlend.Additive,
             ZoneSense = ZoneSense.Danger,
+            FeatherWidth = 0.12f,
+            Pattern = TelegraphFillPattern.ScrollingNoise,
+            PatternSpeed = 0.9f,
+            PatternScale = 7f,
         };
 
         /// <summary>Toxic green variant (alpha-blended, pulsing outline).</summary>
@@ -93,9 +137,91 @@ namespace KhaozEngine.Telegraphs
             EdgeThickness = 2f,
             Opacity = 1f,
             FillMode = FillMode.OutlineAndFill,
-            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.OutlinePulse,
+            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.OutlinePulse
+                      | TelegraphAnim.RimGlow | TelegraphAnim.SweepGlow,
             Blend = TelegraphBlend.Alpha,
             ZoneSense = ZoneSense.Danger,
+            FeatherWidth = 0.14f,
+            Pattern = TelegraphFillPattern.ScrollingNoise,
+            PatternSpeed = 0.45f,
+            PatternScale = 5f,
+        };
+
+        /// <summary>Physical/steel telegraph: cool grey, crisp edge, fine brushed grain.</summary>
+        public static TelegraphStyle Steel => new()
+        {
+            FillColor = new Color(0.62f, 0.68f, 0.75f, 0.30f),
+            OutlineColor = new Color(0.85f, 0.92f, 1f, 0.95f),
+            DangerColor = new Color(0.95f, 0.35f, 0.25f, 0.55f),
+            EdgeThickness = 2f,
+            Opacity = 1f,
+            FillMode = FillMode.OutlineAndFill,
+            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash
+                      | TelegraphAnim.SweepGlow,
+            Blend = TelegraphBlend.Alpha,
+            ZoneSense = ZoneSense.Danger,
+            FeatherWidth = 0.06f,
+            Pattern = TelegraphFillPattern.ScrollingNoise,
+            PatternSpeed = 0.25f,
+            PatternScale = 9f,
+        };
+
+        /// <summary>Frost telegraph: pale ice blue, wide soft feather, slow crystalline flow.</summary>
+        public static TelegraphStyle Frost => new()
+        {
+            FillColor = new Color(0.55f, 0.80f, 1f, 0.30f),
+            OutlineColor = new Color(0.80f, 0.95f, 1f, 0.95f),
+            DangerColor = new Color(0.35f, 0.60f, 1f, 0.60f),
+            EdgeThickness = 2f,
+            Opacity = 1f,
+            FillMode = FillMode.OutlineAndFill,
+            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.OutlinePulse
+                      | TelegraphAnim.RimGlow | TelegraphAnim.EdgeSparkle,
+            Blend = TelegraphBlend.Alpha,
+            ZoneSense = ZoneSense.Danger,
+            FeatherWidth = 0.18f,
+            Pattern = TelegraphFillPattern.RadialNoise,
+            PatternSpeed = 0.2f,
+            PatternScale = 5f,
+        };
+
+        /// <summary>Nature telegraph: verdant green, soft organic drift.</summary>
+        public static TelegraphStyle Nature => new()
+        {
+            FillColor = new Color(0.30f, 0.75f, 0.30f, 0.32f),
+            OutlineColor = new Color(0.55f, 1f, 0.45f, 0.90f),
+            DangerColor = new Color(0.85f, 0.95f, 0.20f, 0.55f),
+            EdgeThickness = 2f,
+            Opacity = 1f,
+            FillMode = FillMode.OutlineAndFill,
+            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.RimGlow
+                      | TelegraphAnim.SweepGlow,
+            Blend = TelegraphBlend.Alpha,
+            ZoneSense = ZoneSense.Danger,
+            FeatherWidth = 0.16f,
+            Pattern = TelegraphFillPattern.ScrollingNoise,
+            PatternSpeed = 0.3f,
+            PatternScale = 4f,
+        };
+
+        /// <summary>Arcane telegraph: violet additive energy, radial pulse, full edge energy.</summary>
+        public static TelegraphStyle Arcane => new()
+        {
+            FillColor = new Color(0.60f, 0.30f, 1f, 0.30f),
+            OutlineColor = new Color(0.85f, 0.55f, 1f, 0.95f),
+            DangerColor = new Color(1f, 0.30f, 0.90f, 0.60f),
+            EdgeThickness = 2f,
+            Opacity = 1f,
+            FillMode = FillMode.OutlineAndFill,
+            Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash
+                      | TelegraphAnim.OutlinePulse | TelegraphAnim.RimGlow | TelegraphAnim.SweepGlow
+                      | TelegraphAnim.EdgeSparkle,
+            Blend = TelegraphBlend.Additive,
+            ZoneSense = ZoneSense.Danger,
+            FeatherWidth = 0.12f,
+            Pattern = TelegraphFillPattern.RadialNoise,
+            PatternSpeed = 0.6f,
+            PatternScale = 6f,
         };
     }
 }

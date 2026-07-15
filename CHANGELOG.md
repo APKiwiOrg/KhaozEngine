@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.106.0
+
+### Opt-in GPU skinning on the one-UBO-per-pipeline binding
+
+Opt-in GPU skinning (`Scene3D.UseGpuSkinning`, default off). Skinned draws can deform on the GPU instead of the
+CPU: the rest-pose vertex buffer uploads once at load and only the per-draw bone palette plus matrices upload
+each frame, pixel-parity with the CPU path and far cheaper CPU-side at crowd scale (the 64-character CPU skin
+loop cost drops from about 18 ms to a flat palette pack). Built on a single combined per-draw dynamic-offset UBO
+`{ Mvp; Model; P; frame; bones[128] }` at set 0 read by both stages with material maps at set 1, which is the
+only Metal-safe binding: a second uniform buffer anywhere in the pipeline reads zero on Veldrid/SPIRV-Cross/Metal,
+so the `DEPENDENCY-SEAMS` invariant is corrected from one-buffer-per-vertex-stage to one-uniform-buffer-per-pipeline.
+The shadow depth pass mirrors the binding with its own combined light-matrix-plus-bones buffer. Respects skinned
+frustum culling (a culled draw skips its palette pack) and the frame draw counters. Ships default off pending a
+windowed A/B: the Showcase 3D room toggles the path live on the F key with the active path shown in the HUD. New
+on-device parity tests cover bent-pose CPU-vs-GPU, rest-pose identity, textures, multi-character same-mesh, and
+shadow parity, and every existing golden is byte-identical with the flag off.
+
+- **`Scene3D.UseGpuSkinning`** (`KhaozEngine.Render3D`, new, default `false`): flip on to deform skinned meshes in
+  the vertex shader instead of on the CPU. Pixel-parity with the CPU path (the shader mirrors
+  `SkinningMath.SkinVertex`), same frustum culling and shadow-caster handling, flippable per frame. Ships off
+  pending a windowed A/B because the offscreen parity proof is necessary but not sufficient for the historical
+  windowed swapchain context.
+- **Skinned GPU pipeline** (`KhaozEngine.Render3D`, internal `ModelRenderer` / `ShadowMapRenderer` / `Scene3D`):
+  one combined per-draw dynamic-offset UBO `{ Mvp; Model; P; frame; bones[128] }` at set 0 read by both stages,
+  material maps at set 1, the shadow pass mirroring it with `{ LightMvp; bones[128] }`. This is the only
+  Metal-safe shape: a second uniform buffer anywhere in the pipeline mis-binds and reads zero on
+  Veldrid/SPIRV-Cross/Metal.
+- **`docs/DEPENDENCY-SEAMS.md`**: the Metal vertex-stage binding invariant is corrected from
+  one-uniform-buffer-per-vertex-stage to one-uniform-buffer-per-pipeline (a fragment-only second UBO also
+  mis-binds, textures and samplers in a second set are fine).
+- **New GPU parity tests** (`KhaozEngine.Tests`, new `Render3DGpuSkinningGpuTests` + `GpuSkinningPerfTests`):
+  bent-pose CPU-vs-GPU, rest-pose identity, textured, multi-character same-mesh, and shadow parity on device,
+  plus a headless perf harness comparing the CPU deform against the GPU palette pack. Every existing golden is
+  byte-identical with the flag off.
+
 ## 10.105.0
 
 ### ClimbRate and StepDeltaY seams on CharacterController3D, and dungeon stair-glide adoption

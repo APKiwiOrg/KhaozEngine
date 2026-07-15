@@ -54,6 +54,10 @@ automatically, so this is transparent to every other package.
   counts as 0 (`1.2` equals `1.2.0`), and a null or blank string is the empty all-zero version (never
   throws). The one shared rule behind `KhaozEngine.Updates.UpdateVersion.IsNewer` and
   `KhaozEngine.ServerStatus.VersionOrder.Compare`/`IsBelow`, both thin wrappers over `Compare` here.
+- `RenderFrameStats` - per-frame render cost counters (draw calls, instances, triangles, buffer-update bytes,
+  and the 2D quads / flushes / texture switches). A plain value type summed with `+`, so a host aggregates
+  several surfaces' tallies into one frame total. Populated always-on by `Render2D.SpriteBatch.FrameStats` and
+  `Render3D.Scene3D.LastFrameStats`, shown by the `Gui.DiagnosticsHud` / `DiagnosticsOverlay.DrawStatsSection`.
 
 ```csharp
 var rng = new DeterministicRng(seed: 12345);

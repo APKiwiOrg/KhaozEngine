@@ -83,6 +83,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   meter yourself (one `Sample(name, ms)` call per pass per frame) to get rolling avg/min/max and a
   `DiagnosticsOverlay.PassTimingsSection` row set, the same shape `FrameStats`/`PerformanceSection` give you.
   `ShadowDepthMs` stays 0 whenever the shadow tier is not `ShadowMode.ShadowMap` (that pass does not run).
+- Per-frame draw counters: `Scene3D.LastFrameStats` (a `Primitives.RenderFrameStats`) - always-on draw-call /
+  instance / estimated-triangle / buffer-upload-byte totals over the geometry passes (rigid instanced, terrain
+  splat, CPU-skinned, shadow-caster depth), plus one draw-call increment per effect/overlay submission. Reset +
+  finalized inside the render pass like `DrawnInstances`/`PassTimingsMs`, so read it after the scene rendered.
+  Fullscreen post blits are not itemized (their encode time is the Pass-timings `PostMs`). Aggregate it with a
+  2D batch's `FrameStats` via `+` for a whole-frame total.
 - Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only

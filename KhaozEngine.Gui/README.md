@@ -265,11 +265,20 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
   (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
   `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` populators cover the common cases
-  (from `KhaozEngine.Diagnostics`). `PassTimingsSection` lists one row per pass name (in first-sampled order)
+  (from `KhaozEngine.Diagnostics`). `DrawStatsSection(in RenderFrameStats)` (the `Primitives` frame counters)
+  adds a "Draw stats" section (draw calls, instances, triangles, quads, flushes, texture switches, upload KB).
+  `PassTimingsSection` lists one row per pass name (in first-sampled order)
   with that pass's rolling avg/min/max milliseconds - CPU encode time, not true GPU time (see the
   `KhaozEngine.Render3D` README / `docs/USING-KHAOZENGINE.md`).
   `Bounds` is the last-drawn panel rect (empty when hidden/faded-out), so a caller can place an `OverlayLegend`
   at `Bounds.Right` + a gap to sit a second panel directly beside it.
+- `DiagnosticsHud` - turn-key wiring of the frame-cost HUD: bundles a `FrameStats` meter, an optional
+  `PassTimings` meter (3D hosts), and a `DiagnosticsOverlay` behind one object, with a throttled provider that
+  assembles the Performance / Draw-stats / Pass-timings / (optional) Network sections. Call `Update(input, dt)`
+  once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
+  and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
+  so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>)` opts a
+  Network section in and out with the active screen. `GameApp`/`GameApp3D` wire one automatically (F1).
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at

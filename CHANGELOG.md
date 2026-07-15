@@ -5,6 +5,72 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.101.0
+
+### Async background terrain chunk mesh builds
+
+Terrain chunk mesh building now runs off the frame thread (async streaming by default), so a streamed chunk no
+longer hitches the frame by its full CPU mesh build. `TerrainStreamer` gains a background-build pipeline: with
+`StreamerConfig.Async` (new, default true) and an `IAsyncChunkSink` sink, each chunk's CPU mesh and scatter build
+runs on a worker thread and only the GPU upload happens on the frame thread. `MaxLoadsPerFrame` now caps the
+per-frame GPU applies, not the builds, which are unbudgeted and parallel.
+
+- **New GPU-free, headless-testable machinery.** `ChunkBuildScheduler<T>` with per-chunk generation tokens (last
+  request wins, builds for chunks that leave the ring are cancelled and discarded), `IChunkBuildDispatcher`,
+  `TaskChunkBuildDispatcher`, `ChunkBuild<T>`, and `ChunkBuildException`.
+- **New sink seam `IAsyncChunkSink`** (`BuildCpu` on the worker, `Apply` on the frame thread), implemented by
+  `Scene3DChunkSink`.
+- **New streamer entry points.** `TerrainStreamer.FlushPendingBuilds()` force-drains synchronously and
+  `PrimeAround(playerPos)` fills the first ring. `StreamerConfig.Synchronous()` keeps the old inline path, and a
+  sink implementing only `IChunkSink` still streams synchronously.
+- **Migration note for adopters.** Priming loops that pump `Update` until `Loaded` stops growing will under-fill
+  the ring under the async default. Switch to `PrimeAround()` or opt into `Synchronous()`.
+
+## 10.100.0
+
+### Turn-key F1 diagnostics HUD + always-on frame draw counters
+
+Frame cost is visible by default: an F1 diagnostics HUD wired into every GameApp, backed by always-on
+per-frame draw counters. New `RenderFrameStats` (`KhaozEngine.Primitives`) carries draw-call, instance,
+triangle, and buffer-update-byte totals plus the 2D quad, flush, and texture-switch counts, populated
+allocation-free in the submit path by `SpriteBatch.FrameStats` and `Scene3D.LastFrameStats` (geometry passes
+counted exactly, effect submissions as draw calls, post blits not itemized). `DiagnosticsOverlay.DrawStatsSection`
+renders them, and the new `DiagnosticsHud` (`KhaozEngine.Gui`) bundles the FPS and pass-timing meters plus the
+overlay behind a throttled provider that costs nothing while hidden.
+
+- **Always-on draw counters.** `RenderFrameStats` is populated allocation-free in the submit path and reset
+  each frame. `SpriteBatch.FrameStats` counts quads, draw calls, flushes, texture switches, and vertex-upload
+  bytes across both the submission-order and `GroupByTexture` flush paths (a merged texture group counts as the
+  single draw it issues, vertex bytes counted at each upload). `Scene3D.LastFrameStats` counts the 3D geometry
+  passes exactly and effect submissions as draw calls. Aggregate 2D + 3D via `RenderFrameStats` addition for a
+  whole-frame total.
+- **Turn-key HUD.** `DiagnosticsHud` (`KhaozEngine.Gui`) bundles the FPS meter, the pass-timing meter, and the
+  `DiagnosticsOverlay` behind a throttled provider that does no work while the panel is hidden.
+  `DiagnosticsOverlay.DrawStatsSection` turns a `RenderFrameStats` into an overlay section.
+- **Wired into GameApp by default.** `GameApp` and `GameApp3D` build one `DiagnosticsHud` automatically
+  (hidden, toggled with F1) and gate `Scene3D.EnableTiming` on its visibility, so pass timing costs nothing
+  when the panel is closed. `GameAppOptions.DisableDiagnosticsOverlay` turns it off entirely and
+  `GameAppOptions.DiagnosticsToggleKey` rebinds the toggle.
+- **Showcase adoption.** The Showcase inherits the built-in HUD and surfaces the networked room's client stats
+  in a Network section.
+
+## 10.99.1
+
+### WorldServer non-delta fallback adopts the indexed SnapshotWriter
+
+WorldServer's non-delta fallback snapshot path adopts the indexed `SnapshotWriter`. `WorldServer.Tick`'s
+single-world full-snapshot fallback (a client that never advertised `DeltaCapable`, or `DeltaReplication`
+off server-wide) now resolves each client's interest set off a `WorldSnapshotIndex` shared across every
+fallback client served in a tick, rebuilt lazily on the first one, instead of one full-world scan per
+client per tick. Mirrors the per-tick shared index `ShardHost` already uses.
+
+- **Shared per-tick index.** The fallback index is rebuilt at most once per tick, on the first non-delta
+  client, and reused by every other fallback client served that tick. A tick with only delta-capable
+  clients pays no extra world scan. Internal `WorldServer` fields only, no public API change.
+- **Byte-identical wire.** Output stays byte-identical to the old full-scan `WriteFiltered` path, asserted
+  by parity tests across randomized movement and join and leave roster churn
+  (`WorldServerSnapshotIndexParityTests`).
+
 ## 10.99.0
 
 ### 2D render + GUI CPU-cost fixes

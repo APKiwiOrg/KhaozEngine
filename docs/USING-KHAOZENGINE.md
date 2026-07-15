@@ -3018,29 +3018,52 @@ with a fake one. `using KhaozEngine.Terrain;`:
 var field = new TerrainField(TerrainPresets.Clearing());
 var sink  = new Scene3DChunkSink(scene, field, ScatterConfig.ForestRing(), propMeshes,
                                  chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: 90f);
-var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+var streamer = new TerrainStreamer(StreamerConfig.Default, sink);   // async build on by default
+
+// at load time (a loading moment, not a frame) - fill the whole first ring before the first frame:
+streamer.PrimeAround(playerPos);
 
 // each frame:
-streamer.Update(playerPos, dt);   // load ring / unload (hysteresis) / re-LOD, amortized to MaxLoadsPerFrame
+streamer.Update(playerPos, dt);   // request builds (off-thread) / unload (hysteresis) / apply up to MaxLoadsPerFrame
 // in your 3D draw pass:
 sink.Draw(playerPos);             // draws every loaded chunk + its in-range props
 ```
 
-`Update(playerPos, dt)` each frame: (1) **loads** chunks inside `LoadRadius` (Euclidean chunk-distance) that
-are not yet loaded, (2) **unloads** chunks past `UnloadRadius` immediately, (3) **re-LODs** loaded chunks whose
-`TerrainLod.PickLod(distance-to-chunk-center)` tier changed (the chunk is rebuilt at the new resolution), and
-(4) **amortizes**: at most `MaxLoadsPerFrame` load/re-LOD ops per update (nearest first), so a build burst never
-hitches. `UnloadRadius > LoadRadius` is a **hysteresis band** that stops churn when the player oscillates across
-a chunk boundary. `StreamerConfig.Default` is LoadRadius 4 (~240 m view) / UnloadRadius 6 / MaxLoadsPerFrame 3 /
-60 m chunks. At load time (a loading moment, not a frame) pump `Update` until `streamer.Loaded.Count` stops
-growing to prime the full first ring before the first frame.
+`Update(playerPos, dt)` each frame: (1) **requests** builds for chunks inside `LoadRadius` (Euclidean
+chunk-distance) that are not yet loaded, (2) **unloads** chunks past `UnloadRadius` immediately, (3) **re-LODs**
+loaded chunks whose `TerrainLod.PickLod(distance-to-chunk-center)` tier changed (the chunk is rebuilt at the new
+resolution), and (4) **applies** the completed builds nearest-first, at most `MaxLoadsPerFrame` per update.
+`UnloadRadius > LoadRadius` is a **hysteresis band** that stops churn when the player oscillates across a chunk
+boundary. `StreamerConfig.Default` is LoadRadius 4 (~240 m view) / UnloadRadius 6 / MaxLoadsPerFrame 3 / 60 m
+chunks.
+
+**Async build (default).** With `StreamerConfig.Async` set (the default) and an `IAsyncChunkSink` sink (the
+production `Scene3DChunkSink` is one), each chunk's CPU mesh build runs on a **background thread** and only the
+GPU upload happens on the frame thread, so a streamed chunk is no longer a full CPU-mesh-build hitch bounded
+only by the load budget. **`MaxLoadsPerFrame` now caps the APPLIES** (GPU upload + handle swap), not the builds:
+the builds are requested unbudgeted and run in parallel off the frame thread, and the frame thread only pays the
+bounded upload. The GPU device is touched only on the frame thread (during apply/unload) - the engine has no
+threaded-GPU contract. Correctness under churn is a per-chunk generation token: a chunk that leaves the ring
+mid-build is cancelled and its result discarded (never applied, no leak), and a re-LOD supersedes an earlier
+in-flight build of the same chunk (last request wins). Two escape hatches:
+
+- **`streamer.FlushPendingBuilds()`** forces every outstanding build to complete + apply now (blocking,
+  ignores the budget). **`streamer.PrimeAround(playerPos)`** loads the whole ring around a point right away
+  (it is `Update` + `FlushPendingBuilds` in a loop) - use it to prime the first ring. Both work in either mode.
+- **`StreamerConfig.Default.Synchronous()`** (or `Async = false`) runs the old inline build+upload-on-the-frame
+  path, where `MaxLoadsPerFrame` caps build ops as before. Editors/tools that want blocking, deterministic
+  loads use this (the map editor viewport does). A sink implementing only `IChunkSink` (not `IAsyncChunkSink`)
+  always streams synchronously regardless of the flag.
 
 `ChunkGrid` maps a `ChunkCoord(int X, int Z)` to and from world space for a chunk size (`CoordOf`/`CenterOf`/
 `RegionOf`/`AreaOf`); `AreaOf` is half-open so adjacent chunks tile `PropScatter` exactly once. Because
-`TerrainField.SampleHeight` and `PropScatter.Generate` are per-area deterministic, streaming is orthogonal to
-replication: the **networked client streams locally with the same code** (nothing about the world is sent over
-the wire). For a custom mesh/prop pipeline, implement `IChunkSink` yourself and pass it to `TerrainStreamer`.
-Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server sharding are later sub-projects.
+`TerrainField.SampleHeight` and `PropScatter.Generate` are per-area deterministic (and stateless, so a background
+build can sample them concurrently), streaming is orthogonal to replication: the **networked client streams
+locally with the same code** (nothing about the world is sent over the wire). For a custom mesh/prop pipeline,
+implement `IChunkSink` (or `IAsyncChunkSink` for background build) yourself and pass it to `TerrainStreamer`. The
+background-build machinery is reusable on its own: **`ChunkBuildScheduler<T>`** (the GPU-free generation-token
+core) over an **`IChunkBuildDispatcher`** (`TaskChunkBuildDispatcher` = the thread pool). Multi-cell server
+sharding is a separate sub-project.
 
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
 walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the
@@ -3049,7 +3072,7 @@ currently-loaded ring of chunk meshes would otherwise leak until whole-scene `Sc
 
 ```csharp
 // rebuild streaming, REUSING the same sink + scene (e.g. teleport to a new region):
-streamer.UnloadAll();                         // frees every loaded chunk through the sink; sink stays alive
+streamer.UnloadAll();                         // frees every loaded chunk through the sink + discards in-flight builds, sink stays alive
 streamer = new TerrainStreamer(StreamerConfig.Default, sink);
 
 // OR full teardown of the ring AND the sink's owned GPU resources:
@@ -4482,12 +4505,65 @@ Rules for consumers:
 
 ---
 
+## Seeing where the frame goes (turn-key HUD + frame counters)
+
+Every `GameApp` / `GameApp3D` game gets a frame-cost HUD **for free, on by default**, toggled with **F1**. No
+wiring: the base app builds a `KhaozEngine.Gui.DiagnosticsHud`, samples FPS, drives the toggle, and draws the
+panel over the frame. It starts hidden, so the only cost until you press F1 is the always-on counter increments
+(a handful of adds per draw, no allocation). Sections shown: **Performance** (fps, frame ms avg/min/max, managed
+MB), **Draw stats** (the counters below), and - for a 3D app - **Pass timings** (per-pass CPU encode ms, enabled
+only while the panel is visible so it costs nothing when hidden).
+
+Opt out or rebind via `GameAppOptions`:
+
+```csharp
+var options = GameAppOptions.For("MyGame", 1280, 720);
+options.DiagnosticsToggleKey = Key.F3;        // default is F1
+// options.DisableDiagnosticsOverlay = true;  // turn the built-in HUD off entirely
+```
+
+A subclass can reach the HUD through the protected `Diagnostics` property, e.g. to add a **Network** section
+whose source turns on and off with the active screen:
+
+```csharp
+Diagnostics?.SetNetStatsSource(() => (_scenes.Active as RoomNet)?.NetStats);   // null result => no Network row
+```
+
+**Frame draw counters (`RenderFrameStats`).** Each render surface keeps an always-on, allocation-free per-frame
+tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the
+indexed-draw sizes), `BufferUpdateBytes` (per-frame streaming), plus the 2D `Quads` / `Flushes` /
+`TextureSwitches`. Read them after the frame's draws and sum with `+`:
+
+```csharp
+RenderFrameStats twoD  = Surface2D.Batch.FrameStats;     // KhaozEngine.Render2D
+RenderFrameStats threeD = Scene.LastFrameStats;           // KhaozEngine.Render3D (a 3D app)
+RenderFrameStats frame = twoD + threeD;                   // whole-frame total
+// The built-in HUD does exactly this via GameApp.CollectFrameStats and shows it through:
+var section = DiagnosticsOverlay.DrawStatsSection(frame); // KhaozEngine.Gui
+```
+
+`Scene3D.LastFrameStats` counts the geometry passes exactly (rigid instanced, terrain splat, CPU-skinned, and
+the shadow-caster depth pass carry precise draw-call / instance / triangle numbers) plus one draw-call increment
+per effect/overlay submission (decals, water, sky, billboards, beams, trails, debug fills/lines). It is
+finalized inside the render pass (like `DrawnInstances` / `PassTimingsMs`), so read it after the scene rendered.
+The fullscreen post-process blits are **not** itemized in the draw-call count - their CPU encode time shows in
+the Pass-timings **post** row instead.
+
+**The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
+pass's commands), **not** true GPU execution time, and Veldrid 4.9.0 exposes no timestamp-query API to measure
+the latter. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
+timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
+blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
+
+---
+
 ## Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)
 
 A reusable in-game telemetry HUD for every game: an F1-toggled corner panel that shows whatever rows the
 game hands it, a frame-time meter, a client network-stats snapshot, and a crash-safe session recorder. The
 widget is content-agnostic - **the game assembles the rows each frame**, so the metric catalog stays
-game-owned; the engine ships populators for the common Performance / Network sections.
+game-owned. The engine ships populators for the common Performance / Network sections. (For most games the
+turn-key HUD above is enough. Reach for this manual path only for custom rows, a recorder, or a bespoke panel.)
 
 The four pieces (`FrameStats`, `TelemetryRecorder`, `ClientNetStats` are in `KhaozEngine.Diagnostics`;
 `DiagnosticsOverlay` + `DiagnosticsOverlayTheme` in `KhaozEngine.Gui`; `WorldClient.NetStats` in
@@ -5746,7 +5822,9 @@ interest set off the index in `O(interest)` instead of scanning the whole world,
 only the returned wire array is allocated. `WriteSingle(scratch, world, registry, netId, entity, ...)` is the
 one-entity form when you already hold the handle. Both are byte-identical to the unindexed `WriteFiltered`.
 `ShardHost` already wires this into `SnapshotForClient` / `SyncGhosts` / `ProcessHandoffs` with a per-tick shared
-index, so consumers on the sharded server get it for free.
+index, so consumers on the sharded server get it for free. `WorldServer.Tick` wires it the same way for its own
+non-delta fallback clients: one `WorldSnapshotIndex` rebuilt lazily on the first fallback client each tick, shared
+with every other fallback client served that tick.
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 

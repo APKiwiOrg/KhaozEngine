@@ -154,8 +154,9 @@ For DPI-aware UI, `SpriteBatch` exposes device-pixel snapping:
 
 These are non-zero / active ONLY inside a point-space `UiViewport` `Begin`. A fractional design viewport,
 world/camera space, screen space, or a transformed pass leaves `DeviceScale` at `Vector2.Zero`, so snapping is
-a no-op there. Inside a point-space pass `SpriteBatch` also snaps glyph origins to device pixels, so text drawn
-with a `DpiFont` is crisp.
+a no-op there. Inside a point-space pass `SpriteBatch` also snaps each text block's origin (its ascent baseline)
+to device pixels - once per `DrawString`, not per glyph - so text drawn with a `DpiFont` is crisp AND every glyph
+of a word stays on one baseline (snapping each glyph independently used to wave the baseline at fractional scales).
 
 ## 2D particles + ambient fields (`Vfx`)
 

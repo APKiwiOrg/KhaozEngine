@@ -578,11 +578,15 @@ void main() {
         {
             // atlas texels -> logical pixels (glyphs are baked at the bake density), then the caller's scale.
             float k = font.RenderScale * scale;
-            float penX = position.X, baseline = position.Y + font.Ascent * scale;
-            // In a point-space UI pass, snap each glyph's top-left to a whole device pixel: with a DpiFont atlas baked
-            // 1:1 for the device (integer texel offsets), a device-aligned origin lands the whole glyph on the pixel
-            // grid, so text is crisp instead of bilinear-blurred across a fractional phase. No-op elsewhere.
-            bool snap = _deviceScale.X > 0f;
+            // In a point-space UI pass, snap the whole text block's origin (pen X + the ascent baseline) to the
+            // device-pixel grid ONCE, then place every glyph at its exact sub-pixel offset from that snapped origin.
+            // With a DpiFont atlas baked 1:1 for the device, a scale of 1 makes each glyph offset an integer number
+            // of device pixels, so the block still lands texel-crisp - but the shared origin keeps every glyph on ONE
+            // baseline. (The old path snapped each glyph's top-left independently. Glyphs with different vertical
+            // bearings then rounded to different device rows, so letters of one word rode at different heights - a
+            // per-glyph baseline wave - whenever the effective scale was fractional, e.g. a DpiFont drawn at a Theme
+            // scale below 1.) Snapping is disarmed (a no-op) outside a point-space UiViewport.
+            (float penX, float baseline) = SnapTextOrigin(position.X, position.Y + font.Ascent * scale);
             for (int i = 0; i < text.Length; i++)
             {
                 // Shared resolution with SpriteFont.Measure: unbaked codepoints draw as the visible
@@ -591,19 +595,46 @@ void main() {
                 if (g == null) continue;
                 if (g.W > 0 && g.H > 0)
                 {
-                    float gx = penX + g.XOff * k, gy = baseline + g.YOff * k;
-                    if (snap)
-                    {
-                        gx = ViewportMath.SnapToDevicePixel(gx, _deviceScale.X, _deviceOffset.X);
-                        gy = ViewportMath.SnapToDevicePixel(gy, _deviceScale.Y, _deviceOffset.Y);
-                    }
-                    var dest = new Vector4(gx, gy, g.W * k, g.H * k);
+                    // Placement mirrored by DebugGlyphDests (test seam) - keep the two in lockstep.
+                    var dest = new Vector4(penX + g.XOff * k, baseline + g.YOff * k, g.W * k, g.H * k);
                     var uv = new Vector4((float)g.Ax / font.AtlasW, (float)g.Ay / font.AtlasH,
                                          (float)(g.Ax + g.W) / font.AtlasW, (float)(g.Ay + g.H) / font.AtlasH);
                     Draw(font.Atlas, dest, uv, color);
                 }
                 penX += g.Advance * scale;
             }
+        }
+
+        // Snap a text block's origin (pen X + ascent baseline Y) to whole device pixels for a point-space UI pass,
+        // so every glyph of the block shares one snapped baseline (no per-glyph wave) while the block lands crisply
+        // on the grid. Disarmed - returns the input unchanged - when snapping is off (_deviceScale.X <= 0, i.e. any
+        // Begin that is not a point-space UiViewport). Instance wrapper over the pure static so it is headless-testable.
+        (float PenX, float Baseline) SnapTextOrigin(float penX, float baseline)
+            => SnapTextOrigin(penX, baseline, _deviceScale, _deviceOffset);
+
+        internal static (float PenX, float Baseline) SnapTextOrigin(float penX, float baseline, Vector2 deviceScale, Vector2 deviceOffset)
+            => deviceScale.X <= 0f
+                ? (penX, baseline)
+                : (ViewportMath.SnapToDevicePixel(penX, deviceScale.X, deviceOffset.X),
+                   ViewportMath.SnapToDevicePixel(baseline, deviceScale.Y, deviceOffset.Y));
+
+        // Test seam: the glyph destination rects DrawString would emit for <paramref name="text"/>, in submission
+        // order, under this pass's active snapping. Mirrors DrawString's placement (shares SnapTextOrigin) so a test
+        // can assert baseline coherence on the real emitted quads without reading back GPU vertex buffers.
+        internal System.Collections.Generic.List<Vector4> DebugGlyphDests(SpriteFont font, string text, Vector2 position, float scale)
+        {
+            float k = font.RenderScale * scale;
+            (float penX, float baseline) = SnapTextOrigin(position.X, position.Y + font.Ascent * scale);
+            var dests = new System.Collections.Generic.List<Vector4>(text.Length);
+            for (int i = 0; i < text.Length; i++)
+            {
+                GlyphInfo? g = SpriteFont.ResolveGlyph(font.Glyphs, text, ref i);
+                if (g == null) continue;
+                if (g.W > 0 && g.H > 0)
+                    dests.Add(new Vector4(penX + g.XOff * k, baseline + g.YOff * k, g.W * k, g.H * k));
+                penX += g.Advance * scale;
+            }
+            return dests;
         }
 
         /// <summary>Flush the current batch.</summary>

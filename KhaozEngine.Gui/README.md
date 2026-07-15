@@ -332,8 +332,9 @@ speed.Draw(batch, white, font);
 to whole device pixels, so rounded/box borders render as a uniform 1px on HiDPI and at non-integer window
 scales instead of straddling a fractional device-pixel phase (the old "thicker on one side" artifact). The
 snapping is a no-op outside a point-space pass, so screen/design/world rendering is byte-identical and a
-borderless style stays borderless. Text drawn through the batch in that pass also snaps its glyph origins
-(pair with a `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
+borderless style stays borderless. Text drawn through the batch in that pass also snaps its origin (the whole
+block's ascent baseline, once per `DrawString`, so every glyph of a word stays on one baseline - pair with a
+`DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
 
 Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
 math is headless-testable); clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware). Ported

@@ -1938,13 +1938,20 @@ and when an ascent signal cuts to 0 at a crest the bridge eases the last sub-per
 one-frame snap) while a mid-stair STOP, a fall, or a descent between-riser tick still hard-cut. A fall, jump, teleport, prop
 platform, or elevator is never stamped with a climb rate (`ClimbRate == 0`), so it takes the raw branch BY CONSTRUCTION
 - render-Y is the true feet-Y, nothing to carry past the floor at touchdown (a ballistic fall can never bury a landing
-character below the floor). The smoothed height is baked into `CharacterPose.World` and exposed as
-`CharacterPose.RenderPosition` - **point a follow camera at `p.RenderPosition`** (not the raw predicted position) so the
-camera glides with the model (both the glide and the isolated-step offset ride `RenderPosition`, so the camera eases with
-the MESH, not the raw feet - intentional for third person). It is byte-identity on FLAT ground (`ClimbRate == 0`, so `RenderPosition == the sample
-position`), and renders raw on a jump, fall, swim, or a LARGE gap over `CharacterAnimatorTuning.SlopeGlideSnapDistance`,
-so those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y). Feed the sim's
-`ClimbRate` through your sample loop (see `e.ClimbRate` above); a position-only sample reads 0 (no glide).
+character below the floor). The smoothed feet height is baked into `CharacterPose.World` (the DRAW transform) and
+surfaced as `CharacterPose.RenderPosition` (`== World.Translation`, the drawn FEET). **Point a follow camera at
+`p.CameraTarget(capsuleHalfHeight)`, NOT `p.RenderPosition`.** The sample is feet-anchored (`feet = centre -
+capsuleHalfHeight`, above), so `RenderPosition` sits at the feet - targeting it directly parks the camera a full
+half-height low, at floor level. `CameraTarget` lifts the glide height back to the capsule CENTRE (the same anchor a
+raw-physics follow camera targets, e.g. `WorldClient.LocalRenderState.Position`), keeping the stair glide so the camera
+rises/falls smoothly with a climb. It also uses the glide height WITHOUT the isolated-step MESH offset: that step-event
+ease is draw-only (it keeps the MODEL from popping on a curb), and letting it move the camera would dip the look-at on
+every doorstep - so the camera tracks the continuous centre-glide and only the mesh carries the step ease. Both are the
+exact capsule centre on FLAT ground and airborne (glide + step offset are identity there), so target `CameraTarget`
+unconditionally. Rendering is raw on a jump, fall, swim, or a LARGE gap over
+`CharacterAnimatorTuning.SlopeGlideSnapDistance`, so those stay crisp. On by default; `SlopeGlideRate <= 0` disables the
+glide (render-Y is then the raw feet-Y). Feed the sim's `ClimbRate` through your sample loop (see `e.ClimbRate` above).
+A position-only sample reads 0 (no glide).
 
 **No netcode? Read the signal straight off `CharacterController3D`.** The bridge is not netcode-only: a single-player
 room with no `WorldClient`/`EntityRenderState` can still drive it for the canonical glide instead of the Obsolete

@@ -240,14 +240,21 @@ namespace KhaozEngine.Game
     /// retain it.</summary>
     public readonly struct CharacterPose
     {
-        public CharacterPose(long id, Matrix4x4 world, Matrix4x4[] pose, LocomotionState state, bool isLocal)
+        public CharacterPose(long id, Matrix4x4 world, float glideFeetY, Matrix4x4[] pose, LocomotionState state, bool isLocal)
         {
             Id = id;
             World = world;
+            _glideFeetY = glideFeetY;
             Pose = pose;
             State = state;
             IsLocal = isLocal;
         }
+
+        // The stair-glide-smoothed feet-Y WITHOUT the discrete-step MESH offset (SmoothedY, not drawnFeetY). The DRAW
+        // (World / RenderPosition) carries the step-event mesh offset so an isolated riser eases the drawn model. The
+        // CAMERA must not inherit that mesh-only smoothing (it would dip the look-at on every curb), so CameraTarget is
+        // built off this glide height instead. Equal to the drawn feet-Y whenever no step offset is active.
+        readonly float _glideFeetY;
 
         /// <summary>The entity key this pose belongs to (matches <see cref="CharacterSample.Id"/>).</summary>
         public long Id { get; }
@@ -262,12 +269,32 @@ namespace KhaozEngine.Game
 
         /// <summary>The presentation position the character is DRAWN at this frame: the sample's X/Z (never smoothed, so
         /// movement stays responsive) with the feet-Y smoothed by the slope-fed stair-glide smoother
-        /// (<see cref="CharacterAnimatorTuning.SlopeGlideRate"/>). Point a follow camera's target at THIS (not the raw
-        /// sample/predicted position) so the camera glides up and down stairs with the model instead of jolting on each
-        /// riser; the drawn model already uses it via <see cref="World"/>. On flat ground and while airborne this equals
-        /// the raw sample position (the smoother is identity there), so a consumer can target it unconditionally. Equal to
-        /// <c>World.Translation</c> by construction (the smoothed translation is baked into <see cref="World"/>).</summary>
+        /// (<see cref="CharacterAnimatorTuning.SlopeGlideRate"/>). This is the DRAW anchor - it sits at whatever the
+        /// sample carried, which for a feet-anchored sample (the standard: <c>feet = centre - capsuleHalfHeight</c>) is
+        /// the FEET. The drawn model already uses it via <see cref="World"/>. On flat ground and while airborne this
+        /// equals the raw sample position (the smoother is identity there). Equal to <c>World.Translation</c> by
+        /// construction (the smoothed translation is baked into <see cref="World"/>).
+        /// <para><b>Do NOT point a follow camera at this directly when the sample is feet-anchored</b> - it drops the
+        /// look-at a full capsule half-height below the character (the camera sits at the feet / floor). Use
+        /// <see cref="CameraTarget"/> instead, which lifts the glide height back to the capsule centre.</para></summary>
         public Vector3 RenderPosition => World.Translation;
+
+        /// <summary>The point to aim a third-person follow camera at: the stair-glide-smoothed feet height lifted by
+        /// <paramref name="capsuleHalfHeight"/> so the look-at sits at the character's CENTRE, not the feet. The bridge
+        /// is fed feet-anchored samples (<c>feet = centre - capsuleHalfHeight</c>) so the mesh draws with its feet on the
+        /// ground via <see cref="World"/>; <see cref="RenderPosition"/> therefore sits at the feet, which is a full
+        /// half-height too low to frame the character. Adding the half-height back reconstructs the smoothed centre - the
+        /// same anchor a raw-physics follow camera targets (e.g. <c>WorldClient.LocalRenderState.Position</c>, the capsule
+        /// centre) - while keeping the stair GLIDE (so the camera rises/falls smoothly on stairs instead of jolting per
+        /// riser). Pass the same half-height used to build the sample.
+        /// <para>Unlike <see cref="RenderPosition"/>, this uses the glide height WITHOUT the discrete-step MESH offset
+        /// (<see cref="CharacterAnimatorTuning.StepSmoothingRate"/>): that step-event ease is a draw-only smoothing that
+        /// keeps the MODEL from popping on an isolated riser, and letting it move the camera would dip the look-at on
+        /// every curb/doorstep. So the camera tracks the continuous centre-glide and the mesh alone carries the step
+        /// ease. On flat ground and airborne this is exactly the capsule centre (glide + step offset are both identity
+        /// there), so a consumer can target it unconditionally.</para></summary>
+        public Vector3 CameraTarget(float capsuleHalfHeight) =>
+            new(World.Translation.X, _glideFeetY + capsuleHalfHeight, World.Translation.Z);
 
         /// <summary>Joint-WORLD bone palette for <c>Scene3D.DrawSkinned</c> (a <c>Matrix4x4[]</c>, so it passes
         /// straight to the span-taking draw call - same type as <see cref="AnimatedCharacter.Pose"/>). Transient (see
@@ -373,8 +400,9 @@ namespace KhaozEngine.Game
         /// stamps, never a position-delta estimate): <see cref="ReplicatedCharacterAnimators.Update"/> feeds that exact
         /// signed rate forward (<c>SmoothedY += ClimbRate * dt</c>, lag-free ramp tracking) and then critically damps
         /// SmoothedY toward the true feet-Y at THIS rate to absorb quantization drift and settle onto real tread tops. The
-        /// smoothed height is baked into <see cref="CharacterPose.World"/> and exposed as
-        /// <see cref="CharacterPose.RenderPosition"/> (point a follow camera at that).
+        /// smoothed height is baked into <see cref="CharacterPose.World"/> (the drawn feet) and, lifted to the capsule
+        /// centre, exposed as <see cref="CharacterPose.CameraTarget"/> (point a follow camera at that, NOT the
+        /// feet-anchored <see cref="CharacterPose.RenderPosition"/>).
         /// <para>Default 5 (rad/s). Derivation: it is now the ONLY smoothing term (the feed-forward is the exact sim rate,
         /// so the damp only has to absorb quantization drift and the remote interpolation-vs-quantized-rate mismatch, not a
         /// per-riser sawtooth), and it still settles a mid-stair rest offset onto the tread in about 0.8 s. On flat ground
@@ -735,7 +763,7 @@ namespace KhaozEngine.Game
                                       * Matrix4x4.CreateTranslation(s.Position.X, feetY, s.Position.Z);
                     }
 
-                    _live.Add(new CharacterPose(s.Id, downedWorld, e.Character.Pose, e.Character.State, s.IsLocal));
+                    _live.Add(new CharacterPose(s.Id, downedWorld, feetY, e.Character.Pose, e.Character.State, s.IsLocal));
                     e.PrevPosition = s.Position;
                     e.HasPrev = true;
                     continue;   // skip the locomotion path entirely while downed
@@ -928,7 +956,9 @@ namespace KhaozEngine.Game
                 Matrix4x4 world = Matrix4x4.CreateScale(_tuning.Scale)
                                   * Matrix4x4.CreateRotationY(e.Yaw)
                                   * Matrix4x4.CreateTranslation(s.Position.X, drawnFeetY, s.Position.Z);
-                _live.Add(new CharacterPose(s.Id, world, e.Character.Pose, e.Character.State, s.IsLocal));
+                // Draw feet (drawnFeetY) carry the step-event mesh offset. The camera anchor uses the glide height
+                // (SmoothedY) alone so an isolated riser's ease never dips the follow camera (see CharacterPose.CameraTarget).
+                _live.Add(new CharacterPose(s.Id, world, e.SmoothedY, e.Character.Pose, e.Character.State, s.IsLocal));
 
                 e.PrevPosition = s.Position;
                 e.HasPrev = true;

@@ -105,8 +105,12 @@ it feeds that exact rate forward (`SmoothedY += ClimbRate * dt`, lag-free) and c
 at `CharacterAnimatorTuning.SlopeGlideRate` (rad/s, default 5) to correct drift and settle onto real treads. The
 exported rate is the sim's SMOOTHED ACHIEVED rise (not the commanded rate), so the drawn feet track the true feet with
 ~0 sustained hover and a crest eases the last sub-perceptual residual onto the top tread with no one-frame snap. The
-smoothed height is baked into `CharacterPose.World` and exposed as **`CharacterPose.RenderPosition`** - point a follow
-camera at that (not the raw predicted position) and the model glides up stairs to match. It is byte-identity on FLAT
+smoothed feet height is baked into `CharacterPose.World` (the DRAW transform) and surfaced as
+**`CharacterPose.RenderPosition`** (`== World.Translation`, the drawn FEET). Point a follow camera at
+**`CharacterPose.CameraTarget(capsuleHalfHeight)`**, NOT `RenderPosition`: the sample is feet-anchored, so
+`RenderPosition` sits a full half-height too low (it parks the camera at floor level); `CameraTarget` lifts the glide to
+the capsule CENTRE (the anchor a raw-physics camera targets, e.g. `WorldClient.LocalRenderState.Position`) so the camera
+glides up stairs at head-height. It is byte-identity on FLAT
 ground (`ClimbRate == 0`, so render-Y equals the sample Y byte-for-byte), and renders raw on a jump / fall / swim / a
 LARGE gap beyond `SlopeGlideSnapDistance` (never stamped with a climb rate, so those stay crisp BY CONSTRUCTION). A
 SHORT teleport under that gap is height-identical to a stair riser, so cut it with **`SnapRenderHeight(id)`** wired to
@@ -120,9 +124,10 @@ step impulse (`MoveState.StepDeltaY`); the local client accumulates it EXACTLY O
 `ClientPrediction.StepCumulativeY` (never re-counted on a reconcile replay), surfaced on `CharacterSample.StepCumulativeY`;
 the bridge diffs it to detect a step, FREEZES the mesh at its previous drawn height, and decays that freeze offset
 (subtracted from the drawn feet) exponentially at **`CharacterAnimatorTuning.StepSmoothingRate`** (1/s, default 30 -
-~120 ms to sub-perceptual). The mesh starts at the pre-step height and eases to the true feet. Like the glide, this
-offset rides `CharacterPose.RenderPosition` (it is baked into the drawn feet), so a follow camera pointed there EASES
-WITH THE MESH, not the raw feet - intentional for third person. The freeze (not a raw-impulse
+~120 ms to sub-perceptual). The mesh starts at the pre-step height and eases to the true feet. This offset is a
+MESH-only smoothing: it rides `CharacterPose.RenderPosition` / `World` (baked into the drawn feet) but NOT
+`CharacterPose.CameraTarget`, which uses the continuous glide height alone - so the model eases over a curb while the
+follow camera stays locked to the character's true centre (a step never dips the look-at). The freeze (not a raw-impulse
 add) absorbs the inter-tick-interpolation phase mismatch so the mesh never overshoots past the pre-step. Composes with the
 glide by construction (the sim stamps EITHER `ClimbRate` OR `StepDeltaY` per tick, never both). Local-only (0 on remotes,
 whose singles ride position interpolation); a teleport / `SnapRenderHeight` / a gap over `SlopeGlideSnapDistance` zeroes it;

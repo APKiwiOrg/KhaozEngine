@@ -22,10 +22,12 @@ namespace KhaozEngine.Tests.Dungeon
     //
     // This is an end-to-end pin of that wiring on the REAL generated dungeon geometry (DungeonStamp.Build's stamped
     // stair-step statics, not a synthetic staircase): (1) the new CharacterController3D.ClimbRate seam actually fires
-    // during a real ascent (proves the property reads the sim's live state, not a stale default), and (2) the bridge's
-    // RenderPosition.Y - what the drawn model and a follow camera target - rises to the top monotonically and rate-
+    // during a real ascent (proves the property reads the sim's live state, not a stale default), (2) the bridge's
+    // RenderPosition.Y - what the drawn model is drawn at (the FEET) - rises to the top monotonically and rate-
     // bounded from that signal, mirroring StairAscentFeelTests' avatar-composition pins but for the bridge instead of
-    // CharacterAvatar. GPU-free: a one-bone parked animator, no Scene3D/mesh involved (RoomDungeon's own Scene3D/GPU
+    // CharacterAvatar, and (3) the follow-camera target the rooms feed (CharacterPose.CameraTarget, the glide lifted to
+    // the capsule CENTRE) tracks the centre and NOT the feet-anchored RenderPosition - the regression the room ports
+    // shipped. GPU-free: a one-bone parked animator, no Scene3D/mesh involved (RoomDungeon's own Scene3D/GPU
     // wiring is not headlessly testable and is intentionally out of scope here).
     public class DungeonStairSignalGlideTests
     {
@@ -175,7 +177,7 @@ namespace KhaozEngine.Tests.Dungeon
 
         const float CharacterController3D_MaxStepClimbSpeedDefault = 3.5f;
 
-        // (2) The bridge: fed that exact signal, RenderPosition.Y (what the drawn model and a follow camera target)
+        // (2) The bridge: fed that exact signal, RenderPosition.Y (what the drawn model is drawn at, the feet)
         // reaches the top, staying rate-bounded (never a jump beyond the paced climb speed) through the ascent -
         // mirrors StairAscentFeelTests.Avatar_RenderY_IsMonotoneAndRateBounded_OnRealStairs, but for the bridge.
         [Fact]
@@ -211,6 +213,93 @@ namespace KhaozEngine.Tests.Dungeon
                 "a raw per-riser pop slipped through the glide.");
             Assert.True(worstDrop >= -0.05f,
                 $"RenderPosition.Y dropped {worstDrop:F5} m in a single grounded tick during the ascent - not a smooth glide.");
+        }
+
+        // Drive the room's wiring through a STILL phase then the climb, collecting per grounded tick: the physics
+        // capsule CENTRE Y, the follow-camera target Y the room feeds the camera (CharacterPose.CameraTarget), and
+        // the RAW RenderPosition.Y (the feet-anchored draw height a naive consumer would target). Mirrors
+        // RoomDungeon.OnUpdate exactly (feet sample, ClimbRate/StepCumulativeY fed through).
+        static (List<float> centreY, List<float> camTargetY, List<float> rawRenderY, List<bool> grounded, int stillTicks)
+            DriveStillThenClimb(int stillTicks = 30, int climbTicks = 600)
+        {
+            var (world, start, axisYaw, lowerFloorY, upperFloorY) = BuildClimb();
+            _ = upperFloorY;
+            using (world as IDisposable)
+            {
+                var controller = new CharacterController3D { CapsuleHalfHeight = CapsuleHalfHeight, CapsuleRadius = CapsuleRadius };
+                controller.SetXZ(start.X, start.Z);
+                controller.Update(InputState.Empty, 0f, axisYaw, (x, z) => lowerFloorY, (x, z) => Vector3.UnitY, world);
+
+                ReplicatedCharacterAnimators bridge = NewBridge();
+                var samples = new List<CharacterSample>(1);
+                float stepCumulativeY = 0f;
+
+                var centreY = new List<float>();
+                var camTargetY = new List<float>();
+                var rawRenderY = new List<float>();
+                var grounded = new List<bool>();
+
+                void Tick(InputState input)
+                {
+                    controller.Update(input, Dt, axisYaw, (x, z) => lowerFloorY, (x, z) => Vector3.UnitY, world);
+                    stepCumulativeY += controller.StepDeltaY;
+                    Vector3 feet = new(controller.Position.X, controller.Position.Y - CapsuleHalfHeight, controller.Position.Z);
+                    var sample = new CharacterSample(0L, feet, isLocal: true, grounded: controller.Grounded,
+                        verticalVelocity: controller.VerticalVelocity, planarSpeed: 6f, swimming: controller.Swimming,
+                        climbRate: controller.ClimbRate, stepCumulativeY: stepCumulativeY);
+                    samples.Clear(); samples.Add(sample);
+                    bridge.Update(samples, Dt);
+                    CharacterPose pose = bridge.Live[0];
+                    centreY.Add(controller.Position.Y);
+                    camTargetY.Add(pose.CameraTarget(CapsuleHalfHeight).Y);
+                    rawRenderY.Add(pose.RenderPosition.Y);
+                    grounded.Add(controller.Grounded);
+                }
+
+                for (int i = 0; i < stillTicks; i++) Tick(InputState.Empty);
+                for (int i = 0; i < climbTicks; i++) Tick(Keys(Key.W));
+                return (centreY, camTargetY, rawRenderY, grounded, stillTicks);
+            }
+        }
+
+        // (3) The follow-camera target the two local-feed rooms (RoomDungeon, Room3D) point the camera at must track
+        // the capsule CENTRE - the same anchor RoomNet targets via WorldClient.LocalRenderState.Position - NOT the
+        // feet-anchored RenderPosition. Pointing a follow camera at the raw RenderPosition (the DRAW feet) drops the
+        // look-at a full CapsuleHalfHeight below the character every frame, which is the "camera at floor level /
+        // inside the avatar's foot" regression the v10.105/10.107 room ports shipped. DungeonStairSignalGlideTests'
+        // other two facts only pin that RenderPosition.Y reaches the feet-top and is rate-bounded - they never
+        // compared it to the centre a camera needs, so they passed while the room was visibly broken. This pins that gap.
+        [Fact]
+        public void FollowCameraTarget_TracksCapsuleCentre_NotFeet()
+        {
+            var (centreY, camTargetY, rawRenderY, grounded, stillTicks) = DriveStillThenClimb();
+
+            // Standing still on flat ground the camera target is the capsule centre EXACTLY (glide is identity there),
+            // while the raw feet-anchored RenderPosition sits a full half-height below it - the trap the rooms fell into.
+            int last = stillTicks - 1;
+            Assert.Equal(centreY[last], camTargetY[last], 3);
+            Assert.True(MathF.Abs(rawRenderY[last] - (centreY[last] - CapsuleHalfHeight)) < 1e-3f,
+                $"raw RenderPosition.Y {rawRenderY[last]:F3} is not the feet (centre {centreY[last]:F3} - halfHeight): the sample is feet-anchored.");
+            Assert.True(centreY[last] - rawRenderY[last] > CapsuleHalfHeight - 1e-3f,
+                "raw RenderPosition should be ~CapsuleHalfHeight below the centre standing still - the reason it is the wrong camera target.");
+
+            // Across the whole run (still + climb, grounded ticks) the camera target stays within a tight band of the
+            // capsule centre (the glide lags by a few cm through the paced ascent), whereas the raw RenderPosition
+            // stays ~CapsuleHalfHeight below it the entire time. So the camera target is the centre-glide, not the feet.
+            float worstCamErr = 0f, worstRawErr = 0f;
+            for (int i = 0; i < centreY.Count; i++)
+            {
+                if (!grounded[i]) continue;
+                worstCamErr = MathF.Max(worstCamErr, MathF.Abs(camTargetY[i] - centreY[i]));
+                worstRawErr = MathF.Max(worstRawErr, MathF.Abs(rawRenderY[i] - centreY[i]));
+            }
+            // The camera tracks the centre-glide tightly. The only measurable lag is the smoother's settle at the very
+            // top of a run (the last risers disengage the climb feed-forward and the damp eases onto the tread), well
+            // under a quarter metre and an upward ease, never the ~0.9 m floor-drop the raw feet gives.
+            Assert.True(worstCamErr < 0.25f,
+                $"camera target strayed {worstCamErr:F3} m from the capsule centre - it should track the centre-glide, not the feet.");
+            Assert.True(worstRawErr > CapsuleHalfHeight - 0.05f,
+                $"raw RenderPosition stayed only {worstRawErr:F3} m from the centre - expected ~{CapsuleHalfHeight:F2} m (the feet offset), confirming it is the wrong camera anchor.");
         }
     }
 }

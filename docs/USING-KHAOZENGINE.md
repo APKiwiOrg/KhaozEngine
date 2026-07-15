@@ -1525,6 +1525,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       **peter-panning** (the shadow detaches from the caster's feet). The slope bias adds extra offset on
       steeply-lit surfaces. If you see acne, raise the constant bias first, then the slope bias; if shadows float off
       their casters, lower them. A tighter `ShadowFocusRadius` (bigger texels per world unit) tolerates less bias.
+    - **Depth-pass dirty-skip** (automatic, presentation-neutral): the 2048^2 depth map persists across frames, so the
+      depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - the fitted light
+      matrix (which folds in the light direction, focus, and camera), the rigid caster set + world transforms, the map
+      resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
+      forces a re-render). An unchanged static scene reuses the prior map and skips every caster draw, so a mostly-static
+      view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw calls to
+      `LastFrameStats`; read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame; always `false` when the tier is
+      not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is still applied
+      on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the map with the
+      matrix it was baked against.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a
@@ -1727,12 +1737,14 @@ this into "per-instance vertex data is broken on Metal", which is NOT what the b
 vertex ATTRIBUTES consumed directly by the shader (no second buffer, no indexing) are fine and used
 in production today - `ModelRenderer`'s rigid instanced mesh/model/terrain-splat draws bind the
 per-instance `Model`/`Tint`/`Emissive`/`SpecParams` stream as real vertex attributes
-(`instanceStepRate: 1`), proven by its multi-instance tests and every instancing golden. So: reach
-for real per-instance vertex attributes freely for anything instanced. Never have a vertex shader
-read a separate buffer at an index that came from a per-instance attribute (a bone palette, a
-per-instance texture-array layer picked by instance ID, etc.) - route that data through a
-dynamic-offset UBO slot per draw instead (the pattern `OverlayMeshRenderer` / `GroundDecalRenderer`
-use), or accept one draw call per instance like the CPU-skinned path does.
+(`instanceStepRate: 1`), proven by its multi-instance tests and every instancing golden, and
+`GroundDecalRenderer` batches N decals into one instanced draw the same way (each decal's shape /
+colour / footprint-rect params are a per-instance attribute consumed directly, then passed to the
+fragment stage). So: reach for real per-instance vertex attributes freely for anything instanced.
+Never have a vertex shader read a separate buffer at an index that came from a per-instance attribute
+(a bone palette, a per-instance texture-array layer picked by instance ID, etc.) - route that data
+through a dynamic-offset UBO slot per draw instead (the pattern `OverlayMeshRenderer` uses), or accept
+one draw call per instance like the CPU-skinned path does.
 
 **Determinism: presentation only.** Bone matrices and `DrawSkinned` must never feed simulation,
 RNG, or netcode. Skinning is a render-time visual; drive bones from already-computed gameplay
@@ -2162,6 +2174,14 @@ Shapes: Circle, Ring, Beam, Cone, Arc. Styles: Generic / Fire / Poison presets, 
 [OutlinePulse | FillSweep | ColorRamp | ImpactFlash], blend). The 3D path paints onto the ground/terrain
 via the depth buffer and is occluded by meshes. (EdgeThickness is authored in 2D pixels; the 3D ground
 path derives its own world-space edge from the decal size.)
+
+The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
+mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same
+blend are coalesced into runs and each run is one instanced draw (submission order preserved, so overlapping
+decals still composite correctly); each decal rasterizes a screen-space quad covering only its projected ground
+footprint instead of a full-viewport pass, so fill cost scales with decal area rather than viewport area times
+decal count. This is a pure efficiency change - the painted pixels are identical - and needs no API change:
+just queue decals as before.
 
 ---
 

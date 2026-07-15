@@ -1057,34 +1057,61 @@ void main() {
         // ---- Ground decal: paint an analytic danger-zone shape onto the surface under each pixel. Reconstructs the
         //      surface world position from the sampled linear depth (DepthTex) via InvViewProj, evaluates the shape
         //      SDF in shape-local space on the XZ plane, gates by a Y-band around the ground height (so it conforms
-        //      to terrain but does not climb walls), and blends fill+outline with an fwidth AA edge. One draw per
-        //      decal (per-decal UBO). Renders into ColorTex (ColorOnlyFB) before the post chain, with alpha or
-        //      additive blend. ----
-        // Fullscreen triangle at the FAR plane (z=1). The ground-decal pass renders this with the scene
-        // depth-stencil bound read-only and a Greater depth test, so a fragment passes only where the stored
-        // depth is nearer than the far plane - i.e. only where scene geometry was drawn. Background pixels
-        // (cleared to the far plane) fail the test and are never shaded, independent of the background color.
+        //      to terrain but does not climb walls), and blends fill+outline with an fwidth AA edge. Renders into
+        //      ColorTex (ColorOnlyFB) before the post chain, with alpha or additive blend. ----
+        // BATCHED + FOOTPRINT-BOUNDED: one INSTANCED draw paints N decals of one blend (GroundDecalRenderer coalesces
+        // consecutive same-blend decals into runs, preserving submission order so overlapping decals still composite
+        // correctly). Each per-decal parameter moves from a per-draw UBO slot to a per-instance vertex ATTRIBUTE,
+        // consumed directly (positioning the quad, then passed to the fragment stage) - never used to index a buffer,
+        // the Metal-safe instancing invariant (ModelVert's IModel*/ITint are the production proof). Instead of a
+        // fullscreen triangle per decal, each instance emits a screen-space QUAD covering the decal's projected ground
+        // footprint (IScreenRect, computed CPU-side), at the FAR plane (z=1). The pass renders with the scene
+        // depth-stencil bound read-only and a Greater depth test, so a fragment passes only where the stored depth is
+        // nearer than the far plane - i.e. only on scene geometry (background at the cleared far plane fails). The
+        // bounded quad only shrinks the RASTERIZED area (the fullscreen version discarded every pixel outside the
+        // footprint anyway), so the shaded output is identical while fill scales with decal area, not viewport area.
         public const string DecalVert = @"#version 450
-layout(location=0) out vec2 vUv;
+layout(location=0) in vec4 IScreenRect;  // per-instance ndc footprint rect (minX, minY, maxX, maxY)
+layout(location=1) in vec4 ICenter;      // xyz world center, w = rotation
+layout(location=2) in vec4 ISize;
+layout(location=3) in vec4 IFill;
+layout(location=4) in vec4 IOutline;
+layout(location=5) in vec4 IParams;
+layout(location=6) in vec4 IGate;
+layout(location=0) out vec4 vCenter;
+layout(location=1) out vec4 vSize;
+layout(location=2) out vec4 vFill;
+layout(location=3) out vec4 vOutline;
+layout(location=4) out vec4 vParams;
+layout(location=5) out vec4 vGate;
 void main() {
-    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
-    vUv = p;
-    gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0);
+    // Two-triangle quad (gl_VertexIndex 0..5) spanning the instance's NDC footprint rect. Each per-instance attribute
+    // is identical across the quad's six vertices, so the smooth varyings deliver the exact per-instance value to the
+    // fragment stage (the same constant-across-the-primitive path ModelVert's per-instance outputs rely on).
+    float u = (gl_VertexIndex == 1 || gl_VertexIndex == 3 || gl_VertexIndex == 4) ? 1.0 : 0.0;
+    float v = (gl_VertexIndex == 2 || gl_VertexIndex == 4 || gl_VertexIndex == 5) ? 1.0 : 0.0;
+    vec2 ndc = mix(IScreenRect.xy, IScreenRect.zw, vec2(u, v));
+    gl_Position = vec4(ndc, 1.0, 1.0);   // far plane (z=1): the Greater read-only depth test passes over geometry only
+    vCenter = ICenter;
+    vSize = ISize;
+    vFill = IFill;
+    vOutline = IOutline;
+    vParams = IParams;
+    vGate = IGate;
 }";
 
         public const string DecalFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = linear depth (single-channel R32F)
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Decal {
-    mat4 InvViewProj;
-    vec4 Center;    // xyz world center, w = rotation (radians about +Y)
-    vec4 Size;      // per-shape params (see GroundDecal.Size)
-    vec4 Fill;      // rgb, a = fill alpha (already opacity-scaled)
-    vec4 Outline;   // rgb, a = outline alpha
-    vec4 Params;    // x=edgeThickness, y=fillFraction, z=flashAdd, w=shapeIndex
-    vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=unused
+layout(set=0, binding=2) uniform Frame {
+    mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
 };
-layout(location=0) in vec2 vUv;
+layout(location=0) in vec4 Center;    // xyz world center, w = rotation (radians about +Y)
+layout(location=1) in vec4 Size;      // per-shape params (see GroundDecal.Size)
+layout(location=2) in vec4 Fill;      // rgb, a = fill alpha (already opacity-scaled)
+layout(location=3) in vec4 Outline;   // rgb, a = outline alpha
+layout(location=4) in vec4 Params;    // x=edgeThickness, y=fillFraction, z=flashAdd, w=shapeIndex
+layout(location=5) in vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=unused
 layout(location=0) out vec4 oColor;
 
 // 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).

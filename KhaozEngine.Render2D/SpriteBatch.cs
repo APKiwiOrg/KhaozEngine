@@ -103,6 +103,13 @@ void main() {
         // working set. A monotonic frame counter (NewFrame); _texLastUsedFrame holds only textures still in-window.
         long _frame;
         readonly Dictionary<IGpuTexture, long> _texLastUsedFrame = new();
+
+        // Always-on per-frame draw counters (quads/draw-calls/flushes/texture-switches/vertex-bytes). Plain
+        // increments in the emit + flush path, reset each NewFrame, exposed via FrameStats after the frame's draws.
+        // Zero allocation and negligible cost, so it stays on unconditionally. _lastBoundTex tracks the previously
+        // bound texture ACROSS flushes within a frame so a texture switch is a real bind change, not a per-run count.
+        RenderFrameStats _stats;
+        IGpuTexture? _lastBoundTex;
         /// <summary>A (texture,sampler) set unused for this many frames is disposed (recreated on next draw). ~10s
         /// at 60fps. Settable for tests.</summary>
         internal int SetEvictAfterFrames = 600;
@@ -276,8 +283,20 @@ void main() {
         {
             _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0;
             _frame++;
+            _stats.Reset();
+            _lastBoundTex = null;
             EvictStaleSets();
         }
+
+        /// <summary>
+        /// This frame's accumulated 2D draw counters (quads, draw calls, flushes, texture switches, and vertex
+        /// upload bytes). Reset at <see cref="NewFrame"/> and populated as the frame's draws flush, so read it after
+        /// the last <see cref="End"/> of the frame. Always on (plain increments, no allocation), so it needs no
+        /// enable flag. The 3D-only fields (<see cref="RenderFrameStats.Instances"/>,
+        /// <see cref="RenderFrameStats.Triangles"/>) stay 0 here. Aggregate this with a 3D scene's stats via
+        /// <see cref="RenderFrameStats.op_Addition"/> for a whole-frame total.
+        /// </summary>
+        public RenderFrameStats FrameStats => _stats;
 
         // Dispose the cached resource set(s) for any texture not drawn within SetEvictAfterFrames, so the cache
         // tracks the recent working set instead of growing once per distinct texture ever drawn. Disposing a set
@@ -468,6 +487,8 @@ void main() {
             V vbl = new V { Pos = bl, Uv = uBL, Color = colorBottom, Local = localBL, Shape = shape, Mode = mode };
             _runs.Add(key, vtl); _runs.Add(key, vtr); _runs.Add(key, vbr);
             _runs.Add(key, vtl); _runs.Add(key, vbr); _runs.Add(key, vbl);
+            _stats.Quads++;
+            _stats.Triangles += 2;   // two triangles per quad
         }
 
         /// <summary>The four rect-local corner offsets (TL, TR, BR, BL) from the centre of a w x h rect. Pure / headless.</summary>
@@ -557,6 +578,7 @@ void main() {
 
             // A dedicated buffer for THIS flush so a prior flush's pending Draw isn't overwritten.
             IGpuBuffer vb = AcquireFlushBuffer((uint)totalCount * VertexSizeBytes);
+            _stats.Flushes++;   // a flush that actually issues draws (totalCount > 0)
 
             uint byteOffset = 0;
             uint vertexStart = 0;
@@ -568,9 +590,15 @@ void main() {
                 if (key is AdditiveKey ak) { tex = ak.Tex; pipeline = _additivePipeline; }
                 else { tex = (IGpuTexture)key; pipeline = _pipeline; }
                 _texLastUsedFrame[tex] = _frame;   // stamp for the unused-set eviction sweep in NewFrame
+                // Count a texture switch only on a real bind change (the run coalescer already merged consecutive
+                // same-texture quads, but a flush boundary or an interleaved A-B-A order re-binds), tracked across
+                // flushes within the frame.
+                if (!ReferenceEquals(tex, _lastBoundTex)) { _stats.TextureSwitches++; _lastBoundTex = tex; }
                 _cl.SetPipeline(pipeline);
                 // Upload directly from the run's backing List<V>, no ToArray() copy.
                 _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
+                _stats.DrawCalls++;
+                _stats.BufferUpdateBytes += (long)verts.Count * VertexSizeBytes;
                 var setKey = (tex, _sampler);
                 if (!_sets.TryGetValue(setKey, out var set))
                 {

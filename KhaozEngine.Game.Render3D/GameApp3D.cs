@@ -1,3 +1,5 @@
+using KhaozEngine.Gui;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Windowing;
 
@@ -27,12 +29,32 @@ namespace KhaozEngine.Game
         /// <summary>Submit 3D instances; <see cref="Scene"/>'s <c>Begin()</c> is already called when this runs.</summary>
         protected virtual void OnDraw3D(Scene3D scene) { }
 
-        /// <summary>Drives the 3D pass each frame before the 2D batch.</summary>
+        /// <summary>A 3D app feeds the HUD a per-pass CPU-encode timing section.</summary>
+        protected override bool SupportsPassTimings => true;
+
+        /// <summary>The whole-frame draw stats: the base 2D batch total plus this scene's <see cref="Scene3D.LastFrameStats"/>.</summary>
+        protected override RenderFrameStats CollectFrameStats() => base.CollectFrameStats() + _surface3D.Scene.LastFrameStats;
+
+        /// <summary>Drives the 3D pass each frame before the 2D batch. Couples the scene's per-pass timing to the HUD:
+        /// timing is enabled ONLY while the overlay is visible (so it costs nothing when hidden), and the resulting
+        /// per-pass milliseconds are fed into the HUD's rolling meter after the render.</summary>
         protected override void OnRenderWorld(Frame frame)
         {
+            DiagnosticsHud? hud = Diagnostics;
+            _surface3D.Scene.EnableTiming = hud is { Visible: true };
+
             _surface3D.Scene.Begin();
             OnDraw3D(_surface3D.Scene);
             _surface3D.Render(frame);
+
+            if (_surface3D.Scene.EnableTiming && hud?.PassTimings is { } pt)
+            {
+                Scene3DPassTimingsMs t = _surface3D.Scene.PassTimingsMs;
+                pt.Sample("shadow", t.ShadowDepthMs);
+                pt.Sample("model", t.ModelMs);
+                pt.Sample("transparents", t.TransparentsMs);
+                pt.Sample("post", t.PostMs);
+            }
         }
 
         /// <summary>Dispose the 3D surface before the base tears down the 2D surface + window.</summary>

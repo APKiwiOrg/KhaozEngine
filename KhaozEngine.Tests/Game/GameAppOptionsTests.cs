@@ -29,9 +29,12 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(30.0, o.ResumeGapThresholdSeconds);
             // No Windows taskbar identity by default -> keeps the current process-derived AppUserModelID.
             Assert.Null(o.AppUserModelId);
-            // Present defaults preserve current behaviour: vsync on, no software frame cap (uncapped).
+            // Present defaults: vsync on; the frame cap is the backend-aware FrameCap.Auto (FrameCapHz stays 0 = the
+            // explicit-override knob is unset, so FrameCap governs), and the background throttle uses the ON default.
             Assert.Equal(PresentMode.Vsync, o.PresentMode);
             Assert.Equal(0, o.FrameCapHz);
+            Assert.True(o.FrameCap.IsAuto);
+            Assert.Null(o.BackgroundThrottle); // null => BackgroundThrottlePolicy.Default (ON)
         }
 
         [Fact]

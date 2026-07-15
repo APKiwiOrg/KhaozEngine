@@ -4473,12 +4473,65 @@ Rules for consumers:
 
 ---
 
+## Seeing where the frame goes (turn-key HUD + frame counters)
+
+Every `GameApp` / `GameApp3D` game gets a frame-cost HUD **for free, on by default**, toggled with **F1**. No
+wiring: the base app builds a `KhaozEngine.Gui.DiagnosticsHud`, samples FPS, drives the toggle, and draws the
+panel over the frame. It starts hidden, so the only cost until you press F1 is the always-on counter increments
+(a handful of adds per draw, no allocation). Sections shown: **Performance** (fps, frame ms avg/min/max, managed
+MB), **Draw stats** (the counters below), and - for a 3D app - **Pass timings** (per-pass CPU encode ms, enabled
+only while the panel is visible so it costs nothing when hidden).
+
+Opt out or rebind via `GameAppOptions`:
+
+```csharp
+var options = GameAppOptions.For("MyGame", 1280, 720);
+options.DiagnosticsToggleKey = Key.F3;        // default is F1
+// options.DisableDiagnosticsOverlay = true;  // turn the built-in HUD off entirely
+```
+
+A subclass can reach the HUD through the protected `Diagnostics` property, e.g. to add a **Network** section
+whose source turns on and off with the active screen:
+
+```csharp
+Diagnostics?.SetNetStatsSource(() => (_scenes.Active as RoomNet)?.NetStats);   // null result => no Network row
+```
+
+**Frame draw counters (`RenderFrameStats`).** Each render surface keeps an always-on, allocation-free per-frame
+tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the
+indexed-draw sizes), `BufferUpdateBytes` (per-frame streaming), plus the 2D `Quads` / `Flushes` /
+`TextureSwitches`. Read them after the frame's draws and sum with `+`:
+
+```csharp
+RenderFrameStats twoD  = Surface2D.Batch.FrameStats;     // KhaozEngine.Render2D
+RenderFrameStats threeD = Scene.LastFrameStats;           // KhaozEngine.Render3D (a 3D app)
+RenderFrameStats frame = twoD + threeD;                   // whole-frame total
+// The built-in HUD does exactly this via GameApp.CollectFrameStats and shows it through:
+var section = DiagnosticsOverlay.DrawStatsSection(frame); // KhaozEngine.Gui
+```
+
+`Scene3D.LastFrameStats` counts the geometry passes exactly (rigid instanced, terrain splat, CPU-skinned, and
+the shadow-caster depth pass carry precise draw-call / instance / triangle numbers) plus one draw-call increment
+per effect/overlay submission (decals, water, sky, billboards, beams, trails, debug fills/lines). It is
+finalized inside the render pass (like `DrawnInstances` / `PassTimingsMs`), so read it after the scene rendered.
+The fullscreen post-process blits are **not** itemized in the draw-call count - their CPU encode time shows in
+the Pass-timings **post** row instead.
+
+**The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
+pass's commands), **not** true GPU execution time, and Veldrid 4.9.0 exposes no timestamp-query API to measure
+the latter. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
+timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
+blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
+
+---
+
 ## Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)
 
 A reusable in-game telemetry HUD for every game: an F1-toggled corner panel that shows whatever rows the
 game hands it, a frame-time meter, a client network-stats snapshot, and a crash-safe session recorder. The
 widget is content-agnostic - **the game assembles the rows each frame**, so the metric catalog stays
-game-owned; the engine ships populators for the common Performance / Network sections.
+game-owned; the engine ships populators for the common Performance / Network sections. (For most games the
+turn-key HUD above is enough. Reach for this manual path only for custom rows, a recorder, or a bespoke panel.)
 
 The four pieces (`FrameStats`, `TelemetryRecorder`, `ClientNetStats` are in `KhaozEngine.Diagnostics`;
 `DiagnosticsOverlay` + `DiagnosticsOverlayTheme` in `KhaozEngine.Gui`; `WorldClient.NetStats` in

@@ -87,6 +87,16 @@ is empty by default, so a game that only overrides `OnDraw2D` is completely unaf
 `SceneManager` gains `UiViewport`, `UiPointer`, and `DrawUi(SpriteBatch)`, and `GameScene` gains a virtual
 `OnDrawUi(SpriteBatch)`. A scene draws its DPI-aware UI in `OnDrawUi` and hit-tests via `Manager.UiPointer`.
 
+**Turn-key diagnostics HUD** (default ON, F1): `GameApp` / `GameApp3D` wire a `Gui.DiagnosticsHud` automatically -
+an F1-toggled panel showing fps / frame-ms / heap, the frame draw counters (`RenderFrameStats`: draw calls,
+instances, triangles, upload bytes, 2D quads/flushes/tex-switches), and, for a 3D app, per-pass CPU-encode
+timings (`Scene3D.EnableTiming` is coupled to visibility, so it costs nothing while hidden). Hidden by default,
+so the only cost until F1 is the always-on counter increments. `GameAppOptions.DiagnosticsToggleKey` rebinds the
+key (default `Key.F1`) and `GameAppOptions.DisableDiagnosticsOverlay` turns it off. A subclass reaches it through
+the protected `Diagnostics` property (e.g. `Diagnostics?.SetNetStatsSource(...)` for a Network section) and can
+override `CollectFrameStats` / `SupportsPassTimings` (`GameApp3D` already adds the scene's `LastFrameStats` and
+the pass-timing section). See `docs/USING-KHAOZENGINE.md` "Seeing where the frame goes".
+
 **Boot / startup screen** (the `Boot/` folder): a turn-key instant-on startup experience. Push `BootScreen` as
 the FIRST scene and it shows a progress bar in the first frames, then runs a staged `BootPipeline` while the bar
 advances (update check + apply, server-status min-version gate, then the game's own asset-warm-up steps), and

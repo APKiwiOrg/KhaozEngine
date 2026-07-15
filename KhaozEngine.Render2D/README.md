@@ -5,7 +5,9 @@
 - `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs. `Begin` overloads for
   screen / `Camera2D` (world) / `IDesignViewport` (design) space, each with an optional `SamplerMode`
   (`Linear` / `Point`) and an optional `Matrix4x4` model transform (tilt/scale a composed group as one).
-  `SetScissor`/`ClearScissor` DPI-aware clipping.
+  `SetScissor`/`ClearScissor` DPI-aware clipping. `FrameStats` exposes always-on per-frame draw counters
+  (quads, draw calls, flushes, texture switches, vertex-upload bytes as a `Primitives.RenderFrameStats`), reset
+  each `NewFrame` and read after the frame's draws.
 - `Camera2D` - position/zoom/rotation 2D camera (headless, unit-tested) + the camera-feel layer (follow,
   look-ahead, eased blends, room cameras, parallax).
 - `Texture2D` - GPU texture; PNG load via StbImageSharp.

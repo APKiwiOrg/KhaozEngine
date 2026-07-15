@@ -428,7 +428,7 @@ public sealed class ShardHost
     /// <summary>
     /// The netId -&gt; entity index for <paramref name="world"/> to serve a client snapshot. With a serve epoch (the
     /// per-tick serve pass) the index is cached per world and rebuilt at most once per epoch, so several clients homed
-    /// in one cell share a single scan; without one (a direct call) it is rebuilt unconditionally, since the world may
+    /// in one cell share a single scan. Without one (a direct call) it is rebuilt unconditionally, since the world may
     /// have mutated between direct calls.
     /// </summary>
     private WorldSnapshotIndex ClientIndexFor(World world, long? serveEpoch)

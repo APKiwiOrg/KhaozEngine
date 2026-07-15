@@ -62,7 +62,7 @@ paths.
 (`SyncGhosts` ghost mirroring, `SnapshotForClient` non-delta fallback, `ProcessHandoffs` crossing capture) resolve
 their net-id sets off a per-tick, per-world `WorldSnapshotIndex` (shared across a cell's target neighbours and the
 clients homed in it, keyed to the serve epoch) instead of scanning the whole cell world per call, and encode through
-one reused `SnapshotScratch` stream. The wire is byte-identical to the full-scan path; only the per-call
+one reused `SnapshotScratch` stream. The wire is byte-identical to the full-scan path. Only the per-call
 `O(worldPop)` scan and stream allocation are removed.
 
 Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet

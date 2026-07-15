@@ -180,6 +180,27 @@ namespace KhaozEngine.Game
         /// </summary>
         public int? JobSchedulerDegreeOfParallelism;
 
+        /// <summary>
+        /// Opt IN to a single-instance guard (default <c>false</c> = multiple instances allowed, the historic
+        /// behaviour). When true, <see cref="GameApp"/> claims a named OS mutex at the very top of its
+        /// constructor - BEFORE any window or GPU device is created - keyed by <see cref="SingleInstanceId"/>
+        /// (falling back to <see cref="AppUserModelId"/> when that is null). If a live instance already holds
+        /// the key, this process asks it to come to the foreground, logs one line, and exits cleanly (code 0)
+        /// without ever constructing a window. See <c>KhaozEngine.App.SingleInstanceGuard</c> for the
+        /// mechanism, including how it composes with a forced <c>AppRelaunch.Restart</c> and with the
+        /// auto-updater's post-update relaunch. Setting this true with both <see cref="SingleInstanceId"/> and
+        /// <see cref="AppUserModelId"/> null throws at construction (there is nothing safe to key the guard on).
+        /// </summary>
+        public bool SingleInstance;
+
+        /// <summary>
+        /// Optional explicit key for the single-instance guard (see <see cref="SingleInstance"/>). Falls back
+        /// to <see cref="AppUserModelId"/> when null. Set this to opt into single-instance without also taking
+        /// the Windows taskbar AppUserModelId behaviour, or to use a key distinct from it (e.g. to separate a
+        /// dev build from a release build that would otherwise share an AppUserModelId).
+        /// </summary>
+        public string? SingleInstanceId;
+
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>

@@ -12,6 +12,12 @@
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
+    <!-- GameApp's single-instance guard (GameAppOptions.SingleInstance) uses KhaozEngine.App.SingleInstanceGuard
+         directly and logs through KhaozEngine.Diagnostics.Log; both are already reachable transitively via Gui
+         -> App -> Diagnostics, made direct per the same "used directly, referenced directly" rule as Simulation
+         above. -->
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <!-- Turn-key GameApp.JobScheduler (client-side multi-core ECS scaling): IJobScheduler/ThreadPoolJobScheduler
          live in KhaozEngine.Simulation, a zero-dependency leaf, so this reference is acyclic. Already reachable
          transitively via Foundation -> Ecs -> Simulation for a Game2D/Game3D umbrella consumer. This makes it

@@ -67,6 +67,24 @@ sets the process's explicit Windows AppUserModelID (via `AppWindow.TrySetProcess
 the window, which also stabilises taskbar grouping/pinning. Null (the default) keeps the current behaviour;
 no-op off Windows.
 
+**Single-instance guard** (opt-in). Set `GameAppOptions.SingleInstance = true` to allow only one live
+instance of the game to run at a time. `GameApp`'s constructor claims a named OS mutex (via
+`KhaozEngine.App.SingleInstanceGuard`) at the very top, BEFORE any window or GPU device is created, keyed by
+`GameAppOptions.SingleInstanceId` (falling back to `AppUserModelId` - setting `SingleInstance` with neither
+set throws). If another instance already holds the key, this process asks it to come to the foreground, logs
+one line, and exits cleanly (code 0) without ever constructing a window. The owning instance listens for that
+foreground request on a background thread and drives the actual OS focus call (`AppWindow.RequestForeground`)
+from inside its own `Run` frame loop, since GLFW is not thread-safe for that call off the main thread. See
+`KhaozEngine.App`'s README ("SingleInstanceGuard") for how this composes with a forced `AppRelaunch.Restart`
+and resolves the auto-updater's relaunch-stacking gap (`KhaozEngine.Updates`), so a post-update relaunch that
+lands on a still-running sibling self-resolves instead of stacking a third window.
+
+```csharp
+var options = GameAppOptions.For("Nullwake", 440, 956);
+options.AppUserModelId = "APKiwi.Nullwake";
+options.SingleInstance = true;   // reuses AppUserModelId as the guard key
+```
+
 **WinExe console attach.** Ship the Desktop head as `<OutputType>WinExe</OutputType>` (no stray console window on
 Windows). Because a Windows-subsystem exe has no console, `GameApp` calls `AppWindow.TryAttachParentConsole()` as
 its very first action, attaching the launching terminal's console so `Console.Write*` still shows under

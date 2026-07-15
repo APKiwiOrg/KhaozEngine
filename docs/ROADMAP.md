@@ -106,8 +106,11 @@ Ordered gap list (2026-07-07 feature audit):
    fixed by Scene3D. A unified cross-renderer transparent queue is the eventual answer if a game hits a
    cross-pass ordering artifact. Also unpinned: a golden for mixed additive+alpha textured overlap.
 3. Culling follow-ups (frustum culling shipped in 10.20.0: chunks AABB-tested, instanced props sphere-tested,
-   skinned meshes and the shadow pass deliberately exempt): light-volume culling for the shadow depth pass,
-   and culling for skinned characters if crowd profiling ever shows a win (needs animated-pose-safe bounds).
+   skinned meshes and the shadow pass deliberately exempt): light-volume culling for the shadow depth pass. A
+   coarse spatial culling index (a chunk/region grid, broad-phase before the per-instance sphere/AABB test) once
+   per-frame instance counts grow past linear-scan comfort - today every queued instance and skinned draw is
+   tested against the frustum in one flat pass each frame, fine at current scene sizes but a candidate for a
+   grid/quadtree broad-phase if a much larger streamed world pushes per-frame counts up.
 4. Sky follow-ups (the gradient + key-light-aligned sun disc background shipped in 10.20.0, a screen-space
    formulation that works under both ortho and perspective cameras): a physical point-at-infinity sun
    projection for perspective cameras, and a full cubemap/skybox when water or a specific scene pulls for it.
@@ -193,6 +196,10 @@ Also here, unchanged:
   execution. Revisit when a Veldrid upgrade (or replacement) surfaces timestamp queries.
 - Asset hot-reload: reload meshes, textures, and shaders at runtime during development. The prop asset pipeline
   shipped, but hot-reload did not.
+- Shader bytecode disk cache: every shader is compiled from source (SPIRV-Cross via Veldrid.SPIRV) at every boot
+  today, no persisted compiled-bytecode cache. Worth adding only once boot time becomes a measured pain point
+  (not profiled yet). The cache key would need the engine version + GPU backend + shader source hash so a
+  version bump or backend switch can never serve stale bytecode.
 
 ## Possible future factoring (unscheduled)
 

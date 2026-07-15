@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render2D;
@@ -184,6 +185,24 @@ namespace KhaozEngine.Render3D
         /// <summary>Last-frame per-pass CPU encode milliseconds. All fields are 0 unless <see cref="EnableTiming"/>
         /// is (or was) true; stays at the last-recorded value once turned off (it is not reset to 0 by disabling).</summary>
         public Scene3DPassTimingsMs PassTimingsMs => _passTimingsMs;
+
+        // Always-on per-frame draw counters (draw calls / instances / triangles / buffer-update bytes). Plain
+        // increments in the submit path, reset each Begin(), read after RenderInternal via LastFrameStats. Unlike
+        // EnableTiming (which brackets Stopwatch reads), these cost a handful of adds and stay on unconditionally.
+        RenderFrameStats _frameStats;
+
+        /// <summary>
+        /// Last-frame GPU draw counters for this scene: draw-call, instance, and estimated-triangle totals over the
+        /// geometry passes (rigid instanced, terrain splat, CPU-skinned, and the shadow-caster depth pass), one
+        /// draw-call increment per effect/overlay submission (decals, water, sky, billboards, beams, trails,
+        /// debug fills/lines), and the per-frame instance + skinned vertex upload bytes. Always on (no enable flag).
+        /// Reset and finalized each frame inside the render pass (like <see cref="DrawnInstances"/> /
+        /// <see cref="PassTimingsMs"/>), so read it after the scene has rendered the frame. A <see cref="Begin"/>
+        /// without a render leaves the previous frame's totals. Aggregate it with a 2D batch's <c>FrameStats</c> via
+        /// <see cref="RenderFrameStats.op_Addition"/> for a whole-frame total. Post-process fullscreen blits are not
+        /// itemized (their CPU encode time shows in <see cref="PassTimingsMs"/>'s post field instead).
+        /// </summary>
+        public RenderFrameStats LastFrameStats => _frameStats;
 
         /// <summary>Host-set per-frame clock (seconds) driving beam pulse/scroll (see <see cref="DrawBeam"/> /
         /// <see cref="BeamStyle"/>). Set it once per frame in your draw callback (it runs after <see cref="Begin"/>),
@@ -1423,12 +1442,14 @@ namespace KhaozEngine.Render3D
                     if (m is not { } mesh) continue;
                     if (mesh.SplatMaterial >= 0) continue;   // terrain does not cast (receive-only)
                     _model.DrawShadowCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count);
+                    CountMeshDraw(mesh.IndexCount, run.Count);
                 }
             }
             for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
             {
                 var dr = _cpuSkinnedDraws[d];
                 _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
+                CountSkinnedDraw(dr.IndexCount);
             }
         }
 
@@ -1439,6 +1460,10 @@ namespace KhaozEngine.Render3D
         /// </summary>
         internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
+            // Reset the always-on frame counters here (not in Begin), so they are finalized per rendered frame the
+            // same way DrawnInstances / PassTimingsMs are - a Begin without a render leaves the last render's totals,
+            // and a re-render never double-counts.
+            _frameStats.Reset();
             EnsureSize(viewportW, viewportH);
             // The caps-resolved FXAA decision (AntiAliasingMode.Fxaa, or an MSAA request the device couldn't honour
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.
@@ -1465,7 +1490,10 @@ namespace KhaozEngine.Render3D
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
             ApplyAlphaCutoffs(_instanceData, _runs, _meshes);
             if (_instanceData.Count > 0)
+            {
                 _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
+                _frameStats.BufferUpdateBytes += (long)_instanceData.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>();
+            }
 
             // Camera-frustum visibility for the MAIN pass only. Computed after grouping (so it is index-aligned to
             // the uploaded _instanceData / runs) and BEFORE the shadow pass runs, but the shadow pass ignores it -
@@ -1514,7 +1542,11 @@ namespace KhaozEngine.Render3D
                     _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving));
                 }
                 if (_cpuSkinnedDraws.Count > 0)
+                {
                     _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
+                    _frameStats.BufferUpdateBytes += (long)_cpuSkinnedVerts.Count * Unsafe.SizeOf<ModelVertex>()
+                        + (long)_cpuSkinnedInstances.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>();
+                }
             }
 
             // Key-light shadow map (ShadowMode.ShadowMap): a depth-only pass over the SAME instanced casters into the
@@ -1553,9 +1585,9 @@ namespace KhaozEngine.Render3D
                     for (uint s = 0; s < run.Count; s++)
                     {
                         if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
-                        else if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); spanLen = 0; }
+                        else if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); spanLen = 0; }
                     }
-                    if (spanLen > 0) _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet);
+                    if (spanLen > 0) { _model.DrawMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, mesh.MaterialSet); CountMeshDraw(mesh.IndexCount, spanLen); }
                 }
                 // Splat-terrain pass: same uploaded instance buffer, the dedicated 5-layer texture-array pipeline.
                 // Each material's combined UBO holds frame + params in one buffer, so re-sync this frame's uniforms
@@ -1576,9 +1608,9 @@ namespace KhaozEngine.Render3D
                     for (uint s = 0; s < run.Count; s++)
                     {
                         if (_instanceVisible[run.Start + s]) { if (spanLen == 0) spanStart = run.Start + s; spanLen++; }
-                        else if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); spanLen = 0; }
+                        else if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); spanLen = 0; }
                     }
-                    if (spanLen > 0) _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set);
+                    if (spanLen > 0) { _model.DrawSplatMeshInstanced(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, spanStart, spanLen, sm.Set); CountMeshDraw(mesh.IndexCount, spanLen); }
                 }
             }
 
@@ -1605,6 +1637,7 @@ namespace KhaozEngine.Render3D
                 {
                     _res.ResolveDepth(cl);
                     _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_shadowDecals));
+                    _frameStats.DrawCalls++;
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -1624,6 +1657,7 @@ namespace KhaozEngine.Render3D
                         dissolveBound = dr.Dissolve;
                     }
                     _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);
+                    CountSkinnedDraw(dr.IndexCount);
                 }
             }
 
@@ -1669,6 +1703,7 @@ namespace KhaozEngine.Render3D
                     var m = _meshes[handle.Index];
                     if (m is not { } mesh) continue;
                     _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, k, world);
+                    _frameStats.DrawCalls++;
                 }
             }
 
@@ -1684,13 +1719,19 @@ namespace KhaozEngine.Render3D
             // normal/linear-depth the outline pass reads) with alpha 1 (so the blit's starfield marker skips sky
             // pixels). Fully skipped when off, so a sky-off frame renders byte-identical to before this pass existed.
             if (Post.Sky.Enabled)
+            {
                 _sky.Draw(cl, _res, ActiveCamera.View, Post.LightDirection, Post.Sky);
+                _frameStats.DrawCalls++;
+            }
 
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
+            {
                 _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_decals));
+                _frameStats.DrawCalls++;
+            }
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepth call above the sky pass) for the shore fade. Depth test ON (so
@@ -1699,8 +1740,11 @@ namespace KhaozEngine.Render3D
             // for the full reasoning. Fully skipped when nothing is queued, so a frame with no DrawWater call
             // renders byte-identical to before this pass existed.
             if (_waterPlanes.Count > 0)
+            {
                 _water.Draw(cl, _res, CollectionsMarshal.AsSpan(_waterPlanes), ActiveCamera.ViewProjection,
                     Post.LightDirection, Post.LightColor, eye, Post.Water, EffectTimeSeconds);
+                _frameStats.DrawCalls++;
+            }
 
             // Depth-tested debug wire volumes (DebugDepthMode.DepthTested): drawn into ColorDepthFB after the sky +
             // decals + water, which still holds the opaque meshes' depth, so terrain/props occlude the buried parts.
@@ -1710,7 +1754,10 @@ namespace KhaozEngine.Render3D
             // painted over where a volume rises above the horizon. Flows through the post chain like the model pass.
             // The always-on-top variant instead feeds the post-pass line overlay below (_lineVerts). No-op when empty.
             if (_depthLineVerts.Count > 0)
+            {
                 _depthLines.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_depthLineVerts), _res.ColorDepthFB);
+                _frameStats.DrawCalls++;
+            }
 
             // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
             // samples (after ALL MRT writers: geometry + decals + water). No-op when not multisampled.
@@ -1729,23 +1776,35 @@ namespace KhaozEngine.Render3D
             // image, BEFORE the lines so an outline drawn on top of a fill reads crisp. Depth disabled + alpha
             // blend; same ActiveCamera.ViewProjection as the model pass (so fills line up with geometry and picking).
             if (_fillVerts.Count > 0)
+            {
                 _fills.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_fillVerts), target);
+                _frameStats.DrawCalls++;
+            }
 
             // Debug overlay: rebind `target` and draw the accumulated lines on top of the post image, with
             // depth disabled and alpha blend. ActiveCamera.ViewProjection matches the model pass (unflipped, so
             // lines line up with rendered geometry and with ScreenToGround picking).
             if (_lineVerts.Count > 0)
+            {
                 _lines.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_lineVerts), target);
+                _frameStats.DrawCalls++;
+            }
 
             // Billboards: after the line pass, additive first (glow) then alpha, same overlay framebuffer +
             // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span. Additive is
             // order-independent (kept in submission order); the alpha stream is built back-to-front so overlapping
             // translucent billboards composite far-to-near regardless of the order the host queued them.
             if (_billboardAdditive.Count > 0)
+            {
                 _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
+                _frameStats.DrawCalls++;
+            }
             BuildSortedAlphaBillboards();
             if (_billboardAlpha.Count > 0)
+            {
                 _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
+                _frameStats.DrawCalls++;
+            }
 
             // Screen-space teleport transition (blink / frozen-frame crossfade): a fullscreen pass over everything,
             // last so it masks the whole 3D frame. No-op (and byte-identical) when none is active.
@@ -1762,6 +1821,23 @@ namespace KhaozEngine.Render3D
         /// snapshot). Pulled out so every timing bracket in <see cref="RenderInternal"/> shares one conversion.</summary>
         static float ElapsedMs(long startTimestamp) =>
             (float)(Stopwatch.GetTimestamp() - startTimestamp) * 1000f / Stopwatch.Frequency;
+
+        // Frame-counter helpers (LastFrameStats). One instanced mesh/splat/shadow-run draw: a draw call carrying
+        // instanceCount instances of an indexCount-index mesh (indexCount/3 triangles each).
+        void CountMeshDraw(int indexCount, uint instanceCount)
+        {
+            _frameStats.DrawCalls++;
+            _frameStats.Instances += (int)instanceCount;
+            _frameStats.Triangles += (long)(indexCount / 3) * instanceCount;
+        }
+
+        // One CPU-skinned (or skinned shadow-caster) draw: a single-instance indexed draw.
+        void CountSkinnedDraw(int indexCount)
+        {
+            _frameStats.DrawCalls++;
+            _frameStats.Instances++;
+            _frameStats.Triangles += indexCount / 3;
+        }
 
         /// <summary>Expand the queued alpha billboards into <see cref="_billboardAlpha"/> in BACK-TO-FRONT order:
         /// compute each item's view depth along the camera forward axis, sort the indices far-to-near, then build
@@ -1827,6 +1903,7 @@ namespace KhaozEngine.Render3D
                 IGpuResourceSet set = GetTexBillboardSet(run.TexIndex);
                 _texBillboards.Draw(cl, CollectionsMarshal.AsSpan(_texBillboardVerts), _res.ModelFB, set,
                     run.Blend == BillboardBlend.Additive);
+                _frameStats.DrawCalls++;
             }
         }
 
@@ -1880,6 +1957,7 @@ namespace KhaozEngine.Render3D
 
             _beams.SetFrameUniforms(cl, ActiveCamera.ViewProjection, EffectTimeSeconds);
             _beams.Draw(cl, CollectionsMarshal.AsSpan(_beamVerts), _res.ModelFB);
+            _frameStats.DrawCalls++;
         }
 
         /// <summary>Build each queued trail's mitered strip (via <see cref="TrailGeometry"/>) into per-blend vertex
@@ -1921,9 +1999,15 @@ namespace KhaozEngine.Render3D
 
             _trails.SetFrameUniforms(cl, ActiveCamera.ViewProjection);
             if (_trailVertsAdditive.Count > 0)
+            {
                 _trails.Draw(cl, CollectionsMarshal.AsSpan(_trailVertsAdditive), _res.ModelFB, TrailBlend.Additive);
+                _frameStats.DrawCalls++;
+            }
             if (_trailVertsAlpha.Count > 0)
+            {
                 _trails.Draw(cl, CollectionsMarshal.AsSpan(_trailVertsAlpha), _res.ModelFB, TrailBlend.Alpha);
+                _frameStats.DrawCalls++;
+            }
         }
 
         /// <summary>Get (creating on first use) the textured-billboard resource set for the texture at

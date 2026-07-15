@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.Render2D;
 using Xunit;
 
@@ -7,12 +9,23 @@ namespace KhaozEngine.Tests.Render2D
     /// Guards SpriteBatch submission-order batching: quads must be grouped into runs that preserve the
     /// order they were drawn, coalescing only *consecutive* same-texture draws. The old behaviour grouped
     /// globally per texture, which let a later draw jump ahead of an earlier draw using a different texture
-    /// (e.g. menu text painting on top of a modal panel drawn after it).
+    /// (e.g. menu text painting on top of a modal panel drawn after it). Also guards the opt-in
+    /// texture-grouping helper (<see cref="QuadRunBuilder{T}.GroupKeysInFirstSeenOrder"/>) used by
+    /// <c>SpriteBatch.GroupByTexture</c>.
     /// </summary>
     public class SpriteBatchOrderTests
     {
         static readonly object TexA = new();
         static readonly object TexB = new();
+        static readonly object TexC = new();
+
+        // A run's items, read back through the (Start, Count) slice into Items - the shape every real
+        // consumer (SpriteBatch.Flush) reads through, now that runs no longer carry their own List<T>.
+        static T[] ItemsOf<T>(QuadRunBuilder<T> b, int runIndex)
+        {
+            var (_, start, count) = b.Runs[runIndex];
+            return b.Items.Skip(start).Take(count).ToArray();
+        }
 
         [Fact]
         public void ConsecutiveSameKeyCoalescesIntoOneRun()
@@ -23,7 +36,7 @@ namespace KhaozEngine.Tests.Render2D
 
             Assert.Single(b.Runs);
             Assert.Same(TexA, b.Runs[0].Key);
-            Assert.Equal(new[] { 1, 2 }, b.Runs[0].Items);
+            Assert.Equal(new[] { 1, 2 }, ItemsOf(b, 0));
         }
 
         [Fact]
@@ -38,9 +51,9 @@ namespace KhaozEngine.Tests.Render2D
             Assert.Same(TexA, b.Runs[0].Key);
             Assert.Same(TexB, b.Runs[1].Key);
             Assert.Same(TexA, b.Runs[2].Key);
-            Assert.Equal(new[] { 1 }, b.Runs[0].Items);
-            Assert.Equal(new[] { 2 }, b.Runs[1].Items);
-            Assert.Equal(new[] { 3 }, b.Runs[2].Items);
+            Assert.Equal(new[] { 1 }, ItemsOf(b, 0));
+            Assert.Equal(new[] { 2 }, ItemsOf(b, 1));
+            Assert.Equal(new[] { 3 }, ItemsOf(b, 2));
         }
 
         [Fact]
@@ -51,6 +64,86 @@ namespace KhaozEngine.Tests.Render2D
             b.Reset();
 
             Assert.Empty(b.Runs);
+            Assert.Empty(b.Items);
+        }
+
+        [Fact]
+        public void ResetReusesBackingCapacity_NoNewAllocationNeededToRegrow()
+        {
+            // Not a strict no-alloc assertion (xunit has no built-in allocation gate), but proves the backing
+            // list survives Reset() with its capacity intact: re-adding the same count of items after Reset
+            // must not need the list to grow again (Capacity does not increase on the second build).
+            var b = new QuadRunBuilder<int>();
+            for (int i = 0; i < 64; i++) b.Add(TexA, i);
+            int capacityAfterFirstBuild = ((List<int>)b.Items).Capacity;
+
+            b.Reset();
+            for (int i = 0; i < 64; i++) b.Add(TexA, i);
+
+            Assert.Equal(capacityAfterFirstBuild, ((List<int>)b.Items).Capacity);
+            Assert.Equal(64, b.Items.Count);
+        }
+
+        [Fact]
+        public void GroupKeysInFirstSeenOrder_MergesNonConsecutiveRunsPerKey()
+        {
+            var b = new QuadRunBuilder<int>();
+            b.Add(TexA, 1);
+            b.Add(TexB, 2);
+            b.Add(TexA, 3);
+            b.Add(TexC, 4);
+            b.Add(TexB, 5);
+
+            var keys = b.GroupKeysInFirstSeenOrder();
+
+            // First-seen order: A (run 0), B (run 1), C (run 3).
+            Assert.Equal(new object[] { TexA, TexB, TexC }, keys);
+
+            // A's group is runs {0, 2} (items 1 and 3), in submission order.
+            var aRuns = b.RunIndicesForGroup(TexA);
+            Assert.Equal(new[] { 0, 2 }, aRuns);
+            Assert.Equal(new[] { 1, 3 }, aRuns.SelectMany(idx => ItemsOf(b, idx)));
+
+            // B's group is runs {1, 4} (items 2 and 5), in submission order.
+            var bRuns = b.RunIndicesForGroup(TexB);
+            Assert.Equal(new[] { 1, 4 }, bRuns);
+            Assert.Equal(new[] { 2, 5 }, bRuns.SelectMany(idx => ItemsOf(b, idx)));
+
+            // C's group is just run {3} (item 4).
+            var cRuns = b.RunIndicesForGroup(TexC);
+            Assert.Equal(new[] { 3 }, cRuns);
+            Assert.Equal(new[] { 4 }, cRuns.SelectMany(idx => ItemsOf(b, idx)));
+        }
+
+        [Fact]
+        public void GroupKeysInFirstSeenOrder_AllSameKeyIsOneGroupOneRun()
+        {
+            var b = new QuadRunBuilder<int>();
+            b.Add(TexA, 1);
+            b.Add(TexA, 2);
+            b.Add(TexA, 3);
+
+            var keys = b.GroupKeysInFirstSeenOrder();
+
+            Assert.Equal(new object[] { TexA }, keys);
+            Assert.Equal(new[] { 0 }, b.RunIndicesForGroup(TexA));
+        }
+
+        [Fact]
+        public void GroupKeysInFirstSeenOrder_ReusedAcrossBuilds_ReflectsOnlyLatestBuild()
+        {
+            var b = new QuadRunBuilder<int>();
+            b.Add(TexA, 1);
+            b.Add(TexB, 2);
+            b.GroupKeysInFirstSeenOrder();
+
+            b.Reset();
+            b.Add(TexC, 9);
+            var keys = b.GroupKeysInFirstSeenOrder();
+
+            // Stale groups from the prior build (A, B) must not leak into the new build's key list.
+            Assert.Equal(new object[] { TexC }, keys);
+            Assert.Equal(new[] { 0 }, b.RunIndicesForGroup(TexC));
         }
     }
 }

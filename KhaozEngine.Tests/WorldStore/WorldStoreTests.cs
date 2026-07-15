@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore;
 using KhaozEngine.WorldStore.Sqlite;
@@ -22,6 +24,10 @@ public class InMemoryWorldStoreConformanceTests
     [Fact] public Task Keys_AreIsolated() => WorldStoreConformance.Keys_AreIsolated(New(), Ns());
     [Fact] public Task Bytes_AreExact() => WorldStoreConformance.Bytes_AreExact(New(), Ns());
     [Fact] public Task Concurrent_DistinctKeys() => WorldStoreConformance.Concurrent_DistinctKeys(New(), Ns());
+    [Fact] public Task SaveMany_MatchesSequentialSaves() => WorldStoreConformance.SaveMany_MatchesSequentialSaves(New(), Ns());
+    [Fact] public Task SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch() => WorldStoreConformance.SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch(New(), Ns());
+    [Fact] public Task SaveMany_EmptyList_IsNoop() => WorldStoreConformance.SaveMany_EmptyList_IsNoop(New(), Ns());
+    [Fact] public Task SaveMany_ParityWithSequentialSaveAsyncLoop() => WorldStoreConformance.SaveMany_ParityWithSequentialSaveAsyncLoop(New(), Ns(), Ns());
 
     [Fact]
     public async Task Load_ReturnsIndependentCopy()
@@ -62,6 +68,10 @@ public sealed class SqliteWorldStoreConformanceTests : IDisposable
     [Fact] public Task Keys_AreIsolated() => WorldStoreConformance.Keys_AreIsolated(store, "");
     [Fact] public Task Bytes_AreExact() => WorldStoreConformance.Bytes_AreExact(store, "");
     [Fact] public Task Concurrent_DistinctKeys() => WorldStoreConformance.Concurrent_DistinctKeys(store, "");
+    [Fact] public Task SaveMany_MatchesSequentialSaves() => WorldStoreConformance.SaveMany_MatchesSequentialSaves(store, "many-");
+    [Fact] public Task SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch() => WorldStoreConformance.SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch(store, "upsert-");
+    [Fact] public Task SaveMany_EmptyList_IsNoop() => WorldStoreConformance.SaveMany_EmptyList_IsNoop(store, "empty-");
+    [Fact] public Task SaveMany_ParityWithSequentialSaveAsyncLoop() => WorldStoreConformance.SaveMany_ParityWithSequentialSaveAsyncLoop(store, "parity-many-", "parity-loop-");
 
     [Fact]
     public async Task SurvivesReopen_OnSameFile()
@@ -88,4 +98,37 @@ public sealed class SqlServerWorldStoreConformanceTests
     [SqlServerFact] public Task Keys_AreIsolated() => WorldStoreConformance.Keys_AreIsolated(New(), Ns());
     [SqlServerFact] public Task Bytes_AreExact() => WorldStoreConformance.Bytes_AreExact(New(), Ns());
     [SqlServerFact] public Task Concurrent_DistinctKeys() => WorldStoreConformance.Concurrent_DistinctKeys(New(), Ns());
+    [SqlServerFact] public Task SaveMany_MatchesSequentialSaves() => WorldStoreConformance.SaveMany_MatchesSequentialSaves(New(), Ns());
+    [SqlServerFact] public Task SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch() => WorldStoreConformance.SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch(New(), Ns());
+    [SqlServerFact] public Task SaveMany_EmptyList_IsNoop() => WorldStoreConformance.SaveMany_EmptyList_IsNoop(New(), Ns());
+    [SqlServerFact] public Task SaveMany_ParityWithSequentialSaveAsyncLoop() => WorldStoreConformance.SaveMany_ParityWithSequentialSaveAsyncLoop(New(), Ns(), Ns());
+}
+
+/// <summary>
+/// Bare-bones <see cref="IWorldStore"/> implementing ONLY the four required members - no <c>SaveManyAsync</c>
+/// override - so the shared conformance suite's <c>SaveMany_*</c> cases exercise <see cref="IWorldStore"/>'s
+/// DEFAULT interface implementation (a loop of <see cref="IWorldStore.SaveAsync"/> calls). Proves every
+/// pre-existing <see cref="IWorldStore"/> implementation - including a consumer-owned one written before
+/// <c>SaveManyAsync</c> existed - keeps compiling and behaving correctly unchanged.
+/// </summary>
+public class MinimalWorldStoreDefaultSaveManyTests
+{
+    private sealed class MinimalWorldStore : IWorldStore
+    {
+        private readonly Dictionary<string, byte[]> data = new();
+        public Task<byte[]?> LoadAsync(string key, CancellationToken ct = default) =>
+            Task.FromResult(data.TryGetValue(key, out byte[]? v) ? v : null);
+        public Task SaveAsync(string key, byte[] value, CancellationToken ct = default)
+        { data[key] = value; return Task.CompletedTask; }
+        public Task<bool> DeleteAsync(string key, CancellationToken ct = default) => Task.FromResult(data.Remove(key));
+        public Task<bool> ExistsAsync(string key, CancellationToken ct = default) => Task.FromResult(data.ContainsKey(key));
+    }
+
+    private static IWorldStore New() => new MinimalWorldStore();
+    private static string Ns() => Guid.NewGuid().ToString("N");
+
+    [Fact] public Task SaveMany_MatchesSequentialSaves() => WorldStoreConformance.SaveMany_MatchesSequentialSaves(New(), Ns());
+    [Fact] public Task SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch() => WorldStoreConformance.SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch(New(), Ns());
+    [Fact] public Task SaveMany_EmptyList_IsNoop() => WorldStoreConformance.SaveMany_EmptyList_IsNoop(New(), Ns());
+    [Fact] public Task SaveMany_ParityWithSequentialSaveAsyncLoop() => WorldStoreConformance.SaveMany_ParityWithSequentialSaveAsyncLoop(New(), Ns(), Ns());
 }

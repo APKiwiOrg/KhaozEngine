@@ -34,7 +34,7 @@ namespace KhaozEngine.Render3D
         /// <param name="color">Text color (RGBA).</param>
         /// <param name="viewportWidth">Framebuffer width in pixels.</param>
         /// <param name="viewportHeight">Framebuffer height in pixels.</param>
-        /// <param name="scale">Uniform text scale (matches <see cref="SpriteFont.Measure"/> * scale).</param>
+        /// <param name="scale">Uniform text scale (matches <see cref="SpriteFont.Measure(string)"/> * scale).</param>
         /// <param name="maxDistance">If &gt; 0, labels whose anchor is farther than this from <paramref name="cullFrom"/>
         /// (or the camera eye when <paramref name="cullFrom"/> is null) are culled. 0 (default) draws regardless of
         /// distance.</param>

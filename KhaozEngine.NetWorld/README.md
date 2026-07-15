@@ -74,7 +74,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   in flight the account is guarded (the periodic pass and save-on-leave skip it) so a save landing mid-load can't
   overwrite the stored record with default-spawn state and erase the blob; `capture` returning null/empty is
   destructive (it *erases* the stored blob - "no game state", not "keep existing"), never a "not loaded yet" signal.
-  `OnStoreError` surfaces a faulted background load/save (store outage).
+  `OnStoreError` surfaces a faulted background load/save (store outage). The periodic pass batches every dirty
+  player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player. A faulted batch
+  leaves every player in it dirty for the next pass (save-on-leave still uses a single-record `SaveAsync`).
 - **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into a [`Sharding`](../KhaozEngine.Sharding) `ShardHost`-based server
   through **`ICellPersistenceHost`** (the surface `ShardedWorldServer` implements) so a cell's authoritative
@@ -86,7 +88,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   every saved cell at boot (enumerating over an `IEnumerableWorldStore`), `LoadMetaAsync` resumes the NetId
   allocator, and `FlushAsync` quiesces in-flight loads and saves at shutdown. Players are excluded (already
   persisted player-keyed by `WorldPersistence`), and ghosts and migrating entities are excluded too - this is
-  cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account.
+  cell-owned, non-player state only. Mirrors `WorldPersistence` but keyed by cell coordinate instead of account,
+  including the batched periodic pass: every dirty cell's snapshot goes through one `IWorldStore.SaveManyAsync`
+  call instead of one `SaveAsync` per cell (the meta write and quarantine writes stay single-record saves).
   - **Schema evolution + restore hardening (since 9.33.0).** `CellPersistenceConfig.RegisterMigration(fromVersion,
     migrate)` registers ordered `CellSnapshotMigration` (`byte[] body -> byte[]`) steps that bring an older blob
     forward on load, before restore. The chain is validated at construction (contiguous, no gaps, none at/beyond

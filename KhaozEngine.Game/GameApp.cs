@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -26,6 +27,12 @@ namespace KhaozEngine.Game
         readonly UiViewport _ui = new();
         readonly Pointer _uiPointer = new();
         readonly Render2DSurface _surface2D;
+
+        // Built-in frame-cost HUD (FPS/frame-ms/heap + draw counters + 3D pass timings), toggled with F1. Null when
+        // opted out via GameAppOptions.DisableDiagnosticsOverlay. The font + white pixel back its rendering.
+        readonly DiagnosticsHud? _hud;
+        readonly DpiFont? _hudFont;
+        readonly Texture2D? _hudWhite;
 
         InputState _input = InputState.Empty;
         int _frameWidth, _frameHeight;
@@ -102,6 +109,32 @@ namespace KhaozEngine.Game
                 ?? new DesignViewport(options.ResolvedDesignWidth, options.ResolvedDesignHeight, options.ScaleMode);
 
             _surface2D = new Render2DSurface(_window);
+
+            // Turn-key diagnostics HUD (default ON, hidden until F1). Built here so every GameApp / GameApp3D game
+            // gets the frame-cost overlay for free. SupportsPassTimings is a constant-returning virtual, safe to
+            // call from this base ctor (GameApp3D returns true so it also shows the per-pass timing section). The
+            // font is a DpiFont so the panel stays crisp on HiDPI, drawn through the point-space UI pass.
+            DiagnosticsOverlayTheme? hudTheme = BuildDiagnosticsTheme(options);
+            if (hudTheme != null)
+            {
+                _hud = new DiagnosticsHud(hudTheme, withPassTimings: SupportsPassTimings);
+                _hudFont = _surface2D.LoadDefaultDpiFont(32f);
+                _hudWhite = _surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
+            }
+        }
+
+        /// <summary>
+        /// Build the diagnostics HUD theme from <paramref name="options"/>, or null when the built-in overlay is
+        /// opted out (<see cref="GameAppOptions.DisableDiagnosticsOverlay"/>). The toggle key is
+        /// <see cref="GameAppOptions.DiagnosticsToggleKey"/>, defaulting to <see cref="Key.F1"/>. Pure, so the
+        /// enable/toggle-key precedence is headless-testable.
+        /// </summary>
+        internal static DiagnosticsOverlayTheme? BuildDiagnosticsTheme(in GameAppOptions options)
+        {
+            if (options.DisableDiagnosticsOverlay) return null;
+            var theme = DiagnosticsOverlayTheme.Default;
+            theme.ToggleKey = options.DiagnosticsToggleKey ?? Key.F1;
+            return theme;
         }
 
         /// <summary>
@@ -154,6 +187,26 @@ namespace KhaozEngine.Game
         protected int FrameHeight => _frameHeight;
         /// <summary>This frame's scaled (simulation) delta in seconds (<see cref="GameClock.ScaledDeltaSeconds"/>).</summary>
         protected float Dt => _dt;
+
+        /// <summary>
+        /// The built-in diagnostics HUD (FPS / frame-ms / heap, draw counters, and - for a 3D app - per-pass
+        /// timings), or null when opted out via <see cref="GameAppOptions.DisableDiagnosticsOverlay"/>. Hidden until
+        /// toggled with the configured key (F1 by default). A game may drive it directly, e.g.
+        /// <c>Diagnostics?.SetNetStatsSource(() =&gt; ...)</c> to add a Network section, or read <see cref="DiagnosticsHud.Visible"/>.
+        /// </summary>
+        protected DiagnosticsHud? Diagnostics => _hud;
+
+        /// <summary>Whether this game type feeds the HUD a per-pass timing section (a 3D app does). The base 2D
+        /// <see cref="GameApp"/> returns false and <c>GameApp3D</c> overrides it. A constant, so it is safe for the
+        /// base constructor to read when building the HUD.</summary>
+        protected virtual bool SupportsPassTimings => false;
+
+        /// <summary>
+        /// The whole-frame render stats shown in the HUD's Draw-stats section. The base returns the 2D batch's
+        /// <see cref="SpriteBatch.FrameStats"/>, and <c>GameApp3D</c> overrides it to also add the 3D scene's
+        /// <c>LastFrameStats</c>. Read once per frame, after the world + 2D passes, just before the overlay draws.
+        /// </summary>
+        protected virtual RenderFrameStats CollectFrameStats() => _surface2D.Batch.FrameStats;
 
         /// <summary>Background colour cleared each frame; forwards to <see cref="AppWindow.ClearColor"/>.</summary>
         public Color ClearColor
@@ -300,6 +353,10 @@ namespace KhaozEngine.Game
 
                 OnUpdate(_dt);
 
+                // Advance the diagnostics HUD (sample FPS from the RAW frame delta, process the F1 toggle + fade)
+                // BEFORE the world render, so a 3D subclass can gate this frame's pass timing on its visibility.
+                _hud?.Update(_input, frame.Dt);
+
                 OnRenderWorld(frame);
 
                 _surface2D.NewFrame(frame);
@@ -312,6 +369,17 @@ namespace KhaozEngine.Game
                 _surface2D.Batch.Begin(_ui);
                 OnDrawUi(_surface2D.Batch);
                 _surface2D.Batch.End();
+
+                // Diagnostics HUD on top, in its own point-space UI pass (crisp on HiDPI). The aggregated draw stats
+                // (2D batch + any 3D scene, via CollectFrameStats) are handed in just before the panel draws. No-op
+                // while hidden (the overlay draws nothing and the throttled provider builds no sections).
+                if (_hud is { } hud)
+                {
+                    hud.SetDrawStats(CollectFrameStats());
+                    _surface2D.Batch.Begin(_ui);
+                    hud.Draw(_surface2D.Batch, _hudFont!.For(_ui.DpiScale), _hudWhite!, _ui.DesignBounds);
+                    _surface2D.Batch.End();
+                }
             });
         }
 
@@ -321,6 +389,8 @@ namespace KhaozEngine.Game
         public void Dispose()
         {
             OnDispose();
+            _hudFont?.Dispose();
+            _hudWhite?.Dispose();
             _surface2D.Dispose();
             _window.Dispose();
             GC.SuppressFinalize(this);

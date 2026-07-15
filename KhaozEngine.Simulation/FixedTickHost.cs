@@ -31,6 +31,14 @@ public sealed class FixedTickHost
     /// <summary>Total fixed ticks advanced since construction or the last <see cref="Reset"/>.</summary>
     public long TickCount { get; private set; }
 
+    /// <summary>
+    /// Seconds of accumulated elapsed time still needed before the next call to <see cref="Advance"/> would
+    /// produce another tick, assuming no more time lands before then. Zero right after a tick just fired. A host
+    /// loop reads this after calling <see cref="Advance"/> to decide how long it can idle before it must poll
+    /// again. Feed it to <see cref="ComputeIdleWaitSeconds"/> to get an actual sleep duration.
+    /// </summary>
+    public float SecondsUntilNextTick => MathF.Max(0f, tickSeconds - accumulatorSeconds);
+
     /// <summary>Clears the accumulator and the tick counter.</summary>
     public void Reset()
     {
@@ -63,5 +71,23 @@ public sealed class FixedTickHost
             accumulatorSeconds = MathF.Min(accumulatorSeconds, tickSeconds);
 
         return produced;
+    }
+
+    /// <summary>
+    /// Pure helper for a host loop's idle wait between polls: given <paramref name="secondsUntilNextTick"/>
+    /// (typically <see cref="SecondsUntilNextTick"/>), returns how long the loop should sleep right now. Subtracts
+    /// <paramref name="safetyMarginSeconds"/> so the loop wakes up a little early rather than a little late - OS
+    /// sleep calls routinely overshoot their requested duration (Windows' default timer resolution is roughly
+    /// 15.6 ms, so a naive fixed sleep can burn 2-3 ticks' worth of slack before the loop gets control back). When
+    /// the margin-adjusted remainder is below <paramref name="minimumSeconds"/> - too small a window to bother
+    /// asking the OS to sleep - this returns 0, signalling the caller to spin or yield through the final sliver
+    /// instead of sleeping. Stateless and does not touch the clock or sleep. The caller does the actual waiting.
+    /// </summary>
+    public static float ComputeIdleWaitSeconds(float secondsUntilNextTick, float safetyMarginSeconds, float minimumSeconds = 0f)
+    {
+        float margin = MathF.Max(0f, safetyMarginSeconds);
+        float floor = MathF.Max(0f, minimumSeconds);
+        float wait = MathF.Max(0f, secondsUntilNextTick) - margin;
+        return wait < floor ? 0f : wait;
     }
 }

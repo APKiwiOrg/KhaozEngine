@@ -35,6 +35,10 @@ public sealed class DiagnosticsOverlay
     IReadOnlyList<OverlaySection> _sections = Array.Empty<OverlaySection>();
     float _alpha; // current fade, 0..1
 
+    /// <summary>The sections that would render on the next <see cref="Draw"/> (from the last manual
+    /// <see cref="SetSections"/> or provider poll). Test seam so the throttled provider path is verifiable headlessly.</summary>
+    internal IReadOnlyList<OverlaySection> Sections => _sections;
+
     // Optional built-in throttle: when a provider is set, Update polls it on _refreshInterval instead of the game
     // rebuilding + calling SetSections every frame. Null provider = today's behaviour (game drives SetSections).
     Func<IReadOnlyList<OverlaySection>>? _sectionsProvider;
@@ -154,6 +158,28 @@ public sealed class DiagnosticsOverlay
                 string.Format(Inv, "{0:0.00}/{1:0.00}/{2:0.00}", t.AvgMs(pass), t.MinMs(pass), t.MaxMs(pass)));
         }
         return new OverlaySection("Pass timings", rows);
+    }
+
+    /// <summary>
+    /// Build a standard "Draw stats" section from a <see cref="RenderFrameStats"/> frame tally: draw calls,
+    /// instances, estimated triangles, per-frame buffer-upload KB, and the 2D batcher's quad / flush /
+    /// texture-switch counts. Pass the whole-frame aggregate (e.g. the 3D scene's stats plus the 2D HUD batch's
+    /// stats, summed via <see cref="RenderFrameStats.op_Addition"/>). Triangles are shown with thousands
+    /// separators, the 2D-only rows read 0 for a pure-3D frame, and the 3D-only rows read 0 for a pure-2D frame.
+    /// </summary>
+    public static OverlaySection DrawStatsSection(in RenderFrameStats s)
+    {
+        var rows = new[]
+        {
+            new OverlayRow("draw calls", s.DrawCalls.ToString("0", Inv)),
+            new OverlayRow("instances", s.Instances.ToString("0", Inv)),
+            new OverlayRow("triangles", s.Triangles.ToString("#,0", Inv)),
+            new OverlayRow("quads", s.Quads.ToString("0", Inv)),
+            new OverlayRow("flushes", s.Flushes.ToString("0", Inv)),
+            new OverlayRow("tex switches", s.TextureSwitches.ToString("0", Inv)),
+            new OverlayRow("upload KB", (s.BufferUpdateBytes / 1024d).ToString("0.0", Inv)),
+        };
+        return new OverlaySection("Draw stats", rows);
     }
 
     /// <summary>Build a standard "Network" section from a <see cref="ClientNetStats"/> snapshot.</summary>

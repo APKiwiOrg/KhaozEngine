@@ -76,8 +76,10 @@ public sealed class WorldServerConfig
 /// Reference single-<see cref="World"/> authoritative movement server. A <see cref="NetServer"/> session layer
 /// spawns one player entity per connection; each tick it drains that client's queued <see cref="MoveCommand"/>,
 /// runs the shared <see cref="PlayerMoveSimulator"/> (ground-clamped), and serves every client a per-area-of-
-/// interest snapshot (<see cref="SnapshotWriter.WriteFiltered(World, ReplicationRegistry, IReadOnlySet{long}, ReplicationChannels, long?)"/> over an <see cref="InterestGrid"/>) prefixed
-/// with that client's net id + last-acked move seq so the client can reconcile. Headless, transport-injected.
+/// interest snapshot (the indexed <see cref="SnapshotWriter.WriteFiltered(WorldSnapshotIndex, SnapshotScratch, World, ReplicationRegistry, IReadOnlySet{long}, ReplicationChannels, long?)"/>
+/// over an <see cref="InterestGrid"/>, off a <see cref="WorldSnapshotIndex"/> rebuilt at most once per tick and shared
+/// across every non-delta client served that tick) prefixed with that client's net id + last-acked move seq so the
+/// client can reconcile. Headless, transport-injected.
 /// The multi-cell variant is <see cref="ShardedWorldServer"/> (the same movement stack run across a cell grid);
 /// this is the single-world slice. Both share <see cref="WorldPersistence"/> via <see cref="IWorldPersistenceHost"/>.
 /// </summary>
@@ -97,6 +99,14 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     // deltaCapableSlots (it advertised DeltaCapable); until then, and for older clients, it gets full snapshots.
     private readonly AoiDeltaReplicator? deltaReplicator;
     private readonly HashSet<int> deltaCapableSlots = new();
+    // Indexed-snapshot scratch for the non-delta fallback path (a client that never advertised DeltaCapable, or the
+    // whole server has DeltaReplication off): reused across every such client served in one Tick, so N clients share
+    // one O(worldPop) index rebuild instead of N full-world scans (see WorldSnapshotIndex / SnapshotScratch, and
+    // ShardHost's per-tick shared index for the multi-cell analogue). A single-world server has exactly one World,
+    // so unlike ShardHost's per-world epoch dictionary this only needs a per-tick "already rebuilt" flag.
+    private readonly WorldSnapshotIndex snapshotIndex = new();
+    private readonly SnapshotScratch snapshotScratch = new();
+    private bool snapshotIndexFreshThisTick;
 
     private readonly Dictionary<int, long> netIdBySlot = new();
     private readonly Dictionary<int, Entity> entityBySlot = new();
@@ -410,6 +420,10 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
         // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
         deltaReplicator?.BeginTick();
+        // The fallback snapshot index is rebuilt lazily on the first non-delta client this tick (not unconditionally
+        // here), so a tick with only delta-capable clients pays no extra world scan. Every client thereafter this
+        // tick reuses it, sharing one O(worldPop) rebuild across the tick's fallback clients.
+        snapshotIndexFreshThisTick = false;
         foreach (int slot in slots)
         {
             long netId = netIdBySlot[slot];
@@ -426,7 +440,12 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
             }
             else
             {
-                body = SnapshotWriter.WriteFiltered(world, registry, set, ReplicationChannels.Replicate, netId);
+                // Indexed path: resolves `set` off a netId -> entity index in O(set) instead of a full world scan.
+                // Rebuilt once per tick (on the first fallback client) and shared with every other fallback client
+                // served this tick. Byte-identical to the old full-scan WriteFiltered (see
+                // SnapshotWriterIndexedParityTests and WorldServerSnapshotIndexParityTests).
+                if (!snapshotIndexFreshThisTick) { snapshotIndex.Rebuild(world); snapshotIndexFreshThisTick = true; }
+                body = SnapshotWriter.WriteFiltered(snapshotIndex, snapshotScratch, world, registry, set, ReplicationChannels.Replicate, netId);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);

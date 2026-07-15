@@ -16,7 +16,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `Button`->bool/`Slider`/hover, with a `PointerCaptured` click-through gate. `FocusNavigator` drives
   keyboard/gamepad menu focus. The text sinks (`Label`/`Button`/`StatChip`) take an optional trailing
   `float scale = 1f` that scales the label only (rect + hit-test unchanged), so one shared font renders at many
-  sizes for pixel-parity; defaults to `1f`, so unscaled callers are byte-identical.
+  sizes for pixel-parity, and defaults to `1f`, so unscaled callers are byte-identical. `StatChip`'s "label  value"
+  text is memoized per surface (keyed on the resolved label/value content), so a HUD stat chip redrawn every
+  frame with an unchanged value (health, ammo, gold sitting steady) is a lookup, not a fresh string every draw.
 - `ScreenStack` - owns a stack of `Screen`s. Routes input top-to-bottom (input-consumption + modal layering,
   the click-through model), draws bottom-to-top, drives transitions. Exposes a shared `InputManager` (menu nav +
   action mapping; screens read `Manager.InputManager` to drive `FocusNavigator` and the keyboard/gamepad widget
@@ -244,7 +246,11 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `KhaozEngine.Content.ConfigLoader`'s disk-then-embedded convention without a Gui-to-Content dependency; every
   IO attempt is swallowed so a read failure just falls through. `PatchNotesView` is the collapsible, scrollable
   presenter (one build per header, tap to expand/collapse, wheel/drag scroll, `CloseRequested` latches on
-  close-tap or Escape); `PatchNotesScreen` is the drop-in modal `Screen` wrapper (`SettingsScreen`-style 0.18s
+  close-tap or Escape). Its per-note word-wrap layout is cached (keyed on content width + the measurer/font
+  identity), so `Update`/`Draw`/scrollbar sizing share one computation per note per frame instead of
+  re-wrapping a static document's notes on every call - the cache is cleared wholesale whenever the width or
+  font changes (e.g. a resize), so it never serves a stale layout. `PatchNotesScreen` is the drop-in modal
+  `Screen` wrapper (`SettingsScreen`-style 0.18s
   transitions, always modal) for `ScreenStack` games. `PatchNotesTheme` supplies the palette (panel/header
   fills, text, muted text, code-span accent, and a `CategoryColor(PatchNoteCategory)` per-category badge color -
   Rebalance a warm amber) with a `Default` preset; `PatchNotesStrings` supplies the chrome text (title/close/
@@ -259,11 +265,20 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
   (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
   `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` populators cover the common cases
-  (from `KhaozEngine.Diagnostics`). `PassTimingsSection` lists one row per pass name (in first-sampled order)
+  (from `KhaozEngine.Diagnostics`). `DrawStatsSection(in RenderFrameStats)` (the `Primitives` frame counters)
+  adds a "Draw stats" section (draw calls, instances, triangles, quads, flushes, texture switches, upload KB).
+  `PassTimingsSection` lists one row per pass name (in first-sampled order)
   with that pass's rolling avg/min/max milliseconds - CPU encode time, not true GPU time (see the
   `KhaozEngine.Render3D` README / `docs/USING-KHAOZENGINE.md`).
   `Bounds` is the last-drawn panel rect (empty when hidden/faded-out), so a caller can place an `OverlayLegend`
   at `Bounds.Right` + a gap to sit a second panel directly beside it.
+- `DiagnosticsHud` - turn-key wiring of the frame-cost HUD: bundles a `FrameStats` meter, an optional
+  `PassTimings` meter (3D hosts), and a `DiagnosticsOverlay` behind one object, with a throttled provider that
+  assembles the Performance / Draw-stats / Pass-timings / (optional) Network sections. Call `Update(input, dt)`
+  once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
+  and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
+  so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>)` opts a
+  Network section in and out with the active screen. `GameApp`/`GameApp3D` wire one automatically (F1).
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
   Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
   Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at

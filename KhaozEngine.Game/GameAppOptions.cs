@@ -137,6 +137,23 @@ namespace KhaozEngine.Game
         /// </summary>
         public bool SuppressParentConsoleAttach;
 
+        /// <summary>
+        /// Opt OUT of the built-in diagnostics HUD (default <c>false</c>, i.e. the HUD is ON). By default
+        /// <see cref="GameApp"/> wires a <see cref="KhaozEngine.Gui.DiagnosticsHud"/> (FPS / frame-ms / heap,
+        /// draw-call + triangle counters, and - for a 3D app - per-pass CPU-encode timings), hidden until toggled
+        /// with <see cref="DiagnosticsToggleKey"/>. While hidden its only cost is the always-on render counters. The
+        /// field is inverted (a disable flag) so the default-zero struct value keeps the HUD on, whether options are
+        /// built with <see cref="For"/> or a raw <c>new GameAppOptions { ... }</c>.
+        /// </summary>
+        public bool DisableDiagnosticsOverlay;
+
+        /// <summary>
+        /// The key that shows/hides the built-in diagnostics HUD. <c>null</c> (the default) uses <see cref="Key.F1"/>.
+        /// Ignored when <see cref="DisableDiagnosticsOverlay"/> is set. Being nullable, a default-constructed struct
+        /// and a <see cref="For"/> result both resolve to F1, and a caller sets a specific key to override.
+        /// </summary>
+        public Key? DiagnosticsToggleKey;
+
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>

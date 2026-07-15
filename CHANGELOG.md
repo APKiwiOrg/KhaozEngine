@@ -5,6 +5,103 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.100.0
+
+### Turn-key F1 diagnostics HUD + always-on frame draw counters
+
+Frame cost is visible by default: an F1 diagnostics HUD wired into every GameApp, backed by always-on
+per-frame draw counters. New `RenderFrameStats` (`KhaozEngine.Primitives`) carries draw-call, instance,
+triangle, and buffer-update-byte totals plus the 2D quad, flush, and texture-switch counts, populated
+allocation-free in the submit path by `SpriteBatch.FrameStats` and `Scene3D.LastFrameStats` (geometry passes
+counted exactly, effect submissions as draw calls, post blits not itemized). `DiagnosticsOverlay.DrawStatsSection`
+renders them, and the new `DiagnosticsHud` (`KhaozEngine.Gui`) bundles the FPS and pass-timing meters plus the
+overlay behind a throttled provider that costs nothing while hidden.
+
+- **Always-on draw counters.** `RenderFrameStats` is populated allocation-free in the submit path and reset
+  each frame. `SpriteBatch.FrameStats` counts quads, draw calls, flushes, texture switches, and vertex-upload
+  bytes across both the submission-order and `GroupByTexture` flush paths (a merged texture group counts as the
+  single draw it issues, vertex bytes counted at each upload). `Scene3D.LastFrameStats` counts the 3D geometry
+  passes exactly and effect submissions as draw calls. Aggregate 2D + 3D via `RenderFrameStats` addition for a
+  whole-frame total.
+- **Turn-key HUD.** `DiagnosticsHud` (`KhaozEngine.Gui`) bundles the FPS meter, the pass-timing meter, and the
+  `DiagnosticsOverlay` behind a throttled provider that does no work while the panel is hidden.
+  `DiagnosticsOverlay.DrawStatsSection` turns a `RenderFrameStats` into an overlay section.
+- **Wired into GameApp by default.** `GameApp` and `GameApp3D` build one `DiagnosticsHud` automatically
+  (hidden, toggled with F1) and gate `Scene3D.EnableTiming` on its visibility, so pass timing costs nothing
+  when the panel is closed. `GameAppOptions.DisableDiagnosticsOverlay` turns it off entirely and
+  `GameAppOptions.DiagnosticsToggleKey` rebinds the toggle.
+- **Showcase adoption.** The Showcase inherits the built-in HUD and surfaces the networked room's client stats
+  in a Network section.
+
+## 10.99.1
+
+### WorldServer non-delta fallback adopts the indexed SnapshotWriter
+
+WorldServer's non-delta fallback snapshot path adopts the indexed `SnapshotWriter`. `WorldServer.Tick`'s
+single-world full-snapshot fallback (a client that never advertised `DeltaCapable`, or `DeltaReplication`
+off server-wide) now resolves each client's interest set off a `WorldSnapshotIndex` shared across every
+fallback client served in a tick, rebuilt lazily on the first one, instead of one full-world scan per
+client per tick. Mirrors the per-tick shared index `ShardHost` already uses.
+
+- **Shared per-tick index.** The fallback index is rebuilt at most once per tick, on the first non-delta
+  client, and reused by every other fallback client served that tick. A tick with only delta-capable
+  clients pays no extra world scan. Internal `WorldServer` fields only, no public API change.
+- **Byte-identical wire.** Output stays byte-identical to the old full-scan `WriteFiltered` path, asserted
+  by parity tests across randomized movement and join and leave roster churn
+  (`WorldServerSnapshotIndexParityTests`).
+
+## 10.99.0
+
+### 2D render + GUI CPU-cost fixes
+
+Seven CPU-cost fixes across the 2D render and GUI stack: zero-allocation quad batching, opt-in SpriteBatch
+texture grouping, O(live) 2D particles, memoized text wrapping, cached patch-notes layout, memoized stat-chip
+text, and cheaper gradient and filled-circle primitives.
+
+- **Zero-alloc batching.** `SpriteBatch` / `QuadRunBuilder` no longer allocate a per-run `List` in the steady
+  state. A single backing list holds every quad and each run is a range slice into it.
+- **Texture grouping.** New opt-in `SpriteBatch.GroupByTexture` (off by default, reset by every `Begin`) merges
+  non-consecutive same-texture runs into one draw call, trading cross-texture painter's order for fewer draw
+  calls (order stays intact within a texture group). Only enable it for a pass whose correctness does not depend
+  on cross-texture draw order.
+- **O(live) particles.** `Particle2DSystem` `Update` / `Draw` / `ActiveCount` are now O(live particles) via a
+  sparse-set live index instead of O(`Capacity`), so a large pool holding few live particles is not scanned in
+  full each frame.
+- **Span Measure + memoized wrap.** `ITextMeasurer` / `SpriteFont` / `TextLayout` gain a span-based `Measure`
+  overload (a default interface method, non-breaking) and a bounded LRU cache for `Wrap` keyed on font identity,
+  text, width, and hard breaks. The returned list is always a fresh copy, so a caller mutating it cannot corrupt
+  the cache.
+- **Cached patch-notes layout.** `PatchNotesView` caches per-note word-wrap layout, invalidated on a width or
+  measurer change.
+- **Memoized stat chip.** `GuiSurface.StatChip` memoizes its composed text per label and value.
+- **Cheaper primitives.** `PrimitiveRenderer.DrawVerticalGradient` is one GPU-interpolated quad instead of up to
+  12 CPU-lerped bands, and `DrawFilledCircle` caps its row count at 128 (`MaxFilledCircleRows`), mirroring the
+  other clamped primitives.
+- GPU goldens verified unchanged on Metal.
+
+## 10.98.0
+
+### Batched IWorldStore saves + MmoServerSample server hygiene
+
+Batched IWorldStore saves and MmoServerSample server hygiene: dedicated servers no longer pay one store
+round trip per dirty record, and the reference sample now ships with cell parallelism, Server GC, and
+adaptive tick pacing on by default.
+
+- **Batched store API.** Added `IWorldStore.SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)>, CancellationToken)`,
+  a default interface member that loops `SaveAsync` so existing implementations keep compiling unchanged.
+  `SqliteWorldStore` overrides it with a single transaction and a prepared multi-row upsert. `SqlServerWorldStore`
+  overrides it with one pooled connection and a chunked multi-row `MERGE` (500 rows per statement). `InMemoryWorldStore`
+  overrides it for one consistent `UpdatedAt` per batch.
+- **Batched dirty passes.** `WorldPersistence.SaveDirtyPass` and `CellPersistence.SaveDirtyPass` now issue one
+  `SaveManyAsync` per periodic pass instead of one `SaveAsync` per dirty record. A faulted batch leaves every record
+  in it dirty for retry, the unchanged data-safety guarantee, and `OnStoreError` now fires once per pass rather than
+  once per record.
+- **Adaptive host pacing.** Added `FixedTickHost.SecondsUntilNextTick` and the pure static
+  `FixedTickHost.ComputeIdleWaitSeconds` for adaptive host-loop pacing.
+- **Reference sample hygiene.** `MmoServerSample` now wires `ThreadPoolJobScheduler` for cell parallelism (measured
+  3.2x tick speedup at 256 cells on 12 cores), enables Server plus Concurrent GC, and replaces its fixed
+  `Thread.Sleep(5)` with adaptive pacing.
+
 ## 10.97.0
 
 ### O(interestSet) AoI projection + indexed filtered snapshots

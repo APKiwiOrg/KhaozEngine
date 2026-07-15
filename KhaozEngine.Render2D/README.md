@@ -2,23 +2,37 @@
 
 2D rendering on the custom MonoGame-free foundation (engine-owned `KhaozEngine.Gpu` abstraction, `System.Numerics`).
 
-- `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs. `Begin` overloads for
-  screen / `Camera2D` (world) / `IDesignViewport` (design) space, each with an optional `SamplerMode`
-  (`Linear` / `Point`) and an optional `Matrix4x4` model transform (tilt/scale a composed group as one).
-  `SetScissor`/`ClearScissor` DPI-aware clipping.
+- `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs (consecutive same
+  -texture draws coalesce into one draw call, and interleaved textures split into separate runs so painter's order
+  across textures is preserved). `Begin` overloads for screen / `Camera2D` (world) / `IDesignViewport` (design)
+  space, each with an optional `SamplerMode` (`Linear` / `Point`) and an optional `Matrix4x4` model transform
+  (tilt/scale a composed group as one). `SetScissor`/`ClearScissor` DPI-aware clipping. `GroupByTexture` (opt-in,
+  off by default, reset by every `Begin`) groups queued quads by texture at flush regardless of submission
+  order, trading strict painter's order for fewer draw calls when interleaved same-texture draws would
+  otherwise split into separate runs - order stays intact WITHIN a texture group, so only enable it for a pass
+  whose correctness does not depend on cross-texture draw order. `FrameStats` exposes always-on per-frame draw
+  counters (quads, draw calls, flushes, texture switches, vertex-upload bytes as a `Primitives.RenderFrameStats`),
+  reset each `NewFrame` and read after the frame's draws.
 - `Camera2D` - position/zoom/rotation 2D camera (headless, unit-tested) + the camera-feel layer (follow,
   look-ahead, eased blends, room cameras, parallax).
 - `Texture2D` - GPU texture; PNG load via StbImageSharp.
 - `ImageRgba` - CPU-side RGBA8 image (no GPU): `Load`/`Decode`, `AlphaAt`/`IsOpaqueAt` for opaque-pixel masks.
-- `SpriteFont` - runtime TrueType text (stb_truetype glyph atlas), `DrawString` / `Measure`. `DrawString` has a
-  `float scale` overload (uniform scale about the top-left); `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped`
-  take an optional `scale` so aligned/wrapped text stays correct when drawn scaled (`scale = 1` is unchanged).
-  `TextLayout.Wrap(font, text, maxWidth, hardBreak)` word-wraps on spaces. The opt-in `hardBreak` (default off)
-  additionally slices a single token longer than `maxWidth` at character boundaries so every returned line fits.
-  Default baked coverage is U+0020..U+017F (printable ASCII + Latin-1 Supplement + Latin Extended-A), so
-  accented Western/Central European text renders out of the box. Anything outside the coverage (or missing
-  from the face) measures AND draws as the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently
-  dropping; control characters stay zero-width.
+- `SpriteFont` - runtime TrueType text (stb_truetype glyph atlas), `DrawString` / `Measure`. `Measure` has a
+  `ReadOnlySpan<char>` overload alongside the `string` one (declared on `ITextMeasurer` as a default interface
+  method, so any existing measurer implementation keeps compiling unchanged) - `SpriteFont`'s override measures
+  the span directly with no intermediate string allocation, for a caller (e.g. word-wrap) measuring a candidate
+  that may be thrown away. `DrawString` has a `float scale` overload (uniform scale about the top-left).
+  `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped` take an optional `scale` so aligned/wrapped text stays
+  correct when drawn scaled (`scale = 1` is unchanged). `TextLayout.Wrap(font, text, maxWidth, hardBreak)`
+  word-wraps on spaces and is memoized (a bounded LRU cache keyed on font identity + text + maxWidth +
+  hardBreak), so a caller re-wrapping the same unchanged text every frame (a static label, an idle tooltip)
+  hits the cache instead of re-running the wrap algorithm, and the returned list is always a fresh copy, so mutating
+  it can never corrupt the cache. The opt-in `hardBreak` (default off) additionally slices a single token longer
+  than `maxWidth` at character boundaries so every returned line fits. Default baked coverage is
+  U+0020..U+017F (printable ASCII + Latin-1 Supplement + Latin Extended-A), so accented Western/Central European
+  text renders out of the box. Anything outside the coverage (or missing from the face) measures AND draws as
+  the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently dropping. Control characters stay
+  zero-width.
 - `PrimitiveRenderer` - filled/outlined 2D primitives through a `SpriteBatch` (owns a 1x1 white pixel):
   rects, lines, circles/rings, filled circles, vertical gradients, progress bars, filled sectors/arc-bands, and
   partial-ring strokes `DrawArc` (a general arc outline) / `DrawRadialProgress` (a 0..1 countdown/cooldown ring).
@@ -61,8 +75,9 @@ TextHelper.DrawCenteredInRect(spriteBatch, uiFont, "Continue", buttonRect, Color
 
 ## `PrimitiveRenderer.DrawVerticalGradient`
 
-Draws a vertical gradient across a `Rect` by rendering `bands` horizontal strips with linearly interpolated
-color from `top` to `bottom`. Useful for atmosphere gradients, panel scrims, and background layers.
+Draws a vertical gradient across a `Rect` as a single GPU-interpolated quad (`top` on the upper edge, `bottom`
+on the lower edge, lerped per-pixel by the rasterizer). Useful for atmosphere gradients, panel scrims, and
+background layers.
 
 ```csharp
 void DrawVerticalGradient(SpriteBatch batch, Rect r, Color top, Color bottom, int bands = 12)
@@ -71,6 +86,17 @@ void DrawVerticalGradient(SpriteBatch batch, Rect r, Color top, Color bottom, in
 ```csharp
 renderer.DrawVerticalGradient(spriteBatch, new Rect(0, 0, viewWidth, viewHeight), fogTop, fogBottom, 12);
 ```
+
+`bands` is unused (kept only for source/binary compatibility with existing call sites): a single GPU
+-interpolated quad has no band count of its own and is smoother than any earlier CPU-banded approximation.
+
+## `PrimitiveRenderer.DrawFilledCircle` row cap
+
+`DrawFilledCircle` draws stacked horizontal rects, one row per pixel of diameter up to
+`PrimitiveRenderer.MaxFilledCircleRows` (128) bands. Past that a very large radius steps by more than 1 pixel
+per row (see `FilledCircleRowStep`) so it still draws a bounded number of (proportionally taller) bands instead
+of one draw call per pixel row. A no-op change for any UI-scale circle (radius <= 63 stays exactly one row per
+pixel, unchanged).
 
 ## `DpiFont` - crisp point-space text on HiDPI (since 10.12.0)
 
@@ -131,6 +157,8 @@ with a `DpiFont` is crisp.
 ## 2D particles + ambient fields (`Vfx`)
 
 `Particle2DSystem` is a fixed-size, zero-allocation, deterministic (seeded `XorRng`) screen-space particle pool.
+`Update`/`Draw`/`ActiveCount` cost is O(live particles), not O(`Capacity`): a sparse-set live-slot index means a
+large pool that only ever holds a handful of simultaneously-live particles is not scanned in full every frame.
 Per particle: velocity, acceleration (gravity), drag, sway, rotation + angular velocity, size/colour lerp over
 life, a per-particle `BlendMode`, and an optional trapezoid alpha envelope (see below). Two lifecycles:
 

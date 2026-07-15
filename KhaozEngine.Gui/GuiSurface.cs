@@ -39,6 +39,31 @@ namespace KhaozEngine.Gui
         Rect? _hoveredRect;       // the enabled button under the pointer THIS frame (last one wins); null = none
         Rect? _prevHoveredRect;   // last frame's hovered button, for hover-enter detection
 
+        // Memoizes StatChip's "label  value" interpolation, keyed on (label, value) content: a HUD stat chip
+        // typically redraws every frame with an unchanged value (health, ammo, gold sitting steady between
+        // changes), so a steady chip turns into a dictionary lookup instead of a fresh string allocation every
+        // draw. Capped and wholesale-cleared past the cap rather than LRU-evicted - this is a small, cheap
+        // -to-rebuild cache of short strings, so a simple bound is enough to stop a counter ticking through many
+        // distinct values over a long session from growing it without limit.
+        internal const int StatChipTextCacheCapacity = 64;
+        readonly Dictionary<(string Label, string Value), string> _statChipTextCache = new();
+
+        /// <summary>The number of distinct (label, value) pairs currently memoized. Internal, for tests.</summary>
+        internal int StatChipTextCacheCount => _statChipTextCache.Count;
+
+        // Internal (not private) so the cache/format logic is directly unit-testable without a GPU-backed
+        // SpriteFont - StatChip only reaches this when font is non-null, which needs a real device.
+        internal string FormatStatChipText(string lbl, string val)
+        {
+            var key = (lbl, val);
+            if (_statChipTextCache.TryGetValue(key, out string? cached)) return cached;
+
+            string text = string.IsNullOrEmpty(val) ? lbl : $"{lbl}  {val}";
+            if (_statChipTextCache.Count >= StatChipTextCacheCapacity) _statChipTextCache.Clear();
+            _statChipTextCache[key] = text;
+            return text;
+        }
+
         /// <summary>The style applied to <see cref="Button(SpriteFont, Rect, string)"/> when no explicit style is passed.</summary>
         public GuiStyle Style { get; set; }
 
@@ -247,7 +272,7 @@ namespace KhaozEngine.Gui
             float ty = rect.Y + (rect.Height - font.LineHeight * scale) * 0.5f;
             string lbl = label.Resolve();
             string val = value.Resolve();
-            string text = string.IsNullOrEmpty(val) ? lbl : $"{lbl}  {val}";
+            string text = FormatStatChipText(lbl, val);
             _batch.DrawString(font, text, new Vector2(textX, ty), (Color)style.Text, scale);
         }
 

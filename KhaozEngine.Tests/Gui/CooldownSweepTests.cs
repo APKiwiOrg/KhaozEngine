@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
@@ -81,6 +82,33 @@ namespace KhaozEngine.Tests.Gui
                 AssertOnPerimeter(q.P1);
                 AssertOnPerimeter(q.P2);
             }
+        }
+
+        [Fact]
+        // Locks the sweep to clockwise direction. A mirrored counterclockwise sweep would produce right-half points like (100, 50).
+        public void Quarter_fraction_covers_the_left_side_of_the_sweep_not_the_right()
+        {
+            var quads = GuiDraw.CooldownSweepQuads(Square, 0.25f);
+            Assert.Equal(2, quads.Count);
+
+            // First quad's trailing-edge perimeter point is the left-edge midpoint
+            Assert.Equal(0f, quads[0].P1.X, 3);
+            Assert.Equal(50f, quads[0].P1.Y, 3);
+
+            // Every vertex lies on the left half (would fail on a mirrored sweep)
+            foreach (var q in quads)
+            {
+                Assert.True(q.P0.X <= 50f + 1e-3f, $"P0.X {q.P0.X} exceeds left half");
+                Assert.True(q.P1.X <= 50f + 1e-3f, $"P1.X {q.P1.X} exceeds left half");
+                Assert.True(q.P2.X <= 50f + 1e-3f, $"P2.X {q.P2.X} exceeds left half");
+                Assert.True(q.P3.X <= 50f + 1e-3f, $"P3.X {q.P3.X} exceeds left half");
+            }
+
+            // Wedge passes through the top-left corner
+            var vertices = new[] { quads[0].P0, quads[0].P1, quads[0].P2, quads[0].P3,
+                                   quads[1].P0, quads[1].P1, quads[1].P2, quads[1].P3 };
+            bool hasTopLeftCorner = vertices.Any(v => MathF.Abs(v.X - 0f) < 1e-3f && MathF.Abs(v.Y - 0f) < 1e-3f);
+            Assert.True(hasTopLeftCorner, "wedge does not pass through top-left corner (0, 0)");
         }
     }
 }

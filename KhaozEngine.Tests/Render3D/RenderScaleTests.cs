@@ -153,5 +153,58 @@ namespace KhaozEngine.Tests.Render3D
             var s = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 3f, Pixelated = true };
             Assert.False(Scene3D.WantsMipDownsample(s, 640, 360));
         }
+
+        // MipFilterFixedInternalDownscale (opt-in): the same "internal target strictly larger than the viewport"
+        // downscale test, but gated for FixedInternal by a flag defaulting false so every existing consumer and
+        // GPU golden stays byte-identical unless it opts in.
+
+        [Fact]
+        public void WantsMipDownsample_false_for_FixedInternal_downscale_when_flag_off()
+        {
+            // Default flag is off: a window smaller than the 1600x900 fixed target (a genuine downscale) still
+            // gets the historical single bilinear tap, matching every pre-existing golden.
+            var s = new PixelPostProcessSettings();
+            Assert.False(s.MipFilterFixedInternalDownscale);
+            Assert.False(Scene3D.WantsMipDownsample(s, 640, 360));
+            Assert.False(Scene3D.WantsMipDownsample(s, 800, 600));
+        }
+
+        [Fact]
+        public void WantsMipDownsample_true_for_FixedInternal_downscale_when_flag_on()
+        {
+            // Opted in + a window smaller than the fixed target on either axis: mip-filter it.
+            var s = new PixelPostProcessSettings { MipFilterFixedInternalDownscale = true };
+            Assert.True(Scene3D.WantsMipDownsample(s, 640, 360));    // smaller on both axes
+            Assert.True(Scene3D.WantsMipDownsample(s, 1600, 600));   // smaller on height only
+            Assert.True(Scene3D.WantsMipDownsample(s, 800, 900));    // smaller on width only
+        }
+
+        [Fact]
+        public void WantsMipDownsample_false_for_FixedInternal_at_or_above_the_fixed_size_even_with_flag_on()
+        {
+            // Exactly the fixed size, or a window bigger than it (an upscale on the final blit): no downscale to
+            // filter, so the flag has nothing to do regardless of its value.
+            var s = new PixelPostProcessSettings { MipFilterFixedInternalDownscale = true };
+            Assert.False(Scene3D.WantsMipDownsample(s, 1600, 900));
+            Assert.False(Scene3D.WantsMipDownsample(s, 3840, 2160));
+        }
+
+        [Fact]
+        public void WantsMipDownsample_false_for_FixedInternal_flag_on_but_Pixelated()
+        {
+            // The opt-in flag never overrides the retro path: Pixelated stays single-mip point-sampled.
+            var s = new PixelPostProcessSettings { MipFilterFixedInternalDownscale = true, Pixelated = true };
+            Assert.False(Scene3D.WantsMipDownsample(s, 640, 360));
+        }
+
+        [Fact]
+        public void WantsMipDownsample_for_MatchViewport_is_unaffected_by_the_FixedInternal_flag()
+        {
+            // The flag is FixedInternal-only, so it must not change MatchViewport's existing decision either way.
+            var on = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f, MipFilterFixedInternalDownscale = true };
+            var off = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f, MipFilterFixedInternalDownscale = false };
+            Assert.True(Scene3D.WantsMipDownsample(on, 640, 360));
+            Assert.Equal(Scene3D.WantsMipDownsample(off, 640, 360), Scene3D.WantsMipDownsample(on, 640, 360));
+        }
     }
 }

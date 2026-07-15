@@ -387,12 +387,14 @@ namespace KhaozEngine.Render3D.Rendering
                 ? (ReferenceEquals(src, res.ColorTex) ? _blitColorP : ReferenceEquals(src, res.PingA) ? _blitPingAP : _blitPingBP)
                 : (ReferenceEquals(src, res.ColorTex) ? _blitColorL : ReferenceEquals(src, res.PingA) ? _blitPingAL : _blitPingBL);
 
-            // Supersample downscale: the blit source carries a mip chain (RenderResources.Mipped) ONLY under a
-            // MatchViewport downscale with a non-pixelated blit. Regenerating it here lets the trilinear LinearSampler
-            // auto-pick LOD ~= log2(downscale ratio) - a correct multi-tap box at ANY factor, where the single
-            // bilinear tap under-samples above 2:1. GenerateMipmaps ends the current render pass; the blit re-binds the
-            // swapchain below. Never fires for FixedInternal / Pixelated / a 1:1-or-upscale blit (all single-mip), so
-            // those stay byte-identical.
+            // Downscale: the blit source carries a mip chain (RenderResources.Mipped) only when Scene3D.WantsMipDownsample
+            // decided this frame is a genuine downscale with a non-pixelated blit - a MatchViewport supersample, or a
+            // FixedInternal target on a window smaller than it with PixelPostProcessSettings.MipFilterFixedInternalDownscale
+            // opted in. Regenerating it here lets the trilinear LinearSampler auto-pick LOD ~= log2(downscale ratio) - a
+            // correct multi-tap box at ANY factor, where the single bilinear tap under-samples above 2:1. GenerateMipmaps
+            // ends the current render pass, and the blit re-binds the swapchain below. Never fires for Pixelated, a 1:1-or-
+            // upscale blit, or a FixedInternal downscale with the opt-in flag off (all single-mip), so those stay
+            // byte-identical.
             if (src.MipLevels > 1) cl.GenerateMipmaps(src);
 
             cl.SetFramebuffer(swapchainFB);

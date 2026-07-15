@@ -1457,6 +1457,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   frame instead (1:1, no upscale blur on large / Retina windows; capped at `Post.MaxRenderWidth` x
   `MaxRenderHeight`, default 3840x2160, aspect preserved). Leave it `FixedInternal` for the chunky/`Pixelated`
   look.
+  - The flip side of `FixedInternal`: a window SMALLER than the fixed target is a genuine downscale on the final
+    blit, and by default that downscale is a single bilinear tap (kept exactly as-is so every existing consumer
+    and GPU golden stays byte-identical) - which under-samples the same way an un-mip-filtered `Supersample`
+    factor above 2 would (the historical Ruinborne shimmer on a window under 1600x900). Opt into the correct
+    mip-filtered blit for THIS case too with `Post.MipFilterFixedInternalDownscale = true` (default `false`). It
+    reuses the exact mip-chain + trilinear-blit machinery `MatchViewport`'s `Supersample` downscale already uses,
+    at whatever ratio the window ends up smaller by. Prefer `RenderScale.MatchViewport` outright if the small
+    window itself is the point (it also removes the upscale blur on large windows). Reach for this flag instead
+    when the FixedInternal target's fixed, chunky-but-smooth resolution must be kept.
 - Supersampling (SSAA): `Post.Supersample` (default `1`, MatchViewport only). Renders the internal 3D target at
   framebuffer x this factor per axis and downsamples in the final blit, so it anti-aliases BOTH geometry edges
   and shaded texture interiors (unlike MSAA). `2` = 2x per axis (4x pixels), the same effective AA a 2x/Retina

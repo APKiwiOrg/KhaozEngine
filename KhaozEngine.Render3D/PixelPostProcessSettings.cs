@@ -94,6 +94,26 @@ namespace KhaozEngine.Render3D
         /// <summary>Point-sample the final upscale for crisp pixels (retro). False = smooth/AA downscale.</summary>
         public bool Pixelated = false;
 
+        /// <summary>
+        /// Opt-in: mip-filter the final blit even under <see cref="Render3D.RenderScale.FixedInternal"/> when the
+        /// window is SMALLER than the fixed <see cref="RenderWidth"/> x <see cref="RenderHeight"/> internal target
+        /// in either axis (a genuine downscale). Default <c>false</c> keeps the historical single bilinear tap on
+        /// that downscale, so every existing consumer and GPU golden stays byte-identical. FixedInternal's fixed
+        /// target does not track the window, so a window smaller than it under-samples on that bilinear tap (the
+        /// historical Ruinborne shimmer on a window under the 1600x900 default). Turning this on reuses the SAME
+        /// mip-chain + trilinear-sampled blit machinery <see cref="Render3D.RenderScale.MatchViewport"/> already
+        /// uses for its own supersample downscale (see <see cref="Supersample"/>), so a correct multi-tap box
+        /// replaces the single tap at any downscale ratio. Ignored (no effect) under
+        /// <see cref="Render3D.RenderScale.MatchViewport"/> (which is unconditionally mip-filtered already) and
+        /// under <see cref="Pixelated"/> (the retro path is
+        /// always single-mip point-sampled). A consumer that expects a small window should prefer
+        /// <see cref="Render3D.RenderScale.MatchViewport"/> outright (it also avoids the fixed target's upscale
+        /// blur on large windows). Set this instead only when the FixedInternal retro-sized target itself must be
+        /// kept (e.g. a deliberately low, chunky-but-smooth internal resolution) while still supporting windows
+        /// smaller than it.
+        /// </summary>
+        public bool MipFilterFixedInternalDownscale = false;
+
         /// <summary>Snap each pixel to the nearest color in <see cref="ActivePalette"/> (retro).</summary>
         public bool Quantize = false;
         /// <summary>4x4 Bayer ordered dither applied with quantization (retro).</summary>

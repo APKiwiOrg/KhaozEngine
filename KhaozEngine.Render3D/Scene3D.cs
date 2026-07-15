@@ -1347,17 +1347,25 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Whether the final internal-target -> viewport blit is a genuine DOWNSCALE that should be filtered with a
-        /// mip chain (a correct multi-tap box) rather than the historical single bilinear tap. True only under
-        /// <see cref="RenderScale.MatchViewport"/> supersampling (or a cap-forced downscale) with a non-pixelated
-        /// blit, where the internal target is strictly larger than the viewport in either axis. <see
-        /// cref="RenderScale.FixedInternal"/> and the <see cref="PixelPostProcessSettings.Pixelated"/> retro path are
-        /// always false, so their targets stay single-mip and their blit output is byte-identical to before. Pure +
-        /// headless-testable (no GPU); the mip fix is what makes <see cref="PixelPostProcessSettings.Supersample"/>
-        /// correct at factors other than exactly 2 (a single bilinear tap under-samples above 2:1).
+        /// mip chain (a correct multi-tap box) rather than the historical single bilinear tap. True under
+        /// <see cref="RenderScale.MatchViewport"/> supersampling (or a cap-forced downscale), and ALSO under
+        /// <see cref="RenderScale.FixedInternal"/> when <see cref="PixelPostProcessSettings.MipFilterFixedInternalDownscale"/>
+        /// is opted in and the window is smaller than the fixed internal target in either axis - both share the
+        /// same "internal target strictly larger than the viewport" test, just gated by a different gate per scale
+        /// mode. Always false with a Pixelated blit (retro stays single-mip point-sampled) or (for FixedInternal)
+        /// when the opt-in flag is off, so every existing consumer and GPU golden stays byte-identical unless it
+        /// deliberately opts in. Pure + headless-testable (no GPU). The mip fix is what makes
+        /// <see cref="PixelPostProcessSettings.Supersample"/> correct at factors other than exactly 2 (a single
+        /// bilinear tap under-samples above 2:1), and what fixes FixedInternal under-sampling on a window smaller
+        /// than the fixed target when opted in.
         /// </summary>
         internal static bool WantsMipDownsample(PixelPostProcessSettings s, int viewportW, int viewportH)
         {
-            if (s.EffectiveRenderScale != RenderScale.MatchViewport || s.Pixelated) return false;
+            if (s.Pixelated) return false;
+            RenderScale scale = s.EffectiveRenderScale;
+            bool eligible = scale == RenderScale.MatchViewport
+                || (scale == RenderScale.FixedInternal && s.MipFilterFixedInternalDownscale);
+            if (!eligible) return false;
             var (tw, th) = ComputeTargetSize(s, viewportW, viewportH);
             return tw > Math.Max(1, viewportW) || th > Math.Max(1, viewportH);
         }

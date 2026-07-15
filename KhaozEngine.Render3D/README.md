@@ -45,6 +45,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   SSAA supersamples the whole image (geometry AND shaded interiors, the only one that kills high-frequency terrain
   shimmer) and now downsamples correctly at ANY factor via a mip-filtered blit; FXAA is a cheap one-pass edge
   smoother; MSAA multisamples geometry edges only. `RenderQuality` is the extension point for further quality knobs.
+  `RenderScale.FixedInternal` (the default) keeps a single bilinear tap on its final downscale for byte-stable
+  goldens, which under-samples on a window smaller than the fixed internal target. Opt into the same mip-filtered
+  blit machinery there too with `PixelPostProcessSettings.MipFilterFixedInternalDownscale` (default `false`), or
+  switch to `RenderScale.MatchViewport` outright.
 - Shadows: `PixelPostProcessSettings.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via `Shadows.Mode`
   - `ShadowMode.Off` (default, byte-stable), `ShadowMode.Blob` (soft dark ground blob under each caster), or
   `ShadowMode.ShadowMap` (key-light directional PCF shadow map). For the blob tier the scene submits one request per

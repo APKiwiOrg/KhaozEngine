@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.112.0
+
+Added `ViewportMath.CoverAnchored`, an anchored cover-fit rect helper for camera-tracked backgrounds. Minor
+bump: additive public API only.
+
+- `ViewportMath.CoverAnchored(srcWidth, srcHeight, viewport, anchor, anchorU, anchorV, minHeight, margin)`
+  returns the destination `Rect` to draw an image so it COVERS a viewport at a uniform (aspect-preserving)
+  scale, with the image's normalized anchor pinned to a screen point. It enlarges the image as far as needed
+  to reach every viewport edge even when the anchor is off-centre (a panned/zoomed focal point), so a
+  full-screen background never stretches and never exposes a gap behind it. `minHeight` holds a desired
+  resting scale, `margin` (>= 1) adds slack against sub-pixel edge seams. The rect form of the scalar `Cover`.
+
 ## 10.111.0
 
 Removed dead `Screen.InputConsumption` API and sharpened the actual input-routing contract in its place.

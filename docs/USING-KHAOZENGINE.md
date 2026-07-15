@@ -1282,6 +1282,14 @@ point-space pass). The pure math is `ViewportMath.SnapToDevicePixel` / `SnapRect
 Gui widgets and `GuiDraw` snap their rect + border thickness automatically in a point-space pass, and text glyph
 origins snap too, so the crisp result needs no per-widget code.
 
+**Anchored cover-fit for backgrounds.** `ViewportMath.CoverAnchored(srcW, srcH, viewport, anchor, anchorU,
+anchorV, minHeight, margin)` returns the destination `Rect` to draw an image so it covers a viewport at a
+uniform (undistorted) scale, with the image's normalized anchor `(anchorU, anchorV)` pinned to a screen point.
+It enlarges the image as far as needed to reach every edge even when the anchor is off-centre, so a
+camera-tracked background (a focal point that follows pan/zoom) never stretches and never exposes a gap behind
+it. `minHeight` holds a desired resting scale (e.g. couple it to camera zoom), `margin` (~1.02) hides sub-pixel
+edge seams. It is the rect form of the scalar `Cover`.
+
 **With `KhaozEngine.Game`.** Override `GameApp.OnDrawUi(SpriteBatch)`, a second pass that runs after `OnDraw2D`
 with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.DpiScale)` and hit-test with
 `UiPointer`. `OnDraw2D` stays the design-space game field, so the world layer is unchanged. Scenes get the same

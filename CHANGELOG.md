@@ -5,6 +5,35 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.99.0
+
+### 2D render + GUI CPU-cost fixes
+
+Seven CPU-cost fixes across the 2D render and GUI stack: zero-allocation quad batching, opt-in SpriteBatch
+texture grouping, O(live) 2D particles, memoized text wrapping, cached patch-notes layout, memoized stat-chip
+text, and cheaper gradient and filled-circle primitives.
+
+- **Zero-alloc batching.** `SpriteBatch` / `QuadRunBuilder` no longer allocate a per-run `List` in the steady
+  state. A single backing list holds every quad and each run is a range slice into it.
+- **Texture grouping.** New opt-in `SpriteBatch.GroupByTexture` (off by default, reset by every `Begin`) merges
+  non-consecutive same-texture runs into one draw call, trading cross-texture painter's order for fewer draw
+  calls (order stays intact within a texture group). Only enable it for a pass whose correctness does not depend
+  on cross-texture draw order.
+- **O(live) particles.** `Particle2DSystem` `Update` / `Draw` / `ActiveCount` are now O(live particles) via a
+  sparse-set live index instead of O(`Capacity`), so a large pool holding few live particles is not scanned in
+  full each frame.
+- **Span Measure + memoized wrap.** `ITextMeasurer` / `SpriteFont` / `TextLayout` gain a span-based `Measure`
+  overload (a default interface method, non-breaking) and a bounded LRU cache for `Wrap` keyed on font identity,
+  text, width, and hard breaks. The returned list is always a fresh copy, so a caller mutating it cannot corrupt
+  the cache.
+- **Cached patch-notes layout.** `PatchNotesView` caches per-note word-wrap layout, invalidated on a width or
+  measurer change.
+- **Memoized stat chip.** `GuiSurface.StatChip` memoizes its composed text per label and value.
+- **Cheaper primitives.** `PrimitiveRenderer.DrawVerticalGradient` is one GPU-interpolated quad instead of up to
+  12 CPU-lerped bands, and `DrawFilledCircle` caps its row count at 128 (`MaxFilledCircleRows`), mirroring the
+  other clamped primitives.
+- GPU goldens verified unchanged on Metal.
+
 ## 10.98.0
 
 ### Batched IWorldStore saves + MmoServerSample server hygiene

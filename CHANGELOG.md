@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.109.0
+
+### CharacterPose.CameraTarget fixes the feet-level follow camera in the showcase rooms
+
+Fixed: the follow camera parked at the avatar's feet in the local-feed showcase rooms. RoomDungeon and Room3D
+fed the bridge feet-anchored samples and then targeted `CharacterPose.RenderPosition`, the drawn feet, dropping
+the camera look-at a full capsule half-height to floor level, and the discrete-step mesh ease dipped it further
+on curbs. New `CharacterPose.CameraTarget(capsuleHalfHeight)` returns the stair-glide height lifted to the
+capsule centre without the mesh-only step offset, and both rooms now target it. `RenderPosition` and `World`,
+the drawn feet, are unchanged, so mesh output is byte-identical. Note: the `CharacterPose` constructor gained
+the glide feet-Y parameter. The type is constructed only by the bridge, but any external constructor call must
+add the argument. A regression test now pins the camera-relevant contract, the capsule centre, in the
+stair-glide suite.
+
 ## 10.108.0
 
 ### Action-bar icon, cooldown, and stack-count slot content for Gui hotbars

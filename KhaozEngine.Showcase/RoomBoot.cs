@@ -21,7 +21,7 @@ namespace KhaozEngine.Showcase
     public sealed class RoomBoot : GameScene
     {
         Texture2D _white = null!;
-        SpriteFont _font = null!;
+        DpiFont _font = null!;
         GuiSurface _gui = null!;
         readonly BootScreenTheme _theme = BootScreenTheme.Default;
 
@@ -30,7 +30,7 @@ namespace KhaozEngine.Showcase
         bool _forceFail;
 
         /// <summary>Wire in the texture/font created on the app's Surface2D. Call once, right after construction.</summary>
-        public RoomBoot Init(Texture2D white, SpriteFont font)
+        public RoomBoot Init(Texture2D white, DpiFont font)
         {
             _white = white;
             _font = font;
@@ -105,16 +105,24 @@ namespace KhaozEngine.Showcase
         public override void OnDrawUi(SpriteBatch batch)
         {
             var m = Manager!;
-            var bounds = new Rect(0f, 0f, m.FrameWidth, m.FrameHeight);
+
+            // Point-space layout + DPI scale from the UiViewport (the batch was begun in it): FrameWidth/Height are
+            // device pixels and would push the centered content off-screen on HiDPI. dpiScale drives the crisp bake.
+            UiViewport? ui = m.UiViewport;
+            var bounds = ui is not null
+                ? new Rect(0f, 0f, ui.Width, ui.Height)
+                : new Rect(0f, 0f, m.FrameWidth, m.FrameHeight);
+            float dpiScale = ui?.DpiScale ?? 1f;
+            float hintY = (ui?.Height ?? m.FrameHeight) - 28f;
 
             _gui.Begin(batch, m.UiPointer ?? new Pointer());
-            BootScreenRenderer.Draw(batch, _gui, _white, _font, bounds, _pipeline.Snapshot(), _theme,
+            BootScreenRenderer.Draw(batch, _gui, _white, _font, dpiScale, bounds, _pipeline.Snapshot(), _theme,
                 allowRetry: true, allowQuit: false, _elapsed, out bool retry, out _);
             if (retry) _pipeline.Retry();
 
-            // Room controls hint along the bottom (localized).
+            // Room controls hint along the bottom (localized). Baked at its device size (0.5 * dpiScale) so it is crisp.
             LocalizedText hint = ShowcaseStrings.BootHint;
-            batch.DrawString(_font, hint.Resolve(), new Vector2(16f, m.FrameHeight - 28f), new Color(0.7f, 0.75f, 0.85f, 1f), 0.5f);
+            batch.DrawString(_font.For(0.5f * dpiScale), hint.Resolve(), new Vector2(16f, hintY), new Color(0.7f, 0.75f, 0.85f, 1f), 0.5f);
         }
     }
 }

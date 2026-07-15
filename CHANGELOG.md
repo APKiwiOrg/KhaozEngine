@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.95.0
+
+### Crisp boot-screen text on HiDPI (DPI-aware `BootScreen` font) + `DpiFont` multi-slot cache
+
+The boot screen now bakes its text at the device-pixel size so the title and step label are texel-crisp on HiDPI
+instead of soft with uneven edges, and it lays out in point space so the content stays centered on Retina. Reported
+as the Ruinborne boot title + "Checking for updates" label rendering "a bit wonky" (soft/blurry) on a Retina Mac,
+noticeably below the game's own menus.
+
+- **Root cause.** The boot text was baked once at a fixed `oversample` (never the live DPI scale) and drawn at the
+  theme scales (title 0.85, step 0.6) through the point-space `OnDrawUi` pass, so the glyph bodies were
+  bilinear-resampled by those scales rather than mapped texel-for-texel to the framebuffer. The game's own menus
+  looked sharper because they draw a denser (oversample-3) atlas minified through the design viewport.
+- **Fix.** `BootScreen` / `BootScreenRenderer.Draw` gain a DPI-aware `DpiFont` overload: each label is drawn from an
+  atlas baked at its exact device size (`For(textScale * dpiScale)`, drawn 1:1 with the origin device-snapped), so
+  text is crisp at any DPI. Build the font with `Surface2D.LoadDefaultDpiFont(pointSize, cacheSlots: 4)`. Still zero
+  game assets (the `DpiFont` is built from the engine's embedded default face, so instant-on is preserved). The
+  existing `SpriteFont` overloads of the ctor / `Create` / `Draw` are unchanged and kept for back-compat (soft on
+  HiDPI, fine at 1x).
+- **Boot layout fix.** `BootScreen` now derives its bounds and DPI scale from the point-space `UiViewport` instead
+  of the device-pixel `FrameWidth`/`FrameHeight`. Feeding framebuffer pixels into the point-space UI pass pushed the
+  centered content off-center (offscreen) on a HiDPI display. Falls back to `FrameWidth`/`Height` when no
+  `UiViewport` is set (a 1x host).
+- **`DpiFont` multi-slot cache.** Every `LoadDpiFont` / `LoadDefaultDpiFont` factory (on `Render2DSurface` and
+  `Render2DContext`) gains an optional `cacheSlots` (default 1). With more than one slot the font keeps several
+  scales baked at once (LRU eviction past the count), so one face drawn at several scales in a single pass does not
+  re-bake every frame (a single slot would thrash, baking twice per frame). `DpiFont.LiveCount` reports how many are
+  baked now. `cacheSlots: 1` preserves the prior single-display-scale behaviour exactly. `Render2DContext` also
+  gains `LoadDefaultDpiFont`.
+- Showcase `RoomBoot` adopts the `DpiFont` path + point-space layout. No golden changed (`SpriteFont` /
+  `SpriteBatch` text rendering is untouched).
+
 ## 10.94.0
 
 ### Turn-key boot / startup screen pipeline in `KhaozEngine.Game`

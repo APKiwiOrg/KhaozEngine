@@ -76,7 +76,7 @@ namespace KhaozEngine.Showcase
             var dpi22 = Surface2D.LoadDefaultDpiFont(22f);
             var big3 = Surface2D.LoadDefaultFont(40f, oversample: 3);
             var small3 = Surface2D.LoadDefaultFont(22f, oversample: 3);
-            var bootFont = Surface2D.LoadDefaultFont(28f, oversample: 2);
+            var bootFont = Surface2D.LoadDefaultDpiFont(28f, cacheSlots: 4);   // DPI-aware: crisp boot text on HiDPI
             _readoutFont = dpi22; // crisp point-space overlay text
 
             // Room2D / RoomInput are fixed-layout design-space demos (they scale + centre as a unit on resize):

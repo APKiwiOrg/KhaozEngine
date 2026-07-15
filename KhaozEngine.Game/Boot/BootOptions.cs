@@ -11,7 +11,7 @@ namespace KhaozEngine.Game
     /// assembles the ordered step list (update -&gt; server-status -&gt; game steps), skipping any built-in that is not
     /// configured. Nothing configured (no update service, no server-status client, no game steps) yields an empty
     /// pipeline that completes immediately - the boot screen flashes and hands off. Pass an instance to
-    /// <see cref="BootScreen.Create"/>.
+    /// <see cref="BootScreen.Create(KhaozEngine.Render2D.Texture2D, KhaozEngine.Render2D.DpiFont, BootOptions, System.Func{GameScene}, System.Action)"/>.
     /// </summary>
     public sealed class BootOptions
     {

@@ -78,17 +78,25 @@ renderer.DrawVerticalGradient(spriteBatch, new Rect(0, 0, viewWidth, viewHeight)
 re-bakes only when that scale changes (stable per display, so not per window resize). Author at a logical
 `pixelHeight` (points). Each frame call `font.For(dpiScale)` (pass `frame.DpiScale`) and draw the returned
 `SpriteFont` 1:1 in a point-space pass (a `UiViewport` `Begin`). `DpiFont` is `IDisposable` (it owns the
-current `SpriteFont`).
+baked `SpriteFont`s).
+
+Each factory takes an optional `cacheSlots` (default 1). Pass `cacheSlots` &gt; 1 when the SAME face is drawn at
+several different effective scales in one pass and each must be texel-exact - e.g. a boot screen title and a
+smaller step label from one font: call `For(titleScale * dpiScale)` and `For(labelScale * dpiScale)` and both
+atlases stay baked (LRU eviction past the slot count), instead of thrashing a single slot (baking twice every
+frame). The default of 1 keeps the single-display-scale behaviour (one atlas, re-baked only on a DPI change).
+`LiveCount` reports how many scales are baked right now (`BakeCount` the total (re)bakes over the font's life).
 
 Create one via `Render2DSurface`:
 
 | Factory | Loads from |
 |---------|-----------|
-| `Render2DSurface.LoadDpiFont(path)` | TrueType file path |
-| `Render2DSurface.LoadDpiFont(byte[])` | in-memory font bytes |
-| `Render2DSurface.LoadDpiFont(FontManager, key)` | a font already registered in a `FontManager` |
-| `Render2DSurface.LoadDefaultDpiFont(pixelHeight)` | the built-in default font at `pixelHeight` |
-| `Render2DContext.LoadDpiFont(byte[], pixelHeight)` | the offscreen snapshot path |
+| `Render2DSurface.LoadDpiFont(path, cacheSlots)` | TrueType file path |
+| `Render2DSurface.LoadDpiFont(byte[], cacheSlots)` | in-memory font bytes |
+| `Render2DSurface.LoadDpiFont(FontManager, key, cacheSlots)` | a font already registered in a `FontManager` |
+| `Render2DSurface.LoadDefaultDpiFont(pixelHeight, cacheSlots)` | the built-in default font at `pixelHeight` |
+| `Render2DContext.LoadDpiFont(byte[], pixelHeight, cacheSlots)` | the offscreen snapshot path |
+| `Render2DContext.LoadDefaultDpiFont(pixelHeight, cacheSlots)` | the built-in default font, offscreen snapshot path |
 
 ```csharp
 var uiFont = surface.LoadDpiFont("fonts/Inter.ttf");  // logical points

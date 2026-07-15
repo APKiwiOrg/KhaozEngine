@@ -312,7 +312,10 @@ creation still precede it - the honest floor). The screen renders with only the 
 a 1x1 white texture, so it needs zero game assets.
 
 Create the two cheap resources on the app's `Surface2D` (a `GameScene` cannot reach the device), then build the
-screen from a `BootOptions`. Each built-in step is individually optional: leave `UpdateService` null to skip the
+screen from a `BootOptions`. Use `LoadDefaultDpiFont(pointSize, cacheSlots: 4)` for the font: the boot screen is a
+DPI-aware `OnDrawUi` scene, so it bakes each label at its exact device-pixel size and the text stays texel-crisp on
+HiDPI (a fixed `SpriteFont` is accepted too, via an overload, but is bilinear-resampled by the theme scales - use
+the `DpiFont` for crisp text). Each built-in step is individually optional: leave `UpdateService` null to skip the
 update step, leave `ServerStatusClient` null to skip the server-status step (it is off unless a status endpoint
 is configured). The game's own steps go in `GameSteps` via `BootStep.Create`. A step reports a determinate
 fraction with `progress.Report(0..1)` or marks its slice indeterminate with `progress.ReportIndeterminate()`.
@@ -323,7 +326,7 @@ readonly SceneManager _scenes = new();
 protected override void OnLoad()
 {
     var white = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-    var font = Surface2D.LoadDefaultFont(28f, oversample: 2);   // engine-internal font, no game asset
+    var font = Surface2D.LoadDefaultDpiFont(28f, cacheSlots: 4);   // DPI-aware engine font, no game asset
 
     var options = new BootOptions
     {
@@ -1180,7 +1183,9 @@ rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`.
 **`DpiFont` (`KhaozEngine.Render2D`)** authors at a logical `pixelHeight`, and each frame you call
 `font.For(frame.DpiScale)` to get a `SpriteFont` baked for the current DPI, drawn 1:1 in the point-space pass. It
 re-bakes the atlas only when the DPI scale changes. Create one via `surface.LoadDpiFont(...)` /
-`surface.LoadDefaultDpiFont(...)`.
+`surface.LoadDefaultDpiFont(...)`. Pass `cacheSlots` &gt; 1 when the same face is drawn at several scales in one
+pass and each must be texel-exact (e.g. a boot title + smaller label): each `For(scale * dpiScale)` stays baked
+instead of thrashing a single slot.
 
 **Device-pixel snapping.** Inside a point-space `Begin`, `SpriteBatch.SnapRect` / `SnapLength` and the
 `DeviceScale` / `DeviceOffset` accessors snap coordinates to whole device pixels (they are inert outside a

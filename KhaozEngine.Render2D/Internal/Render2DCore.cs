@@ -44,15 +44,16 @@ namespace KhaozEngine.Render2D.Internal
             SpriteFont.Build(Gd, DefaultFont.Bytes, pixelHeight, oversample);
 
         // A DpiFont bakes at the live device-pixel scale and re-bakes only when it changes; the baker closes over
-        // this core's device so each (re)bake lands on the same GPU as the batch it will draw through.
-        public DpiFont CreateDpiFont(byte[] ttf, float pixelHeight) =>
-            new DpiFont(pixelHeight, density => SpriteFont.Build(Gd, ttf, pixelHeight, density));
+        // this core's device so each (re)bake lands on the same GPU as the batch it will draw through. cacheSlots > 1
+        // keeps several scales baked at once (for one face drawn at several scales in a pass, e.g. the boot screen).
+        public DpiFont CreateDpiFont(byte[] ttf, float pixelHeight, int cacheSlots = 1) =>
+            new DpiFont(pixelHeight, density => SpriteFont.Build(Gd, ttf, pixelHeight, density), cacheSlots);
 
-        public DpiFont CreateDpiFont(string ttfPath, float pixelHeight) =>
-            CreateDpiFont(File.ReadAllBytes(ttfPath), pixelHeight);
+        public DpiFont CreateDpiFont(string ttfPath, float pixelHeight, int cacheSlots = 1) =>
+            CreateDpiFont(File.ReadAllBytes(ttfPath), pixelHeight, cacheSlots);
 
-        public DpiFont CreateDefaultDpiFont(float pixelHeight) =>
-            CreateDpiFont(DefaultFont.Bytes, pixelHeight);
+        public DpiFont CreateDefaultDpiFont(float pixelHeight, int cacheSlots = 1) =>
+            CreateDpiFont(DefaultFont.Bytes, pixelHeight, cacheSlots);
 
         public void Dispose() { Batch.Dispose(); if (_ownsDevice) Gd.Dispose(); }
 

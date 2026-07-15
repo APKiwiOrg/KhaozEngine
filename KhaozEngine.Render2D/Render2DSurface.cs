@@ -51,18 +51,19 @@ namespace KhaozEngine.Render2D
         /// A <see cref="DpiFont"/> for point-space UI: authored at logical <paramref name="pixelHeight"/>, it bakes
         /// its atlas at the live DPI scale (call <c>font.For(frame.DpiScale)</c> each frame) so text stays crisp on
         /// HiDPI, re-baking only when the scale changes. Draw the returned font 1:1 through a
-        /// <c>UiViewport</c> batch pass. Dispose it when done.
+        /// <c>UiViewport</c> batch pass. Dispose it when done. <paramref name="cacheSlots"/> &gt; 1 keeps several
+        /// scales baked at once, for a face drawn at several scales in one pass (e.g. the boot title + step label).
         /// </summary>
-        public DpiFont LoadDpiFont(string ttfPath, float pixelHeight) => _core.CreateDpiFont(ttfPath, pixelHeight);
+        public DpiFont LoadDpiFont(string ttfPath, float pixelHeight, int cacheSlots = 1) => _core.CreateDpiFont(ttfPath, pixelHeight, cacheSlots);
 
-        /// <summary>As <see cref="LoadDpiFont(string, float)"/>, from raw TTF bytes (no filesystem path).</summary>
-        public DpiFont LoadDpiFont(byte[] ttf, float pixelHeight) => _core.CreateDpiFont(ttf, pixelHeight);
+        /// <summary>As <see cref="LoadDpiFont(string, float, int)"/>, from raw TTF bytes (no filesystem path).</summary>
+        public DpiFont LoadDpiFont(byte[] ttf, float pixelHeight, int cacheSlots = 1) => _core.CreateDpiFont(ttf, pixelHeight, cacheSlots);
 
-        /// <summary>As <see cref="LoadDpiFont(string, float)"/>, from a <see cref="FontManager"/> key.</summary>
-        public DpiFont LoadDpiFont(FontManager fonts, string key, float pixelHeight) => _core.CreateDpiFont(fonts.GetFontBytes(key), pixelHeight);
+        /// <summary>As <see cref="LoadDpiFont(string, float, int)"/>, from a <see cref="FontManager"/> key.</summary>
+        public DpiFont LoadDpiFont(FontManager fonts, string key, float pixelHeight, int cacheSlots = 1) => _core.CreateDpiFont(fonts.GetFontBytes(key), pixelHeight, cacheSlots);
 
-        /// <summary>As <see cref="LoadDpiFont(string, float)"/>, from the engine's embedded default face.</summary>
-        public DpiFont LoadDefaultDpiFont(float pixelHeight) => _core.CreateDefaultDpiFont(pixelHeight);
+        /// <summary>As <see cref="LoadDpiFont(string, float, int)"/>, from the engine's embedded default face.</summary>
+        public DpiFont LoadDefaultDpiFont(float pixelHeight, int cacheSlots = 1) => _core.CreateDefaultDpiFont(pixelHeight, cacheSlots);
 
         /// <summary>Bind this frame's command list/viewport to the batch. Call once per frame before drawing.</summary>
         public void NewFrame(Frame frame) => _core.Batch.NewFrame(frame.Commands, frame.Width, frame.Height);

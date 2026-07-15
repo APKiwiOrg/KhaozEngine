@@ -82,8 +82,8 @@ the FIRST scene and it shows a progress bar in the first frames, then runs a sta
 advances (update check + apply, server-status min-version gate, then the game's own asset-warm-up steps), and
 replaces itself with the game's first scene on success. The heavy work is deferred into the pipeline, so no game
 asset loading precedes the bar (process start + window creation still precede it - that is the honest floor). The
-boot screen renders with only the engine-internal default font + a 1x1 white texture, so it needs zero game
-assets.
+boot screen renders with only the engine-internal default font (as a DPI-aware `DpiFont`, so its text is
+texel-crisp on HiDPI) + a 1x1 white texture, so it needs zero game assets.
 
 - `IBootStep` (`Name`, `Weight`, `RunAsync(IBootProgress, CancellationToken)`) is the step seam. Steps run in
   order, each mapped onto its weighted slice of one overall bar, and may report a determinate fraction or mark
@@ -96,14 +96,17 @@ assets.
   download + apply-and-restart). `ServerStatusBootStep` wraps `ServerStatusClient` + `ServerStatusEvaluator`
   (one blocking fetch, min-version gate). Both degrade gracefully when the feed / endpoint is unreachable.
 - `BootScreen.Create(white, font, options, firstScene, onQuit)` assembles the pipeline from `BootOptions` and
-  returns the scene. `BootScreenTheme` restyles it (colours, bar geometry, optional logo + custom-background
-  hook) without forking. `BootStrings` holds the localized `boot.*` copy with an English fallback.
+  returns the scene. `font` is a DPI-aware `DpiFont` (build it with `Surface2D.LoadDefaultDpiFont(pointSize,
+  cacheSlots: 4)` - still zero game assets): the screen bakes each label at its exact device-pixel size, so text
+  is crisp on HiDPI. A fixed `SpriteFont` overload is kept for back-compat but is resampled by the theme scales.
+  `BootScreenTheme` restyles it (colours, bar geometry, optional logo + custom-background hook) without forking.
+  `BootStrings` holds the localized `boot.*` copy with an English fallback.
 
 ```csharp
 protected override void OnLoad()
 {
     var white = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-    var font = Surface2D.LoadDefaultFont(28f, oversample: 2);   // engine-internal font, no game asset
+    var font = Surface2D.LoadDefaultDpiFont(28f, cacheSlots: 4);   // DPI-aware engine font, no game asset
 
     var options = new BootOptions
     {

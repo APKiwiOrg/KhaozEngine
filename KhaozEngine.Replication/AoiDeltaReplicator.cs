@@ -58,6 +58,12 @@ public sealed class AoiDeltaReplicator
     private readonly BinaryWriter wireWriter;
     private readonly List<long> scratchRemoved = new();
     private readonly List<long> scratchChanged = new();
+    // Project's reused ordering scratch: the interest-set entities present in the capture, tagged with their capture
+    // order, sorted so the projection is built in world ForEach order (byte-identical to the old full-capture walk).
+    // Reused across every WriteFor, so a steady-state projection allocates only the exact-size projected baseline.
+    private readonly List<(int order, long netId, Comps comps)> projectScratch = new();
+    private static readonly Comparison<(int order, long netId, Comps comps)> ByCaptureOrder =
+        static (a, b) => a.order.CompareTo(b.order);
 
     // Test seam: how many world scans the shared capture has actually run (one per distinct world per tick). A tick
     // that serves C clients from one world scans once, not C times - what this whole change buys.
@@ -97,11 +103,11 @@ public sealed class AoiDeltaReplicator
     /// </summary>
     /// <remarks>
     /// The world is scanned and captured ONCE per <paramref name="world"/> per tick (the first <see cref="WriteFor"/>
-    /// after a <see cref="BeginTick"/> that sees it), shared across every client served from that world. The win is
-    /// that shared once-per-tick scan and capture, not a cheaper per-client walk: <see cref="Project"/> still walks
-    /// the whole shared capture for every client, filtering by <paramref name="interestSet"/> and owner scope, which
-    /// is required to keep the changed-entity wire order identical to the pre-share per-client capture. The wire is
-    /// byte-identical to capturing per client.
+    /// after a <see cref="BeginTick"/> that sees it), shared across every client served from that world. On top of
+    /// that shared capture, <see cref="Project"/> is O(interestSet): it iterates this client's interest set and
+    /// resolves each entity's captured components in O(1), ordering the selection by capture position so the
+    /// changed-entity wire order is identical to walking the whole capture. So the per-client cost scales with the
+    /// client's area of interest, not the world population. The wire is byte-identical to capturing per client.
     /// </remarks>
     public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interestSet, long? ownerNetId = null)
     {
@@ -182,25 +188,30 @@ public sealed class AoiDeltaReplicator
     /// Projects the shared <paramref name="capture"/> down to one client: keeps only entities in
     /// <paramref name="interestSet"/> and, per entity, only the components this slot may see (an
     /// <see cref="ReplicationChannels.OwnerOnly"/> component only when its net id equals <paramref name="ownerNetId"/>).
-    /// Entities are visited in the capture's insertion order (the world <c>ForEach</c> order) so the resulting
-    /// baseline - and thus the changed-entity order on the wire - matches the pre-share per-client capture exactly.
-    /// When no registered component is owner-scoped, each in-AoI entity's captured component set is referenced
-    /// directly (it is immutable and identical for every client), avoiding a per-client copy.
+    /// O(interestSet): it iterates the (usually far smaller) interest set and resolves each entity's captured
+    /// components in O(1), instead of walking the whole shared capture and filtering. The selected entities are then
+    /// ordered by their capture position (<see cref="CapturedComponents.Order"/>, the world <c>ForEach</c> order) so
+    /// the resulting baseline - and thus the changed-entity order on the wire - matches a full capture walk exactly
+    /// (byte-identical to the pre-index projection). When no registered component is owner-scoped, each in-AoI
+    /// entity's captured component set is referenced directly (it is immutable and identical for every client),
+    /// avoiding a per-client copy.
     /// </summary>
     private AoiBaseline Project(AoiBaseline capture, IReadOnlySet<long> interestSet, long? ownerNetId)
     {
-        var projected = new AoiBaseline();
-        foreach (KeyValuePair<long, Comps> entity in capture)
-        {
-            long netId = entity.Key;
-            if (!interestSet.Contains(netId)) continue;
-            if (!hasOwnerScopedCodec)
-            {
-                projected[netId] = entity.Value;   // shared, immutable: no owner scoping to apply, so no copy needed
-                continue;
-            }
-            projected[netId] = CaptureProjection.OwnerScope(entity.Value, registry, netId, ownerNetId);
-        }
+        // Collect the in-AoI entities present in the capture, tagged with their capture order, then sort by that order
+        // to reproduce the world ForEach order the old full-capture walk emitted. Capture orders are unique per entity,
+        // so the sort has no ties and is deterministic regardless of interest-set enumeration order.
+        projectScratch.Clear();
+        foreach (long netId in interestSet)
+            if (capture.TryGetValue(netId, out Comps? comps))
+                projectScratch.Add((comps.Order, netId, comps));
+        projectScratch.Sort(ByCaptureOrder);
+
+        var projected = new AoiBaseline(projectScratch.Count); // exact-size: no growth reallocations
+        foreach ((int _, long netId, Comps comps) in projectScratch)
+            projected[netId] = hasOwnerScopedCodec
+                ? CaptureProjection.OwnerScope(comps, registry, netId, ownerNetId)
+                : comps; // shared, immutable: no owner scoping to apply, so no copy needed
         return projected;
     }
 

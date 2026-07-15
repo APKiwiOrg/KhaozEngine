@@ -323,24 +323,30 @@ public sealed class CellPersistence
     /// <summary>Saves every live cell whose persistable snapshot changed since its last save, plus the meta record.</summary>
     public void SaveDirtyPass()
     {
+        List<(CellCoord coord, byte[] snap)>? dirty = null;
         foreach (CellCoord coord in new List<CellCoord>(host.LiveCellCoords))
         {
             if (loadsInFlight.ContainsKey(coord)) continue;   // load outstanding: skip so a periodic save can't overwrite the stored blob with pre-restore state
             byte[]? snap = host.SnapshotCell(coord);
             if (snap is null) continue;
             if (lastSaved.TryGetValue(coord, out byte[]? prev) && prev.AsSpan().SequenceEqual(snap)) continue;
-            Track(SaveCellAsync(coord, snap));
+            (dirty ??= new List<(CellCoord, byte[])>()).Add((coord, snap));
         }
+        if (dirty is not null) Track(SaveManyCellsAsync(dirty));
         SaveMetaIfAdvanced();
     }
 
-    // Writes the wrapped snapshot, advancing the dirty baseline only AFTER the write lands. A faulted save leaves the
-    // cell's baseline unadvanced so the next SaveDirtyPass sees it still dirty and retries it (the previous code set
-    // lastSaved before the save, so a faulted save was silently treated as persisted and never retried).
-    private async Task SaveCellAsync(CellCoord coord, byte[] snap)
+    // Batches every dirty cell's wrapped snapshot into one store round trip (one SaveManyAsync call instead of N
+    // SaveAsync calls). lastSaved is advanced per cell only AFTER the whole batch lands, so a faulted/canceled batch
+    // leaves every cell in it dirty for the next pass - the same "never mark a cell clean before it is actually
+    // saved" guarantee the old per-cell SaveCellAsync gave, just at batch grain: one failed round trip means the
+    // whole pass retries next interval, not only the one cell that actually caused the fault.
+    private async Task SaveManyCellsAsync(List<(CellCoord coord, byte[] snap)> dirty)
     {
-        await store.SaveAsync(CellKey(coord), Wrap(snap)).ConfigureAwait(false);
-        lastSaved[coord] = snap;
+        var items = new List<(string Key, byte[] Data)>(dirty.Count);
+        foreach ((CellCoord coord, byte[] snap) in dirty) items.Add((CellKey(coord), Wrap(snap)));
+        await store.SaveManyAsync(items).ConfigureAwait(false);
+        foreach ((CellCoord coord, byte[] snap) in dirty) lastSaved[coord] = snap;
     }
 
     private void SaveMetaIfAdvanced()

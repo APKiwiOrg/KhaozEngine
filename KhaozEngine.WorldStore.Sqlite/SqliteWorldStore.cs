@@ -73,6 +73,46 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
         finally { gate.Release(); }
     }
 
+    /// <summary>Overrides the interface default loop: every item is upserted inside one transaction on the shared
+    /// connection (still gated by <see cref="gate"/>, so this never races a concurrent operation on that
+    /// connection), so a batch of N dirty records costs one round trip and one fsync instead of N.</summary>
+    public async Task SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)> items, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        if (items.Count == 0) return;
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using SqliteTransaction tx = connection.BeginTransaction();
+            try
+            {
+                long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                using SqliteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText =
+                    "INSERT INTO world_store (key, data, updated_at) VALUES ($k, $d, $t) " +
+                    "ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at;";
+                SqliteParameter pk = cmd.Parameters.Add("$k", SqliteType.Text);
+                SqliteParameter pd = cmd.Parameters.Add("$d", SqliteType.Blob);
+                cmd.Parameters.AddWithValue("$t", now);
+                cmd.Prepare();
+                foreach ((string key, byte[] data) in items)
+                {
+                    pk.Value = key;
+                    pd.Value = data;
+                    await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+                tx.Commit();
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);

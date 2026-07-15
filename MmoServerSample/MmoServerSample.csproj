@@ -5,6 +5,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
+    <!-- A dedicated server ticks many cells and replicates to many clients every frame, so it allocates steadily
+         under load (measured up to ~0.87 gen2 collections per tick at heavy replication regimes) rather than in
+         the bursty, latency-insensitive pattern Workstation GC (.NET's default, tuned for desktop/client apps)
+         expects. Server GC trades a larger managed heap for per-core heaps and background collection that does
+         not stop the world as often. Concurrent GC lets gen2 collect mostly alongside running threads instead of
+         pausing them outright. This is the standard GC pairing for a long-running, multi-core server process -
+         see docs/USING-KHAOZENGINE.md, "Reference dedicated server (Phase 3E)". -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
     <!-- Reference dedicated MMO server: the Sharding topology + the netcode session layer + persistence.

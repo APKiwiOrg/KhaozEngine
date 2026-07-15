@@ -19,3 +19,8 @@ close the connection. For production / Azure SQL use `KhaozEngine.WorldStore.Sql
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key
 prefix. Used by `ServerAdmin` for account enumeration and ban persistence.
+
+`SqliteWorldStore` also overrides **`SaveManyAsync`**: every item in the batch is upserted inside a single
+transaction on the shared connection (still gated by the same semaphore as every other operation, so it never
+races a concurrent call on that connection), so a batch of N dirty records costs one round trip and one fsync
+instead of N.

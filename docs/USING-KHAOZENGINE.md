@@ -178,13 +178,41 @@ the WinExe parent-console attach - see [Game head build settings](#game-head-bui
 `GameAppOptions.For(title, w, h)` for the common case.
 
 **Present mode + frame cap.** `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) selects the swapchain's
-vertical-blank sync; `GameAppOptions.FrameCapHz` (0 = uncapped) paces the loop to a target Hz with a monotonic-clock
-`FrameLimiter`, independent of vsync. Pin `FrameCapHz` to an integer multiple of a fixed simulation/network tick
-(e.g. 60 or 120 for a 30 Hz tick) so presentation stays phase-aligned with the tick - the cheapest way to remove any
-residual render:tick beat, and the deterministic cap where vsync does not throttle (the Veldrid Metal path can
-free-run well above the display refresh). `FrameCapHz` also applies to a custom `WindowFactory` window; `PresentMode`
-is set at swapchain creation, so a custom factory must forward it (or pass it to `new AppWindow(...)` / `AppWindow.Scaled(...)`).
-`GameAppOptions.WindowMode` (default `Windowed`) sets the initial window mode (also applied on a custom factory window).
+vertical-blank sync. `GameAppOptions.FrameCapHz` (a positive Hz) is an EXPLICIT cap that paces the loop to that rate
+with a monotonic-clock `FrameLimiter`, independent of vsync. Pin it to an integer multiple of a fixed
+simulation/network tick (e.g. 60 or 120 for a 30 Hz tick) so presentation stays phase-aligned - the cheapest way to
+remove any residual render:tick beat, and the deterministic cap where vsync does not throttle. The cap also applies to
+a custom `WindowFactory` window. `PresentMode` is set at swapchain creation, so a custom factory must forward it (or
+pass it to `new AppWindow(...)` / `AppWindow.Scaled(...)`). `GameAppOptions.WindowMode` (default `Windowed`) sets the
+initial window mode (also applied on a custom factory window).
+
+**Backend-aware auto cap (the default) + background throttle (since 10.96.0).** The engine now paces the loop sensibly
+by default, so a client no longer free-runs a whole core plus the GPU out of the box.
+
+- **`FrameCap.Auto` is the default cap** (`GameAppOptions.FrameCap`, and the plain `new AppWindow(title, w, h)` ctor).
+  It is backend-aware: on **Metal + vsync** (where the Veldrid present does not throttle the CPU and a Mac client would
+  otherwise free-run well above the refresh) it resolves to a real cap - the **display refresh rate** when known, else
+  `FrameCap.DefaultMetalAutoCapHz` (120). On **D3D11 / Vulkan + vsync** it stays **uncapped**, because vsync throttles
+  there. With `PresentMode.Immediate` (any backend) it stays uncapped, respecting the lowest-latency intent. A
+  consumer-set value always wins: `FrameCap.Uncapped` is an intentional free-run (the pre-10.96 default) and
+  `FrameCap.Hz(n)` / a positive `FrameCapHz` is a fixed cap. A positive `GameAppOptions.FrameCapHz` overrides
+  `FrameCap`. `FrameCap.Resolve(backend, present, displayRefreshHz)` is the pure, headless-tested resolver.
+- **`BackgroundThrottlePolicy` throttles a backgrounded window** (`GameAppOptions.BackgroundThrottle`, default ON when
+  left `null`). **Minimized:** skip render + present entirely and idle the loop at `MinimizedHz` (default 10) - update
+  still runs each idle tick so simulation / netcode / timers keep advancing, and events keep pumping so the window can
+  be restored. **Unfocused but visible:** keep rendering, capped to `UnfocusedHz` (default 15, or lower if the base cap
+  is already lower). Set `BackgroundThrottlePolicy.Disabled` to keep rendering full-rate in the background (a live
+  wallpaper / capture source), or a custom policy with the `init` setters. On a minimized frame `Frame.RenderSuppressed`
+  is set. `GameApp` honours it (runs `OnUpdate` only, skips the draw passes), and a raw `AppWindow.Run` callback must
+  check it before drawing. The per-frame decision is the pure, headless-tested `BackgroundThrottlePolicy.Plan`.
+
+```csharp
+var o = GameAppOptions.For("My Game", 1280, 720);   // FrameCap.Auto + background throttle ON by default
+o.FrameCap = FrameCap.Uncapped;                       // opt back into a free-run (the old default)
+o.FrameCapHz = 120;                                   // or an explicit fixed cap (wins over FrameCap)
+o.BackgroundThrottle = BackgroundThrottlePolicy.Disabled;                       // render full-rate when backgrounded
+o.BackgroundThrottle = BackgroundThrottlePolicy.Default with { UnfocusedHz = 30 }; // or tune it
+```
 
 **Runtime display settings (since 9.24.0).** Present mode, frame cap, window mode, and resolution are all changeable
 live mid-session - safe to call from a settings screen at any time, with no crash and no leaked swapchain. The whole
@@ -206,10 +234,12 @@ app.Display.ApplyDisplay(s);
 `Resize` drive the window and the swapchain follows the new framebuffer via the resize hook, so the HiDPI
 framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat:**
 setting vsync engages `CAMetalLayer.displaySyncEnabled`, but the Veldrid Metal present still does not throttle the
-CPU from vsync alone, so `FrameCapHz` remains the required deterministic cap on macOS - `GameApp`/`AppWindow` emit a
-one-time warning (`Console.Error`) if you select `PresentMode.Vsync` with `FrameCapHz == 0` on Metal. Branch on
-`GameApp.Backend` to set a default cap per platform. The window-mode policy is the pure `WindowModePlanner.Compute`
-and the Metal-warning rule is the pure `DisplaySettings.RequiresFrameCapWarning` - both headless-unit-tested.
+CPU from vsync alone. The engine handles this by default now - `FrameCap.Auto` (the default cap) resolves to a real
+cap on Metal + vsync, so you no longer have to branch on `GameApp.Backend` to set one. `GameApp`/`AppWindow` emit a
+one-time warning (`Console.Error`) ONLY when you explicitly force an uncapped free-run (`FrameCap.Uncapped` /
+`FrameCapHz = 0`) with vsync on Metal. The resolved auto default never trips it. The window-mode policy is the pure
+`WindowModePlanner.Compute`, the auto-cap resolver is the pure `FrameCap.Resolve`, and the Metal-warning rule is the
+pure `DisplaySettings.RequiresFrameCapWarning` (fed the resolved cap) - all headless-unit-tested.
 
 **Runtime window placement (since 9.26.0).** `IDisplaySettings` also exposes the window position + monitor, so a
 consumer can persist and restore the full placement (which monitor + position + size) across launches. Position
@@ -5696,10 +5726,23 @@ baseline is keyed by `NetId`, so a seamless cell handoff reads as a component de
 **Shared per-tick capture (perf).** `WriteFor` builds its whole-world Replicate-channel capture once per `world`
 per tick, the first time any client's `WriteFor` runs after `BeginTick`, then every later `WriteFor` on the same
 world in that tick reuses it. A sharded server serving several clients from the same home cell therefore scans
-that cell once, not once per client. The caveat: the capture is a snapshot taken at that first `WriteFor` call,
-so a world mutation applied between it and a later `WriteFor` in the same tick is not seen by that later call.
-Do all world mutation (movement, handoffs, ghost sync, admin drains) before the per-client serve pass and call
-`WriteFor` only after, the order `ShardedWorldServer.Tick` already follows.
+that cell once, not once per client. On top of that shared capture the per-client projection is `O(interestSet)`:
+`WriteFor` resolves this client's interest set off the capture in `O(1)` per entity (not a walk of the whole
+capture), so per-client cost scales with the client's area of interest, not the world population - the wire is
+unchanged. The caveat: the capture is a snapshot taken at that first `WriteFor` call, so a world mutation applied
+between it and a later `WriteFor` in the same tick is not seen by that later call. Do all world mutation (movement,
+handoffs, ghost sync, admin drains) before the per-client serve pass and call `WriteFor` only after, the order
+`ShardedWorldServer.Tick` already follows.
+
+**Indexed filtered snapshots (perf).** The full-snapshot AoI path (`SnapshotWriter.WriteFiltered`, the fallback for
+non-delta clients, plus ghost mirroring and handoff capture) has an indexed form for a hot per-tick server: build a
+`WorldSnapshotIndex` over the world once (`index.Rebuild(world)`), reuse a `SnapshotScratch`, then call
+`SnapshotWriter.WriteFiltered(index, scratch, world, registry, interest, channel, ownerNetId)`. It resolves the
+interest set off the index in `O(interest)` instead of scanning the whole world, and reuses the scratch stream so
+only the returned wire array is allocated. `WriteSingle(scratch, world, registry, netId, entity, ...)` is the
+one-entity form when you already hold the handle. Both are byte-identical to the unindexed `WriteFiltered`.
+`ShardHost` already wires this into `SnapshotForClient` / `SyncGhosts` / `ProcessHandoffs` with a per-tick shared
+index, so consumers on the sharded server get it for free.
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 
@@ -5896,6 +5939,15 @@ IWorldStore store = new SqliteWorldStore("Data Source=world.db");   // dev/test 
 await store.SaveAsync($"player:{accountId}", bytes);
 byte[]? loaded = await store.LoadAsync($"player:{accountId}");
 ```
+
+**Batched saves.** `IWorldStore.SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)> items)` saves a whole set of
+records in one logical operation instead of one round trip per record. It is a C# default interface member that
+loops `SaveAsync`, so a custom `IWorldStore` written before this member existed keeps compiling and behaving
+correctly unchanged - it just does not get the batching win until it overrides the member. `SqliteWorldStore`
+overrides it with a single-transaction multi-row upsert. `SqlServerWorldStore` overrides it with one pooled
+connection and a chunked multi-row `MERGE`. `WorldPersistence` and `CellPersistence` (below) both call it once per
+periodic dirty pass instead of once per dirty record - that is the whole point of the member, so prefer it over a
+hand-rolled loop of `SaveAsync` calls when you are saving more than one record at a time.
 
 ### Persisting players so the world survives a restart (`WorldPersistence`)
 
@@ -6469,6 +6521,28 @@ join/leave + client input, `Tick(dt)` steps one authoritative frame (apply input
 connects and walks across cell boundaries. The `ICellLink` seam is finalized with the in-process impl shipped and
 a documented network-impl contract (route by target `CellCoord`, kind-scoped FIFO `Drain`, reliable delivery) for
 an infra implementation to drop in.
+
+**Server-process hygiene (parallelism, GC, pacing).** `MmoServerSample` also demonstrates the operational defaults
+a dedicated server should ship with, wired directly in `Program.cs` / `MmoServerSample.csproj` so a reader can copy
+them verbatim:
+
+- **Cell parallelism.** `server.Host.Scheduler = new ThreadPoolJobScheduler();` fans `ShardHost.Tick`'s per-cell
+  sim steps across the thread pool instead of the library-safe default `SingleThreadedJobScheduler` (measured 3.2x
+  tick speedup at 256 cells on 12 cores). Only `Tick` is parallelized. The cross-cell passes (`SyncGhosts`,
+  `ProcessHandoffs`) stay single-threaded.
+- **Server GC.** `<ServerGarbageCollection>true</ServerGarbageCollection>` +
+  `<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>` in the csproj switch the process off
+  Workstation GC (.NET's default, tuned for bursty desktop/client allocation) - a server ticking many cells and
+  replicating to many clients every frame allocates steadily instead, and wants Server GC's per-core heaps plus
+  background gen2 collection.
+- **Adaptive idle pacing.** The host loop no longer sleeps a fixed `Thread.Sleep(5)` between polls. It computes how
+  long it actually has before `FixedTickHost`'s next tick (`FixedTickHost.SecondsUntilNextTick`) and sleeps that
+  minus a safety margin (`FixedTickHost.ComputeIdleWaitSeconds`), yielding instead of sleeping through the final
+  sub-millisecond sliver. A fixed sleep both oversleeps - OS sleep granularity, notably Windows' ~15.6 ms default
+  timer resolution, routinely overshoots a short requested duration by 2-3x - and loses track of the tick
+  boundary, so the loop ends up bursting through several queued ticks via `maxTicksPerFrame` catch-up instead of
+  ticking smoothly. `ComputeIdleWaitSeconds` is a pure function (no clock or sleep access) so the pacing math
+  itself is headlessly testable. Only the actual `Thread.Sleep`/`Thread.Yield` call lives in the sample loop.
 
 ### NativeAOT (server tick path)
 

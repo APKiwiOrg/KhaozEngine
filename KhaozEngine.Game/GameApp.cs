@@ -60,16 +60,22 @@ namespace KhaozEngine.Game
             // running-app icon). No-op off Windows or when AppUserModelId is null. Must precede window creation.
             AppWindow.TrySetProcessAppUserModelId(options.AppUserModelId);
 
+            // Frame-cap intent: an explicit positive FrameCapHz wins over FrameCap; otherwise FrameCap governs
+            // (defaulting to the backend-aware Auto). This is the value applied to the window below.
+            FrameCap requestedCap = options.FrameCapHz > 0 ? FrameCap.Hz(options.FrameCapHz) : options.FrameCap;
+
             // The window + viewport come from the options' factories when set (e.g. AppWindow.Scaled +
             // AdaptiveViewport for a responsive, display-fitted game); otherwise the plain defaults. The window is
             // born hidden (AppWindow's ctor); it is revealed by Show() below, after the icon is applied.
             _window = options.WindowFactory?.Invoke(options)
-                ?? new AppWindow(options.Title, options.Width, options.Height, options.PresentMode, options.FrameCapHz);
+                ?? new AppWindow(options.Title, options.Width, options.Height, options.PresentMode, requestedCap);
             _window.ClearColor = options.ClearColor;
-            // FrameCapHz is a post-construction property, so it applies on BOTH the default window (above) and a
-            // custom WindowFactory window (which cannot know these options otherwise). PresentMode selects the
-            // swapchain vsync at creation, so it is honoured only on the default window; a factory must forward it.
-            _window.FrameCapHz = options.FrameCapHz;
+            // FrameCap and BackgroundThrottle are post-construction properties, so they apply on BOTH the default
+            // window (above) and a custom WindowFactory window (which cannot know these options otherwise). PresentMode
+            // selects the swapchain vsync at creation, so it is honoured only on the default window; a factory must
+            // forward it.
+            _window.FrameCap = requestedCap;
+            _window.BackgroundThrottle = options.BackgroundThrottle ?? BackgroundThrottlePolicy.Default;
             // WindowMode is a post-construction switch (the window is born windowed), so it applies on BOTH the
             // default and a custom WindowFactory window. Only drive it when a fullscreen mode is requested so a
             // plain windowed app never touches the state.
@@ -173,11 +179,31 @@ namespace KhaozEngine.Game
             set => _window.PresentMode = value;
         }
 
-        /// <summary>Software frame-rate cap in Hz (0 = uncapped); forwards to <see cref="AppWindow.FrameCapHz"/>.</summary>
+        /// <summary>Software frame-rate cap in Hz, forwarding to <see cref="AppWindow.FrameCapHz"/>. Setting a positive
+        /// value is an explicit fixed cap and 0 an explicit free-run. The getter returns the RESOLVED effective cap
+        /// (so with the default <see cref="Windowing.FrameCap.Auto"/> it reflects the backend-aware cap). Use
+        /// <see cref="FrameCap"/> for the richer intent.</summary>
         public int FrameCapHz
         {
             get => _window.FrameCapHz;
             set => _window.FrameCapHz = value;
+        }
+
+        /// <summary>The frame-cap intent (auto / uncapped / fixed), forwarding to <see cref="AppWindow.FrameCap"/>. The
+        /// default <see cref="Windowing.FrameCap.Auto"/> is backend-aware (a real cap on Metal + vsync, uncapped where
+        /// vsync throttles). A consumer-set value always wins.</summary>
+        public FrameCap FrameCap
+        {
+            get => _window.FrameCap;
+            set => _window.FrameCap = value;
+        }
+
+        /// <summary>How the loop throttles the window while backgrounded (unfocused / minimized), forwarding to
+        /// <see cref="AppWindow.BackgroundThrottle"/>. Default <see cref="BackgroundThrottlePolicy.Default"/> (ON).</summary>
+        public BackgroundThrottlePolicy BackgroundThrottle
+        {
+            get => _window.BackgroundThrottle;
+            set => _window.BackgroundThrottle = value;
         }
 
         /// <summary>How the window occupies the display; forwards to <see cref="AppWindow.WindowMode"/>.</summary>
@@ -236,9 +262,21 @@ namespace KhaozEngine.Game
             {
                 _clock.Update(frame.Dt);
                 _input = frame.Input;
+                _dt = _clock.ScaledDeltaSeconds;
+
+                // Minimized (render-suppressed) frames still tick simulation so netcode / physics / timers keep
+                // advancing, but skip everything render-facing (frame size, viewport, pointer, draw) - the window has
+                // no drawable while iconified, and the last-known frame size stays put for any FrameWidth read.
+                if (frame.RenderSuppressed)
+                {
+                    if (ShouldRaiseResume(_clock.RealWallGapSeconds, _resumeGapThresholdSeconds))
+                        OnResume(TimeSpan.FromSeconds(_clock.RealWallGapSeconds));
+                    OnUpdate(_dt);
+                    return;
+                }
+
                 _frameWidth = frame.Width;
                 _frameHeight = frame.Height;
-                _dt = _clock.ScaledDeltaSeconds;
 
                 _viewport.Update(frame.Width, frame.Height);
                 if (frame.Width != _lastW || frame.Height != _lastH)

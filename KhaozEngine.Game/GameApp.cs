@@ -60,7 +60,7 @@ namespace KhaozEngine.Game
             // running-app icon). No-op off Windows or when AppUserModelId is null. Must precede window creation.
             AppWindow.TrySetProcessAppUserModelId(options.AppUserModelId);
 
-            // Frame-cap intent: an explicit positive FrameCapHz wins over FrameCap; otherwise FrameCap governs
+            // Frame-cap intent: an explicit positive FrameCapHz wins over FrameCap. Otherwise FrameCap governs
             // (defaulting to the backend-aware Auto). This is the value applied to the window below.
             FrameCap requestedCap = options.FrameCapHz > 0 ? FrameCap.Hz(options.FrameCapHz) : options.FrameCap;
 
@@ -72,7 +72,7 @@ namespace KhaozEngine.Game
             _window.ClearColor = options.ClearColor;
             // FrameCap and BackgroundThrottle are post-construction properties, so they apply on BOTH the default
             // window (above) and a custom WindowFactory window (which cannot know these options otherwise). PresentMode
-            // selects the swapchain vsync at creation, so it is honoured only on the default window; a factory must
+            // selects the swapchain vsync at creation, so it is honoured only on the default window. A factory must
             // forward it.
             _window.FrameCap = requestedCap;
             _window.BackgroundThrottle = options.BackgroundThrottle ?? BackgroundThrottlePolicy.Default;

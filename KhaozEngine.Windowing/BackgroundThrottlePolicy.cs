@@ -77,7 +77,7 @@ namespace KhaozEngine.Windowing
         {
             if (activity.Minimized && PauseRenderWhenMinimized)
             {
-                // Idle at MinimizedHz; fall back to the base cap (or DefaultMinimizedHz) if it was left non-positive
+                // Idle at MinimizedHz, falling back to the base cap (or DefaultMinimizedHz) if it was left non-positive
                 // so a paused frame never spins uncapped.
                 int idle = MinimizedHz > 0 ? MinimizedHz : (baseCapHz > 0 ? baseCapHz : DefaultMinimizedHz);
                 return new FramePlan(RenderAndPresent: false, CapHz: idle);

@@ -179,10 +179,10 @@ the WinExe parent-console attach - see [Game head build settings](#game-head-bui
 
 **Present mode + frame cap.** `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) selects the swapchain's
 vertical-blank sync. `GameAppOptions.FrameCapHz` (a positive Hz) is an EXPLICIT cap that paces the loop to that rate
-with a monotonic-clock `FrameLimiter`, independent of vsync; pin it to an integer multiple of a fixed
+with a monotonic-clock `FrameLimiter`, independent of vsync. Pin it to an integer multiple of a fixed
 simulation/network tick (e.g. 60 or 120 for a 30 Hz tick) so presentation stays phase-aligned - the cheapest way to
 remove any residual render:tick beat, and the deterministic cap where vsync does not throttle. The cap also applies to
-a custom `WindowFactory` window; `PresentMode` is set at swapchain creation, so a custom factory must forward it (or
+a custom `WindowFactory` window. `PresentMode` is set at swapchain creation, so a custom factory must forward it (or
 pass it to `new AppWindow(...)` / `AppWindow.Scaled(...)`). `GameAppOptions.WindowMode` (default `Windowed`) sets the
 initial window mode (also applied on a custom factory window).
 
@@ -203,7 +203,7 @@ by default, so a client no longer free-runs a whole core plus the GPU out of the
   be restored. **Unfocused but visible:** keep rendering, capped to `UnfocusedHz` (default 15, or lower if the base cap
   is already lower). Set `BackgroundThrottlePolicy.Disabled` to keep rendering full-rate in the background (a live
   wallpaper / capture source), or a custom policy with the `init` setters. On a minimized frame `Frame.RenderSuppressed`
-  is set; `GameApp` honours it (runs `OnUpdate` only, skips the draw passes), and a raw `AppWindow.Run` callback must
+  is set. `GameApp` honours it (runs `OnUpdate` only, skips the draw passes), and a raw `AppWindow.Run` callback must
   check it before drawing. The per-frame decision is the pure, headless-tested `BackgroundThrottlePolicy.Plan`.
 
 ```csharp

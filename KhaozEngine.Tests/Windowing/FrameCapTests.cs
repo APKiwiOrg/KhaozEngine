@@ -65,7 +65,7 @@ namespace KhaozEngine.Tests.Windowing
         [Fact]
         public void Auto_on_Metal_Immediate_stays_uncapped()
         {
-            // Immediate = the consumer asked for an uncapped lowest-latency present; Auto respects it.
+            // Immediate = the consumer asked for an uncapped lowest-latency present. Auto respects it.
             Assert.Equal(0, FrameCap.Auto.Resolve(GpuBackendKind.Metal, PresentMode.Immediate, displayRefreshHz: 144));
         }
 
@@ -78,7 +78,7 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         // Ties the two pure pieces together: the resolved cap is what the warning rule sees. The Auto default never
-        // trips the Metal-vsync warning (it resolves to a positive cap there); only an explicit uncapped choice does.
+        // trips the Metal-vsync warning (it resolves to a positive cap there). Only an explicit uncapped choice does.
         [Fact]
         public void Resolved_Auto_default_does_not_trip_the_metal_vsync_warning()
         {

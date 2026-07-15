@@ -86,7 +86,7 @@ namespace KhaozEngine.Windowing
         Vector2 _lastMouse;
         float _wheelAccum;
         bool _focused = true;   // windows open focused; Silk's FocusChanged keeps this in sync.
-        bool _minimized;        // OS-iconified; Silk's StateChanged keeps this in sync. Drives the background throttle.
+        bool _minimized;        // OS-iconified. Silk's StateChanged keeps this in sync. Drives the background throttle.
 
         readonly int _maxFrames;
         int _frameCount;
@@ -127,14 +127,14 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        // Software frame-rate cap for Run(). _requestedCap is the consumer intent (Auto by default); _effectiveBaseCapHz
+        // Software frame-rate cap for Run(). _requestedCap is the consumer intent (Auto by default). _effectiveBaseCapHz
         // is that resolved for this backend + present mode (0 = uncapped), recomputed on any cap / present change via
         // ApplyFrameCap. The per-frame pace limiter below is derived from the base cap AND the background-throttle
         // policy, so it can differ from the base cap while the window is unfocused / minimized.
         FrameCap _requestedCap = FrameCap.Auto;
         int _effectiveBaseCapHz;
         FrameLimiter _paceLimiter = new(0);
-        int _paceHz = -1;   // Hz the pace limiter was last built for; -1 forces a rebuild on the first paced frame.
+        int _paceHz = -1;   // Hz the pace limiter was last built for (-1 forces a rebuild on the first paced frame).
         BackgroundThrottlePolicy _backgroundThrottle = BackgroundThrottlePolicy.Default;
         // Runtime display state. PresentMode/WindowMode start from the ctor; _windowedSize is the size to restore
         // when leaving a fullscreen mode; _windowedPos is the windowed position to restore (null = leave it where
@@ -202,7 +202,7 @@ namespace KhaozEngine.Windowing
             {
                 _presentMode = value;
                 _device.SyncToVerticalBlank = value == PresentMode.Vsync;
-                ApplyFrameCap(); // Auto depends on present mode (Metal + vsync caps; Immediate stays uncapped); also re-warns.
+                ApplyFrameCap(); // Auto depends on present mode (Metal + vsync caps, Immediate stays uncapped). Also re-warns.
             }
         }
 
@@ -715,8 +715,8 @@ namespace KhaozEngine.Windowing
                 InputState input = BuildInput();
                 int w = _window.FramebufferSize.X, h = _window.FramebufferSize.Y;
 
-                // Background-throttle decision for this frame (pure). A minimized window skips render + present; an
-                // unfocused-but-visible one still renders at a lowered cap; a focused window renders at the base cap.
+                // Background-throttle decision for this frame (pure). A minimized window skips render + present. An
+                // unfocused-but-visible one still renders at a lowered cap. A focused window renders at the base cap.
                 FramePlan plan = _backgroundThrottle.Plan(new WindowActivity(_focused, _minimized), _effectiveBaseCapHz);
                 bool render = plan.RenderAndPresent;
 
@@ -777,7 +777,7 @@ namespace KhaozEngine.Windowing
             // reports a live cursor while unfocused, so without this consumers would see hover/clicks as if focused.
             _window.FocusChanged += focused => _focused = focused;
             // Track OS minimize (iconify) so the frame loop can skip render + present while minimized (the window has
-            // no drawable then) and idle. StateChanged also reports Maximized/Fullscreen/Normal; only Minimized matters
+            // no drawable then) and idle. StateChanged also reports Maximized/Fullscreen/Normal. Only Minimized matters
             // here. Per the input hard rule, AppWindow is the only class touching the Silk window statics.
             _window.StateChanged += state => _minimized = state == WindowState.Minimized;
             foreach (IKeyboard kb in _input.Keyboards)

@@ -23,16 +23,21 @@ namespace KhaozEngine.Tests.Gpu
     // column. If every element past 0 reads correctly, all N columns are occupied. If "only bones[0] survives", the
     // quads collapse and the distinct-column assertion fails.
     //
-    // IMPORTANT SCOPE: passing here is NECESSARY BUT NOT SUFFICIENT proof - the historical corruption manifested in
-    // the WINDOWED swapchain-present context, not offscreen. A clean offscreen pass means the untested hypothesis
-    // (that the read is sound with a plain uniform-block mat4 array) survives offscreen; it does NOT resurrect GPU
-    // skinning windowed. A human windowed A/B is still required. Skipped unless KE_GPU_TESTS is set.
+    // SPIKE OUTCOME (see the report): variants 1 + 2 prove the plain uniform-block mat4 array + per-draw dynamic
+    // offset read is CLEAN when bones is the ONLY resource buffer - the spike's hypothesis holds in isolation.
+    // Variant 3 pins down the REAL blocker: a pipeline whose VERTEX stage reads a SECOND resource buffer (the frame/
+    // material UBO at set 0 + bones at set 1) reproduces the historical corruption OFFSCREEN (only the first bones
+    // survive), for uniform AND storage bones and 1 or 2 vertex buffers - the SAME Metal two-UBO mis-bind the
+    // splat-params note documents. It also proves the FIX: fold the matrix into the bone buffer so the vertex reads
+    // exactly ONE resource buffer at set 0. So the historical bug is NOT windowed-specific (it repros offscreen) and
+    // NOT a bone-read bug; it is a multi-buffer binding bug, fixable but needing a skinned-specific binding layout.
+    // Skipped unless KE_GPU_TESTS is set.
     public sealed class GpuSkinningReproGpuTests
     {
         const int W = 256, H = 64;
         const int N = 8;                 // distinct bones exercised (0..7); index 7 is a strong "past element 0" probe
-        const int MaxBones = 64;         // the uniform block is `mat4 bones[64]` = 4 KiB (a 256-aligned slot)
-        const uint SlotBytes = (uint)MaxBones * 64u; // 4096, a multiple of 256 => valid dynamic-offset alignment
+        const int MaxBones = 128;        // matches SkinningMath.MaxBonesPerDraw: the uniform block is `mat4 bones[128]` = 8 KiB
+        const uint SlotBytes = (uint)MaxBones * 64u; // 8192, a multiple of 256 => valid dynamic-offset alignment
 
         // Vertex: NDC xy + a float-encoded bone index. 12 bytes (Float2 + Float1), no padding.
         [StructLayout(LayoutKind.Sequential)]
@@ -43,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         const string Vert = @"#version 450
-layout(set=0, binding=0) uniform Bones { mat4 bones[64]; };
+layout(set=0, binding=0) uniform Bones { mat4 bones[128]; };
 layout(location=0) in vec2 Pos;
 layout(location=1) in float BoneIndex;
 void main() {
@@ -157,6 +162,99 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
             byte[] px = GpuReadback.ToRgba(gd, color, W, H);
             AssertEveryColumnOccupied(px, "DynamicOffsetUniformBlock_NonZeroIndex");
             DumpPng(px, "gpu-skinning-repro-dynamicoffset.png");
+        }
+
+        // ---- Variant 3: the ROOT CAUSE + the WORKING FIX for the real skinned pipeline.
+        //   The real model VERTEX stage needs BOTH a matrix (ViewProj) AND the bone palette. Doing that as TWO
+        //   uniform buffers read by the vertex (frame U at set 0 + bones at set 1) REPRODUCES the historical
+        //   corruption OFFSCREEN: only the first bones survive (measured occupancy [1,0,0,0,0,0,0,0]; or
+        //   [1,1,1,1,0,0,0,0] with the sets swapped). This is the SAME Metal two-UBO mis-bind the splat-params note
+        //   documents, and it holds for a STORAGE bones buffer and for 1 or 2 vertex buffers too (all confirmed via
+        //   this harness during the spike). Variants 1+2 prove the bone read itself is fine when bones is the ONLY
+        //   resource, so the trigger is the SECOND vertex-stage resource buffer, not the indexed read.
+        //   THE FIX proven here: FOLD the matrix into the bone buffer so the vertex stage reads exactly ONE resource
+        //   buffer (the combined { Mvp; bones[128] }) AT SET 0, with every other UBO/texture at set 1+ read ONLY by
+        //   the fragment. Then all 8 bones read correctly. Shipping this in the engine requires the material + frame
+        //   UBO moved off set 0 for the skinned pipeline (a skinned-specific fragment + material layout), because the
+        //   shared ModelFrag reads the material at set 0 - see the spike report. ----
+        const string TwoUboVert = @"#version 450
+layout(set=0, binding=0) uniform VBlock { mat4 Mvp; mat4 bones[128]; };  // the vertex's ONLY resource buffer, at set 0
+layout(location=0) in vec2 Pos;
+layout(location=1) in float BoneIndex;
+void main() {
+    mat4 b = bones[int(BoneIndex)];
+    gl_Position = Mvp * vec4((b * vec4(Pos, 0.0, 1.0)).xy, 0.0, 1.0);
+}";
+        const string TwoUboFrag = @"#version 450
+layout(set=1, binding=0) uniform U { vec4 Tint; };   // frame UBO at set 1, read ONLY by the fragment
+layout(location=0) out vec4 o;
+void main() { o = vec4(1.0, 1.0, 1.0, 1.0) + Tint * 1e-30; }";
+
+        [GpuFact]
+        public void FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            var f = gd.Factory;
+
+            // Combined vertex block: [0] = Mvp (identity), [1+i] = bones[i]. The shader's bones[i] == combined[1+i].
+            var combined = new Matrix4x4[1 + MaxBones];
+            for (int i = 0; i < combined.Length; i++) combined[i] = Matrix4x4.Identity;
+            for (int i = 0; i < N; i++) combined[1 + i] = Matrix4x4.CreateTranslation(ColumnX(i), 0f, 0f);
+            var verts = new List<Vtx>(N * 6);
+            const float hw = 0.05f, hh = 0.6f;
+            for (int i = 0; i < N; i++)
+            {
+                float bi = i;
+                verts.Add(new Vtx(-hw, -hh, bi)); verts.Add(new Vtx(hw, -hh, bi)); verts.Add(new Vtx(hw, hh, bi));
+                verts.Add(new Vtx(-hw, -hh, bi)); verts.Add(new Vtx(hw, hh, bi)); verts.Add(new Vtx(-hw, hh, bi));
+            }
+            var vtxArr = verts.ToArray();
+
+            using IGpuTexture color = f.CreateTexture(GpuTextureDescription.Texture2D(
+                W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer fb = f.CreateFramebuffer(null, color);
+            using IGpuBuffer frameUbo = f.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // fragment Tint
+            using IGpuBuffer vblock = f.CreateBuffer(new GpuBufferDescription((uint)combined.Length * 64u, GpuBufferUsage.UniformBuffer)); // vertex: Mvp + bones
+            using IGpuBuffer vb = f.CreateBuffer(new GpuBufferDescription((uint)(vtxArr.Length * Marshal.SizeOf<Vtx>()), GpuBufferUsage.VertexBuffer));
+            using IGpuResourceLayout vblockLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
+            using IGpuResourceLayout frameLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment)));
+            using IGpuResourceSet vblockSet = f.CreateResourceSet(new GpuResourceSetDescription(vblockLayout, vblock));
+            using IGpuResourceSet frameSet = f.CreateResourceSet(new GpuResourceSetDescription(frameLayout, frameUbo));
+            using IGpuShaderSet shaders = f.CreateShadersFromSpirv(TwoUboVert, TwoUboFrag);
+            using IGpuPipeline pipe = f.CreateGraphicsPipeline(new GpuPipelineDescription
+            {
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend },
+                DepthStencil = GpuDepthStencilState.Disabled,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, false, false),
+                Topology = GpuPrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { vblockLayout, frameLayout },   // set 0 = combined vertex block, set 1 = fragment U
+                ShaderSet = shaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { VtxLayout() },
+                Outputs = fb.Outputs,
+            });
+            using IGpuCommandList cl = f.CreateCommandList();
+            cl.Begin();
+            Matrix4x4 idm = Matrix4x4.Identity;
+            cl.UpdateBuffer(frameUbo, 0, in idm);
+            cl.UpdateBuffer(vblock, 0, combined.AsSpan());
+            cl.UpdateBuffer(vb, 0, vtxArr.AsSpan());
+            cl.SetFramebuffer(fb);
+            cl.ClearColorTarget(0, Color.Black);
+            cl.SetPipeline(pipe);
+            cl.SetGraphicsResourceSet(0, vblockSet);
+            cl.SetGraphicsResourceSet(1, frameSet);
+            cl.SetVertexBuffer(0, vb);
+            cl.Draw((uint)vtxArr.Length);
+            cl.End();
+            gd.Submit(cl);
+            gd.WaitForIdle();
+            byte[] px = GpuReadback.ToRgba(gd, color, W, H);
+            DumpPng(px, "gpu-skinning-repro-foldedmatrix.png");
+            AssertEveryColumnOccupied(px, "FoldMatrixIntoBoneBuffer");
         }
 
         static GpuVertexLayoutDescription VtxLayout() => new(

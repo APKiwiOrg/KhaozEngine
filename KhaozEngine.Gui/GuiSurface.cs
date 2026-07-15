@@ -145,6 +145,23 @@ namespace KhaozEngine.Gui
             _batch.Draw(tex, new Vector4(rect.X, rect.Y, rect.Width, rect.Height), srcUV, (Color)tint);
         }
 
+        /// <summary>The default <see cref="CooldownOverlay"/> tint: translucent black (a 60% dim wash over the icon).</summary>
+        public static readonly Vector4 DefaultCooldownTint = new(0f, 0f, 0f, 0.6f);
+
+        /// <summary>
+        /// Draw a radial "remaining cooldown" sweep over <paramref name="rect"/> (see
+        /// <see cref="GuiDraw.CooldownSweepQuads"/> for the exact semantics): <paramref name="fraction"/> in [0,1],
+        /// 0 draws nothing and 1 covers the whole rect, the covered wedge bounded by the 12 o'clock line and a
+        /// trailing edge that sweeps clockwise as the fraction falls. <paramref name="tint"/> defaults to
+        /// <see cref="DefaultCooldownTint"/> (translucent black). Decoration: does not reserve a rect. No-op headless
+        /// (null batch).
+        /// </summary>
+        public void CooldownOverlay(Rect rect, float fraction, Vector4? tint = null)
+        {
+            if (_batch is null) return;
+            GuiDraw.CooldownSweep(_batch, _white, rect, fraction, tint ?? DefaultCooldownTint);
+        }
+
         /// <summary>Draw a plain filled colour chip; reserves it for click-through.</summary>
         public void Swatch(Rect rect, Vector4 color)
         {

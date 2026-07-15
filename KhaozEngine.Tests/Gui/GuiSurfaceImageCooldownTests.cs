@@ -40,5 +40,24 @@ namespace KhaozEngine.Tests.Gui
             ui.Image(new Rect(0, 0, 32, 32), null!, new Vector4(0, 0, 1, 1), Vector4.One);
             Assert.False(ui.PointerCaptured);   // decoration reserves no rect
         }
+
+        [Fact]
+        public void CooldownOverlay_Headless_IsNoOpAndReservesNothing()
+        {
+            var ui = Surface();
+            Pointer p = PressedInside(new Vector2(16, 16));
+            ui.Begin(null, p);
+            ui.CooldownOverlay(new Rect(0, 0, 32, 32), 0.5f);
+            Assert.False(ui.PointerCaptured);   // decoration reserves no rect
+        }
+
+        [Fact]
+        public void DefaultCooldownTint_IsTranslucentBlack()
+        {
+            Assert.Equal(0f, GuiSurface.DefaultCooldownTint.X, 3);
+            Assert.Equal(0f, GuiSurface.DefaultCooldownTint.Y, 3);
+            Assert.Equal(0f, GuiSurface.DefaultCooldownTint.Z, 3);
+            Assert.True(GuiSurface.DefaultCooldownTint.W > 0f && GuiSurface.DefaultCooldownTint.W < 1f);
+        }
     }
 }

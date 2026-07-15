@@ -283,6 +283,20 @@ namespace KhaozEngine.Gui
             return new Vector2(center.X + dx * t, center.Y + dy * t);
         }
 
+        /// <summary>
+        /// Draw the radial cooldown fan (see <see cref="CooldownSweepQuads"/>) over <paramref name="rect"/> as solid
+        /// <paramref name="tint"/> quads on the 1x1 <paramref name="white"/> texture, via
+        /// <see cref="SpriteBatch.DrawQuad"/>. No-op when <paramref name="fraction"/> is 0 or less. Shared by
+        /// <see cref="GuiSurface"/>.<c>CooldownOverlay</c> and <see cref="SlotGrid"/> so both draw the sweep identically.
+        /// </summary>
+        public static void CooldownSweep(SpriteBatch batch, Texture2D white, Rect rect, float fraction, Vector4 tint)
+        {
+            var uv = new Vector4(0f, 0f, 1f, 1f);
+            var col = (Color)tint;
+            foreach (CooldownQuad q in CooldownSweepQuads(rect, fraction))
+                batch.DrawQuad(white, q.P0, q.P1, q.P2, q.P3, uv, col);
+        }
+
         // Emit one nine-slice cell, either as a single stretched patch or as a grid of native-size tiles (clipping
         // the trailing partial tile's dest + source UV). tileX/tileY select which axes repeat.
         static void AppendCell(System.Collections.Generic.List<NineSlicePatch> outp, Rect cell, Vector4 uv,

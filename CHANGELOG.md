@@ -5,6 +5,35 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.104.0
+
+### Shadow depth-pass dirty-skip and instanced footprint-bounded ground decals
+
+Shadow depth pass skips static frames and ground decals batch into instanced footprint-bounded draws.
+`RenderShadowDepthPass` now runs only when a shadow-relevant input changed: the fitted light matrix, the rigid
+caster set or transforms (captured and sequence-compared allocation-free), resolution or tier, or any skinned
+caster being present (animated poses always re-render). On a skipped frame the persistent depth map is reused and
+the receiver bind still applies. `GroundDecalRenderer` no longer issues one full-viewport draw per decal:
+consecutive same-blend decals coalesce into one instanced draw with per-decal parameters as per-instance vertex
+attributes, and each instance rasterizes a screen-space quad bounding the decal's projected ground footprint,
+falling back to fullscreen when a corner straddles the camera plane. Telegraph AoEs and blob shadows flow through
+the batched path unchanged, so twenty blob shadows cost one draw instead of twenty and fill scales with decal area
+instead of viewport area. Output is pixel-identical, proven on-device against pre-change baselines and the existing
+goldens.
+
+- **`Scene3D.ShadowPassSkippedLastFrame`** (`KhaozEngine.Render3D`, new public): `true` when the last rendered
+  frame reused the persistent shadow depth map instead of re-rendering it, always `false` when the tier is not
+  `ShadowMap`. `LastFrameStats` reports zero shadow draw calls on a skipped pass. The depth pass split into an
+  always-run receiver tail (light matrix + bias/strength bind) and a gated depth draw, so bias/strength tweaks
+  still take effect on a skipped frame. A skinned caster is always treated as dirty (its bone pose can animate
+  every frame), so animated casters never skip.
+- **Batched ground decals** (`KhaozEngine.Render3D`, behaviour): the ground-decal pass coalesces consecutive
+  same-blend decals into one instanced draw and bounds each decal to a screen-space quad over its projected ground
+  footprint, with a conservative fullscreen fallback when a footprint corner straddles the camera plane. Fill cost
+  now scales with decal area rather than viewport area times decal count. Submission order is preserved so
+  overlapping decals composite as before. The internal `ForceFullscreenQuads` parity seam (via
+  `Scene3D.DecalRenderer`) proves the bounded path is pixel-identical to full-viewport coverage.
+
 ## 10.103.0
 
 ### Skinned frustum culling, O(instances) instance grouping, and an opt-in FixedInternal mip downscale

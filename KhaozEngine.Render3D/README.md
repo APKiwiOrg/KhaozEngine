@@ -65,7 +65,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   and terrain. Every drawn mesh casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`:
   `ShadowMapResolution` (default `2048`, a construction-time knob), `ShadowFocusRadius`/`ShadowGroundHeight`,
   `ShadowStrength`, and the acne biases `ShadowConstantBias`/`ShadowSlopeBias`. On a device without depth-sample
-  support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`.
+  support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The depth map persists across frames,
+  so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (the fitted light matrix, the
+  rigid caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior
+  map, so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
+  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.

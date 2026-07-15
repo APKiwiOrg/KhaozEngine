@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.103.0
+
+### Skinned frustum culling, O(instances) instance grouping, and an opt-in FixedInternal mip downscale
+
+Skinned-draw frustum culling, O(instances) GPU-instance grouping, and an opt-in mip-filtered FixedInternal
+downscale. Off-screen skinned characters now skip the CPU skin pass and buffer upload entirely, not just their
+draw call, with shadow correctness preserved via a shadow-ortho-volume test sharing one light-space matrix with
+the shadow depth pass. `Scene3D.GroupInstances` groups queued instances via a reused dictionary keyed by mesh
+index and generation instead of a per-item linear scan, making the per-frame grouping pass O(instances).
+`PixelPostProcessSettings.MipFilterFixedInternalDownscale` (default off) opts `RenderScale.FixedInternal` into
+the same mip-filtered downscale blit `MatchViewport` uses, fixing under-sampling on windows smaller than the
+fixed internal target. All existing GPU goldens verified unchanged on Metal at implementation time.
+
+- **`Scene3D.DrawnSkinnedInstances`** / **`Scene3D.CulledSkinnedInstances`** (`KhaozEngine.Render3D`): per-frame
+  counters reporting how many skinned instances the main pass drew versus culled. An off-camera skinned character
+  outside both the camera frustum and the shadow-ortho volume now skips its CPU skin pass and buffer upload, not
+  just the draw call. A caster inside only the shadow volume is still skinned and rendered into the shadow map so
+  its shadow lands on-screen.
+- **`Scene3D.SkinnedCullSafetyFactor`** (`KhaozEngine.Render3D`): the sphere-radius inflation (1.5x) applied to a
+  skinned mesh's rest-pose bounds before the frustum test, absorbing animation that moves vertices past the rest
+  bounds without a per-frame bounds recompute.
+- **`PixelPostProcessSettings.MipFilterFixedInternalDownscale`** (`KhaozEngine.Render3D`, default `false`): opts
+  `RenderScale.FixedInternal` into the mip-filtered downscale blit already used by `MatchViewport`, fixing
+  under-sampling when the window is smaller than the fixed internal target. Off by default, so existing goldens
+  stay byte-identical.
+- Corrected an overstated Metal-instancing comment on `OverlayMeshRenderer` and documented the actual invariant
+  (per-instance attributes are fine, indexing a buffer by a per-instance attribute is not) in the docs.
+
 ## 10.102.0
 
 ### Client-side multi-core ECS scaling with no per-game wiring

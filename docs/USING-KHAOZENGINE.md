@@ -5737,7 +5737,9 @@ interest set off the index in `O(interest)` instead of scanning the whole world,
 only the returned wire array is allocated. `WriteSingle(scratch, world, registry, netId, entity, ...)` is the
 one-entity form when you already hold the handle. Both are byte-identical to the unindexed `WriteFiltered`.
 `ShardHost` already wires this into `SnapshotForClient` / `SyncGhosts` / `ProcessHandoffs` with a per-tick shared
-index, so consumers on the sharded server get it for free.
+index, so consumers on the sharded server get it for free. `WorldServer.Tick` wires it the same way for its own
+non-delta fallback clients: one `WorldSnapshotIndex` rebuilt lazily on the first fallback client each tick, shared
+with every other fallback client served that tick.
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore;
@@ -77,6 +78,59 @@ public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
         SqlParameter d = cmd.Parameters.Add("@d", SqlDbType.VarBinary, -1);   // -1 = MAX
         d.Value = data;
         await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    // Rows per MERGE statement: 2 SQL parameters per row (key + data), kept well under SQL Server's 2100-parameter-
+    // per-statement ceiling so an arbitrarily large dirty pass never fails to build a valid command; a batch beyond
+    // this many items is issued as multiple MERGE statements on the SAME connection + transaction, still one round
+    // trip's worth of network setup instead of one connection open per record.
+    private const int MergeChunkSize = 500;
+
+    /// <summary>Overrides the interface default loop: opens ONE pooled connection for the whole batch (instead of
+    /// one per record) and upserts every item via a multi-row <c>MERGE ... USING (VALUES ...)</c> statement inside a
+    /// single transaction, so a batch of N dirty records costs one connection + a handful of round trips instead of
+    /// N connections.</summary>
+    public async Task SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)> items, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        if (items.Count == 0) return;
+        await using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using SqlTransaction tx = (SqlTransaction)await conn.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            for (int offset = 0; offset < items.Count; offset += MergeChunkSize)
+            {
+                int count = Math.Min(MergeChunkSize, items.Count - offset);
+                await using SqlCommand cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                var sql = new StringBuilder();
+                sql.Append("MERGE dbo.world_store WITH (HOLDLOCK) AS t USING (VALUES ");
+                for (int i = 0; i < count; i++)
+                {
+                    if (i > 0) sql.Append(',');
+                    sql.Append('(').Append('@').Append('k').Append(i).Append(',').Append('@').Append('d').Append(i).Append(')');
+                }
+                sql.Append(") AS s([key], data) ON t.[key] = s.[key] " +
+                    "WHEN MATCHED THEN UPDATE SET data = s.data, updated_at = SYSUTCDATETIME() " +
+                    "WHEN NOT MATCHED THEN INSERT ([key], data, updated_at) VALUES (s.[key], s.data, SYSUTCDATETIME());");
+                cmd.CommandText = sql.ToString();
+                for (int i = 0; i < count; i++)
+                {
+                    (string key, byte[] data) = items[offset + i];
+                    cmd.Parameters.AddWithValue($"@k{i}", key);
+                    SqlParameter d = cmd.Parameters.Add($"@d{i}", SqlDbType.VarBinary, -1);   // -1 = MAX
+                    d.Value = data;
+                }
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
     }
 
     public async Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)

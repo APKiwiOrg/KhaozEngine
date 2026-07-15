@@ -37,6 +37,21 @@ public sealed class InMemoryWorldStore : IWorldStore, IEnumerableWorldStore
         return Task.CompletedTask;
     }
 
+    /// <summary>Overrides the interface default loop: writes every item under a single clock reading, so a batch
+    /// gets one consistent <c>UpdatedAt</c> instead of one per item.</summary>
+    public Task SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)> items, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        DateTimeOffset now = clock();
+        foreach ((string key, byte[] data) in items)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            ArgumentNullException.ThrowIfNull(data);
+            store[key] = new Entry((byte[])data.Clone(), now);
+        }
+        return Task.CompletedTask;
+    }
+
     public Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);

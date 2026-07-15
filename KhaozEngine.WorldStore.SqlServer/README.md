@@ -19,3 +19,9 @@ operation. For dev/test use `KhaozEngine.WorldStore.Sqlite` against the same con
 `SqlServerWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQL Server cursor, optionally filtered by key
 prefix. Used by `ServerAdmin` for account enumeration and ban persistence.
+
+`SqlServerWorldStore` also overrides **`SaveManyAsync`**: it opens ONE pooled connection for the whole batch
+(instead of one per record) and upserts every item via a multi-row `MERGE ... USING (VALUES ...)` statement inside
+a single transaction, chunked at 500 rows per statement to stay well under SQL Server's 2100-parameter-per-statement
+ceiling. A batch larger than the chunk size issues multiple `MERGE` statements on the same connection and
+transaction, so it is still one connection's worth of setup instead of one per record.

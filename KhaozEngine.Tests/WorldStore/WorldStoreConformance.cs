@@ -74,4 +74,55 @@ internal static class WorldStoreConformance
         for (int i = 0; i < 50; i++)
             Assert.Equal(new byte[] { (byte)i }, await s.LoadAsync(ns + "k" + i));
     }
+
+    // --- SaveManyAsync: every case below must hold whether the store overrides SaveManyAsync (Sqlite, SqlServer,
+    // InMemory) or falls back to IWorldStore's default loop-of-SaveAsync implementation, so the same cases run
+    // against a bare-bones store that implements only the four required members (see WorldStoreTests.MinimalWorldStore).
+
+    public static async Task SaveMany_MatchesSequentialSaves(IWorldStore s, string ns)
+    {
+        var items = new (string Key, byte[] Data)[]
+        {
+            (ns + "a", new byte[] { 1, 2, 3 }),
+            (ns + "b", new byte[] { 4, 5 }),
+            (ns + "c", Array.Empty<byte>()),
+        };
+        await s.SaveManyAsync(items);
+        foreach ((string key, byte[] data) in items)
+            Assert.Equal(data, await s.LoadAsync(key));
+    }
+
+    public static async Task SaveMany_OverwritesExisting_AndInsertsNew_InOneBatch(IWorldStore s, string ns)
+    {
+        await s.SaveAsync(ns + "existing", new byte[] { 1 });
+        await s.SaveManyAsync(new (string Key, byte[] Data)[]
+        {
+            (ns + "existing", new byte[] { 9, 9 }),   // update
+            (ns + "fresh", new byte[] { 2 }),          // insert
+        });
+        Assert.Equal(new byte[] { 9, 9 }, await s.LoadAsync(ns + "existing"));
+        Assert.Equal(new byte[] { 2 }, await s.LoadAsync(ns + "fresh"));
+    }
+
+    public static async Task SaveMany_EmptyList_IsNoop(IWorldStore s, string ns)
+    {
+        await s.SaveManyAsync(Array.Empty<(string Key, byte[] Data)>());
+        Assert.False(await s.ExistsAsync(ns + "never-saved"));
+    }
+
+    // Parity with N sequential SaveAsync calls: two fresh key namespaces, one written via SaveManyAsync and one via
+    // a loop of SaveAsync, must end up byte-identical.
+    public static async Task SaveMany_ParityWithSequentialSaveAsyncLoop(IWorldStore s, string nsMany, string nsLoop)
+    {
+        var payloads = new byte[][] { new byte[] { 1 }, new byte[] { 2, 2 }, new byte[] { 3, 3, 3 } };
+
+        var manyItems = new (string Key, byte[] Data)[payloads.Length];
+        for (int i = 0; i < payloads.Length; i++) manyItems[i] = (nsMany + i, payloads[i]);
+        await s.SaveManyAsync(manyItems);
+
+        for (int i = 0; i < payloads.Length; i++) await s.SaveAsync(nsLoop + i, payloads[i]);
+
+        for (int i = 0; i < payloads.Length; i++)
+            Assert.Equal(await s.LoadAsync(nsLoop + i), await s.LoadAsync(nsMany + i));
+    }
 }

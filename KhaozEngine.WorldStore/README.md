@@ -7,6 +7,18 @@ Server-side durable persistence seam for an authoritative world.
   The game serializes a character/zone/account record to bytes (via its own serializer) and persists it by key.
 - **`InMemoryWorldStore`** - a thread-safe, dependency-free reference implementation for tests and local dev.
 
+**Batched saves.** `IWorldStore.SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)> items)` saves a whole set
+of records in one logical operation instead of one round trip per record - the periodic dirty-save passes in
+`KhaozEngine.NetWorld` (`WorldPersistence.SaveDirtyPass`, `CellPersistence.SaveDirtyPass`) call it once per pass
+instead of once per dirty player/cell. It ships as a C# default interface member that loops `SaveAsync`, so every
+existing `IWorldStore` implementation - including a consumer-owned one written before this member existed - keeps
+compiling and behaving correctly unchanged; it just does not get the batching win until it overrides the member.
+`InMemoryWorldStore` overrides it (one clock reading for the whole batch); `SqliteWorldStore` and
+`SqlServerWorldStore` override it with a real single-round-trip batch (see their own READMEs). A backend that
+overrides this member should make the batch atomic (all rows land or none do) when it reasonably can, so a caller
+that treats a faulted `SaveManyAsync` as "nothing in this batch is durable yet, retry the whole batch" is correct
+either way.
+
 This core package is dependency-free (the seam + the in-memory reference). Durable backends are opt-in sibling
 packages, each pulling its own DB driver so this core stays clean:
 

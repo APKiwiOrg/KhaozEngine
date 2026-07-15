@@ -39,6 +39,12 @@ namespace KhaozEngine.Windowing
         /// <summary>The engine GPU command list for this frame (the swapchain is already bound and cleared;
         /// renderers draw into it). Backend GPU types stay hidden behind <see cref="IGpuCommandList"/>.</summary>
         public IGpuCommandList Commands { get; internal set; } = null!;
+        /// <summary>True when the loop is suppressing render + present for this frame (the window is minimized under
+        /// the background-throttle policy): the swapchain was NOT begun/cleared and will NOT be presented, so a
+        /// callback must NOT draw into <see cref="Commands"/> this frame - run update-only. Update still runs each
+        /// suppressed frame so simulation/netcode/timers keep advancing while iconified. Always false while the
+        /// window is visible. <c>GameApp</c> honours this automatically.</summary>
+        public bool RenderSuppressed { get; internal set; }
     }
 
     /// <summary>
@@ -80,6 +86,7 @@ namespace KhaozEngine.Windowing
         Vector2 _lastMouse;
         float _wheelAccum;
         bool _focused = true;   // windows open focused; Silk's FocusChanged keeps this in sync.
+        bool _minimized;        // OS-iconified; Silk's StateChanged keeps this in sync. Drives the background throttle.
 
         readonly int _maxFrames;
         int _frameCount;
@@ -120,9 +127,15 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        // Optional software frame-rate cap for Run(): 0 = uncapped. Rebuilt when FrameCapHz is set.
-        FrameLimiter _frameLimiter;
-        int _frameCapHz;
+        // Software frame-rate cap for Run(). _requestedCap is the consumer intent (Auto by default); _effectiveBaseCapHz
+        // is that resolved for this backend + present mode (0 = uncapped), recomputed on any cap / present change via
+        // ApplyFrameCap. The per-frame pace limiter below is derived from the base cap AND the background-throttle
+        // policy, so it can differ from the base cap while the window is unfocused / minimized.
+        FrameCap _requestedCap = FrameCap.Auto;
+        int _effectiveBaseCapHz;
+        FrameLimiter _paceLimiter = new(0);
+        int _paceHz = -1;   // Hz the pace limiter was last built for; -1 forces a rebuild on the first paced frame.
+        BackgroundThrottlePolicy _backgroundThrottle = BackgroundThrottlePolicy.Default;
         // Runtime display state. PresentMode/WindowMode start from the ctor; _windowedSize is the size to restore
         // when leaving a fullscreen mode; _windowedPos is the windowed position to restore (null = leave it where
         // the OS put it, until the first MoveTo); _warnedMetalVsync dedups the one-time Metal-vsync-needs-a-cap warning.
@@ -133,15 +146,46 @@ namespace KhaozEngine.Windowing
         bool _warnedMetalVsync;
 
         /// <summary>
-        /// Software frame-rate cap in Hz for <see cref="Run"/> (0 = uncapped, the default). Paces the loop with a
-        /// monotonic-clock <see cref="FrameLimiter"/> independent of the swapchain's vsync, so a game can pin the
-        /// render rate to an integer multiple of its fixed tick (e.g. 60/120 for a 30 Hz tick) - the deterministic cap
-        /// where vsync does not throttle (notably the Veldrid Metal path). Settable any time; takes effect next frame.
+        /// Software frame-rate cap in Hz for <see cref="Run"/>, paced by a monotonic-clock <see cref="FrameLimiter"/>
+        /// independent of the swapchain's vsync, so a game can pin the render rate to an integer multiple of its fixed
+        /// tick (e.g. 60/120 for a 30 Hz tick) - the deterministic cap where vsync does not throttle (notably the
+        /// Veldrid Metal path). Settable any time, and takes effect next frame.
+        /// <para>Setting a positive value is an explicit fixed cap. Setting <c>0</c> (or negative) is an explicit
+        /// <see cref="Windowing.FrameCap.Uncapped"/> free-run. The GETTER returns the RESOLVED effective base cap the
+        /// loop paces to (0 = uncapped) - so with the default <see cref="Windowing.FrameCap.Auto"/> it reflects the
+        /// backend-aware default (a real cap on Metal + vsync, uncapped elsewhere), not a raw sentinel. Use
+        /// <see cref="FrameCap"/> for the richer intent (auto / uncapped / fixed).</para>
         /// </summary>
         public int FrameCapHz
         {
-            get => _frameCapHz;
-            set { _frameCapHz = value; _frameLimiter = new FrameLimiter(value); WarnIfMetalVsyncUncapped(); }
+            get => _effectiveBaseCapHz;
+            set { _requestedCap = value > 0 ? Windowing.FrameCap.Hz(value) : Windowing.FrameCap.Uncapped; ApplyFrameCap(); }
+        }
+
+        /// <summary>
+        /// The frame-cap intent for <see cref="Run"/>: <see cref="Windowing.FrameCap.Auto"/> (the default -
+        /// backend-aware, a real cap on Metal + vsync, uncapped where vsync throttles), <see cref="Windowing.FrameCap.Uncapped"/>,
+        /// or a fixed <see cref="Windowing.FrameCap.Hz"/>. A consumer-set value always wins over Auto. Settable any
+        /// time, and the resolved cap (see <see cref="FrameCapHz"/>) takes effect next frame. This is the richer form
+        /// of <see cref="FrameCapHz"/>.
+        /// </summary>
+        public FrameCap FrameCap
+        {
+            get => _requestedCap;
+            set { _requestedCap = value; ApplyFrameCap(); }
+        }
+
+        /// <summary>
+        /// How the loop throttles this window while it is backgrounded (unfocused / minimized). Default
+        /// <see cref="BackgroundThrottlePolicy.Default"/> (ON): a minimized window skips render + present and idles
+        /// (update still runs), and an unfocused-but-visible window caps to a low rate. Set
+        /// <see cref="BackgroundThrottlePolicy.Disabled"/> to keep rendering full-rate in the background. Settable any
+        /// time, and takes effect next frame.
+        /// </summary>
+        public BackgroundThrottlePolicy BackgroundThrottle
+        {
+            get => _backgroundThrottle;
+            set => _backgroundThrottle = value;
         }
 
         /// <summary>
@@ -158,7 +202,7 @@ namespace KhaozEngine.Windowing
             {
                 _presentMode = value;
                 _device.SyncToVerticalBlank = value == PresentMode.Vsync;
-                WarnIfMetalVsyncUncapped();
+                ApplyFrameCap(); // Auto depends on present mode (Metal + vsync caps; Immediate stays uncapped); also re-warns.
             }
         }
 
@@ -266,9 +310,12 @@ namespace KhaozEngine.Windowing
             return list;
         }
 
-        /// <summary>A snapshot of the current runtime display state, including window position.</summary>
+        /// <summary>A snapshot of the current runtime display state, including window position. The frame-cap field
+        /// carries the RESOLVED effective cap (see <see cref="FrameCapHz"/>), so a snapshot taken with the default
+        /// <see cref="Windowing.FrameCap.Auto"/> captures the concrete cap the loop is running (e.g. the Metal
+        /// display refresh), which re-applies as an explicit fixed cap.</summary>
         public DisplaySettings CurrentDisplay =>
-            new(_presentMode, _frameCapHz, _windowMode, WindowWidth, WindowHeight, WindowX, WindowY);
+            new(_presentMode, _effectiveBaseCapHz, _windowMode, WindowWidth, WindowHeight, WindowX, WindowY);
 
         /// <summary>
         /// Apply a whole <see cref="DisplaySettings"/> snapshot mid-session (a settings-screen "Apply"): window mode
@@ -336,32 +383,74 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        /// <summary>Emit a one-time warning when vsync is selected with no frame cap on Metal, where the Veldrid Metal
-        /// present does not throttle the CPU from vsync alone. Pure decision via
-        /// <see cref="DisplaySettings.RequiresFrameCapWarning"/>; written to <c>Console.Error</c> so a bare AppWindow
-        /// host (no logger) still surfaces it. Deduped so it never spams a settings screen.</summary>
+        /// <summary>Resolve <see cref="_requestedCap"/> for the live backend + present mode into the effective base
+        /// cap the loop paces to (0 = uncapped), then re-evaluate the Metal-vsync warning against it. Called from the
+        /// ctor (once the device exists), the cap setters, and the present-mode setter. The default
+        /// <see cref="Windowing.FrameCap.Auto"/> resolves to a real cap on Metal + vsync (the live display refresh, or
+        /// <see cref="Windowing.FrameCap.DefaultMetalAutoCapHz"/>) so the warning path never fires for it. Only an
+        /// explicit uncapped choice on Metal + vsync still warns.</summary>
+        void ApplyFrameCap()
+        {
+            _effectiveBaseCapHz = _requestedCap.Resolve(Backend, _presentMode, DisplayRefreshHz());
+            WarnIfMetalVsyncUncapped();
+        }
+
+        /// <summary>The live display's refresh rate in Hz for the window's current monitor (0 when unknown / headless).
+        /// AppWindow is the only class that touches the Silk monitor statics. The pure cap math is
+        /// <see cref="Windowing.FrameCap.Resolve"/>, which takes this as a plain int so it stays headless-testable.</summary>
+        int DisplayRefreshHz()
+        {
+            try
+            {
+                IMonitor? m = _window.Monitor ?? Monitor.GetMainMonitor(_window);
+                int? hz = m?.VideoMode.RefreshRate;
+                return hz is > 0 ? hz.Value : 0;
+            }
+            catch
+            {
+                return 0; // headless / no display: the pure resolver falls back to its default cap.
+            }
+        }
+
+        /// <summary>Emit a one-time warning when vsync is selected with an effective free-run on Metal (the resolved
+        /// base cap is 0), where the Veldrid Metal present does not throttle the CPU from vsync alone. With the default
+        /// <see cref="Windowing.FrameCap.Auto"/> the resolved cap on Metal + vsync is always positive, so this fires
+        /// ONLY when a consumer explicitly forces uncapped + vsync on Metal. Pure decision via
+        /// <see cref="DisplaySettings.RequiresFrameCapWarning"/> (fed the resolved cap), and written to <c>Console.Error</c>
+        /// so a bare AppWindow host (no logger) still surfaces it. Deduped so it never spams a settings screen.</summary>
         void WarnIfMetalVsyncUncapped()
         {
             if (_warnedMetalVsync) return;
-            if (!DisplaySettings.RequiresFrameCapWarning(Backend, _presentMode, _frameCapHz)) return;
+            if (!DisplaySettings.RequiresFrameCapWarning(Backend, _presentMode, _effectiveBaseCapHz)) return;
             _warnedMetalVsync = true;
             Console.Error.WriteLine(
-                "[KhaozEngine] PresentMode.Vsync does not reliably cap the frame rate on Metal (the Veldrid Metal " +
-                "present does not throttle the CPU). Set FrameCapHz (e.g. your tick rate x2, like 60 or 120) for a " +
-                "deterministic cap on macOS.");
+                "[KhaozEngine] PresentMode.Vsync with an explicit uncapped frame rate does not throttle the CPU on " +
+                "Metal (the Veldrid Metal present does not sync the CPU). Use FrameCap.Auto (the default) or set " +
+                "FrameCapHz (e.g. your tick rate x2, like 60 or 120) for a deterministic cap on macOS.");
         }
 
-        /// <summary>Create a window with vsync present and no frame cap (the historical defaults).</summary>
+        /// <summary>Create a window with vsync present and the backend-aware <see cref="Windowing.FrameCap.Auto"/>
+        /// frame cap (a real cap on Metal + vsync, uncapped where vsync throttles - see <see cref="FrameCap"/>).</summary>
         public AppWindow(string title, int width, int height)
-            : this(title, width, height, PresentMode.Vsync, frameCapHz: 0) { }
+            : this(title, width, height, PresentMode.Vsync, FrameCap.Auto) { }
 
         /// <summary>
-        /// Create a window selecting how it presents (<paramref name="presentMode"/>) and an optional software frame
-        /// cap (<paramref name="frameCapHz"/>, 0 = uncapped). <paramref name="presentMode"/> feeds the swapchain's
-        /// vsync at creation time; <paramref name="frameCapHz"/> paces <see cref="Run"/> and can also be changed later
-        /// via <see cref="FrameCapHz"/>.
+        /// Create a window selecting how it presents (<paramref name="presentMode"/>) and an explicit software frame
+        /// cap in Hz (<paramref name="frameCapHz"/>, 0 = uncapped). This overload's cap is always EXPLICIT (0 is an
+        /// intentional free-run, not <see cref="Windowing.FrameCap.Auto"/>). Use the <see cref="FrameCap"/> overload
+        /// for the backend-aware default. <paramref name="presentMode"/> feeds the swapchain's vsync at creation time,
+        /// and the cap can also be changed later via <see cref="FrameCapHz"/> / <see cref="FrameCap"/>.
         /// </summary>
         public AppWindow(string title, int width, int height, PresentMode presentMode, int frameCapHz = 0)
+            : this(title, width, height, presentMode, frameCapHz > 0 ? FrameCap.Hz(frameCapHz) : FrameCap.Uncapped) { }
+
+        /// <summary>
+        /// Create a window selecting how it presents (<paramref name="presentMode"/>) and the frame-cap intent
+        /// (<paramref name="frameCap"/>): <see cref="Windowing.FrameCap.Auto"/> (backend-aware default),
+        /// <see cref="Windowing.FrameCap.Uncapped"/>, or a fixed <see cref="Windowing.FrameCap.Hz"/>. The cap can also
+        /// be changed later via <see cref="FrameCap"/> / <see cref="FrameCapHz"/>.
+        /// </summary>
+        public AppWindow(string title, int width, int height, PresentMode presentMode, FrameCap frameCap)
         {
             // WinExe support, belt-and-suspenders for a bare AppWindow host (one with no GameApp facade): a
             // Windows-subsystem exe has no console, so surface diagnostics like the Metal-vsync warning below
@@ -371,8 +460,7 @@ namespace KhaozEngine.Windowing
             // console; never throws.
             KhaozEngine.Platform.WindowsConsole.EnsureParentConsoleAttached();
 
-            _frameCapHz = frameCapHz;
-            _frameLimiter = new FrameLimiter(frameCapHz);
+            _requestedCap = frameCap;
             _presentMode = presentMode;
             _windowedSize = new Vector2D<int>(width, height);
             // KE_MAX_FRAMES: render N frames then close (lets a windowed smoke test run a few frames + exit cleanly).
@@ -401,6 +489,10 @@ namespace KhaozEngine.Windowing
                 syncToVerticalBlank: presentMode == PresentMode.Vsync);
             _device = _gpu.GpuDevice;
             _cl = _device.Factory.CreateCommandList();
+
+            // Resolve the frame cap now that the backend + device + window exist (Auto is backend-aware, and needs the
+            // live display refresh). Also arms the one-time Metal-vsync warning for an explicit uncapped + vsync choice.
+            ApplyFrameCap();
 
             // Resize the swapchain to the drawable (framebuffer) size, not the logical window size.
             _window.FramebufferResize += s => _device.ResizeSwapchain((uint)s.X, (uint)s.Y);
@@ -607,9 +699,12 @@ namespace KhaozEngine.Windowing
             return raw;
         }
 
-        /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame. When
-        /// <see cref="FrameCapHz"/> is set, the loop is paced to that rate with a monotonic-clock limiter after
-        /// present (independent of the swapchain's vsync).</summary>
+        /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame. The loop
+        /// is paced to the resolved <see cref="FrameCapHz"/> with a monotonic-clock limiter after present (independent
+        /// of the swapchain's vsync). The <see cref="BackgroundThrottle"/> policy adjusts pacing when the window is
+        /// backgrounded: an unfocused-but-visible window drops to a low cap, and a minimized window skips render +
+        /// present entirely (<see cref="Frame.RenderSuppressed"/> is set) while still running <paramref name="onFrame"/>
+        /// each idle tick so update-side simulation keeps advancing.</summary>
         public void Run(Action<Frame> onFrame)
         {
             Show(); // ensure visible even if the host never called Show() (GameApp calls it after SetIcon). Idempotent.
@@ -620,29 +715,44 @@ namespace KhaozEngine.Windowing
                 InputState input = BuildInput();
                 int w = _window.FramebufferSize.X, h = _window.FramebufferSize.Y;
 
-                _cl.Begin();
-                _cl.SetFramebuffer(_device.SwapchainFramebuffer!);
-                _cl.ClearColorTarget(0, ClearColor);
+                // Background-throttle decision for this frame (pure). A minimized window skips render + present; an
+                // unfocused-but-visible one still renders at a lowered cap; a focused window renders at the base cap.
+                FramePlan plan = _backgroundThrottle.Plan(new WindowActivity(_focused, _minimized), _effectiveBaseCapHz);
+                bool render = plan.RenderAndPresent;
 
                 _frame.Dt = fdt; _frame.Input = input; _frame.Width = w; _frame.Height = h;
                 _frame.LogicalWidth = _window.Size.X; _frame.LogicalHeight = _window.Size.Y;
                 _frame.Commands = _cl;
-                onFrame(_frame);
+                _frame.RenderSuppressed = !render;
+
+                if (render)
+                {
+                    _cl.Begin();
+                    _cl.SetFramebuffer(_device.SwapchainFramebuffer!);
+                    _cl.ClearColorTarget(0, ClearColor);
+                }
+
+                onFrame(_frame); // always runs: update advances even on a render-suppressed (minimized) frame.
 
                 // Advance rumble pulse envelopes (decay + auto-stop) and push effective motor levels to the device.
                 // Only if a game actually touched Rumble this session, so a rumble-free window pays nothing.
                 _rumble?.Tick(fdt);
 
-                _cl.End();
-                _device.Submit(_cl);
-                _device.Present();
-
-                // Software frame cap: pace the loop to FrameCapHz. Silk's own loop runs the callback as fast as the
-                // GPU allows (the Veldrid Metal present does not throttle the CPU), so idle here to hold the target
-                // cadence. Hybrid sleep + short spin keeps it accurate without a Windows-timer-granularity overshoot.
-                if (_frameLimiter.Enabled)
+                if (render)
                 {
-                    double wait = _frameLimiter.WaitBeforeNext(clock.Elapsed.TotalSeconds);
+                    _cl.End();
+                    _device.Submit(_cl);
+                    _device.Present();
+                }
+
+                // Pace the loop to the plan's cap. Silk's own loop runs the callback as fast as the GPU allows (the
+                // Veldrid Metal present does not throttle the CPU), so idle here to hold the target cadence - the base
+                // cap when focused, a low cap when unfocused, an idle rate when minimized. Rebuild the limiter only when
+                // the target Hz changes (a focus / minimize transition), so steady-state pacing keeps a stable anchor.
+                if (plan.CapHz != _paceHz) { _paceHz = plan.CapHz; _paceLimiter = new FrameLimiter(plan.CapHz); }
+                if (_paceLimiter.Enabled)
+                {
+                    double wait = _paceLimiter.WaitBeforeNext(clock.Elapsed.TotalSeconds);
                     if (wait > 0) PreciseIdle(clock, wait);
                 }
 
@@ -666,6 +776,10 @@ namespace KhaozEngine.Windowing
             // Track OS focus so BuildInput can stamp it onto the snapshot. Silk keeps the render loop running and
             // reports a live cursor while unfocused, so without this consumers would see hover/clicks as if focused.
             _window.FocusChanged += focused => _focused = focused;
+            // Track OS minimize (iconify) so the frame loop can skip render + present while minimized (the window has
+            // no drawable then) and idle. StateChanged also reports Maximized/Fullscreen/Normal; only Minimized matters
+            // here. Per the input hard rule, AppWindow is the only class touching the Silk window statics.
+            _window.StateChanged += state => _minimized = state == WindowState.Minimized;
             foreach (IKeyboard kb in _input.Keyboards)
             {
                 kb.KeyDown += (_, key, _) => { if (MapKey(key, out Key k) && _keysDown.Add(k)) _pressed.Add(k); };

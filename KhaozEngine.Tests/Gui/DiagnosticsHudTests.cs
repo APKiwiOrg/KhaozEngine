@@ -66,7 +66,7 @@ namespace KhaozEngine.Tests.Gui
         {
             var hud = new DiagnosticsHud(InstantTheme(), withPassTimings: false, refreshSeconds: 0f);
 
-            hud.Update(KeyFrame(), 0.016f);   // stays hidden; provider polls but must short-circuit
+            hud.Update(KeyFrame(), 0.016f);   // stays hidden, provider polls but must short-circuit
 
             Assert.False(hud.Visible);
             Assert.Empty(hud.Overlay.Sections);

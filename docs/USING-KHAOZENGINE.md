@@ -4530,7 +4530,7 @@ blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more t
 A reusable in-game telemetry HUD for every game: an F1-toggled corner panel that shows whatever rows the
 game hands it, a frame-time meter, a client network-stats snapshot, and a crash-safe session recorder. The
 widget is content-agnostic - **the game assembles the rows each frame**, so the metric catalog stays
-game-owned; the engine ships populators for the common Performance / Network sections. (For most games the
+game-owned. The engine ships populators for the common Performance / Network sections. (For most games the
 turn-key HUD above is enough. Reach for this manual path only for custom rows, a recorder, or a bespoke panel.)
 
 The four pieces (`FrameStats`, `TelemetryRecorder`, `ClientNetStats` are in `KhaozEngine.Diagnostics`;

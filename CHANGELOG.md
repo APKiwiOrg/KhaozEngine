@@ -5,6 +5,33 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.105.0
+
+### ClimbRate and StepDeltaY seams on CharacterController3D, and dungeon stair-glide adoption
+
+RoomDungeon adopts the canonical signal-driven stair glide, and CharacterController3D exposes the climb signal
+for local characters. CharacterController3D gains two read-only properties, `ClimbRate` and `StepDeltaY`,
+projections of `MoveState`'s existing fields, so a local non-networked character can read the sim's own climb
+signal instead of estimating it from position deltas. The Showcase dungeon-walk demo drops the legacy
+`CharacterAvatar` render-height ease for a one-entity `ReplicatedCharacterAnimators` fed off these properties,
+matching the signal-driven glide and step-event mesh smoothing every other stair-climb consumer already uses.
+Dungeon stair risers (about 0.33 m) sit under the default 0.4 m `StepHeight`, so no tuning override was needed.
+
+- **`CharacterController3D.ClimbRate`** (`KhaozEngine.Game.Render3D`, new, read-only): the sim's current paced
+  vertical climb speed, a projection of `MoveState.ClimbRate`. A local (non-networked) character can read it to
+  feed a `ReplicatedCharacterAnimators` bridge with the same climb signal the networked path already carries,
+  instead of estimating climb from frame-to-frame position deltas.
+- **`CharacterController3D.StepDeltaY`** (`KhaozEngine.Game.Render3D`, new, read-only): the vertical distance the
+  controller stepped up this tick, a projection of `MoveState.StepDeltaY`, for accumulating a step-cumulative
+  height that drives the same mesh-smoothing step events the networked animators consume.
+- **Showcase `RoomDungeon`**: swaps the legacy `CharacterAvatar` render-height ease for a one-entity
+  `ReplicatedCharacterAnimators`, fed a single `CharacterSample` per tick built from the controller's live
+  `ClimbRate` and step-cumulative height, so the demo climbs stairs with the canonical signal-driven glide.
+- **`DungeonStairSignalGlideTests`** (`KhaozEngine.Tests`, new): drives `CharacterController3D` up a generated
+  dungeon stair edge through a real `BepuPhysicsWorld`, asserting the controller reaches the upper floor, that
+  the animator bridge observes a positive paced `ClimbRate` bounded by `MaxStepClimbSpeed`, and that the bridge's
+  `RenderPosition.Y` glides up without a raw per-riser pop.
+
 ## 10.104.1
 
 ### GPU skinning spike evidence and the Metal vertex-stage binding invariant

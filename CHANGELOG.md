@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.98.0
+
+### Batched IWorldStore saves + MmoServerSample server hygiene
+
+Batched IWorldStore saves and MmoServerSample server hygiene: dedicated servers no longer pay one store
+round trip per dirty record, and the reference sample now ships with cell parallelism, Server GC, and
+adaptive tick pacing on by default.
+
+- **Batched store API.** Added `IWorldStore.SaveManyAsync(IReadOnlyList<(string Key, byte[] Data)>, CancellationToken)`,
+  a default interface member that loops `SaveAsync` so existing implementations keep compiling unchanged.
+  `SqliteWorldStore` overrides it with a single transaction and a prepared multi-row upsert. `SqlServerWorldStore`
+  overrides it with one pooled connection and a chunked multi-row `MERGE` (500 rows per statement). `InMemoryWorldStore`
+  overrides it for one consistent `UpdatedAt` per batch.
+- **Batched dirty passes.** `WorldPersistence.SaveDirtyPass` and `CellPersistence.SaveDirtyPass` now issue one
+  `SaveManyAsync` per periodic pass instead of one `SaveAsync` per dirty record. A faulted batch leaves every record
+  in it dirty for retry, the unchanged data-safety guarantee, and `OnStoreError` now fires once per pass rather than
+  once per record.
+- **Adaptive host pacing.** Added `FixedTickHost.SecondsUntilNextTick` and the pure static
+  `FixedTickHost.ComputeIdleWaitSeconds` for adaptive host-loop pacing.
+- **Reference sample hygiene.** `MmoServerSample` now wires `ThreadPoolJobScheduler` for cell parallelism (measured
+  3.2x tick speedup at 256 cells on 12 cores), enables Server plus Concurrent GC, and replaces its fixed
+  `Thread.Sleep(5)` with adaptive pacing.
+
 ## 10.97.0
 
 ### O(interestSet) AoI projection + indexed filtered snapshots

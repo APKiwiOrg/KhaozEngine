@@ -32,7 +32,7 @@ namespace KhaozEngine.Render2D
     /// Draw with <see cref="SpriteBatch.DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color)"/>.
     /// <para>
     /// A bake <c>density</c> rasterizes the atlas at <c>pixelHeight * density</c> while reporting all layout
-    /// metrics (<see cref="Measure"/>, <see cref="LineHeight"/>, glyph advances) at the logical <c>pixelHeight</c>.
+    /// metrics (<see cref="Measure(string)"/>, <see cref="LineHeight"/>, glyph advances) at the logical <c>pixelHeight</c>.
     /// The extra texel density stays crisp when a viewport upscales the text to a higher-resolution framebuffer;
     /// the integer <c>oversample</c> factor (2-3 covers typical HiDPI / design-viewport upscales) is the coarse
     /// form, and a fractional density set to the exact device-pixel scale draws 1:1 (see <see cref="DpiFont"/>,
@@ -72,9 +72,14 @@ namespace KhaozEngine.Render2D
         /// </summary>
         public Vector2 Measure(string text) => new Vector2(MeasureWidth(Glyphs, text), LineHeight);
 
+        /// <summary>As <see cref="Measure(string)"/>, but genuinely allocation-free: <see cref="MeasureWidth"/>
+        /// walks a span directly, so a caller measuring a candidate that may be thrown away (e.g.
+        /// <see cref="TextLayout.Wrap"/>) never allocates a string just to measure it.</summary>
+        public Vector2 Measure(ReadOnlySpan<char> text) => new Vector2(MeasureWidth(Glyphs, text), LineHeight);
+
         /// <summary>The advance-sum width of <paramref name="text"/> under the shared measure/draw glyph
         /// resolution (<see cref="ResolveGlyph"/>), so metrics always agree with rendering.</summary>
-        internal static float MeasureWidth(Dictionary<char, GlyphInfo> glyphs, string text)
+        internal static float MeasureWidth(Dictionary<char, GlyphInfo> glyphs, ReadOnlySpan<char> text)
         {
             float w = 0;
             for (int i = 0; i < text.Length; i++)
@@ -89,10 +94,12 @@ namespace KhaozEngine.Render2D
         /// Resolve the glyph for the char at <paramref name="i"/>: the baked glyph when covered, null for a
         /// control character (zero-width, never substituted), otherwise the <see cref="FallbackChar"/> glyph.
         /// A surrogate pair advances <paramref name="i"/> past the low half so an astral codepoint resolves
-        /// to ONE fallback glyph, not two. The single lookup path shared by <see cref="Measure"/> and
+        /// to ONE fallback glyph, not two. The single lookup path shared by <see cref="Measure(string)"/> and
         /// <see cref="SpriteBatch.DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color, float)"/>.
+        /// Takes a span (a <c>string</c> argument converts implicitly) so callers measuring a slice of a larger
+        /// buffer - not a whole standalone string - don't need to allocate a substring first.
         /// </summary>
-        internal static GlyphInfo? ResolveGlyph(Dictionary<char, GlyphInfo> glyphs, string text, ref int i)
+        internal static GlyphInfo? ResolveGlyph(Dictionary<char, GlyphInfo> glyphs, ReadOnlySpan<char> text, ref int i)
         {
             char c = text[i];
             if (glyphs.TryGetValue(c, out GlyphInfo? g)) return g;

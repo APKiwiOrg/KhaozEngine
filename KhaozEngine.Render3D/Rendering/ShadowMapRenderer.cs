@@ -29,6 +29,13 @@ namespace KhaozEngine.Render3D.Rendering
         public const int DefaultResolution = 2048;
         const int MinResolution = 256;
 
+        // GPU-skinning shadow mirror: the skinned depth vertex reads ONE combined UBO at set 0 laid out as
+        // { mat4 LightMvp; mat4 bones[128] } (see ShaderSources.SkinnedShadowDepthVert), one 256-byte-aligned slot per
+        // caster selected by a per-draw dynamic offset. Same fold-matrix one-vertex-buffer shape as the model pass.
+        internal static readonly uint SkinnedDepthSlotBytes =
+            Align256((1u + (uint)SkinningMath.MaxBonesPerDraw) * 64);   // (1+128)*64=8256 -> 8448
+        static uint Align256(uint n) => (n + 255u) & ~255u;
+
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
@@ -36,6 +43,14 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceSet _set;
         readonly IGpuSampler _sampler;          // clamp/linear sampler the RECEIVERS use to PCF-sample the map (owned)
         IGpuPipeline _pipeline = null!;
+
+        // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its combined-UBO grow-with-retire buffer.
+        readonly IGpuShaderSet _skinnedShaders;
+        readonly IGpuResourceLayout _skinnedLayout;   // set 0: combined { LightMvp; bones[128] } dynamic UBO, vertex only
+        IGpuPipeline _skinnedPipeline = null!;         // rebuilt in EnsureResolution alongside _pipeline
+        IGpuBuffer? _skinnedUbo; uint _skinnedSlots; IGpuResourceSet? _skinnedSet;
+        readonly List<IDisposable> _retiredSkinned = new();   // grown-out combined UBOs/sets (a prior frame may still read them)
+        readonly Matrix4x4[] _skinnedScratch = new Matrix4x4[1 + SkinningMath.MaxBonesPerDraw];
 
         IGpuTexture _depthColor = null!;        // R32F: the caster's light-space depth (the map the receivers sample)
         IGpuTexture _depthStencil = null!;      // depth-test buffer for the depth pass (never sampled)
@@ -63,6 +78,12 @@ namespace KhaozEngine.Render3D.Rendering
             _lightUbo = f.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer));
             _set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, _lightUbo));
 
+            // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = combined
+            // { LightMvp; bones[128] } dynamic UBO, vertex only. The pipeline is built per resolution in EnsureResolution.
+            _skinnedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
+            _skinnedLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
+
             // Clamp addressing so a PCF tap off the map edge reads the border (never wraps into the far side); linear
             // so the 3x3 taps blend smoothly. Clamp-to-edge keeps an out-of-footprint receiver reading a valid texel
             // (the shader also range-checks the UV and early-outs, so the exact border value is not load-bearing).
@@ -83,6 +104,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (res == _resolution) return;
             _gd.WaitForIdle();   // a prior frame's pass may still reference the old targets; a resolution change is rare
             _pipeline?.Dispose();
+            _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _depthColor?.Dispose();
             _depthStencil?.Dispose();
@@ -97,6 +119,34 @@ namespace KhaozEngine.Render3D.Rendering
             _fb = f.CreateFramebuffer(_depthStencil, _depthColor);
 
             _pipeline = BuildPipeline(f, _fb.Outputs);
+            _skinnedPipeline = BuildSkinnedPipeline(f, _fb.Outputs);
+        }
+
+        // GPU-skinning depth pipeline: the rest-pose SkinnedVertex stream (locations 0..6) at slot 0, the combined
+        // { LightMvp; bones[128] } dynamic UBO at set 0. Front-face cull (the same second-depth trick as the rigid
+        // depth pass). Rebuilt with _pipeline whenever the resolution reallocates the outputs.
+        IGpuPipeline BuildSkinnedPipeline(IGpuResourceFactory f, GpuOutputDescription outputs)
+        {
+            var vertexLayout = new GpuVertexLayoutDescription(
+                new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
+                new GpuVertexElement("Normal", GpuVertexElementFormat.Float3),
+                new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("BoneIndices", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("BoneWeights", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
+            return f.CreateGraphicsPipeline(new GpuPipelineDescription
+            {
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend },
+                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
+                Topology = GpuPrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _skinnedLayout },
+                ShaderSet = _skinnedShaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
+                Outputs = outputs,
+            });
         }
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs)
@@ -179,9 +229,55 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
         }
 
+        // ---- GPU-skinning shadow casters (opt-in). Mirror the model pass's fold-matrix combined-UBO binding. ----
+
+        /// <summary>Ensure the combined skinned-depth UBO holds at least <paramref name="slotCount"/> slots (each
+        /// <see cref="SkinnedDepthSlotBytes"/>), growing geometrically + retiring the old buffer + its window set.
+        /// Rebuilds the single-slot-window resource set the per-draw dynamic offset indexes.</summary>
+        public void EnsureSkinnedShadowCapacity(uint slotCount)
+        {
+            if (_skinnedUbo != null && _skinnedSlots >= slotCount) return;
+            if (_skinnedUbo != null) _retiredSkinned.Add(_skinnedUbo);
+            if (_skinnedSet != null) _retiredSkinned.Add(_skinnedSet);
+            _skinnedSlots = Math.Max(slotCount, _skinnedSlots == 0 ? 8u : _skinnedSlots * 2);
+            _skinnedUbo = _gd.Factory.CreateBuffer(
+                new GpuBufferDescription(_skinnedSlots * SkinnedDepthSlotBytes, GpuBufferUsage.UniformBuffer));
+            _skinnedSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _skinnedLayout, new GpuBufferRange(_skinnedUbo, 0, SkinnedDepthSlotBytes)));
+        }
+
+        /// <summary>Pack one skinned caster's depth slot: <c>LightMvp = model * lightViewProj</c> folded per draw + the
+        /// composed <paramref name="bones"/> (uploaded raw, read column-major = transpose). <paramref name="lightViewProj"/>
+        /// is the GPU-clip-corrected world-&gt;light-clip matrix. Uploads only the mesh's bones (indices validated at load).</summary>
+        public void PackSkinnedShadowSlot(IGpuCommandList cl, uint slot, in Matrix4x4 model, in Matrix4x4 lightViewProj, ReadOnlySpan<Matrix4x4> bones)
+        {
+            _skinnedScratch[0] = model * lightViewProj;   // System.Numerics order: p * model * lightViewProj
+            for (int b = 0; b < bones.Length; b++) _skinnedScratch[1 + b] = bones[b];
+            cl.UpdateBuffer(_skinnedUbo!, slot * SkinnedDepthSlotBytes, _skinnedScratch.AsSpan(0, 1 + bones.Length));
+        }
+
+        /// <summary>Switch the (already-begun) depth pass to the skinned depth pipeline + bind its combined window set.
+        /// Call after the rigid caster runs, before the skinned casters (<see cref="BeginDepthPass"/> must be bound).</summary>
+        public void BindSkinnedDepthPass(IGpuCommandList cl)
+        {
+            cl.SetPipeline(_skinnedPipeline);
+            cl.SetGraphicsResourceSet(0, _skinnedSet!, 0);   // rebound per draw with the slot's dynamic offset below
+        }
+
+        /// <summary>Draw one GPU-skinned caster into the shadow map: its rest-pose <paramref name="restVb"/> at slot 0,
+        /// the combined UBO window at set 0 selected by <paramref name="slot"/>'s dynamic offset. One instance.</summary>
+        public void DrawGpuSkinnedCaster(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, uint slot)
+        {
+            cl.SetGraphicsResourceSet(0, _skinnedSet!, slot * SkinnedDepthSlotBytes);
+            cl.SetVertexBuffer(0, restVb);
+            cl.SetIndexBuffer(ib, indexFormat);
+            cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);
+        }
+
         public void Dispose()
         {
             _pipeline?.Dispose();
+            _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _depthColor?.Dispose();
             _depthStencil?.Dispose();
@@ -190,6 +286,12 @@ namespace KhaozEngine.Render3D.Rendering
             _layout.Dispose();
             _shaders.Dispose();
             _sampler.Dispose();
+            _skinnedShaders.Dispose();
+            _skinnedLayout.Dispose();
+            _skinnedUbo?.Dispose();
+            _skinnedSet?.Dispose();
+            foreach (var r in _retiredSkinned) r.Dispose();
+            _retiredSkinned.Clear();
         }
     }
 }

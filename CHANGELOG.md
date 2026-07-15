@@ -5,6 +5,85 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.107.0
+
+### Room3D signal-driven stair glide + CharacterAvatar deprecation
+
+Room3D adopts the signal-driven stair glide and CharacterAvatar is deprecated. The Showcase 3D room now drives its
+avatar through `ReplicatedCharacterAnimators` fed `CharacterController3D.ClimbRate` and `StepDeltaY`, matching the
+dungeon room, so both demo rooms present step traversal through the same canonical path. `CharacterAvatar` has no
+live consumers left and is marked `Obsolete` (additive and non-breaking, existing callers still compile with a
+warning). Prefer `ReplicatedCharacterAnimators` fed `CharacterSample` facts for any new character presentation.
+
+- **`CharacterAvatar`** (`KhaozEngine.Game.Render3D`, marked `[Obsolete]`): the turnkey third-person avatar has no
+  live consumers left, superseded by `ReplicatedCharacterAnimators` fed the controller's `ClimbRate`/`StepDeltaY`.
+  Additive and non-breaking: existing callers still compile with a deprecation warning.
+- **Showcase Room3D** (`KhaozEngine.Showcase`, demo-only): drives its avatar through `ReplicatedCharacterAnimators`
+  fed `CharacterController3D.ClimbRate`/`StepDeltaY` instead of `CharacterAvatar`, so both the dungeon room and the
+  3D room present step traversal through the same canonical path.
+
+## 10.106.0
+
+### Opt-in GPU skinning on the one-UBO-per-pipeline binding
+
+Opt-in GPU skinning (`Scene3D.UseGpuSkinning`, default off). Skinned draws can deform on the GPU instead of the
+CPU: the rest-pose vertex buffer uploads once at load and only the per-draw bone palette plus matrices upload
+each frame, pixel-parity with the CPU path and far cheaper CPU-side at crowd scale (the 64-character CPU skin
+loop cost drops from about 18 ms to a flat palette pack). Built on a single combined per-draw dynamic-offset UBO
+`{ Mvp; Model; P; frame; bones[128] }` at set 0 read by both stages with material maps at set 1, which is the
+only Metal-safe binding: a second uniform buffer anywhere in the pipeline reads zero on Veldrid/SPIRV-Cross/Metal,
+so the `DEPENDENCY-SEAMS` invariant is corrected from one-buffer-per-vertex-stage to one-uniform-buffer-per-pipeline.
+The shadow depth pass mirrors the binding with its own combined light-matrix-plus-bones buffer. Respects skinned
+frustum culling (a culled draw skips its palette pack) and the frame draw counters. Ships default off pending a
+windowed A/B: the Showcase 3D room toggles the path live on the F key with the active path shown in the HUD. New
+on-device parity tests cover bent-pose CPU-vs-GPU, rest-pose identity, textures, multi-character same-mesh, and
+shadow parity, and every existing golden is byte-identical with the flag off.
+
+- **`Scene3D.UseGpuSkinning`** (`KhaozEngine.Render3D`, new, default `false`): flip on to deform skinned meshes in
+  the vertex shader instead of on the CPU. Pixel-parity with the CPU path (the shader mirrors
+  `SkinningMath.SkinVertex`), same frustum culling and shadow-caster handling, flippable per frame. Ships off
+  pending a windowed A/B because the offscreen parity proof is necessary but not sufficient for the historical
+  windowed swapchain context.
+- **Skinned GPU pipeline** (`KhaozEngine.Render3D`, internal `ModelRenderer` / `ShadowMapRenderer` / `Scene3D`):
+  one combined per-draw dynamic-offset UBO `{ Mvp; Model; P; frame; bones[128] }` at set 0 read by both stages,
+  material maps at set 1, the shadow pass mirroring it with `{ LightMvp; bones[128] }`. This is the only
+  Metal-safe shape: a second uniform buffer anywhere in the pipeline mis-binds and reads zero on
+  Veldrid/SPIRV-Cross/Metal.
+- **`docs/DEPENDENCY-SEAMS.md`**: the Metal vertex-stage binding invariant is corrected from
+  one-uniform-buffer-per-vertex-stage to one-uniform-buffer-per-pipeline (a fragment-only second UBO also
+  mis-binds, textures and samplers in a second set are fine).
+- **New GPU parity tests** (`KhaozEngine.Tests`, new `Render3DGpuSkinningGpuTests` + `GpuSkinningPerfTests`):
+  bent-pose CPU-vs-GPU, rest-pose identity, textured, multi-character same-mesh, and shadow parity on device,
+  plus a headless perf harness comparing the CPU deform against the GPU palette pack. Every existing golden is
+  byte-identical with the flag off.
+
+## 10.105.0
+
+### ClimbRate and StepDeltaY seams on CharacterController3D, and dungeon stair-glide adoption
+
+RoomDungeon adopts the canonical signal-driven stair glide, and CharacterController3D exposes the climb signal
+for local characters. CharacterController3D gains two read-only properties, `ClimbRate` and `StepDeltaY`,
+projections of `MoveState`'s existing fields, so a local non-networked character can read the sim's own climb
+signal instead of estimating it from position deltas. The Showcase dungeon-walk demo drops the legacy
+`CharacterAvatar` render-height ease for a one-entity `ReplicatedCharacterAnimators` fed off these properties,
+matching the signal-driven glide and step-event mesh smoothing every other stair-climb consumer already uses.
+Dungeon stair risers (about 0.33 m) sit under the default 0.4 m `StepHeight`, so no tuning override was needed.
+
+- **`CharacterController3D.ClimbRate`** (`KhaozEngine.Game.Render3D`, new, read-only): the sim's current paced
+  vertical climb speed, a projection of `MoveState.ClimbRate`. A local (non-networked) character can read it to
+  feed a `ReplicatedCharacterAnimators` bridge with the same climb signal the networked path already carries,
+  instead of estimating climb from frame-to-frame position deltas.
+- **`CharacterController3D.StepDeltaY`** (`KhaozEngine.Game.Render3D`, new, read-only): the vertical distance the
+  controller stepped up this tick, a projection of `MoveState.StepDeltaY`, for accumulating a step-cumulative
+  height that drives the same mesh-smoothing step events the networked animators consume.
+- **Showcase `RoomDungeon`**: swaps the legacy `CharacterAvatar` render-height ease for a one-entity
+  `ReplicatedCharacterAnimators`, fed a single `CharacterSample` per tick built from the controller's live
+  `ClimbRate` and step-cumulative height, so the demo climbs stairs with the canonical signal-driven glide.
+- **`DungeonStairSignalGlideTests`** (`KhaozEngine.Tests`, new): drives `CharacterController3D` up a generated
+  dungeon stair edge through a real `BepuPhysicsWorld`, asserting the controller reaches the upper floor, that
+  the animator bridge observes a positive paced `ClimbRate` bounded by `MaxStepClimbSpeed`, and that the bridge's
+  `RenderPosition.Y` glides up without a raw per-riser pop.
+
 ## 10.104.1
 
 ### GPU skinning spike evidence and the Metal vertex-stage binding invariant

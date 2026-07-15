@@ -27,7 +27,26 @@ namespace KhaozEngine.Game
     /// facing never feed simulation or netcode; drive the LOCAL player from input and a REMOTE player from its own
     /// controller/animator fed replicated state.
     /// </para>
+    /// <para>
+    /// <b>Obsolete: superseded by the signal-driven stair glide.</b> <see cref="RenderPosition"/>'s ease (see
+    /// <see cref="RenderHeightSmoothRate"/>) is a plain toward-physics-height smoother with no idea WHY the height
+    /// jumped - it cannot tell a continuous stair run from an isolated step from a fall, so it either lags a paced
+    /// climb or crawls a discrete riser. Every consumer (<c>RoomNet</c>, <c>RoomDungeon</c>, and now <c>Room3D</c> -
+    /// see <c>KhaozEngine.Showcase</c>) has moved onto <see cref="ReplicatedCharacterAnimators"/> ("the character
+    /// bridge"), fed the sim's own exported facts (<see cref="CharacterController3D.ClimbRate"/> /
+    /// <see cref="CharacterController3D.StepDeltaY"/> for a local, non-networked character - no netcode required, see
+    /// <c>KhaozEngine.Showcase.RoomDungeon</c>/<c>Room3D</c> for the worked wiring), which glides feed-forward off the
+    /// exact signal instead of estimating from position deltas. This class is left in place (no consumer left, but
+    /// public API is never deleted out from under a downstream pin) rather than rewired internally onto the bridge:
+    /// its field surface (<see cref="RenderHeightSmoothRate"/> in m/s, a linear-rate ease) does not map onto the
+    /// bridge's critically-damped rad/s glide without changing its documented behaviour, and no consumer remains to
+    /// justify that rewrite. Prefer <see cref="ReplicatedCharacterAnimators"/> for any new character.
+    /// </para>
     /// </summary>
+    [Obsolete("Superseded by ReplicatedCharacterAnimators (\"the character bridge\") fed CharacterController3D.ClimbRate/StepDeltaY - " +
+        "see KhaozEngine.Showcase.RoomDungeon/Room3D for the local (non-networked) wiring. CharacterAvatar's RenderHeightSmoothRate ease " +
+        "has no climb-signal awareness (it cannot distinguish a paced stair run from an isolated step from a fall), so the bridge glides " +
+        "off the sim's own exported facts instead. Kept for existing pins, not recommended for new code.")]
     public sealed class CharacterAvatar
     {
         readonly CharacterController3D _controller;

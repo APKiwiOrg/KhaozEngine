@@ -35,6 +35,21 @@ namespace KhaozEngine.Game
         /// swim/tread clips instead of walk/fall.</summary>
         public bool Swimming => _state.Swimming;
 
+        /// <summary>Exact signed step-climb rate in m/s this tick (see <see cref="MoveState.ClimbRate"/>): positive while
+        /// ascending a continuous paced stair run, negative while descending stepped risers, 0 when not on a step climb.
+        /// The sim's OWN fact, not a position-delta estimate - feed it straight to a presentation smoother (e.g.
+        /// <see cref="CharacterSample.ClimbRate"/> for <see cref="ReplicatedCharacterAnimators"/>'s signal-driven stair
+        /// glide) instead of deriving a climb rate from successive <see cref="Position"/> samples.</summary>
+        public float ClimbRate => _state.ClimbRate;
+
+        /// <summary>Signed vertical delta (metres) a DISCRETE step committed THIS tick (see <see cref="MoveState.StepDeltaY"/>):
+        /// an isolated step-up seat or a step-down grounded-hold, 0 on every other tick. Mutually exclusive with
+        /// <see cref="ClimbRate"/> per tick. A caller driving the UE-style step-event mesh smoothing accumulates this into
+        /// a running sum (mirroring <c>ClientPrediction.StepCumulativeY</c>) and feeds it as
+        /// <see cref="CharacterSample.StepCumulativeY"/> so isolated steps (a doorstep, a curb, the first riser of a run)
+        /// ease instead of popping.</summary>
+        public float StepDeltaY => _state.StepDeltaY;
+
         /// <summary>Metres per second while walking. Default 6.</summary>
         public float WalkSpeed = 6f;
         /// <summary>Metres per second while running (shift held). Default 12.</summary>

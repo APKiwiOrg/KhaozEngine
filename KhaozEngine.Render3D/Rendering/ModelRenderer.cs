@@ -32,6 +32,19 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
         internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 768
 
+        // ---- GPU skinning (opt-in) combined-buffer geometry. The whole skinned pipeline reads ONE dynamic-offset
+        // UBO at set 0 binding 0 (both stages) laid out as { mat4 Mvp; mat4 Model; mat4 P; <frame block>; mat4
+        // bones[128] } (see ShaderSources.SkinnedModelVert): 3 header mats, then the frame UBO block (mirrored
+        // exactly, so WriteFrameUniformsTo fills it) for the fragment lighting, then up to 128 bones. Each draw
+        // occupies a 256-byte-aligned slot selected by a per-draw dynamic offset (the SpriteBatch view-proj slot
+        // pattern), so a whole crowd shares one grow-with-retire buffer.
+        internal const uint SkinnedHeaderMats = 3;                        // Mvp + Model + P(Tint/Emissive/Spec)
+        internal const uint SkinnedFrameOffset = SkinnedHeaderMats * 64;  // 192: the frame block starts here
+        internal static readonly uint SkinnedBonesOffset = SkinnedFrameOffset + UboBytes;  // 192 + 768 = 960
+        internal static readonly uint SkinnedMainSlotBytes =
+            Align256(SkinnedBonesOffset + (uint)SkinningMath.MaxBonesPerDraw * 64);  // 960 + 128*64 = 9152 -> 9216
+        static uint Align256(uint n) => (n + 255u) & ~255u;
+
         /// <summary>Per-frame uniforms (binding 0) header. 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes, uploaded at
         /// offset 0. Field order MUST exactly mirror the std140 UBO block in BOTH ModelVert and ModelFrag; the
         /// point-light arrays follow this header in the same buffer (see <see cref="MaxPointLights"/>).</summary>
@@ -119,6 +132,22 @@ namespace KhaozEngine.Render3D.Rendering
         // grown geometrically and retired like _instanceBuffer.
         IGpuBuffer? _skinnedVertexBuffer; uint _skinnedVertexCapacity;     // capacity in ModelVertex
         IGpuBuffer? _skinnedInstanceBuffer; uint _skinnedInstanceCapacity; // capacity in InstanceData
+
+        // GPU-skinning path (Scene3D.UseGpuSkinning). The vertex reads ONE combined resource buffer at set 0
+        // ({Mvp,Model,P,bones[128]}, per-draw dynamic offset). The fragment reads frame+material at set 1 (fragment
+        // ONLY), so the vertex stage references no second resource buffer (the Metal one-buffer-per-vertex-stage
+        // invariant, proven by GpuSkinningReproGpuTests variant 3). The rest-pose SkinnedVertex buffer is the mesh's
+        // own vertex buffer, uploaded ONCE at load - no per-frame vertex deform. Palette + per-draw matrices are all
+        // that upload each frame (the GPU does the skinning).
+        readonly IGpuResourceLayout _skinnedVertexLayout;   // set 0: combined VBlock (dynamic UBO), VERTEX only
+        readonly IGpuResourceLayout _skinnedFragLayout;     // set 1: frame UBO + material maps + shadow, FRAGMENT only
+        readonly IGpuShaderSet _skinnedShaders;
+        readonly IGpuShaderSet _skinnedDissolveShaders;
+        IGpuPipeline _skinnedPipeline = null!;              // rebuilt by SetOutputs alongside _pipeline
+        IGpuPipeline _skinnedDissolvePipeline = null!;
+        readonly IGpuResourceSet _skinnedDefaultFragSet;   // frame UBO + white/flat/rough defaults (untextured skinned mesh)
+        IGpuBuffer? _skinnedMainUbo; uint _skinnedMainSlots; IGpuResourceSet? _skinnedMainSet; // grow-with-retire combined UBO + single-slot window set
+        readonly Matrix4x4[] _skinnedHeaderScratch = new Matrix4x4[SkinnedHeaderMats]; // Mvp/Model/P, frame block + bones upload separately
         // Instance buffers replaced by a grow are retired here (a prior in-flight frame may still read them);
         // disposed only in Dispose. Bounded by geometric growth.
         readonly List<IDisposable> _retired = new();
@@ -172,6 +201,27 @@ namespace KhaozEngine.Render3D.Rendering
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
             _dissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
 
+            // GPU-skinning layouts/shaders/default set. Set 0 is the ONE combined VBlock (dynamic UBO, binding 0),
+            // read by BOTH stages: the vertex reads Mvp/Model/P/bones, the fragment reads the folded frame block. One
+            // uniform buffer for the whole pipeline is the only Metal-safe shape (a second UBO anywhere reads zero).
+            // Set 1 is the per-mesh material maps + shadow map, fragment only (set-1 TEXTURES map fine on Metal). The
+            // default frag (set 1) set uses white/flat/rough defaults + the shadow map, so an untextured skinned mesh
+            // is lit exactly like the CPU path's _defaultSet.
+            _skinnedVertexLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
+            _skinnedFragLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("NormalMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+            _skinnedShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);
+            _skinnedDissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag);
+            _skinnedDefaultFragSet = factory.CreateResourceSet(new GpuResourceSetDescription(
+                _skinnedFragLayout, _white, _flatNormal, _defaultRough, _sampler,
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+
             // ONE descriptor set, ONE uniform buffer: the splat material's combined UBO carries the frame uniforms
             // (re-synced each frame, see WriteFrameUniformsTo) PLUS the per-material splat params appended at offset
             // UboBytes (see SplatVert/SplatFrag). Metal (via Veldrid/SPIRV-Cross) mis-binds a SECOND uniform buffer
@@ -207,6 +257,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
             _pipeline.Dispose(); _splatPipeline.Dispose(); _dissolvePipeline.Dispose();
+            _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
             BuildPipelines(_gd.Factory, modelOutputs);
         }
 
@@ -285,6 +336,42 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
+
+            // GPU-skinning pipelines. ONE vertex buffer slot: the rest-pose SkinnedVertex stream (Position/Normal/
+            // Color/TexCoord/BoneIndices/BoneWeights/Tangent = locations 0..6), no per-instance stream (the per-draw
+            // data lives in the combined UBO). Set 0 = combined VBlock (vertex), set 1 = frame+material (fragment).
+            var skinnedVertexLayout = new GpuVertexLayoutDescription(
+                new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
+                new GpuVertexElement("Normal", GpuVertexElementFormat.Float3),
+                new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("BoneIndices", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("BoneWeights", GpuVertexElementFormat.Float4),
+                new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
+            _skinnedPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            {
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
+                Topology = GpuPrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _skinnedVertexLayout, _skinnedFragLayout },
+                ShaderSet = _skinnedShaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
+                Outputs = modelOutputs,
+            });
+            _skinnedDissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            {
+                BlendFactor = Vector4.Zero,
+                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+                DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
+                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
+                Topology = GpuPrimitiveTopology.TriangleList,
+                ResourceLayouts = new[] { _skinnedVertexLayout, _skinnedFragLayout },
+                ShaderSet = _skinnedDissolveShaders,
+                VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
+                Outputs = modelOutputs,
+            });
         }
 
         /// <summary>Bind + clear the model framebuffer once per frame, before drawing instances.</summary>
@@ -336,7 +423,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Set this frame's shadow tail (light-space matrix + PCF/bias/strength). Call after
         /// <see cref="SetFrameUniforms"/> when the shadow-map tier is active; leave unset (or pass a zero-strength
-        /// tail) for no shadows. The value is uploaded by <see cref="WriteFrameUniformsTo"/> into the model UBO and
+        /// tail) for no shadows. The value is uploaded by <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the model UBO and
         /// each splat material UBO. <paramref name="lightViewProj"/> is already GPU-clip-corrected by the caller.</summary>
         public void SetShadowUniforms(Matrix4x4 lightViewProj, float invResolution, float constantBias, float slopeBias, float strength)
         {
@@ -355,16 +442,22 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
         /// at offset 0. <paramref name="dst"/> must be at least <see cref="UboBytes"/> bytes; a splat material's
         /// combined UBO is larger (params follow at <see cref="UboBytes"/>) and that tail is left untouched.</summary>
-        public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst)
+        public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst) => WriteFrameUniformsTo(cl, dst, 0);
+
+        /// <summary>As <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>, but writes the frame block at an
+        /// arbitrary <paramref name="baseOffset"/> into <paramref name="dst"/> (must be 256-aligned for a UBO region).
+        /// The GPU-skinning combined slot embeds the frame block at <see cref="SkinnedFrameOffset"/> within each
+        /// per-draw slot, so the skinned fragment reads this frame's lighting from its one bound buffer.</summary>
+        public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst, uint baseOffset)
         {
-            cl.UpdateBuffer(dst, 0, in _frame);
+            cl.UpdateBuffer(dst, baseOffset, in _frame);
             // Point-light arrays follow the 176-byte header. Always upload the full fixed-size arrays (zero-filled
             // tail) so a previous frame's lights never leak past the active count.
-            cl.UpdateBuffer(dst, HeaderBytes, (ReadOnlySpan<Vector4>)_lightPosRadius);
-            cl.UpdateBuffer(dst, HeaderBytes + LightArrayBytes, (ReadOnlySpan<Vector4>)_lightColorIntensity);
+            cl.UpdateBuffer(dst, baseOffset + HeaderBytes, (ReadOnlySpan<Vector4>)_lightPosRadius);
+            cl.UpdateBuffer(dst, baseOffset + HeaderBytes + LightArrayBytes, (ReadOnlySpan<Vector4>)_lightColorIntensity);
             // Shadow tail follows the light arrays. Always uploaded (default = strength 0 = inactive), so the model
             // and splat passes read a consistent shadow tail and the Off render stays byte-stable.
-            cl.UpdateBuffer(dst, ShadowTailOffset, in _shadow);
+            cl.UpdateBuffer(dst, baseOffset + ShadowTailOffset, in _shadow);
         }
 
         /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
@@ -410,7 +503,7 @@ namespace KhaozEngine.Render3D.Rendering
                 _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
 
         /// <summary>Create a splat material's combined UBO: <see cref="UboBytes"/> of frame uniforms (re-synced each
-        /// frame via <see cref="WriteFrameUniformsTo"/>) followed by the per-material <paramref name="data"/> at
+        /// frame via <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>) followed by the per-material <paramref name="data"/> at
         /// offset <see cref="UboBytes"/>. One uniform buffer holds both, so the splat pipeline binds a single UBO
         /// (see SplatVert/SplatFrag). Owned by Scene3D; shared by every chunk using this material.</summary>
         public IGpuBuffer CreateSplatParamsUbo(in SplatParamsData data)
@@ -442,7 +535,7 @@ namespace KhaozEngine.Render3D.Rendering
                 maximumAnisotropy: cfg.MaximumAnisotropy, mipLodBias: cfg.MipLodBias));
 
         /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before the splat draw loop). Each
-        /// material's combined UBO must already hold this frame's uniforms (<see cref="WriteFrameUniformsTo"/>).</summary>
+        /// material's combined UBO must already hold this frame's uniforms (<see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>).</summary>
         public void BindSplatPass(IGpuCommandList cl) => cl.SetPipeline(_splatPipeline);
 
         /// <summary>Bind the CharDissolve pipeline variant for the skinned draws that carry a dissolve threshold (the
@@ -555,6 +648,101 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
         }
 
+        // ---- GPU skinning (opt-in). See the field block + ShaderSources.SkinnedModelVert for the fold-matrix design. ----
+
+        /// <summary>Build a skinned mesh's set-1 material set (albedo/normal/roughness + shared sampler + shadow map),
+        /// bound to the FRAGMENT-only skinned material layout. The frame UBO is NOT here - it rides at set 0 binding 1
+        /// (see <see cref="EnsureSkinnedMainCapacity"/>), because a fragment UBO in this second set reads zero on
+        /// Metal. Set-1 textures map correctly, so the per-mesh maps live here. Defaults to white/flat/zero so an
+        /// untextured skinned mesh matches the CPU path. Owned by the caller (Scene3D), disposed when the mesh unloads.</summary>
+        public IGpuResourceSet CreateSkinnedMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
+            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _skinnedFragLayout, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler,
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+
+        /// <summary>Ensure the combined main UBO holds at least <paramref name="slotCount"/> per-draw slots (each
+        /// <see cref="SkinnedMainSlotBytes"/>), growing geometrically and retiring the old buffer + its set. Rebuilds
+        /// the set-0 resource set: the single-slot window over the combined buffer (binding 0, both stages, the
+        /// per-draw dynamic offset indexes it). One shared set, cheap to rebuild on the rare geometric grow. Call once
+        /// before packing this frame's skinned main slots.</summary>
+        public void EnsureSkinnedMainCapacity(uint slotCount)
+        {
+            if (_skinnedMainUbo != null && _skinnedMainSlots >= slotCount) return;
+            if (_skinnedMainUbo != null) _retired.Add(_skinnedMainUbo);
+            if (_skinnedMainSet != null) _retired.Add(_skinnedMainSet);
+            _skinnedMainSlots = Math.Max(slotCount, _skinnedMainSlots == 0 ? 8u : _skinnedMainSlots * 2);
+            _skinnedMainUbo = _gd.Factory.CreateBuffer(
+                new GpuBufferDescription(_skinnedMainSlots * SkinnedMainSlotBytes, GpuBufferUsage.UniformBuffer));
+            _skinnedMainSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _skinnedVertexLayout, new GpuBufferRange(_skinnedMainUbo, 0, SkinnedMainSlotBytes)));
+        }
+
+        /// <summary>Pack one skinned draw's combined main slot: the vertex header (<c>Mvp = model * clip-corrected
+        /// ViewProj</c> folded per draw, <c>Model</c> for world pos/normal/tangent, <c>P</c> packing tint/emissive/
+        /// specParams into its three columns), then THIS FRAME's frame block (the fragment lighting, written at
+        /// <see cref="SkinnedFrameOffset"/> with the same <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer,uint)"/>
+        /// that fills the model pass's frame UBO), then the composed <paramref name="bones"/> at
+        /// <see cref="SkinnedBonesOffset"/> (uploaded raw, read column-major = their transpose, so the shader blend
+        /// equals <see cref="SkinningMath.SkinVertex"/>). Uploads only the mesh's bones (indices load-validated &lt;
+        /// boneCount). <see cref="SetFrameUniforms"/> (and <see cref="SetShadowUniforms"/> when shadows are on) must
+        /// have run this frame so the cached frame block is current.</summary>
+        public void PackSkinnedMainSlot(IGpuCommandList cl, uint slot, in Matrix4x4 model,
+            Vector4 tint, Vector4 emissive, Vector4 specParams, ReadOnlySpan<Matrix4x4> bones)
+        {
+            uint baseOff = slot * SkinnedMainSlotBytes;
+            _skinnedHeaderScratch[0] = model * _frame.ViewProj;   // System.Numerics order: p * model * ViewProj
+            _skinnedHeaderScratch[1] = model;
+            _skinnedHeaderScratch[2] = new Matrix4x4(
+                tint.X, tint.Y, tint.Z, tint.W,
+                emissive.X, emissive.Y, emissive.Z, emissive.W,
+                specParams.X, specParams.Y, specParams.Z, specParams.W,
+                0f, 0f, 0f, 0f);
+            cl.UpdateBuffer(_skinnedMainUbo!, baseOff, (ReadOnlySpan<Matrix4x4>)_skinnedHeaderScratch);
+            WriteFrameUniformsTo(cl, _skinnedMainUbo!, baseOff + SkinnedFrameOffset);   // the fragment's lighting block
+            if (bones.Length > 0) cl.UpdateBuffer(_skinnedMainUbo!, baseOff + SkinnedBonesOffset, bones);
+        }
+
+        /// <summary>Bind the GPU-skinning model pipeline. Call after <see cref="BeginModelPass"/>/
+        /// <see cref="SetFrameUniforms"/>, before the skinned draw loop.</summary>
+        public void BindSkinnedPass(IGpuCommandList cl) => cl.SetPipeline(_skinnedPipeline);
+
+        /// <summary>Bind the GPU-skinning CharDissolve pipeline variant (same layouts, dissolve fragment).</summary>
+        public void BindSkinnedDissolvePass(IGpuCommandList cl) => cl.SetPipeline(_skinnedDissolvePipeline);
+
+        /// <summary>Draw one GPU-skinned mesh: its rest-pose <paramref name="restVb"/> (uploaded once at load) at
+        /// vertex slot 0, the combined UBO window at set 0 selected by the per-draw dynamic offset
+        /// (<paramref name="slot"/> * <see cref="SkinnedMainSlotBytes"/>), and <paramref name="skinnedFragSet"/> (or the
+        /// white default when null) at set 1. One <c>instanceCount=1</c> indexed draw. The GPU skins in the vertex
+        /// shader. A pipeline (<see cref="BindSkinnedPass"/>/<see cref="BindSkinnedDissolvePass"/>) must be bound.</summary>
+        public void DrawGpuSkinned(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount,
+            GpuIndexFormat indexFormat, uint slot, IGpuResourceSet? skinnedFragSet)
+        {
+            cl.SetGraphicsResourceSet(0, _skinnedMainSet!, slot * SkinnedMainSlotBytes);
+            cl.SetGraphicsResourceSet(1, skinnedFragSet ?? _skinnedDefaultFragSet);
+            cl.SetVertexBuffer(0, restVb);
+            cl.SetIndexBuffer(ib, indexFormat);
+            cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);
+        }
+
+        /// <summary>Ensure the shadow map's combined skinned-depth UBO holds <paramref name="slotCount"/> slots (grows
+        /// + retires like the main one). Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+        public void EnsureSkinnedShadowCapacity(uint slotCount) => _shadowMap.EnsureSkinnedShadowCapacity(slotCount);
+
+        /// <summary>Pack one GPU-skinned caster's shadow-depth slot: <c>LightMvp = model * lightViewProj</c> folded per
+        /// draw + the composed bones. <paramref name="lightViewProj"/> is the GPU-clip-corrected world-&gt;light-clip
+        /// matrix <see cref="BeginShadowPass"/> was given. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+        public void PackSkinnedShadowSlot(IGpuCommandList cl, uint slot, in Matrix4x4 model, in Matrix4x4 lightViewProj, ReadOnlySpan<Matrix4x4> bones) =>
+            _shadowMap.PackSkinnedShadowSlot(cl, slot, model, lightViewProj, bones);
+
+        /// <summary>Switch the (already-begun) shadow depth pass to the GPU-skinning depth pipeline + bind its combined
+        /// window set. Call after the rigid caster runs, before the skinned casters. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+        public void BindSkinnedShadowPass(IGpuCommandList cl) => _shadowMap.BindSkinnedDepthPass(cl);
+
+        /// <summary>Draw one GPU-skinned caster into the shadow map (rest-pose vertex buffer + per-draw dynamic offset).
+        /// <see cref="BindSkinnedShadowPass"/> must be bound. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+        public void DrawGpuSkinnedShadowCaster(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, uint slot) =>
+            _shadowMap.DrawGpuSkinnedCaster(cl, restVb, ib, indexCount, indexFormat, slot);
+
         public void Dispose()
         {
             _shadowMap.Dispose();
@@ -563,6 +751,10 @@ namespace KhaozEngine.Render3D.Rendering
             _shaders.Dispose();
             _dissolvePipeline.Dispose(); _dissolveShaders.Dispose();
             _splatPipeline.Dispose(); _splatLayout.Dispose(); _splatShaders.Dispose(); _terrainSampler.Dispose();
+            _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
+            _skinnedShaders.Dispose(); _skinnedDissolveShaders.Dispose();
+            _skinnedDefaultFragSet.Dispose(); _skinnedVertexLayout.Dispose(); _skinnedFragLayout.Dispose();
+            _skinnedMainUbo?.Dispose(); _skinnedMainSet?.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();
             _skinnedVertexBuffer?.Dispose();

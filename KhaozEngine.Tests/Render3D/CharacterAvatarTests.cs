@@ -16,6 +16,11 @@ namespace KhaozEngine.Tests.Render3D
     // tracks the player's INTENDED direction, staying put under a lateral collision velocity (the capsule slides
     // along a wall while facing holds on the intent - the "no wall-spin" property). Drawing needs a GPU and is not
     // exercised here.
+    // CharacterAvatar is Obsolete (superseded by ReplicatedCharacterAnimators - see the type doc), but these pins
+    // stay: no consumer left, but it is still public API and its documented behaviour (the RenderHeightSmoothRate
+    // ease, the facing/animation wiring) must not silently regress for whatever still references it. Exercising it
+    // on purpose, so CS0618 is disabled for the whole file (mirrors PopupPanelLocalizedTests' obsolete-shim pin).
+#pragma warning disable CS0618
     public class CharacterAvatarTests
     {
         const float Dt = 1f / 60f;
@@ -193,4 +198,5 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Throws<ArgumentNullException>(() => new CharacterAvatar(controller, null!, default));
         }
     }
+#pragma warning restore CS0618
 }

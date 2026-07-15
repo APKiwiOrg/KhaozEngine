@@ -322,6 +322,243 @@ void main() {
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
+        // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). The whole skinned pipeline reads EXACTLY ONE uniform
+        //      buffer, a combined per-draw block at set 0 binding 0, read by BOTH stages (the proven model-pipeline
+        //      shape - one UBO in vertex+fragment + textures). The block folds the per-draw matrices the VERTEX needs
+        //      (Mvp = Model*clip-corrected-ViewProj; Model; P packing Tint/Emissive/SpecParams) AND the per-frame
+        //      lighting the FRAGMENT needs (the frame UBO layout, mirrored exactly) AND the bone palette, per draw
+        //      (the frame fields are duplicated into every slot - the cost of the one-buffer rule). A SECOND uniform
+        //      buffer anywhere in the pipeline - a second vertex buffer, OR a fragment-only UBO whether in this set or
+        //      a separate set 1 - mis-binds on Metal/Veldrid/SPIRV-Cross and reads zero (measured, see
+        //      DEPENDENCY-SEAMS.md and GpuSkinningReproGpuTests variant 3). Material TEXTURES map fine in a second set,
+        //      so the per-mesh maps live at set 1. The 4-bone blend + position/normal/tangent deform mirror
+        //      SkinningMath.SkinVertex exactly, so a GPU-skinned draw is pixel-parity with the CPU path. Both stages
+        //      declare the identical block. The vertex uses Mvp/Model/P/bones, the fragment uses the frame fields. ----
+        public const string SkinnedModelVert = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 Mvp;              // Model * clip-corrected ViewProj (folded per draw): gl_Position = Mvp * skinnedLocal
+    mat4 Model;            // world transform (for worldPos + world normal/tangent the fragment lights with)
+    mat4 P;                // columns: [0]=Tint, [1]=Emissive, [2]=SpecParams (per-draw constants, packed row-major)
+    mat4 ViewProj;         // --- frame block (offset 192): mirrors the frame UBO layout so WriteFrameUniformsTo fills it ---
+    vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
+    vec4 FillDir; vec4 FillColor; vec4 CameraPos;
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
+    mat4 ShadowMat;
+    vec4 ShadowParams;
+    mat4 bones[128];       // offset 960: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 BoneIndices;   // 4 float-encoded palette indices (JOINTS_0)
+layout(location=5) in vec4 BoneWeights;   // 4 blend weights (WEIGHTS_0), all-zero => identity (no deform)
+layout(location=6) in vec4 Tangent;       // model-space tangent xyz + handedness w, zero => no TBN
+layout(location=0) out vec3 vNormalW;
+layout(location=1) out vec4 vColor;
+layout(location=2) out float vDepth;
+layout(location=3) out vec3 vWorldPos;
+layout(location=4) out vec2 vUv;
+layout(location=5) out vec4 vTint;
+layout(location=6) out vec4 vEmissive;
+layout(location=7) out vec4 vSpecParams;
+layout(location=8) out vec4 vTangent;
+void main() {
+    // 4-bone blend, mirroring SkinningMath.BlendSkinMatrix: raw (un-renormalized) weights, identity on ~0 total so an
+    // unrigged vertex stays in place. bones[i] uploaded raw (System.Numerics row-major) reads column-major here as its
+    // transpose, so 'skin * vec4(pos,1)' reproduces the CPU 'Vector3.Transform(pos, skin)' bit-for-bit.
+    float wsum = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
+    mat4 skin;
+    if (wsum < 1e-8) {
+        skin = mat4(1.0);
+    } else {
+        skin = bones[int(BoneIndices.x)] * BoneWeights.x
+             + bones[int(BoneIndices.y)] * BoneWeights.y
+             + bones[int(BoneIndices.z)] * BoneWeights.z
+             + bones[int(BoneIndices.w)] * BoneWeights.w;
+    }
+    vec4 localPos = skin * vec4(Position, 1.0);
+    // Normal: skin-rotate then renormalize (fallback to source on a degenerate skin), mirroring SkinVertex's local
+    // normal, THEN rotate into world by Model and renormalize (mirroring ModelVert). Two-stage to match the CPU path.
+    vec3 nLocal = mat3(skin) * Normal;
+    float nlen = length(nLocal);
+    nLocal = nlen > 1e-8 ? nLocal / nlen : Normal;
+    // Tangent: zero source stays zero (no-TBN fallback). Non-zero => skin-rotate + renormalize the local tangent, then
+    // rotate into world by Model (handedness w preserved). Matches SkinVertex + ModelVert composed.
+    vec4 tLocal = vec4(0.0);
+    if (dot(Tangent.xyz, Tangent.xyz) > 1e-12) {
+        vec3 td = mat3(skin) * Tangent.xyz;
+        float tl = length(td);
+        td = tl > 1e-8 ? td / tl : Tangent.xyz;
+        tLocal = vec4(td, Tangent.w);
+    }
+    vec4 world = Model * localPos;
+    gl_Position = Mvp * localPos;
+    vNormalW = normalize(mat3(Model) * nLocal);
+    vColor = Color;
+    vDepth = gl_Position.z / gl_Position.w;
+    vWorldPos = world.xyz;
+    vUv = TexCoord;
+    vTint = P[0];
+    vEmissive = P[1];
+    vSpecParams = P[2];
+    vTangent = vec4(mat3(Model) * tLocal.xyz, tLocal.w);   // zero tangent -> (0,0,0,0), so the fragment uses Ngeo
+}";
+
+        // Skinned fragment: byte-for-byte ModelFrag lighting. It reads the frame fields from the SAME combined VBlock
+        // (set 0 binding 0) the vertex reads - one uniform buffer for the whole pipeline (the only Metal-safe shape).
+        // Both stages declare the identical block. The fragment ignores Mvp/Model/P/bones. Material maps at set 1
+        // (set-1 TEXTURES map fine on Metal). Sample order (Albedo first, ShadowMap last) preserves the first-sample rule.
+        public const string SkinnedModelFrag = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 Mvp;
+    mat4 Model;
+    mat4 P;
+    mat4 ViewProj;
+    vec4 LightDir;
+    vec4 LightColor;
+    vec4 Ambient;
+    vec4 Params;
+    vec4 FillDir;
+    vec4 FillColor;
+    vec4 CameraPos;
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
+    mat4 ShadowMat;
+    vec4 ShadowParams;
+    mat4 bones[128];
+};
+layout(set=1, binding=0) uniform texture2D Albedo;
+layout(set=1, binding=1) uniform texture2D NormalMap;
+layout(set=1, binding=2) uniform texture2D RoughnessMap;
+layout(set=1, binding=3) uniform sampler Samp;
+layout(set=1, binding=4) uniform texture2D ShadowMap;
+layout(set=1, binding=5) uniform sampler ShadowSamp;
+layout(location=0) in vec3 vNormalW;
+layout(location=1) in vec4 vColor;
+layout(location=2) in float vDepth;
+layout(location=3) in vec3 vWorldPos;
+layout(location=4) in vec2 vUv;
+layout(location=5) in vec4 vTint;
+layout(location=6) in vec4 vEmissive;
+layout(location=7) in vec4 vSpecParams;
+layout(location=8) in vec4 vTangent;
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+" + LightingCommonGlsl + @"
+void main() {
+    vec3 Ngeo = normalize(vNormalW);
+    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);
+    vec3 texRgb = texRgba.rgb;
+    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
+    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
+    if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
+    vec3 N = Ngeo;
+    if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
+        vec3 T = normalize(vTangent.xyz);
+        T = normalize(T - Ngeo * dot(Ngeo, T));
+        vec3 B = cross(Ngeo, T) * vTangent.w;
+        vec3 nTS = normalTex * 2.0 - 1.0;
+        N = normalize(mat3(T, B, Ngeo) * nTS);
+    }
+    vec3 albedo = vColor.rgb * vTint.rgb * texRgb;
+    float specStrength = vSpecParams.x * (1.0 - rough);
+    float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
+    float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    vec3 diffuse; vec3 specColor;
+    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
+    oColor = vec4(lit, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);
+    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+}";
+
+        // Skinned CharDissolve variant: reads the frame fields from the same combined VBlock (set 0 binding 0),
+        // material maps at set 1. Identical noise-thresholded alpha clip + emissive edge.
+        public const string SkinnedModelDissolveFrag = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 Mvp;
+    mat4 Model;
+    mat4 P;
+    mat4 ViewProj;
+    vec4 LightDir;
+    vec4 LightColor;
+    vec4 Ambient;
+    vec4 Params;
+    vec4 FillDir;
+    vec4 FillColor;
+    vec4 CameraPos;
+    vec4 PointPosRadius[16];
+    vec4 PointColorIntensity[16];
+    mat4 ShadowMat;
+    vec4 ShadowParams;
+    mat4 bones[128];
+};
+layout(set=1, binding=0) uniform texture2D Albedo;
+layout(set=1, binding=1) uniform texture2D NormalMap;
+layout(set=1, binding=2) uniform texture2D RoughnessMap;
+layout(set=1, binding=3) uniform sampler Samp;
+layout(set=1, binding=4) uniform texture2D ShadowMap;
+layout(set=1, binding=5) uniform sampler ShadowSamp;
+layout(location=0) in vec3 vNormalW;
+layout(location=1) in vec4 vColor;
+layout(location=2) in float vDepth;
+layout(location=3) in vec3 vWorldPos;
+layout(location=4) in vec2 vUv;
+layout(location=5) in vec4 vTint;
+layout(location=6) in vec4 vEmissive;
+layout(location=7) in vec4 vSpecParams;
+layout(location=8) in vec4 vTangent;
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oNormal;
+layout(location=2) out vec4 oDepth;
+" + LightingCommonGlsl + @"
+float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float dnoise(vec3 p) {
+    vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    float n000 = dhash(i + vec3(0,0,0)), n100 = dhash(i + vec3(1,0,0));
+    float n010 = dhash(i + vec3(0,1,0)), n110 = dhash(i + vec3(1,1,0));
+    float n001 = dhash(i + vec3(0,0,1)), n101 = dhash(i + vec3(1,0,1));
+    float n011 = dhash(i + vec3(0,1,1)), n111 = dhash(i + vec3(1,1,1));
+    return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+               mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
+}
+void main() {
+    float threshold = clamp(vSpecParams.z, 0.0, 1.0);
+    float edgeW = max(vSpecParams.w, 1e-3);
+    float mask = dnoise(vWorldPos * 6.0);
+    if (mask < threshold) discard;
+
+    vec3 Ngeo = normalize(vNormalW);
+    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb;
+    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
+    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
+    vec3 N = Ngeo;
+    if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
+        vec3 T = normalize(vTangent.xyz);
+        T = normalize(T - Ngeo * dot(Ngeo, T));
+        vec3 B = cross(Ngeo, T) * vTangent.w;
+        vec3 nTS = normalTex * 2.0 - 1.0;
+        N = normalize(mat3(T, B, Ngeo) * nTS);
+    }
+    vec3 albedo = vColor.rgb * vTint.rgb * texRgb;
+    float specStrength = vSpecParams.x * (1.0 - rough);
+    float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
+    float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    vec3 diffuse; vec3 specColor;
+    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
+    float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
+    lit += vEmissive.rgb * edge;
+    oColor = vec4(lit, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);
+    oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
+}";
+
         // ---- Splat-terrain vertex shader. Identical to ModelVert, except the per-frame UBO (binding 0) carries the
         //      per-material splat params appended after the point-light arrays - so the splat pipeline binds exactly
         //      ONE uniform buffer. (Veldrid/SPIRV-Cross on Metal mis-binds a SECOND uniform buffer in a set: it reads
@@ -568,6 +805,43 @@ layout(location=0) in float vLightDepth;
 layout(location=0) out vec4 oDepth;               // single R32F target: .r carries the caster's light-space depth
 void main() {
     oDepth = vec4(vLightDepth, 0.0, 0.0, 1.0);
+}";
+
+        // Skinned shadow depth vertex (GPU skinning shadow-pass mirror). Reads ONE combined resource buffer at set 0
+        // ({ LightMvp; bones[128] }, LightMvp = Model * clip-corrected LightViewProj folded per draw), skins the vertex
+        // exactly like SkinnedModelVert, and projects into light-clip. The fragment is the shared ShadowDepthFrag (no
+        // resources). Reuses the ShadowDepthFrag output. The unread per-vertex inputs (Normal/Color/TexCoord/Tangent)
+        // are summed into a 1e-30 sink so SPIRV-Cross keeps the HLSL vertex-input signature gap-free (no FXC/WARP
+        // miscompile - the same trap ShadowDepthVert documents).
+        public const string SkinnedShadowDepthVert = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 LightMvp;         // Model * clip-corrected LightViewProj (folded per draw)
+    mat4 bones[128];       // this draw's composed palette (inverseBind*jointWorld)
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 BoneIndices;
+layout(location=5) in vec4 BoneWeights;
+layout(location=6) in vec4 Tangent;
+layout(location=0) out float vLightDepth;
+void main() {
+    float wsum = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
+    mat4 skin;
+    if (wsum < 1e-8) {
+        skin = mat4(1.0);
+    } else {
+        skin = bones[int(BoneIndices.x)] * BoneWeights.x
+             + bones[int(BoneIndices.y)] * BoneWeights.y
+             + bones[int(BoneIndices.z)] * BoneWeights.z
+             + bones[int(BoneIndices.w)] * BoneWeights.w;
+    }
+    vec4 localPos = skin * vec4(Position, 1.0);
+    float sink = Normal.x + Color.x + TexCoord.x + Tangent.x;   // keep the vertex-input signature gap-free
+    localPos.x += sink * 1e-30;
+    gl_Position = LightMvp * localPos;
+    vLightDepth = gl_Position.z / gl_Position.w;
 }";
 
         // ---- Debug line overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer,

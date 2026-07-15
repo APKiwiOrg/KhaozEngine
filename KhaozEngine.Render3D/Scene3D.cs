@@ -144,6 +144,9 @@ namespace KhaozEngine.Render3D
         readonly List<ModelVertex> _cpuSkinnedVerts = new();
         readonly List<ModelRenderer.InstanceData> _cpuSkinnedInstances = new();
         readonly List<CpuSkinnedDraw> _cpuSkinnedDraws = new();
+        // GPU-skinning path (UseGpuSkinning): per-frame draw list. No CPU deform - each entry carries its rest-pose
+        // buffers + the bone-palette slice + the per-draw matrices/material, packed into the combined UBO at draw time.
+        readonly List<GpuSkinnedDraw> _gpuSkinnedDraws = new();
         Vector3 _billboardRight, _billboardUp;
         bool _billboardBasisValid;
 
@@ -172,6 +175,22 @@ namespace KhaozEngine.Render3D
         /// flag does not touch the shadow pass (see <see cref="CulledInstances"/>).
         /// </summary>
         public bool FrustumCulling { get; set; } = true;
+
+        /// <summary>
+        /// Opt-in GPU skinning: when true, skinned draws are deformed on the GPU (the vertex shader blends the bone
+        /// palette) instead of on the CPU. Default <b>OFF</b>. The design is the fold-matrix binding proven by
+        /// <c>GpuSkinningReproGpuTests</c>: the skinned vertex reads ONE combined resource buffer at set 0
+        /// (<c>{ Mvp; Model; params; bones[128] }</c>, per-draw dynamic offset) and a skinned <c>ModelFrag</c> variant
+        /// reads frame + material data at set 1 (fragment only), sidestepping the Metal/Veldrid/SPIRV-Cross
+        /// two-vertex-buffer mis-bind that pulled the old GPU path. The rest-pose vertex buffer uploads once at load.
+        /// Only the per-draw palette + matrices upload each frame, so the CPU cost is a palette pack, not a full
+        /// vertex deform - the win at MMO crowd scale. Rendering is pixel-parity with the CPU path (the shader mirrors
+        /// <see cref="SkinningMath.SkinVertex"/>), and the shadow depth pass mirrors the flag. It ships OFF because the
+        /// offscreen repro is necessary but not sufficient for the historical windowed swapchain context: flip it on
+        /// for a windowed A/B against CPU skinning before relying on it (see docs/USING-KHAOZENGINE.md). Flippable per
+        /// frame. A culled draw skips its palette upload just like the CPU path.
+        /// </summary>
+        public bool UseGpuSkinning { get; set; }
 
         // Per-instance visibility for the current frame's main pass, index-aligned to the grouped instance buffer
         // (_instanceData). Reused across frames (grown, never per-frame allocated). true = draw in the visible pass.
@@ -750,14 +769,14 @@ namespace KhaozEngine.Render3D
         /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
         /// <see cref="DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>. Untextured (samples the 1x1 white default, so colour is the baked vertex
         /// colour times any per-instance tint).</summary>
-        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => LoadSkinnedInternal(mesh, null);
+        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => LoadSkinnedInternal(mesh, null, null, null);
 
         /// <summary>Upload a skinned mesh and bind <paramref name="texture"/> as its albedo
         /// (<c>texRgb * vColor * vTint</c>). An invalid handle falls back to untextured.</summary>
         public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, TextureHandle texture)
         {
-            IGpuResourceSet? material = texture.IsValid ? _model.CreateMaterialSet(_textures[texture.ListIndex]!) : null;
-            return LoadSkinnedInternal(mesh, material);
+            IGpuTexture? a = texture.IsValid ? _textures[texture.ListIndex] : null;
+            return LoadSkinnedInternal(mesh, a, null, null);
         }
 
         /// <summary>Upload a skinned mesh and bind a full PBR-lite material (<paramref name="maps"/>): albedo +
@@ -771,22 +790,26 @@ namespace KhaozEngine.Render3D
             IGpuTexture? a = maps.Albedo.IsValid ? _textures[maps.Albedo.ListIndex] : null;
             IGpuTexture? n = maps.Normal.IsValid ? _textures[maps.Normal.ListIndex] : null;
             IGpuTexture? r = maps.Roughness.IsValid ? _textures[maps.Roughness.ListIndex] : null;
-            IGpuResourceSet? material = (a != null || n != null || r != null)
-                ? _model.CreateMaterialSet(a, n, r)
-                : null;
-            return LoadSkinnedInternal(mesh, material);
+            return LoadSkinnedInternal(mesh, a, n, r);
         }
 
-        SkinnedMeshHandle LoadSkinnedInternal(SkinnedGltfMesh mesh, IGpuResourceSet? material)
+        // Builds BOTH the set-0 CPU-path material set and the set-1 GPU-skinning material set from the same textures,
+        // so UseGpuSkinning can flip live (windowed A/B) without reloading meshes. Untextured (all null) leaves both
+        // null and each path falls back to its renderer default set (white/flat/zero).
+        SkinnedMeshHandle LoadSkinnedInternal(SkinnedGltfMesh mesh, IGpuTexture? albedo, IGpuTexture? normal, IGpuTexture? roughness)
         {
             var f = _gd.Factory;
             var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * SkinnedVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
             _gd.UpdateBuffer(vb, 0, mesh.Vertices);
             var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
+            bool textured = albedo != null || normal != null || roughness != null;
+            IGpuResourceSet? material = textured ? _model.CreateMaterialSet(albedo, normal, roughness) : null;
+            IGpuResourceSet? skinnedMaterial = textured ? _model.CreateSkinnedMaterialSet(albedo, normal, roughness) : null;
+
             MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
             int index = _skinnedSlots.Alloc(out int generation);
-            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, mesh.InverseBind, in bounds);
+            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, skinnedMaterial, mesh.InverseBind, in bounds);
             // Cache the source vertices (parallel to _skinnedMeshes) for per-frame CPU skinning - no GPU readback.
             if (index < _skinnedMeshes.Count) { _skinnedMeshes[index] = entry; _skinnedCpuVerts[index] = mesh.Vertices; }
             else { _skinnedMeshes.Add(entry); _skinnedCpuVerts.Add(mesh.Vertices); }
@@ -839,7 +862,7 @@ namespace KhaozEngine.Render3D
             if (h.Generation == 0) return;
             _skinnedSlots.Free(h.Index, h.Generation);
             var m = _skinnedMeshes[h.Index];
-            if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); }
+            if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose(); }
             _skinnedMeshes[h.Index] = null;
             _skinnedCpuVerts[h.Index] = null;
         }
@@ -1536,11 +1559,35 @@ namespace KhaozEngine.Render3D
                     CountMeshDraw(mesh.IndexCount, run.Count);
                 }
             }
-            for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
+            if (UseGpuSkinning)
             {
-                var dr = _cpuSkinnedDraws[d];
-                _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
-                CountSkinnedDraw(dr.IndexCount);
+                // GPU-skinned casters: fold LightMvp = world * lightViewProj + the palette into each draw's combined
+                // slot, then draw through the skinned depth pipeline (rest-pose buffer, per-draw dynamic offset). Pack
+                // every slot first, then bind + draw (the same update-then-draw ordering the splat sync uses). A draw
+                // outside the shadow ortho volume clips away, exactly like the CPU path drawing all entries.
+                var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
+                for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
+                {
+                    var dr = _gpuSkinnedDraws[d];
+                    _model.PackSkinnedShadowSlot(cl, dr.Slot, dr.World, lightVpGpu, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
+                    _frameStats.BufferUpdateBytes += (long)(1 + dr.BoneCount) * 64;
+                }
+                if (_gpuSkinnedDraws.Count > 0) _model.BindSkinnedShadowPass(cl);
+                for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
+                {
+                    var dr = _gpuSkinnedDraws[d];
+                    _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot);
+                    CountSkinnedDraw(dr.IndexCount);
+                }
+            }
+            else
+            {
+                for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
+                {
+                    var dr = _cpuSkinnedDraws[d];
+                    _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
+                    CountSkinnedDraw(dr.IndexCount);
+                }
             }
         }
 
@@ -1615,10 +1662,14 @@ namespace KhaozEngine.Render3D
             // shader blend exactly. A draw that is camera-culled AND (shadows off, or outside the shadow ortho
             // volume too) is skipped entirely here - no skin, no upload, no draw in either pass. See
             // ClassifySkinnedVisibility for why this can never drop a caster whose shadow would have been visible.
+            // UseGpuSkinning (opt-in, default off) swaps the CPU deform for the GPU fold-matrix path: no per-frame
+            // vertex skin/upload, only the per-draw combined-UBO slots (matrices + palette). Both paths share the exact
+            // same visibility classification + counters, so DrawnSkinnedInstances / CulledSkinnedInstances match.
             var skinnedItems = _skinnedInstances.Items;
             _cpuSkinnedVerts.Clear();
             _cpuSkinnedInstances.Clear();
             _cpuSkinnedDraws.Clear();
+            _gpuSkinnedDraws.Clear();
             _drawnSkinnedInstances = 0;
             _culledSkinnedInstances = 0;
             if (skinnedItems.Count > 0)
@@ -1639,31 +1690,54 @@ namespace KhaozEngine.Render3D
                     if (!visibleMain && !visibleShadow) { _culledSkinnedInstances++; continue; }
                     if (visibleMain) _drawnSkinnedInstances++; else _culledSkinnedInstances++;
 
-                    int baseVertex = _cpuSkinnedVerts.Count;
-                    var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
-                    for (int v = 0; v < src.Length; v++)
-                        _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
                     bool dissolving = it.Dissolving;
-                    _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
+                    // During a dissolve the emissive channel carries the edge colour. SpecParams.z/.w carry the
+                    // dissolve threshold + edge width (0 on a normal draw, so the values match the pre-dissolve path).
+                    Vector4 emissive = dissolving ? it.DissolveEdge : it.Material.Emissive;
+                    Vector4 specParams = dissolving
+                        ? new Vector4(it.Material.Specular, it.Material.Shininess, it.DissolveThreshold, it.DissolveEdgeWidth)
+                        : new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f);
+
+                    if (UseGpuSkinning)
                     {
-                        Model = it.World,
-                        Tint = it.Tint,
-                        // During a dissolve the emissive channel carries the edge colour; SpecParams.z/.w carry the
-                        // dissolve threshold + edge width (0 on a normal draw, so the values match the pre-dissolve path).
-                        Emissive = dissolving ? it.DissolveEdge : it.Material.Emissive,
-                        SpecParams = dissolving
-                            ? new Vector4(it.Material.Specular, it.Material.Shininess, it.DissolveThreshold, it.DissolveEdgeWidth)
-                            : new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
-                    });
-                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain));
+                        // Record the draw. The GPU deforms the rest-pose buffer. The palette lives at slot i of
+                        // _boneMatrices (submission index), packed into the combined UBO at the compacted slot below.
+                        _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
+                            entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
+                            it.World, it.Tint, emissive, specParams, visibleMain, dissolving));
+                    }
+                    else
+                    {
+                        int baseVertex = _cpuSkinnedVerts.Count;
+                        var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
+                        for (int v = 0; v < src.Length; v++)
+                            _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
+                        _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
+                        {
+                            Model = it.World,
+                            Tint = it.Tint,
+                            Emissive = emissive,
+                            SpecParams = specParams,
+                        });
+                        _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain));
+                    }
                 }
-                if (_cpuSkinnedDraws.Count > 0)
+                if (UseGpuSkinning)
+                {
+                    if (_gpuSkinnedDraws.Count > 0)
+                    {
+                        _model.EnsureSkinnedMainCapacity((uint)_gpuSkinnedDraws.Count);
+                        if (shadowMapActive) _model.EnsureSkinnedShadowCapacity((uint)_gpuSkinnedDraws.Count);
+                    }
+                }
+                else if (_cpuSkinnedDraws.Count > 0)
                 {
                     _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
                     _frameStats.BufferUpdateBytes += (long)_cpuSkinnedVerts.Count * Unsafe.SizeOf<ModelVertex>()
                         + (long)_cpuSkinnedInstances.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>();
                 }
             }
+            int skinnedCasterCount = UseGpuSkinning ? _gpuSkinnedDraws.Count : _cpuSkinnedDraws.Count;
 
             // Key-light shadow map (ShadowMode.ShadowMap): a depth-only pass over the SAME instanced casters into the
             // ortho light-space map, BEFORE the model pass, so the model + splat fragments sample it. Off/Blob leave
@@ -1684,7 +1758,7 @@ namespace KhaozEngine.Render3D
                 CaptureShadowCasters(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
                 bool dirty = ShadowDepthPassDirty(
                     hadPrevious: _shadowPassRendered,
-                    anySkinnedCaster: _cpuSkinnedDraws.Count > 0,
+                    anySkinnedCaster: skinnedCasterCount > 0,
                     resolutionChanged: _model.ShadowMap.Resolution != _lastShadowResolution,
                     lightMatrixChanged: _lastShadowLightVp != shadowLightVp,
                     casterDataChanged: ShadowCastersChanged(
@@ -1786,12 +1860,44 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Skinned draws: the CPU-skinned geometry uploaded above, drawn through the rigid (no-bone) model
-            // pipeline. An entry with VisibleMain false was CPU-skinned only because it is still a shadow caster
-            // (camera-culled, shadow-visible - see ClassifySkinnedVisibility): it was already drawn into the shadow
-            // map above and must NOT also draw here.
-            if (_cpuSkinnedDraws.Count > 0)
+            // Skinned draws: an entry with VisibleMain false is drawn only into the shadow map (camera-culled,
+            // shadow-visible - see ClassifySkinnedVisibility), so it must NOT also draw here.
+            if (UseGpuSkinning)
             {
+                // GPU path: fold each visible-main draw's slot (Mvp = world * this frame's ViewProj, packed after
+                // SetFrameUniforms so _frame.ViewProj is current), then draw through the skinned pipeline (rest-pose
+                // buffer at slot 0, combined UBO window at set 0, material at set 1). Pack all, then bind + draw.
+                if (_gpuSkinnedDraws.Count > 0)
+                {
+                    var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
+                    for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
+                    {
+                        var dr = _gpuSkinnedDraws[d];
+                        if (!dr.VisibleMain) continue;
+                        _model.PackSkinnedMainSlot(cl, dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
+                            boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
+                        // header (Mvp/Model/P) + the per-draw frame block + this mesh's bones = the palette-only upload.
+                        _frameStats.BufferUpdateBytes += (long)(ModelRenderer.SkinnedBonesOffset + (uint)dr.BoneCount * 64);
+                    }
+                    bool dissolveBound = false;
+                    _model.BindSkinnedPass(cl);
+                    for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
+                    {
+                        var dr = _gpuSkinnedDraws[d];
+                        if (!dr.VisibleMain) continue;
+                        if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
+                        {
+                            if (dr.Dissolve) _model.BindSkinnedDissolvePass(cl); else _model.BindSkinnedPass(cl);
+                            dissolveBound = dr.Dissolve;
+                        }
+                        _model.DrawGpuSkinned(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot, dr.SkinnedMaterialSet);
+                        CountSkinnedDraw(dr.IndexCount);
+                    }
+                }
+            }
+            else if (_cpuSkinnedDraws.Count > 0)
+            {
+                // CPU path: the deformed geometry uploaded above, drawn through the rigid (no-bone) model pipeline.
                 _model.BindPass(cl);   // re-bind the model pipeline (the skinned draws follow the rigid run)
                 bool dissolveBound = false;
                 for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
@@ -2249,12 +2355,44 @@ namespace KhaozEngine.Render3D
             public readonly IGpuBuffer Vb, Ib;
             public readonly int IndexCount;
             public readonly GpuIndexFormat IndexFormat;
-            public readonly IGpuResourceSet? MaterialSet;
+            public readonly IGpuResourceSet? MaterialSet;          // set-0 CPU-path material (frame UBO vertex|fragment)
+            public readonly IGpuResourceSet? SkinnedMaterialSet;   // set-1 GPU-skinning material (fragment-only frame UBO)
             public readonly Matrix4x4[] InverseBind;
             public readonly MeshBounds Bounds;
-            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet, Matrix4x4[] inverseBind, in MeshBounds bounds)
+            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
+                IGpuResourceSet? materialSet, IGpuResourceSet? skinnedMaterialSet, Matrix4x4[] inverseBind, in MeshBounds bounds)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet; InverseBind = inverseBind; Bounds = bounds;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
+                MaterialSet = materialSet; SkinnedMaterialSet = skinnedMaterialSet; InverseBind = inverseBind; Bounds = bounds;
+            }
+        }
+
+        /// <summary>One GPU-skinned draw (built per frame in RenderInternal when <see cref="UseGpuSkinning"/> is on).
+        /// Carries the mesh's rest-pose vertex + index buffers (uploaded once at load - the GPU deforms them), the
+        /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the
+        /// compacted combined-UBO slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
+        /// pass packs + draws every entry (out-of-volume ones clip away). The main pass skips a
+        /// <see cref="VisibleMain"/>-false entry (camera-culled, kept only as a shadow caster).</summary>
+        readonly struct GpuSkinnedDraw
+        {
+            public readonly IGpuBuffer RestVb, Ib;
+            public readonly int IndexCount;
+            public readonly GpuIndexFormat IndexFormat;
+            public readonly IGpuResourceSet? SkinnedMaterialSet;
+            public readonly int BoneSpanStart;   // into _boneMatrices (submission index * MaxBonesPerDraw)
+            public readonly int BoneCount;
+            public readonly uint Slot;            // compacted combined-UBO slot (main + shadow share it)
+            public readonly Matrix4x4 World;
+            public readonly Vector4 Tint, Emissive, SpecParams;
+            public readonly bool VisibleMain;
+            public readonly bool Dissolve;
+            public GpuSkinnedDraw(IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
+                IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
+                in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, bool visibleMain, bool dissolve)
+            {
+                RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
+                SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
+                World = world; Tint = tint; Emissive = emissive; SpecParams = specParams; VisibleMain = visibleMain; Dissolve = dissolve;
             }
         }
 

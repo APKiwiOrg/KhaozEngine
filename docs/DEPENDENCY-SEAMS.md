@@ -270,27 +270,33 @@ The pattern is applied at the granularity the dependency warrants:
    ("only `AppWindow` touches Silk.NET/GLFW input statics") is enforced as a hard rule in
    [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) and `../AGENTS.md`.
 
-## GPU-backend invariant: one resource buffer per vertex stage (Metal via Veldrid/SPIRV-Cross)
+## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
 
-Veldrid/SPIRV-Cross on Metal mis-binds any pipeline whose VERTEX stage reads more than one resource
-buffer. A vertex stage that reads a second resource buffer (a second UBO, or a storage buffer alongside
-a UBO) gets the wrong bytes: only the first buffer, or only its first element, survives. The read is
-silent rather than an error, so the corruption surfaces as garbage geometry, not a validation failure. It
-holds offscreen as well as windowed, for uniform and storage buffers alike, and for one or two vertex
-buffers.
+Veldrid/SPIRV-Cross on Metal mis-binds any pipeline that reads more than ONE uniform buffer - full stop.
+The failure surfaced first as a vertex-stage bug (a vertex reading a second UBO, or a storage buffer
+alongside a UBO, gets the wrong bytes: only the first buffer, or its first element, survives). But
+shipping GPU skinning proved the constraint is the whole PIPELINE, not just the vertex stage: a
+SECOND uniform buffer read only by the FRAGMENT - whether placed in the same set (a second binding) or in
+a separate set 1 - ALSO reads all-zero. TEXTURES and samplers in a second set map fine (measured); only
+uniform buffers past the first mis-bind. The read is silent rather than an error, so it surfaces as
+garbage geometry or unlit/black shading, not a validation failure. It holds offscreen as well as windowed.
 
-The engine-wide rule for any new render path: the vertex stage reads exactly ONE resource buffer, at set
-0. Fold every matrix the vertex needs (ViewProj, bone palette, per-instance transforms) into that single
-buffer, and keep every other UBO or texture at set 1 and up, read ONLY by the fragment stage.
+The engine-wide rule for any new render path: the pipeline reads exactly ONE uniform buffer, at set 0
+binding 0. Fold everything any stage needs from a UBO - the vertex's ViewProj / bone palette / per-instance
+transforms AND the fragment's frame/lighting/shadow uniforms - into that single buffer, declared
+identically in both stages (each stage uses its slice). Keep per-mesh TEXTURES at set 1 and up (fragment).
 
-The model and splat-terrain passes already follow this: the shadow-map matrix and the per-material splat
-params ride in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform
-buffer (see the splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the
-`SplatVert` comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The same fault and the same
-fold-into-one fix are proven on the device by `GpuSkinningReproGpuTests` variant 3
-(`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone`): two vertex-stage UBOs reproduce the
-historical "only bones[0] survives" corruption offscreen, and folding the matrix into the bone buffer so
-the vertex reads one combined buffer fixes it.
+The model and splat-terrain passes follow this: the shadow-map matrix and the per-material splat params
+ride in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform buffer
+(see the splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the `SplatVert`
+comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The vertex half of the fault plus the
+fold-into-one fix are proven offscreen by `GpuSkinningReproGpuTests` variant 3
+(`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone`). The SHIPPED GPU-skinning pass
+(`Scene3D.UseGpuSkinning`, `SkinnedModelVert`/`SkinnedModelFrag`) is the full instance: one combined
+per-draw UBO holding `{ Mvp; Model; P; <frame block>; bones[128] }` read by both stages (vertex =
+matrices+bones, fragment = the frame block for lighting), with material maps at set 1. An earlier attempt
+that kept the frame UBO fragment-only in a second binding/set rendered every skinned mesh black - the
+second-UBO tell - and is the reason this note now says "per pipeline", not "per vertex stage".
 
 ## Adding a new backend
 

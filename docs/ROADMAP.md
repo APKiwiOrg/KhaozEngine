@@ -124,19 +124,7 @@ Ordered gap list (2026-07-07 feature audit):
    local-frame additive layers, and one-shot or held actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
    placement) waits for adoption feedback, action-trigger replication stays a game-message pattern, and a
    per-layer sync-group mechanism (matching walk/run phase across layers) only if combat blending pulls for it.
-8. GPU skinning (design proven by a timeboxed spike, ships default-off pending a windowed A/B): skinning is
-   CPU-side today. A spike found why the old GPU path was pulled - not a bone-read bug, but the
-   Metal/Veldrid/SPIRV-Cross fault where a pipeline whose VERTEX stage reads a second resource buffer mis-binds
-   and only the first survives (see the GPU-backend invariant in `DEPENDENCY-SEAMS.md`). The viable design builds
-   on the proven fold-matrix binding: the vertex reads ONE combined ViewProj-plus-bone-palette buffer at set 0, a
-   skinned `ModelFrag` variant reads material and frame data at set 1 and up (a skinned-specific fragment +
-   material layout, because the shared `ModelFrag` reads the material at set 0), the skinned material sets are
-   rebuilt to that layout, and the shadow depth pass mirrors the same one-buffer vertex binding. Acceptance shape
-   is `GpuSkinningReproGpuTests` variant 3 (`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone`).
-   Ships default-off: the offscreen repro is necessary but not sufficient for the historical windowed swapchain
-   context, so a windowed A/B against CPU skinning gates turning it on. Still only worth the work at MMO crowd
-   scale - measure CPU skinning cost with real crowds first, do not build speculatively.
-9. Reflections / environment probes: not planned for the current bar. Revisit only if water or a specific scene
+8. Reflections / environment probes: not planned for the current bar. Revisit only if water or a specific scene
    demands more than the sky provides.
 
 Also here, unchanged:

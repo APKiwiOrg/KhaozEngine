@@ -366,6 +366,15 @@ namespace KhaozEngine.Showcase
                 Console.WriteLine($"[overlay] Collision shape overlay = {_collisionOverlay.Enabled}");
             }
 
+            // GPU-skinning A/B (F): flip Scene3D.UseGpuSkinning live so the windowed skinned avatar can be eyeballed
+            // both ways. Default OFF (CPU skinning); the GPU path is pixel-parity offscreen but ships off pending this
+            // windowed check. The active path + skinned draw counts show in the HUD (OnDrawUi).
+            if (Manager!.Input.WasPressed(Key.F))
+            {
+                _scene.UseGpuSkinning = !_scene.UseGpuSkinning;
+                Console.WriteLine($"[skinning] UseGpuSkinning = {_scene.UseGpuSkinning} ({(_scene.UseGpuSkinning ? "GPU fold-matrix" : "CPU")})");
+            }
+
             // Physics world ticks once per frame before movement so newly-streamed props are registered.
             _physics.Step(dt);
 
@@ -430,6 +439,17 @@ namespace KhaozEngine.Showcase
             if (ui is null) return;
             if (_collisionOverlay.Enabled)
                 _legend.Draw(batch, _hud.For(ui.DpiScale), _white, ui.DesignBounds);
+
+            // GPU-skinning A/B HUD (dev diagnostic): the active skinning path + the last frame's skinned draw counts,
+            // so the windowed CPU-vs-GPU check (F toggles) reads the state at a glance.
+            if (_avatar is not null)
+            {
+                var font = _hud.For(ui.DpiScale);
+                string path = _scene.UseGpuSkinning ? "GPU (fold-matrix)" : "CPU";
+                string line = $"Skinning: {path}   [F]   drawn {_scene.DrawnSkinnedInstances} / culled {_scene.CulledSkinnedInstances}";
+                var color = _scene.UseGpuSkinning ? new Color(0.5f, 0.95f, 0.6f, 1f) : new Color(0.95f, 0.85f, 0.5f, 1f);
+                batch.DrawString(font, line, new Vector2(16f, ui.DesignBounds.Height - 40f), color);
+            }
         }
 
         // Maps the overlay's present shape kinds through its palette into legend rows (swatch + name).

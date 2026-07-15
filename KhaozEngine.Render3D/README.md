@@ -86,6 +86,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the shadow pass is never camera-culled, matching the rigid contract). Rest-pose bounds are inflated by a safety
   factor (`Scene3D.SkinnedCullSafetyFactor`) to cover a pose swinging a limb outside the rest silhouette. Read the
   win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`.
+- GPU skinning (opt-in, `Scene3D.UseGpuSkinning`, default OFF): the vertex shader blends the bone palette instead of
+  the CPU (`SkinningMath.SkinVertex`), so the rest-pose vertex buffer uploads once at load and only the per-draw
+  palette + matrices upload each frame - the win at MMO crowd scale. Pixel-parity with the CPU path, same culling +
+  shadow pass. Built on the fold-matrix binding (one combined per-draw UBO read by both stages, material maps at set
+  1) that sidesteps the Metal one-uniform-buffer-per-pipeline limit (see `docs/DEPENDENCY-SEAMS.md`). Ships OFF
+  pending a windowed A/B against CPU skinning (the Showcase 3D room's F key + HUD); see `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as
   `Scene3D.PassTimingsMs` (a `Scene3DPassTimingsMs`: `ShadowDepthMs`/`ModelMs`/`TransparentsMs`/`PostMs`). This is

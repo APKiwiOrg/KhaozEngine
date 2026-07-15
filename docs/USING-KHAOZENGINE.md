@@ -1662,9 +1662,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
 ## Skinned / deformable meshes (runtime bone control)
 
-Render3D supports GPU bone-palette skinning for organic, code-driven deformation (tentacles,
+Render3D supports bone-palette skinning for organic, code-driven deformation (tentacles,
 limbs, cables, soft-body) without authored animation tracks. One skinned draw replaces many
-rigid-segment draws.
+rigid-segment draws. Skinning deforms on the CPU by default, with an opt-in GPU path
+(`Scene3D.UseGpuSkinning`, see below).
 
 ```csharp
 // Procedural: a tube weighted to a bone chain.
@@ -1726,25 +1727,37 @@ throws on `DrawSkinned`. Many skinned meshes per frame are fine: each skinned `D
 own draw call (they are not GPU-instanced), so a creature with several tentacles costs one draw per
 tentacle, still far below the dozens of rigid-segment draws it replaces.
 
-**Why skinning deforms on the CPU (a GPU-backend gotcha worth knowing if you write custom Render3D
-code).** The obvious GPU design - upload a bone matrix buffer and index it per-vertex in the vertex
-shader - corrupts past bone 0 in the windowed Veldrid/Metal swapchain context, so `Scene3D` instead
+**CPU skinning (the default) and the opt-in GPU path (`Scene3D.UseGpuSkinning`).** By default `Scene3D`
 deforms every skinned vertex on the CPU (`SkinningMath.SkinVertex`) each frame and draws the result
-through the same proven rigid, no-bone pipeline `ModelRenderer` uses for instanced meshes. The
-narrow, bisected invariant behind that bug: on Metal, a vertex shader must NOT index a SEPARATE
-buffer BY a per-instance attribute's value - that is what corrupts. It is easy to over-generalize
-this into "per-instance vertex data is broken on Metal", which is NOT what the bug is: per-instance
-vertex ATTRIBUTES consumed directly by the shader (no second buffer, no indexing) are fine and used
-in production today - `ModelRenderer`'s rigid instanced mesh/model/terrain-splat draws bind the
-per-instance `Model`/`Tint`/`Emissive`/`SpecParams` stream as real vertex attributes
-(`instanceStepRate: 1`), proven by its multi-instance tests and every instancing golden, and
-`GroundDecalRenderer` batches N decals into one instanced draw the same way (each decal's shape /
-colour / footprint-rect params are a per-instance attribute consumed directly, then passed to the
-fragment stage). So: reach for real per-instance vertex attributes freely for anything instanced.
-Never have a vertex shader read a separate buffer at an index that came from a per-instance attribute
-(a bone palette, a per-instance texture-array layer picked by instance ID, etc.) - route that data
-through a dynamic-offset UBO slot per draw instead (the pattern `OverlayMeshRenderer` uses), or accept
-one draw call per instance like the CPU-skinned path does.
+through the same proven rigid, no-bone pipeline `ModelRenderer` uses for instanced meshes. Setting
+`scene.UseGpuSkinning = true` switches to GPU skinning: the vertex shader blends the bone palette, the
+rest-pose vertex buffer uploads once at load (no per-frame vertex deform), and only the per-draw palette +
+matrices upload each frame. It is **pixel-parity** with the CPU path (the shader mirrors
+`SkinningMath.SkinVertex` exactly), respects the same frustum culling and shadow pass, and is flippable per
+frame. It **ships default-OFF** and should stay off until you have done a windowed A/B (below) - the win is
+only at MMO crowd scale, where the CPU skin loop (O(vertices x characters) per frame) dominates.
+
+The GPU path exists on a specific binding shape because the naive GPU design fails on Metal. **The
+GPU-backend rule (know it if you write custom Render3D code):** Veldrid/SPIRV-Cross on Metal mis-binds any
+pipeline that reads more than ONE uniform buffer - a second UBO read by ANY stage (a second vertex UBO, or
+a fragment-only UBO whether in the same set or a separate set 1) reads all-zero. Textures in a second set
+are fine. So GPU skinning folds EVERYTHING into one combined per-draw UBO (`SkinnedModelVert`):
+`{ Mvp; Model; P; <frame lighting block>; bones[128] }`, read by both stages (the vertex uses the matrices
++ bones, the fragment uses the frame block for lighting), with the per-mesh material maps at set 1. The
+shadow depth pass mirrors the same one-buffer vertex binding. See `docs/DEPENDENCY-SEAMS.md` (the "ONE
+uniform buffer per pipeline" invariant) and the offscreen acceptance repro `GpuSkinningReproGpuTests`
+variant 3. Separately: never have a vertex shader read a separate buffer at an index that came from a
+per-instance attribute (route that through a dynamic-offset UBO slot per draw, as GPU skinning does);
+per-instance vertex ATTRIBUTES consumed directly (no indexed second buffer) are fine and used in production
+by the rigid instanced draws.
+
+**Windowed A/B (why the flag ships off, and how to verify it).** The offscreen parity proof is necessary
+but not sufficient: the historical corruption was a WINDOWED swapchain fault, so turning the flag on for a
+game must be gated on a windowed check. The Showcase's 3D room does this - press **F** to flip
+`UseGpuSkinning` live on the walking avatar; the HUD shows the active path (`CPU` / `GPU (fold-matrix)`) and
+the skinned draw/cull counts. Watch for any difference in the character between the two paths (lighting,
+silhouette, deformation, shadow). If a windowed run of your game looks identical both ways across your
+skinned content, GPU skinning is safe to leave on for that game.
 
 **Determinism: presentation only.** Bone matrices and `DrawSkinned` must never feed simulation,
 RNG, or netcode. Skinning is a render-time visual; drive bones from already-computed gameplay

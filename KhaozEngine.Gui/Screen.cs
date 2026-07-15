@@ -8,9 +8,6 @@ namespace KhaozEngine.Gui
     /// <summary>Lifecycle state of a <see cref="Screen"/>.</summary>
     public enum ScreenState { TransitionOn, Active, TransitionOff, Hidden }
 
-    /// <summary>Declared input-consumption intent (implemented via the bool returned from <see cref="Screen.Update"/>).</summary>
-    public enum InputConsumption { ConsumeWhenVisible, ConsumeWhenHandled }
-
     /// <summary>
     /// Base class for a screen in the <see cref="ScreenStack"/>. One UI surface (gameplay, menu, modal, HUD).
     /// Override <see cref="Update"/> (return whether it consumed input) and <see cref="Draw"/>. Read input via
@@ -25,7 +22,6 @@ namespace KhaozEngine.Gui
         public bool PassUpdateThrough;
         /// <summary>If true, receives input even when a higher screen already consumed it (e.g. a persistent nav bar).</summary>
         public bool AlwaysReceivesInput;
-        public InputConsumption InputConsumption = InputConsumption.ConsumeWhenVisible;
         public ScreenState State = ScreenState.Active;
         public float TransitionOnDuration;
         public float TransitionOffDuration;
@@ -50,7 +46,29 @@ namespace KhaozEngine.Gui
         public virtual void LoadContent() { }
         public virtual void UnloadContent() { }
 
-        /// <summary>Per-frame update. Return whether this screen consumed input (true stops input reaching screens below).</summary>
+        /// <summary>
+        /// Per-frame update. <paramref name="receivesInput"/> is whether a screen above already consumed input this
+        /// frame (or this screen has <see cref="AlwaysReceivesInput"/> set); read it before touching input, since a
+        /// screen still updates every frame it is not blocked by <see cref="PassUpdateThrough"/> regardless of
+        /// whether it receives input.
+        /// </summary>
+        /// <returns>
+        /// Whether THIS screen consumed input THIS frame - true stops input reaching screens below (see
+        /// <see cref="ScreenStack"/>). "Received" and "consumed" are different questions: a screen can receive
+        /// input and still return false (it looked and had nothing to do with it), and must return false whenever
+        /// <paramref name="receivesInput"/> is false (it never got a chance to act).
+        /// <para>
+        /// A screen that stays in the stack permanently but is only sometimes showing something (an always-mounted
+        /// overlay, a toast, a hotkey-triggered panel) MUST return false while dormant/hidden, or it silently
+        /// starves every screen below it of input for as long as it sits in the stack - the screen still LOOKS
+        /// empty, but nothing beneath it can be clicked or typed into. Pair this with keeping
+        /// <see cref="PassUpdateThrough"/> true while dormant and flipping it false only while something is
+        /// actually visible/interactive, so a modal moment blocks the screens below and an idle moment does not.
+        /// <see cref="UpdateOverlayScreen"/> is the reference implementation: it recomputes
+        /// <see cref="PassUpdateThrough"/> from its own visibility every frame and returns
+        /// <c>receivesInput &amp;&amp; visible</c>, never a bare `true`.
+        /// </para>
+        /// </returns>
         public abstract bool Update(float dt, bool receivesInput);
 
         /// <summary>Per-frame draw (screens draw bottom-to-top).</summary>

@@ -26,7 +26,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   one click-through gate), and the raw `InputState`. Screens are ordered by `DrawOrder` ascending with a stable
   insert, so equal-`DrawOrder` screens keep insertion order and `Screens[^1]` is the visually-topmost.
 - `Screen` - base UI surface: `Update(dt, receivesInput)` (returns whether it consumed input) + `Draw(SpriteBatch)`,
-  with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions.
+  with `DrawOrder` / `PassUpdateThrough` / `AlwaysReceivesInput` / transitions. **The dormant-overlay trap:** a
+  screen that stays mounted all the time but is only sometimes showing something MUST return `false` from
+  `Update` while dormant (received input != consumed it), or it silently blocks every screen below for as long as
+  it sits in the stack. `UpdateOverlayScreen` is the reference implementation (recomputes `PassUpdateThrough` from
+  its own visibility each frame, returns `receivesInput && visible`); see `Screen.Update`'s XML doc and
+  `docs/USING-KHAOZENGINE.md` for the full contract.
 - **Theming (`GuiTheme` + `GuiStyle`).** Since 10.11.0 the default widget look is crisp: a neutral-dark palette
   with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). `GuiTheme` is the
   central semantic palette every retained widget reads at construction (`Surface`/`Accent`/`Border`/`Text`/... plus

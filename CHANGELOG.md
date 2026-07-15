@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.111.0
+
+Removed dead `Screen.InputConsumption` API and sharpened the actual input-routing contract in its place.
+Minor bump: a public enum + field are removed, but a repo-wide + fleet-wide audit (engine, samples,
+showcase, map editor, and all four consumer games - Hardpoint, Nullwake, SpaceGame, Ruinborne) found zero
+readers or writers of either, so no known consumer is affected by pinning this version.
+
+- **`KhaozEngine.Gui`: `InputConsumption` enum and `Screen.InputConsumption` field removed.** They declared
+  an unimplemented intent - `ScreenStack` never read the field anywhere, so setting it did nothing. The
+  ambiguity contributed to a real shipped bug in a consumer game: a dormant always-in-stack overlay screen
+  returned "consumed" whenever it merely received input (instead of only when it actually had something to
+  show), which silently starved every screen below it and broke every menu. **If you set
+  `Screen.InputConsumption` anywhere, this is a source break - delete the assignment; nothing else changes.**
+  The real mechanism was always the bool `Screen.Update` returns, and that contract is now spelled out
+  precisely on the XML doc: `receivesInput` (did a screen above already consume this frame) and the return
+  value (did THIS screen consume THIS frame) are different questions, a screen that stays permanently mounted
+  but is only sometimes showing/doing something MUST return `false` while dormant, and should keep
+  `PassUpdateThrough` true while dormant and flip it false only while actually visible/interactive.
+  `UpdateOverlayScreen` is the reference-correct implementation (recomputes `PassUpdateThrough` from its own
+  visibility every frame, returns `receivesInput && visible`, never a bare `true`) and is now called out by
+  name in the `Screen.Update` doc, the `KhaozEngine.Gui` package README, and `docs/USING-KHAOZENGINE.md`'s new
+  "dormant-overlay trap" section. `ScreenStackTests` gained two tests pinning the contract: a dormant
+  always-mounted overlay returning `false` does not starve the screen below it, and the same overlay going
+  visible (flipping `PassUpdateThrough` false and returning `true`) does block it, mirroring
+  `UpdateOverlayScreen`'s own pattern end to end.
+
 ## 10.110.0
 
 ### Updater sibling-instance hardening + opt-in single-instance guard

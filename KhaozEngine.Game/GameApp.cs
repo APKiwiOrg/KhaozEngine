@@ -5,6 +5,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Simulation;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Game
@@ -40,6 +41,14 @@ namespace KhaozEngine.Game
         float _dt;
         readonly double _resumeGapThresholdSeconds;
 
+        // Turn-key client-side worker pool (JobScheduler, below): built lazily on first read so a game that never
+        // touches it never pays for a ThreadPoolJobScheduler it doesn't use. The two option fields are captured
+        // here (rather than re-read from `options` later) because GameAppOptions is a struct arg, gone once the
+        // ctor returns.
+        readonly bool _jobSchedulerDisabled;
+        readonly int? _jobSchedulerDegreeOfParallelism;
+        IJobScheduler? _jobScheduler;
+
         protected GameApp(in GameAppOptions options)
         {
             // WinExe support: a Windows-subsystem game head (OutputType=WinExe, which stops a stray console window
@@ -61,6 +70,8 @@ namespace KhaozEngine.Game
                 StartupCrashLog.InstallForNoConsole(options.Title);
 
             _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
+            _jobSchedulerDisabled = options.DisableJobScheduler;
+            _jobSchedulerDegreeOfParallelism = options.JobSchedulerDegreeOfParallelism;
 
             // Windows taskbar identity: set the process's explicit AppUserModelID BEFORE the native window is
             // created, so Windows 10/11 keys the taskbar button to the app (grouping/pinning + resolving the
@@ -269,6 +280,42 @@ namespace KhaozEngine.Game
         /// <summary>The active graphics backend (Metal / D3D11 / Vulkan); forwards to <see cref="AppWindow.Backend"/>.
         /// Useful to branch display defaults per platform (e.g. force a <see cref="FrameCapHz"/> on Metal).</summary>
         public GpuBackendKind Backend => _window.Backend;
+
+        /// <summary>
+        /// Turn-key client-side worker pool for multi-core ECS scaling. Built lazily on first read: a shared
+        /// <see cref="ThreadPoolJobScheduler"/> sized to <see cref="GameAppOptions.JobSchedulerDegreeOfParallelism"/>
+        /// (or <c>Math.Max(1, Environment.ProcessorCount - 1)</c>, leaving one core free for the render/main
+        /// thread, when that option is <c>null</c>) - or, when <see cref="GameAppOptions.DisableJobScheduler"/> is
+        /// set, the deterministic single-threaded <see cref="SingleThreadedJobScheduler"/> instead. Either way the
+        /// property is always non-null and always safe to wire unconditionally:
+        /// <c>world.DefaultScheduler = App.JobScheduler;</c> once at startup routes every subsequent no-scheduler
+        /// <c>World.ParallelForEach</c> call for that world across cores (or leaves it single-threaded when opted
+        /// out), no per-call scheduler plumbing needed. Built once and reused for the app's lifetime.
+        /// <see cref="ThreadPoolJobScheduler"/> holds no unmanaged resources, so <see cref="Dispose"/> does not
+        /// need to release it. See <c>docs/USING-KHAOZENGINE.md</c> "Client-side parallel ECS" for the
+        /// determinism note and more wiring examples.
+        /// </summary>
+        public IJobScheduler JobScheduler => _jobScheduler ??= CreateJobScheduler(_jobSchedulerDisabled, _jobSchedulerDegreeOfParallelism);
+
+        /// <summary>
+        /// Build the scheduler <see cref="JobScheduler"/> lazily caches, from the two
+        /// <see cref="GameAppOptions"/> knobs. <paramref name="disabled"/> (<see cref="GameAppOptions.DisableJobScheduler"/>)
+        /// wins: it returns a fresh <see cref="SingleThreadedJobScheduler"/> and ignores
+        /// <paramref name="degreeOfParallelism"/> entirely. Otherwise a <see cref="ThreadPoolJobScheduler"/> sized
+        /// to <paramref name="degreeOfParallelism"/> (<see cref="GameAppOptions.JobSchedulerDegreeOfParallelism"/>)
+        /// when positive, else <c>Math.Max(1, Environment.ProcessorCount - 1)</c>. Pure (reads only its
+        /// parameters, not process-wide mutable state beyond the processor count), so the sizing/disable
+        /// precedence is headless-testable without standing up a window - mirrors
+        /// <see cref="BuildDiagnosticsTheme"/>.
+        /// </summary>
+        internal static IJobScheduler CreateJobScheduler(bool disabled, int? degreeOfParallelism)
+        {
+            if (disabled) return new SingleThreadedJobScheduler();
+            int dop = degreeOfParallelism is > 0
+                ? degreeOfParallelism.Value
+                : Math.Max(1, Environment.ProcessorCount - 1);
+            return new ThreadPoolJobScheduler(dop);
+        }
 
         /// <summary>Load assets / build initial state. Called once before the loop starts.</summary>
         protected virtual void OnLoad() { }

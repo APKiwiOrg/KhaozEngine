@@ -195,11 +195,31 @@ public sealed class WorldPersistence
     /// <summary>Saves every joined player whose state changed since its last save.</summary>
     public void SaveDirtyPass()
     {
+        List<(string accountId, byte[] data)>? dirty = null;
         foreach (int slot in new List<int>(server.JoinedSlots))
             if (server.TryGetAccountId(slot, out string accountId) &&
                 !loadsInFlight.ContainsKey(accountId) &&        // load outstanding: skip so this pass can't overwrite the stored record with pre-restore state
                 server.TryGetPlayerState(slot, out PlayerMoveState state))
-                Track(SaveIfDirtyAsync(accountId, BuildRecordBytes(slot, accountId, state)));
+            {
+                byte[] data = BuildRecordBytes(slot, accountId, state);
+                if (lastSaved.TryGetValue(accountId, out byte[]? prev) && prev.AsSpan().SequenceEqual(data))
+                    continue;                                    // unchanged since last save
+                (dirty ??= new List<(string, byte[])>()).Add((accountId, data));
+            }
+        if (dirty is not null) Track(SaveManyDirtyAsync(dirty));
+    }
+
+    // Batches every dirty account's record into one store round trip (one SaveManyAsync call instead of N
+    // SaveAsync calls). lastSaved is advanced per account only AFTER the whole batch lands, so a faulted/canceled
+    // batch leaves every account in it dirty for the next pass - the same "never mark a record clean before it is
+    // actually saved" guarantee the old per-account SaveIfDirtyAsync gave, just at batch grain: one failed round
+    // trip means the whole pass retries next interval, not only the one record that actually caused the fault.
+    private async Task SaveManyDirtyAsync(List<(string accountId, byte[] data)> dirty)
+    {
+        var items = new List<(string Key, byte[] Data)>(dirty.Count);
+        foreach ((string accountId, byte[] data) in dirty) items.Add((Key(accountId), data));
+        await store.SaveManyAsync(items).ConfigureAwait(false);
+        foreach ((string accountId, byte[] data) in dirty) lastSaved[accountId] = data;
     }
 
     /// <summary>Awaits all in-flight loads/saves, then applies any pending loaded state. Call on shutdown (or in

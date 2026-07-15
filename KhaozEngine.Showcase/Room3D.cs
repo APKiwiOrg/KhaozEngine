@@ -130,10 +130,31 @@ namespace KhaozEngine.Showcase
         // when the ring actually changed (a chunk crossing), not every frame.
         readonly HashSet<ChunkCoord> _overlayBuiltChunks = new();
 
-        // Turnkey animated character: CharacterAvatar (KhaozEngine.Game.Render3D) composes the controller + animation
-        // + collision-robust facing + draw, so the room carries none of that glue. Null while the rig asset is
-        // missing/unreadable, in which case the room falls back to drawing the greybox capsule.
-        CharacterAvatar? _avatar;
+        // The intended-facing target the player last commanded (radians), held while stationary - mirrors
+        // CharacterFacing.TurnTowards' zero-direction hold so the character never spins to face yaw 0 when the move
+        // keys are released. Fed to the character bridge as an explicit CharacterSample.FacingYaw each frame so the
+        // model faces where the player is PUSHING (collision-robust: stable against the town buildings and streamed
+        // props), while the bridge's own CharacterAnimatorTuning.YawSmoothing eases the turn.
+        float _facingYaw;
+
+        // Local running sum of the sim's per-tick discrete-step impulse (CharacterController3D.StepDeltaY), fed to
+        // the bridge as CharacterSample.StepCumulativeY. No netcode reconciliation runs in this room (one direct
+        // CharacterController3D.Update per frame, no predict/replay), so a plain accumulator is exactly-once by
+        // construction - the same guarantee ClientPrediction.StepCumulativeY provides over the network.
+        float _stepCumulativeY;
+
+        // The canonical signal-driven stair-glide presentation: ReplicatedCharacterAnimators (KhaozEngine.Game.Render3D,
+        // "the character bridge") owns one AnimatedCharacter brain for this room's single local entity (id 0), driven
+        // each frame from an exact-movement CharacterSample built off _character's state (see OnUpdate). It glides the
+        // drawn feet up/down stairs from the sim's own ClimbRate signal (never a position-delta estimate) and eases
+        // isolated steps via the UE-style step-event mesh offset (StepCumulativeY) - the same bridge RoomDungeon
+        // drives for its local entity, adopted here too. _animated is false (and _animators null) while the rig asset
+        // is missing/unreadable, in which case the room falls back to drawing the greybox capsule at the raw physics
+        // position.
+        SkinnedMeshHandle _characterMesh;
+        ReplicatedCharacterAnimators? _animators;
+        bool _animated;
+        readonly List<CharacterSample> _samples = new(1);
 
         // Index into Palettes.All for the P palette-cycle toggle (see OnUpdate). 2 = Ember8, matching
         // PixelPostProcessSettings.ActivePalette's own default so entering the room and pressing P once
@@ -203,14 +224,9 @@ namespace KhaozEngine.Showcase
             _character.SetXZ(0f, 0f);
             _character.Update(InputState.Empty, 0f, 0f, _terrain.GroundHeight, _terrain.GroundNormal, _physics);
 
-            // Wrap the controller in a CharacterAvatar: it skinned-ingests the committed Quaternius Universal CC0 rig,
-            // maps its clips, scales it to the capsule, and from here owns the facing + animation + draw. Null on any
-            // load failure, so the room keeps the greybox capsule.
-            _avatar = CharacterAvatar.TryLoadGltf(_scene,
-                Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb"), _character,
-                onFailure: reason => Console.WriteLine($"Character load failed ({reason}); falling back to the capsule."));
-            if (_avatar is not null)
-                Console.WriteLine($"Animated character loaded (scale {_avatar.ModelScale:0.00}).");
+            _facingYaw = 0f;
+            _stepCumulativeY = 0f;
+            TryLoadAnimators();
 
             var terrainMaterial = _scene.LoadTerrainMaterial(TerrainMaterialPresets.Procedural());
 
@@ -378,12 +394,10 @@ namespace KhaozEngine.Showcase
             // Physics world ticks once per frame before movement so newly-streamed props are registered.
             _physics.Step(dt);
 
-            // Drive the character. The avatar (when the rig loaded) owns the movement + collision-robust facing +
-            // animation in a single call; without it, drive the controller alone for the greybox capsule.
-            if (_avatar is not null)
-                _avatar.Update(Manager!.Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal, _physics);
-            else
-                _character.Update(Manager!.Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal, _physics);
+            // Drive the body directly: CharacterController3D owns movement + climbing + collision, unconditionally
+            // (the character bridge below is presentation-only and never touches the sim).
+            Vector3 prevPos = _character.Position;
+            _character.Update(Manager!.Input, dt, _camera.Yaw, _terrain.GroundHeight, _terrain.GroundNormal, _physics);
 
             // Stream the world around the new player position (loads/unloads/re-LODs within MaxLoadsPerFrame).
             _streamer.Update(_character.Position, dt);
@@ -394,8 +408,40 @@ namespace KhaozEngine.Showcase
             if (_collisionOverlay.Enabled && !_overlayBuiltChunks.SetEquals(_streamer.Loaded))
                 RebuildCollisionOverlay();
 
-            // Target the avatar's presentation position (physics XZ + smoothed height) so the camera glides on stairs.
-            _camera.Target = _avatar?.RenderPosition ?? _character.Position;
+            Vector3 renderTarget = _character.Position;
+            if (_animated && _animators is not null)
+            {
+                // Feed the character bridge this tick's EXACT sim facts - grounded / vertical velocity / swimming
+                // straight from the controller, the climb signal straight from CharacterController3D.ClimbRate (the
+                // sim's own fact, never estimated from position deltas), and the discrete-step running sum for the
+                // step-event mesh smoothing on isolated risers - so it drives the same signal-driven glide for this
+                // single local entity (id 0) that RoomDungeon drives for its own.
+                _stepCumulativeY += _character.StepDeltaY;
+
+                // Hold the last INTENDED facing at rest (see the _facingYaw field doc): collision-robust, so the
+                // model never spins against a town building/prop it scrapes and never snaps to face yaw 0 at a stop.
+                Vector3 intended = CharacterFacing.IntendedMoveDirection(Manager!.Input, _camera.Yaw);
+                if (intended.LengthSquared() > 1e-6f) _facingYaw = CharacterFacing.YawOf(intended);
+
+                // Exact commanded speed (from the real collision-clamped position delta, not input), so the
+                // idle/walk/run state reflects actual motion the same way CharacterAvatar's animation used to.
+                Vector3 d = _character.Position - prevPos; d.Y = 0f;
+                float horizontalSpeed = dt > 1e-6f ? d.Length() / dt : 0f;
+
+                Vector3 feet = new(_character.Position.X, _character.Position.Y - CapsuleHalfHeight, _character.Position.Z);
+                CharacterSample sample = new CharacterSample(0L, feet, isLocal: true, grounded: _character.Grounded,
+                    verticalVelocity: _character.VerticalVelocity, planarSpeed: horizontalSpeed, swimming: _character.Swimming,
+                    climbRate: _character.ClimbRate, stepCumulativeY: _stepCumulativeY).WithFacingYaw(_facingYaw);
+
+                _samples.Clear();
+                _samples.Add(sample);
+                _animators.Update(_samples, dt);
+                if (_animators.Live.Count > 0) renderTarget = _animators.Live[0].RenderPosition;
+            }
+
+            // Target the bridge's presentation position (physics XZ + the signal-driven glide height) so the camera
+            // glides on stairs, falling back to the raw physics position when the rig failed to load.
+            _camera.Target = renderTarget;
             _camera.AspectRatio = Manager!.FrameHeight > 0 ? (float)Manager!.FrameWidth / Manager!.FrameHeight : _camera.AspectRatio;
             _camController.Update(Manager!.Input, dt);
         }
@@ -415,11 +461,13 @@ namespace KhaozEngine.Showcase
             // The hand-placed town buildings (not streamed, always in range at this draw radius).
             scene.DrawProps(_buildingPlacements, _buildingMeshes, _character.Position, BuildingDrawRadius);
 
-            // Draw the character. The avatar draws its skinned mesh at the feet with the right facing/scale; without
-            // it, draw the greybox capsule (Position is the capsule centre, feet = centre - half).
-            if (_avatar is not null)
+            // Draw the character. The bridge's live pose carries its skinned mesh at the right facing/scale/glide
+            // height. Without it (rig failed to load), draw the greybox capsule (Position is the capsule centre,
+            // feet = centre - half) at the raw physics position.
+            if (_animated && _animators is not null && _animators.Live.Count > 0)
             {
-                _avatar.Draw(scene);
+                CharacterPose pose = _animators.Live[0];
+                scene.DrawSkinned(_characterMesh, pose.Pose, pose.World, new Color(0.85f, 0.55f, 0.25f, 1f));
             }
             else
             {
@@ -442,7 +490,7 @@ namespace KhaozEngine.Showcase
 
             // GPU-skinning A/B HUD (dev diagnostic): the active skinning path + the last frame's skinned draw counts,
             // so the windowed CPU-vs-GPU check (F toggles) reads the state at a glance.
-            if (_avatar is not null)
+            if (_animated)
             {
                 var font = _hud.For(ui.DpiScale);
                 string path = _scene.UseGpuSkinning ? "GPU (fold-matrix)" : "CPU";
@@ -514,7 +562,7 @@ namespace KhaozEngine.Showcase
             foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values)
                 foreach (MeshHandle h in parts) _scene.UnloadMesh(h);
             foreach (MeshHandle h in _buildingMeshes.Values) _scene.UnloadMesh(h);
-            if (_avatar is not null) _scene.UnloadSkinnedMesh(_avatar.Mesh);
+            if (_animated) _scene.UnloadSkinnedMesh(_characterMesh);
 
             // Drop the follow camera so the default camera returns for the menu/2D rooms.
             _scene.CameraOverride = null;
@@ -553,7 +601,69 @@ namespace KhaozEngine.Showcase
             _collisionShapes = null!;
             _scatterConfig = null!;
             _overlayBuiltChunks.Clear();
-            _avatar = null;
+            _characterMesh = default;
+            _animators = null;
+            _animated = false;
+            _samples.Clear();
+        }
+
+        // Skinned-ingest the committed Quaternius Universal CC0 character + its clips into the canonical signal-driven
+        // stair-glide bridge (ReplicatedCharacterAnimators - the same "character bridge" RoomDungeon drives for its
+        // own local entity), one local entity (id 0) scaled to this room's capsule. On any load failure the room
+        // falls back to the greybox capsule (_animated stays false).
+        void TryLoadAnimators()
+        {
+            try
+            {
+                string charPath = Path.Combine(AppContext.BaseDirectory, "assets", "character", "Player.glb");
+                (SkinnedGltfMesh charMesh, GltfMaterialMaps charMaps) = GltfLoader.LoadSkinnedWithMaterial(charPath);
+                if (charMesh.Skeleton is null) { Console.WriteLine("Character has no skeleton, using the capsule."); return; }
+                _characterMesh = _scene.LoadSkinnedMesh(charMesh, charMaps);
+
+                var byName = new Dictionary<string, AnimationClip>();
+                foreach (AnimationClip c in GltfLoader.LoadAnimations(charPath)) byName[c.Name] = c;
+                var clips = new Dictionary<LocomotionState, AnimationClip>();
+                void Map(LocomotionState st, string name) { if (byName.TryGetValue(name, out AnimationClip? c)) clips[st] = c; }
+                Map(LocomotionState.Idle, "Idle");
+                Map(LocomotionState.Walk, "Walk");
+                Map(LocomotionState.Run, "Run");
+                Map(LocomotionState.Jump, "Jump");
+                Map(LocomotionState.Fall, "Fall");
+                Map(LocomotionState.SwimIdle, "SwimIdle");   // tread water (absent in this rig -> degrades to Idle)
+                Map(LocomotionState.Swim, "Swim");           // forward stroke (absent -> degrades to Idle)
+                if (clips.Count == 0)
+                {
+                    _scene.UnloadSkinnedMesh(_characterMesh);
+                    Console.WriteLine("Character has no expected clips, using the capsule.");
+                    return;
+                }
+
+                // Auto-fit the model to the capsule height (asset-agnostic) and bake that scale into the bridge tuning,
+                // starting from CharacterAnimatorTuning.Default so every OTHER tunable (SlopeGlideRate,
+                // SlopeGlideSnapDistance, StepSmoothingRate, YawSmoothing, ...) matches the reference adopter exactly.
+                float modelHeight = ModelHeight(charMesh);
+                float scale = modelHeight > 0.01f ? (CapsuleHalfHeight * 2f) / modelHeight : 1f;
+                CharacterAnimatorTuning tuning = CharacterAnimatorTuning.Default;
+                tuning.Scale = scale;
+                tuning.Locomotion = new LocomotionThresholds(0.1f, 9f);   // matches the controller's 6/12 walk/run feel
+
+                _animators = new ReplicatedCharacterAnimators(charMesh.Skeleton, clips, tuning);
+                _animated = true;
+                Console.WriteLine($"Animated character loaded ({charMesh.BoneCount} bones, scale {scale:0.00}).");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Character load failed ({e.Message}), falling back to the capsule.");
+                _animated = false;
+            }
+        }
+
+        // Model-space height (max - min Y) of the rest mesh, for the capsule-match scale.
+        static float ModelHeight(SkinnedGltfMesh mesh)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (SkinnedVertex v in mesh.Vertices) { min = MathF.Min(min, v.Position.Y); max = MathF.Max(max, v.Position.Y); }
+            return max > min ? max - min : 0f;
         }
     }
 }

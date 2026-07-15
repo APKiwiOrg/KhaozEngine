@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.101.1
+
+### GPU-side quad corner transform via a per-Begin view-projection UBO
+
+`SpriteBatch` transforms quad corners on the GPU instead of on the CPU. Corners are emitted in the batch's
+authoring space and the vertex shader multiplies a per-`Begin`, clip-corrected view-projection uniform buffer,
+replacing the four per-corner CPU `Vector4.Transform` calls with one GPU multiply per vertex. The UBO lives in a
+separate resource set (set 1), so the per-(texture, sampler) set cache is unchanged. Each `Begin` gets its own
+256-byte dynamic-offset slot with geometric grow-and-retire, so no slot is overwritten within a command list,
+which is the documented Metal hazard. Public API, scissor math, the triple-buffered vertex ring, and run and
+range batching are unchanged, and output stays byte-for-byte within golden tolerances on Metal (238 GPU tests
+executed on-device at implementation time). This is a batch-internal performance change with no public API
+change.
+
+## 10.101.0
+
+### Async background terrain chunk mesh builds
+
+Terrain chunk mesh building now runs off the frame thread (async streaming by default), so a streamed chunk no
+longer hitches the frame by its full CPU mesh build. `TerrainStreamer` gains a background-build pipeline: with
+`StreamerConfig.Async` (new, default true) and an `IAsyncChunkSink` sink, each chunk's CPU mesh and scatter build
+runs on a worker thread and only the GPU upload happens on the frame thread. `MaxLoadsPerFrame` now caps the
+per-frame GPU applies, not the builds, which are unbudgeted and parallel.
+
+- **New GPU-free, headless-testable machinery.** `ChunkBuildScheduler<T>` with per-chunk generation tokens (last
+  request wins, builds for chunks that leave the ring are cancelled and discarded), `IChunkBuildDispatcher`,
+  `TaskChunkBuildDispatcher`, `ChunkBuild<T>`, and `ChunkBuildException`.
+- **New sink seam `IAsyncChunkSink`** (`BuildCpu` on the worker, `Apply` on the frame thread), implemented by
+  `Scene3DChunkSink`.
+- **New streamer entry points.** `TerrainStreamer.FlushPendingBuilds()` force-drains synchronously and
+  `PrimeAround(playerPos)` fills the first ring. `StreamerConfig.Synchronous()` keeps the old inline path, and a
+  sink implementing only `IChunkSink` still streams synchronously.
+- **Migration note for adopters.** Priming loops that pump `Update` until `Loaded` stops growing will under-fill
+  the ring under the async default. Switch to `PrimeAround()` or opt into `Synchronous()`.
+
 ## 10.100.0
 
 ### Turn-key F1 diagnostics HUD + always-on frame draw counters

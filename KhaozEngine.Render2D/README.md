@@ -10,9 +10,12 @@
   off by default, reset by every `Begin`) groups queued quads by texture at flush regardless of submission
   order, trading strict painter's order for fewer draw calls when interleaved same-texture draws would
   otherwise split into separate runs - order stays intact WITHIN a texture group, so only enable it for a pass
-  whose correctness does not depend on cross-texture draw order. `FrameStats` exposes always-on per-frame draw
-  counters (quads, draw calls, flushes, texture switches, vertex-upload bytes as a `Primitives.RenderFrameStats`),
-  reset each `NewFrame` and read after the frame's draws.
+  whose correctness does not depend on cross-texture draw order. Quad corners are emitted in the batch's
+  authoring space and transformed to clip space by the vertex shader (the `Begin`'s clip-corrected
+  view-projection rides in a per-`Begin` uniform buffer), so there is no per-corner CPU `Vector4.Transform` -
+  the transform is a single GPU multiply per vertex instead of four CPU transforms per quad. `FrameStats`
+  exposes always-on per-frame draw counters (quads, draw calls, flushes, texture switches, vertex-upload bytes
+  as a `Primitives.RenderFrameStats`), reset each `NewFrame` and read after the frame's draws.
 - `Camera2D` - position/zoom/rotation 2D camera (headless, unit-tested) + the camera-feel layer (follow,
   look-ahead, eased blends, room cameras, parallax).
 - `Texture2D` - GPU texture; PNG load via StbImageSharp.

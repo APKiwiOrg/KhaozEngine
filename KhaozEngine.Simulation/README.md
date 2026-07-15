@@ -20,4 +20,13 @@ float wait = FixedTickHost.ComputeIdleWaitSeconds(host.SecondsUntilNextTick, saf
 if (wait > 0f) Thread.Sleep(TimeSpan.FromSeconds(wait)); else Thread.Yield();
 ```
 
+- **`IJobScheduler`** - the engine's one worker-pool abstraction: `For(int count, Action<int> body)` runs
+  `count` independent jobs and blocks until all finish. `SingleThreadedJobScheduler` runs them inline in index
+  order (deterministic, allocation-free - the default everywhere). `ThreadPoolJobScheduler` fans them across the
+  BCL thread pool via `Parallel.For`, with an optional `maxDegreeOfParallelism` cap (`-1` = unbounded, the
+  default) exposed back as the read-only `MaxDegreeOfParallelism` property. `ShardHost.Tick` (per-cell sim
+  steps, server-side) and `World.ParallelForEach`/`World.DefaultScheduler` (`KhaozEngine.Ecs`, client or
+  server) both fan across this same seam - see `docs/USING-KHAOZENGINE.md` "Worker-pool seam
+  (`IJobScheduler`) + parallel cell ticks" and "Parallel `ForEach` + access declarations".
+
 Part of the MMO netcode stack (sub-project 0B).

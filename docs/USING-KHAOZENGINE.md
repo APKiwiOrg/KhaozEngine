@@ -5661,6 +5661,55 @@ Benchmark the entities axis on `KhaozEngine.Benchmarks` (the "entities axis" swe
 trivial per-row work is overhead-bound (parallel < 1x) while a realistic hot system scales toward ~P× - the sweep
 prints the crossover so the win is only claimed where it's real.
 
+### Client-side parallel ECS (`World.DefaultScheduler`, `GameApp.JobScheduler`)
+
+Everything above reads naturally as server plumbing (`ShardHost`, cells, a `ThreadPoolJobScheduler` you build and
+pass by hand), but a client game wants the same entities-axis win with none of that wiring. Two pieces make it
+turn-key:
+
+**`World.DefaultScheduler`** - every `ParallelForEach` overload's trailing `scheduler` argument already defaults
+to `null`, and what it falls back to used to be hardcoded to an inline scheduler. It now falls back to
+`world.DefaultScheduler` instead, a per-world property that itself defaults to the same deterministic
+`SingleThreadedJobScheduler` - so nothing changes for existing code that never touches it (server determinism,
+lockstep sims, and every prior no-scheduler call are byte-unchanged). Set it once and every subsequent
+no-scheduler call for that world fans across cores. An explicit per-call scheduler still always wins over it:
+
+```csharp
+world.DefaultScheduler = new ThreadPoolJobScheduler();   // opt this world into parallel-by-default, once
+
+world.ParallelForEach<Position, Velocity>((Entity _, ref Position p, ref Velocity v) =>
+{
+    p.X += v.X * dt;   // per-row-pure, same contract as always - see "Parallel ForEach" above
+    p.Y += v.Y * dt;
+}); // no scheduler arg: routes through world.DefaultScheduler
+```
+
+**`GameApp.JobScheduler`** - a client game does not want to hand-size and own a `ThreadPoolJobScheduler` per
+game, so `GameApp` (`KhaozEngine.Game`) does it for you. `JobScheduler` is built lazily on first read: a shared
+`ThreadPoolJobScheduler` sized to `GameAppOptions.JobSchedulerDegreeOfParallelism` (or
+`Math.Max(1, Environment.ProcessorCount - 1)` - one core left free for the render/main thread - when that option
+is unset), or, when `GameAppOptions.DisableJobScheduler` is set, the deterministic `SingleThreadedJobScheduler`
+instead. Either way the property is never null, so it is always safe to assign unconditionally - the one line a
+game needs:
+
+```csharp
+protected override void OnLoad()
+{
+    _world.DefaultScheduler = JobScheduler;   // turn-key: every no-scheduler ParallelForEach on _world now
+}                                              // fans across cores (or stays single-threaded if opted out)
+```
+
+**Determinism note.** `World.DefaultScheduler`'s own default keeps every existing `World` single-threaded and
+byte-identical to `ForEach`, exactly like `ShardHost.Scheduler` keeps every existing `ShardHost` single-threaded
+- parallelism is opt-in at both layers, never silently turned on. Wiring `GameApp.JobScheduler` in only affects
+worlds you explicitly point at it. The per-row-pure contract and the debug hazard guard from "Parallel `ForEach`
++ access declarations" above still apply unchanged - a `ThreadPoolJobScheduler` behind `DefaultScheduler` is no
+different from one passed explicitly. Use it for genuinely independent per-entity work (movement integration, AI
+sensing, decay/cooldown ticks). A system with cross-entity reads still needs the buffered
+`EntityCommandBuffer` overload or a sequential `ForEach`. A server (`ShardHost`, `WorldServer`,
+`ShardedWorldServer`) never reads `GameApp` and keeps its own explicit, separately-defaulted `Scheduler` -
+setting one world's `DefaultScheduler` on the client has no effect on server-side determinism.
+
 ### Sessions (`NetServer` / `NetClient`)
 
 Above the raw transport, the session layer turns connections into authenticated, slotted players. The server

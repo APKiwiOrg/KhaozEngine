@@ -167,6 +167,38 @@ predecessor's pid so it never races the file the predecessor writes during shutd
 part of the updater's env onto the new primitive would split its process ops across two homes for no real gain,
 so they stay separate.
 
+## Single-instance guard seam: foreground signaling
+
+`KhaozEngine.App.SingleInstanceGuard` adds one testability seam, no new package edge into the umbrella
+closures (the packages it touches were already reachable):
+
+```
+KhaozEngine.App -> (BCL only: System.Threading.Mutex, System.IO)   (ISingleInstanceLock / SystemSingleInstanceLock)
+KhaozEngine.Game -> KhaozEngine.App           (was already transitive via Gui -> App; made direct because
+                                               GameApp calls SingleInstanceGuard.TryAcquire directly)
+KhaozEngine.Game -> KhaozEngine.Diagnostics   (was already transitive via Gui -> App -> Diagnostics; made
+                                               direct because GameApp logs the conflict path via Log.Info
+                                               directly)
+```
+
+`ISingleInstanceLock` splits into two independent OS operations: ownership (claim-and-hold a key) and a
+foreground-request signal (a losing second launch telling the current owner "come forward"). Ownership is a
+named `Mutex` - confirmed the one named synchronization primitive .NET actually implements off Windows. The
+foreground signal is deliberately **not** a named `EventWaitHandle` or `Semaphore`: both throw
+`PlatformNotSupportedException` on macOS/Linux (confirmed against the .NET 10 runtime directly, not assumed
+from docs - an early implementation using a named `EventWaitHandle` passed on Windows-shaped assumptions but
+silently never signaled cross-instance off Windows, since the constructor call was wrapped in a swallow-all
+try/catch). `SystemSingleInstanceLock` instead touches a small polled marker file under the OS temp
+directory, which works identically on every platform this engine targets. The seam is what makes this
+headless-testable: `KhaozEngine.Tests.App.SingleInstanceGuardTests` covers the guard's orchestration against
+a fake `ISingleInstanceLock`, plus a couple of real-primitive integration tests (mutex contention across
+threads, the marker-file signal) against `SystemSingleInstanceLock` itself.
+
+This is deliberately a sibling of `AppRelaunch`'s `IProcessControl` seam, not a member of it - same
+"headless-testable OS operation behind an interface" pattern, but ownership-and-signaling is a different
+contract from process spawn-and-wait, so it gets its own seam rather than growing `IProcessControl` a second
+unrelated responsibility.
+
 ## Design-viewport seam: device-pixel snapping
 
 `IDesignViewport` (`KhaozEngine.Primitives`) is the design-viewport seam. Its implementers all live in

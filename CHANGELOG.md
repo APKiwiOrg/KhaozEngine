@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.110.0
+
+### Updater sibling-instance hardening + opt-in single-instance guard
+
+Fixed a real tester-reported update failure: a Nullwake tester's update failed because a SIBLING game
+instance (a second copy started separately) held the install exe open the whole time, invisible to
+`UpdateApplier`'s parent-pid exit barrier (which only watches the ONE pid that launched the updater). Every
+`ReplaceFile` failed `ERROR_ACCESS_DENIED` for the full retry budget, the rollback restore then failed too
+(`ERROR_SHARING_VIOLATION`, a corrupted rollback), and the eventual relaunch stacked a third instance on top.
+`UpdateApplier.Apply` now closes this gap with a second barrier, right after the existing exit barrier and
+before the progress marker or any install file is touched: it polls `IUpdaterEnvironment.CanOpenExclusively(config.GameExePath)`
+for up to 30s (the same primitive the post-apply settle wait already used). If the exe never becomes
+exclusively openable, the apply aborts UNTOUCHED with the existing `ApplyOutcome.AbortedGameStillRunning`
+(no marker, no rollback dir, no relaunch) - turning the corrupted-rollback failure mode into a clean, silent
+defer to the next launch. No behaviour change on the happy path or the existing exit-barrier semantics.
+
+New opt-in `KhaozEngine.App.SingleInstanceGuard` (+ `ISingleInstanceLock` / `SystemSingleInstanceLock`)
+closes the same class of bug at the source: only one live instance of a game can run at a time. A game
+adopts it with one option, `GameAppOptions.SingleInstance = true` (`KhaozEngine.Game`); `GameApp`'s
+constructor claims a named OS mutex - keyed by the new `GameAppOptions.SingleInstanceId`, falling back to
+the existing `AppUserModelId` - BEFORE any window or GPU device is created. A losing second launch asks the
+existing instance to come to the foreground (new `KhaozEngine.Windowing.AppWindow.RequestForeground()`,
+main-thread only per GLFW's threading rules) and exits cleanly (code 0, one log line), so a double-click on
+an already-running game's icon never opens a second window. The foreground-request channel is a polled temp
+directory marker file, not a named `EventWaitHandle`/`Semaphore` - those throw `PlatformNotSupportedException`
+off Windows, confirmed against the runtime; ownership stays a named `Mutex`, the one named primitive .NET
+actually implements cross-platform. The guard composes with `AppRelaunch.Restart`'s forced-restart handshake
+(the same `AppRelaunch.DefaultPredecessorTimeout` predecessor-wait so a legitimate relaunch successor is
+never rejected by its own dying predecessor) and resolves the auto-updater's relaunch-stacking gap for free:
+a post-update relaunch that lands on a surviving sibling just finds the guard held, focuses the survivor, and
+exits itself (logged, `RelaunchStartupOutcome.ExitedEarly`) - no special-casing needed in
+`UpdateApplier.ResilientRelaunch`.
+
+See `KhaozEngine.Updates`' README ("Windows self-update safety") and `KhaozEngine.App`'s README
+("SingleInstanceGuard") for the full mechanism, and `docs/USING-KHAOZENGINE.md` ("Single-instance guard") for
+game-facing adoption.
+
 ## 10.109.1
 
 ### DrawString snaps the block baseline once, fixing the fractional-scale glyph wave

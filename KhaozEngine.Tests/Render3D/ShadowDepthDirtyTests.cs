@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// Headless coverage for the shadow depth-pass dirty-skip decision (Scene3D.ShadowDepthPassDirty /
     /// ShadowCastersChanged). The pass re-renders the persistent light-space depth map only when a shadow-relevant
-    /// input changed since the last rendered pass; otherwise it reuses the prior map. These pure predicates carry the
+    /// input changed since the last rendered pass, and otherwise it reuses the prior map. These pure predicates carry the
     /// skip logic, so they are unit-tested without a GPU (the GPU proof that the reuse is pixel-identical lives in
     /// KhaozEngine.Tests/Gpu/ShadowDepthDirtySkipGpuTests).
     /// </summary>
@@ -40,7 +40,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Any_skinned_caster_forces_dirty()
         {
-            // A skinned caster animates its bones every frame; the palette is not hashed, so its mere presence is dirty.
+            // A skinned caster animates its bones every frame. The palette is not hashed, so its mere presence is dirty.
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: true,
                 resolutionChanged: false, lightMatrixChanged: false, casterDataChanged: false));
         }

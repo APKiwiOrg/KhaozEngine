@@ -12,7 +12,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// Draws the queued <see cref="GroundDecal"/>s into the lit color attachment + read-only scene depth
     /// (ColorDepthFB), sampling the linear depth to reconstruct each pixel's surface world position and painting the
     /// decal's analytic shape onto the ground/terrain. Runs after the model+beam passes and before the post chain, so
-    /// decals are occluded by geometry (the read-only depth test rejects no-geometry background; the Y-band gate keeps
+    /// decals are occluded by geometry (the read-only depth test rejects no-geometry background, the Y-band gate keeps
     /// shapes off vertical faces) and flow through quantize/blit. Two pipelines: alpha and additive.
     /// </summary>
     /// <remarks>
@@ -31,7 +31,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class GroundDecalRenderer : IDisposable
     {
         /// <summary>Per-instance decal attributes, matching the <c>I*</c> inputs of <see cref="ShaderSources.DecalVert"/>
-        /// (7 x vec4 = 112 bytes; every member 16-byte aligned). One entry per queued decal, streamed into the
+        /// (7 x vec4 = 112 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
         /// instance vertex buffer each frame.</summary>
         public struct DecalInstance
         {
@@ -80,7 +80,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Parity/profiling seam: when set, every decal uses the full-screen quad instead of its computed
         /// footprint rect - i.e. the pre-bounding full-viewport coverage (still batched/instanced). The footprint
         /// bounding is pixel-neutral (the fullscreen path discarded every out-of-footprint pixel anyway), so a bounded
-        /// render must match a forced-fullscreen render; a GPU test flips this to prove exactly that, and profilers can
+        /// render must match a forced-fullscreen render. A GPU test flips this to prove exactly that, and profilers can
         /// use it to isolate the fill-reduction win. Off by default, so production always bounds the fill.</summary>
         internal bool ForceFullscreenQuads;
 
@@ -114,7 +114,7 @@ namespace KhaozEngine.Render3D.Rendering
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = new[] { blend },
                 // Read-only depth test: the far-plane quad (DecalVert emits z=1) passes Greater only where stored depth
-                // is nearer than the far plane, i.e. only on scene geometry; background (cleared far) is rejected. No
+                // is nearer than the far plane, i.e. only on scene geometry. Background (cleared far) is rejected. No
                 // depth write, so the scene depth is untouched for any later pass.
                 DepthStencil = new GpuDepthStencilState(depthTestEnabled: true, depthWriteEnabled: false, GpuComparison.Greater),
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
@@ -192,7 +192,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// Compute the screen-space NDC rectangle covering a decal's projected ground footprint, given the
         /// GPU-clip-corrected world-&gt;clip matrix <paramref name="clipVp"/> (so the emitted quad lands on the same
         /// pixels the geometry does, on every backend). The footprint is the world AABB of the shape's bounding radius
-        /// (inflated by the outline/AA band) over the decal's Y gate band; its 8 corners are projected and their NDC
+        /// (inflated by the outline/AA band) over the decal's Y gate band. Its 8 corners are projected and their NDC
         /// bounding box (plus a small margin, clamped to the screen) is the quad rect. Returns <c>false</c> when any
         /// corner is at/behind the eye plane (<c>w &lt;= eps</c>) - the convex-hull screen-bound no longer holds, so
         /// the caller falls back to a full-screen quad. Pure over its matrix input (no GPU), headless-testable.
@@ -232,7 +232,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// span of consecutive decals sharing one <see cref="DecalBlend"/> (the only thing that forces a pipeline /
         /// draw split). Submission order is preserved - a blend change starts a new run rather than globally grouping -
         /// so overlapping decals still composite in the order queued, mirroring the SpriteBatch run-coalescing pattern.
-        /// Pure + headless-testable; <paramref name="runs"/> is Cleared and refilled.
+        /// Pure + headless-testable. <paramref name="runs"/> is Cleared and refilled.
         /// </summary>
         internal static void CoalesceDecalRuns(ReadOnlySpan<GroundDecal> decals, List<DecalRun> runs)
         {
@@ -277,7 +277,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 cl.SetPipeline(run.Blend == DecalBlend.Additive ? _additivePipe : _alphaPipe);
                 cl.SetGraphicsResourceSet(0, _set!);
-                // 6 vertices (two-triangle quad) x run.Count instances; base instance = run.Start selects this run's
+                // 6 vertices (two-triangle quad) x run.Count instances. Base instance = run.Start selects this run's
                 // slice of the shared instance buffer (the same base-instance path the model/shadow instanced draws use).
                 cl.Draw(6, (uint)run.Count, 0, (uint)run.Start);
             }

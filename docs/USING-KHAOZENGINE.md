@@ -1531,7 +1531,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
       forces a re-render). An unchanged static scene reuses the prior map and skips every caster draw, so a mostly-static
       view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw calls to
-      `LastFrameStats`; read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame; always `false` when the tier is
+      `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when the tier is
       not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is still applied
       on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the map with the
       matrix it was baked against.
@@ -2178,7 +2178,7 @@ path derives its own world-space edge from the decal size.)
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same
 blend are coalesced into runs and each run is one instanced draw (submission order preserved, so overlapping
-decals still composite correctly); each decal rasterizes a screen-space quad covering only its projected ground
+decals still composite correctly). Each decal rasterizes a screen-space quad covering only its projected ground
 footprint instead of a full-viewport pass, so fill cost scales with decal area rather than viewport area times
 decal count. This is a pure efficiency change - the painted pixels are identical - and needs no API change:
 just queue decals as before.

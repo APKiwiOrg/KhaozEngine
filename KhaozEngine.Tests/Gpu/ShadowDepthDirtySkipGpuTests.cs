@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// GPU proof of the shadow depth-pass dirty-skip (Scene3D.ShadowPassSkippedLastFrame). The 2048^2 light-space
-    /// depth map persists across frames, so an unchanged static shadow scene reuses it and skips the caster draws;
+    /// depth map persists across frames, so an unchanged static shadow scene reuses it and skips the caster draws:
     /// (a) proves a static second frame skips AND renders pixel-identically to the freshly-rendered first frame,
     /// (b) proves a moved caster re-renders (the shadow moves and the frame is NOT skipped), (c) proves a scene with
     /// an animated skinned caster never skips. Driven through Render3DPreview so the per-frame skip flag can be read
@@ -42,7 +42,7 @@ namespace KhaozEngine.Tests.Gpu
 
         static int DarkPixels(byte[] px)
         {
-            // Shadowed floor pixels are darker than the lit floor; count clearly-dark opaque pixels as a shadow proxy.
+            // Shadowed floor pixels are darker than the lit floor. Count clearly-dark opaque pixels as a shadow proxy.
             int n = 0;
             for (int p = 0; p < px.Length / 4; p++)
             {

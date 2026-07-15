@@ -73,7 +73,7 @@ namespace KhaozEngine.Render3D
         // Shadow depth-pass dirty-skip state (efficiency): the 2048^2 light-space depth map is a persistent GPU
         // texture, so when nothing shadow-relevant changed since the last RENDERED pass the pass is skipped and the
         // prior map is reused (never cleared) - a mostly-static scene stops repainting every caster into it every
-        // frame. Kept from the last rendered pass, compared against this frame in RenderInternal; the caster
+        // frame. Kept from the last rendered pass, compared against this frame in RenderInternal. The caster
         // signature buffers are swapped (not copied) when a dirty pass commits, so the check stays allocation-free.
         bool _shadowPassRendered;             // a real depth pass has rendered since construction (map holds valid content)
         bool _shadowPassSkippedLastFrame;     // the last rendered frame reused the prior depth map (public signal below)
@@ -254,7 +254,7 @@ namespace KhaozEngine.Render3D
         public bool ShadowPassSkippedLastFrame => _shadowPassSkippedLastFrame;
 
         /// <summary>Test/profiling seam onto the batched ground-decal renderer (its <c>ForceFullscreenQuads</c> parity
-        /// toggle). Internal - the renderer type is internal; a GPU test flips the toggle to prove the footprint
+        /// toggle). Internal - the renderer type is internal. A GPU test flips the toggle to prove the footprint
         /// bounding renders pixel-identically to full-viewport coverage.</summary>
         internal Rendering.GroundDecalRenderer DecalRenderer => _decalRenderer;
 
@@ -1490,7 +1490,7 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Set this frame's RECEIVER shadow tail on the model/splat frame UBO from the fitted light matrix
         /// <paramref name="lightVp"/> (<see cref="ComputeShadowLightViewProj"/>): GPU-clip-correct it (the depth pass
-        /// renders to texture, so its matrix uses the same convention as the model pass's ViewProj; the receivers
+        /// renders to texture, so its matrix uses the same convention as the model pass's ViewProj, and the receivers
         /// sample with the SAME corrected matrix), derive the inverse-resolution + bias/strength, and hand it to the
         /// model renderer (uploaded with the frame UBO in the model pass). Always called when the shadow-map tier is
         /// active - whether or not the depth map is re-rendered this frame (the dirty-skip reuses the persistent map),
@@ -1512,12 +1512,12 @@ namespace KhaozEngine.Render3D
         /// <paramref name="lightVpGpu"/> (from <see cref="SetShadowReceiverTail"/>): bind + clear the shadow map, then
         /// draw every rigid + skinned caster into it (reusing the already-uploaded instance/skinned buffers). Terrain
         /// (splat meshes) do NOT cast (model-only casting - terrain self-shadowing is visually negligible in the
-        /// test scenes and the flat MMO ground has no overhangs); terrain always RECEIVES via the shared lighting
+        /// test scenes and the flat MMO ground has no overhangs). Terrain always RECEIVES via the shared lighting
         /// block. NEVER camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn unconditionally
         /// (an entry only got there because it is visible to the main pass, the shadow pass, or both - see
         /// <see cref="ClassifySkinnedVisibility"/>). The receiver tail is set separately and always (even on a skipped
         /// frame), so this only records depth. Runs only when the tier is ShadowMap AND the dirty check requires a
-        /// re-render (see <see cref="ShadowDepthPassDirty"/>); an unchanged static scene reuses the persistent map.
+        /// re-render (see <see cref="ShadowDepthPassDirty"/>). An unchanged static scene reuses the persistent map.
         /// </summary>
         void RenderShadowDepthPass(IGpuCommandList cl, Matrix4x4 lightVpGpu)
         {
@@ -2434,13 +2434,13 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Pure shadow depth-pass dirty decision (mirrors <see cref="ClassifySkinnedVisibility"/>: a tiny testable
         /// predicate, no GPU). The 2048^2 light-space depth map persists across frames, so the pass only needs to
-        /// re-render when its content would differ from the last rendered pass. It is dirty (must re-render) when:
-        /// there is no valid previous map (<paramref name="hadPrevious"/> false, e.g. the first shadow frame);
-        /// <paramref name="anySkinnedCaster"/> is present (a skinned caster's bone pose can animate every frame, and
-        /// hashing bone palettes is not worth it - any skinned caster forces a re-render); the map resolution changed
-        /// (<paramref name="resolutionChanged"/>, which also reallocates the target); the fitted light matrix changed
-        /// (<paramref name="lightMatrixChanged"/>); or the rigid caster set / world transforms changed
-        /// (<paramref name="casterDataChanged"/>). Otherwise the previous depth map is still correct and the pass is
+        /// re-render when its content would differ from the last rendered pass. Any of these makes it dirty (forces a
+        /// re-render). There is no valid previous map (<paramref name="hadPrevious"/> false, e.g. the first shadow
+        /// frame). <paramref name="anySkinnedCaster"/> is present (a skinned caster's bone pose can animate every
+        /// frame, and hashing bone palettes is not worth it - any skinned caster forces a re-render). The map
+        /// resolution changed (<paramref name="resolutionChanged"/>, which also reallocates the target). The fitted
+        /// light matrix changed (<paramref name="lightMatrixChanged"/>). The rigid caster set / world transforms
+        /// changed (<paramref name="casterDataChanged"/>). Otherwise the previous depth map is still correct and the pass is
         /// skipped (the map is reused, NOT cleared).
         /// </summary>
         internal static bool ShadowDepthPassDirty(bool hadPrevious, bool anySkinnedCaster,

@@ -39,7 +39,13 @@ area-of-interest deltas.
 - **`SnapshotWriter`** - serialize a server `World`'s `NetId` entities (and their registered components) to an
   opaque `byte[]` snapshot (`Write` full-state, `WriteFiltered` per-client interest). A `WriteFiltered` overload
   (since 9.33.0) also re-emits per-entity opaque `RetainedComponent` extension frames after the registered ones (the
-  write side of cell-blob retain-and-rewrite). **`ServerReplicator`** is the
+  write side of cell-blob retain-and-rewrite). For a hot per-tick server it also has an **indexed** form:
+  `WriteFiltered(WorldSnapshotIndex, SnapshotScratch, ...)` resolves the interest / border set off a
+  **`WorldSnapshotIndex`** (a reusable `NetId` -> entity index over one world, `Rebuild(world)` once per tick, shared
+  across every filtered snapshot targeting that world) in `O(setCount)` instead of a full-world `ForEach`, and encodes
+  through a reusable **`SnapshotScratch`** stream so only the returned wire array is allocated. `WriteSingle` is the
+  one-entity fast path for a caller that already holds the entity handle (an authority handoff capturing one crossing).
+  All three are byte-identical to the full-scan `WriteFiltered` (entities stay in world `ForEach` order). **`ServerReplicator`** is the
   per-slot acked whole-world baseline/delta variant (no AoI scoping): `Capture(world)` once per tick, then
   `WriteFor(slot, ownerNetId)` per client. It is channel-aware like the others - only `Replicate` components are
   captured, and an `OwnerOnly` component reaches only the client whose player net id is `ownerNetId`. Both
@@ -55,7 +61,10 @@ area-of-interest deltas.
   reads as a component delta, never a despawn+respawn. This is what `WorldServer`/`ShardedWorldServer`/`MmoServer`
   serve on the live path (see `KhaozEngine.NetWorld`). `WriteFor` captures the whole world once per tick, shared
   across every client served from that world (not once per client), into one pooled buffer, so allocation drops
-  sharply at high client counts while the wire stays byte-identical.
+  sharply at high client counts while the wire stays byte-identical. On top of that shared capture the per-client
+  projection is `O(interestSet)`: it resolves each client's interest set off the capture in `O(1)` per entity and
+  re-orders the selection by capture position, rather than walking the whole capture per client - so per-client cost
+  scales with the client's area of interest, not the world population, with the wire unchanged.
 - **`InterestGrid`** - a spatial-hash area-of-interest query (`Insert` / `Query(center, radius)`) used to compute a
   client's interest set for `WriteFiltered` / `AoiDeltaReplicator.WriteFor`.
 - **`ClientReplicationView`** - apply a snapshot to a client `World`: spawn new entities, despawn gone ones,

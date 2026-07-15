@@ -8,12 +8,26 @@ Windowing + input foundation for the custom MonoGame-free stack.
   design-sized window to the display.
 - **Present mode + frame cap** (since 9.23.0). The `AppWindow` ctor / `Scaled(...)` take a `PresentMode`
   (`Vsync` default, or `Immediate` = no vertical-blank sync) which selects the swapchain's `SyncToVerticalBlank`
-  at creation. `AppWindow.FrameCapHz` (settable any time; 0 = uncapped) paces `Run` to a target Hz with a
-  monotonic-clock `FrameLimiter`, independent of the swapchain's vsync - so a game can pin its render rate to an
-  integer multiple of its fixed tick (e.g. 60/120 for a 30 Hz network tick) to keep presentation phase-aligned.
-  This is the deterministic cap: the Veldrid Metal path does not reliably throttle from vsync alone, so a Mac
-  client can free-run well above the refresh unless a `FrameCapHz` is set. `FrameLimiter` is a pure,
-  headless-testable scheduler (`WaitBeforeNext(now)`).
+  at creation. `AppWindow.FrameCapHz` (settable any time) paces `Run` to a target Hz with a monotonic-clock
+  `FrameLimiter`, independent of the swapchain's vsync - so a game can pin its render rate to an integer multiple
+  of its fixed tick (e.g. 60/120 for a 30 Hz network tick) to keep presentation phase-aligned. `FrameLimiter` is a
+  pure, headless-testable scheduler (`WaitBeforeNext(now)`).
+- **Backend-aware auto cap + background throttle** (since 10.96.0). Sensible pacing by default, so a client no longer
+  free-runs a whole core plus the GPU out of the box.
+  - `FrameCap` is the frame-cap intent: `Auto` (the default - and `default(FrameCap)`), `Uncapped`, or `Hz(n)`.
+    `AppWindow.FrameCap` (and the plain `new AppWindow(title, w, h)` ctor) default to `Auto`. `FrameCap.Resolve(backend,
+    present, displayRefreshHz)` is pure: on **Metal + vsync** (where the Veldrid present does not throttle the CPU) it
+    resolves to the display refresh, else `FrameCap.DefaultMetalAutoCapHz` (120). On **D3D11 / Vulkan + vsync** and with
+    `Immediate` it stays uncapped. A consumer-set value always wins. `AppWindow.FrameCapHz` setter is the explicit int
+    form (positive = fixed, 0 = intentional `Uncapped`), and its getter returns the RESOLVED effective cap. The one-time
+    Metal-vsync warning (`Console.Error`, via the pure `DisplaySettings.RequiresFrameCapWarning` fed the resolved cap)
+    now fires ONLY for an explicit uncapped + vsync choice on Metal, never for the resolved `Auto` default.
+  - `AppWindow.BackgroundThrottle` (a `BackgroundThrottlePolicy`, default `Default` = ON) throttles a backgrounded
+    window. **Minimized** (detected via Silk's `WindowState.Minimized`): skip render + present and idle at `MinimizedHz`
+    (default 10). `Run` sets `Frame.RenderSuppressed` and still calls the callback so update-side simulation keeps
+    advancing. **Unfocused but visible:** render capped to `UnfocusedHz` (default 15, or lower). `Disabled` opts out
+    (render full-rate in the background). `BackgroundThrottlePolicy.Plan(activity, baseCapHz)` is the pure,
+    headless-tested per-frame decision (render gate + effective cap).
 - **Runtime display settings** (since 9.24.0). Present mode, frame cap, window mode, and resolution are all
   changeable live mid-session (no crash, no leaked swapchain), via the cohesive `IDisplaySettings` surface that
   `AppWindow` implements (also surfaced on `GameApp.Display`):

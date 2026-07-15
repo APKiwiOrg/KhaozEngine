@@ -38,14 +38,36 @@ namespace KhaozEngine.Game
         public PresentMode PresentMode;
 
         /// <summary>
-        /// Optional software frame-rate cap in Hz (0 = uncapped, the default). When set, <see cref="AppWindow.Run"/>
-        /// paces the loop to this rate with a monotonic-clock limiter (<see cref="FrameLimiter"/>), independent of the
-        /// swapchain's vsync - so a game can pin the render rate to an integer multiple of its fixed tick (e.g. 60 or
-        /// 120 for a 30 Hz tick) to keep presentation phase-aligned with the tick. This is the deterministic cap; use
-        /// it when vsync does not throttle (notably the Veldrid Metal path). Applied on both the default and a custom
-        /// <see cref="WindowFactory"/> window (set post-construction), so a factory need not forward it.
+        /// Optional EXPLICIT software frame-rate cap in Hz. A positive value OVERRIDES <see cref="FrameCap"/> with a
+        /// fixed cap. The default 0 leaves <see cref="FrameCap"/> in charge (which defaults to the backend-aware
+        /// <see cref="Windowing.FrameCap.Auto"/>). When a cap is in force, <see cref="AppWindow.Run"/> paces the loop
+        /// to it with a monotonic-clock limiter (<see cref="FrameLimiter"/>) independent of the swapchain's vsync - so
+        /// a game can pin the render rate to an integer multiple of its fixed tick (e.g. 60 or 120 for a 30 Hz tick).
+        /// Applied on both the default and a custom <see cref="WindowFactory"/> window (set post-construction), so a
+        /// factory need not forward it. To free-run intentionally (the old default), set <see cref="FrameCap"/> to
+        /// <see cref="Windowing.FrameCap.Uncapped"/> - a 0 here no longer means uncapped, it means "use FrameCap".
         /// </summary>
         public int FrameCapHz;
+
+        /// <summary>
+        /// The frame-cap intent when <see cref="FrameCapHz"/> is 0 (the default): <see cref="Windowing.FrameCap.Auto"/>
+        /// (the default - backend-aware: a real cap on Metal + vsync where the CPU otherwise free-runs, uncapped on
+        /// D3D11/Vulkan where vsync throttles), <see cref="Windowing.FrameCap.Uncapped"/> (intentional free-run), or a
+        /// fixed <see cref="Windowing.FrameCap.Hz"/>. The zero value of this field is <see cref="Windowing.FrameCap.Auto"/>,
+        /// so a default-constructed options struct opts into the backend-aware cap rather than free-running. A positive
+        /// <see cref="FrameCapHz"/> wins over this.
+        /// </summary>
+        public FrameCap FrameCap;
+
+        /// <summary>
+        /// How the loop throttles the window while it is backgrounded (unfocused / minimized). <c>null</c> (the
+        /// default) uses <see cref="BackgroundThrottlePolicy.Default"/> (ON): a minimized window skips render + present
+        /// and idles while its update keeps running, and an unfocused-but-visible window drops to a low frame cap. Set
+        /// <see cref="BackgroundThrottlePolicy.Disabled"/> to keep rendering full-rate in the background (a live
+        /// wallpaper / capture source), or a custom policy. Applied post-construction on both the default and a custom
+        /// <see cref="WindowFactory"/> window.
+        /// </summary>
+        public BackgroundThrottlePolicy? BackgroundThrottle;
 
         /// <summary>
         /// How the window initially occupies the display (default <see cref="WindowMode.Windowed"/>). Applied
@@ -121,7 +143,8 @@ namespace KhaozEngine.Game
         internal int ResolvedDesignHeight => DesignHeight == 0 ? Height : DesignHeight;
 
         /// <summary>Sensible defaults: Fit scaling, 1:1 design space, dark clear colour, 30s resume-gap threshold,
-        /// vsync present, no software frame cap, windowed.</summary>
+        /// vsync present, the backend-aware <see cref="Windowing.FrameCap.Auto"/> cap, the ON background-throttle
+        /// policy (default), windowed.</summary>
         public static GameAppOptions For(string title, int width, int height) => new()
         {
             Title = title,
@@ -134,6 +157,8 @@ namespace KhaozEngine.Game
             ResumeGapThresholdSeconds = 30.0,
             PresentMode = PresentMode.Vsync,
             FrameCapHz = 0,
+            FrameCap = FrameCap.Auto,
+            BackgroundThrottle = null, // null = BackgroundThrottlePolicy.Default (ON)
             WindowMode = WindowMode.Windowed,
         };
     }

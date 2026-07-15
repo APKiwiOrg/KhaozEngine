@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.97.0
+
+### O(interestSet) AoI projection + indexed filtered snapshots
+
+Replication AoI projection and filtered snapshots no longer scan the whole world per client. `AoiDeltaReplicator.WriteFor`
+now resolves each client's interest set off the shared per-tick capture in `O(interestSet)`, re-ordered by capture
+position, instead of walking the whole capture per client.
+
+- **Indexed snapshot writes.** `SnapshotWriter` gains an indexed `WriteFiltered(WorldSnapshotIndex, SnapshotScratch, ...)`
+  plus a one-entity `WriteSingle` that resolve a filtered snapshot off a reusable per-world netId index and a reused
+  stream. `ShardHost` adopts them at `SyncGhosts`, `ProcessHandoffs`, and the `SnapshotForClient` fallback with a
+  per-tick shared index.
+- **Wire-identical.** Wire output is byte-identical to the full-scan path, asserted by independent reference encoders
+  across randomized worlds, interest sets, owner scoping, and multi-tick delta sequences.
+- **Perf.** At 64 clients x 16384 entities the replication tick drops about 18 percent (43.7 to 35.9 ms) with about
+  12 percent less steady-state allocation, and the win grows as AoI selectivity tightens.
+- **New API.** `WorldSnapshotIndex`, `SnapshotScratch`, `SnapshotWriter.WriteFiltered` indexed overloads,
+  `SnapshotWriter.WriteSingle`.
+
+## 10.96.0
+
+### Backend-aware default frame cap + background throttle
+
+The engine now paces the loop sensibly by default, so a client no longer free-runs a whole CPU core plus the GPU.
+`FrameCap` (`Auto` / `Uncapped` / `Hz(n)`) is the new cap intent and the default. `FrameCap.Auto` resolves to a real
+cap on Metal + vsync (the display refresh, else 120, where the Veldrid present does not throttle the CPU) and stays
+uncapped on D3D11 / Vulkan + vsync (where vsync throttles) and under `Immediate`. A consumer-set value always wins,
+and a positive `FrameCapHz` still means an explicit fixed cap (0 = intentional uncapped).
+
+- **Background throttle.** `BackgroundThrottlePolicy` (default ON, opt out with `Disabled`) skips render + present
+  and idles a minimized window while its update keeps running, and drops an unfocused-but-visible window to a low
+  cap. The per-frame decision is the pure, headless-tested `BackgroundThrottlePolicy.Plan`.
+- **New API.** `AppWindow.FrameCap` / `AppWindow.BackgroundThrottle`, `GameApp.FrameCap` /
+  `GameApp.BackgroundThrottle`, `GameAppOptions.FrameCap` / `GameAppOptions.BackgroundThrottle`,
+  `Frame.RenderSuppressed`. The Metal-vsync warning now fires only for an explicit uncapped present under vsync on
+  Metal.
+- **Behavior change.** The default cap is now `Auto`, not uncapped. Set `FrameCap.Uncapped` to restore the old
+  free-run.
+
 ## 10.95.0
 
 ### Crisp boot-screen text on HiDPI (DPI-aware `BootScreen` font) + `DpiFont` multi-slot cache

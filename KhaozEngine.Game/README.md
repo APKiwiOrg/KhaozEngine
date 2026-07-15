@@ -19,13 +19,22 @@ Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResi
 `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,
 `ScaleMode`, `ClearColor` as needed).
 
-Set `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`), `GameAppOptions.FrameCapHz` (0 = uncapped), and
-`GameAppOptions.WindowMode` (`Windowed` default) for the initial presentation (present mode since 9.23.0, window
-mode since 9.24.0). `FrameCapHz` paces the loop to a target Hz with a monotonic-clock limiter independent of the
-swapchain's vsync - pin it to an integer multiple of a fixed network tick (e.g. 60/120 for 30 Hz) to keep
-presentation phase-aligned. It is the deterministic cap where vsync does not throttle (notably Mac/Metal). Frame
-cap and window mode are applied on both the default and a custom `WindowFactory` window; `PresentMode` selects the
-swapchain vsync at creation on the default window (a custom factory must forward it, though it can be flipped live).
+Set `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`), the frame cap, and `GameAppOptions.WindowMode`
+(`Windowed` default) for the initial presentation (present mode since 9.23.0, window mode since 9.24.0). A positive
+`GameAppOptions.FrameCapHz` is an explicit cap that paces the loop to a target Hz with a monotonic-clock limiter
+independent of the swapchain's vsync - pin it to an integer multiple of a fixed network tick (e.g. 60/120 for 30 Hz)
+to keep presentation phase-aligned. Frame cap, `FrameCap`, `BackgroundThrottle`, and window mode are applied on both
+the default and a custom `WindowFactory` window. `PresentMode` selects the swapchain vsync at creation on the default
+window (a custom factory must forward it, though it can be flipped live).
+
+**Backend-aware cap + background throttle** (since 10.96.0): sensible pacing by default, so a game no longer free-runs
+a whole core plus the GPU out of the box. `GameAppOptions.FrameCap` defaults to `FrameCap.Auto` - a real cap on Metal
++ vsync (the display refresh, else 120, where the CPU otherwise free-runs), uncapped on D3D11/Vulkan where vsync
+throttles. A consumer-set value wins: `FrameCap.Uncapped` is the pre-10.96 free-run, `FrameCap.Hz(n)` a fixed cap, and
+a positive `FrameCapHz` overrides `FrameCap`. `GameAppOptions.BackgroundThrottle` (default ON when `null`) idles a
+minimized game (skips render + present, but `OnUpdate` keeps running so netcode/timers advance) and drops an
+unfocused-but-visible one to a low cap. `BackgroundThrottlePolicy.Disabled` renders full-rate in the background. Both
+are live-changeable via `GameApp.FrameCap` / `GameApp.BackgroundThrottle`.
 
 **Runtime display settings** (since 9.24.0): change present mode, frame cap, window mode, and resolution live
 mid-session (no crash, no leaked swapchain) via `GameApp.Display` (the cohesive `IDisplaySettings` surface) or the
@@ -34,8 +43,9 @@ mid-session (no crash, no leaked swapchain) via `GameApp.Display` (the cohesive 
 Since 9.26.0 `Display` also carries window placement - position + monitor (`WindowX` / `WindowY` / `MoveTo`,
 `Monitors` / `CurrentMonitorIndex` / `MoveToMonitor`, `EnsureVisible`) and `X`/`Y` on the `DisplaySettings` snapshot -
 so a game can persist + restore its full window placement across launches (the restore self-clamps on-screen).
-`GameApp.Backend` exposes the active graphics backend so display defaults can branch per platform (e.g. force a
-`FrameCapHz` on Metal, where vsync alone does not cap - the engine warns once if you select vsync with no cap there).
+`GameApp.Backend` exposes the active graphics backend for per-platform tuning. You no longer need to branch on it to
+cap Metal - `FrameCap.Auto` (the default) does that. The engine warns once only if you explicitly force an uncapped
+free-run with vsync on Metal.
 
 Override `OnResume(TimeSpan wallGap)` to react to an OS sleep/suspend/hibernate (or a long hang): it fires once,
 before `OnUpdate`, on the first frame whose wall-clock gap (`Clock.RealWallGapSeconds`, which survives a suspend

@@ -225,6 +225,13 @@ namespace KhaozEngine.Tests.Dungeon
             return new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f));
         }
 
+        // CharacterAvatar is Obsolete (superseded by ReplicatedCharacterAnimators - see the type doc), RoomDungeon and
+        // Room3D have both since moved onto the bridge. This section pins its documented RenderPosition-ease
+        // behaviour anyway: no consumer left, but it is still public API and must not silently regress for whatever
+        // still references it (DungeonStairSignalGlideTests is the equivalent pin for the bridge). Exercising the
+        // obsolete type on purpose, so CS0618 is disabled for the rest of this file.
+#pragma warning disable CS0618
+
         // Build an avatar (controller + one-bone animator, no mesh) settled grounded at the flat-floor start, ready to
         // walk up the real stair. Returns the pieces the drive needs.
         static (CharacterAvatar avatar, IPhysicsWorld world, float axisYaw, Func<float, float, float> ground,
@@ -356,5 +363,6 @@ namespace KhaozEngine.Tests.Dungeon
                 Assert.True(sawAirborne, "the jump should have gone airborne");
             }
         }
+#pragma warning restore CS0618
     }
 }

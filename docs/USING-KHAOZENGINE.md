@@ -1767,9 +1767,17 @@ state, not the reverse.
 
 ## Animated characters (glTF clip playback + locomotion blend)
 
-### Turnkey: `CharacterAvatar` (one `Update`/`Draw`)
+### Turnkey: `CharacterAvatar` (one `Update`/`Draw`) - Obsolete
 
-For a LOCAL third-person player, `CharacterAvatar` (`KhaozEngine.Game.Render3D`) is the one object to build. It
+**`CharacterAvatar` is Obsolete.** Its `RenderPosition` ease (`RenderHeightSmoothRate`) is a plain toward-physics-
+height smoother with no idea WHY the height jumped, so it either lags a paced stair climb or crawls a discrete
+riser. Every consumer (`RoomNet`, `RoomDungeon`, and now `Room3D`) has moved onto `ReplicatedCharacterAnimators`
+("the character bridge") fed `CharacterController3D.ClimbRate` / `.StepDeltaY` directly - see **"No netcode? Read
+the signal straight off `CharacterController3D`"** below for the local (non-networked) wiring both showcase rooms
+use. `CharacterAvatar` stays in place (existing pins still exercise it) but is not recommended for new code - the
+section below documents the old bundle for reference only.
+
+For a LOCAL third-person player, `CharacterAvatar` (`KhaozEngine.Game.Render3D`) was the one object to build. It
 composes `CharacterController3D` (movement + smooth stair climbing + collision) + `AnimatedCharacter` (clip brain) +
 `CharacterFacing` (facing) + the skinned draw, so you do NOT hand-wire the facing, the speed-derive, the animation
 feed, and the feet-draw matrix (that manual wiring is spelled out under *Under the hood* below, for when you need the
@@ -1939,14 +1947,14 @@ so those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y 
 `ClimbRate` through your sample loop (see `e.ClimbRate` above); a position-only sample reads 0 (no glide).
 
 **No netcode? Read the signal straight off `CharacterController3D`.** The bridge is not netcode-only: a single-player
-room with no `WorldClient`/`EntityRenderState` can still drive it for the canonical glide instead of `CharacterAvatar`'s
-own basic `RenderHeightSmoothRate` ease. `CharacterController3D` exposes the same sim facts directly -
-`controller.ClimbRate` (`MoveState.ClimbRate`) and `controller.StepDeltaY` (`MoveState.StepDeltaY`, accumulate it into a
-running sum each frame for `CharacterSample.StepCumulativeY` - no reconciliation runs locally, so a plain accumulator is
-exactly-once by construction). Build a one-entity `ReplicatedCharacterAnimators` (id 0) and feed it an exact-movement
-`CharacterSample` each frame off the controller's own state, `.WithFacingYaw(...)` for the collision-robust intended-move
-facing `CharacterAvatar` would otherwise have handled. See `KhaozEngine.Showcase`'s "Dungeon (walk)" room
-(`RoomDungeon`) for the full wiring.
+room with no `WorldClient`/`EntityRenderState` can still drive it for the canonical glide instead of the Obsolete
+`CharacterAvatar`'s own basic `RenderHeightSmoothRate` ease. `CharacterController3D` exposes the same sim facts
+directly - `controller.ClimbRate` (`MoveState.ClimbRate`) and `controller.StepDeltaY` (`MoveState.StepDeltaY`,
+accumulate it into a running sum each frame for `CharacterSample.StepCumulativeY` - no reconciliation runs locally, so
+a plain accumulator is exactly-once by construction). Build a one-entity `ReplicatedCharacterAnimators` (id 0) and
+feed it an exact-movement `CharacterSample` each frame off the controller's own state, `.WithFacingYaw(...)` for the
+collision-robust intended-move facing `CharacterAvatar` used to handle. See `KhaozEngine.Showcase`'s "Dungeon (walk)"
+room (`RoomDungeon`) and the "3D World" room (`Room3D`) for the full wiring - both drive one local entity this way.
 
 An ISOLATED step (a building doorstep, a curb, the first riser of a run before the continuous signal engages, or an
 isolated step-down) is NOT a continuous run, so the sim leaves `ClimbRate == 0` and the glide above renders it RAW - the

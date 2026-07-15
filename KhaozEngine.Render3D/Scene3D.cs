@@ -70,6 +70,19 @@ namespace KhaozEngine.Render3D
         readonly List<ShadowBlob> _shadowBlobs = new();
         // Reused scratch for the blobs-as-decals so the per-frame conversion allocates nothing.
         readonly List<GroundDecal> _shadowDecals = new();
+        // Shadow depth-pass dirty-skip state (efficiency): the 2048^2 light-space depth map is a persistent GPU
+        // texture, so when nothing shadow-relevant changed since the last RENDERED pass the pass is skipped and the
+        // prior map is reused (never cleared) - a mostly-static scene stops repainting every caster into it every
+        // frame. Kept from the last rendered pass, compared against this frame in RenderInternal; the caster
+        // signature buffers are swapped (not copied) when a dirty pass commits, so the check stays allocation-free.
+        bool _shadowPassRendered;             // a real depth pass has rendered since construction (map holds valid content)
+        bool _shadowPassSkippedLastFrame;     // the last rendered frame reused the prior depth map (public signal below)
+        Matrix4x4 _lastShadowLightVp;         // ComputeShadowLightViewProj output of the last rendered pass
+        int _lastShadowResolution;            // allocated shadow-map resolution at the last rendered pass
+        List<(int Index, int Generation, uint Count)> _lastShadowCasterRuns = new();   // last pass's non-splat caster runs
+        List<Matrix4x4> _lastShadowCasterModels = new();                               // last pass's caster world matrices
+        List<(int Index, int Generation, uint Count)> _shadowCasterRunsScratch = new();   // this-frame scratch (swapped in on commit)
+        List<Matrix4x4> _shadowCasterModelsScratch = new();
         // Per-frame animated-water-surface requests (Rendering gap #5). Cleared each Begin() like the decal queue;
         // opt-in - an empty queue means the water pass (Rendering.WaterRenderer) never runs this frame.
         readonly List<WaterPlane> _waterPlanes = new();
@@ -225,6 +238,20 @@ namespace KhaozEngine.Render3D
         /// itemized (their CPU encode time shows in <see cref="PassTimingsMs"/>'s post field instead).
         /// </summary>
         public RenderFrameStats LastFrameStats => _frameStats;
+
+        /// <summary>
+        /// True when the last rendered frame SKIPPED the key-light shadow depth pass and reused the previous frame's
+        /// shadow map. The pass is skipped only when every shadow-relevant input is unchanged since the last rendered
+        /// pass: the fitted light matrix (<see cref="ComputeShadowLightViewProj"/>, which folds in the light
+        /// direction, focus, and camera), the rigid caster set + world transforms, the map resolution, and no animated
+        /// skinned caster is present (a skinned caster's bone pose can change every frame, so it always re-renders).
+        /// Always <c>false</c> when the resolved shadow tier is not <see cref="ShadowMode.ShadowMap"/>, and on any
+        /// frame the depth pass re-rendered. A diagnostics/HUD signal for the static-scene shadow optimisation:
+        /// presentation-neutral (a skipped frame shadows identically to a re-rendered one, since the map content is
+        /// the same casters under the same matrix). A skipped pass contributes zero shadow draw calls to
+        /// <see cref="LastFrameStats"/>.
+        /// </summary>
+        public bool ShadowPassSkippedLastFrame => _shadowPassSkippedLastFrame;
 
         /// <summary>Host-set per-frame clock (seconds) driving beam pulse/scroll (see <see cref="DrawBeam"/> /
         /// <see cref="BeamStyle"/>). Set it once per frame in your draw callback (it runs after <see cref="Begin"/>),
@@ -1456,26 +1483,39 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Render the key-light shadow depth pass for this frame using the already-fitted <paramref name="lightVp"/>
-        /// (<see cref="ComputeShadowLightViewProj"/>): set the shadow tail on the frame UBO, then draw every rigid +
-        /// skinned caster into the shadow map (reusing the already-uploaded instance/skinned buffers). Terrain
-        /// (splat meshes) do NOT cast (model-only casting - terrain self-shadowing is visually negligible in the
-        /// test scenes and the flat MMO ground has no overhangs); terrain always RECEIVES via the shared lighting
-        /// block. NEVER camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn unconditionally
-        /// (an entry only got there because it is visible to the main pass, the shadow pass, or both - see
-        /// <see cref="ClassifySkinnedVisibility"/>). Runs only when the tier resolves to ShadowMap.
+        /// Set this frame's RECEIVER shadow tail on the model/splat frame UBO from the fitted light matrix
+        /// <paramref name="lightVp"/> (<see cref="ComputeShadowLightViewProj"/>): GPU-clip-correct it (the depth pass
+        /// renders to texture, so its matrix uses the same convention as the model pass's ViewProj; the receivers
+        /// sample with the SAME corrected matrix), derive the inverse-resolution + bias/strength, and hand it to the
+        /// model renderer (uploaded with the frame UBO in the model pass). Always called when the shadow-map tier is
+        /// active - whether or not the depth map is re-rendered this frame (the dirty-skip reuses the persistent map),
+        /// so the receivers always sample it with the matrix it was baked against, and bias/strength changes apply
+        /// even on a skipped frame. Returns the GPU-clip-corrected matrix the depth pass draws with.
         /// </summary>
-        void RenderShadowDepthPass(IGpuCommandList cl, Matrix4x4 lightVp)
+        Matrix4x4 SetShadowReceiverTail(Matrix4x4 lightVp)
         {
             var shadows = Post.Quality.Shadows;
-            // The shadow map is a render-to-texture, so the light matrix uploaded for the DEPTH pass is GPU-clip
-            // corrected (same convention as the model pass's ViewProj). The receivers sample with the SAME corrected
-            // matrix, so the shadow lookup stays consistent across backends.
             Matrix4x4 lightVpGpu = GpuClip.Correct(lightVp, _gd.Capabilities);
             int res = _model.ShadowMap.Resolution;   // the actual allocated resolution (clamped)
             float invRes = 1f / Math.Max(1, res);
             _model.SetShadowUniforms(lightVpGpu, invRes, shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength);
+            return lightVpGpu;
+        }
 
+        /// <summary>
+        /// Render the key-light shadow depth pass for this frame using the already-fitted GPU-clip-corrected
+        /// <paramref name="lightVpGpu"/> (from <see cref="SetShadowReceiverTail"/>): bind + clear the shadow map, then
+        /// draw every rigid + skinned caster into it (reusing the already-uploaded instance/skinned buffers). Terrain
+        /// (splat meshes) do NOT cast (model-only casting - terrain self-shadowing is visually negligible in the
+        /// test scenes and the flat MMO ground has no overhangs); terrain always RECEIVES via the shared lighting
+        /// block. NEVER camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn unconditionally
+        /// (an entry only got there because it is visible to the main pass, the shadow pass, or both - see
+        /// <see cref="ClassifySkinnedVisibility"/>). The receiver tail is set separately and always (even on a skipped
+        /// frame), so this only records depth. Runs only when the tier is ShadowMap AND the dirty check requires a
+        /// re-render (see <see cref="ShadowDepthPassDirty"/>); an unchanged static scene reuses the persistent map.
+        /// </summary>
+        void RenderShadowDepthPass(IGpuCommandList cl, Matrix4x4 lightVpGpu)
+        {
             // Depth pass: bind + clear the shadow map, then draw every rigid caster run + skinned caster. Reuses the
             // instance buffer the model pass uploaded (no second upload). Splat (terrain) runs are skipped (receive-only).
             _model.BeginShadowPass(cl, lightVpGpu);
@@ -1628,10 +1668,36 @@ namespace KhaozEngine.Render3D
             // exact same matrix the skinned-visibility split was computed against.
             float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, postMs = 0f;
             long timingStart = 0;
+            _shadowPassSkippedLastFrame = false;
             if (shadowMapActive)
             {
                 timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-                RenderShadowDepthPass(cl, shadowLightVp);
+                // Always set the receiver tail so the model + splat fragments sample the map (whether or not its depth
+                // is re-rendered this frame). Then decide whether the depth pass must actually re-run: the 2048^2 map
+                // persists across frames, so an unchanged static scene reuses it and skips every caster draw.
+                Matrix4x4 lightVpGpu = SetShadowReceiverTail(shadowLightVp);
+                CaptureShadowCasters(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
+                bool dirty = ShadowDepthPassDirty(
+                    hadPrevious: _shadowPassRendered,
+                    anySkinnedCaster: _cpuSkinnedDraws.Count > 0,
+                    resolutionChanged: _model.ShadowMap.Resolution != _lastShadowResolution,
+                    lightMatrixChanged: _lastShadowLightVp != shadowLightVp,
+                    casterDataChanged: ShadowCastersChanged(
+                        _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels));
+                if (dirty)
+                {
+                    RenderShadowDepthPass(cl, lightVpGpu);
+                    // Commit this frame's signature as next frame's reference. Swap the reused buffers (no copy/alloc):
+                    // the scratch now holds the just-rendered casters, so make it the kept copy and reuse the old kept
+                    // copy as next frame's scratch.
+                    (_lastShadowCasterRuns, _shadowCasterRunsScratch) = (_shadowCasterRunsScratch, _lastShadowCasterRuns);
+                    (_lastShadowCasterModels, _shadowCasterModelsScratch) = (_shadowCasterModelsScratch, _lastShadowCasterModels);
+                    _lastShadowLightVp = shadowLightVp;
+                    _lastShadowResolution = _model.ShadowMap.Resolution;
+                    _shadowPassRendered = true;
+                }
+                else
+                    _shadowPassSkippedLastFrame = true;
                 if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
             }
             else
@@ -2360,6 +2426,63 @@ namespace KhaozEngine.Render3D
             bool visibleMain = !cullMain || mainFrustum.IntersectsSphere(center, r);
             bool visibleShadow = shadowActive && shadowFrustum.IntersectsSphere(center, r);
             return (visibleMain, visibleShadow);
+        }
+
+        /// <summary>
+        /// Pure shadow depth-pass dirty decision (mirrors <see cref="ClassifySkinnedVisibility"/>: a tiny testable
+        /// predicate, no GPU). The 2048^2 light-space depth map persists across frames, so the pass only needs to
+        /// re-render when its content would differ from the last rendered pass. It is dirty (must re-render) when:
+        /// there is no valid previous map (<paramref name="hadPrevious"/> false, e.g. the first shadow frame);
+        /// <paramref name="anySkinnedCaster"/> is present (a skinned caster's bone pose can animate every frame, and
+        /// hashing bone palettes is not worth it - any skinned caster forces a re-render); the map resolution changed
+        /// (<paramref name="resolutionChanged"/>, which also reallocates the target); the fitted light matrix changed
+        /// (<paramref name="lightMatrixChanged"/>); or the rigid caster set / world transforms changed
+        /// (<paramref name="casterDataChanged"/>). Otherwise the previous depth map is still correct and the pass is
+        /// skipped (the map is reused, NOT cleared).
+        /// </summary>
+        internal static bool ShadowDepthPassDirty(bool hadPrevious, bool anySkinnedCaster,
+            bool resolutionChanged, bool lightMatrixChanged, bool casterDataChanged)
+            => !hadPrevious || anySkinnedCaster || resolutionChanged || lightMatrixChanged || casterDataChanged;
+
+        /// <summary>
+        /// Pure sequence compare of two captured shadow-caster signatures (each a per-run mesh handle + instance
+        /// count list, and the flat per-instance world-matrix list, in draw order). Returns <c>true</c> when they
+        /// DIFFER, so the depth map must re-render. Both signatures are captured by <see cref="CaptureShadowCasters"/>
+        /// in the exact draw order of <see cref="RenderShadowDepthPass"/>, so an equal signature proves the same
+        /// casters at the same transforms as the last rendered pass. No GPU, headless-testable.
+        /// </summary>
+        internal static bool ShadowCastersChanged(
+            List<(int Index, int Generation, uint Count)> runsA, List<Matrix4x4> modelsA,
+            List<(int Index, int Generation, uint Count)> runsB, List<Matrix4x4> modelsB)
+        {
+            if (runsA.Count != runsB.Count || modelsA.Count != modelsB.Count) return true;
+            for (int i = 0; i < runsA.Count; i++) if (runsA[i] != runsB[i]) return true;
+            for (int i = 0; i < modelsA.Count; i++) if (modelsA[i] != modelsB[i]) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Capture this frame's shadow casters (the valid, non-splat model runs the depth pass would draw) into
+        /// <paramref name="runs"/> + <paramref name="models"/> in the EXACT draw order of
+        /// <see cref="RenderShadowDepthPass"/>: each run's mesh handle (index + generation) + instance count, then
+        /// that run's per-instance world matrices from the uploaded instance buffer. Terrain (splat) and stale-handle
+        /// runs are excluded, matching what the pass draws. Reused buffers (Cleared, not reallocated), so the
+        /// per-frame dirty check that consumes this stays allocation-free.
+        /// </summary>
+        void CaptureShadowCasters(List<(int Index, int Generation, uint Count)> runs, List<Matrix4x4> models)
+        {
+            runs.Clear();
+            models.Clear();
+            foreach (var run in _runs)
+            {
+                if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
+                var m = _meshes[run.Mesh.Index];
+                if (m is not { } mesh) continue;
+                if (mesh.SplatMaterial >= 0) continue;   // terrain does not cast (receive-only) - matches the depth pass
+                runs.Add((run.Mesh.Index, run.Mesh.Generation, run.Count));
+                for (uint s = 0; s < run.Count; s++)
+                    models.Add(_instanceData[(int)(run.Start + s)].Model);
+            }
         }
 
         /// <summary>

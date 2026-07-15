@@ -12,14 +12,14 @@ namespace KhaozEngine.Tests.Gpu
 {
     // GPU-SKINNING VIABILITY REPRO (the spike gate). The engine HAD a GPU skinned-mesh path and removed it: the
     // recorded reason was that the skinned vertex shader's bone-buffer array read returned garbage past element 0 in
-    // the WINDOWED Veldrid/Metal swapchain context ("only bones[0] survives; a constant bones[1] or any
+    // the WINDOWED Veldrid/Metal swapchain context ("only bones[0] survives, a constant bones[1] or any
     // data-dependent index reads garbage - independent of buffer type / binding / dynamic offset / submit
-    // structure; headless/fenced is clean"). Archaeology (git show 80b69f22^) showed the OLD binding was already a
+    // structure. headless/fenced is clean"). Archaeology (git show 80b69f22^) showed the OLD binding was already a
     // dynamic-offset UNIFORM block `Bones { mat4 bones[128]; }` (GpuBufferUsage.UniformBuffer, dynamic:true),
     // indexed by a per-vertex float BoneIndex - NOT a storage/structured buffer.
     //
     // These tests isolate exactly that read on THIS machine's Metal device, OFFSCREEN. They render N small quads,
-    // each carrying a per-vertex bone index i; bones[i] is a translation that places quad i at a distinct screen
+    // each carrying a per-vertex bone index i, where bones[i] is a translation that places quad i at a distinct screen
     // column. If every element past 0 reads correctly, all N columns are occupied. If "only bones[0] survives", the
     // quads collapse and the distinct-column assertion fails.
     //
@@ -30,12 +30,12 @@ namespace KhaozEngine.Tests.Gpu
     // survive), for uniform AND storage bones and 1 or 2 vertex buffers - the SAME Metal two-UBO mis-bind the
     // splat-params note documents. It also proves the FIX: fold the matrix into the bone buffer so the vertex reads
     // exactly ONE resource buffer at set 0. So the historical bug is NOT windowed-specific (it repros offscreen) and
-    // NOT a bone-read bug; it is a multi-buffer binding bug, fixable but needing a skinned-specific binding layout.
+    // NOT a bone-read bug. It is a multi-buffer binding bug, fixable but needing a skinned-specific binding layout.
     // Skipped unless KE_GPU_TESTS is set.
     public sealed class GpuSkinningReproGpuTests
     {
         const int W = 256, H = 64;
-        const int N = 8;                 // distinct bones exercised (0..7); index 7 is a strong "past element 0" probe
+        const int N = 8;                 // distinct bones exercised (0..7), index 7 is a strong "past element 0" probe
         const int MaxBones = 128;        // matches SkinningMath.MaxBonesPerDraw: the uniform block is `mat4 bones[128]` = 8 KiB
         const uint SlotBytes = (uint)MaxBones * 64u; // 8192, a multiple of 256 => valid dynamic-offset alignment
 
@@ -94,7 +94,7 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
         }
 
         // ---- Variant 2: a DYNAMIC-OFFSET uniform block (the exact old SkinnedModelRenderer binding). N slots in one
-        //      buffer; draw s binds slot s via a per-draw dynamic offset, and its quad reads a FIXED non-zero bone
+        //      buffer, where draw s binds slot s via a per-draw dynamic offset, and its quad reads a FIXED non-zero bone
         //      index (5) within that slot. Tests dynamic-offset window selection AND a non-zero per-vertex index
         //      together - the historical failure mode. ----
         [GpuFact]
@@ -105,7 +105,7 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
             var f = gd.Factory;
             const int FixedIdx = 5; // a non-zero index, exercised in every slot
 
-            // N slots of MaxBones mat4. In slot s, bones[FixedIdx] = translation to column s; rest identity.
+            // N slots of MaxBones mat4. In slot s, bones[FixedIdx] = translation to column s, rest identity.
             var slots = new Matrix4x4[N * MaxBones];
             for (int i = 0; i < slots.Length; i++) slots[i] = Matrix4x4.Identity;
             for (int s = 0; s < N; s++) slots[s * MaxBones + FixedIdx] = Matrix4x4.CreateTranslation(ColumnX(s), 0f, 0f);
@@ -126,7 +126,7 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
             using IGpuBuffer vb = f.CreateBuffer(new GpuBufferDescription((uint)(quad.Length * Marshal.SizeOf<Vtx>()), GpuBufferUsage.VertexBuffer));
             using IGpuResourceLayout layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Bones", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
-            // The set binds a single-slot WINDOW (offset 0, size SlotBytes); the per-draw dynamic offset selects the slot.
+            // The set binds a single-slot WINDOW (offset 0, size SlotBytes), and the per-draw dynamic offset selects the slot.
             using IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(layout, new GpuBufferRange(boneBuf, 0, SlotBytes)));
             using IGpuShaderSet shaders = f.CreateShadersFromSpirv(Vert, Frag);
             using IGpuPipeline pipe = f.CreateGraphicsPipeline(new GpuPipelineDescription
@@ -167,7 +167,7 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0); }";
         // ---- Variant 3: the ROOT CAUSE + the WORKING FIX for the real skinned pipeline.
         //   The real model VERTEX stage needs BOTH a matrix (ViewProj) AND the bone palette. Doing that as TWO
         //   uniform buffers read by the vertex (frame U at set 0 + bones at set 1) REPRODUCES the historical
-        //   corruption OFFSCREEN: only the first bones survive (measured occupancy [1,0,0,0,0,0,0,0]; or
+        //   corruption OFFSCREEN: only the first bones survive (measured occupancy [1,0,0,0,0,0,0,0], or
         //   [1,1,1,1,0,0,0,0] with the sets swapped). This is the SAME Metal two-UBO mis-bind the splat-params note
         //   documents, and it holds for a STORAGE bones buffer and for 1 or 2 vertex buffers too (all confirmed via
         //   this harness during the spike). Variants 1+2 prove the bone read itself is fine when bones is the ONLY
@@ -305,7 +305,7 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0) + Tint * 1e-30; }";
         static void AssertEveryColumnOccupied(byte[] px, string label)
         {
             int midRow = H / 2;
-            const int tol = 6; // pixels; bars are ~13px wide, columns are spread ~27px apart
+            const int tol = 6; // pixels. bars are ~13px wide, columns are spread ~27px apart
             var occupied = new bool[N];
             for (int i = 0; i < N; i++)
             {
@@ -331,7 +331,7 @@ void main() { o = vec4(1.0, 1.0, 1.0, 1.0) + Tint * 1e-30; }";
                 Directory.CreateDirectory(dir);
                 PngWriter.Save(Path.Combine(dir, name), rgba, W, H);
             }
-            catch { /* PNG dump is diagnostic only; never fail the test on IO */ }
+            catch { /* PNG dump is diagnostic only, never fail the test on IO */ }
         }
     }
 }

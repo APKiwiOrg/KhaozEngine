@@ -118,6 +118,10 @@ namespace KhaozEngine.Showcase
             // The landing menu draws through the point-space UI pass with the shared DpiFonts.
             _scenes.Push(new MenuScene(_white, dpi40, dpi22, Rooms));
 
+            // Feed the built-in diagnostics HUD (F1) a Network section whenever the networked-walk room is active:
+            // the source returns the live client stats there and null everywhere else (so the section drops out).
+            Diagnostics?.SetNetStatsSource(() => (_scenes.Active as RoomNet)?.NetStats);
+
             // Smoke aid: KE_SHOWCASE_ROOM=<name> auto-enters that room, so a headless KE_MAX_FRAMES run actually
             // exercises the room's OnEnter/OnUpdate/OnDraw (the menu alone never builds a room's world). The push
             // is deferred to the first OnUpdate (below), not done here, because a room's OnEnter reads the scene

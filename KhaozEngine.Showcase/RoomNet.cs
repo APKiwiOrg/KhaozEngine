@@ -140,6 +140,11 @@ namespace KhaozEngine.Showcase
         FollowCamera3D _camera = null!;
         FollowCameraController _camController = null!;
 
+        /// <summary>The local client's live connection stats, or null before the client is built (or after it is
+        /// torn down on room exit). Lets the app-level diagnostics HUD surface a Network section while this room is
+        /// active. See <see cref="ShowcaseApp"/>'s HUD wiring.</summary>
+        public ClientNetStats? NetStats => _client is null ? null : _client.NetStats;
+
         public RoomNet Init(Scene3D scene, Texture2D white, DpiFont hud)
         {
             _scene = scene; _white = white; _hud = hud;

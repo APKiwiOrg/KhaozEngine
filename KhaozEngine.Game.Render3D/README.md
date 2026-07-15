@@ -46,8 +46,9 @@ REAL collision-clamped horizontal speed plus the controller's grounded/vertical/
 `MaxTurnRate`. `Draw` renders the skinned mesh at the capsule's feet with that facing and the capsule-match scale.
 `TryLoadGltf` returns `null` (never throws) on a missing/unreadable/skeleton-less/clip-less asset, so a game keeps a
 greybox fallback. The composed pieces stay usable on their own - a movement-only game uses `CharacterController3D`
-directly, a remote player uses `ReplicatedCharacterAnimators`, the facing math is the static `CharacterFacing` - the
-bundle is the convenient default, never a requirement. Client-cosmetic: pose and facing never feed sim or netcode.
+directly, a networked OR local-only game that wants the canonical signal-driven stair glide instead uses
+`ReplicatedCharacterAnimators` (below), the facing math is the static `CharacterFacing` - the bundle is the convenient
+default, never a requirement. Client-cosmetic: pose and facing never feed sim or netcode.
 
 Discrete stair geometry snaps the physics height a whole riser per tick (most visible descending). The avatar eases
 its DRAW height toward the physics height at a bounded rate (`RenderHeightSmoothRate`, default 6 m/s) so the model
@@ -66,8 +67,12 @@ shortest-path turn that holds facing when no key is held), and `WrapAngle`.
 
 ## ReplicatedCharacterAnimators
 
-A render-free bridge that drives one skinned-character brain per networked entity from a per-frame list of
-`CharacterSample`. By default it derives planar speed / facing / air state from the position stream (windowed, so a
+A render-free bridge ("the character bridge") that drives one skinned-character brain per entity from a per-frame
+list of `CharacterSample` - built for a networked game's replicated players, but equally usable single-player: feed it
+one sample (id 0, `isLocal: true`) built off `CharacterController3D`'s own state (`controller.ClimbRate` /
+`controller.StepDeltaY` - see `CharacterController3D` above - stand in for `EntityRenderState`'s netcode-sourced
+fields) and it drives the same signal-driven glide with no netcode in the picture - see `KhaozEngine.Showcase`'s
+`RoomDungeon` for a worked example. By default it derives planar speed / facing / air state from the position stream (windowed, so a
 plateauing position does not strobe the state). Richer constructors let the local player (or any entity whose
 replicated `MovementState` is available) pass exact signals it already knows: `(id, position, isLocal, grounded,
 verticalVelocity)` for the exact grounded flag + vertical velocity, and `(id, position, isLocal, grounded,

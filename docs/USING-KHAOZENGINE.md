@@ -1925,6 +1925,16 @@ position`), and renders raw on a jump, fall, swim, or a LARGE gap over `Characte
 so those stay crisp. On by default; `SlopeGlideRate <= 0` disables it (render-Y is then the raw feet-Y). Feed the sim's
 `ClimbRate` through your sample loop (see `e.ClimbRate` above); a position-only sample reads 0 (no glide).
 
+**No netcode? Read the signal straight off `CharacterController3D`.** The bridge is not netcode-only: a single-player
+room with no `WorldClient`/`EntityRenderState` can still drive it for the canonical glide instead of `CharacterAvatar`'s
+own basic `RenderHeightSmoothRate` ease. `CharacterController3D` exposes the same sim facts directly -
+`controller.ClimbRate` (`MoveState.ClimbRate`) and `controller.StepDeltaY` (`MoveState.StepDeltaY`, accumulate it into a
+running sum each frame for `CharacterSample.StepCumulativeY` - no reconciliation runs locally, so a plain accumulator is
+exactly-once by construction). Build a one-entity `ReplicatedCharacterAnimators` (id 0) and feed it an exact-movement
+`CharacterSample` each frame off the controller's own state, `.WithFacingYaw(...)` for the collision-robust intended-move
+facing `CharacterAvatar` would otherwise have handled. See `KhaozEngine.Showcase`'s "Dungeon (walk)" room
+(`RoomDungeon`) for the full wiring.
+
 An ISOLATED step (a building doorstep, a curb, the first riser of a run before the continuous signal engages, or an
 isolated step-down) is NOT a continuous run, so the sim leaves `ClimbRate == 0` and the glide above renders it RAW - the
 sim commits the whole rise/drop in one or a few paced ticks and the drawn feet POP it (a mini-teleport). A dedicated
@@ -2521,8 +2531,10 @@ so a default config (1/1 widths, 0% halls) consumes no extra randomness and repr
 Both sinks share the same cell-to-piece mapping internally, so a bake and a stamp of the same
 (layout, kit, plot) place identical props - see `KhaozEngine.Showcase`'s "Dungeon (walk)" room for a
 wiring example (generate once, stamp, load the committed greybox kit through `AssetManifest`/`PropLoader`, spawn
-the player at the layout's `Entrance` marker). The demo wires rendering and the walk camera only, it does not
-register the physics statics.
+the player at the layout's `Entrance` marker, register `stamp.Statics` with a `BepuPhysicsWorld` for wall/floor/stair
+collision). It drives `CharacterController3D` directly and presents the climb through the same signal-driven stair
+glide described under "Animated characters" above (`CharacterController3D.ClimbRate`/`StepDeltaY` feeding a one-entity
+`ReplicatedCharacterAnimators`), not a networked bridge - see that section's "No netcode?" note.
 
 `DungeonJson.SaveConfig`/`LoadConfig` and `SaveLayout`/`LoadLayout` round-trip both types to JSON, matching
 what the `ke-dungeon` CLI reads and writes. The JSON matches the embedded schema (`DungeonSchema.GetJson()`,

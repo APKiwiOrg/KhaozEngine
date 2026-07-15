@@ -30,6 +30,16 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     // happened only after the exe became openable (i.e. after the fail window, not during it).
     public int OpenCallsAtRelaunch = -1;
 
+    // Pre-mutation exclusive-open gate modelling (UpdateApplier.WaitForExeExclusivelyOpenable), kept
+    // separate from the settle-check counters above so a settle-focused test (which sets
+    // OpenExclusiveFailCount without caring about the gate) is unaffected: CanOpenExclusively routes to
+    // THIS counter until the first file has actually been swapped in (ReplacedDests is still empty), which
+    // is exactly when the gate runs in real code - chronologically before any ReplaceFile call, and the
+    // settle check only ever runs after every file is copied. Default 0 = the gate clears on the first
+    // poll, so existing tests (which never touch this field) see no extra call or delay.
+    public int GateOpenExclusiveFailCount;
+    public int GateCanOpenExclusivelyCalls;
+
     // Forces the post-commit settle check (WaitForExeToSettle -> CanOpenExclusively) to throw, to prove
     // the backstop treats a post-commit failure as success (not a false rollback).
     public bool ThrowOnSettleCheck;
@@ -131,6 +141,15 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public bool CanOpenExclusively(string path)
     {
+        // Route to the gate counter until a file has actually been swapped in: that mirrors the real
+        // chronology (the gate runs before any ReplaceFile call; the settle check only runs after every
+        // copy is done), so a test that only sets OpenExclusiveFailCount for the settle phase still sees
+        // the gate clear on its first (uncounted-by-it) poll before settle-check behaviour kicks in.
+        if (ReplacedDests.Count == 0)
+        {
+            GateCanOpenExclusivelyCalls++;
+            return GateCanOpenExclusivelyCalls > GateOpenExclusiveFailCount;
+        }
         if (ThrowOnSettleCheck)
         {
             throw new InvalidOperationException("simulated post-commit settle failure");

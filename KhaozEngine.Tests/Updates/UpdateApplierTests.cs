@@ -609,4 +609,80 @@ public sealed class UpdateApplierTests
         Assert.Equal("v2", env.Files[InstallPath("game.dll")]);
         Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
     }
+
+    // ---- Pre-mutation exclusive-open gate: a SIBLING instance the parent-pid barrier never watches ----
+
+    [Fact]
+    public void Apply_SiblingHoldsExeOpen_DefersUntouchedWithoutMarkerRollbackDirOrRelaunch()
+    {
+        // The launching instance exited cleanly (the parent-pid barrier above passes fine - ParentAlivePolls
+        // defaults to 0), but the exe never becomes exclusively openable: a second live instance holds it.
+        var env = new FakeUpdaterEnvironment { GateOpenExclusiveFailCount = int.MaxValue };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        string marker = Path.Combine(AppData, "apply-in-progress.json");
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.AbortedGameStillRunning, result.Outcome);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("v1", env.Files[InstallPath("game.dll")]); // install untouched
+        Assert.False(env.Files.ContainsKey(marker));            // no marker ever written
+        Assert.Empty(env.ReplacedDests);                        // no file mutation attempted at all
+        Assert.Null(env.RelaunchedExe);                         // no relaunch - the running sibling is left alone
+        Assert.Equal(UpdateApplier.ExeExclusiveGateMaxPolls, env.GateCanOpenExclusivelyCalls);
+        Assert.Contains(env.Log_, m => m.Contains("still held open by another process"));
+    }
+
+    [Fact]
+    public void Apply_ExeFreesUpDuringGateWait_AppliesNormally()
+    {
+        // A sibling (or an AV scan) holds the exe for the first few gate polls, then releases it - the
+        // update should proceed exactly as if nothing had happened.
+        var env = new FakeUpdaterEnvironment { GateOpenExclusiveFailCount = 3 };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal("v2", env.Files[InstallPath("game.dll")]);
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);
+        Assert.Equal(4, env.GateCanOpenExclusivelyCalls); // 3 locked + 1 openable
+        Assert.Contains(env.Log_, m => m.Contains("became exclusively openable"));
+    }
+
+    [Fact]
+    public void Apply_ExeFreeImmediately_GateAddsNoExtraDelay()
+    {
+        // The common path (env.GateOpenExclusiveFailCount defaults to 0): the gate must not add any sleep
+        // or observable slowdown to an apply that would otherwise succeed on the first try.
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.Equal(1, env.GateCanOpenExclusivelyCalls); // exactly one poll, no retry
+        Assert.Equal(0, env.SleepCalls);
+    }
+
+    [Fact]
+    public void Apply_RelaunchExitsEarly_LogsSingleInstanceGuardComposition()
+    {
+        // ExitedEarly is also the exact shape produced when a relaunched game finds a single-instance guard
+        // already held (a surviving sibling), focuses it, and exits itself - the log should say so.
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+        env.RelaunchOutcomes.Enqueue(RelaunchStartupOutcome.ExitedEarly);
+
+        UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Contains(env.Log_, m => m.Contains("single-instance guard"));
+    }
 }

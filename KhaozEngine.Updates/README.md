@@ -89,11 +89,19 @@ STATUS_STACK_BUFFER_OVERRUN).
    first try, so the wait/retry is a no-op. This is the window's "Finishing" phase, which stays visible
    across the retry wait.
 
+The relaunch deliberately does not check for an already-running instance of the game exe by itself - there
+is no reliable cross-platform way to enumerate processes by exe path, and it does not need one. A game that
+opts into `KhaozEngine.App`'s single-instance guard (`GameAppOptions.SingleInstance`) resolves any surviving
+sibling for us: if the relaunch lands on top of one, the freshly-started process finds the guard already
+held, asks the survivor to come to the foreground, and exits itself - reported here as
+`RelaunchStartupOutcome.ExitedEarly` (logged as such), not retried.
+
 ## Windows self-update safety (exit barrier + permissions)
 
-Three guards close the two ways a Windows self-update used to fail: swapping files while the game was
-still running, and a Program Files install that denies writes. Both surfaced as an unhandled
-`UnauthorizedAccessException` on the file swap.
+Four guards close the ways a Windows self-update used to fail: swapping files while the game was still
+running (including a sibling instance invisible to the pid barrier), and a Program Files install that
+denies writes. All but the sibling gate surfaced as an unhandled `UnauthorizedAccessException` on the file
+swap; the sibling gap surfaced as a failed rollback (see the sibling-instance gate below).
 
 1. **Exit barrier.** Before it mutates a single install file, `Apply` waits behind a hard barrier: after
    the parent-exit wait it polls `IUpdaterEnvironment.IsProcessAlive(parentPid)` until the game process is
@@ -102,7 +110,21 @@ still running, and a Program Files install that denies writes. Both surfaced as 
    apply aborts UNTOUCHED (`ApplyOutcome.AbortedGameStillRunning`): no files changed, no marker written, no
    relaunch, so the update just defers to the next launch. `IsProcessAlive` returns false off Windows, so
    the barrier is a first-poll no-op and the macOS/Linux in-place apply is unchanged.
-2. **Permission-safe retry + commit-aware rollback.** The copy retry catches `UnauthorizedAccessException`
+2. **Sibling-instance gate.** The exit barrier above only watches `config.ParentPid` - the ONE process that
+   launched this updater. A SIBLING instance (a second copy of the game started separately) is invisible to
+   it: it can hold the install exe memory-mapped for the whole apply, so every `ReplaceFile` fails
+   `ERROR_ACCESS_DENIED` for the full retry budget, and then the rollback restore (a `CopyFile` overwrite,
+   i.e. open-for-write) fails too with `ERROR_SHARING_VIOLATION` - a failed rollback, the worst outcome.
+   `Apply` closes this gap with a second barrier, right after the exit barrier and before the progress
+   marker or any install file is touched: it polls `IUpdaterEnvironment.CanOpenExclusively(config.GameExePath)`
+   (the same primitive the settle wait below uses) for up to 30s. If the exe never becomes exclusively
+   openable, the apply aborts UNTOUCHED exactly like the exit barrier above (same `AbortedGameStillRunning`
+   outcome, no marker, no rollback dir, no relaunch) - turning what used to be a corrupted rollback into a
+   clean, silent defer to the next launch. Pair this with `KhaozEngine.App`'s single-instance guard
+   (`GameAppOptions.SingleInstance`) on the game side so a sibling never gets far enough to hold the exe in
+   the first place, and so a post-update relaunch that lands on a survivor self-resolves instead of stacking
+   a third instance (see that package's README).
+3. **Permission-safe retry + commit-aware rollback.** The copy retry catches `UnauthorizedAccessException`
    (a locked image or a denied delete-child) as well as `IOException`, so a transient lock rides out the
    retry budget and a permanent denial rolls back cleanly instead of crashing. The whole mutation phase is
    wrapped in a backstop: a pre-commit failure restores the backups, clears the marker, and relaunches the
@@ -110,7 +132,7 @@ still running, and a Program Files install that denies writes. Both surfaced as 
    verified) reports `Succeeded` rather than a false rollback and never relaunches twice. The
    `apply-in-progress` marker is written only during the mutation phase, so any earlier abort leaves
    nothing dangling.
-3. **Elevate once for a protected install.** Before applying, `Run` checks the install dir with
+4. **Elevate once for a protected install.** Before applying, `Run` checks the install dir with
    `IUpdaterEnvironment.CanWriteToDirectory`. On Windows a per-machine install under a protected root
    (`%ProgramFiles%`, `%ProgramFiles(x86)%`, `%ProgramW6432%`, `%SystemRoot%`) reports not-writable whenever
    the process is not already elevated - a plain create-a-temp-file probe is a false positive there, because a

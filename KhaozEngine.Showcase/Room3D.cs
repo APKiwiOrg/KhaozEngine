@@ -367,7 +367,7 @@ namespace KhaozEngine.Showcase
             }
 
             // GPU-skinning A/B (F): flip Scene3D.UseGpuSkinning live so the windowed skinned avatar can be eyeballed
-            // both ways. Default OFF (CPU skinning); the GPU path is pixel-parity offscreen but ships off pending this
+            // both ways. Default OFF (CPU skinning). The GPU path is pixel-parity offscreen but ships off pending this
             // windowed check. The active path + skinned draw counts show in the HUD (OnDrawUi).
             if (Manager!.Input.WasPressed(Key.F))
             {

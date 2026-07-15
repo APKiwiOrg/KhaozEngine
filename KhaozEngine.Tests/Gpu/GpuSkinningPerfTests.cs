@@ -10,11 +10,11 @@ namespace KhaozEngine.Tests.Gpu
     // Device-free CPU-cost micro-harness contrasting the two skinning paths' per-frame CPU work for a crowd of N
     // same-mesh characters (the MMO case the feature targets):
     //   CPU path  = compose the palette + run SkinningMath.SkinVertex over EVERY vertex (the deform), each frame.
-    //   GPU path  = compose the palette + pack the per-draw combined slot (Mvp fold + a bone-palette memcpy); the
+    //   GPU path  = compose the palette + pack the per-draw combined slot (Mvp fold + a bone-palette memcpy). The
     //               GPU does the per-vertex deform, so the CPU touches O(bones), not O(vertices).
     // Both paths share the bone-palette compose, so the delta is the per-vertex deform (CPU-only) vs the palette
     // pack (GPU). For a real character mesh (vertices >> bones) the GPU path's CPU cost is a small fraction. A plain
-    // [Fact] (no GPU) so it runs in the fast loop; the numbers print to the test output.
+    // [Fact] (no GPU) so it runs in the fast loop. The numbers print to the test output.
     public sealed class GpuSkinningPerfTests
     {
         readonly ITestOutputHelper _out;

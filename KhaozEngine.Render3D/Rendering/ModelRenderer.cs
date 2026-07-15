@@ -134,7 +134,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _skinnedInstanceBuffer; uint _skinnedInstanceCapacity; // capacity in InstanceData
 
         // GPU-skinning path (Scene3D.UseGpuSkinning). The vertex reads ONE combined resource buffer at set 0
-        // ({Mvp,Model,P,bones[128]}, per-draw dynamic offset); the fragment reads frame+material at set 1 (fragment
+        // ({Mvp,Model,P,bones[128]}, per-draw dynamic offset). The fragment reads frame+material at set 1 (fragment
         // ONLY), so the vertex stage references no second resource buffer (the Metal one-buffer-per-vertex-stage
         // invariant, proven by GpuSkinningReproGpuTests variant 3). The rest-pose SkinnedVertex buffer is the mesh's
         // own vertex buffer, uploaded ONCE at load - no per-frame vertex deform. Palette + per-draw matrices are all
@@ -147,7 +147,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuPipeline _skinnedDissolvePipeline = null!;
         readonly IGpuResourceSet _skinnedDefaultFragSet;   // frame UBO + white/flat/rough defaults (untextured skinned mesh)
         IGpuBuffer? _skinnedMainUbo; uint _skinnedMainSlots; IGpuResourceSet? _skinnedMainSet; // grow-with-retire combined UBO + single-slot window set
-        readonly Matrix4x4[] _skinnedHeaderScratch = new Matrix4x4[SkinnedHeaderMats]; // Mvp/Model/P; frame block + bones upload separately
+        readonly Matrix4x4[] _skinnedHeaderScratch = new Matrix4x4[SkinnedHeaderMats]; // Mvp/Model/P, frame block + bones upload separately
         // Instance buffers replaced by a grow are retired here (a prior in-flight frame may still read them);
         // disposed only in Dispose. Bounded by geometric growth.
         readonly List<IDisposable> _retired = new();
@@ -678,7 +678,7 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Pack one skinned draw's combined main slot: the vertex header (<c>Mvp = model * clip-corrected
-        /// ViewProj</c> folded per draw; <c>Model</c> for world pos/normal/tangent; <c>P</c> packing tint/emissive/
+        /// ViewProj</c> folded per draw, <c>Model</c> for world pos/normal/tangent, <c>P</c> packing tint/emissive/
         /// specParams into its three columns), then THIS FRAME's frame block (the fragment lighting, written at
         /// <see cref="SkinnedFrameOffset"/> with the same <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer,uint)"/>
         /// that fills the model pass's frame UBO), then the composed <paramref name="bones"/> at
@@ -712,7 +712,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Draw one GPU-skinned mesh: its rest-pose <paramref name="restVb"/> (uploaded once at load) at
         /// vertex slot 0, the combined UBO window at set 0 selected by the per-draw dynamic offset
         /// (<paramref name="slot"/> * <see cref="SkinnedMainSlotBytes"/>), and <paramref name="skinnedFragSet"/> (or the
-        /// white default when null) at set 1. One <c>instanceCount=1</c> indexed draw; the GPU skins in the vertex
+        /// white default when null) at set 1. One <c>instanceCount=1</c> indexed draw. The GPU skins in the vertex
         /// shader. A pipeline (<see cref="BindSkinnedPass"/>/<see cref="BindSkinnedDissolvePass"/>) must be bound.</summary>
         public void DrawGpuSkinned(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount,
             GpuIndexFormat indexFormat, uint slot, IGpuResourceSet? skinnedFragSet)

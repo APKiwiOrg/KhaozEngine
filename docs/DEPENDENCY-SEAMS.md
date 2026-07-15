@@ -277,7 +277,7 @@ The failure surfaced first as a vertex-stage bug (a vertex reading a second UBO,
 alongside a UBO, gets the wrong bytes: only the first buffer, or its first element, survives). But
 shipping GPU skinning proved the constraint is the whole PIPELINE, not just the vertex stage: a
 SECOND uniform buffer read only by the FRAGMENT - whether placed in the same set (a second binding) or in
-a separate set 1 - ALSO reads all-zero. TEXTURES and samplers in a second set map fine (measured); only
+a separate set 1 - ALSO reads all-zero. TEXTURES and samplers in a second set map fine (measured), only
 uniform buffers past the first mis-bind. The read is silent rather than an error, so it surfaces as
 garbage geometry or unlit/black shading, not a validation failure. It holds offscreen as well as windowed.
 

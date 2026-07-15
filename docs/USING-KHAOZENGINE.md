@@ -1747,14 +1747,14 @@ are fine. So GPU skinning folds EVERYTHING into one combined per-draw UBO (`Skin
 shadow depth pass mirrors the same one-buffer vertex binding. See `docs/DEPENDENCY-SEAMS.md` (the "ONE
 uniform buffer per pipeline" invariant) and the offscreen acceptance repro `GpuSkinningReproGpuTests`
 variant 3. Separately: never have a vertex shader read a separate buffer at an index that came from a
-per-instance attribute (route that through a dynamic-offset UBO slot per draw, as GPU skinning does);
-per-instance vertex ATTRIBUTES consumed directly (no indexed second buffer) are fine and used in production
+per-instance attribute (route that through a dynamic-offset UBO slot per draw, as GPU skinning does).
+Per-instance vertex ATTRIBUTES consumed directly (no indexed second buffer) are fine and used in production
 by the rigid instanced draws.
 
 **Windowed A/B (why the flag ships off, and how to verify it).** The offscreen parity proof is necessary
 but not sufficient: the historical corruption was a WINDOWED swapchain fault, so turning the flag on for a
 game must be gated on a windowed check. The Showcase's 3D room does this - press **F** to flip
-`UseGpuSkinning` live on the walking avatar; the HUD shows the active path (`CPU` / `GPU (fold-matrix)`) and
+`UseGpuSkinning` live on the walking avatar. The HUD shows the active path (`CPU` / `GPU (fold-matrix)`) and
 the skinned draw/cull counts. Watch for any difference in the character between the two paths (lighting,
 silhouette, deformation, shadow). If a windowed run of your game looks identical both ways across your
 skinned content, GPU skinning is safe to leave on for that game.

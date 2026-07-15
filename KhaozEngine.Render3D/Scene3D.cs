@@ -182,13 +182,13 @@ namespace KhaozEngine.Render3D
         /// <c>GpuSkinningReproGpuTests</c>: the skinned vertex reads ONE combined resource buffer at set 0
         /// (<c>{ Mvp; Model; params; bones[128] }</c>, per-draw dynamic offset) and a skinned <c>ModelFrag</c> variant
         /// reads frame + material data at set 1 (fragment only), sidestepping the Metal/Veldrid/SPIRV-Cross
-        /// two-vertex-buffer mis-bind that pulled the old GPU path. The rest-pose vertex buffer uploads once at load;
-        /// only the per-draw palette + matrices upload each frame, so the CPU cost is a palette pack, not a full
+        /// two-vertex-buffer mis-bind that pulled the old GPU path. The rest-pose vertex buffer uploads once at load.
+        /// Only the per-draw palette + matrices upload each frame, so the CPU cost is a palette pack, not a full
         /// vertex deform - the win at MMO crowd scale. Rendering is pixel-parity with the CPU path (the shader mirrors
         /// <see cref="SkinningMath.SkinVertex"/>), and the shadow depth pass mirrors the flag. It ships OFF because the
         /// offscreen repro is necessary but not sufficient for the historical windowed swapchain context: flip it on
         /// for a windowed A/B against CPU skinning before relying on it (see docs/USING-KHAOZENGINE.md). Flippable per
-        /// frame; a culled draw skips its palette upload just like the CPU path.
+        /// frame. A culled draw skips its palette upload just like the CPU path.
         /// </summary>
         public bool UseGpuSkinning { get; set; }
 
@@ -1691,7 +1691,7 @@ namespace KhaozEngine.Render3D
                     if (visibleMain) _drawnSkinnedInstances++; else _culledSkinnedInstances++;
 
                     bool dissolving = it.Dissolving;
-                    // During a dissolve the emissive channel carries the edge colour; SpecParams.z/.w carry the
+                    // During a dissolve the emissive channel carries the edge colour. SpecParams.z/.w carry the
                     // dissolve threshold + edge width (0 on a normal draw, so the values match the pre-dissolve path).
                     Vector4 emissive = dissolving ? it.DissolveEdge : it.Material.Emissive;
                     Vector4 specParams = dissolving
@@ -1700,7 +1700,7 @@ namespace KhaozEngine.Render3D
 
                     if (UseGpuSkinning)
                     {
-                        // Record the draw; the GPU deforms the rest-pose buffer. The palette lives at slot i of
+                        // Record the draw. The GPU deforms the rest-pose buffer. The palette lives at slot i of
                         // _boneMatrices (submission index), packed into the combined UBO at the compacted slot below.
                         _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                             entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
@@ -2371,7 +2371,7 @@ namespace KhaozEngine.Render3D
         /// Carries the mesh's rest-pose vertex + index buffers (uploaded once at load - the GPU deforms them), the
         /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the
         /// compacted combined-UBO slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
-        /// pass packs + draws every entry (out-of-volume ones clip away); the main pass skips a
+        /// pass packs + draws every entry (out-of-volume ones clip away). The main pass skips a
         /// <see cref="VisibleMain"/>-false entry (camera-culled, kept only as a shadow caster).</summary>
         readonly struct GpuSkinnedDraw
         {

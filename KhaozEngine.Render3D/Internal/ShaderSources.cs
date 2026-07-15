@@ -329,11 +329,11 @@ void main() {
         //      lighting the FRAGMENT needs (the frame UBO layout, mirrored exactly) AND the bone palette, per draw
         //      (the frame fields are duplicated into every slot - the cost of the one-buffer rule). A SECOND uniform
         //      buffer anywhere in the pipeline - a second vertex buffer, OR a fragment-only UBO whether in this set or
-        //      a separate set 1 - mis-binds on Metal/Veldrid/SPIRV-Cross and reads zero (measured; see
+        //      a separate set 1 - mis-binds on Metal/Veldrid/SPIRV-Cross and reads zero (measured, see
         //      DEPENDENCY-SEAMS.md and GpuSkinningReproGpuTests variant 3). Material TEXTURES map fine in a second set,
         //      so the per-mesh maps live at set 1. The 4-bone blend + position/normal/tangent deform mirror
         //      SkinningMath.SkinVertex exactly, so a GPU-skinned draw is pixel-parity with the CPU path. Both stages
-        //      declare the identical block; the vertex uses Mvp/Model/P/bones, the fragment uses the frame fields. ----
+        //      declare the identical block. The vertex uses Mvp/Model/P/bones, the fragment uses the frame fields. ----
         public const string SkinnedModelVert = @"#version 450
 layout(set=0, binding=0) uniform VBlock {
     mat4 Mvp;              // Model * clip-corrected ViewProj (folded per draw): gl_Position = Mvp * skinnedLocal
@@ -353,8 +353,8 @@ layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
 layout(location=4) in vec4 BoneIndices;   // 4 float-encoded palette indices (JOINTS_0)
-layout(location=5) in vec4 BoneWeights;   // 4 blend weights (WEIGHTS_0); all-zero => identity (no deform)
-layout(location=6) in vec4 Tangent;       // model-space tangent xyz + handedness w; zero => no TBN
+layout(location=5) in vec4 BoneWeights;   // 4 blend weights (WEIGHTS_0), all-zero => identity (no deform)
+layout(location=6) in vec4 Tangent;       // model-space tangent xyz + handedness w, zero => no TBN
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
@@ -408,7 +408,7 @@ void main() {
 
         // Skinned fragment: byte-for-byte ModelFrag lighting. It reads the frame fields from the SAME combined VBlock
         // (set 0 binding 0) the vertex reads - one uniform buffer for the whole pipeline (the only Metal-safe shape).
-        // Both stages declare the identical block; the fragment ignores Mvp/Model/P/bones. Material maps at set 1
+        // Both stages declare the identical block. The fragment ignores Mvp/Model/P/bones. Material maps at set 1
         // (set-1 TEXTURES map fine on Metal). Sample order (Albedo first, ShadowMap last) preserves the first-sample rule.
         public const string SkinnedModelFrag = @"#version 450
 layout(set=0, binding=0) uniform VBlock {

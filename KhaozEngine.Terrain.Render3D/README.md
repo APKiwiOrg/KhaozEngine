@@ -17,9 +17,30 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   handle across every chunk).
 - **`TerrainStreamer`** + **`StreamerConfig`** - keeps the world loaded in a ring around the player:
   hysteresis unload band (`UnloadRadius > LoadRadius` stops boundary churn), re-LOD when a loaded
-  chunk's tier changes, at most `MaxLoadsPerFrame` builds per update (nearest first). Pure bookkeeping
-  over **`ChunkCoord`**/**`ChunkGrid`** driving an injected **`IChunkSink`**, so it is headless-testable
-  with a fake sink. `UnloadAll`/`Dispose` free the loaded ring instead of leaking it.
+  chunk's tier changes, nearest-first ordering. Pure bookkeeping over **`ChunkCoord`**/**`ChunkGrid`**
+  driving an injected **`IChunkSink`**, so it is headless-testable with a fake sink. `UnloadAll`/`Dispose`
+  free the loaded ring instead of leaking it.
+  - **Async build (default).** With `StreamerConfig.Async` set (it is by default) and an `IAsyncChunkSink`
+    sink, each chunk's CPU mesh build runs on a background thread and only the GPU upload happens on the
+    frame thread, so a streamed chunk is no longer a full CPU-mesh-build hitch. `MaxLoadsPerFrame` then caps
+    how many completed builds are APPLIED (GPU upload + handle swap) per `Update`. The builds themselves are
+    unbudgeted (they run in parallel off the frame thread). `StreamerConfig.Synchronous()` opts back into the
+    old inline build+upload path (blocking, deterministic - what editors/tools want), and a sink that is not
+    an `IAsyncChunkSink` always runs synchronously regardless of the flag.
+  - **`FlushPendingBuilds()`** forces every outstanding async build to complete + apply now (deterministic
+    drain, ignores the budget). **`PrimeAround(playerPos)`** fills the whole ring around a point right away
+    (a loading moment): use it to prime the first ring before the first frame. Both work in either mode.
+- **`IAsyncChunkSink`** (extends `IChunkSink`) - the split seam the async streamer uses: **`BuildCpu(coord,
+  lod)`** builds the chunk's mesh + scatter with no GPU (safe on a worker thread), **`Apply(coord, lod,
+  cpuBuild, existing)`** creates/replaces the GPU buffers + physics on the frame thread. `Scene3DChunkSink`
+  implements it. A custom sink that implements only `IChunkSink` still streams (synchronously).
+- **`ChunkBuildScheduler<T>`** + **`ChunkBuild<T>`** - the GPU-free heart of async streaming: per-chunk
+  generation tokens dispatch each build, collect the finished ones, and drop the superseded (a newer re-LOD)
+  or cancelled (left the ring) results before they can be applied (last request wins). Pure `ChunkCoord`
+  bookkeeping with no device, so it is fully headless-testable. **`IChunkBuildDispatcher`** chooses how build
+  bodies run: **`TaskChunkBuildDispatcher`** (the default) fans them onto the thread pool, and a test dispatcher
+  queues them to control completion order. A faulted build surfaces as a **`ChunkBuildException`** on the
+  frame thread (during `Pump`/`Flush`), never a silent stuck chunk.
 - **`Scene3DChunkSink`** - the production sink: builds each chunk's mesh + scatters **`PropLayer`**s
   (each layer with its own config, mesh set, and draw radius), re-LODs meshes in place, draws every
   loaded chunk + in-range props per frame, and optionally adds baked prop collision statics to an
@@ -75,13 +96,15 @@ var material = scene.LoadTerrainMaterial(TerrainMaterialPresets.Procedural());
 var sink = new Scene3DChunkSink(scene, field, scatter, propMeshes,
                                 chunkSize: StreamerConfig.Default.ChunkSize,
                                 propDrawRadius: 120f, material: material);
-var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+var streamer = new TerrainStreamer(StreamerConfig.Default, sink);   // async build by default
+
+streamer.PrimeAround(player.Position);  // loading moment: fill the first ring before the first frame
 
 // per frame:
-streamer.Update(player.Position, dt);   // load/unload/re-LOD, amortized
+streamer.Update(player.Position, dt);   // request builds (off-thread) + apply up to MaxLoadsPerFrame
 sink.Draw(player.Position);             // queue chunks + in-range props
 
-streamer.Dispose();                     // teardown: frees the ring and the sink
+streamer.Dispose();                     // teardown: frees the ring, the in-flight builds, and the sink
 ```
 
 For a scatter layer of multi-material textured props (e.g. a re-baked pine/oak kit with a separate bark and

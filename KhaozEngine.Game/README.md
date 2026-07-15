@@ -97,6 +97,23 @@ the protected `Diagnostics` property (e.g. `Diagnostics?.SetNetStatsSource(...)`
 override `CollectFrameStats` / `SupportsPassTimings` (`GameApp3D` already adds the scene's `LastFrameStats` and
 the pass-timing section). See `docs/USING-KHAOZENGINE.md` "Seeing where the frame goes".
 
+**Turn-key client-side job scheduler** (default ON): `GameApp.JobScheduler` lazily builds a shared
+`KhaozEngine.Simulation.ThreadPoolJobScheduler` sized to `GameAppOptions.JobSchedulerDegreeOfParallelism` (or
+`Math.Max(1, Environment.ProcessorCount - 1)`, leaving one core free for the render/main thread, when that
+option is unset) - or, when `GameAppOptions.DisableJobScheduler` is set, the deterministic single-threaded
+`SingleThreadedJobScheduler` instead, so the property is always non-null and safe to assign unconditionally.
+Wire it into your own ECS world once, at load time, for turn-key multi-core `World.ParallelForEach`:
+
+```csharp
+protected override void OnLoad()
+{
+    _world.DefaultScheduler = JobScheduler;   // one line: every no-scheduler ParallelForEach now fans across cores
+}
+```
+
+See `docs/USING-KHAOZENGINE.md` "Client-side parallel ECS" for the determinism note (per-row-pure actions
+only) and more wiring examples.
+
 **Boot / startup screen** (the `Boot/` folder): a turn-key instant-on startup experience. Push `BootScreen` as
 the FIRST scene and it shows a progress bar in the first frames, then runs a staged `BootPipeline` while the bar
 advances (update check + apply, server-status min-version gate, then the game's own asset-warm-up steps), and

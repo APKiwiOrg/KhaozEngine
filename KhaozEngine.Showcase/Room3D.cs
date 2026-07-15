@@ -307,13 +307,9 @@ namespace KhaozEngine.Showcase
             _streamer = new TerrainStreamer(StreamerConfig.Default, _sink);
 
             // Prime the FULL initial ring at load time (this is the loading moment, not a frame, so the per-frame
-            // MaxLoadsPerFrame budget is irrelevant here): pump until the loaded set stops growing.
-            int loadedBefore = -1;
-            while (_streamer.Loaded.Count != loadedBefore)
-            {
-                loadedBefore = _streamer.Loaded.Count;
-                _streamer.Update(_character.Position, 0f);
-            }
+            // MaxLoadsPerFrame apply budget is irrelevant here). PrimeAround blocks on the async CPU builds and
+            // applies the whole ring before the first frame.
+            _streamer.PrimeAround(_character.Position);
             // Step the physics world once after the initial ring loads so Bepu's broad phase is current.
             _physics.Step(1f / 30f);
 

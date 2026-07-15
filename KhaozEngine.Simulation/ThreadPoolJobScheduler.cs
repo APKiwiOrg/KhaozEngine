@@ -24,6 +24,11 @@ public sealed class ThreadPoolJobScheduler : IJobScheduler
         options = new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism };
     }
 
+    /// <summary>The cap this instance was constructed with (the constructor's <c>maxDegreeOfParallelism</c>
+    /// parameter): <c>-1</c> for unbounded, else the positive worker-count cap. Read-only diagnostic - the cap
+    /// itself is fixed at construction.</summary>
+    public int MaxDegreeOfParallelism => options.MaxDegreeOfParallelism;
+
     /// <inheritdoc />
     public void For(int count, Action<int> body)
     {

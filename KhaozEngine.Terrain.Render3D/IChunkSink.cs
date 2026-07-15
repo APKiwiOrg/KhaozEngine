@@ -17,4 +17,26 @@ namespace KhaozEngine.Terrain
         /// <summary>Free a chunk that has left the ring.</summary>
         void Unload(ChunkCoord coord, object handle);
     }
+
+    /// <summary>An <see cref="IChunkSink"/> that also splits <see cref="IChunkSink.Load"/> / <see cref="IChunkSink.ReLod"/>
+    /// into a background CPU step and a frame-thread GPU step, so <see cref="TerrainStreamer"/> can build chunk meshes
+    /// off the frame thread and only pay the GPU upload (bounded by the per-frame apply budget) on the frame thread.
+    /// When the streamer is in async mode and its sink implements this, it uses <see cref="BuildCpu"/> +
+    /// <see cref="Apply"/>. The synchronous <see cref="IChunkSink"/> members stay valid (sync mode and back-compat).
+    /// The GPU device must be touched ONLY from <see cref="Apply"/> (and <see cref="IChunkSink.Unload"/>), never from
+    /// <see cref="BuildCpu"/> - the engine has no threaded-GPU contract.</summary>
+    public interface IAsyncChunkSink : IChunkSink
+    {
+        /// <summary>Build the chunk's CPU-side data (mesh + scatter) at <paramref name="lod"/>. Pure CPU: no GPU device,
+        /// no shared mutable state, so the streamer runs it on a worker thread. Returns an opaque payload handed back
+        /// to <see cref="Apply"/> on the frame thread. Must be safe to call concurrently for different chunks.</summary>
+        object BuildCpu(ChunkCoord coord, int lod);
+
+        /// <summary>Apply a completed CPU build on the frame thread: create/replace the GPU buffers and register any
+        /// physics. <paramref name="cpuBuild"/> is the payload from <see cref="BuildCpu"/>. For a fresh load
+        /// <paramref name="existing"/> is null. For a re-LOD it is the handle a prior <see cref="Apply"/> /
+        /// <see cref="IChunkSink.Load"/> returned, which this may mutate in place. Returns the new or mutated
+        /// handle.</summary>
+        object Apply(ChunkCoord coord, int lod, object cpuBuild, object? existing);
+    }
 }

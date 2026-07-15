@@ -209,6 +209,25 @@ The design authority split (CI/CD writes deploy facts, the game server heartbeat
 derives health, the client polls + evaluates) is documented in the package README and `USING-KHAOZENGINE.md`.
 The public status endpoint itself (an Azure Function) is game infra and is NOT an engine artifact.
 
+## Client job-scheduler seam: Game references Simulation
+
+Turn-key client-side multi-core ECS scaling adds one edge, acyclic:
+
+```
+KhaozEngine.Game -> KhaozEngine.Simulation   (IJobScheduler / ThreadPoolJobScheduler / SingleThreadedJobScheduler)
+```
+
+`GameApp.JobScheduler` hands a game a shared worker-pool scheduler it wires into a world once
+(`world.DefaultScheduler = App.JobScheduler`), so the type it returns (`IJobScheduler`, built as a
+`ThreadPoolJobScheduler`) has to be visible from `KhaozEngine.Game`. `KhaozEngine.Simulation` is the
+zero-dependency leaf that owns the scheduler abstraction (the same one `ShardHost.Scheduler` uses on the server),
+so the new `Game -> Simulation` edge introduces no cycle: `Simulation` never references `Game`, `Windowing`, or
+any renderer. The edge was already reachable transitively (`Game` pulls `Ecs` via the umbrellas, and
+`Ecs -> Simulation`), but is made direct so `KhaozEngine.Game` alone, with no `Ecs`/`Foundation` reference, still
+exposes the property. `World.DefaultScheduler` itself is the per-world seam in `KhaozEngine.Ecs`: it defaults to a
+`SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
+scheduler still wins over it.
+
 ## Version comparison: one shared leaf, two thin wrappers
 
 `KhaozEngine.Primitives.VersionComparer` is the single numeric, dot-separated `x.y.z` version-compare rule

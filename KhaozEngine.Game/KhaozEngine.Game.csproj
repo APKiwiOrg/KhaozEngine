@@ -12,6 +12,11 @@
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
+    <!-- Turn-key GameApp.JobScheduler (client-side multi-core ECS scaling): IJobScheduler/ThreadPoolJobScheduler
+         live in KhaozEngine.Simulation, a zero-dependency leaf, so this reference is acyclic. Already reachable
+         transitively via Foundation -> Ecs -> Simulation for a Game2D/Game3D umbrella consumer. This makes it
+         direct so KhaozEngine.Game alone (no Ecs/Foundation) still exposes the property. -->
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

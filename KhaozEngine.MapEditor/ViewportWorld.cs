@@ -272,7 +272,9 @@ public sealed class ViewportWorld : IDisposable
         // Dispose (via the streamer) frees it, matching Room3D's ownsMaterial: true teardown.
         _sink = new Scene3DChunkSink(_scene, _field, layers, TerrainChunkRegion.DefaultSize,
             material: material, ownsMaterial: true);
-        _streamer = new TerrainStreamer(StreamerConfig.Default, _sink);
+        // Synchronous streaming in the editor: the viewport wants blocking, deterministic loads (a mesh edit rebuilds
+        // the ring and the result must be on screen immediately), not the game's background-build/apply-budget path.
+        _streamer = new TerrainStreamer(StreamerConfig.Default.Synchronous(), _sink);
 
         PrimeRing(FocusFor(doc));
         _placements.Invalidate();
@@ -387,16 +389,8 @@ public sealed class ViewportWorld : IDisposable
     }
 
     // Prime the FULL initial ring at load time (the loading moment, not a frame, so MaxLoadsPerFrame is irrelevant):
-    // pump the streamer until the loaded set stops growing, exactly as Room3D primes.
-    void PrimeRing(Vector3 focus)
-    {
-        int loadedBefore = -1;
-        while (_streamer!.Loaded.Count != loadedBefore)
-        {
-            loadedBefore = _streamer.Loaded.Count;
-            _streamer.Update(focus, 0f);
-        }
-    }
+    // load the whole ring around the focus before the first frame, exactly as Room3D primes.
+    void PrimeRing(Vector3 focus) => _streamer!.PrimeAround(focus);
 
     // Teardown order per Room3D.OnExit: the streamer owns the sink, so streamer.Dispose flushes the loaded ring
     // through the sink (freeing every chunk mesh) and disposes the sink (which frees the owned splat material). Do

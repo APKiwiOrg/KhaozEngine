@@ -29,6 +29,14 @@ Opt-in data-parallel `World.ParallelForEach`/`Query.ParallelForEach` (fans an ar
 `Query.ParallelForEach(action, scheduler, sink)` overload hands you freshly allocated, caller-owned buffers in
 your own sink instead, so external sink use never drains the World's pool.
 
+`World.DefaultScheduler` (the scheduler a no-scheduler `ParallelForEach` call falls back to) defaults to the
+deterministic inline `SingleThreadedJobScheduler`, so a fresh `World` stays byte-identical to `ForEach` until
+parallelism is opted in - either per call or once for the whole world (`world.DefaultScheduler =
+someScheduler;`). An explicit per-call scheduler argument always wins over it. See "Worker-pool seam
+(`IJobScheduler`) + parallel cell ticks" and "Parallel `ForEach` + access declarations" in
+[docs/USING-KHAOZENGINE.md](../docs/USING-KHAOZENGINE.md) for the full picture, including the turn-key
+`GameApp.JobScheduler` client wiring.
+
 A component struct with no fields is a **tag**: stored with no column, presence on the entity is its whole
 state. `Get<T>` still throws for a tag, but `TryGet<T>` copies out `default` for a present one instead of
 throwing. Tag detection on the generic component-access path is reflection-free, so it stays NativeAOT-safe.

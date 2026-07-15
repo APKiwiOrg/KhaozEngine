@@ -154,6 +154,32 @@ namespace KhaozEngine.Game
         /// </summary>
         public Key? DiagnosticsToggleKey;
 
+        /// <summary>
+        /// Opt OUT of the turn-key client-side job scheduler (default <c>false</c>, i.e. it is ON). By default
+        /// <see cref="GameApp.JobScheduler"/> lazily builds a shared
+        /// <see cref="KhaozEngine.Simulation.ThreadPoolJobScheduler"/>, sized to
+        /// <see cref="JobSchedulerDegreeOfParallelism"/> (or <c>Environment.ProcessorCount - 1</c>, floor 1, when
+        /// that is <c>null</c>), the first time a game reads <see cref="GameApp.JobScheduler"/>. Wire it into an
+        /// ECS world with <c>world.DefaultScheduler = App.JobScheduler;</c> so every no-scheduler
+        /// <c>World.ParallelForEach</c> call fans across cores with no other change - see
+        /// <c>docs/USING-KHAOZENGINE.md</c> "Client-side parallel ECS". Setting this <c>true</c> makes
+        /// <see cref="GameApp.JobScheduler"/> resolve to the deterministic single-threaded scheduler instead (the
+        /// same scheduler <c>World.DefaultScheduler</c> already defaults to), so the one-line wiring stays safe to
+        /// use unconditionally even when a game opts out. The field is inverted (a disable flag) so the
+        /// default-zero struct value keeps the scheduler on, whether options are built with <see cref="For"/> or a
+        /// raw <c>new GameAppOptions { ... }</c>.
+        /// </summary>
+        public bool DisableJobScheduler;
+
+        /// <summary>
+        /// Optional explicit worker cap for <see cref="GameApp.JobScheduler"/>. <c>null</c> (the default) sizes it
+        /// to <c>Math.Max(1, Environment.ProcessorCount - 1)</c> (leaves one core free for the render/main thread).
+        /// Ignored when <see cref="DisableJobScheduler"/> is set. Must be a positive value when set - forwarded
+        /// as-is to <see cref="KhaozEngine.Simulation.ThreadPoolJobScheduler"/>'s constructor, which throws on
+        /// anything else.
+        /// </summary>
+        public int? JobSchedulerDegreeOfParallelism;
+
         /// <summary>Resolved design width: <see cref="DesignWidth"/>, or <see cref="Width"/> when it is 0.</summary>
         internal int ResolvedDesignWidth => DesignWidth == 0 ? Width : DesignWidth;
         /// <summary>Resolved design height: <see cref="DesignHeight"/>, or <see cref="Height"/> when it is 0.</summary>

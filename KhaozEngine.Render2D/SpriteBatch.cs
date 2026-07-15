@@ -500,6 +500,19 @@ void main() {
                 srcUV, color);
         }
 
+        /// <summary>
+        /// Draw an arbitrary convex quad from four corner points in the batch's authoring space (world / screen /
+        /// design units), given in <c>topLeft, topRight, bottomRight, bottomLeft</c> order: the source UV corners
+        /// (u0,v0), (u1,v0), (u1,v1), (u0,v1) map to <paramref name="topLeft"/>, <paramref name="topRight"/>,
+        /// <paramref name="bottomRight"/>, <paramref name="bottomLeft"/> respectively. Rides the same two-triangle
+        /// path as the rotated <see cref="Draw(Texture2D, Vector2, Vector2, Vector2, float, Vector4, Color)"/>, so it
+        /// batches and z-orders identically. The corners need not form a rectangle, and two coincident corners are
+        /// allowed (the quad collapses to a triangle, which is how a radial pie / fan slice is built). src =
+        /// (u0, v0, u1, v1) in 0..1.
+        /// </summary>
+        public void DrawQuad(Texture2D tex, Vector2 topLeft, Vector2 topRight, Vector2 bottomRight, Vector2 bottomLeft, Vector4 srcUV, Color color) =>
+            EmitQuad(tex, topLeft, topRight, bottomRight, bottomLeft, srcUV, color);
+
         // One quad corner in world space: rotate the local offset of normalized corner (cx, cy) about the pivot.
         // Internal so the rotated-corner geometry is unit-testable without a GPU.
         internal static Vector2 RotatedCorner(float cx, float cy, Vector2 position, Vector2 size, Vector2 origin, float cos, float sin)

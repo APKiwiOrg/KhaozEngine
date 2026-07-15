@@ -70,7 +70,14 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). Empty slots draw a
     themed frame; the caller paints icons/counts through the `DrawSlotContent(index, rect, batch)` hook and optional
     per-slot `KeybindLabels` (raw input-token glyphs). `SlotRect(i)`/`SlotAt(point)` are pure geometry; `Opacity`
-    fades the whole grid.
+    fades the whole grid. Built-in slot content is available too: set an `IconAtlas` on the grid and hand each
+    slot a `SlotContent` (icon id, tint, cooldown fraction 0..1, stack count, disabled flag) through
+    `SetContent`/`ClearContent`/`ClearAllContent`. `Draw` then paints, per slot, the icon (greyed when disabled),
+    a radial cooldown sweep (12 o'clock clockwise, boundary along the slot edge), and the stack count
+    bottom-right, between the slot frame and the `DrawSlotContent` hook (so custom painting still composes on
+    top). Content is stored sparsely, so it survives `Count` changes. The immediate-mode `GuiSurface` exposes
+    the same primitives standalone: `Image` (an arbitrary texture, bypassing the icon atlas) and
+    `CooldownOverlay` (the radial sweep).
   - `ProgressBar` - a thin fill bar (health / XP / cast / load / charge pips). `Fraction` is clamped 0..1; the accent
     fill (`FillColor`) sits inside the border frame, the track is `TrackColor`, and corners/border/skin come from
     `Style`. `FillDirection` picks the edge the fill grows FROM: `LeftToRight` (default, today's look), `RightToLeft`,

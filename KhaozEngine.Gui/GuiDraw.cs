@@ -217,6 +217,86 @@ namespace KhaozEngine.Gui
             return patches;
         }
 
+        /// <summary>
+        /// One quad of the radial cooldown fan: four corners in draw space. The fan apex (the rect centre) is
+        /// <see cref="P0"/> for every slice, and a slice's fourth corner repeats <see cref="P2"/>, so each quad is
+        /// degenerate (renders as a single triangle) - the shape <see cref="SpriteBatch.DrawQuad"/> is built to allow.
+        /// </summary>
+        public readonly record struct CooldownQuad(Vector2 P0, Vector2 P1, Vector2 P2, Vector2 P3);
+
+        /// <summary>
+        /// The "remaining cooldown" pie over <paramref name="rect"/> as a fan of quads (each a triangle from the rect
+        /// centre to two perimeter points). MMO-standard semantics: <paramref name="fraction"/> is clamped to [0,1],
+        /// 0 returns an empty fan (no overlay) and 1 covers the whole rect. The covered region is bounded on one side
+        /// by the 12 o'clock line (top-centre of the rect) and on the other by a trailing edge that sweeps CLOCKWISE
+        /// as <paramref name="fraction"/> DECREASES, so the icon behind is revealed clockwise from the top. The
+        /// boundary runs along the rect PERIMETER (a square / rounded slot, not a circle): each of the four rect
+        /// corners that falls inside the swept arc is inserted as a fan vertex so every slice's outer edge lies
+        /// exactly on an edge of the rect. Pure geometry (no GPU), headless-testable, mirrors <see cref="NineSlicePatches"/>.
+        /// </summary>
+        public static System.Collections.Generic.List<CooldownQuad> CooldownSweepQuads(Rect rect, float fraction)
+        {
+            var quads = new System.Collections.Generic.List<CooldownQuad>();
+            float f = fraction < 0f ? 0f : fraction > 1f ? 1f : fraction;
+            if (f <= 0f) return quads;
+
+            float hx = rect.Width * 0.5f, hy = rect.Height * 0.5f;
+            var center = new Vector2(rect.X + hx, rect.Y + hy);
+            const float twoPi = MathF.PI * 2f;
+            float phi0 = (1f - f) * twoPi;   // the trailing edge, clockwise from 12 o'clock
+
+            // Boundary angles clockwise from 12 o'clock: the trailing edge phi0, then any rect corners strictly
+            // inside (phi0, 2pi) in increasing order, then 2pi (the fixed 12 o'clock edge). A rect's corner angles
+            // fall one per 90-degree band: top-right, bottom-right, bottom-left, top-left.
+            float[] corners = { AngleFromTop(hx, -hy), AngleFromTop(hx, hy), AngleFromTop(-hx, hy), AngleFromTop(-hx, -hy) };
+            var angles = new System.Collections.Generic.List<float>(6) { phi0 };
+            foreach (float a in corners)
+                if (a > phi0 && a < twoPi) angles.Add(a);
+            angles.Sort();
+            angles.Add(twoPi);
+
+            for (int i = 0; i < angles.Count - 1; i++)
+            {
+                Vector2 pa = PerimeterPoint(center, hx, hy, angles[i]);
+                Vector2 pb = PerimeterPoint(center, hx, hy, angles[i + 1]);
+                quads.Add(new CooldownQuad(center, pa, pb, pb));   // 4th corner == P2 => a degenerate quad (triangle)
+            }
+            return quads;
+        }
+
+        // Clockwise angle in [0, 2pi) from 12 o'clock of the offset (vx, vy) from the rect centre. Screen space is
+        // y-down, so 12 o'clock is (0, -1) and the direction at angle phi is (sin phi, -cos phi).
+        static float AngleFromTop(float vx, float vy)
+        {
+            float a = MathF.Atan2(vx, -vy);
+            return a < 0f ? a + MathF.PI * 2f : a;
+        }
+
+        // Intersect the ray from the centre at clockwise-from-top angle phi with the rect perimeter (half-extents
+        // hx, hy). The nearer axis crossing (min of the x-edge and y-edge parameters) is the perimeter hit.
+        static Vector2 PerimeterPoint(Vector2 center, float hx, float hy, float phi)
+        {
+            float dx = MathF.Sin(phi), dy = -MathF.Cos(phi);
+            float tx = MathF.Abs(dx) > 1e-6f ? hx / MathF.Abs(dx) : float.PositiveInfinity;
+            float ty = MathF.Abs(dy) > 1e-6f ? hy / MathF.Abs(dy) : float.PositiveInfinity;
+            float t = MathF.Min(tx, ty);
+            return new Vector2(center.X + dx * t, center.Y + dy * t);
+        }
+
+        /// <summary>
+        /// Draw the radial cooldown fan (see <see cref="CooldownSweepQuads"/>) over <paramref name="rect"/> as solid
+        /// <paramref name="tint"/> quads on the 1x1 <paramref name="white"/> texture, via
+        /// <see cref="SpriteBatch.DrawQuad"/>. No-op when <paramref name="fraction"/> is 0 or less. Shared by
+        /// <see cref="GuiSurface"/>.<c>CooldownOverlay</c> and <see cref="SlotGrid"/> so both draw the sweep identically.
+        /// </summary>
+        public static void CooldownSweep(SpriteBatch batch, Texture2D white, Rect rect, float fraction, Vector4 tint)
+        {
+            var uv = new Vector4(0f, 0f, 1f, 1f);
+            var col = (Color)tint;
+            foreach (CooldownQuad q in CooldownSweepQuads(rect, fraction))
+                batch.DrawQuad(white, q.P0, q.P1, q.P2, q.P3, uv, col);
+        }
+
         // Emit one nine-slice cell, either as a single stretched patch or as a grid of native-size tiles (clipping
         // the trailing partial tile's dest + source UV). tileX/tileY select which axes repeat.
         static void AppendCell(System.Collections.Generic.List<NineSlicePatch> outp, Rect cell, Vector4 uv,

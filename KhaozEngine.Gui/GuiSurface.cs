@@ -132,6 +132,36 @@ namespace KhaozEngine.Gui
             _batch.Draw(tex, new Vector4(rect.X, rect.Y, rect.Width, rect.Height), uv, (Color)tint);
         }
 
+        /// <summary>
+        /// Draw <paramref name="tex"/> (sampling <paramref name="srcUV"/> = (u0,v0,u1,v1) in 0..1) into
+        /// <paramref name="rect"/>, tinted by <paramref name="tint"/>, via the shared batched-quad path. Unlike
+        /// <see cref="Icon"/> this bypasses the <see cref="IconAtlas"/> registry and draws an arbitrary texture
+        /// directly (a rendered thumbnail, a game-supplied ability art atlas region, ...). <paramref name="tex"/> must be non-null.
+        /// Decoration: does not reserve a rect (compose inside a button / chip to reserve). No-op headless (null batch).
+        /// </summary>
+        public void Image(Rect rect, Texture2D tex, Vector4 srcUV, Vector4 tint)
+        {
+            if (_batch is null) return;
+            _batch.Draw(tex, new Vector4(rect.X, rect.Y, rect.Width, rect.Height), srcUV, (Color)tint);
+        }
+
+        /// <summary>The default <see cref="CooldownOverlay"/> tint: translucent black (a 60% dim wash over the icon).</summary>
+        public static readonly Vector4 DefaultCooldownTint = new(0f, 0f, 0f, 0.6f);
+
+        /// <summary>
+        /// Draw a radial "remaining cooldown" sweep over <paramref name="rect"/> (see
+        /// <see cref="GuiDraw.CooldownSweepQuads"/> for the exact semantics): <paramref name="fraction"/> in [0,1],
+        /// 0 draws nothing and 1 covers the whole rect, the covered wedge bounded by the 12 o'clock line and a
+        /// trailing edge that sweeps clockwise as the fraction falls. <paramref name="tint"/> defaults to
+        /// <see cref="DefaultCooldownTint"/> (translucent black). Decoration: does not reserve a rect. No-op headless
+        /// (null batch).
+        /// </summary>
+        public void CooldownOverlay(Rect rect, float fraction, Vector4? tint = null)
+        {
+            if (_batch is null) return;
+            GuiDraw.CooldownSweep(_batch, _white, rect, fraction, tint ?? DefaultCooldownTint);
+        }
+
         /// <summary>Draw a plain filled colour chip; reserves it for click-through.</summary>
         public void Swatch(Rect rect, Vector4 color)
         {

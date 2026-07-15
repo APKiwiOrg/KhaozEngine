@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Gui;
+using KhaozEngine.Render2D;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gui
@@ -45,6 +46,26 @@ namespace KhaozEngine.Tests.Gui
             {
                 Assert.Equal(255, px[i]); Assert.Equal(255, px[i + 1]); Assert.Equal(255, px[i + 2]);
             }
+        }
+
+        [Fact]
+        public void Register_CustomId_ResolvesThroughTryGetAndHas()
+        {
+            var atlas = new IconAtlas();
+            var uv = new Vector4(0.1f, 0.2f, 0.7f, 0.9f);
+
+            Assert.False(atlas.Has("game.fireball"));
+            Assert.False(atlas.TryGet("game.fireball", out _, out _));
+
+            // A game registers its own icon id against its own texture. Null stands in for that game texture handle:
+            // the registry stores and returns the (texture, uv) verbatim, and it is the LOOKUP (not the pixels) under
+            // test - this custom-id path is otherwise only exercised by the baked core set.
+            atlas.Register("game.fireball", null!, uv);
+
+            Assert.True(atlas.Has("game.fireball"));
+            Assert.True(atlas.TryGet("game.fireball", out Texture2D tex, out Vector4 got));
+            Assert.Null(tex);          // the stored handle round-trips verbatim
+            Assert.Equal(uv, got);     // the stored source UV round-trips exactly
         }
     }
 }

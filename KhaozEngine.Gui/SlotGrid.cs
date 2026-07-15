@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -6,6 +8,39 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gui
 {
+    /// <summary>
+    /// The drawable content of one <see cref="SlotGrid"/> slot: a built-in icon (resolved through the grid's
+    /// <see cref="SlotGrid.IconAtlas"/>, the same registry <see cref="GuiSurface.Icon"/> uses), an optional radial
+    /// cooldown sweep, an optional stack / charge count, and a disabled (greyed) flag. A readonly value: build one
+    /// and hand it to <see cref="SlotGrid.SetContent"/>.
+    /// </summary>
+    public readonly struct SlotContent
+    {
+        /// <summary>The icon id resolved through <see cref="SlotGrid.IconAtlas"/>; null or an unknown id draws no icon.</summary>
+        public string? IconId { get; }
+        /// <summary>The icon tint, multiplied over the icon before the disabled dim is applied.</summary>
+        public Vector4 Tint { get; }
+        /// <summary>Remaining-cooldown fraction in [0,1]: 0 = no sweep, 1 = fully covered. Clamped on construction.</summary>
+        public float Cooldown { get; }
+        /// <summary>Stack / charge count drawn bottom-right; 0 or less draws no number.</summary>
+        public int Count { get; }
+        /// <summary>When true the icon draws greyed (RGB dimmed) so the slot reads as unavailable.</summary>
+        public bool Disabled { get; }
+
+        /// <summary>Full content: an icon id, its <paramref name="tint"/>, and optional cooldown / count / disabled state.</summary>
+        public SlotContent(string? iconId, Vector4 tint, float cooldown = 0f, int count = 0, bool disabled = false)
+        {
+            IconId = iconId;
+            Tint = tint;
+            Cooldown = cooldown < 0f ? 0f : cooldown > 1f ? 1f : cooldown;
+            Count = count;
+            Disabled = disabled;
+        }
+
+        /// <summary>Content with a white icon tint and no cooldown / count / disabled state.</summary>
+        public SlotContent(string? iconId) : this(iconId, Vector4.One) { }
+    }
+
     /// <summary>
     /// A grid of uniform square slots (a hotbar, an inventory panel, an equipment rack) over <see cref="Pointer"/>.
     /// <see cref="Bounds"/>.X/Y is the grid's top-left origin. The footprint is DERIVED from <see cref="Columns"/>,
@@ -60,6 +95,30 @@ namespace KhaozEngine.Gui
         public float KeybindLabelScale = 1f;
         /// <summary>Inset of the keybind label from the slot's top-left corner, in draw units.</summary>
         public float KeybindLabelPad = 3f;
+
+        /// <summary>The icon registry used to resolve <see cref="SlotContent.IconId"/> to a texture + source UV (the
+        /// same instance mechanism <see cref="GuiSurface.Icon"/> uses). Null = built-in slot icons draw nothing.</summary>
+        public IconAtlas? IconAtlas { get; set; }
+
+        /// <summary>Tint of the radial cooldown sweep drawn over a slot's icon (translucent black by default).</summary>
+        public Vector4 CooldownTint = new(0f, 0f, 0f, 0.6f);
+        /// <summary>Colour of the stack-count number drawn bottom-right in a slot.</summary>
+        public Vector4 CountColor = GuiTheme.Default.Text;
+        /// <summary>Uniform scale for the stack-count number (default 1).</summary>
+        public float CountScale = 1f;
+        /// <summary>Inset of the stack-count number from the slot's bottom-right corner, in draw units.</summary>
+        public float CountPad = 3f;
+        /// <summary>Inset of a slot's built-in icon (and its cooldown sweep) from the slot edges, in draw units.</summary>
+        public float IconInset = 4f;
+
+        // A disabled icon multiplies its RGB by this (alpha preserved) so it reads as greyed-out without going
+        // translucent under straight-alpha blending (the same rationale as Color.ScaleRgb).
+        const float DisabledIconDim = 0.4f;
+
+        // Per-slot content, stored sparsely by slot index so it survives Count changes: an index outside [0, Count)
+        // is simply not drawn (and draws again if the grid grows back). Mirrors the tolerant, caller-owned nature of
+        // KeybindLabels (which the draw path bounds-guards) rather than a Count-sized array that would need resizing.
+        readonly Dictionary<int, SlotContent> _content = new();
 
         /// <summary>Per-slot content painter, invoked as <c>(slotIndex, slotRect, batch)</c> after the frame is drawn,
         /// so the caller can render an icon / count without the widget knowing about items. Null = frame-only slots.</summary>
@@ -121,6 +180,27 @@ namespace KhaozEngine.Gui
             return -1;
         }
 
+        /// <summary>Set (or replace) the drawable <see cref="SlotContent"/> of slot <paramref name="index"/>. The
+        /// content is drawn by <see cref="Draw"/> between the slot frame and the <see cref="DrawSlotContent"/> hook.
+        /// Stored sparsely, so it survives <see cref="Count"/> changes.</summary>
+        public void SetContent(int index, in SlotContent content)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(index);
+            _content[index] = content;
+        }
+
+        /// <summary>Remove any <see cref="SlotContent"/> set on slot <paramref name="index"/> (no-op if none).</summary>
+        public void ClearContent(int index) => _content.Remove(index);
+
+        /// <summary>Remove all per-slot <see cref="SlotContent"/>.</summary>
+        public void ClearAllContent() => _content.Clear();
+
+        /// <summary>Test seam: the content set on slot <paramref name="index"/>, if any.</summary>
+        internal bool TryGetContent(int index, out SlotContent content) => _content.TryGetValue(index, out content);
+
+        /// <summary>Test seam: the number of slots that currently have content (independent of <see cref="Count"/>).</summary>
+        internal int ContentCount => _content.Count;
+
         /// <summary>
         /// Reserve the grid footprint for click-through, then hit-test every slot. Sets <see cref="HoveredSlot"/> and
         /// <see cref="PressedSlot"/>, and on a valid press-origin tap fires <see cref="OnSlotClicked"/> and returns
@@ -162,6 +242,9 @@ namespace KhaozEngine.Gui
                 GuiDraw.FillStyled(batch, white, r, Style,
                     GuiDraw.WithOpacity(fill, Opacity), GuiDraw.WithOpacity(border, Opacity));
 
+                if (_content.TryGetValue(i, out SlotContent content))
+                    DrawContent(batch, white, font, r, content);
+
                 DrawSlotContent?.Invoke(i, r, batch);
 
                 if (font != null) DrawKeybindLabel(batch, font, i, r);
@@ -176,5 +259,38 @@ namespace KhaozEngine.Gui
             var pos = new Vector2(slot.X + KeybindLabelPad, slot.Y + KeybindLabelPad);
             batch.DrawString(font, label, pos, (Color)GuiDraw.WithOpacity(KeybindLabelColor, Opacity), KeybindLabelScale);
         }
+
+        // Built-in slot content, drawn between the frame and the DrawSlotContent hook: the icon (greyed when
+        // disabled), then the radial cooldown sweep over the icon rect, then the stack count bottom-right. The
+        // DrawSlotContent hook still draws after this, so caller-painted content composes on top.
+        void DrawContent(SpriteBatch batch, Texture2D white, SpriteFont? font, Rect slot, in SlotContent content)
+        {
+            var iconRect = new Rect(slot.X + IconInset, slot.Y + IconInset,
+                slot.Width - IconInset * 2f, slot.Height - IconInset * 2f);
+
+            if (content.IconId != null && IconAtlas != null &&
+                IconAtlas.TryGet(content.IconId, out Texture2D tex, out Vector4 uv))
+            {
+                Vector4 tint = content.Disabled ? DimRgb(content.Tint, DisabledIconDim) : content.Tint;
+                batch.Draw(tex, new Vector4(iconRect.X, iconRect.Y, iconRect.Width, iconRect.Height), uv,
+                    (Color)GuiDraw.WithOpacity(tint, Opacity));
+            }
+
+            if (content.Cooldown > 0f)
+                GuiDraw.CooldownSweep(batch, white, iconRect, content.Cooldown, GuiDraw.WithOpacity(CooldownTint, Opacity));
+
+            // The stack count is a non-localizable number (the same escape hatch as the keybind glyphs), so it is a
+            // raw ToString; it needs the font Draw already receives.
+            if (font != null && content.Count > 0)
+            {
+                string txt = content.Count.ToString(CultureInfo.InvariantCulture);
+                Vector2 m = font.Measure(txt) * CountScale;
+                var pos = new Vector2(slot.Right - m.X - CountPad, slot.Bottom - font.LineHeight * CountScale - CountPad);
+                batch.DrawString(font, txt, pos, (Color)GuiDraw.WithOpacity(CountColor, Opacity), CountScale);
+            }
+        }
+
+        // Multiply RGB by factor, keep alpha (a greyed icon that stays opaque under straight-alpha blending).
+        static Vector4 DimRgb(Vector4 c, float factor) => new(c.X * factor, c.Y * factor, c.Z * factor, c.W);
     }
 }

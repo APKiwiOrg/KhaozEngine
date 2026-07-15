@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.100.0
+
+### Turn-key F1 diagnostics HUD + always-on frame draw counters
+
+Frame cost is visible by default: an F1 diagnostics HUD wired into every GameApp, backed by always-on
+per-frame draw counters. New `RenderFrameStats` (`KhaozEngine.Primitives`) carries draw-call, instance,
+triangle, and buffer-update-byte totals plus the 2D quad, flush, and texture-switch counts, populated
+allocation-free in the submit path by `SpriteBatch.FrameStats` and `Scene3D.LastFrameStats` (geometry passes
+counted exactly, effect submissions as draw calls, post blits not itemized). `DiagnosticsOverlay.DrawStatsSection`
+renders them, and the new `DiagnosticsHud` (`KhaozEngine.Gui`) bundles the FPS and pass-timing meters plus the
+overlay behind a throttled provider that costs nothing while hidden.
+
+- **Always-on draw counters.** `RenderFrameStats` is populated allocation-free in the submit path and reset
+  each frame. `SpriteBatch.FrameStats` counts quads, draw calls, flushes, texture switches, and vertex-upload
+  bytes across both the submission-order and `GroupByTexture` flush paths (a merged texture group counts as the
+  single draw it issues, vertex bytes counted at each upload). `Scene3D.LastFrameStats` counts the 3D geometry
+  passes exactly and effect submissions as draw calls. Aggregate 2D + 3D via `RenderFrameStats` addition for a
+  whole-frame total.
+- **Turn-key HUD.** `DiagnosticsHud` (`KhaozEngine.Gui`) bundles the FPS meter, the pass-timing meter, and the
+  `DiagnosticsOverlay` behind a throttled provider that does no work while the panel is hidden.
+  `DiagnosticsOverlay.DrawStatsSection` turns a `RenderFrameStats` into an overlay section.
+- **Wired into GameApp by default.** `GameApp` and `GameApp3D` build one `DiagnosticsHud` automatically
+  (hidden, toggled with F1) and gate `Scene3D.EnableTiming` on its visibility, so pass timing costs nothing
+  when the panel is closed. `GameAppOptions.DisableDiagnosticsOverlay` turns it off entirely and
+  `GameAppOptions.DiagnosticsToggleKey` rebinds the toggle.
+- **Showcase adoption.** The Showcase inherits the built-in HUD and surfaces the networked room's client stats
+  in a Network section.
+
 ## 10.99.1
 
 ### WorldServer non-delta fallback adopts the indexed SnapshotWriter

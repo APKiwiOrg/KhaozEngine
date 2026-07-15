@@ -88,6 +88,11 @@ Windowing + input foundation for the custom MonoGame-free stack.
   above. Forwards to `Platform.WindowsAppId`; a no-op returning `false` off Windows or on a null/empty id, never
   throwing. Must run before constructing any `AppWindow`. `GameApp` calls it automatically from
   `GameAppOptions.AppUserModelId`.
+- `AppWindow.RequestForeground()` brings the window to the foreground and gives it input focus (restoring it
+  first if minimized). This is the OS-touching seam `KhaozEngine.App.SingleInstanceGuard` drives so a losing
+  second launch attempt can hand control back to this already-running instance instead of opening a second
+  window - see `KhaozEngine.Game`'s `GameApp` (`GameAppOptions.SingleInstance`). MUST be called from the
+  main/window thread (GLFW is not thread-safe for this call); best-effort and never throws otherwise.
 - `AppWindow.TryAttachParentConsole(bool enable = true)` (static) makes a Windows `WinExe` head keep its console
   output: a Windows-subsystem exe (`OutputType=WinExe`, so no stray console window opens behind the game) has no
   console, so it attaches the process to the launching terminal's console and rewires stdout/stderr, keeping

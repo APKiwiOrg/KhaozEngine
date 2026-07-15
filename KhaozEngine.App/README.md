@@ -88,6 +88,45 @@ so the whole flow is headless-testable with a fake.
 This is the generalized form of the desktop auto-updater's relaunch (`KhaozEngine.Updates`); the updater keeps its
 own tuned environment (antivirus/image-race retry, elevation, relocation), so the two share the pattern, not the code.
 
+## SingleInstanceGuard (one live instance at a time)
+
+`SingleInstanceGuard.TryAcquire(key)` claims a named OS mutex before any window or GPU device exists, so at
+most one live instance of the app runs at a time. Opt-in from a game via `GameAppOptions.SingleInstance`
+(`KhaozEngine.Game`'s `GameApp` calls this automatically, keyed by `SingleInstanceId` falling back to
+`AppUserModelId`) - see that package's README for the game-facing wiring. Used standalone:
+
+```csharp
+using KhaozEngine.App;
+
+SingleInstanceAcquireResult result = SingleInstanceGuard.TryAcquire("Company.MyGame");
+if (result.Outcome == SingleInstanceOutcome.AlreadyRunning)
+{
+    // The existing instance was already asked (best-effort) to come to the foreground. Exit without
+    // creating a window.
+    return;
+}
+// result.Lock is non-null: keep it alive for the process lifetime, Dispose it on shutdown to release
+// the key promptly. Optionally drive result.Lock.WaitForForegroundRequest(...) on a background thread
+// to react when a later conflicting launch asks this instance to come forward.
+```
+
+The `ISingleInstanceLock` seam splits into two independent needs: ownership (a named `Mutex`, the one
+named primitive .NET actually implements cross-platform off Windows) and the foreground-request signal (a
+small polled marker file under the OS temp dir, NOT a named `EventWaitHandle`/`Semaphore` - those throw
+`PlatformNotSupportedException` on macOS/Linux, confirmed against the runtime). `SystemSingleInstanceLock`
+is the real implementation; inject a fake via the `instanceLock` parameter for headless tests.
+
+**Composes with `AppRelaunch`.** A forced-restart successor is launched by its still-running predecessor
+BEFORE that predecessor shuts down, so a naive acquire would race a key the dying predecessor has not yet
+released - and lose, mistaking a legitimate relaunch for a second live instance. `TryAcquire`'s
+`predecessorWait` (default `AppRelaunch.DefaultPredecessorTimeout`, the same bound `AwaitPredecessor`
+already uses for the same predecessor) rides out exactly that window.
+
+**Also resolves the auto-updater's relaunch-stacking gap** (`KhaozEngine.Updates.UpdateApplier.ResilientRelaunch`):
+if a post-update relaunch lands on top of a surviving sibling instance, the freshly-started process finds
+the guard already held, asks the survivor to come forward, and exits itself - no second window, and no
+special-casing needed in the updater (see that package's README, "Relaunch settle wait + retry").
+
 ## LocalizationManager
 
 Localization helper (absorbed from the retired `KhaozEngine.Localization` package in 9.0.0). It does

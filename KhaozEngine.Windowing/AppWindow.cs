@@ -617,6 +617,40 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>
+        /// Brings this window to the foreground and gives it input focus: restores it first if minimized (a
+        /// bare focus call is inert on a minimized GLFW window), then focuses it. This is the OS-touching seam
+        /// <c>KhaozEngine.App.SingleInstanceGuard</c> drives when a second launch attempt hands control back to
+        /// this already-running instance instead of opening a second window - see <c>GameApp</c>'s constructor
+        /// and per-frame foreground-request check. MUST be called from the main/window thread (the same thread
+        /// that pumps <see cref="Run"/>): GLFW itself is not thread-safe for this call, which is why
+        /// <c>GameApp</c> only ever calls it from inside its <see cref="Run"/> frame callback, never from the
+        /// background thread that listens for the request. Best-effort: a no-op on a non-GLFW backend or once
+        /// the window has started closing, and never throws (an OS focus-steal denial, e.g. Windows' foreground
+        /// lock, just leaves the window unfocused - no worse than the status quo).
+        /// </summary>
+        public unsafe void RequestForeground()
+        {
+            if (!Exists) return;
+            nint glfwWindow = _window.Native?.Glfw ?? 0;
+            if (glfwWindow == 0) return;
+
+            try
+            {
+                var glfw = Silk.NET.GLFW.GlfwProvider.GLFW.Value;
+                var handle = (Silk.NET.GLFW.WindowHandle*)glfwWindow;
+                if (_minimized)
+                {
+                    glfw.RestoreWindow(handle);
+                }
+                glfw.FocusWindow(handle);
+            }
+            catch
+            {
+                // Best-effort: never let a focus-steal denial or a backend quirk propagate.
+            }
+        }
+
+        /// <summary>
         /// Set the process's Windows taskbar identity (AppUserModelID) so Windows 10/11 keys the running app's
         /// taskbar button to it - fixing the taskbar icon (otherwise the generic <c>.exe</c> placeholder) and
         /// stabilising grouping/pinning. Forwards to <see cref="KhaozEngine.Platform.WindowsAppId.TrySetProcessAppUserModelId"/>:

@@ -29,8 +29,13 @@ public enum ApplyOutcome
     RolledBack,
 
     /// <summary>
-    /// The game was still running when the exit barrier expired, so nothing was touched: the install is
-    /// fully intact and no marker was written. The old version keeps running and the update is deferred.
+    /// The game exe was still held open by another process when the applier gave up waiting, so nothing
+    /// was touched: the install is fully intact and no marker was written, and this run never relaunches
+    /// anything. This covers two distinct barriers: the launching instance was still running when the
+    /// parent-exit barrier expired, OR that instance exited cleanly but a SIBLING instance (a second
+    /// running copy the parent-exit barrier never watches, since it only tracks one pid) - or an
+    /// antivirus/indexer scan - still had the exe open. Either way the already-running old version is left
+    /// exactly as it was and the update is deferred to the next launch.
     /// </summary>
     AbortedGameStillRunning
 }
@@ -68,6 +73,19 @@ public static class UpdateApplier
     // the apply aborts untouched. The common path (process already gone) returns on the first poll.
     public const int ParentGoneBarrierPolls = 60;
     public const int ParentGonePollDelayMilliseconds = 500;
+
+    // Pre-mutation exclusive-open gate. The parent-exit barrier above only watches config.ParentPid - the
+    // ONE process that launched this updater. A SIBLING instance (a second copy of the game the player
+    // started separately) is invisible to it: it can hold the install exe memory-mapped the whole time, so
+    // every ReplaceFile below (a rename-over-image) fails ERROR_ACCESS_DENIED for the full retry budget,
+    // and then the rollback restore (a CopyFile overwrite, i.e. open-for-write) fails too
+    // (ERROR_SHARING_VIOLATION) - the worst outcome, a failed rollback. Poll CanOpenExclusively on the exe
+    // BEFORE writing the progress marker or touching any install file: if it is not exclusively openable,
+    // nothing about the barrier above caught it, but this still will. 60 x 500ms = 30s, matching the
+    // post-apply settle budget below. Openable on the first poll (the overwhelmingly common case) costs one
+    // call and no delay.
+    public const int ExeExclusiveGateMaxPolls = 60;
+    public const int ExeExclusiveGatePollDelayMilliseconds = 500;
 
     // Post-apply settle wait (the "Finishing" phase). After the new exe lands, Windows Defender scans it
     // and briefly holds an exclusive lock; relaunching mid-scan trips over the in-flight image
@@ -436,6 +454,18 @@ public static class UpdateApplier
             }
         }
 
+        // Second barrier: the game that launched us is confirmed gone, but a SIBLING instance the barrier
+        // above never watches (or an AV/indexer scan) can still have the install exe open. Every mutation
+        // below needs an exclusive handle on it (ReplaceFile is a rename-over-image), so confirm it is free
+        // BEFORE the marker or any install file is touched - catching this here, untouched, is strictly
+        // better than discovering it 40 retries and a failed rollback later.
+        if (!WaitForExeExclusivelyOpenable(environment, config.GameExePath))
+        {
+            environment.Log("Game exe is still held open by another process (a second running instance?) after waiting, deferring update (install untouched).");
+            ui.Close();
+            return new ApplyResult { Outcome = ApplyOutcome.AbortedGameStillRunning, ExitCode = 1 };
+        }
+
         string rollbackDir = Path.Combine(config.InstallDir, RollbackDirName);
         try { environment.DeleteDirectory(rollbackDir); }
         catch (Exception ex) { environment.Log($"Cleanup: could not clear stale rollback dir {rollbackDir}: {ex.Message}"); }
@@ -703,6 +733,17 @@ public static class UpdateApplier
     /// On non-Windows the first attempt reports <see cref="RelaunchStartupOutcome.Running"/>, so this is a
     /// single launch with no retry or waiting.
     /// </summary>
+    /// <remarks>
+    /// Deliberately does not check for an already-running instance of <paramref name="exePath"/> itself: this
+    /// updater has no reliable cross-platform way to enumerate processes by exe path, and it does not need
+    /// one. A game that opts into <c>KhaozEngine.App</c>'s single-instance guard (<c>GameAppOptions.SingleInstance</c>)
+    /// resolves it for us - if a sibling survived (e.g. the pre-mutation gate above deferred and the old
+    /// version relaunches, or a sibling was already running before this update even started), the freshly
+    /// launched process finds the guard held, asks the survivor to come to the foreground, and exits itself.
+    /// That is exactly <see cref="RelaunchStartupOutcome.ExitedEarly"/>: no special-casing needed here, just
+    /// the log line below naming it. A game that has not opted in gets the pre-existing behaviour (a second
+    /// window can still open) unchanged.
+    /// </remarks>
     private static void ResilientRelaunch(IUpdaterEnvironment environment, string exePath, string workingDirectory)
     {
         for (int attempt = 1; attempt <= RelaunchMaxAttempts; attempt++)
@@ -715,7 +756,7 @@ public static class UpdateApplier
                     environment.Log($"Relaunch succeeded on attempt {attempt} (game is running).");
                     return;
                 case RelaunchStartupOutcome.ExitedEarly:
-                    environment.Log($"Relaunch on attempt {attempt}: the game ran and exited on its own (not a startup failure); done.");
+                    environment.Log($"Relaunch on attempt {attempt}: the game ran and exited on its own (not a startup failure - this is also the expected shape when a KhaozEngine.App single-instance guard finds a still-running sibling, focuses it, and self-exits); done.");
                     return;
                 case RelaunchStartupOutcome.StartupFailed:
                     environment.Log($"Relaunch attempt {attempt} hit a startup failure (antivirus/image race); will retry.");
@@ -762,6 +803,37 @@ public static class UpdateApplier
             environment.Sleep(SettlePollDelayMilliseconds);
         }
         environment.Log("Timed out waiting for the game exe to become launchable; relaunching anyway.");
+    }
+
+    /// <summary>
+    /// Polls <see cref="IUpdaterEnvironment.CanOpenExclusively"/> on the install exe until it is free of
+    /// every other holder (a sibling instance, an AV/indexer scan) or the poll budget is exhausted,
+    /// sleeping between polls. Returns true once it is exclusively openable, false if it is still held at
+    /// the end (the caller aborts untouched, same shape as <see cref="WaitForParentGone"/> failing). A
+    /// blank <paramref name="gameExePath"/> (no exe configured to check) returns true immediately, same as
+    /// the real environment's no-op on non-Windows via <see cref="IUpdaterEnvironment.CanOpenExclusively"/>.
+    /// </summary>
+    private static bool WaitForExeExclusivelyOpenable(IUpdaterEnvironment environment, string gameExePath)
+    {
+        if (string.IsNullOrEmpty(gameExePath))
+        {
+            return true;
+        }
+
+        for (int attempt = 0; attempt < ExeExclusiveGateMaxPolls; attempt++)
+        {
+            if (environment.CanOpenExclusively(gameExePath))
+            {
+                if (attempt > 0)
+                {
+                    environment.Log($"Game exe became exclusively openable after {attempt} poll(s); proceeding with the update.");
+                }
+                return true;
+            }
+            environment.Log($"Game exe still held by another process, waiting before applying ({attempt + 1}/{ExeExclusiveGateMaxPolls})...");
+            environment.Sleep(ExeExclusiveGatePollDelayMilliseconds);
+        }
+        return false;
     }
 
     /// <summary>

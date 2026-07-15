@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
+using KhaozEngine.App;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
@@ -49,8 +52,52 @@ namespace KhaozEngine.Game
         readonly int? _jobSchedulerDegreeOfParallelism;
         IJobScheduler? _jobScheduler;
 
+        // Single-instance guard (opt-in, GameAppOptions.SingleInstance): the acquired lock is kept alive for
+        // the process lifetime and released in Dispose. The listener thread polls it for a foreground request
+        // from a losing second launch and only sets a flag - the actual AppWindow.RequestForeground() call
+        // happens on the main thread inside Run's frame callback below, since GLFW itself is not thread-safe
+        // for that call.
+        ISingleInstanceLock? _singleInstanceLock;
+        Thread? _singleInstanceListener;
+        volatile bool _foregroundRequested;
+        volatile bool _disposed;
+
         protected GameApp(in GameAppOptions options)
         {
+            // Single-instance guard: claimed BEFORE anything else in the ctor - even the console attach below -
+            // so a losing second launch never creates a window, console, or crash-log hook. Opt-in
+            // (GameAppOptions.SingleInstance); see KhaozEngine.App.SingleInstanceGuard for the mechanism
+            // (composes with a forced AppRelaunch.Restart and with the auto-updater's post-update relaunch).
+            if (options.SingleInstance)
+            {
+                string? key = ResolveSingleInstanceKey(options);
+                if (string.IsNullOrEmpty(key))
+                {
+                    throw new InvalidOperationException(
+                        "GameAppOptions.SingleInstance requires SingleInstanceId or AppUserModelId to be set.");
+                }
+
+                SingleInstanceAcquireResult acquire = SingleInstanceGuard.TryAcquire(key);
+                if (acquire.Outcome == SingleInstanceOutcome.AlreadyRunning)
+                {
+                    // The existing owner has already been asked (best-effort) to come to the foreground. This
+                    // process must go no further - no window, no GPU device - so it exits right here. Log.Info
+                    // is a safe no-op if the game has not configured logging yet, and writes through whatever
+                    // sink it configured (console/file) when it has.
+                    Log.Info($"Another instance is already running (single-instance key '{key}'); asked it to come to the foreground and exiting.");
+                    Environment.Exit(0);
+                    return; // unreachable after Exit; documents intent for anyone reading the ctor top-to-bottom.
+                }
+
+                _singleInstanceLock = acquire.Lock;
+                _singleInstanceListener = new Thread(ListenForForegroundRequests)
+                {
+                    IsBackground = true,
+                    Name = "KE-SingleInstance",
+                };
+                _singleInstanceListener.Start();
+            }
+
             // WinExe support: a Windows-subsystem game head (OutputType=WinExe, which stops a stray console window
             // opening behind the game) has no console, so Console.Write* output vanishes when the game is launched
             // from a terminal (dotnet run / cmd / PowerShell). Attach the parent process's console (if any) FIRST,
@@ -147,6 +194,17 @@ namespace KhaozEngine.Game
             theme.ToggleKey = options.DiagnosticsToggleKey ?? Key.F1;
             return theme;
         }
+
+        /// <summary>
+        /// The single-instance guard key <see cref="GameApp"/>'s constructor resolves from
+        /// <paramref name="options"/>: <see cref="GameAppOptions.SingleInstanceId"/> when non-empty, else
+        /// <see cref="GameAppOptions.AppUserModelId"/>, else null (which the ctor turns into a thrown
+        /// <see cref="InvalidOperationException"/> when <see cref="GameAppOptions.SingleInstance"/> is set).
+        /// Pure, so the fallback precedence is headless-testable without standing up a window - mirrors
+        /// <see cref="BuildDiagnosticsTheme"/> / <see cref="CreateJobScheduler"/>.
+        /// </summary>
+        internal static string? ResolveSingleInstanceKey(in GameAppOptions options)
+            => !string.IsNullOrEmpty(options.SingleInstanceId) ? options.SingleInstanceId : options.AppUserModelId;
 
         /// <summary>
         /// Resolve the configured window icon(s) to <see cref="WindowIcon"/>s: explicit
@@ -354,12 +412,43 @@ namespace KhaozEngine.Game
         /// <summary>Request the loop stop (closes the window after the current frame).</summary>
         protected void Quit() => _window.Close();
 
+        /// <summary>
+        /// Background-thread body for the single-instance guard's foreground-request listener (started from
+        /// the ctor only when <see cref="GameAppOptions.SingleInstance"/> is set). Polls
+        /// <see cref="ISingleInstanceLock.WaitForForegroundRequest"/> in short chunks so it notices
+        /// <see cref="_disposed"/> promptly rather than blocking on one long wait; only flips the flag that
+        /// <see cref="Run"/> checks on the main thread each frame - it never touches <see cref="_window"/>
+        /// itself (GLFW is not thread-safe for that).
+        /// </summary>
+        void ListenForForegroundRequests()
+        {
+            ISingleInstanceLock? instanceLock = _singleInstanceLock;
+            if (instanceLock is null) return;
+
+            while (!_disposed)
+            {
+                if (instanceLock.WaitForForegroundRequest(TimeSpan.FromSeconds(1)))
+                {
+                    _foregroundRequested = true;
+                }
+            }
+        }
+
         /// <summary>Run the fixed, correct per-frame ordering until the window closes.</summary>
         public void Run()
         {
             OnLoad();
             _window.Run(frame =>
             {
+                // A losing second launch (single-instance guard conflict) asked us to come to the foreground.
+                // Consume the flag and drive the actual OS focus call here, on the main/window thread - see
+                // AppWindow.RequestForeground's thread-safety note.
+                if (_foregroundRequested)
+                {
+                    _foregroundRequested = false;
+                    _window.RequestForeground();
+                }
+
                 _clock.Update(frame.Dt);
                 _input = frame.Input;
                 _dt = _clock.ScaledDeltaSeconds;
@@ -440,6 +529,14 @@ namespace KhaozEngine.Game
             _hudWhite?.Dispose();
             _surface2D.Dispose();
             _window.Dispose();
+
+            // Stop the foreground-request listener (it notices within its 1s poll chunk, IsBackground so it
+            // never blocks process exit either way) and release the single-instance key promptly so a fresh
+            // launch right after this one (e.g. AppRelaunch.Restart) does not need to wait out the
+            // predecessor-wait timeout to acquire it.
+            _disposed = true;
+            _singleInstanceLock?.Dispose();
+
             GC.SuppressFinalize(this);
         }
     }

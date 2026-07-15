@@ -5053,6 +5053,48 @@ headless-testable with a fake - pass an `IProcessControl` to either method. This
 desktop auto-updater's parent-pid-wait relaunch (`KhaozEngine.Updates`); the updater keeps its own tuned
 environment (antivirus/image-race retry, elevation, relocation), so the two share the pattern, not the code.
 
+## Single-instance guard (`KhaozEngine.App.SingleInstanceGuard`, 10.110.0)
+
+Opt-in: set `GameAppOptions.SingleInstance = true` so only one live instance of the game can run at a time.
+`GameApp`'s constructor claims a named OS mutex at the very top - BEFORE any window or GPU device exists -
+keyed by `GameAppOptions.SingleInstanceId` (falling back to `AppUserModelId`; setting `SingleInstance` with
+neither set throws at construction).
+
+```csharp
+var options = GameAppOptions.For("MyGame", 440, 956);
+options.AppUserModelId = "Company.MyGame";
+options.SingleInstance = true;   // reuses AppUserModelId as the guard key
+using var app = new MyGame(options);
+app.Run();
+```
+
+If another live instance already holds the key, this process asks it to come to the foreground (best-effort),
+logs one line via `KhaozEngine.Diagnostics.Log`, and exits cleanly (`Environment.Exit(0)`) without ever
+constructing a window - so a double-click on the game's icon while it is already running never opens a second
+window, it just brings the first one forward. The winning instance listens for that foreground request on a
+background thread and only sets a flag; the actual `AppWindow.RequestForeground()` call happens on the main
+thread inside `GameApp.Run`'s frame callback, since GLFW is not thread-safe for a cross-thread focus call.
+
+Two compositions this was built to get right, both load-bearing for a desktop game with an auto-updater:
+
+- **A forced `AppRelaunch.Restart`** launches its successor BEFORE the predecessor shuts down, so a naive
+  mutex acquire in the successor would race a key its own dying predecessor has not released yet - and lose.
+  `SingleInstanceGuard.TryAcquire`'s predecessor-wait (default `AppRelaunch.DefaultPredecessorTimeout`, the
+  same 15s bound `AwaitPredecessor` already uses for the same predecessor) rides out exactly that window.
+- **The auto-updater's post-update relaunch** (`KhaozEngine.Updates.UpdateApplier.ResilientRelaunch`) can land
+  on top of a surviving sibling instance. With the guard adopted, the freshly-started process just finds it
+  already held, asks the survivor to come forward, and exits itself - no special-casing needed in the
+  updater, and no stacked third instance. `KhaozEngine.Updates`' own README has the matching sibling-instance
+  gate on the apply side (a second barrier that defers the update untouched if the install exe is still held
+  by anything after the game that launched the updater has exited - closes the gap where a sibling instance,
+  invisible to the plain parent-pid exit barrier, corrupted a rollback).
+
+Use `KhaozEngine.App.SingleInstanceGuard.TryAcquire` directly (outside `GameApp`, e.g. a server or CLI tool)
+for the same guarantee without a window - see `KhaozEngine.App`'s README ("SingleInstanceGuard") for the raw
+API and the `ISingleInstanceLock` seam (a fake for tests; the real `SystemSingleInstanceLock` uses a named
+`Mutex` for ownership and a polled temp-dir marker file, not a named event/semaphore, for the foreground
+signal - those throw off Windows).
+
 ---
 
 ## Foundation packages (brief)

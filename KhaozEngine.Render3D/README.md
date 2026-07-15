@@ -72,6 +72,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   caster still writes the shadow map, so its shadow lands on-screen). Read the win from `Scene3D.DrawnInstances` /
   `Scene3D.CulledInstances`. Mesh-local bounds (`MeshBounds`, computed once at `LoadMesh`) feed the pure plane math
   `FrustumPlanes.Extract(camera.ViewProjection)` + `IntersectsAabb`/`IntersectsSphere` (headless, allocation-free).
+  Skinned draws (`DrawSkinned`) get the same treatment BEFORE the CPU skin pass, so an off-screen character skips
+  the per-vertex skin + upload entirely, not just its draw call: a camera-culled draw is skinned only if it is
+  ALSO inside the active shadow map's own ortho volume (so an off-camera caster still throws an on-screen shadow -
+  the shadow pass is never camera-culled, matching the rigid contract). Rest-pose bounds are inflated by a safety
+  factor (`Scene3D.SkinnedCullSafetyFactor`) to cover a pose swinging a limb outside the rest silhouette. Read the
+  win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as
   `Scene3D.PassTimingsMs` (a `Scene3DPassTimingsMs`: `ShadowDepthMs`/`ModelMs`/`TransparentsMs`/`PostMs`). This is

@@ -1534,6 +1534,18 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   Read the per-frame win from `Scene3D.DrawnInstances` / `Scene3D.CulledInstances` (last rendered frame; `CulledInstances`
   is always `0` when culling is off). The plane math is public and pure: `FrustumPlanes.Extract(camera.ViewProjection)`
   then `IntersectsAabb`/`IntersectsSphere` (use the CPU-authored `ViewProjection`, not a GPU-clip-corrected matrix).
+  - **Skinned draws are culled too, before the CPU skin pass runs** (not just their draw call): an off-screen
+    character queued via `DrawSkinned` skips the per-vertex `SkinningMath.SkinVertex` loop and its buffer upload
+    entirely, the actual cost the audit that motivated this flagged (a character's per-frame skin cost dwarfs one
+    draw call). The catch a naive camera cull would get wrong: an off-camera character can still need to THROW a
+    shadow. So a camera-culled skinned draw is skipped completely only when it is ALSO outside the active shadow
+    map's own light-space ortho volume (tested with the exact same `FrustumPlanes.Extract` against the shadow
+    pass's light view-projection, not an approximation) - if it is inside that volume it is still CPU-skinned and
+    uploaded (so the shadow depth pass can draw it), just not drawn in the main visible pass. Rest-pose bounds
+    (`MeshBounds`, computed once at `LoadSkinnedMesh`) are inflated by `Scene3D.SkinnedCullSafetyFactor` (1.5x)
+    before either test, since a pose can carry vertices outside the mesh's static rest-pose box (a swung limb, a
+    jump). Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
+    counterpart of `DrawnInstances`/`CulledInstances` above.
 - **Sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural sky drawn as a background pass behind
   all geometry - a vertical horizon-to-zenith gradient plus an optional sun disc + halo. Default `Sky.Enabled = false`,
   so the background stays the clear colour + starfield and existing scenes are byte-stable; set `Post.Sky.Enabled = true`

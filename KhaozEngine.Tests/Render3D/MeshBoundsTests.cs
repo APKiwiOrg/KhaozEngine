@@ -48,5 +48,31 @@ namespace KhaozEngine.Tests.Render3D
             b.WorldSphere(world, out _, out float r);
             Assert.Equal(b.Radius, r, 4);
         }
+
+        static SkinnedVertex Skinned(float x, float y, float z) =>
+            new() { Position = new Vector3(x, y, z), Normal = Vector3.UnitY, Color = Vector4.One };
+
+        [Fact]
+        public void FromVertices_SkinnedVertex_computes_the_same_bounds_as_ModelVertex_for_equivalent_positions()
+        {
+            var skinned = new[] { Skinned(-1, -2, -3), Skinned(1, 2, 3), Skinned(0, 0, 0) };
+            var model = new[] { V(-1, -2, -3), V(1, 2, 3), V(0, 0, 0) };
+
+            MeshBounds fromSkinned = MeshBounds.FromVertices(skinned);
+            MeshBounds fromModel = MeshBounds.FromVertices(model);
+
+            Assert.Equal(fromModel.Min, fromSkinned.Min);
+            Assert.Equal(fromModel.Max, fromSkinned.Max);
+            Assert.Equal(fromModel.Center, fromSkinned.Center);
+            Assert.Equal(fromModel.Radius, fromSkinned.Radius, 4);
+        }
+
+        [Fact]
+        public void FromVertices_SkinnedVertex_empty_span_is_degenerate_point()
+        {
+            var b = MeshBounds.FromVertices(System.Array.Empty<SkinnedVertex>());
+            Assert.Equal(Vector3.Zero, b.Center);
+            Assert.Equal(0f, b.Radius);
+        }
     }
 }

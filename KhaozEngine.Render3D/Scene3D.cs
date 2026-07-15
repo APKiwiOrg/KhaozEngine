@@ -171,6 +171,24 @@ namespace KhaozEngine.Render3D
         /// (drawn + culled = the instances queued for a mesh with computable bounds this frame).</summary>
         public int CulledInstances => _culledInstances;
 
+        // Per-frame skinned draw/cull counters, index-unaligned (skinned draws are not grouped into runs). Reset
+        // each RenderInternal like _drawnInstances/_culledInstances above.
+        int _drawnSkinnedInstances, _culledSkinnedInstances;
+
+        /// <summary>Number of queued skinned draws actually CPU-skinned and drawn in the main visible pass last
+        /// frame. Mirrors <see cref="DrawnInstances"/> for the skinned queue. A draw camera-culled from the main
+        /// pass but still inside the active shadow map's ortho volume is still CPU-skinned and uploaded (so its
+        /// shadow renders), but is not counted here - see <see cref="CulledSkinnedInstances"/>.</summary>
+        public int DrawnSkinnedInstances => _drawnSkinnedInstances;
+
+        /// <summary>Number of queued skinned draws CULLED from the main visible pass last frame by camera-frustum
+        /// culling. Always 0 when <see cref="FrustumCulling"/> is off. Pairs with <see cref="DrawnSkinnedInstances"/>
+        /// (drawn + culled = the valid skinned draws queued this frame). A camera-culled draw only skips its CPU
+        /// skin + upload entirely when it is ALSO outside the active shadow map's ortho volume (or shadows are off) -
+        /// the shadow depth pass is never camera-culled, matching <see cref="FrustumCulling"/>'s rigid-instance
+        /// contract.</summary>
+        public int CulledSkinnedInstances => _culledSkinnedInstances;
+
         /// <summary>
         /// Per-pass CPU encode timing: off by default (no cost, existing scenes byte-stable and no
         /// <c>Stopwatch</c> calls). Set <c>true</c> to populate <see cref="PassTimingsMs"/> each frame - a
@@ -730,8 +748,9 @@ namespace KhaozEngine.Render3D
             _gd.UpdateBuffer(vb, 0, mesh.Vertices);
             var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
 
+            MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
             int index = _skinnedSlots.Alloc(out int generation);
-            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, mesh.InverseBind);
+            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, mesh.InverseBind, in bounds);
             // Cache the source vertices (parallel to _skinnedMeshes) for per-frame CPU skinning - no GPU readback.
             if (index < _skinnedMeshes.Count) { _skinnedMeshes[index] = entry; _skinnedCpuVerts[index] = mesh.Vertices; }
             else { _skinnedMeshes.Add(entry); _skinnedCpuVerts.Add(mesh.Vertices); }
@@ -1393,14 +1412,14 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Render the key-light shadow depth pass for this frame: fit the ortho light-space map around the camera
-        /// focus (texel-snapped), set the shadow tail on the frame UBO, then draw every rigid + skinned caster into
-        /// the shadow map (reusing the already-uploaded instance/skinned buffers). Terrain (splat meshes) do NOT cast
-        /// (model-only casting - terrain self-shadowing is visually negligible in the test scenes and the flat MMO
-        /// ground has no overhangs); terrain always RECEIVES via the shared lighting block. Runs only when the tier
-        /// resolves to ShadowMap.
+        /// This frame's key-light shadow ortho world-&gt;light-clip matrix (CPU-authored, NOT GPU-clip-corrected):
+        /// fits the light-space box around the ground point the camera is looking at, texel-snapped. Factored out
+        /// of <see cref="RenderShadowDepthPass"/> so the exact same matrix drives both the depth pass AND the
+        /// pre-skin-pass shadow-caster visibility test in <see cref="RenderInternal"/> (an off-camera skinned draw
+        /// within this volume must still be CPU-skinned so its shadow lands on-screen) - computing it once and
+        /// passing it to both avoids any risk of the two ever disagreeing on the fit.
         /// </summary>
-        void RenderShadowDepthPass(IGpuCommandList cl, Vector3 eye)
+        Matrix4x4 ComputeShadowLightViewProj(Vector3 eye)
         {
             var shadows = Post.Quality.Shadows;
             // Focus the map on the ground the camera looks at: intersect the view-forward ray with the ground plane
@@ -1421,12 +1440,27 @@ namespace KhaozEngine.Render3D
             }
             Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
             int res = _model.ShadowMap.Resolution;   // the actual allocated resolution (clamped)
-            Matrix4x4 lightVp = Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, shadows.ShadowFocusRadius, res);
+            return Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, shadows.ShadowFocusRadius, res);
+        }
 
+        /// <summary>
+        /// Render the key-light shadow depth pass for this frame using the already-fitted <paramref name="lightVp"/>
+        /// (<see cref="ComputeShadowLightViewProj"/>): set the shadow tail on the frame UBO, then draw every rigid +
+        /// skinned caster into the shadow map (reusing the already-uploaded instance/skinned buffers). Terrain
+        /// (splat meshes) do NOT cast (model-only casting - terrain self-shadowing is visually negligible in the
+        /// test scenes and the flat MMO ground has no overhangs); terrain always RECEIVES via the shared lighting
+        /// block. NEVER camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn unconditionally
+        /// (an entry only got there because it is visible to the main pass, the shadow pass, or both - see
+        /// <see cref="ClassifySkinnedVisibility"/>). Runs only when the tier resolves to ShadowMap.
+        /// </summary>
+        void RenderShadowDepthPass(IGpuCommandList cl, Matrix4x4 lightVp)
+        {
+            var shadows = Post.Quality.Shadows;
             // The shadow map is a render-to-texture, so the light matrix uploaded for the DEPTH pass is GPU-clip
             // corrected (same convention as the model pass's ViewProj). The receivers sample with the SAME corrected
             // matrix, so the shadow lookup stays consistent across backends.
             Matrix4x4 lightVpGpu = GpuClip.Correct(lightVp, _gd.Capabilities);
+            int res = _model.ShadowMap.Resolution;   // the actual allocated resolution (clamped)
             float invRes = 1f / Math.Max(1, res);
             _model.SetShadowUniforms(lightVpGpu, invRes, shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength);
 
@@ -1500,17 +1534,36 @@ namespace KhaozEngine.Render3D
             // an off-screen caster must still write depth into the light-space map so its shadow lands on-screen.
             // Reuses _instanceVisible (grown, not per-frame allocated); the main + splat draws then rasterize only
             // the visible contiguous sub-spans of each run against the same GPU buffer (no re-upload, no reorder).
-            ComputeMainPassVisibility(vp);
+            FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(vp) : default;
+            ComputeMainPassVisibility(camFrustum);
+
+            // Resolve the shadow tier + (when active) this frame's light-space ortho matrix BEFORE the CPU skin
+            // pass below, so an off-camera skinned draw's shadow-caster visibility can be decided up front (see
+            // ClassifySkinnedVisibility): a character camera-culled from the main pass but still inside the shadow
+            // ortho volume must still be CPU-skinned so its shadow lands on-screen. RenderShadowDepthPass (below)
+            // reuses shadowLightVp instead of recomputing it, so the two passes can never disagree on the matrix.
+            bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
+            Matrix4x4 shadowLightVp = default;
+            FrustumPlanes shadowFrustum = default;
+            if (shadowMapActive)
+            {
+                shadowLightVp = ComputeShadowLightViewProj(eye);
+                shadowFrustum = FrustumPlanes.Extract(shadowLightVp);
+            }
 
             // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
             // CPU because the GPU bone-buffer read corrupts past element 0 in the windowed Veldrid/Metal swapchain
             // context - only bones[0] survives; extensively bisected). Built here (before both passes) so the shadow
             // depth pass and the model pass share the uploaded skinned buffers. SkinningMath.SkinVertex mirrors the
-            // shader blend exactly.
+            // shader blend exactly. A draw that is camera-culled AND (shadows off, or outside the shadow ortho
+            // volume too) is skipped entirely here - no skin, no upload, no draw in either pass. See
+            // ClassifySkinnedVisibility for why this can never drop a caster whose shadow would have been visible.
             var skinnedItems = _skinnedInstances.Items;
             _cpuSkinnedVerts.Clear();
             _cpuSkinnedInstances.Clear();
             _cpuSkinnedDraws.Clear();
+            _drawnSkinnedInstances = 0;
+            _culledSkinnedInstances = 0;
             if (skinnedItems.Count > 0)
             {
                 var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
@@ -1523,6 +1576,12 @@ namespace KhaozEngine.Render3D
                     if (entry is null) continue;
                     var src = _skinnedCpuVerts[it.Mesh.Index];
                     if (src is null) continue;
+
+                    var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(
+                        entry.Bounds, it.World, FrustumCulling, camFrustum, shadowMapActive, shadowFrustum);
+                    if (!visibleMain && !visibleShadow) { _culledSkinnedInstances++; continue; }
+                    if (visibleMain) _drawnSkinnedInstances++; else _culledSkinnedInstances++;
+
                     int baseVertex = _cpuSkinnedVerts.Count;
                     var palette = boneSpan.Slice(i * cap, cap);   // this draw's composed bone window (slot i)
                     for (int v = 0; v < src.Length; v++)
@@ -1539,7 +1598,7 @@ namespace KhaozEngine.Render3D
                             ? new Vector4(it.Material.Specular, it.Material.Shininess, it.DissolveThreshold, it.DissolveEdgeWidth)
                             : new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f),
                     });
-                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving));
+                    _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain));
                 }
                 if (_cpuSkinnedDraws.Count > 0)
                 {
@@ -1553,13 +1612,14 @@ namespace KhaozEngine.Render3D
             // ortho light-space map, BEFORE the model pass, so the model + splat fragments sample it. Off/Blob leave
             // the shadow tail at strength 0, so the frame is byte-stable (no depth pass, the shader never taps the
             // map). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that tail).
-            bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
+            // shadowMapActive / shadowLightVp were resolved above (before the CPU skin pass), so this reuses the
+            // exact same matrix the skinned-visibility split was computed against.
             float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, postMs = 0f;
             long timingStart = 0;
             if (shadowMapActive)
             {
                 timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-                RenderShadowDepthPass(cl, eye);
+                RenderShadowDepthPass(cl, shadowLightVp);
                 if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
             }
             else
@@ -1643,7 +1703,10 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Skinned draws: the CPU-skinned geometry uploaded above, drawn through the rigid (no-bone) model pipeline.
+            // Skinned draws: the CPU-skinned geometry uploaded above, drawn through the rigid (no-bone) model
+            // pipeline. An entry with VisibleMain false was CPU-skinned only because it is still a shadow caster
+            // (camera-culled, shadow-visible - see ClassifySkinnedVisibility): it was already drawn into the shadow
+            // map above and must NOT also draw here.
             if (_cpuSkinnedDraws.Count > 0)
             {
                 _model.BindPass(cl);   // re-bind the model pipeline (the skinned draws follow the rigid run)
@@ -1651,6 +1714,7 @@ namespace KhaozEngine.Render3D
                 for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
                 {
                     var dr = _cpuSkinnedDraws[d];
+                    if (!dr.VisibleMain) continue;
                     if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
                     {
                         if (dr.Dissolve) _model.BindDissolvePass(cl); else _model.BindPass(cl);
@@ -2095,8 +2159,10 @@ namespace KhaozEngine.Render3D
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }
 
-        /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, and
-        /// the CPU-side inverse-bind matrices needed to compose per-frame bone palettes at DrawSkinned time.</summary>
+        /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, the
+        /// CPU-side inverse-bind matrices needed to compose per-frame bone palettes at DrawSkinned time, and its
+        /// rest-pose local <see cref="Bounds"/> (used to frustum-cull queued draws before the CPU skin pass -
+        /// see <see cref="ClassifySkinnedVisibility"/>).</summary>
         sealed class SkinnedMeshEntry
         {
             public readonly IGpuBuffer Vb, Ib;
@@ -2104,14 +2170,19 @@ namespace KhaozEngine.Render3D
             public readonly GpuIndexFormat IndexFormat;
             public readonly IGpuResourceSet? MaterialSet;
             public readonly Matrix4x4[] InverseBind;
-            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet, Matrix4x4[] inverseBind)
+            public readonly MeshBounds Bounds;
+            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuResourceSet? materialSet, Matrix4x4[] inverseBind, in MeshBounds bounds)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet; InverseBind = inverseBind;
+                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; MaterialSet = materialSet; InverseBind = inverseBind; Bounds = bounds;
             }
         }
 
         /// <summary>One CPU-skinned draw: the mesh's index buffer + count, the base vertex of its deformed verts in
-        /// the shared skinned vertex stream, and its optional material set. Built per frame in RenderInternal.</summary>
+        /// the shared skinned vertex stream, and its optional material set. Built per frame in RenderInternal.
+        /// Every entry here was CPU-skinned and uploaded (needed by at least one of the main or shadow pass). The
+        /// shadow depth pass draws every entry unconditionally (see RenderShadowDepthPass), while the main pass
+        /// draw loop skips an entry whose <see cref="VisibleMain"/> is false (camera-culled, kept only because it
+        /// is still a shadow caster).</summary>
         readonly struct CpuSkinnedDraw
         {
             public readonly IGpuBuffer Ib;
@@ -2120,9 +2191,10 @@ namespace KhaozEngine.Render3D
             public readonly int BaseVertex;
             public readonly IGpuResourceSet? MaterialSet;
             public readonly bool Dissolve;   // route through the CharDissolve pipeline variant
-            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet, bool dissolve = false)
+            public readonly bool VisibleMain;   // draw in the main visible pass; always true when culling is off
+            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet, bool dissolve = false, bool visibleMain = true)
             {
-                Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve;
+                Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve; VisibleMain = visibleMain;
             }
         }
 
@@ -2249,13 +2321,47 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Fill <see cref="_instanceVisible"/> for this frame's grouped instance buffer: true where the instance's
-        /// world-space bounding sphere is (conservatively) inside the camera frustum. When <see cref="FrustumCulling"/>
-        /// is off every slot is visible (parity path). Also updates <see cref="_drawnInstances"/> /
-        /// <see cref="_culledInstances"/>. Allocation-free on the hot path (the mask grows, never per-frame allocated;
-        /// the frustum lives in a stack struct). The shadow depth pass does not consult this mask.
+        /// Radius safety factor applied to a skinned draw's REST-POSE bounding sphere before culling it (see
+        /// <see cref="ClassifySkinnedVisibility"/>). A pose can carry vertices outside the rest-pose box - a
+        /// swung limb, a jump - so culling against the raw rest bounds risks dropping a character whose silhouette
+        /// has animated into view. 1.5x is a generous heuristic margin for a whole-body bounding sphere (a limb's
+        /// swing is bounded by twice its own length, itself a fraction of the full-body radius). A rig with more
+        /// extreme excursion (e.g. a long weapon swing far outside the body) should widen this or maintain its own
+        /// per-pose bounds instead.
         /// </summary>
-        void ComputeMainPassVisibility(Matrix4x4 vp)
+        internal const float SkinnedCullSafetyFactor = 1.5f;
+
+        /// <summary>
+        /// Conservative main-pass / shadow-caster visibility split for one queued skinned draw's rest-pose
+        /// <paramref name="restBounds"/> transformed by its <paramref name="world"/> matrix, inflated by
+        /// <see cref="SkinnedCullSafetyFactor"/>. <paramref name="cullMain"/> is <see cref="FrustumCulling"/> (off
+        /// = always visible in the main pass, the rigid-instance parity path). <paramref name="shadowActive"/> is
+        /// whether the shadow-map tier is resolved this frame (off = never a shadow caster). Returns
+        /// (VisibleMain, VisibleShadow) - a draw needs CPU skinning + upload iff either is true. Pure
+        /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic (both already unit-tested), no GPU,
+        /// headless-testable.
+        /// </summary>
+        internal static (bool VisibleMain, bool VisibleShadow) ClassifySkinnedVisibility(
+            in MeshBounds restBounds, in Matrix4x4 world,
+            bool cullMain, in FrustumPlanes mainFrustum,
+            bool shadowActive, in FrustumPlanes shadowFrustum)
+        {
+            if (!cullMain && !shadowActive) return (true, false);
+            restBounds.WorldSphere(world, out Vector3 center, out float radius);
+            float r = radius * SkinnedCullSafetyFactor;
+            bool visibleMain = !cullMain || mainFrustum.IntersectsSphere(center, r);
+            bool visibleShadow = shadowActive && shadowFrustum.IntersectsSphere(center, r);
+            return (visibleMain, visibleShadow);
+        }
+
+        /// <summary>
+        /// Fill <see cref="_instanceVisible"/> for this frame's grouped instance buffer: true where the instance's
+        /// world-space bounding sphere is (conservatively) inside <paramref name="frustum"/>. When
+        /// <see cref="FrustumCulling"/> is off every slot is visible (parity path). Also updates
+        /// <see cref="_drawnInstances"/> / <see cref="_culledInstances"/>. Allocation-free on the hot path (the mask
+        /// grows, never per-frame allocated). The shadow depth pass does not consult this mask.
+        /// </summary>
+        void ComputeMainPassVisibility(in FrustumPlanes frustum)
         {
             int total = _instanceData.Count;
             if (_instanceVisible.Length < total)
@@ -2272,7 +2378,6 @@ namespace KhaozEngine.Render3D
                 return;
             }
 
-            FrustumPlanes frustum = FrustumPlanes.Extract(vp);
             // Walk runs so each slot's mesh bounds come from its run's mesh; the world matrix is the uploaded
             // instance model matrix. A stale-handle run (mesh unloaded this frame) is conservatively kept visible
             // (the draw loop skips it anyway by the same stale check), so culling never diverges from the draw.

@@ -47,6 +47,23 @@ namespace KhaozEngine.Render3D
             return new MeshBounds(min, max);
         }
 
+        /// <summary>As <see cref="FromVertices(ReadOnlySpan{ModelVertex})"/>, from a skinned mesh's REST-POSE
+        /// vertex positions (before any per-frame bone deform). A pose can carry vertices outside this box (a
+        /// swung limb), so a caller culling a skinned draw against these bounds should inflate the resulting
+        /// sphere radius by a safety factor - see <c>Scene3D.SkinnedCullSafetyFactor</c>.</summary>
+        public static MeshBounds FromVertices(ReadOnlySpan<SkinnedVertex> verts)
+        {
+            if (verts.Length == 0) return Empty;
+            var min = new Vector3(float.MaxValue);
+            var max = new Vector3(float.MinValue);
+            foreach (ref readonly var v in verts)
+            {
+                min = Vector3.Min(min, v.Position);
+                max = Vector3.Max(max, v.Position);
+            }
+            return new MeshBounds(min, max);
+        }
+
         /// <summary>The world-space bounding sphere for this mesh drawn at <paramref name="world"/>: the local
         /// centre transformed by the matrix, and the local radius scaled by the matrix's largest axis scale (a
         /// conservative bound under non-uniform scale). Rotation/translation do not change a sphere's radius.</summary>

@@ -197,35 +197,46 @@ namespace KhaozEngine.Render2D
                     RadialProgressSweep(fraction, clockwise), color, segments);
         }
 
-        /// <summary>Draws a filled circle as stacked 1px horizontal rects.</summary>
+        /// <summary>Upper bound on the number of horizontal bands <see cref="DrawFilledCircle"/> draws,
+        /// regardless of radius (mirrors the segment-count clamps on <see cref="RingSegments"/> /
+        /// <see cref="SectorSegments"/>, which cap the same unbounded-with-radius growth for outlines).</summary>
+        public const int MaxFilledCircleRows = 128;
+
+        /// <summary>
+        /// The Y step (pixels) between <see cref="DrawFilledCircle"/>'s horizontal bands: 1 (one row per pixel
+        /// of diameter, today's behaviour) while the diameter stays at or under <see cref="MaxFilledCircleRows"/>,
+        /// otherwise the smallest step that brings the band count under the cap - so a very large radius
+        /// rasterizes as a bounded number of proportionally taller bands instead of one draw call per pixel row.
+        /// Pure; extracted for headless tests.
+        /// </summary>
+        public static int FilledCircleRowStep(float radius)
+        {
+            int diameterRows = 2 * (int)radius + 1;
+            return diameterRows <= MaxFilledCircleRows ? 1 : (diameterRows + MaxFilledCircleRows - 1) / MaxFilledCircleRows;
+        }
+
+        /// <summary>Draws a filled circle as stacked horizontal rects, one row per pixel of diameter up to
+        /// <see cref="MaxFilledCircleRows"/> bands (see <see cref="FilledCircleRowStep"/>).</summary>
         public void DrawFilledCircle(SpriteBatch batch, Vector2 center, float radius, Color color)
         {
             int intRadius = (int)radius;
-            for (int y = -intRadius; y <= intRadius; y++)
+            int step = FilledCircleRowStep(radius);
+            for (int y = -intRadius; y <= intRadius; y += step)
             {
                 int halfWidth = (int)MathF.Sqrt(radius * radius - y * y);
-                DrawFilledRect(batch, new Rect(center.X - halfWidth, center.Y + y, halfWidth * 2, 1), color);
+                DrawFilledRect(batch, new Rect(center.X - halfWidth, center.Y + y, halfWidth * 2, step), color);
             }
         }
 
         /// <summary>
-        /// Draws a vertical gradient by rendering <paramref name="bands"/> horizontal strips with linearly
-        /// interpolated colors between <paramref name="top"/> and <paramref name="bottom"/>.
+        /// Draws a vertical gradient as a single quad: <paramref name="top"/> on the upper edge,
+        /// <paramref name="bottom"/> on the lower edge, interpolated per-pixel by the GPU (rasterizer vertex
+        /// -color interpolation) instead of the earlier CPU-side banded approximation. <paramref name="bands"/>
+        /// is unused - kept only for source/binary compatibility with existing call sites - since a single
+        /// GPU-interpolated quad has no band count of its own and is smoother than any finite band count.
         /// </summary>
-        public void DrawVerticalGradient(SpriteBatch batch, Rect r, Color top, Color bottom, int bands = 12)
-        {
-            if (bands < 1) bands = 1;
-            float bandHeight = r.Height / bands;
-            Vector4 topV = top, bottomV = bottom;   // lerp in float space; implicit Color -> Vector4
-            for (int i = 0; i < bands; i++)
-            {
-                float t = i / (float)(bands - 1 == 0 ? 1 : bands - 1);
-                Color color = (Color)Vector4.Lerp(topV, bottomV, t);
-                float y = r.Y + i * bandHeight;
-                float h = (i == bands - 1) ? r.Bottom - y : MathF.Ceiling(bandHeight);
-                DrawFilledRect(batch, new Rect(r.X, y, r.Width, h), color);
-            }
-        }
+        public void DrawVerticalGradient(SpriteBatch batch, Rect r, Color top, Color bottom, int bands = 12) =>
+            batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height), top, bottom);
 
         /// <summary>
         /// Draws a progress bar: a <paramref name="bg"/> background, a <paramref name="fill"/> bar sized by

@@ -90,6 +90,36 @@ namespace KhaozEngine.Tests.Render2D
             Assert.Equal(expected, PrimitiveRenderer.RingSegments(radius: 999f, segmentsOverride: requested));
         }
 
+        // --- FilledCircleRowStep (band-count cap for DrawFilledCircle, mirrors the RingSegments/
+        // SectorSegments clamps) ------------------------------------------------------------------------
+
+        [Theory]
+        [InlineData(0f, 1)]      // degenerate radius: 1 row, well under the cap
+        [InlineData(42f, 1)]     // the scene2d_primitives golden's radius: must stay step 1 (byte-identical)
+        [InlineData(63f, 1)]     // 2*63+1 = 127 <= 128, still uncapped
+        [InlineData(64f, 2)]     // 2*64+1 = 129 > 128 -> smallest step that brings the band count under the cap
+        [InlineData(1000f, 16)]  // 2*1000+1 = 2001 rows uncapped -> ceil(2001/128) = 16
+        public void FilledCircleRowStep_IsOneUnderTheCap_ThenGrowsToStayUnderIt(float radius, int expectedStep)
+        {
+            Assert.Equal(expectedStep, PrimitiveRenderer.FilledCircleRowStep(radius));
+        }
+
+        [Theory]
+        [InlineData(64f)]
+        [InlineData(300f)]
+        [InlineData(1000f)]
+        [InlineData(50000f)]
+        public void FilledCircleRowStep_KeepsTheBandCountAtOrUnderTheCap(float radius)
+        {
+            int intRadius = (int)radius;
+            int step = PrimitiveRenderer.FilledCircleRowStep(radius);
+            int bandCount = 0;
+            for (int y = -intRadius; y <= intRadius; y += step) bandCount++;
+
+            Assert.True(bandCount <= PrimitiveRenderer.MaxFilledCircleRows,
+                $"radius {radius} produced {bandCount} bands, cap is {PrimitiveRenderer.MaxFilledCircleRows}");
+        }
+
         // --- Rotated-corner build (SpriteBatch.RotatedCorner) ----------------------------------------
 
         [Fact]

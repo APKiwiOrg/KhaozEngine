@@ -1949,7 +1949,7 @@ ease is draw-only (it keeps the MODEL from popping on a curb), and letting it mo
 every doorstep - so the camera tracks the continuous centre-glide and only the mesh carries the step ease. Both are the
 exact capsule centre on FLAT ground and airborne (glide + step offset are identity there), so target `CameraTarget`
 unconditionally. Rendering is raw on a jump, fall, swim, or a LARGE gap over
-`CharacterAnimatorTuning.SlopeGlideSnapDistance`, so those stay crisp. On by default; `SlopeGlideRate <= 0` disables the
+`CharacterAnimatorTuning.SlopeGlideSnapDistance`, so those stay crisp. On by default. `SlopeGlideRate <= 0` disables the
 glide (render-Y is then the raw feet-Y). Feed the sim's `ClimbRate` through your sample loop (see `e.ClimbRate` above).
 A position-only sample reads 0 (no glide).
 

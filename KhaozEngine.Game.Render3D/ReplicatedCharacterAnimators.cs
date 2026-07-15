@@ -282,7 +282,7 @@ namespace KhaozEngine.Game
         /// <summary>The point to aim a third-person follow camera at: the stair-glide-smoothed feet height lifted by
         /// <paramref name="capsuleHalfHeight"/> so the look-at sits at the character's CENTRE, not the feet. The bridge
         /// is fed feet-anchored samples (<c>feet = centre - capsuleHalfHeight</c>) so the mesh draws with its feet on the
-        /// ground via <see cref="World"/>; <see cref="RenderPosition"/> therefore sits at the feet, which is a full
+        /// ground via <see cref="World"/>. <see cref="RenderPosition"/> therefore sits at the feet, which is a full
         /// half-height too low to frame the character. Adding the half-height back reconstructs the smoothed centre - the
         /// same anchor a raw-physics follow camera targets (e.g. <c>WorldClient.LocalRenderState.Position</c>, the capsule
         /// centre) - while keeping the stair GLIDE (so the camera rises/falls smoothly on stairs instead of jolting per

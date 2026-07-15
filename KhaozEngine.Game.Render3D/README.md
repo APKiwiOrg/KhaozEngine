@@ -108,7 +108,7 @@ exported rate is the sim's SMOOTHED ACHIEVED rise (not the commanded rate), so t
 smoothed feet height is baked into `CharacterPose.World` (the DRAW transform) and surfaced as
 **`CharacterPose.RenderPosition`** (`== World.Translation`, the drawn FEET). Point a follow camera at
 **`CharacterPose.CameraTarget(capsuleHalfHeight)`**, NOT `RenderPosition`: the sample is feet-anchored, so
-`RenderPosition` sits a full half-height too low (it parks the camera at floor level); `CameraTarget` lifts the glide to
+`RenderPosition` sits a full half-height too low (it parks the camera at floor level). `CameraTarget` lifts the glide to
 the capsule CENTRE (the anchor a raw-physics camera targets, e.g. `WorldClient.LocalRenderState.Position`) so the camera
 glides up stairs at head-height. It is byte-identity on FLAT
 ground (`ClimbRate == 0`, so render-Y equals the sample Y byte-for-byte), and renders raw on a jump / fall / swim / a

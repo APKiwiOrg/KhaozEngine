@@ -57,7 +57,7 @@ namespace KhaozEngine.Terrain
         readonly IChunkBuildDispatcher _dispatcher;
 
         // Frame-thread-only bookkeeping. _current tracks every chunk with an outstanding or ready build (last request
-        // wins via Generation); _ready holds finished-and-still-current builds waiting for the apply budget.
+        // wins via Generation). _ready holds finished-and-still-current builds waiting for the apply budget.
         readonly Dictionary<ChunkCoord, Slot> _current = new();
         readonly Dictionary<ChunkCoord, ChunkBuild<T>> _ready = new();
 
@@ -81,7 +81,7 @@ namespace KhaozEngine.Terrain
         }
 
         /// <summary>Build the scheduler over <paramref name="build"/> (the sink's CPU build step, run on a worker
-        /// thread). <paramref name="dispatcher"/> chooses how builds run; null uses <see cref="TaskChunkBuildDispatcher"/>
+        /// thread). <paramref name="dispatcher"/> chooses how builds run, or null for the default <see cref="TaskChunkBuildDispatcher"/>
         /// (the thread pool).</summary>
         public ChunkBuildScheduler(Func<ChunkCoord, int, T> build, IChunkBuildDispatcher? dispatcher = null)
         {

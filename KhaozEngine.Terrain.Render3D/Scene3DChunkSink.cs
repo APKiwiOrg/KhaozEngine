@@ -161,7 +161,7 @@ namespace KhaozEngine.Terrain
 
         /// <summary>The opaque CPU payload <see cref="BuildCpu"/> hands to <see cref="Apply"/>: the pure-CPU mesh and
         /// the per-layer scatter, both built off the analytic field with no GPU device. Everything here is safe to
-        /// compute on a worker thread; the GPU upload + physics registration happen later in <see cref="Apply"/>.</summary>
+        /// compute on a worker thread. The GPU upload + physics registration happen later in <see cref="Apply"/>.</summary>
         sealed class CpuBuild
         {
             public TerrainChunkMesh Mesh = null!;
@@ -213,7 +213,7 @@ namespace KhaozEngine.Terrain
             _scene.UnloadMesh(relod.Mesh);
             relod.Mesh = UploadMesh(cpu.Mesh);
             relod.Lod = lod;
-            // Props are LOD-independent; keep relod.LayerProps (the fresh scatter in cpu is identical). The terrain
+            // Props are LOD-independent, keep relod.LayerProps (the fresh scatter in cpu is identical). The terrain
             // surface collider IS LOD-dependent (the mesh resolution changed), so rebuild it.
             if (_collideTerrain && _physics is not null)
             {

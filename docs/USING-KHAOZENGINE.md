@@ -3063,7 +3063,7 @@ currently-loaded ring of chunk meshes would otherwise leak until whole-scene `Sc
 
 ```csharp
 // rebuild streaming, REUSING the same sink + scene (e.g. teleport to a new region):
-streamer.UnloadAll();                         // frees every loaded chunk through the sink + discards in-flight builds; sink stays alive
+streamer.UnloadAll();                         // frees every loaded chunk through the sink + discards in-flight builds, sink stays alive
 streamer = new TerrainStreamer(StreamerConfig.Default, sink);
 
 // OR full teardown of the ring AND the sink's owned GPU resources:

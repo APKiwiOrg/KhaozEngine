@@ -6,7 +6,7 @@ namespace KhaozEngine.Terrain
     /// <see cref="TerrainLod.PickLod"/> (metre distance to chunk center), not configured here.
     /// <para><see cref="Async"/> (default true): the CPU mesh build runs on a background thread and only the GPU
     /// upload happens on the frame thread. <see cref="MaxLoadsPerFrame"/> then caps how many completed builds are
-    /// APPLIED (GPU upload + swap) per <c>Update</c>; the builds themselves are unbudgeted (they run in parallel off
+    /// APPLIED (GPU upload + swap) per <c>Update</c>. The builds themselves are unbudgeted (they run in parallel off
     /// the frame thread). When <see cref="Async"/> is false, or the sink is not an <see cref="IAsyncChunkSink"/>, the
     /// streamer runs the old synchronous path where <see cref="MaxLoadsPerFrame"/> caps build+upload ops done inline.
     /// Either way unloads are immediate.</para></summary>

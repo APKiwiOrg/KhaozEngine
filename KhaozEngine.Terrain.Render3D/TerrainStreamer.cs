@@ -19,7 +19,7 @@ namespace KhaozEngine.Terrain
     /// <see cref="ChunkBuildScheduler{T}"/>: a chunk that leaves the ring mid-build is cancelled and its result
     /// discarded, and a re-LOD supersedes an earlier in-flight build of the same chunk (last request wins). Call
     /// <see cref="FlushPendingBuilds"/> to force all outstanding builds to complete + apply synchronously
-    /// (deterministic drain, for priming or blocking loads); use <see cref="StreamerConfig.Synchronous"/> to opt out
+    /// (deterministic drain, for priming or blocking loads). Use <see cref="StreamerConfig.Synchronous"/> to opt out
     /// of async entirely (build+upload happen inline, the pre-async behaviour). A sink that is not an
     /// <see cref="IAsyncChunkSink"/> always runs synchronously regardless of the config flag.</para>
     /// <para>Teardown: <see cref="UnloadAll"/> flushes the loaded ring through the sink (frees every loaded chunk) and
@@ -27,7 +27,7 @@ namespace KhaozEngine.Terrain
     /// first so the previous ring's GPU meshes are freed instead of leaked. <see cref="Dispose"/> does that and then
     /// disposes the sink if it is <see cref="IDisposable"/> - i.e. it assumes it owns the sink it was given (turn-key
     /// teardown). To rebuild streaming while REUSING the same sink, call <see cref="UnloadAll"/> and hand the same sink
-    /// to the new streamer; call <see cref="Dispose"/> only when the sink (and its GPU resources) should go too.</para></summary>
+    /// to the new streamer. Call <see cref="Dispose"/> only when the sink (and its GPU resources) should go too.</para></summary>
     public sealed class TerrainStreamer : IDisposable
     {
         readonly StreamerConfig _config;
@@ -187,7 +187,7 @@ namespace KhaozEngine.Terrain
             }
         }
 
-        // --- Async path (background CPU build; frame thread requests + applies within budget) ------------------------
+        // --- Async path (background CPU build, frame thread requests + applies within budget) ------------------------
         void UpdateAsync(Vector3 playerPos)
         {
             ChunkBuildScheduler<object> sched = _scheduler!;
@@ -226,7 +226,7 @@ namespace KhaozEngine.Terrain
             }
 
             // 2. Request builds over the load disk (UNBUDGETED - the build runs off the frame thread). Fresh load for
-            //    unloaded chunks; re-LOD when the tier changed. The scheduler's last-request-wins drops stale builds.
+            //    unloaded chunks. Re-LOD when the tier changed. The scheduler's last-request-wins drops stale builds.
             int r = _config.LoadRadius;
             float loadSq = r * (float)r;
             for (int dz = -r; dz <= r; dz++)
@@ -248,7 +248,7 @@ namespace KhaozEngine.Terrain
                     }
                     else if (reqLod != -1)
                     {
-                        sched.Cancel(c);   // tier returned to the applied LOD; drop the now-stale in-flight re-LOD
+                        sched.Cancel(c);   // tier returned to the applied LOD, drop the now-stale in-flight re-LOD
                     }
                 }
                 else if (reqLod != lod)

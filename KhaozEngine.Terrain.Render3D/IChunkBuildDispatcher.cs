@@ -10,7 +10,7 @@ namespace KhaozEngine.Terrain
     /// a worker thread. The production dispatcher (<see cref="TaskChunkBuildDispatcher"/>) fans each build onto the
     /// thread pool. A test dispatcher can queue the bodies and run them in a controlled order to exercise
     /// out-of-order completion. Injected into <see cref="ChunkBuildScheduler{T}"/> (and thus into
-    /// <see cref="TerrainStreamer"/>); leave it null to get the default.</summary>
+    /// <see cref="TerrainStreamer"/>). Leave it null to get the default.</summary>
     public interface IChunkBuildDispatcher
     {
         /// <summary>Run a build body. In production it executes off the caller's thread. A test dispatcher may queue it
@@ -53,7 +53,7 @@ namespace KhaozEngine.Terrain
             lock (_gate) pending = _outstanding.Count == 0 ? Array.Empty<Task>() : new List<Task>(_outstanding).ToArray();
             // WaitAll on the build tasks: each build task completes only after its body has enqueued its result, so
             // after this returns every outstanding result is available to the scheduler's next Pump. A body that threw
-            // surfaces here as an AggregateException; the scheduler also records the fault on its completion record so
+            // surfaces here as an AggregateException. The scheduler also records the fault on its completion record so
             // the error re-surfaces deterministically on the frame thread even without a Drain.
             if (pending.Length > 0) Task.WaitAll(pending);
         }

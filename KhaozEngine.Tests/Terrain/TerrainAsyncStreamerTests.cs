@@ -220,7 +220,7 @@ namespace KhaozEngine.Tests.Terrain
             var sink = new FakeAsyncChunkSink();
             var s = new TerrainStreamer(Async(1, 2, 100), sink, manual);
 
-            s.Update(new Vector3(30f, 0f, 30f), 0f);        // request the disk around chunk (0,0); nothing run yet
+            s.Update(new Vector3(30f, 0f, 30f), 0f);        // request the disk around chunk (0,0), nothing run yet
             var origin = new ChunkCoord(0, 0);
 
             // Teleport far away before any build ran: the origin disk leaves the ring while in flight.
@@ -263,7 +263,7 @@ namespace KhaozEngine.Tests.Terrain
         public void ReLod_superseded_by_a_newer_tier_applies_only_the_last_tier()
         {
             // Drive the supersede purely through the streamer: request a re-LOD, then change the target before the
-            // build completes, then complete both. Last tier wins; the stale one is discarded.
+            // build completes, then complete both. Last tier wins, the stale one is discarded.
             var manual = new ManualBuildDispatcher();
             var sink = new FakeAsyncChunkSink();
             var s = new TerrainStreamer(Async(6, 12, 100), sink, manual);
@@ -329,7 +329,7 @@ namespace KhaozEngine.Tests.Terrain
         public void Synchronous_mode_builds_and_applies_inline_even_for_an_async_sink()
         {
             // The sync escape hatch: an async-capable sink, but StreamerConfig.Synchronous() forces the old inline
-            // build+apply path. No dispatcher is used; the budget caps build+apply ops (as before async).
+            // build+apply path. No dispatcher is used, the budget caps build+apply ops (as before async).
             var sink = new FakeAsyncChunkSink();
             var s = new TerrainStreamer(Async(4, 6, 3).Synchronous(), sink);
             var pos = new Vector3(30f, 0f, 30f);

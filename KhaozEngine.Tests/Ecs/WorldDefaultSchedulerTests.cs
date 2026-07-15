@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Ecs;
 /// over it, and a parallel default must still produce results identical to sequential <c>ForEach</c> for a
 /// per-row-pure action.
 /// </summary>
-[Collection("AllocSensitive")]  // spins up ThreadPoolJobScheduler workers; keep off the parallel test pool so it
+[Collection("AllocSensitive")]  // spins up ThreadPoolJobScheduler workers, keep off the parallel test pool so it
 public class WorldDefaultSchedulerTests   // never churns the GC while ParallelForEachPoolingTests measures allocations
 {
     private struct Pos : IComponent { public float X, Y; }

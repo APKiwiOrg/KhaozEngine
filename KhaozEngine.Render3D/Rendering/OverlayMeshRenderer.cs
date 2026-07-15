@@ -16,9 +16,16 @@ namespace KhaozEngine.Render3D.Rendering
     /// Each queued draw supplies its world matrix via its OWN slot of a shared dynamic-offset UBO (the same robust
     /// per-draw UBO pattern <see cref="GroundDecalRenderer"/> uses): the buffer holds one 128-byte payload per draw
     /// (frame ViewProj + per-draw World), padded to a 256-byte dynamic-offset alignment, and each draw binds its
-    /// slot by a byte offset. The world matrix is NOT a per-instance vertex attribute - the windowed Veldrid/Metal
-    /// path drops instances past the first when a vertex shader indexes a per-instance buffer, and both matrices live
-    /// in ONE uniform buffer because a SECOND UBO in a set mis-binds on Metal (see the shader note).
+    /// slot by a byte offset. This renderer draws ONE overlay mesh per draw call (never instanced - proxy counts
+    /// are low), so there is no per-instance vertex buffer here to begin with. Both matrices live in ONE uniform
+    /// buffer because a SECOND UBO in a set mis-binds on Metal (see the shader note), not because of any
+    /// per-instance-attribute limitation - per-instance vertex ATTRIBUTES consumed directly by the vertex shader
+    /// ARE fine on Metal (<see cref="ModelRenderer"/>'s rigid instanced path uses real ones, instanceStepRate 1,
+    /// in production, proven by its multi-instance tests). The actual Metal invariant, bisected via the skinned
+    /// bone palette: a vertex shader must NOT index a SEPARATE buffer BY a per-instance attribute's value - that
+    /// is what corrupts past element 0 in the windowed Veldrid/Metal swapchain context, which is why skinned
+    /// meshes are deformed on the CPU instead of reading a per-instance bone index into a GPU bone buffer (see
+    /// <see cref="ModelRenderer"/> and docs/USING-KHAOZENGINE.md's GPU-backend gotchas note).
     /// </summary>
     internal sealed class OverlayMeshRenderer : IDisposable
     {

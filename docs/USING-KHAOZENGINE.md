@@ -1703,6 +1703,24 @@ throws on `DrawSkinned`. Many skinned meshes per frame are fine: each skinned `D
 own draw call (they are not GPU-instanced), so a creature with several tentacles costs one draw per
 tentacle, still far below the dozens of rigid-segment draws it replaces.
 
+**Why skinning deforms on the CPU (a GPU-backend gotcha worth knowing if you write custom Render3D
+code).** The obvious GPU design - upload a bone matrix buffer and index it per-vertex in the vertex
+shader - corrupts past bone 0 in the windowed Veldrid/Metal swapchain context, so `Scene3D` instead
+deforms every skinned vertex on the CPU (`SkinningMath.SkinVertex`) each frame and draws the result
+through the same proven rigid, no-bone pipeline `ModelRenderer` uses for instanced meshes. The
+narrow, bisected invariant behind that bug: on Metal, a vertex shader must NOT index a SEPARATE
+buffer BY a per-instance attribute's value - that is what corrupts. It is easy to over-generalize
+this into "per-instance vertex data is broken on Metal", which is NOT what the bug is: per-instance
+vertex ATTRIBUTES consumed directly by the shader (no second buffer, no indexing) are fine and used
+in production today - `ModelRenderer`'s rigid instanced mesh/model/terrain-splat draws bind the
+per-instance `Model`/`Tint`/`Emissive`/`SpecParams` stream as real vertex attributes
+(`instanceStepRate: 1`), proven by its multi-instance tests and every instancing golden. So: reach
+for real per-instance vertex attributes freely for anything instanced. Never have a vertex shader
+read a separate buffer at an index that came from a per-instance attribute (a bone palette, a
+per-instance texture-array layer picked by instance ID, etc.) - route that data through a
+dynamic-offset UBO slot per draw instead (the pattern `OverlayMeshRenderer` / `GroundDecalRenderer`
+use), or accept one draw call per instance like the CPU-skinned path does.
+
 **Determinism: presentation only.** Bone matrices and `DrawSkinned` must never feed simulation,
 RNG, or netcode. Skinning is a render-time visual; drive bones from already-computed gameplay
 state, not the reverse.

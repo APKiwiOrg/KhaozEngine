@@ -178,13 +178,41 @@ the WinExe parent-console attach - see [Game head build settings](#game-head-bui
 `GameAppOptions.For(title, w, h)` for the common case.
 
 **Present mode + frame cap.** `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`) selects the swapchain's
-vertical-blank sync; `GameAppOptions.FrameCapHz` (0 = uncapped) paces the loop to a target Hz with a monotonic-clock
-`FrameLimiter`, independent of vsync. Pin `FrameCapHz` to an integer multiple of a fixed simulation/network tick
-(e.g. 60 or 120 for a 30 Hz tick) so presentation stays phase-aligned with the tick - the cheapest way to remove any
-residual render:tick beat, and the deterministic cap where vsync does not throttle (the Veldrid Metal path can
-free-run well above the display refresh). `FrameCapHz` also applies to a custom `WindowFactory` window; `PresentMode`
-is set at swapchain creation, so a custom factory must forward it (or pass it to `new AppWindow(...)` / `AppWindow.Scaled(...)`).
-`GameAppOptions.WindowMode` (default `Windowed`) sets the initial window mode (also applied on a custom factory window).
+vertical-blank sync. `GameAppOptions.FrameCapHz` (a positive Hz) is an EXPLICIT cap that paces the loop to that rate
+with a monotonic-clock `FrameLimiter`, independent of vsync. Pin it to an integer multiple of a fixed
+simulation/network tick (e.g. 60 or 120 for a 30 Hz tick) so presentation stays phase-aligned - the cheapest way to
+remove any residual render:tick beat, and the deterministic cap where vsync does not throttle. The cap also applies to
+a custom `WindowFactory` window. `PresentMode` is set at swapchain creation, so a custom factory must forward it (or
+pass it to `new AppWindow(...)` / `AppWindow.Scaled(...)`). `GameAppOptions.WindowMode` (default `Windowed`) sets the
+initial window mode (also applied on a custom factory window).
+
+**Backend-aware auto cap (the default) + background throttle (since 10.96.0).** The engine now paces the loop sensibly
+by default, so a client no longer free-runs a whole core plus the GPU out of the box.
+
+- **`FrameCap.Auto` is the default cap** (`GameAppOptions.FrameCap`, and the plain `new AppWindow(title, w, h)` ctor).
+  It is backend-aware: on **Metal + vsync** (where the Veldrid present does not throttle the CPU and a Mac client would
+  otherwise free-run well above the refresh) it resolves to a real cap - the **display refresh rate** when known, else
+  `FrameCap.DefaultMetalAutoCapHz` (120). On **D3D11 / Vulkan + vsync** it stays **uncapped**, because vsync throttles
+  there. With `PresentMode.Immediate` (any backend) it stays uncapped, respecting the lowest-latency intent. A
+  consumer-set value always wins: `FrameCap.Uncapped` is an intentional free-run (the pre-10.96 default) and
+  `FrameCap.Hz(n)` / a positive `FrameCapHz` is a fixed cap. A positive `GameAppOptions.FrameCapHz` overrides
+  `FrameCap`. `FrameCap.Resolve(backend, present, displayRefreshHz)` is the pure, headless-tested resolver.
+- **`BackgroundThrottlePolicy` throttles a backgrounded window** (`GameAppOptions.BackgroundThrottle`, default ON when
+  left `null`). **Minimized:** skip render + present entirely and idle the loop at `MinimizedHz` (default 10) - update
+  still runs each idle tick so simulation / netcode / timers keep advancing, and events keep pumping so the window can
+  be restored. **Unfocused but visible:** keep rendering, capped to `UnfocusedHz` (default 15, or lower if the base cap
+  is already lower). Set `BackgroundThrottlePolicy.Disabled` to keep rendering full-rate in the background (a live
+  wallpaper / capture source), or a custom policy with the `init` setters. On a minimized frame `Frame.RenderSuppressed`
+  is set. `GameApp` honours it (runs `OnUpdate` only, skips the draw passes), and a raw `AppWindow.Run` callback must
+  check it before drawing. The per-frame decision is the pure, headless-tested `BackgroundThrottlePolicy.Plan`.
+
+```csharp
+var o = GameAppOptions.For("My Game", 1280, 720);   // FrameCap.Auto + background throttle ON by default
+o.FrameCap = FrameCap.Uncapped;                       // opt back into a free-run (the old default)
+o.FrameCapHz = 120;                                   // or an explicit fixed cap (wins over FrameCap)
+o.BackgroundThrottle = BackgroundThrottlePolicy.Disabled;                       // render full-rate when backgrounded
+o.BackgroundThrottle = BackgroundThrottlePolicy.Default with { UnfocusedHz = 30 }; // or tune it
+```
 
 **Runtime display settings (since 9.24.0).** Present mode, frame cap, window mode, and resolution are all changeable
 live mid-session - safe to call from a settings screen at any time, with no crash and no leaked swapchain. The whole
@@ -206,10 +234,12 @@ app.Display.ApplyDisplay(s);
 `Resize` drive the window and the swapchain follows the new framebuffer via the resize hook, so the HiDPI
 framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat:**
 setting vsync engages `CAMetalLayer.displaySyncEnabled`, but the Veldrid Metal present still does not throttle the
-CPU from vsync alone, so `FrameCapHz` remains the required deterministic cap on macOS - `GameApp`/`AppWindow` emit a
-one-time warning (`Console.Error`) if you select `PresentMode.Vsync` with `FrameCapHz == 0` on Metal. Branch on
-`GameApp.Backend` to set a default cap per platform. The window-mode policy is the pure `WindowModePlanner.Compute`
-and the Metal-warning rule is the pure `DisplaySettings.RequiresFrameCapWarning` - both headless-unit-tested.
+CPU from vsync alone. The engine handles this by default now - `FrameCap.Auto` (the default cap) resolves to a real
+cap on Metal + vsync, so you no longer have to branch on `GameApp.Backend` to set one. `GameApp`/`AppWindow` emit a
+one-time warning (`Console.Error`) ONLY when you explicitly force an uncapped free-run (`FrameCap.Uncapped` /
+`FrameCapHz = 0`) with vsync on Metal. The resolved auto default never trips it. The window-mode policy is the pure
+`WindowModePlanner.Compute`, the auto-cap resolver is the pure `FrameCap.Resolve`, and the Metal-warning rule is the
+pure `DisplaySettings.RequiresFrameCapWarning` (fed the resolved cap) - all headless-unit-tested.
 
 **Runtime window placement (since 9.26.0).** `IDisplaySettings` also exposes the window position + monitor, so a
 consumer can persist and restore the full placement (which monitor + position + size) across launches. Position

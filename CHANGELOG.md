@@ -5,6 +5,26 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.96.0
+
+### Backend-aware default frame cap + background throttle
+
+The engine now paces the loop sensibly by default, so a client no longer free-runs a whole CPU core plus the GPU.
+`FrameCap` (`Auto` / `Uncapped` / `Hz(n)`) is the new cap intent and the default. `FrameCap.Auto` resolves to a real
+cap on Metal + vsync (the display refresh, else 120, where the Veldrid present does not throttle the CPU) and stays
+uncapped on D3D11 / Vulkan + vsync (where vsync throttles) and under `Immediate`. A consumer-set value always wins,
+and a positive `FrameCapHz` still means an explicit fixed cap (0 = intentional uncapped).
+
+- **Background throttle.** `BackgroundThrottlePolicy` (default ON, opt out with `Disabled`) skips render + present
+  and idles a minimized window while its update keeps running, and drops an unfocused-but-visible window to a low
+  cap. The per-frame decision is the pure, headless-tested `BackgroundThrottlePolicy.Plan`.
+- **New API.** `AppWindow.FrameCap` / `AppWindow.BackgroundThrottle`, `GameApp.FrameCap` /
+  `GameApp.BackgroundThrottle`, `GameAppOptions.FrameCap` / `GameAppOptions.BackgroundThrottle`,
+  `Frame.RenderSuppressed`. The Metal-vsync warning now fires only for an explicit uncapped present under vsync on
+  Metal.
+- **Behavior change.** The default cap is now `Auto`, not uncapped. Set `FrameCap.Uncapped` to restore the old
+  free-run.
+
 ## 10.95.0
 
 ### Crisp boot-screen text on HiDPI (DPI-aware `BootScreen` font) + `DpiFont` multi-slot cache

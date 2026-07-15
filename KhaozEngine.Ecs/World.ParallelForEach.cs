@@ -8,9 +8,29 @@ namespace KhaozEngine.Ecs;
 
 public sealed partial class World
 {
-    // Stateless, so one shared instance is safe across all worlds/threads. Default scheduler = inline, which makes
-    // ParallelForEach identical to ForEach (sequential) until the caller passes a parallel scheduler. Opt-in.
+    // Stateless, so one shared instance is safe across all worlds/threads. Seeds DefaultScheduler (below) so a
+    // freshly constructed World's ParallelForEach is identical to ForEach (sequential) until parallelism is
+    // opted in, either per-call or via DefaultScheduler.
     private static readonly IJobScheduler InlineScheduler = new SingleThreadedJobScheduler();
+
+    private IJobScheduler _defaultScheduler = InlineScheduler;
+
+    /// <summary>
+    /// The scheduler every <c>ParallelForEach</c> overload uses when its own <c>scheduler</c> argument is
+    /// <c>null</c> (the default when the argument is omitted). An explicit per-call scheduler always wins over
+    /// this property. Defaults to the deterministic inline <see cref="SingleThreadedJobScheduler"/>, so a freshly
+    /// constructed <see cref="World"/> is byte-identical to <c>ForEach</c> until parallelism is opted in - either
+    /// per call (<c>world.ParallelForEach(action, myScheduler)</c>) or once for the whole world via this property,
+    /// e.g. a client game wiring <c>world.DefaultScheduler = App.JobScheduler;</c> once at startup so every
+    /// subsequent no-scheduler <c>ParallelForEach</c> call fans across cores with no other change. Server /
+    /// lockstep code that never touches this property keeps its existing single-threaded determinism unchanged.
+    /// Never null. The setter throws on a null assignment.
+    /// </summary>
+    public IJobScheduler DefaultScheduler
+    {
+        get => _defaultScheduler;
+        set => _defaultScheduler = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     // Unwraps the single-inner AggregateException a thread-pool scheduler wraps a worker exception in, so callers see
     // the original (e.g. ParallelAccessViolationException) directly. Only ever invoked from a catch whose `when`
@@ -32,7 +52,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -43,7 +63,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -54,7 +74,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -66,7 +86,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -78,7 +98,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -90,7 +110,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -103,7 +123,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -116,7 +136,7 @@ public sealed partial class World
         ArgumentNullException.ThrowIfNull(action);
         Query q = RentForEachQuery(out PoolableQuery? rented);
         BeginParallelSection();
-        try { q.ParallelForEach(action, scheduler ?? InlineScheduler); }
+        try { q.ParallelForEach(action, scheduler ?? DefaultScheduler); }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); }
     }
@@ -135,7 +155,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? DefaultScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);
@@ -149,7 +169,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? DefaultScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);
@@ -163,7 +183,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? DefaultScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);
@@ -178,7 +198,7 @@ public sealed partial class World
         List<EntityCommandBuffer> sink = RentEcbSink();
         bool sectionOk = false;
         BeginParallelSection();
-        try { q.ParallelForEachPooled(action, scheduler ?? InlineScheduler, sink); sectionOk = true; }
+        try { q.ParallelForEachPooled(action, scheduler ?? DefaultScheduler, sink); sectionOk = true; }
         catch (AggregateException ae) when (ae.InnerExceptions.Count == 1) { RethrowSingleInner(ae); }
         finally { EndParallelSection(); ReturnForEachQuery(rented); if (!sectionOk) DropSink(sink); }
         if (sectionOk) PlaybackSink(sink);

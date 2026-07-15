@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.99.1
+
+### WorldServer non-delta fallback adopts the indexed SnapshotWriter
+
+WorldServer's non-delta fallback snapshot path adopts the indexed `SnapshotWriter`. `WorldServer.Tick`'s
+single-world full-snapshot fallback (a client that never advertised `DeltaCapable`, or `DeltaReplication`
+off server-wide) now resolves each client's interest set off a `WorldSnapshotIndex` shared across every
+fallback client served in a tick, rebuilt lazily on the first one, instead of one full-world scan per
+client per tick. Mirrors the per-tick shared index `ShardHost` already uses.
+
+- **Shared per-tick index.** The fallback index is rebuilt at most once per tick, on the first non-delta
+  client, and reused by every other fallback client served that tick. A tick with only delta-capable
+  clients pays no extra world scan. Internal `WorldServer` fields only, no public API change.
+- **Byte-identical wire.** Output stays byte-identical to the old full-scan `WriteFiltered` path, asserted
+  by parity tests across randomized movement and join and leave roster churn
+  (`WorldServerSnapshotIndexParityTests`).
+
 ## 10.99.0
 
 ### 2D render + GUI CPU-cost fixes

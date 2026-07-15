@@ -31,7 +31,7 @@ public interface IWorldStore
     /// Stores every (key, data) pair in <paramref name="items"/> in one logical operation instead of one round trip
     /// per record. The default implementation just calls <see cref="SaveAsync"/> once per item in order, so every
     /// existing <see cref="IWorldStore"/> implementation - including a consumer-owned one written before this member
-    /// existed - keeps compiling and behaving correctly unchanged; it just does not get the batching win until it
+    /// existed - keeps compiling and behaving correctly unchanged. It just does not get the batching win until it
     /// overrides this member.
     ///
     /// <para>A backend that can genuinely batch (a single transaction, a multi-row statement) should override this

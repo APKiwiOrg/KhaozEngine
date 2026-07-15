@@ -35,7 +35,7 @@ public sealed class FixedTickHost
     /// Seconds of accumulated elapsed time still needed before the next call to <see cref="Advance"/> would
     /// produce another tick, assuming no more time lands before then. Zero right after a tick just fired. A host
     /// loop reads this after calling <see cref="Advance"/> to decide how long it can idle before it must poll
-    /// again; feed it to <see cref="ComputeIdleWaitSeconds"/> to get an actual sleep duration.
+    /// again. Feed it to <see cref="ComputeIdleWaitSeconds"/> to get an actual sleep duration.
     /// </summary>
     public float SecondsUntilNextTick => MathF.Max(0f, tickSeconds - accumulatorSeconds);
 
@@ -81,7 +81,7 @@ public sealed class FixedTickHost
     /// 15.6 ms, so a naive fixed sleep can burn 2-3 ticks' worth of slack before the loop gets control back). When
     /// the margin-adjusted remainder is below <paramref name="minimumSeconds"/> - too small a window to bother
     /// asking the OS to sleep - this returns 0, signalling the caller to spin or yield through the final sliver
-    /// instead of sleeping. Stateless and does not touch the clock or sleep; the caller does the actual waiting.
+    /// instead of sleeping. Stateless and does not touch the clock or sleep. The caller does the actual waiting.
     /// </summary>
     public static float ComputeIdleWaitSeconds(float secondsUntilNextTick, float safetyMarginSeconds, float minimumSeconds = 0f)
     {

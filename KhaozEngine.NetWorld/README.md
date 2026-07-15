@@ -75,7 +75,7 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   overwrite the stored record with default-spawn state and erase the blob; `capture` returning null/empty is
   destructive (it *erases* the stored blob - "no game state", not "keep existing"), never a "not loaded yet" signal.
   `OnStoreError` surfaces a faulted background load/save (store outage). The periodic pass batches every dirty
-  player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player; a faulted batch
+  player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player. A faulted batch
   leaves every player in it dirty for the next pass (save-on-leave still uses a single-record `SaveAsync`).
 - **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into a [`Sharding`](../KhaozEngine.Sharding) `ShardHost`-based server

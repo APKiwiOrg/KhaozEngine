@@ -12,8 +12,8 @@ of records in one logical operation instead of one round trip per record - the p
 `KhaozEngine.NetWorld` (`WorldPersistence.SaveDirtyPass`, `CellPersistence.SaveDirtyPass`) call it once per pass
 instead of once per dirty player/cell. It ships as a C# default interface member that loops `SaveAsync`, so every
 existing `IWorldStore` implementation - including a consumer-owned one written before this member existed - keeps
-compiling and behaving correctly unchanged; it just does not get the batching win until it overrides the member.
-`InMemoryWorldStore` overrides it (one clock reading for the whole batch); `SqliteWorldStore` and
+compiling and behaving correctly unchanged. It just does not get the batching win until it overrides the member.
+`InMemoryWorldStore` overrides it (one clock reading for the whole batch). `SqliteWorldStore` and
 `SqlServerWorldStore` override it with a real single-round-trip batch (see their own READMEs). A backend that
 overrides this member should make the batch atomic (all rows land or none do) when it reasonably can, so a caller
 that treats a faulted `SaveManyAsync` as "nothing in this batch is durable yet, retry the whole batch" is correct

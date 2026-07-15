@@ -106,7 +106,7 @@ public class FixedTickHostTests
     [Fact]
     public void ComputeIdleWaitSeconds_NegativeSecondsUntilNextTick_ClampsToZero()
     {
-        // A caller that polled slightly late might compute a negative remainder; never sleep on a negative wait.
+        // A caller that polled slightly late might compute a negative remainder. Never sleep on a negative wait.
         float wait = FixedTickHost.ComputeIdleWaitSeconds(-0.01f, safetyMarginSeconds: 0f, minimumSeconds: 0f);
         Assert.Equal(0f, wait);
     }

@@ -87,7 +87,7 @@ public class WorldPersistenceLoadRaceTests
     }
 
     // A store that faults every SaveAsync while FailSaves is set, and otherwise passes through to a real inner
-    // store. Mirrors CellPersistenceTests.ToggleFaultStore; unlike FaultingWorldStore (which always faults) this
+    // store. Mirrors CellPersistenceTests.ToggleFaultStore. Unlike FaultingWorldStore (which always faults) this
     // one can "recover" mid-test, letting a test prove a previously-failed batch gets retried and lands. Does NOT
     // override SaveManyAsync, so it also exercises IWorldStore's default loop-of-SaveAsync implementation.
     private sealed class ToggleFaultWorldStore : IWorldStore

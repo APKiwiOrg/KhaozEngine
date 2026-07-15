@@ -81,7 +81,7 @@ public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
     }
 
     // Rows per MERGE statement: 2 SQL parameters per row (key + data), kept well under SQL Server's 2100-parameter-
-    // per-statement ceiling so an arbitrarily large dirty pass never fails to build a valid command; a batch beyond
+    // per-statement ceiling so an arbitrarily large dirty pass never fails to build a valid command. A batch beyond
     // this many items is issued as multiple MERGE statements on the SAME connection + transaction, still one round
     // trip's worth of network setup instead of one connection open per record.
     private const int MergeChunkSize = 500;

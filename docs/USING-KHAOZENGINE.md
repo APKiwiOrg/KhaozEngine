@@ -5896,7 +5896,7 @@ byte[]? loaded = await store.LoadAsync($"player:{accountId}");
 records in one logical operation instead of one round trip per record. It is a C# default interface member that
 loops `SaveAsync`, so a custom `IWorldStore` written before this member existed keeps compiling and behaving
 correctly unchanged - it just does not get the batching win until it overrides the member. `SqliteWorldStore`
-overrides it with a single-transaction multi-row upsert; `SqlServerWorldStore` overrides it with one pooled
+overrides it with a single-transaction multi-row upsert. `SqlServerWorldStore` overrides it with one pooled
 connection and a chunked multi-row `MERGE`. `WorldPersistence` and `CellPersistence` (below) both call it once per
 periodic dirty pass instead of once per dirty record - that is the whole point of the member, so prefer it over a
 hand-rolled loop of `SaveAsync` calls when you are saving more than one record at a time.
@@ -6480,21 +6480,21 @@ them verbatim:
 
 - **Cell parallelism.** `server.Host.Scheduler = new ThreadPoolJobScheduler();` fans `ShardHost.Tick`'s per-cell
   sim steps across the thread pool instead of the library-safe default `SingleThreadedJobScheduler` (measured 3.2x
-  tick speedup at 256 cells on 12 cores). Only `Tick` is parallelized; the cross-cell passes (`SyncGhosts`,
+  tick speedup at 256 cells on 12 cores). Only `Tick` is parallelized. The cross-cell passes (`SyncGhosts`,
   `ProcessHandoffs`) stay single-threaded.
 - **Server GC.** `<ServerGarbageCollection>true</ServerGarbageCollection>` +
   `<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>` in the csproj switch the process off
   Workstation GC (.NET's default, tuned for bursty desktop/client allocation) - a server ticking many cells and
   replicating to many clients every frame allocates steadily instead, and wants Server GC's per-core heaps plus
   background gen2 collection.
-- **Adaptive idle pacing.** The host loop no longer sleeps a fixed `Thread.Sleep(5)` between polls; it computes how
+- **Adaptive idle pacing.** The host loop no longer sleeps a fixed `Thread.Sleep(5)` between polls. It computes how
   long it actually has before `FixedTickHost`'s next tick (`FixedTickHost.SecondsUntilNextTick`) and sleeps that
   minus a safety margin (`FixedTickHost.ComputeIdleWaitSeconds`), yielding instead of sleeping through the final
   sub-millisecond sliver. A fixed sleep both oversleeps - OS sleep granularity, notably Windows' ~15.6 ms default
   timer resolution, routinely overshoots a short requested duration by 2-3x - and loses track of the tick
   boundary, so the loop ends up bursting through several queued ticks via `maxTicksPerFrame` catch-up instead of
   ticking smoothly. `ComputeIdleWaitSeconds` is a pure function (no clock or sleep access) so the pacing math
-  itself is headlessly testable; only the actual `Thread.Sleep`/`Thread.Yield` call lives in the sample loop.
+  itself is headlessly testable. Only the actual `Thread.Sleep`/`Thread.Yield` call lives in the sample loop.
 
 ### NativeAOT (server tick path)
 

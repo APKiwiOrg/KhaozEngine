@@ -42,7 +42,7 @@ public class SqliteWorldStoreSaveManyTests
         // A null data value leaves the "$d" parameter unset for the second row, so Microsoft.Data.Sqlite throws
         // (InvalidOperationException: "Value must be set") partway through the batch. If SaveManyAsync were a bare
         // loop of SaveAsync (like the interface default) the FIRST row ("ok-before") would already be durably saved
-        // by the time the second row throws; because the override runs every row inside one transaction, a failure
+        // by the time the second row throws. Because the override runs every row inside one transaction, a failure
         // anywhere in the batch must leave NEITHER new row behind.
         var items = new List<(string Key, byte[] Data)>
         {

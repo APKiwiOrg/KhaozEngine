@@ -58,6 +58,13 @@ rebuilds unconditionally, the contract a direct caller or test relies on right a
 `ShardedWorldServer.Tick` bumps a fresh epoch once per tick and passes it to both the delta and snapshot serve
 paths.
 
+**Indexed snapshots (perf).** The filtered `SnapshotWriter` calls on the hot cross-cell and serve passes
+(`SyncGhosts` ghost mirroring, `SnapshotForClient` non-delta fallback, `ProcessHandoffs` crossing capture) resolve
+their net-id sets off a per-tick, per-world `WorldSnapshotIndex` (shared across a cell's target neighbours and the
+clients homed in it, keyed to the serve epoch) instead of scanning the whole cell world per call, and encode through
+one reused `SnapshotScratch` stream. The wire is byte-identical to the full-scan path; only the per-call
+`O(worldPop)` scan and stream allocation are removed.
+
 Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet
 (that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,
 `KhaozEngine.Simulation`, and `KhaozEngine.Replication`.

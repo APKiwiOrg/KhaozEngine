@@ -48,6 +48,16 @@ public sealed class ShardHost
     private IJobScheduler scheduler;
     private CellSim[] tickBuffer = Array.Empty<CellSim>(); // reused per-tick fan-out snapshot of `ordered`
 
+    // Indexed-snapshot scratch, all reused across the single-threaded cross-cell passes (SyncGhosts, ProcessHandoffs)
+    // and the serve pass, so the filtered SnapshotWriter calls at those sites resolve their (small) net-id sets in
+    // O(setCount) off a netId -> entity index instead of a full-world ForEach, and allocate only their wire arrays.
+    private readonly SnapshotScratch snapshotScratch = new();
+    private readonly WorldSnapshotIndex ghostScanIndex = new();       // rebuilt per owner cell in SyncGhosts
+    private readonly WorldSnapshotIndex standaloneClientIndex = new(); // rebuilt per direct (no-epoch) SnapshotForClient
+    // Per home-cell index shared across the clients homed in it within one serve pass, keyed by world and guarded by
+    // the serve epoch (rebuilt at most once per world per tick), mirroring the interest-grid's per-serve-pass cadence.
+    private readonly Dictionary<World, (WorldSnapshotIndex index, long epoch)> clientIndexByWorld = new();
+
     /// <param name="cellSize">World-grid cell edge length in world units. Must be &gt; 0.</param>
     /// <param name="tickSeconds">Fixed timestep shared by every cell, seconds per tick. Must be &gt; 0.</param>
     /// <param name="registry">Shared replication registry handed to each cell's <see cref="ServerReplicator"/> and used to (de)serialize ghost snapshots.</param>
@@ -228,13 +238,17 @@ public sealed class ShardHost
             CellSim owner = ordered[i];
             Dictionary<CellCoord, HashSet<long>>? byTarget = CollectBorders(owner);
             if (byTarget is null) continue;
+            // Index this owner's world once, shared across all its (up-to-eight) target neighbours, so each target's
+            // ghost snapshot resolves its border set in O(borderCount) instead of a fresh full-world scan.
+            ghostScanIndex.Rebuild(owner.World);
             foreach (KeyValuePair<CellCoord, HashSet<long>> kv in byTarget)
             {
                 if (!cells.ContainsKey(kv.Key)) continue; // only mirror to neighbors that exist
                 // Ghosts serve OTHER cells' clients: the Replicate channel with no owner (so OwnerOnly private state
                 // and Persist/Migrate-only server state are never mirrored - see the channel rule above).
                 byte[] snapshot = SnapshotWriter.WriteFiltered(
-                    owner.World, registry, kv.Value, ReplicationChannels.Replicate, ownerNetId: null);
+                    ghostScanIndex, snapshotScratch, owner.World, registry, kv.Value,
+                    ReplicationChannels.Replicate, ownerNetId: null);
                 link.Send(new CellMessage(owner.Coord, kv.Key, CellMessageKind.GhostSync, snapshot));
             }
         }
@@ -298,9 +312,10 @@ public sealed class ShardHost
         {
             GetOrCreateCell(dest); // ensure the destination exists to receive the migrate
             // Capture the Migrate channel: the entity carries only its migratable components to the destination cell
-            // (a Replicate-only or Persist-only component that isn't also Migrate does not follow the crossing).
-            byte[] capture = SnapshotWriter.WriteFiltered(
-                source.World, registry, new HashSet<long> { netId }, ReplicationChannels.Migrate, ownerNetId: null);
+            // (a Replicate-only or Persist-only component that isn't also Migrate does not follow the crossing). The
+            // crossing already holds the entity handle, so encode it directly - no world scan, no per-crossing set.
+            byte[] capture = SnapshotWriter.WriteSingle(
+                snapshotScratch, source.World, registry, netId, entity, ReplicationChannels.Migrate, ownerNetId: null);
             link.Send(new CellMessage(source.Coord, dest, CellMessageKind.Migrate, capture));
             source.World.Set(entity, new Migrating { Destination = dest });
             source.UnregisterOwned(netId); // frozen: relinquished here, so drop it from the owned index at once
@@ -403,7 +418,35 @@ public sealed class ShardHost
         (World world, HashSet<long> interest) = HomeInterest(slot, interestRadius, serveEpoch);
         // HomeInterest validated the binding, so the slot's player net id is present: it is this client's owner id.
         long ownerNetId = clientPlayerNetId[slot];
-        return SnapshotWriter.WriteFiltered(world, registry, interest, ReplicationChannels.Replicate, ownerNetId);
+        // Resolve the interest set off a home-cell index (shared across clients homed in this cell within the serve
+        // pass) instead of a full-world scan per client - the snapshot fallback's O(worldPop)-per-client ceiling.
+        WorldSnapshotIndex index = ClientIndexFor(world, serveEpoch);
+        return SnapshotWriter.WriteFiltered(index, snapshotScratch, world, registry, interest,
+            ReplicationChannels.Replicate, ownerNetId);
+    }
+
+    /// <summary>
+    /// The netId -&gt; entity index for <paramref name="world"/> to serve a client snapshot. With a serve epoch (the
+    /// per-tick serve pass) the index is cached per world and rebuilt at most once per epoch, so several clients homed
+    /// in one cell share a single scan; without one (a direct call) it is rebuilt unconditionally, since the world may
+    /// have mutated between direct calls.
+    /// </summary>
+    private WorldSnapshotIndex ClientIndexFor(World world, long? serveEpoch)
+    {
+        if (serveEpoch is not long epoch)
+        {
+            standaloneClientIndex.Rebuild(world);
+            return standaloneClientIndex;
+        }
+        if (!clientIndexByWorld.TryGetValue(world, out (WorldSnapshotIndex index, long epoch) slot))
+            slot = (new WorldSnapshotIndex(), long.MinValue);
+        if (slot.epoch != epoch)
+        {
+            slot.index.Rebuild(world);
+            slot = (slot.index, epoch);
+        }
+        clientIndexByWorld[world] = slot;
+        return slot.index;
     }
 
     /// <summary>

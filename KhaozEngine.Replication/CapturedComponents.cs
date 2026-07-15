@@ -61,6 +61,14 @@ internal sealed class CapturedComponents
         segments = new Dictionary<ushort, Segment>(capacity);
     }
 
+    /// <summary>
+    /// This entity's position in the capture's world <c>ForEach</c> order (0-based). The per-client projection sorts
+    /// the interest-set entities it selects by this value, so it can walk the (small) interest set in O(interest) yet
+    /// still emit the changed-entity wire in the exact world order a full walk of the shared capture produced -
+    /// byte-identical to the pre-index projection.
+    /// </summary>
+    internal int Order { get; set; }
+
     /// <summary>Count of captured components.</summary>
     public int Count => segments.Count;
 
@@ -123,9 +131,10 @@ internal sealed class CaptureScratch
         stream.SetLength(0); // reset position + length, keep the buffer capacity for reuse next tick
         var buffer = new CaptureBuffer();
         var state = new Dictionary<long, CapturedComponents>();
+        int order = 0;
         world.ForEach<NetId>((Entity e, ref NetId id) =>
         {
-            var comps = new CapturedComponents(buffer, replicateCount);
+            var comps = new CapturedComponents(buffer, replicateCount) { Order = order++ }; // world ForEach position
             foreach (ComponentCodec codec in registry.Ordered)
             {
                 if ((codec.Channels & ReplicationChannels.Replicate) == 0) continue;
@@ -153,7 +162,7 @@ internal static class CaptureProjection
     public static CapturedComponents OwnerScope(CapturedComponents source, ReplicationRegistry registry,
         long netId, long? ownerNetId)
     {
-        var comps = new CapturedComponents(source.Buffer, source.Count);
+        var comps = new CapturedComponents(source.Buffer, source.Count) { Order = source.Order };
         foreach (KeyValuePair<ushort, Segment> kv in source.Segments)
             if (registry.TryGet(kv.Key, out ComponentCodec codec)
                 && codec.ShouldWrite(ReplicationChannels.Replicate, netId, ownerNetId))

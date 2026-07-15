@@ -5691,10 +5691,23 @@ baseline is keyed by `NetId`, so a seamless cell handoff reads as a component de
 **Shared per-tick capture (perf).** `WriteFor` builds its whole-world Replicate-channel capture once per `world`
 per tick, the first time any client's `WriteFor` runs after `BeginTick`, then every later `WriteFor` on the same
 world in that tick reuses it. A sharded server serving several clients from the same home cell therefore scans
-that cell once, not once per client. The caveat: the capture is a snapshot taken at that first `WriteFor` call,
-so a world mutation applied between it and a later `WriteFor` in the same tick is not seen by that later call.
-Do all world mutation (movement, handoffs, ghost sync, admin drains) before the per-client serve pass and call
-`WriteFor` only after, the order `ShardedWorldServer.Tick` already follows.
+that cell once, not once per client. On top of that shared capture the per-client projection is `O(interestSet)`:
+`WriteFor` resolves this client's interest set off the capture in `O(1)` per entity (not a walk of the whole
+capture), so per-client cost scales with the client's area of interest, not the world population - the wire is
+unchanged. The caveat: the capture is a snapshot taken at that first `WriteFor` call, so a world mutation applied
+between it and a later `WriteFor` in the same tick is not seen by that later call. Do all world mutation (movement,
+handoffs, ghost sync, admin drains) before the per-client serve pass and call `WriteFor` only after, the order
+`ShardedWorldServer.Tick` already follows.
+
+**Indexed filtered snapshots (perf).** The full-snapshot AoI path (`SnapshotWriter.WriteFiltered`, the fallback for
+non-delta clients, plus ghost mirroring and handoff capture) has an indexed form for a hot per-tick server: build a
+`WorldSnapshotIndex` over the world once (`index.Rebuild(world)`), reuse a `SnapshotScratch`, then call
+`SnapshotWriter.WriteFiltered(index, scratch, world, registry, interest, channel, ownerNetId)`. It resolves the
+interest set off the index in `O(interest)` instead of scanning the whole world, and reuses the scratch stream so
+only the returned wire array is allocated. `WriteSingle(scratch, world, registry, netId, entity, ...)` is the
+one-entity form when you already hold the handle. Both are byte-identical to the unindexed `WriteFiltered`.
+`ShardHost` already wires this into `SnapshotForClient` / `SyncGhosts` / `ProcessHandoffs` with a per-tick shared
+index, so consumers on the sharded server get it for free.
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 

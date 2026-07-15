@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.102.0
+
+### Client-side multi-core ECS scaling with no per-game wiring
+
+`World.DefaultScheduler` is the new per-world fallback every no-scheduler `ParallelForEach` call routes through.
+It defaults to the deterministic single-threaded scheduler, so every existing `World` stays byte-identical, and an
+explicit per-call scheduler still always wins. `GameApp.JobScheduler` (`KhaozEngine.Game`) lazily builds a shared
+`ThreadPoolJobScheduler` sized to `ProcessorCount` minus 1, or `GameAppOptions.JobSchedulerDegreeOfParallelism`
+when set, or the deterministic single-threaded scheduler when `GameAppOptions.DisableJobScheduler` is set, so a
+game opts into multi-core ECS with one line: `world.DefaultScheduler = App.JobScheduler`.
+
+- **`World.DefaultScheduler`** (`KhaozEngine.Ecs`): settable per-world default. Every `ParallelForEach` overload
+  that takes no explicit scheduler now routes through it. Defaults to a `SingleThreadedJobScheduler`, so behaviour
+  is unchanged until a game assigns it.
+- **`GameApp.JobScheduler`** + **`GameAppOptions.DisableJobScheduler`** / **`GameAppOptions.JobSchedulerDegreeOfParallelism`**
+  (`KhaozEngine.Game`): the turn-key shared scheduler and its two knobs.
+- **`ThreadPoolJobScheduler.MaxDegreeOfParallelism`** (`KhaozEngine.Simulation`): read-only, reports the worker
+  count the pool was sized to.
+- **`KhaozEngine.Game` now depends on `KhaozEngine.Simulation`** (a zero-dependency leaf, acyclic) so
+  `GameApp.JobScheduler` can hand back a `ThreadPoolJobScheduler` without pulling in Ecs/Foundation.
+- Server-side scheduling (`ShardHost.Scheduler`) is unchanged.
+
 ## 10.101.1
 
 ### GPU-side quad corner transform via a per-Begin view-projection UBO

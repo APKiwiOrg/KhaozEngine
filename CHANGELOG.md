@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.109.1
+
+### DrawString snaps the block baseline once, fixing the fractional-scale glyph wave
+
+Fixed: point-space UI text no longer waves per glyph at fractional scales. SpriteBatch.DrawString snapped
+every glyph's top-left to a device pixel independently inside a point-space UiViewport pass, so glyphs with
+different vertical bearings rounded to different device rows whenever the effective scale was fractional, for
+example a DpiFont drawn at a Theme scale of 0.5 in the F1 diagnostics HUD on HiDPI, making letters of one word
+ride at different heights. DrawString now snaps the block's ascent baseline once and places each glyph relative
+to it, keeping whole words on one baseline while staying texel-crisp at scale 1. The defect dated from the
+10.12.0 device-pixel snapping and was surfaced by the diagnostics HUD as the first fractional-scale consumer.
+Snapping remains a no-op outside point-space viewports, so world text, screen text, and every golden are
+byte-identical. No public API change.
+
 ## 10.109.0
 
 ### CharacterPose.CameraTarget fixes the feet-level follow camera in the showcase rooms

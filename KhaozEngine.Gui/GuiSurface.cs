@@ -136,8 +136,8 @@ namespace KhaozEngine.Gui
         /// Draw <paramref name="tex"/> (sampling <paramref name="srcUV"/> = (u0,v0,u1,v1) in 0..1) into
         /// <paramref name="rect"/>, tinted by <paramref name="tint"/>, via the shared batched-quad path. Unlike
         /// <see cref="Icon"/> this bypasses the <see cref="IconAtlas"/> registry and draws an arbitrary texture
-        /// directly (a rendered thumbnail, a game-supplied ability art atlas region, ...). Decoration: does not
-        /// reserve a rect (compose inside a button / chip to reserve). No-op headless (null batch).
+        /// directly (a rendered thumbnail, a game-supplied ability art atlas region, ...). <paramref name="tex"/> must be non-null.
+        /// Decoration: does not reserve a rect (compose inside a button / chip to reserve). No-op headless (null batch).
         /// </summary>
         public void Image(Rect rect, Texture2D tex, Vector4 srcUV, Vector4 tint)
         {

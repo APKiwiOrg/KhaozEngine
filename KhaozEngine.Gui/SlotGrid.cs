@@ -22,7 +22,7 @@ namespace KhaozEngine.Gui
         public Vector4 Tint { get; }
         /// <summary>Remaining-cooldown fraction in [0,1]: 0 = no sweep, 1 = fully covered. Clamped on construction.</summary>
         public float Cooldown { get; }
-        /// <summary>Stack / charge count drawn bottom-right (0 or less draws no number).</summary>
+        /// <summary>Stack / charge count drawn bottom-right (0 or less draws no number). The count only renders when a font is passed to <see cref="SlotGrid.Draw"/>.</summary>
         public int Count { get; }
         /// <summary>When true the icon draws greyed (RGB dimmed) so the slot reads as unavailable.</summary>
         public bool Disabled { get; }
@@ -101,7 +101,7 @@ namespace KhaozEngine.Gui
         public IconAtlas? IconAtlas { get; set; }
 
         /// <summary>Tint of the radial cooldown sweep drawn over a slot's icon (translucent black by default).</summary>
-        public Vector4 CooldownTint = new(0f, 0f, 0f, 0.6f);
+        public Vector4 CooldownTint = GuiSurface.DefaultCooldownTint;
         /// <summary>Colour of the stack-count number drawn bottom-right in a slot.</summary>
         public Vector4 CountColor = GuiTheme.Default.Text;
         /// <summary>Uniform scale for the stack-count number (default 1).</summary>

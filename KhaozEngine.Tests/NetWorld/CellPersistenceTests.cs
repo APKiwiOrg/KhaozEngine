@@ -252,6 +252,38 @@ public class CellPersistenceTests
     }
 
     [Fact]
+    public async Task SaveDirtyPass_BatchFault_KeepsEveryCellDirty_SurfacesOncePerPass_AndRetriesAfterRecovery()
+    {
+        // Two dirty cells in one pass: exercises the batching itself (SaveDirtyPass -> one SaveManyAsync call for
+        // the whole pass, not one SaveAsync per cell). A faulted batch must (a) surface via OnStoreError exactly
+        // ONCE for the whole pass, not once per cell, and (b) leave BOTH cells dirty (lastSaved is only advanced
+        // after the batch lands), so a later successful pass retries and persists both.
+        var inner = new InMemoryWorldStore();
+        var store = new ToggleFaultStore(inner) { FailSaves = true };
+        var host = new FakeHost();
+        host.SetNextNetId(0);   // isolate: no meta save competing for the error count
+        host.Snapshots[new CellCoord(0, 0)] = new byte[] { 1, 0, 0, 0, 5, 5, 5, 5 };
+        host.Snapshots[new CellCoord(1, 0)] = new byte[] { 1, 0, 0, 0, 6, 6, 6, 6 };
+        var cp = new CellPersistence(host, store);
+        var errors = new List<Exception>();
+        cp.OnStoreError += errors.Add;
+
+        cp.SaveDirtyPass();   // both dirty cells batched into ONE SaveManyAsync call, which faults
+        cp.Update(0f);        // prunes the faulted batch task, surfacing exactly one error for the pass
+
+        Assert.Single(errors);
+        Assert.Null(await inner.LoadAsync("cell:0:0"));
+        Assert.Null(await inner.LoadAsync("cell:1:0"));   // neither cell landed - not even the one whose SaveAsync ran first
+
+        store.FailSaves = false;   // store recovers
+        cp.SaveDirtyPass();        // both cells are STILL dirty (the failed batch never advanced lastSaved) -> retried together
+        cp.Update(0f);
+
+        Assert.NotNull(await inner.LoadAsync("cell:0:0"));
+        Assert.NotNull(await inner.LoadAsync("cell:1:0"));
+    }
+
+    [Fact]
     public async Task QuarantineWriteFault_DoesNotBreakLoad_AndIsSurfaced()
     {
         var inner = new InMemoryWorldStore();

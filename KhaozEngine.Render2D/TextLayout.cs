@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using KhaozEngine.Primitives;
 
@@ -36,43 +37,98 @@ namespace KhaozEngine.Render2D
         /// pixels, breaking on spaces. By default a single word wider than the limit stays on its own line
         /// (never dropped); set <paramref name="hardBreak"/> to instead slice such a word at character
         /// boundaries so every returned line fits within <paramref name="maxWidth"/> (a word narrower than one
-        /// character still yields at least one character per line, so it always makes progress).</summary>
+        /// character still yields at least one character per line, so it always makes progress).
+        /// <para>
+        /// Memoized: the result is a pure function of (<paramref name="font"/> identity, <paramref name="text"/>,
+        /// <paramref name="maxWidth"/>, <paramref name="hardBreak"/>), so a caller that recomputes the same wrap
+        /// every frame (a static label, an unchanged tooltip) hits a bounded LRU cache instead of re-running the
+        /// wrap algorithm. <see cref="DrawWrapped"/> folds its <c>scale</c> parameter into the effective
+        /// <paramref name="maxWidth"/> it passes here (<c>maxWidth / scale</c>), so scale is already part of the
+        /// cache key via that effective width - two different (width, scale) pairs that resolve to the same
+        /// effective width correctly share one cache entry, since <see cref="Wrap"/>'s output depends only on
+        /// that effective width. The cache is bounded (oldest-unused entries evicted) so a session that streams
+        /// many distinct texts (chat, procedurally generated labels) cannot grow it without limit. The returned
+        /// list is always a fresh copy, so a caller mutating it can never corrupt the cache.
+        /// </para></summary>
         public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak = false)
         {
-            var lines = new List<string>();
-            string[] words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-            string current = "";
-            foreach (string word in words)
+            var key = new WrapKey(font, text, maxWidth, hardBreak);
+            lock (WrapCacheLock)
             {
-                string test = current.Length == 0 ? word : current + " " + word;
-                if (current.Length == 0 || font.Measure(test).X <= maxWidth)
+                if (TryGetCachedWrap(key, out List<string>? cachedHit))
+                    return new List<string>(cachedHit);
+            }
+
+            List<string> lines = ComputeWrap(font, text, maxWidth, hardBreak);
+
+            lock (WrapCacheLock)
+            {
+                CacheWrap(key, lines);
+            }
+            return new List<string>(lines);
+        }
+
+        // The actual word-wrap computation (cache-miss path). Builds each candidate line in one scratch buffer
+        // instead of concatenating a new string per word: the reconstructed line can never exceed the scan
+        // cursor's position in the source text (every appended word plus its separating space was already read
+        // from `text`), so one upfront buffer sized to `text.Length` never needs to grow. A candidate that turns
+        // out not to fit costs no allocation - it is just overwritten in place by the next line's content - only
+        // a line actually kept costs the one unavoidable allocation: the `string` for that output line.
+        static List<string> ComputeWrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak)
+        {
+            var lines = new List<string>();
+            if (text.Length == 0) return lines;
+
+            ReadOnlySpan<char> span = text.AsSpan();
+            Span<char> buf = text.Length <= 512 ? stackalloc char[text.Length] : new char[text.Length];
+            int bufLen = 0;
+            int pos = 0;
+
+            while (pos < span.Length)
+            {
+                while (pos < span.Length && span[pos] == ' ') pos++;   // skip run(s) of spaces
+                if (pos >= span.Length) break;
+                int wordStart = pos;
+                while (pos < span.Length && span[pos] != ' ') pos++;
+                ReadOnlySpan<char> word = span.Slice(wordStart, pos - wordStart);
+
+                int candidateLen = bufLen == 0 ? word.Length : bufLen + 1 + word.Length;
+                int w = bufLen;
+                if (bufLen > 0) buf[w++] = ' ';
+                word.CopyTo(buf.Slice(w));
+
+                if (bufLen == 0 || font.Measure(buf[..candidateLen]).X <= maxWidth)
                 {
-                    current = test;
+                    bufLen = candidateLen;   // keep the candidate
                 }
                 else
                 {
-                    lines.Add(current);
-                    current = word;
+                    lines.Add(new string(buf[..bufLen]));   // commit the previous line
+                    word.CopyTo(buf);                        // start a fresh line with just this word
+                    bufLen = word.Length;
                 }
 
-                // `current` may now be a lone word wider than the limit (a fresh line start, or the very first
-                // word). With hardBreak, slice it: emit the full chunks and keep the trailing remainder as
-                // `current` so following words can still pack onto it.
-                if (hardBreak && current.IndexOf(' ') < 0 && font.Measure(current).X > maxWidth)
+                // The buffered line may now be a lone word wider than the limit (a fresh line start, or the very
+                // first word). With hardBreak, slice it: emit the full chunks and keep the trailing remainder in
+                // the buffer so following words can still pack onto it.
+                if (hardBreak && bufLen > 0 && buf[..bufLen].IndexOf(' ') < 0 && font.Measure(buf[..bufLen]).X > maxWidth)
                 {
-                    var chunks = HardBreak(font, current, maxWidth);
+                    string overflowing = new string(buf[..bufLen]);
+                    List<string> chunks = HardBreak(font, overflowing, maxWidth);
                     for (int c = 0; c < chunks.Count - 1; c++) lines.Add(chunks[c]);
-                    current = chunks[chunks.Count - 1];
+                    string remainder = chunks[^1];
+                    remainder.AsSpan().CopyTo(buf);
+                    bufLen = remainder.Length;
                 }
             }
 
-            if (current.Length > 0) lines.Add(current);
+            if (bufLen > 0) lines.Add(new string(buf[..bufLen]));
             return lines;
         }
 
         // Slice a single (space-free) word into the fewest chunks that each fit within maxWidth, growing each
         // chunk greedily and always taking at least one character so a word narrower than a glyph still advances.
+        // Only reached via hardBreak (a rarer, opt-in path), so the Substring allocations here are left as-is.
         static List<string> HardBreak(ITextMeasurer font, string word, float maxWidth)
         {
             var chunks = new List<string>();
@@ -80,7 +136,7 @@ namespace KhaozEngine.Render2D
             while (start < word.Length)
             {
                 int len = 1;
-                while (start + len < word.Length && font.Measure(word.Substring(start, len + 1)).X <= maxWidth)
+                while (start + len < word.Length && font.Measure(word.AsSpan(start, len + 1)).X <= maxWidth)
                     len++;
                 chunks.Add(word.Substring(start, len));
                 start += len;
@@ -91,6 +147,48 @@ namespace KhaozEngine.Render2D
         /// <summary>Total height (pixels) of <paramref name="text"/> word-wrapped to <paramref name="maxWidth"/>.</summary>
         public static float MeasureWrappedHeight(ITextMeasurer font, string text, float maxWidth) =>
             Wrap(font, text, maxWidth).Count * font.LineHeight;
+
+        // -- Wrap()'s bounded LRU memo cache --
+
+        // Font identity (reference equality, since ITextMeasurer has no overridden Equals) + the text/width/mode
+        // that fully determine Wrap's output.
+        readonly record struct WrapKey(ITextMeasurer Font, string Text, float MaxWidth, bool HardBreak);
+
+        // Not a hot per-frame allocation path (a cache hit/miss check, not the wrap itself), and Wrap() may be
+        // called from tests/tools off the render thread, so guard the shared cache with a plain lock rather than
+        // assuming single-threaded callers.
+        static readonly object WrapCacheLock = new();
+        const int WrapCacheCapacity = 256;
+        static readonly Dictionary<WrapKey, LinkedListNode<(WrapKey Key, List<string> Lines)>> WrapCacheIndex = new();
+        static readonly LinkedList<(WrapKey Key, List<string> Lines)> WrapCacheLru = new();
+
+        // Caller must hold WrapCacheLock.
+        static bool TryGetCachedWrap(WrapKey key, [NotNullWhen(true)] out List<string>? lines)
+        {
+            if (WrapCacheIndex.TryGetValue(key, out var node))
+            {
+                WrapCacheLru.Remove(node);
+                WrapCacheLru.AddFirst(node);   // most-recently-used
+                lines = node.Value.Lines;
+                return true;
+            }
+            lines = null;
+            return false;
+        }
+
+        // Caller must hold WrapCacheLock.
+        static void CacheWrap(WrapKey key, List<string> lines)
+        {
+            var node = new LinkedListNode<(WrapKey Key, List<string> Lines)>((key, lines));
+            WrapCacheLru.AddFirst(node);
+            WrapCacheIndex[key] = node;
+            if (WrapCacheIndex.Count > WrapCacheCapacity)
+            {
+                LinkedListNode<(WrapKey Key, List<string> Lines)> lru = WrapCacheLru.Last!;
+                WrapCacheLru.RemoveLast();
+                WrapCacheIndex.Remove(lru.Value.Key);
+            }
+        }
 
         // --- drawing (needs the GPU-backed SpriteFont) ---
 

@@ -86,6 +86,22 @@ public class WorldPersistenceLoadRaceTests
         public Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 
+    // A store that faults every SaveAsync while FailSaves is set, and otherwise passes through to a real inner
+    // store. Mirrors CellPersistenceTests.ToggleFaultStore. Unlike FaultingWorldStore (which always faults) this
+    // one can "recover" mid-test, letting a test prove a previously-failed batch gets retried and lands. Does NOT
+    // override SaveManyAsync, so it also exercises IWorldStore's default loop-of-SaveAsync implementation.
+    private sealed class ToggleFaultWorldStore : IWorldStore
+    {
+        private readonly IWorldStore inner;
+        public bool FailSaves;
+        public ToggleFaultWorldStore(IWorldStore inner) => this.inner = inner;
+        public Task<byte[]?> LoadAsync(string key, CancellationToken ct = default) => inner.LoadAsync(key, ct);
+        public Task SaveAsync(string key, byte[] data, CancellationToken ct = default) =>
+            FailSaves ? Task.FromException(new System.IO.IOException("store offline")) : inner.SaveAsync(key, data, ct);
+        public Task<bool> DeleteAsync(string key, CancellationToken ct = default) => inner.DeleteAsync(key, ct);
+        public Task<bool> ExistsAsync(string key, CancellationToken ct = default) => inner.ExistsAsync(key, ct);
+    }
+
     [Fact]
     public async Task PeriodicSave_DuringInFlightLoad_DoesNotWrite()
     {
@@ -198,5 +214,38 @@ public class WorldPersistenceLoadRaceTests
 
         Assert.Single(errors);
         Assert.IsType<System.IO.IOException>(errors[0]);
+    }
+
+    [Fact]
+    public async Task SaveDirtyPass_BatchFault_KeepsEveryRecordDirty_SurfacesOncePerPass_AndRetriesAfterRecovery()
+    {
+        // Two dirty accounts in one pass: this exercises the batching itself (SaveDirtyPass -> one SaveManyAsync
+        // call for the whole pass, not one SaveAsync per account) rather than the single-account case the other
+        // fault tests cover. A faulted batch must (a) surface via OnStoreError exactly ONCE for the whole pass, not
+        // once per account, and (b) leave BOTH accounts dirty (lastSaved is only advanced after the batch lands),
+        // so a later successful pass retries and persists both - never silently drops one.
+        var inner = new InMemoryWorldStore();
+        var store = new ToggleFaultWorldStore(inner) { FailSaves = true };
+        var host = new FakeHost();
+        var persistence = new WorldPersistence(host, store, new WorldPersistenceConfig());
+        var errors = new List<Exception>();
+        persistence.OnStoreError += errors.Add;
+
+        host.Join(0, "hero", new PlayerMoveState { Position = new Vector3(1f, 0f, 1f) });
+        host.Join(1, "villain", new PlayerMoveState { Position = new Vector3(2f, 0f, 2f) });   // both loads return null -> guard clears immediately
+
+        persistence.SaveDirtyPass();   // both dirty accounts batched into ONE SaveManyAsync call, which faults
+        persistence.Update(0f);        // prunes the faulted batch task, surfacing exactly one error for the pass
+
+        Assert.Single(errors);
+        Assert.Null(await inner.LoadAsync("player:hero"));
+        Assert.Null(await inner.LoadAsync("player:villain"));   // neither record landed - not even the one whose SaveAsync ran first
+
+        store.FailSaves = false;       // store recovers
+        persistence.SaveDirtyPass();   // both accounts are STILL dirty (the failed batch never advanced lastSaved) -> retried together
+        persistence.Update(0f);
+
+        Assert.NotNull(await inner.LoadAsync("player:hero"));
+        Assert.NotNull(await inner.LoadAsync("player:villain"));
     }
 }

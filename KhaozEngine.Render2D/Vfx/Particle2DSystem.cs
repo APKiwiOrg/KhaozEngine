@@ -68,12 +68,28 @@ namespace KhaozEngine.Render2D.Vfx
         XorRng _rng;
         int _cursor;
 
+        // Sparse-set live-slot index: _liveSlots[0.._liveCount) holds the currently-live slot indices (order =
+        // the order each slot most recently became live, NOT ascending slot index), and _liveSlotPos[slot] is
+        // that slot's position within _liveSlots, or -1 when the slot is dead. Together they make
+        // Update/Draw/ActiveCount O(live) instead of O(Capacity): a fixed-capacity pool that only ever holds a
+        // handful of live particles at once no longer pays for scanning every dead/never-used slot every frame.
+        // MarkDead swaps the removed slot with the last live slot (O(1)). A removal during Update's own iteration
+        // backs the loop index up by one so the just-swapped-in slot is still visited this frame. Field particles
+        // respawn in place on death (see FillFieldParticle) so they never leave the live set. Only a pure burst
+        // particle (FieldId == -1) transitions live -> dead and back via a future Emit at that ring slot.
+        readonly int[] _liveSlots;
+        readonly int[] _liveSlotPos;
+        int _liveCount;
+
         /// <summary>Creates a system with pool <paramref name="capacity"/> (default 256) seeded by <paramref name="seed"/>.</summary>
         public Particle2DSystem(int capacity = 256, uint seed = 1u)
         {
             if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
             _particles = new Particle[capacity];
             _rng = new XorRng(seed);
+            _liveSlots = new int[capacity];
+            _liveSlotPos = new int[capacity];
+            Array.Fill(_liveSlotPos, -1);
         }
 
         /// <summary>Pool capacity (the maximum number of simultaneously live particles).</summary>
@@ -82,14 +98,36 @@ namespace KhaozEngine.Render2D.Vfx
         /// <summary>Number of ambient fields registered via <see cref="EmitField(in Particle2DEmitterConfig, Rect, int)"/> (reset by <see cref="Clear"/>).</summary>
         public int FieldCount => _fields.Count;
 
-        /// <summary>Number of currently live particles.</summary>
+        // Adds slot to the live set (no-op if already live). Idempotent so callers can call it unconditionally
+        // after (re)writing a slot without first checking its prior state.
+        void MarkLive(int slot)
+        {
+            if (_liveSlotPos[slot] >= 0) return;
+            _liveSlotPos[slot] = _liveCount;
+            _liveSlots[_liveCount] = slot;
+            _liveCount++;
+        }
+
+        // Removes slot from the live set via swap-with-last (no-op if already dead).
+        void MarkDead(int slot)
+        {
+            int pos = _liveSlotPos[slot];
+            if (pos < 0) return;
+            int lastSlot = _liveSlots[_liveCount - 1];
+            _liveSlots[pos] = lastSlot;
+            _liveSlotPos[lastSlot] = pos;
+            _liveCount--;
+            _liveSlotPos[slot] = -1;
+        }
+
+        /// <summary>Number of currently live particles. O(live), not O(Capacity).</summary>
         public int ActiveCount
         {
             get
             {
                 int n = 0;
-                for (int i = 0; i < _particles.Length; i++)
-                    if (_particles[i].Life > 0f) n++;
+                for (int li = 0; li < _liveCount; li++)
+                    if (_particles[_liveSlots[li]].Life > 0f) n++;
                 return n;
             }
         }
@@ -153,6 +191,10 @@ namespace KhaozEngine.Render2D.Vfx
                 p.FadeOut = cfg.FadeOutDuration;
                 p.FieldId = -1;
 
+                // Reconcile the live set for the slot's new state: usually marks it live, but a degenerate
+                // zero-life draw (MinLife == MaxLife == 0) must not linger in the live set (matches the
+                // Life > 0f gate every reader below uses).
+                if (p.Life > 0f) MarkLive(_cursor); else MarkDead(_cursor);
                 _cursor = (_cursor + 1) % _particles.Length;
             }
         }
@@ -189,6 +231,7 @@ namespace KhaozEngine.Render2D.Vfx
             for (int i = 0; i < count; i++)
             {
                 FillFieldParticle(ref _particles[_cursor], fieldId, initialFill: true);
+                if (_particles[_cursor].Life > 0f) MarkLive(_cursor); else MarkDead(_cursor);
                 _cursor = (_cursor + 1) % _particles.Length;
             }
             return fieldId;
@@ -262,16 +305,28 @@ namespace KhaozEngine.Render2D.Vfx
         /// <summary>Advances all live particles by <paramref name="dt"/> seconds. Field particles that die or leave their region respawn in-region.</summary>
         public void Update(float dt)
         {
-            for (int i = 0; i < _particles.Length; i++)
+            // Iterate only the live slots (see the sparse-set fields above), not the full pool. A burst particle
+            // that dies this frame is swap-removed from the live set, and the loop index steps back by one so the
+            // slot swapped into its place is still visited this same frame (standard swap-remove-during-iterate).
+            for (int li = 0; li < _liveCount; li++)
             {
-                ref Particle p = ref _particles[i];
+                int slot = _liveSlots[li];
+                ref Particle p = ref _particles[slot];
                 if (p.Life <= 0f) continue;
 
                 p.Life -= dt;
                 if (p.Life <= 0f)
                 {
-                    if (p.FieldId >= 0) FillFieldParticle(ref p, p.FieldId, initialFill: false);
-                    else p.Life = 0f;
+                    if (p.FieldId >= 0)
+                    {
+                        FillFieldParticle(ref p, p.FieldId, initialFill: false);
+                    }
+                    else
+                    {
+                        p.Life = 0f;
+                        MarkDead(slot);
+                        li--;
+                    }
                     continue;
                 }
 
@@ -306,6 +361,8 @@ namespace KhaozEngine.Render2D.Vfx
             for (int i = 0; i < _particles.Length; i++) _particles[i].Life = 0f;
             _fields.Clear();
             _cursor = 0;
+            for (int li = 0; li < _liveCount; li++) _liveSlotPos[_liveSlots[li]] = -1;
+            _liveCount = 0;
         }
 
         /// <summary>Life fraction elapsed in [0,1]: 0 at spawn, 1 at death.</summary>
@@ -351,9 +408,9 @@ namespace KhaozEngine.Render2D.Vfx
         /// </summary>
         public IEnumerable<Particle2DView> ActiveParticles()
         {
-            for (int i = 0; i < _particles.Length; i++)
+            for (int li = 0; li < _liveCount; li++)
             {
-                Particle p = _particles[i];
+                Particle p = _particles[_liveSlots[li]];
                 if (p.Life <= 0f) continue;
                 yield return new Particle2DView(
                     p.Pos, p.Vel, p.Rotation, CurrentSize(p), CurrentColor(p), p.Life, p.MaxLife, p.Blend);
@@ -370,9 +427,9 @@ namespace KhaozEngine.Render2D.Vfx
             ArgumentNullException.ThrowIfNull(batch);
             ArgumentNullException.ThrowIfNull(texture);
             BlendMode prev = batch.BlendMode;
-            for (int i = 0; i < _particles.Length; i++)
+            for (int li = 0; li < _liveCount; li++)
             {
-                ref Particle p = ref _particles[i];
+                ref Particle p = ref _particles[_liveSlots[li]];
                 if (p.Life <= 0f) continue;
                 float size = CurrentSize(p);
                 if (size <= 0f) continue;
@@ -393,9 +450,9 @@ namespace KhaozEngine.Render2D.Vfx
             ArgumentNullException.ThrowIfNull(texture);
             BlendMode prev = batch.BlendMode;
             batch.BlendMode = blendOverride;
-            for (int i = 0; i < _particles.Length; i++)
+            for (int li = 0; li < _liveCount; li++)
             {
-                ref Particle p = ref _particles[i];
+                ref Particle p = ref _particles[_liveSlots[li]];
                 if (p.Life <= 0f) continue;
                 float size = CurrentSize(p);
                 if (size <= 0f) continue;

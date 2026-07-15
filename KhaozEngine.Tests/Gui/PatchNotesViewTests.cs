@@ -19,6 +19,16 @@ public sealed class PatchNotesViewTests
 
     static readonly FakeMeasurer Measurer = new();
 
+    // A second, distinct measurer with wider glyphs - used to prove the per-note layout cache (keyed on
+    // width + measurer identity) invalidates on a measurer change too, not just a width change.
+    sealed class WideFakeMeasurer : ITextMeasurer
+    {
+        public float LineHeight => 16f;
+        public Vector2 Measure(string text) => new(text.Length * 20f, 16f);
+    }
+
+    static readonly WideFakeMeasurer WideMeasurer = new();
+
     static PatchNotesDocument Doc(int builds, int groups = 2, int notes = 2)
     {
         var b = new List<PatchNotesBuild>();
@@ -114,6 +124,39 @@ public sealed class PatchNotesViewTests
         float c = view.MeasureContentHeight(Measurer, 280f);
         Assert.Equal(a, b, 3);
         Assert.Equal(b, c, 3);
+    }
+
+    // Guards the per-note layout cache introduced to avoid re-running LayoutNote for every note on every
+    // MeasureContentHeight/Update/Draw call: a width change must invalidate it, not silently reuse a stale
+    // wrap computed at the previous width, and returning to an earlier width must recompute correctly rather
+    // than serving a result left over from a still-earlier call at that same width.
+    [Fact]
+    public void MeasureContentHeight_AlternatingWidths_RecomputesCorrectly_NeverServesAStaleWidth()
+    {
+        var view = new PatchNotesView(Doc(3));
+        float wide = view.MeasureContentHeight(Measurer, 400f);
+        float narrow = view.MeasureContentHeight(Measurer, 100f);   // narrower -> wraps to more lines -> taller
+        float wideAgain = view.MeasureContentHeight(Measurer, 400f);
+        float narrowAgain = view.MeasureContentHeight(Measurer, 100f);
+
+        Assert.True(narrow > wide, $"narrower width should wrap to more lines: narrow={narrow}, wide={wide}");
+        Assert.Equal(wide, wideAgain, 3);
+        Assert.Equal(narrow, narrowAgain, 3);
+    }
+
+    // Same cache, the other key component: a different ITextMeasurer identity (e.g. a font swap) must also
+    // invalidate the cache, and switching back to the original measurer must not serve the other measurer's
+    // (now stale) layout.
+    [Fact]
+    public void MeasureContentHeight_AlternatingMeasurers_RecomputesCorrectly_NeverLeaksBetweenFonts()
+    {
+        var view = new PatchNotesView(Doc(3));
+        float narrowGlyphs = view.MeasureContentHeight(Measurer, 300f);
+        float wideGlyphs = view.MeasureContentHeight(WideMeasurer, 300f);   // same width, wider glyphs -> taller
+        float narrowGlyphsAgain = view.MeasureContentHeight(Measurer, 300f);
+
+        Assert.True(wideGlyphs > narrowGlyphs, $"wider glyphs should wrap to more lines: {wideGlyphs} vs {narrowGlyphs}");
+        Assert.Equal(narrowGlyphs, narrowGlyphsAgain, 3);
     }
 
     // ---- scroll clamping (driven through the public input path) -----------------------------------

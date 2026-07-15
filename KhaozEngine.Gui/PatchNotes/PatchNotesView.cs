@@ -60,6 +60,36 @@ public sealed class PatchNotesView
     bool _closeHover;
     bool _draggingScrollbar;
 
+    // Per-note layout cache: LayoutNote is a pure function of (note, maxWidth, measurer), but a static document
+    // has its layout recomputed by Update, ClampScroll, Draw's scrollbar sizing, AND DrawColumn every frame - up
+    // to ~5x per frame for content that never changes. Keyed implicitly by (width, measurer): the whole cache is
+    // cleared whenever either changes (a resize, or a different font/measurer instance), so it never grows past
+    // one entry per note in the document - bounded by the document itself, no separate eviction policy needed.
+    float _noteLayoutWidth = float.NaN;
+    ITextMeasurer? _noteLayoutMeasurer;
+    readonly Dictionary<PatchNote, (int LineCount, List<WordPlacement> Placements)> _noteLayoutCache = new();
+
+    // Returns the cached (line count, word placements) for `note` at `maxWidth` under `measurer`, computing and
+    // storing it on a miss. Placements are always computed (even for a caller that only wants the line count,
+    // e.g. ExpandedBuildHeight) so every caller shares one cache entry per note instead of two different shapes.
+    (int LineCount, List<WordPlacement> Placements) GetOrComputeNoteLayout(PatchNote note, ITextMeasurer measurer, float maxWidth)
+    {
+        if (maxWidth != _noteLayoutWidth || !ReferenceEquals(measurer, _noteLayoutMeasurer))
+        {
+            _noteLayoutCache.Clear();
+            _noteLayoutWidth = maxWidth;
+            _noteLayoutMeasurer = measurer;
+        }
+
+        if (_noteLayoutCache.TryGetValue(note, out var cached)) return cached;
+
+        var placements = new List<WordPlacement>();
+        int lineCount = LayoutNote(note, measurer, maxWidth, placements);
+        var result = (lineCount, placements);
+        _noteLayoutCache[note] = result;
+        return result;
+    }
+
     /// <summary>Lazily constructed the first <see cref="Draw"/> call (it needs a <see cref="SpriteFont"/>, which
     /// only <see cref="Draw"/> receives, not <see cref="Update"/>): the close button's hover tooltip.</summary>
     Tooltip? _closeTooltip;
@@ -126,7 +156,7 @@ public sealed class PatchNotesView
         {
             h += CategoryRowHeight;
             foreach (PatchNote note in group.Notes)
-                h += LayoutNote(note, measurer, noteWidth, null) * measurer.LineHeight + NoteGap;
+                h += GetOrComputeNoteLayout(note, measurer, noteWidth).LineCount * measurer.LineHeight + NoteGap;
             h += GroupGap;
         }
         return h;
@@ -307,7 +337,6 @@ public sealed class PatchNotesView
     {
         float lineH = font.LineHeight;
         float noteWidth = MathF.Max(1f, content.Width - BulletIndent);
-        var placements = new List<WordPlacement>();
         float y = content.Y - _scrollOffset;
 
         for (int i = 0; i < _document.Builds.Count; i++)
@@ -327,8 +356,7 @@ public sealed class PatchNotesView
 
                     foreach (PatchNote note in group.Notes)
                     {
-                        placements.Clear();
-                        int lines = LayoutNote(note, font, noteWidth, placements);
+                        (int lines, List<WordPlacement> placements) = GetOrComputeNoteLayout(note, font, noteWidth);
                         float rowH = lines * lineH + NoteGap;
                         if (RowVisible(y, rowH, content))
                             DrawNote(batch, font, white, content, placements, y, lineH);

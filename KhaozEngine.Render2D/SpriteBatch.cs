@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 
@@ -86,6 +85,9 @@ void main() {
         // The current draw blend mode (reset to Alpha by each Begin). Read at EmitQuad time so it can change
         // per quad within a batch.
         BlendMode _blend = BlendMode.Alpha;
+
+        // Opt-in texture-grouping for Flush (reset to false by each Begin). See GroupByTexture.
+        bool _groupByTexture;
 
         // A stable per-texture wrapper used as the run key for ADDITIVE draws, so an additive quad never coalesces
         // with an alpha quad of the same texture and Flush can pick the right pipeline. The alpha path keeps using
@@ -191,6 +193,18 @@ void main() {
         /// for glowy VFX) without a new <c>Begin</c>. Painter's order is preserved across blend modes.
         /// </summary>
         public BlendMode BlendMode { get => _blend; set => _blend = value; }
+
+        /// <summary>
+        /// When true, <see cref="Flush"/> groups queued quads by texture regardless of submission order, trading
+        /// strict painter's order for fewer draw calls when same-texture draws are interleaved with other
+        /// textures (which otherwise split into separate runs - see <see cref="QuadRunBuilder{T}"/>). Submission
+        /// order is preserved WITHIN a texture group (so alpha blending among same-texture quads is unaffected).
+        /// Order BETWEEN different textures is NOT preserved while this is on, so do not enable it for a pass
+        /// whose visual correctness depends on cross-texture draw order (e.g. overlapping alpha-blended sprites
+        /// of different textures). Off by default, and each <c>Begin</c> resets it to false, matching
+        /// <see cref="BlendMode"/>. Byte-identical output to today when left off.
+        /// </summary>
+        public bool GroupByTexture { get => _groupByTexture; set => _groupByTexture = value; }
 
         /// <summary>
         /// Device pixels per authoring unit for the active pass, per axis (X, Y), or <see cref="Vector2.Zero"/> when
@@ -570,49 +584,103 @@ void main() {
         {
             var f = _gd.Factory;
 
-            // Total vertex count across all non-empty runs; size the one persistent buffer for the whole frame.
-            int totalCount = 0;
-            foreach (var (_, verts) in _runs.Runs)
-                totalCount += verts.Count;
+            // All accumulated vertices across every run, in submission order. Size the one persistent buffer for
+            // the whole frame. No per-run List<V> to sum (see QuadRunBuilder), just the one backing list's length.
+            Span<V> allVerts = _runs.AllItems;
+            int totalCount = allVerts.Length;
             if (totalCount == 0) { _runs.Reset(); return; }
 
             // A dedicated buffer for THIS flush so a prior flush's pending Draw isn't overwritten.
             IGpuBuffer vb = AcquireFlushBuffer((uint)totalCount * VertexSizeBytes);
             _stats.Flushes++;   // a flush that actually issues draws (totalCount > 0)
 
+            if (_groupByTexture) FlushGrouped(f, vb, allVerts);
+            else FlushInSubmissionOrder(f, vb, allVerts);
+
+            _runs.Reset();
+        }
+
+        // Default path: one draw call per submission-order run, so painter's order across textures is preserved
+        // exactly (byte-identical to before texture-grouping existed).
+        void FlushInSubmissionOrder(IGpuResourceFactory f, IGpuBuffer vb, Span<V> allVerts)
+        {
             uint byteOffset = 0;
             uint vertexStart = 0;
-            foreach (var (key, verts) in _runs.Runs)
+            foreach (var (key, start, count) in _runs.Runs)
             {
-                if (verts.Count == 0) continue;
-                // An additive run is keyed by an AdditiveKey wrapper; everything else is a raw texture handle (alpha).
-                IGpuTexture tex; IGpuPipeline pipeline;
-                if (key is AdditiveKey ak) { tex = ak.Tex; pipeline = _additivePipeline; }
-                else { tex = (IGpuTexture)key; pipeline = _pipeline; }
+                if (count == 0) continue;
+                ResolveKey(key, out IGpuTexture tex, out IGpuPipeline pipeline);
                 _texLastUsedFrame[tex] = _frame;   // stamp for the unused-set eviction sweep in NewFrame
                 // Count a texture switch only on a real bind change (the run coalescer already merged consecutive
                 // same-texture quads, but a flush boundary or an interleaved A-B-A order re-binds), tracked across
                 // flushes within the frame.
                 if (!ReferenceEquals(tex, _lastBoundTex)) { _stats.TextureSwitches++; _lastBoundTex = tex; }
                 _cl.SetPipeline(pipeline);
-                // Upload directly from the run's backing List<V>, no ToArray() copy.
-                _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)CollectionsMarshal.AsSpan(verts));
-                _stats.DrawCalls++;
-                _stats.BufferUpdateBytes += (long)verts.Count * VertexSizeBytes;
-                var setKey = (tex, _sampler);
-                if (!_sets.TryGetValue(setKey, out var set))
-                {
-                    set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, tex, _sampler));
-                    _sets[setKey] = set;
-                }
-                _cl.SetGraphicsResourceSet(0, set);
-                _cl.SetVertexBuffer(0, vb);
-                // Draw(vertexCount, instanceCount, vertexStart, instanceStart): the run's offset is vertexStart.
-                _cl.Draw((uint)verts.Count, 1, vertexStart, 0);
-                byteOffset += (uint)verts.Count * VertexSizeBytes;
-                vertexStart += (uint)verts.Count;
+                _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)allVerts.Slice(start, count));
+                _stats.DrawCalls++;                                        // one draw call per emitted run
+                _stats.BufferUpdateBytes += (long)count * VertexSizeBytes; // vertex bytes counted at upload
+                BindAndDraw(f, tex, vb, (uint)count, vertexStart);
+                byteOffset += (uint)count * VertexSizeBytes;
+                vertexStart += (uint)count;
             }
-            _runs.Reset();
+        }
+
+        // GroupByTexture path: one draw call PER DISTINCT TEXTURE KEY, merging runs that share a key even when
+        // submission order interleaved them with other textures. Each source run may be a non-contiguous slice
+        // of allVerts, but every run in a group is uploaded to CONSECUTIVE destination offsets in the shared
+        // flush buffer, so a single Draw can still span the whole group. Preserves order WITHIN a group. Does
+        // not preserve order BETWEEN groups (see GroupByTexture doc).
+        void FlushGrouped(IGpuResourceFactory f, IGpuBuffer vb, Span<V> allVerts)
+        {
+            IReadOnlyList<object> keys = _runs.GroupKeysInFirstSeenOrder();
+            IReadOnlyList<(object Key, int Start, int Count)> runs = _runs.Runs;
+            uint byteOffset = 0;
+            uint vertexStart = 0;
+            foreach (object key in keys)
+            {
+                IReadOnlyList<int> runIndices = _runs.RunIndicesForGroup(key);
+                uint groupCount = 0;
+                foreach (int idx in runIndices)
+                {
+                    var (_, start, count) = runs[idx];
+                    if (count == 0) continue;
+                    _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)allVerts.Slice(start, count));
+                    _stats.BufferUpdateBytes += (long)count * VertexSizeBytes;   // vertex bytes counted at upload
+                    byteOffset += (uint)count * VertexSizeBytes;
+                    groupCount += (uint)count;
+                }
+                if (groupCount == 0) continue;
+                ResolveKey(key, out IGpuTexture tex, out IGpuPipeline pipeline);
+                _texLastUsedFrame[tex] = _frame;
+                // A texture switch on a real bind change, same rule as the submission-order path. Each merged
+                // group issues ONE draw for all its runs, so it counts as a single draw call.
+                if (!ReferenceEquals(tex, _lastBoundTex)) { _stats.TextureSwitches++; _lastBoundTex = tex; }
+                _cl.SetPipeline(pipeline);
+                _stats.DrawCalls++;
+                BindAndDraw(f, tex, vb, groupCount, vertexStart);
+                vertexStart += groupCount;
+            }
+        }
+
+        // An additive run is keyed by an AdditiveKey wrapper. Everything else is a raw texture handle (alpha).
+        void ResolveKey(object key, out IGpuTexture tex, out IGpuPipeline pipeline)
+        {
+            if (key is AdditiveKey ak) { tex = ak.Tex; pipeline = _additivePipeline; }
+            else { tex = (IGpuTexture)key; pipeline = _pipeline; }
+        }
+
+        void BindAndDraw(IGpuResourceFactory f, IGpuTexture tex, IGpuBuffer vb, uint vertexCount, uint vertexStart)
+        {
+            var setKey = (tex, _sampler);
+            if (!_sets.TryGetValue(setKey, out var set))
+            {
+                set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, tex, _sampler));
+                _sets[setKey] = set;
+            }
+            _cl.SetGraphicsResourceSet(0, set);
+            _cl.SetVertexBuffer(0, vb);
+            // Draw(vertexCount, instanceCount, vertexStart, instanceStart).
+            _cl.Draw(vertexCount, 1, vertexStart, 0);
         }
 
         // The vertex buffer for the current flush index this frame, grown to fit. Each flush in a frame gets its own
@@ -651,7 +719,7 @@ void main() {
             return new Vector2(v.X, v.Y);
         }
 
-        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; }
+        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _groupByTexture = false; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; }
 
         // Arm device-pixel snapping for this pass iff the viewport is a point-space one (UiViewport). A fractional
         // design viewport, or any other Begin, leaves the frame cleared (Vector2.Zero) so snapping is a no-op.

@@ -2203,7 +2203,7 @@ namespace KhaozEngine.Render3D
             public readonly int BaseVertex;
             public readonly IGpuResourceSet? MaterialSet;
             public readonly bool Dissolve;   // route through the CharDissolve pipeline variant
-            public readonly bool VisibleMain;   // draw in the main visible pass; always true when culling is off
+            public readonly bool VisibleMain;   // draw in the main visible pass, always true when culling is off
             public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet, bool dissolve = false, bool visibleMain = true)
             {
                 Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve; VisibleMain = visibleMain;

@@ -111,6 +111,10 @@ namespace KhaozEngine.Render3D
         // Reused per-frame grouping buffers (cleared, not realloc) for GPU instancing.
         readonly List<ModelRenderer.InstanceData> _instanceData = new();
         readonly List<MeshRun> _runs = new();
+        // Mesh-handle -> run-index scratch for GroupInstances, keyed by (Index, Generation) so two different
+        // generations occupying the same freed-and-reused slot never merge into one run. Reused across frames
+        // (Cleared, not reallocated) to keep the O(instances) grouping pass allocation-free.
+        readonly Dictionary<(int Index, int Generation), int> _meshRunIndex = new();
         // Skinned mesh storage, parallel to the rigid mesh storage above.
         readonly List<SkinnedMeshEntry?> _skinnedMeshes = new();
         readonly MeshSlotMap _skinnedSlots = new();
@@ -1518,7 +1522,7 @@ namespace KhaozEngine.Render3D
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
             // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
-            GroupInstances(_instances.Items, _instanceData, _runs);
+            GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex);
             // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
             // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
@@ -2208,10 +2212,6 @@ namespace KhaozEngine.Render3D
             public MeshRun(int meshIndex, uint start, uint count) : this(new MeshHandle(meshIndex), start, count) { }
         }
 
-        /// <summary>Two handles name the same mesh slot occupant (index AND generation match).</summary>
-        internal static bool SameHandle(MeshHandle a, MeshHandle b) =>
-            a.Index == b.Index && a.Generation == b.Generation;
-
         /// <summary>One queued colour-only alpha billboard (world centre + half-size + RGBA tint). Stored in
         /// submission order, then sorted back-to-front by view depth before the vertex stream is built. Additive
         /// billboards are not stored here (they bypass the sort - see <see cref="_billboardAdditive"/>).</summary>
@@ -2429,27 +2429,37 @@ namespace KhaozEngine.Render3D
         /// Group queued <paramref name="items"/> by mesh handle into <paramref name="instanceData"/> (a flat array
         /// ordered so all instances of one mesh are contiguous) and <paramref name="runs"/> (one
         /// <see cref="MeshRun"/> per unique mesh handle, in first-seen order). Pure + headless-testable; both output
-        /// lists are Cleared and refilled (no realloc on the caller's reused buffers).
+        /// lists are Cleared and refilled (no realloc on the caller's reused buffers). <paramref name="meshRunIndex"/>
+        /// is scratch (mesh handle -&gt; run index): pass the caller's reused dictionary to keep the whole grouping
+        /// pass allocation-free and O(instances) (a dictionary lookup instead of a linear scan of the runs seen so
+        /// far). Omit it (the default) for a one-off/test call, which allocates a local scratch dictionary instead.
         /// </summary>
         internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
-            List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs)
+            List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs,
+            Dictionary<(int Index, int Generation), int>? meshRunIndex = null)
         {
             instanceData.Clear();
             runs.Clear();
             if (items.Count == 0) return;
 
+            meshRunIndex ??= new Dictionary<(int, int), int>();
+            meshRunIndex.Clear();
+
             // First-seen mesh order. Instances are usually already mesh-coherent (one mesh per kind), so the run
-            // list stays short; we append each instance into its mesh's bucket by stable two-pass grouping.
-            // Pass 1: collect distinct mesh indices in first-seen order + count per mesh.
-            // Use the runs list as scratch for (meshIndex, count) accumulation.
+            // list stays short. Pass 1: collect distinct mesh handles in first-seen order + count per mesh, O(1)
+            // amortized per instance via meshRunIndex (a per-instance linear scan of the runs list so far would be
+            // O(instances x uniqueMeshes), the hot path this dictionary replaces).
             for (int i = 0; i < items.Count; i++)
             {
                 MeshHandle mesh = items[i].Mesh;
-                int slot = -1;
-                for (int r = 0; r < runs.Count; r++)
-                    if (SameHandle(runs[r].Mesh, mesh)) { slot = r; break; }
-                if (slot < 0) runs.Add(new MeshRun(mesh, 0, 1));
-                else runs[slot] = new MeshRun(mesh, 0, runs[slot].Count + 1);
+                var key = (mesh.Index, mesh.Generation);
+                if (meshRunIndex.TryGetValue(key, out int slot))
+                    runs[slot] = new MeshRun(mesh, 0, runs[slot].Count + 1);
+                else
+                {
+                    meshRunIndex[key] = runs.Count;
+                    runs.Add(new MeshRun(mesh, 0, 1));
+                }
             }
 
             // Assign each run a start offset (prefix sum), and record per-mesh write cursors.
@@ -2464,16 +2474,15 @@ namespace KhaozEngine.Render3D
                 runs[r] = new MeshRun(runs[r].Mesh, start, runs[r].Count);
             }
 
-            // Size the flat array, then scatter each instance into its mesh's contiguous slot.
+            // Size the flat array, then scatter each instance into its mesh's contiguous slot, again via the same
+            // O(1) map lookup instead of a linear run scan.
             int total = (int)cursor;
             for (int i = 0; i < total; i++) instanceData.Add(default);
             for (int i = 0; i < items.Count; i++)
             {
                 var inst = items[i];
                 MeshHandle mesh = inst.Mesh;
-                int slot = -1;
-                for (int r = 0; r < runs.Count; r++)
-                    if (SameHandle(runs[r].Mesh, mesh)) { slot = r; break; }
+                int slot = meshRunIndex[(mesh.Index, mesh.Generation)];
                 uint dst = writeCursor[slot]++;
                 instanceData[(int)dst] = new ModelRenderer.InstanceData
                 {

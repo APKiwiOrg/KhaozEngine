@@ -166,5 +166,90 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Single(runs);
             Assert.Equal(7, runs[0].Mesh.Index);
         }
+
+        // The reused meshRunIndex overload (the O(instances) grouping path Scene3D's own RenderInternal drives, via
+        // a dictionary reused across frames instead of a per-item linear scan of the runs seen so far). The 3-arg
+        // calls above already prove the grouping is correct with the default (freshly allocated) scratch map. These
+        // prove the SAME result holds when a caller-owned map is threaded through and reused call to call, and that
+        // reuse never leaks state between calls or across distinct mesh generations occupying the same slot index.
+
+        [Fact]
+        public void ReusedMeshRunIndex_ProducesTheSameGroupingAsTheDefaultOverload()
+        {
+            var items = new List<SceneInstances.Instance>
+            {
+                Inst(5, 10f, Color.White),
+                Inst(2, 20f, Color.White),
+                Inst(5, 11f, Color.White),
+                Inst(2, 21f, Color.White),
+                Inst(5, 12f, Color.White),
+            };
+            var dataA = new List<ModelRenderer.InstanceData>();
+            var runsA = new List<Scene3D.MeshRun>();
+            Scene3D.GroupInstances(items, dataA, runsA);   // default overload: local scratch dictionary
+
+            var dataB = new List<ModelRenderer.InstanceData>();
+            var runsB = new List<Scene3D.MeshRun>();
+            var scratch = new Dictionary<(int, int), int>();
+            Scene3D.GroupInstances(items, dataB, runsB, scratch);   // explicit reused dictionary
+
+            Assert.Equal(runsA.Count, runsB.Count);
+            for (int r = 0; r < runsA.Count; r++)
+            {
+                Assert.Equal(runsA[r].Mesh.Index, runsB[r].Mesh.Index);
+                Assert.Equal(runsA[r].Start, runsB[r].Start);
+                Assert.Equal(runsA[r].Count, runsB[r].Count);
+            }
+            Assert.Equal(dataA.Count, dataB.Count);
+            for (int i = 0; i < dataA.Count; i++)
+                Assert.Equal(dataA[i].Model.M41, dataB[i].Model.M41, 4);
+        }
+
+        [Fact]
+        public void ReusedMeshRunIndex_DoesNotLeakStateBetweenFrames()
+        {
+            // Same shape as Reused_Buffers_AreClearedNotAppended, but threading the SAME scratch dictionary through
+            // two calls (as Scene3D.RenderInternal does frame to frame): the second frame's grouping must be exactly
+            // as if the dictionary were fresh, proving the internal Clear() (not a fresh allocation) is enough.
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            var scratch = new Dictionary<(int, int), int>();
+
+            var frame1 = new List<SceneInstances.Instance> { Inst(1, 0f, Color.White), Inst(1, 0f, Color.White), Inst(3, 0f, Color.White) };
+            Scene3D.GroupInstances(frame1, data, runs, scratch);
+            Assert.Equal(2, runs.Count);
+
+            var frame2 = new List<SceneInstances.Instance> { Inst(7, 0f, Color.White) };
+            Scene3D.GroupInstances(frame2, data, runs, scratch);
+
+            Assert.Single(data);
+            Assert.Single(runs);
+            Assert.Equal(7, runs[0].Mesh.Index);
+        }
+
+        [Fact]
+        public void DifferentGenerations_AtTheSameSlotIndex_FormSeparateRuns()
+        {
+            // A freed-and-reused mesh slot occupied by two different generations queued in the SAME frame (a stale
+            // handle lingering alongside its slot's new occupant) must group into two separate runs, never merge -
+            // the dictionary key is (Index, Generation), not Index alone.
+            var items = new List<SceneInstances.Instance>
+            {
+                new(new MeshHandle(3, 1), Matrix4x4.CreateTranslation(1f, 0, 0), Color.White),
+                new(new MeshHandle(3, 2), Matrix4x4.CreateTranslation(2f, 0, 0), Color.White),
+                new(new MeshHandle(3, 1), Matrix4x4.CreateTranslation(3f, 0, 0), Color.White),
+            };
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            var scratch = new Dictionary<(int, int), int>();
+
+            Scene3D.GroupInstances(items, data, runs, scratch);
+
+            Assert.Equal(2, runs.Count);
+            Assert.Equal(1, runs[0].Mesh.Generation);
+            Assert.Equal(2u, runs[0].Count);
+            Assert.Equal(2, runs[1].Mesh.Generation);
+            Assert.Equal(1u, runs[1].Count);
+        }
     }
 }

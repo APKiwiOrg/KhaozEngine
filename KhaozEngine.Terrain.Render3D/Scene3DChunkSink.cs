@@ -24,7 +24,7 @@ namespace KhaozEngine.Terrain
     /// caller must <see cref="Scene3D.UnloadSplatMaterial"/> it when done (or reuse it for the rebuilt sink). Pass
     /// <c>ownsMaterial: true</c> to hand ownership to the sink, whose <see cref="Dispose"/> then frees it too. The
     /// material is never disposed per-chunk.</para></summary>
-    public sealed class Scene3DChunkSink : IChunkSink, IDisposable
+    public sealed class Scene3DChunkSink : IAsyncChunkSink, IDisposable
     {
         readonly Scene3D _scene;
         readonly TerrainField _field;
@@ -159,42 +159,73 @@ namespace KhaozEngine.Terrain
         /// <summary>The first layer's placements for a chunk (back-compat for the single-layer path).</summary>
         internal IReadOnlyList<PropPlacement> ScatterFor(ChunkCoord coord) => ScatterLayersFor(coord)[0];
 
-        public object Load(ChunkCoord coord, int lod)
+        /// <summary>The opaque CPU payload <see cref="BuildCpu"/> hands to <see cref="Apply"/>: the pure-CPU mesh and
+        /// the per-layer scatter, both built off the analytic field with no GPU device. Everything here is safe to
+        /// compute on a worker thread; the GPU upload + physics registration happen later in <see cref="Apply"/>.</summary>
+        sealed class CpuBuild
         {
-            var mesh = TerrainChunkBuilder.Build(_field, ChunkGrid.RegionOf(coord, _chunkSize), lod);
-            var load = new ChunkLoad
-            {
-                Mesh = _material.IsValid ? _scene.LoadTerrainChunk(mesh, _material) : _scene.LoadTerrainChunk(mesh),
-                LayerProps = ScatterLayersFor(coord),
-                Lod = lod,
-            };
-            _loaded[coord] = load;
-            if (_physics is not null && _collisionShapes is not null)
-                ChunkStatics.AddAll(_physics, _collisionShapes, load.Props, load.Statics);
-            if (_physics is not null && _dynamicsSource is not null)
-                ChunkDynamics.AddAll(_physics, _dynamicsSource.SpawnsFor(coord), load.Dynamics);
-            // Terrain surface collider (opt-in): register the chunk's surface mesh (built above) as a static body so
-            // terrain is in the unified physics query path. LOD-dependent geometry, so ReLod rebuilds it.
-            if (_collideTerrain && _physics is not null)
-                load.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, mesh, out load.TerrainCollider);
-            return load;
+            public TerrainChunkMesh Mesh = null!;
+            public IReadOnlyList<PropPlacement>[] LayerProps = Array.Empty<IReadOnlyList<PropPlacement>>();
         }
 
-        public void ReLod(ChunkCoord coord, object handle, int lod)
+        MeshHandle UploadMesh(TerrainChunkMesh mesh) =>
+            _material.IsValid ? _scene.LoadTerrainChunk(mesh, _material) : _scene.LoadTerrainChunk(mesh);
+
+        // --- Async seam: BuildCpu (worker thread) + Apply (frame thread) --------------------------------------------
+
+        /// <summary>Build the chunk's mesh + scatter with no GPU access, so the streamer can run it off the frame
+        /// thread. <see cref="TerrainChunkBuilder.Build"/> and <see cref="PropScatter"/> both read only the immutable
+        /// analytic field, so concurrent chunk builds are safe.</summary>
+        public object BuildCpu(ChunkCoord coord, int lod) => new CpuBuild
         {
-            var load = (ChunkLoad)handle;
-            _scene.UnloadMesh(load.Mesh);
-            var mesh = TerrainChunkBuilder.Build(_field, ChunkGrid.RegionOf(coord, _chunkSize), lod);
-            load.Mesh = _material.IsValid ? _scene.LoadTerrainChunk(mesh, _material) : _scene.LoadTerrainChunk(mesh);
-            load.Lod = lod;
-            // Props are LOD-independent; keep load.LayerProps. The terrain surface collider IS LOD-dependent
-            // (the mesh resolution changed), so rebuild it: remove the old body, register the new-LOD surface.
+            Mesh = TerrainChunkBuilder.Build(_field, ChunkGrid.RegionOf(coord, _chunkSize), lod),
+            LayerProps = ScatterLayersFor(coord),
+        };
+
+        /// <summary>Turn a completed CPU build into live GPU + physics state on the frame thread. Fresh load when
+        /// <paramref name="existing"/> is null (create the mesh buffers, register props + optional terrain collider).
+        /// Re-LOD otherwise (swap the mesh, rebuild the LOD-dependent terrain collider, keep the LOD-independent
+        /// props).</summary>
+        public object Apply(ChunkCoord coord, int lod, object cpuBuild, object? existing)
+        {
+            var cpu = (CpuBuild)cpuBuild;
+            if (existing is null)
+            {
+                var load = new ChunkLoad
+                {
+                    Mesh = UploadMesh(cpu.Mesh),
+                    LayerProps = cpu.LayerProps,
+                    Lod = lod,
+                };
+                _loaded[coord] = load;
+                if (_physics is not null && _collisionShapes is not null)
+                    ChunkStatics.AddAll(_physics, _collisionShapes, load.Props, load.Statics);
+                if (_physics is not null && _dynamicsSource is not null)
+                    ChunkDynamics.AddAll(_physics, _dynamicsSource.SpawnsFor(coord), load.Dynamics);
+                // Terrain surface collider (opt-in): register the chunk's surface mesh as a static body so terrain is
+                // in the unified physics query path. LOD-dependent geometry, so a re-LOD rebuilds it.
+                if (_collideTerrain && _physics is not null)
+                    load.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, cpu.Mesh, out load.TerrainCollider);
+                return load;
+            }
+
+            var relod = (ChunkLoad)existing;
+            _scene.UnloadMesh(relod.Mesh);
+            relod.Mesh = UploadMesh(cpu.Mesh);
+            relod.Lod = lod;
+            // Props are LOD-independent; keep relod.LayerProps (the fresh scatter in cpu is identical). The terrain
+            // surface collider IS LOD-dependent (the mesh resolution changed), so rebuild it.
             if (_collideTerrain && _physics is not null)
             {
-                ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
-                load.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, mesh, out load.TerrainCollider);
+                ChunkTerrainCollision.Remove(_physics, relod.HasTerrainCollider, relod.TerrainCollider);
+                relod.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, cpu.Mesh, out relod.TerrainCollider);
             }
+            return relod;
         }
+
+        public object Load(ChunkCoord coord, int lod) => Apply(coord, lod, BuildCpu(coord, lod), existing: null);
+
+        public void ReLod(ChunkCoord coord, object handle, int lod) => Apply(coord, lod, BuildCpu(coord, lod), handle);
 
         public void Unload(ChunkCoord coord, object handle)
         {

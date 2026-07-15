@@ -3009,29 +3009,52 @@ with a fake one. `using KhaozEngine.Terrain;`:
 var field = new TerrainField(TerrainPresets.Clearing());
 var sink  = new Scene3DChunkSink(scene, field, ScatterConfig.ForestRing(), propMeshes,
                                  chunkSize: TerrainChunkRegion.DefaultSize, propDrawRadius: 90f);
-var streamer = new TerrainStreamer(StreamerConfig.Default, sink);
+var streamer = new TerrainStreamer(StreamerConfig.Default, sink);   // async build on by default
+
+// at load time (a loading moment, not a frame) - fill the whole first ring before the first frame:
+streamer.PrimeAround(playerPos);
 
 // each frame:
-streamer.Update(playerPos, dt);   // load ring / unload (hysteresis) / re-LOD, amortized to MaxLoadsPerFrame
+streamer.Update(playerPos, dt);   // request builds (off-thread) / unload (hysteresis) / apply up to MaxLoadsPerFrame
 // in your 3D draw pass:
 sink.Draw(playerPos);             // draws every loaded chunk + its in-range props
 ```
 
-`Update(playerPos, dt)` each frame: (1) **loads** chunks inside `LoadRadius` (Euclidean chunk-distance) that
-are not yet loaded, (2) **unloads** chunks past `UnloadRadius` immediately, (3) **re-LODs** loaded chunks whose
-`TerrainLod.PickLod(distance-to-chunk-center)` tier changed (the chunk is rebuilt at the new resolution), and
-(4) **amortizes**: at most `MaxLoadsPerFrame` load/re-LOD ops per update (nearest first), so a build burst never
-hitches. `UnloadRadius > LoadRadius` is a **hysteresis band** that stops churn when the player oscillates across
-a chunk boundary. `StreamerConfig.Default` is LoadRadius 4 (~240 m view) / UnloadRadius 6 / MaxLoadsPerFrame 3 /
-60 m chunks. At load time (a loading moment, not a frame) pump `Update` until `streamer.Loaded.Count` stops
-growing to prime the full first ring before the first frame.
+`Update(playerPos, dt)` each frame: (1) **requests** builds for chunks inside `LoadRadius` (Euclidean
+chunk-distance) that are not yet loaded, (2) **unloads** chunks past `UnloadRadius` immediately, (3) **re-LODs**
+loaded chunks whose `TerrainLod.PickLod(distance-to-chunk-center)` tier changed (the chunk is rebuilt at the new
+resolution), and (4) **applies** the completed builds nearest-first, at most `MaxLoadsPerFrame` per update.
+`UnloadRadius > LoadRadius` is a **hysteresis band** that stops churn when the player oscillates across a chunk
+boundary. `StreamerConfig.Default` is LoadRadius 4 (~240 m view) / UnloadRadius 6 / MaxLoadsPerFrame 3 / 60 m
+chunks.
+
+**Async build (default).** With `StreamerConfig.Async` set (the default) and an `IAsyncChunkSink` sink (the
+production `Scene3DChunkSink` is one), each chunk's CPU mesh build runs on a **background thread** and only the
+GPU upload happens on the frame thread, so a streamed chunk is no longer a full CPU-mesh-build hitch bounded
+only by the load budget. **`MaxLoadsPerFrame` now caps the APPLIES** (GPU upload + handle swap), not the builds:
+the builds are requested unbudgeted and run in parallel off the frame thread, and the frame thread only pays the
+bounded upload. The GPU device is touched only on the frame thread (during apply/unload) - the engine has no
+threaded-GPU contract. Correctness under churn is a per-chunk generation token: a chunk that leaves the ring
+mid-build is cancelled and its result discarded (never applied, no leak), and a re-LOD supersedes an earlier
+in-flight build of the same chunk (last request wins). Two escape hatches:
+
+- **`streamer.FlushPendingBuilds()`** forces every outstanding build to complete + apply now (blocking,
+  ignores the budget). **`streamer.PrimeAround(playerPos)`** loads the whole ring around a point right away
+  (it is `Update` + `FlushPendingBuilds` in a loop) - use it to prime the first ring. Both work in either mode.
+- **`StreamerConfig.Default.Synchronous()`** (or `Async = false`) runs the old inline build+upload-on-the-frame
+  path, where `MaxLoadsPerFrame` caps build ops as before. Editors/tools that want blocking, deterministic
+  loads use this (the map editor viewport does). A sink implementing only `IChunkSink` (not `IAsyncChunkSink`)
+  always streams synchronously regardless of the flag.
 
 `ChunkGrid` maps a `ChunkCoord(int X, int Z)` to and from world space for a chunk size (`CoordOf`/`CenterOf`/
 `RegionOf`/`AreaOf`); `AreaOf` is half-open so adjacent chunks tile `PropScatter` exactly once. Because
-`TerrainField.SampleHeight` and `PropScatter.Generate` are per-area deterministic, streaming is orthogonal to
-replication: the **networked client streams locally with the same code** (nothing about the world is sent over
-the wire). For a custom mesh/prop pipeline, implement `IChunkSink` yourself and pass it to `TerrainStreamer`.
-Threaded/background chunk build (an `IJobScheduler` build) and multi-cell server sharding are later sub-projects.
+`TerrainField.SampleHeight` and `PropScatter.Generate` are per-area deterministic (and stateless, so a background
+build can sample them concurrently), streaming is orthogonal to replication: the **networked client streams
+locally with the same code** (nothing about the world is sent over the wire). For a custom mesh/prop pipeline,
+implement `IChunkSink` (or `IAsyncChunkSink` for background build) yourself and pass it to `TerrainStreamer`. The
+background-build machinery is reusable on its own: **`ChunkBuildScheduler<T>`** (the GPU-free generation-token
+core) over an **`IChunkBuildDispatcher`** (`TaskChunkBuildDispatcher` = the thread pool). Multi-cell server
+sharding is a separate sub-project.
 
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
 walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the
@@ -3040,7 +3063,7 @@ currently-loaded ring of chunk meshes would otherwise leak until whole-scene `Sc
 
 ```csharp
 // rebuild streaming, REUSING the same sink + scene (e.g. teleport to a new region):
-streamer.UnloadAll();                         // frees every loaded chunk through the sink; sink stays alive
+streamer.UnloadAll();                         // frees every loaded chunk through the sink + discards in-flight builds; sink stays alive
 streamer = new TerrainStreamer(StreamerConfig.Default, sink);
 
 // OR full teardown of the ring AND the sink's owned GPU resources:

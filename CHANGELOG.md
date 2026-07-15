@@ -5,6 +5,33 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.104.1
+
+### GPU skinning spike evidence and the Metal vertex-stage binding invariant
+
+GPU skinning spike evidence and the Metal vertex-stage binding invariant, documented. A timeboxed spike
+re-attacked the removed GPU skinning path and found the real root cause of the historical bone corruption: on
+Metal via Veldrid and SPIRV-Cross, a pipeline whose vertex stage reads two resource buffers mis-binds and only
+the first survives, offscreen as well as windowed, for uniform and storage buffers alike. The bone read itself is
+fine in isolation, proven by new on-device repro tests (`GpuSkinningReproGpuTests`), and folding the matrix into
+the bone buffer so the vertex stage reads exactly one resource buffer fixes the corruption in isolation. The
+invariant is now recorded in `docs/DEPENDENCY-SEAMS.md` and a GPU skinning feature built on the fold-matrix
+binding is on the roadmap. CPU skinning remains the shipping path, byte-identical, no engine behavior change.
+
+- **`GpuSkinningReproGpuTests`** (`KhaozEngine.Tests`, new, GPU-gated): three on-device GpuFacts isolating the
+  historical skinned-vertex bone-array read on Metal. Variant 1 (`UniformBlock_PerVertexIndex_...`) and variant 2
+  (`DynamicOffsetUniformBlock_NonZeroIndex_...`) prove a uniform-block bone array read past element 0 and a
+  dynamic-offset slot read are both clean when bones is the ONLY vertex resource buffer. Variant 3
+  (`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_...`) reproduces the historical "only bones[0] survives"
+  corruption offscreen with two vertex-stage resource buffers, and proves the fix: fold the matrix into the bone
+  buffer so the vertex reads one combined buffer at set 0. Skipped unless `KE_GPU_TESTS` is set.
+- **`docs/DEPENDENCY-SEAMS.md`** (doc): new "one resource buffer per vertex stage" invariant section recording the
+  Metal/Veldrid/SPIRV-Cross multi-buffer mis-bind and the fold-into-one fix, cross-referencing the existing
+  splat-params note in `ModelRenderer.cs` and `ShaderSources.cs`.
+- **`docs/ROADMAP.md`** (doc): the GPU skinning rendering item rewritten around the proven fold-matrix binding
+  (one combined vertex buffer at set 0, a skinned `ModelFrag` variant at set 1, shadow-pass mirror), shipping
+  default-off pending a windowed A/B against CPU skinning.
+
 ## 10.104.0
 
 ### Shadow depth-pass dirty-skip and instanced footprint-bounded ground decals

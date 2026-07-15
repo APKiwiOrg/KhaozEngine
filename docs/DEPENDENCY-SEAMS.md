@@ -270,6 +270,28 @@ The pattern is applied at the granularity the dependency warrants:
    ("only `AppWindow` touches Silk.NET/GLFW input statics") is enforced as a hard rule in
    [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) and `../AGENTS.md`.
 
+## GPU-backend invariant: one resource buffer per vertex stage (Metal via Veldrid/SPIRV-Cross)
+
+Veldrid/SPIRV-Cross on Metal mis-binds any pipeline whose VERTEX stage reads more than one resource
+buffer. A vertex stage that reads a second resource buffer (a second UBO, or a storage buffer alongside
+a UBO) gets the wrong bytes: only the first buffer, or only its first element, survives. The read is
+silent rather than an error, so the corruption surfaces as garbage geometry, not a validation failure. It
+holds offscreen as well as windowed, for uniform and storage buffers alike, and for one or two vertex
+buffers.
+
+The engine-wide rule for any new render path: the vertex stage reads exactly ONE resource buffer, at set
+0. Fold every matrix the vertex needs (ViewProj, bone palette, per-instance transforms) into that single
+buffer, and keep every other UBO or texture at set 1 and up, read ONLY by the fragment stage.
+
+The model and splat-terrain passes already follow this: the shadow-map matrix and the per-material splat
+params ride in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform
+buffer (see the splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the
+`SplatVert` comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The same fault and the same
+fold-into-one fix are proven on the device by `GpuSkinningReproGpuTests` variant 3
+(`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone`): two vertex-stage UBOs reproduce the
+historical "only bones[0] survives" corruption offscreen, and folding the matrix into the bone buffer so
+the vertex reads one combined buffer fixes it.
+
 ## Adding a new backend
 
 To swap or add a backend for a seam that already has the separate-package split:

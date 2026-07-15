@@ -1108,7 +1108,11 @@ when a design-viewport upscales; layout/metrics are reported at the logical size
 exist on `Render2DContext` (the `Render2DSnapshot` headless callback).
 
 - `Begin` overloads: `Begin(Camera2D, SamplerMode)` (world space), `Begin(IDesignViewport, SamplerMode)`
-  (design space), `Begin(SamplerMode)` (raw screen). `SamplerMode` is `Linear` (default) or `Point`.
+  (design space), `Begin(SamplerMode)` (raw screen). `SamplerMode` is `Linear` (default) or `Point`. Each `Begin`
+  uploads its clip-corrected view-projection into a per-`Begin` uniform buffer and the vertex shader applies it,
+  so quad corners are transformed on the GPU (one multiply per vertex) instead of by four CPU
+  `Vector4.Transform`s per quad. No API change - this is a batch-internal performance detail that scales the CPU
+  emit cost down at high quad counts.
 - Model transform: each `Begin` also has a `Matrix4x4 transform` overload (`Begin(Matrix4x4)`,
   `Begin(Camera2D, Matrix4x4)`, `Begin(IDesignViewport, Matrix4x4)`) applied to every draw before projection, so
   a composed group (panel + icon + text) tilts/scales/translates as one. `DrawString` has no rotation of its

@@ -7,16 +7,23 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Render2D
 {
     /// <summary>
-    /// Batched 2D sprite + text renderer. Corners are transformed to clip space on the CPU by the current
-    /// camera, so there is no per-batch uniform; quads are coalesced into submission-ordered runs (consecutive
-    /// same-texture draws share a run) so painter's order is preserved across textures.
+    /// Batched 2D sprite + text renderer. Each quad corner is emitted in the batch's own authoring space
+    /// (world / screen / design units). The current camera's view-projection rides in a per-Begin uniform buffer
+    /// and the vertex shader multiplies it, so the corner transform runs on the GPU (no per-corner CPU
+    /// <c>Vector4.Transform</c>). Quads are coalesced into submission-ordered runs (consecutive same-texture draws
+    /// share a run) so painter's order is preserved across textures.
     /// </summary>
     public sealed class SpriteBatch : IDisposable
     {
         // internal (not private) so the engine's device-free ShaderValidation tests can validate this 2D pair
         // without a GraphicsDevice, via the existing InternalsVisibleTo into KhaozEngine.Tests. Not public.
+        // LocalPos (location 0) is the quad corner in the batch's authoring space. The Vp UBO (set 1) carries the
+        // clip-corrected view-projection, applied here so the transform is a single per-vertex GPU multiply instead
+        // of four per-quad CPU transforms. Set 1 is a separate set from the fragment's texture/sampler set 0, so the
+        // per-(texture,sampler) set cache is untouched, and the UBO is bound with a per-Begin dynamic offset.
         internal const string VertSrc = @"#version 450
-layout(location=0) in vec2 ClipPos;
+layout(set=1, binding=0) uniform Vp { mat4 ViewProj; };
+layout(location=0) in vec2 LocalPos;
 layout(location=1) in vec2 Uv;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 Local;
@@ -28,7 +35,7 @@ layout(location=2) out vec2 vLocal;
 layout(location=3) out vec4 vShape;
 layout(location=4) out vec2 vMode;
 void main() {
-    gl_Position = vec4(ClipPos, 0.0, 1.0);
+    gl_Position = ViewProj * vec4(LocalPos, 0.0, 1.0);
     vUv = Uv; vColor = Color; vLocal = Local; vShape = Shape; vMode = Mode;
 }";
 
@@ -66,12 +73,13 @@ void main() {
 
         struct V
         {
-            public Vector2 Pos; public Vector2 Uv; public Vector4 Color;
+            public Vector2 Pos; public Vector2 Uv; public Vector4 Color;   // Pos is the corner in authoring space (pre-view-projection); the vertex shader applies the Vp UBO
             public Vector2 Local; public Vector4 Shape; public Vector2 Mode;
         }
 
         readonly IGpuDevice _gd;
         readonly IGpuResourceLayout _layout;
+        readonly IGpuResourceLayout _vpLayout;    // set 1: the per-Begin view-projection UBO (dynamic-offset, vertex stage)
         readonly IGpuPipeline _pipeline;          // alpha (source-over) - the default
         readonly IGpuPipeline _additivePipeline;  // additive (glowy VFX)
         readonly IGpuShaderSet _shaders;
@@ -129,6 +137,25 @@ void main() {
         readonly List<uint>[] _vbCapRing;
         int _flushIndex;
 
+        // Per-Begin view-projection uniform buffer. The clip-corrected view-projection is no longer baked into every
+        // vertex on the CPU. It rides in this UBO and the vertex shader multiplies it. Each Begin claims its OWN
+        // 256-byte slot (VpSlotBytes) and writes its matrix there via cl.UpdateBuffer, so no slot is overwritten
+        // within a frame's command list - the same distinct-slot + dynamic-offset pattern the 3D dynamic-offset
+        // renderers use (OverlayMeshRenderer / GroundDecalRenderer), which is safe regardless of how a backend
+        // orders mid-command-list buffer copies (overwriting one shared slot mid-list mis-binds on Metal/Veldrid).
+        // cl.UpdateBuffer records the write into the command stream, so cross-frame reuse of the same slots is safe
+        // too (each frame's list runs to completion before the next on the queue) - no ring is needed here (unlike
+        // the vertex buffers, which use gd.UpdateBuffer, an immediate off-timeline write). _beginIndex resets each
+        // NewFrame. _vpUbo grows geometrically with retire-on-grow (a prior/earlier draw may still read the old one).
+        const uint VpPayloadBytes = 64;   // one Matrix4x4
+        const int VpSlotBytes = 256;      // Metal/D3D11/Vulkan-safe dynamic-offset alignment (one matrix per slot)
+        IGpuBuffer _vpUbo;
+        IGpuResourceSet _vpSet;           // binds the VpPayloadBytes window of _vpUbo at offset 0; per-Begin offset supplied at draw time
+        int _vpCapacity;                  // slots in _vpUbo
+        int _beginIndex;                  // Begins claimed this frame (reset by NewFrame); the current one's slot is _beginIndex-1
+        uint _vpDynamicOffset;            // byte offset of the current Begin's slot, bound with set 1 on every draw
+        readonly List<IDisposable> _vpRetired = new();   // UBO buffers/sets a grow replaced; freed at Dispose (in-flight reads may remain)
+
         IGpuCommandList _cl = null!;
         int _vw, _vh;
         Matrix4x4 _vp;
@@ -156,9 +183,15 @@ void main() {
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Tex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+            // Set 1: the per-Begin view-projection UBO, one dynamic-offset element read in the vertex stage.
+            _vpLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Vp", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
+            _vpCapacity = 8;
+            _vpUbo = f.CreateBuffer(new GpuBufferDescription((uint)(_vpCapacity * VpSlotBytes), GpuBufferUsage.UniformBuffer));
+            _vpSet = f.CreateResourceSet(new GpuResourceSetDescription(_vpLayout, new GpuBufferRange(_vpUbo, 0, VpPayloadBytes)));
             _shaders = f.CreateShadersFromSpirv(VertSrc, FragSrc);
             var vl = new GpuVertexLayoutDescription(
-                new GpuVertexElement("ClipPos", GpuVertexElementFormat.Float2),
+                new GpuVertexElement("LocalPos", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("Local", GpuVertexElementFormat.Float2),
@@ -171,7 +204,7 @@ void main() {
                 DepthStencil = GpuDepthStencilState.Disabled,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _layout },
+                ResourceLayouts = new[] { _layout, _vpLayout },   // set 0 = texture+sampler (fragment), set 1 = view-projection UBO (vertex)
                 ShaderSet = _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vl },
                 Outputs = output,
@@ -288,7 +321,7 @@ void main() {
         // Called by the host/snapshot each frame before the user's draw callback.
         internal void NewFrame(IGpuCommandList cl, int viewportW, int viewportH)
         {
-            _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0;
+            _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0; _beginIndex = 0;
             _frame++;
             EvictStaleSets();
         }
@@ -357,10 +390,10 @@ void main() {
         // headless-testable: getting the multiplication order backwards is the easy bug, so it has its own test.
         internal static Matrix4x4 ComposeModelViewProjection(Matrix4x4 model, Matrix4x4 viewProjection) => model * viewProjection;
 
-        // Apply the live backend's clip-space-Y convention to the CPU-baked view-projection (corners are
-        // transformed to clip space on the CPU at draw time, so the correction lands on _vp here). Identity on
-        // Metal/D3D, flips clip-Y on inverted-Y backends (Vulkan). _vp is render-only; CPU world<->screen math
-        // uses Camera2D.GetView, so it is unaffected. See KhaozEngine.Gpu.GpuClip.
+        // Apply the live backend's clip-space-Y convention to the view-projection before it is uploaded to the Vp
+        // UBO (the vertex shader multiplies it, so the correction rides on the matrix, not on any CPU-baked corner).
+        // Identity on Metal/D3D, flips clip-Y on inverted-Y backends (Vulkan). _vp is render-only; CPU world<->screen
+        // math uses Camera2D.GetView, so it is unaffected. See KhaozEngine.Gpu.GpuClip.
         Matrix4x4 Clip(Matrix4x4 viewProjection) => GpuClip.Correct(viewProjection, _gd.Capabilities);
 
         IGpuSampler Resolve(SamplerMode mode) => mode == SamplerMode.Point ? _pointSampler : _linearSampler;
@@ -470,16 +503,17 @@ void main() {
             Vector4 srcUV, Vector4 colorTop, Vector4 colorBottom,
             Vector2 localTL, Vector2 localTR, Vector2 localBR, Vector2 localBL, Vector4 shape, Vector2 mode)
         {
-            Vector2 tl = Clip(worldTL.X, worldTL.Y), tr = Clip(worldTR.X, worldTR.Y), br = Clip(worldBR.X, worldBR.Y), bl = Clip(worldBL.X, worldBL.Y);
+            // Corners go in the batch's authoring space (world / screen / design units); the vertex shader applies
+            // the per-Begin view-projection UBO, so there is no per-corner CPU transform here any more.
             var uTL = new Vector2(srcUV.X, srcUV.Y); var uTR = new Vector2(srcUV.Z, srcUV.Y);
             var uBR = new Vector2(srcUV.Z, srcUV.W); var uBL = new Vector2(srcUV.X, srcUV.W);
             // Alpha keeps the raw handle as the key (unchanged path); additive uses a stable per-texture wrapper so
             // it never merges with an alpha run of the same texture and Flush can choose the additive pipeline.
             object key = _blend == BlendMode.Alpha ? tex.Handle : AdditiveKeyFor(tex.Handle);
-            V vtl = new V { Pos = tl, Uv = uTL, Color = colorTop, Local = localTL, Shape = shape, Mode = mode };
-            V vtr = new V { Pos = tr, Uv = uTR, Color = colorTop, Local = localTR, Shape = shape, Mode = mode };
-            V vbr = new V { Pos = br, Uv = uBR, Color = colorBottom, Local = localBR, Shape = shape, Mode = mode };
-            V vbl = new V { Pos = bl, Uv = uBL, Color = colorBottom, Local = localBL, Shape = shape, Mode = mode };
+            V vtl = new V { Pos = worldTL, Uv = uTL, Color = colorTop, Local = localTL, Shape = shape, Mode = mode };
+            V vtr = new V { Pos = worldTR, Uv = uTR, Color = colorTop, Local = localTR, Shape = shape, Mode = mode };
+            V vbr = new V { Pos = worldBR, Uv = uBR, Color = colorBottom, Local = localBR, Shape = shape, Mode = mode };
+            V vbl = new V { Pos = worldBL, Uv = uBL, Color = colorBottom, Local = localBL, Shape = shape, Mode = mode };
             _runs.Add(key, vtl); _runs.Add(key, vtr); _runs.Add(key, vbr);
             _runs.Add(key, vtl); _runs.Add(key, vbr); _runs.Add(key, vbl);
         }
@@ -645,6 +679,7 @@ void main() {
                 _sets[setKey] = set;
             }
             _cl.SetGraphicsResourceSet(0, set);
+            _cl.SetGraphicsResourceSet(1, _vpSet, _vpDynamicOffset);   // this Begin's view-projection slot (set 1)
             _cl.SetVertexBuffer(0, vb);
             // Draw(vertexCount, instanceCount, vertexStart, instanceStart).
             _cl.Draw(vertexCount, 1, vertexStart, 0);
@@ -672,6 +707,18 @@ void main() {
         /// <summary>The number of frame slots the per-flush vertex buffers rotate through (triple-buffered).</summary>
         internal int VertexBufferRingDepth => RingDepth;
 
+        /// <summary>The byte offset into the view-projection UBO bound (via set 1's dynamic offset) for the CURRENT
+        /// Begin. Advances by <see cref="ViewProjSlotBytes"/> per Begin within a frame and resets to 0 each NewFrame.
+        /// For tests of the per-Begin slot bookkeeping.</summary>
+        internal uint CurrentViewProjOffset => _vpDynamicOffset;
+
+        /// <summary>The per-Begin slot stride of the view-projection UBO (the dynamic-offset alignment). For tests.</summary>
+        internal int ViewProjSlotBytes => VpSlotBytes;
+
+        /// <summary>The number of 256-byte slots the view-projection UBO currently holds; grows when a frame runs more
+        /// Begins than it had capacity for. For tests of the grow-with-retire path.</summary>
+        internal int ViewProjSlotCapacity => _vpCapacity;
+
         /// <summary>The vertex buffer backing flush <paramref name="flushIndex"/> of the CURRENT frame's ring slot
         /// (null before it has been allocated). Lets a test assert the cross-frame ring rotation.</summary>
         internal IGpuBuffer? CurrentFlushBuffer(int flushIndex)
@@ -680,13 +727,35 @@ void main() {
             return flushIndex >= 0 && flushIndex < vbs.Count ? vbs[flushIndex] : null;
         }
 
-        Vector2 Clip(float x, float y)
+        // Every Begin overload sets _vp (clip-corrected) and then calls this, so uploading the view-projection here
+        // covers all Begins from one place: a fresh batch always claims and writes its own UBO slot. _cl is live
+        // (set by NewFrame before the user's draw callback runs any Begin).
+        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _groupByTexture = false; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; UploadViewProj(); }
+
+        // Claim this Begin's own view-projection UBO slot and record its matrix into it. A distinct slot per Begin
+        // means no slot is overwritten within the frame's command list (see the _vpUbo field note); the slot's byte
+        // offset is bound with set 1 on every draw of this batch. _vp is already clip-corrected by Begin's Clip().
+        void UploadViewProj()
         {
-            var v = Vector4.Transform(new Vector4(x, y, 0, 1), _vp);
-            return new Vector2(v.X, v.Y);
+            int slot = _beginIndex++;
+            EnsureVpCapacity(slot + 1);
+            _vpDynamicOffset = (uint)(slot * VpSlotBytes);
+            _cl.UpdateBuffer(_vpUbo, _vpDynamicOffset, in _vp);
         }
 
-        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _groupByTexture = false; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; }
+        // Grow _vpUbo to hold at least this many 256-byte slots. A grow retires (does not dispose) the old buffer and
+        // set: earlier Begins this frame already recorded draws + slot writes against them, and a prior frame's
+        // command list may still read them, so they are freed only at Dispose. The new buffer's earlier slots are
+        // simply unused (those Begins keep using the retired set); this Begin and later ones write into the new one.
+        void EnsureVpCapacity(int slots)
+        {
+            if (_vpCapacity >= slots) return;
+            _vpRetired.Add(_vpUbo);
+            _vpRetired.Add(_vpSet);
+            _vpCapacity = Math.Max(slots, _vpCapacity * 2);
+            _vpUbo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_vpCapacity * VpSlotBytes), GpuBufferUsage.UniformBuffer));
+            _vpSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_vpLayout, new GpuBufferRange(_vpUbo, 0, VpPayloadBytes)));
+        }
 
         // Arm device-pixel snapping for this pass iff the viewport is a point-space one (UiViewport). A fractional
         // design viewport, or any other Begin, leaves the frame cleared (Vector2.Zero) so snapping is a no-op.
@@ -704,6 +773,9 @@ void main() {
             foreach (List<IGpuBuffer> vbs in _vbRing)
                 foreach (var vb in vbs) vb?.Dispose();
             foreach (var s in _sets.Values) s.Dispose();
+            _vpSet.Dispose(); _vpUbo.Dispose(); _vpLayout.Dispose();
+            foreach (IDisposable r in _vpRetired) r.Dispose();
+            _vpRetired.Clear();
             _pipeline.Dispose(); _additivePipeline.Dispose(); _layout.Dispose();
             _shaders.Dispose();
         }

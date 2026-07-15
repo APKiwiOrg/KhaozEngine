@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.101.0
+
+### Async background terrain chunk mesh builds
+
+Terrain chunk mesh building now runs off the frame thread (async streaming by default), so a streamed chunk no
+longer hitches the frame by its full CPU mesh build. `TerrainStreamer` gains a background-build pipeline: with
+`StreamerConfig.Async` (new, default true) and an `IAsyncChunkSink` sink, each chunk's CPU mesh and scatter build
+runs on a worker thread and only the GPU upload happens on the frame thread. `MaxLoadsPerFrame` now caps the
+per-frame GPU applies, not the builds, which are unbudgeted and parallel.
+
+- **New GPU-free, headless-testable machinery.** `ChunkBuildScheduler<T>` with per-chunk generation tokens (last
+  request wins, builds for chunks that leave the ring are cancelled and discarded), `IChunkBuildDispatcher`,
+  `TaskChunkBuildDispatcher`, `ChunkBuild<T>`, and `ChunkBuildException`.
+- **New sink seam `IAsyncChunkSink`** (`BuildCpu` on the worker, `Apply` on the frame thread), implemented by
+  `Scene3DChunkSink`.
+- **New streamer entry points.** `TerrainStreamer.FlushPendingBuilds()` force-drains synchronously and
+  `PrimeAround(playerPos)` fills the first ring. `StreamerConfig.Synchronous()` keeps the old inline path, and a
+  sink implementing only `IChunkSink` still streams synchronously.
+- **Migration note for adopters.** Priming loops that pump `Update` until `Loaded` stops growing will under-fill
+  the ring under the async default. Switch to `PrimeAround()` or opt into `Synchronous()`.
+
 ## 10.100.0
 
 ### Turn-key F1 diagnostics HUD + always-on frame draw counters

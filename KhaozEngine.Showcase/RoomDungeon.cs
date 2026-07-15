@@ -264,11 +264,16 @@ namespace KhaozEngine.Showcase
                 _samples.Clear();
                 _samples.Add(sample);
                 _animators.Update(_samples, dt);
-                if (_animators.Live.Count > 0) renderTarget = _animators.Live[0].RenderPosition;
+                // Point the camera at the bridge's CameraTarget - the signal-driven glide height lifted back to the
+                // capsule CENTRE (the sample is feet-anchored, so RenderPosition itself sits a full CapsuleHalfHeight
+                // too low: targeting it directly parks the camera at floor level). This is the capsule-centre anchor
+                // RoomNet targets via WorldClient.LocalRenderState.Position, but glide-smoothed so the camera rises with
+                // the stairs. The discrete-step MESH ease stays on the model only, so a curb never dips the camera.
+                if (_animators.Live.Count > 0) renderTarget = _animators.Live[0].CameraTarget(CapsuleHalfHeight);
             }
 
-            // Target the bridge's presentation position (physics XZ + the signal-driven glide height) so the camera
-            // glides on stairs, falling back to the raw physics position when the rig failed to load.
+            // Target the bridge's centre-glide camera anchor (physics XZ + the signal-driven glide height at the capsule
+            // centre) so the camera glides on stairs, falling back to the raw physics position when the rig failed to load.
             _camera.Target = renderTarget;
             _camera.AspectRatio = Manager!.FrameHeight > 0 ? (float)Manager!.FrameWidth / Manager!.FrameHeight : _camera.AspectRatio;
             _camController.Update(Manager!.Input, dt);

@@ -155,5 +155,69 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(p.IsBlocked(new Vector2(120, 120)));    // a slot
             Assert.False(p.IsBlocked(new Vector2(1000, 1000))); // outside the footprint
         }
+
+        [Fact]
+        public void SetContent_then_TryGetContent_roundtrips_the_fields()
+        {
+            var g = Grid();
+            var c = new SlotContent(Icons.Coin, Vector4.One, cooldown: 0.5f, count: 3, disabled: true);
+            g.SetContent(2, c);
+
+            Assert.Equal(1, g.ContentCount);
+            Assert.True(g.TryGetContent(2, out SlotContent got));
+            Assert.Equal(Icons.Coin, got.IconId);
+            Assert.Equal(0.5f, got.Cooldown, 3);
+            Assert.Equal(3, got.Count);
+            Assert.True(got.Disabled);
+        }
+
+        [Fact]
+        public void ClearContent_removes_one_slot_ClearAllContent_removes_all()
+        {
+            var g = Grid();
+            g.SetContent(0, new SlotContent(Icons.Coin));
+            g.SetContent(1, new SlotContent(Icons.Heart));
+            g.ClearContent(0);
+            Assert.False(g.TryGetContent(0, out _));
+            Assert.True(g.TryGetContent(1, out _));
+
+            g.ClearAllContent();
+            Assert.Equal(0, g.ContentCount);
+        }
+
+        [Fact]
+        public void Content_survives_a_count_shrink_and_regrow()
+        {
+            var g = Grid();                 // 30 slots
+            g.SetContent(20, new SlotContent(Icons.Gear));
+            g.Count = 5;                    // slot 20 is now out of range (would not be drawn)
+            Assert.True(g.TryGetContent(20, out _));   // still stored, not lost
+            g.Count = 30;                   // back in range
+            Assert.True(g.TryGetContent(20, out _));
+        }
+
+        [Fact]
+        public void SlotContent_clamps_cooldown_to_the_unit_range()
+        {
+            Assert.Equal(1f, new SlotContent(Icons.Coin, Vector4.One, cooldown: 5f).Cooldown, 3);
+            Assert.Equal(0f, new SlotContent(Icons.Coin, Vector4.One, cooldown: -2f).Cooldown, 3);
+        }
+
+        [Fact]
+        public void SlotContent_single_arg_ctor_defaults_to_white_tint()
+        {
+            var c = new SlotContent(Icons.Coin);
+            Assert.Equal(Vector4.One, c.Tint);
+            Assert.Equal(0f, c.Cooldown, 3);
+            Assert.Equal(0, c.Count);
+            Assert.False(c.Disabled);
+        }
+
+        [Fact]
+        public void SetContent_negative_index_throws()
+        {
+            var g = Grid();
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => g.SetContent(-1, new SlotContent(Icons.Coin)));
+        }
     }
 }

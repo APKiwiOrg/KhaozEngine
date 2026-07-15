@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
             scene.Post.Quality.Shadows.ShadowFocusRadius = 10f;
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
-            // Frame a small region near the origin; the skinned caster at x=-10 sits outside this camera frustum
+            // Frame a small region near the origin. The skinned caster at x=-10 sits outside this camera frustum
             // but inside the ShadowFocusRadius=10 ortho volume centred near the camera's ground focus.
             scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(5f, 4f, 5f));
             var casterPos = Matrix4x4.CreateTranslation(-10f, 0.9f, 0f);
@@ -99,7 +99,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.UnloadSkinnedMesh(caster);
         }
 
-        // Count shadow-map texels that hold a NEAR (caster-written) depth. The map clears to 1.0 (far); a caster
+        // Count shadow-map texels that hold a NEAR (caster-written) depth. The map clears to 1.0 (far), and a caster
         // writes a value < 1, so counting sub-1 texels measures caster coverage in the light-space depth map.
         static int NearTexels(float[] depth)
         {

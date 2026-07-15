@@ -73,9 +73,9 @@ namespace KhaozEngine.Render2D.Vfx
         // that slot's position within _liveSlots, or -1 when the slot is dead. Together they make
         // Update/Draw/ActiveCount O(live) instead of O(Capacity): a fixed-capacity pool that only ever holds a
         // handful of live particles at once no longer pays for scanning every dead/never-used slot every frame.
-        // MarkDead swaps the removed slot with the last live slot (O(1)); a removal during Update's own iteration
+        // MarkDead swaps the removed slot with the last live slot (O(1)). A removal during Update's own iteration
         // backs the loop index up by one so the just-swapped-in slot is still visited this frame. Field particles
-        // respawn in place on death (see FillFieldParticle) so they never leave the live set; only a pure burst
+        // respawn in place on death (see FillFieldParticle) so they never leave the live set. Only a pure burst
         // particle (FieldId == -1) transitions live -> dead and back via a future Emit at that ring slot.
         readonly int[] _liveSlots;
         readonly int[] _liveSlotPos;
@@ -306,7 +306,7 @@ namespace KhaozEngine.Render2D.Vfx
         public void Update(float dt)
         {
             // Iterate only the live slots (see the sparse-set fields above), not the full pool. A burst particle
-            // that dies this frame is swap-removed from the live set; the loop index steps back by one so the
+            // that dies this frame is swap-removed from the live set, and the loop index steps back by one so the
             // slot swapped into its place is still visited this same frame (standard swap-remove-during-iterate).
             for (int li = 0; li < _liveCount; li++)
             {

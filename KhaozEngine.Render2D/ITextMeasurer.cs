@@ -21,7 +21,7 @@ namespace KhaozEngine.Render2D
         /// <see cref="TextLayout.Wrap"/> measuring a candidate line while word-wrapping) measure without first
         /// allocating a string just to throw it away when the candidate does not fit. The default
         /// implementation allocates a string and forwards to <see cref="Measure(string)"/>, so any existing
-        /// implementer keeps compiling and behaving identically without overriding this; <see cref="SpriteFont"/>
+        /// implementer keeps compiling and behaving identically without overriding this. <see cref="SpriteFont"/>
         /// overrides it with a genuinely allocation-free span walk.
         /// </summary>
         Vector2 Measure(ReadOnlySpan<char> text) => Measure(text.ToString());

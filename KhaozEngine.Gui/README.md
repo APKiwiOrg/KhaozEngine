@@ -16,7 +16,7 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `Button`->bool/`Slider`/hover, with a `PointerCaptured` click-through gate. `FocusNavigator` drives
   keyboard/gamepad menu focus. The text sinks (`Label`/`Button`/`StatChip`) take an optional trailing
   `float scale = 1f` that scales the label only (rect + hit-test unchanged), so one shared font renders at many
-  sizes for pixel-parity; defaults to `1f`, so unscaled callers are byte-identical. `StatChip`'s "label  value"
+  sizes for pixel-parity, and defaults to `1f`, so unscaled callers are byte-identical. `StatChip`'s "label  value"
   text is memoized per surface (keyed on the resolved label/value content), so a HUD stat chip redrawn every
   frame with an unchanged value (health, ammo, gold sitting steady) is a lookup, not a fresh string every draw.
 - `ScreenStack` - owns a stack of `Screen`s. Routes input top-to-bottom (input-consumption + modal layering,
@@ -246,7 +246,7 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `KhaozEngine.Content.ConfigLoader`'s disk-then-embedded convention without a Gui-to-Content dependency; every
   IO attempt is swallowed so a read failure just falls through. `PatchNotesView` is the collapsible, scrollable
   presenter (one build per header, tap to expand/collapse, wheel/drag scroll, `CloseRequested` latches on
-  close-tap or Escape); its per-note word-wrap layout is cached (keyed on content width + the measurer/font
+  close-tap or Escape). Its per-note word-wrap layout is cached (keyed on content width + the measurer/font
   identity), so `Update`/`Draw`/scrollbar sizing share one computation per note per frame instead of
   re-wrapping a static document's notes on every call - the cache is cleared wholesale whenever the width or
   font changes (e.g. a resize), so it never serves a stale layout. `PatchNotesScreen` is the drop-in modal

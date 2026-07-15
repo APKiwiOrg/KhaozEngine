@@ -191,10 +191,10 @@ void main() {
         /// When true, <see cref="Flush"/> groups queued quads by texture regardless of submission order, trading
         /// strict painter's order for fewer draw calls when same-texture draws are interleaved with other
         /// textures (which otherwise split into separate runs - see <see cref="QuadRunBuilder{T}"/>). Submission
-        /// order is preserved WITHIN a texture group (so alpha blending among same-texture quads is unaffected);
-        /// order BETWEEN different textures is NOT preserved while this is on, so do not enable it for a pass
+        /// order is preserved WITHIN a texture group (so alpha blending among same-texture quads is unaffected).
+        /// Order BETWEEN different textures is NOT preserved while this is on, so do not enable it for a pass
         /// whose visual correctness depends on cross-texture draw order (e.g. overlapping alpha-blended sprites
-        /// of different textures). Off by default; each <c>Begin</c> resets it to false, matching
+        /// of different textures). Off by default, and each <c>Begin</c> resets it to false, matching
         /// <see cref="BlendMode"/>. Byte-identical output to today when left off.
         /// </summary>
         public bool GroupByTexture { get => _groupByTexture; set => _groupByTexture = value; }
@@ -563,7 +563,7 @@ void main() {
         {
             var f = _gd.Factory;
 
-            // All accumulated vertices across every run, in submission order; size the one persistent buffer for
+            // All accumulated vertices across every run, in submission order. Size the one persistent buffer for
             // the whole frame. No per-run List<V> to sum (see QuadRunBuilder), just the one backing list's length.
             Span<V> allVerts = _runs.AllItems;
             int totalCount = allVerts.Length;
@@ -600,7 +600,7 @@ void main() {
         // GroupByTexture path: one draw call PER DISTINCT TEXTURE KEY, merging runs that share a key even when
         // submission order interleaved them with other textures. Each source run may be a non-contiguous slice
         // of allVerts, but every run in a group is uploaded to CONSECUTIVE destination offsets in the shared
-        // flush buffer, so a single Draw can still span the whole group. Preserves order WITHIN a group; does
+        // flush buffer, so a single Draw can still span the whole group. Preserves order WITHIN a group. Does
         // not preserve order BETWEEN groups (see GroupByTexture doc).
         void FlushGrouped(IGpuResourceFactory f, IGpuBuffer vb, Span<V> allVerts)
         {
@@ -629,7 +629,7 @@ void main() {
             }
         }
 
-        // An additive run is keyed by an AdditiveKey wrapper; everything else is a raw texture handle (alpha).
+        // An additive run is keyed by an AdditiveKey wrapper. Everything else is a raw texture handle (alpha).
         void ResolveKey(object key, out IGpuTexture tex, out IGpuPipeline pipeline)
         {
             if (key is AdditiveKey ak) { tex = ak.Tex; pipeline = _additivePipeline; }

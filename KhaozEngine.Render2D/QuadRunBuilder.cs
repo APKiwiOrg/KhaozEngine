@@ -56,7 +56,7 @@ namespace KhaozEngine.Render2D
         /// <summary>
         /// Buckets this build's runs by key, regardless of submission order, for a caller that opts into
         /// texture-grouping and does not need strict painter's order. Returns the distinct keys in first-seen
-        /// order; look up each key's source run indices (into <see cref="Runs"/>) via
+        /// order. Look up each key's source run indices (into <see cref="Runs"/>) via
         /// <see cref="RunIndicesForGroup"/>. Submission order is preserved WITHIN a group (its run indices come
         /// back in ascending, i.e. submission, order) but NOT between groups, so a caller may still need to issue
         /// one GPU upload per source run while merging them into a single draw call by uploading to consecutive

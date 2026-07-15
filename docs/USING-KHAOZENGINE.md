@@ -1098,7 +1098,7 @@ exist on `Render2DContext` (the `Render2DSnapshot` headless callback).
 - Texture grouping: `batch.GroupByTexture = true` groups queued quads by texture at flush regardless of
   submission order (fewer draw calls when interleaved same-texture draws would otherwise split into separate
   runs), trading away painter's order BETWEEN textures (order stays intact WITHIN one texture's group). Off by
-  default and reset by every `Begin`; only turn it on for a pass whose visual correctness does not depend on
+  default and reset by every `Begin`. Only turn it on for a pass whose visual correctness does not depend on
   cross-texture draw order (e.g. not a scene with overlapping alpha-blended sprites of different textures).
 - `PrimitiveRenderer` (owns a 1x1 white pixel): filled/outlined rects, lines, circles/rings, filled circles,
   vertical gradients, progress bars, and filled sectors/arc-bands. For a partial ring, `DrawArc(center, radius,

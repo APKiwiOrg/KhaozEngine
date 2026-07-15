@@ -3,7 +3,7 @@
 2D rendering on the custom MonoGame-free foundation (engine-owned `KhaozEngine.Gpu` abstraction, `System.Numerics`).
 
 - `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs (consecutive same
-  -texture draws coalesce into one draw call; interleaved textures split into separate runs so painter's order
+  -texture draws coalesce into one draw call, and interleaved textures split into separate runs so painter's order
   across textures is preserved). `Begin` overloads for screen / `Camera2D` (world) / `IDesignViewport` (design)
   space, each with an optional `SamplerMode` (`Linear` / `Point`) and an optional `Matrix4x4` model transform
   (tilt/scale a composed group as one). `SetScissor`/`ClearScissor` DPI-aware clipping. `GroupByTexture` (opt-in,
@@ -19,17 +19,17 @@
   `ReadOnlySpan<char>` overload alongside the `string` one (declared on `ITextMeasurer` as a default interface
   method, so any existing measurer implementation keeps compiling unchanged) - `SpriteFont`'s override measures
   the span directly with no intermediate string allocation, for a caller (e.g. word-wrap) measuring a candidate
-  that may be thrown away. `DrawString` has a `float scale` overload (uniform scale about the top-left);
+  that may be thrown away. `DrawString` has a `float scale` overload (uniform scale about the top-left).
   `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped` take an optional `scale` so aligned/wrapped text stays
   correct when drawn scaled (`scale = 1` is unchanged). `TextLayout.Wrap(font, text, maxWidth, hardBreak)`
   word-wraps on spaces and is memoized (a bounded LRU cache keyed on font identity + text + maxWidth +
   hardBreak), so a caller re-wrapping the same unchanged text every frame (a static label, an idle tooltip)
-  hits the cache instead of re-running the wrap algorithm; the returned list is always a fresh copy, so mutating
+  hits the cache instead of re-running the wrap algorithm, and the returned list is always a fresh copy, so mutating
   it can never corrupt the cache. The opt-in `hardBreak` (default off) additionally slices a single token longer
   than `maxWidth` at character boundaries so every returned line fits. Default baked coverage is
   U+0020..U+017F (printable ASCII + Latin-1 Supplement + Latin Extended-A), so accented Western/Central European
   text renders out of the box. Anything outside the coverage (or missing from the face) measures AND draws as
-  the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently dropping; control characters stay
+  the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently dropping. Control characters stay
   zero-width.
 - `PrimitiveRenderer` - filled/outlined 2D primitives through a `SpriteBatch` (owns a 1x1 white pixel):
   rects, lines, circles/rings, filled circles, vertical gradients, progress bars, filled sectors/arc-bands, and
@@ -91,7 +91,7 @@ renderer.DrawVerticalGradient(spriteBatch, new Rect(0, 0, viewWidth, viewHeight)
 ## `PrimitiveRenderer.DrawFilledCircle` row cap
 
 `DrawFilledCircle` draws stacked horizontal rects, one row per pixel of diameter up to
-`PrimitiveRenderer.MaxFilledCircleRows` (128) bands; past that a very large radius steps by more than 1 pixel
+`PrimitiveRenderer.MaxFilledCircleRows` (128) bands. Past that a very large radius steps by more than 1 pixel
 per row (see `FilledCircleRowStep`) so it still draws a bounded number of (proportionally taller) bands instead
 of one draw call per pixel row. A no-op change for any UI-scale circle (radius <= 63 stays exactly one row per
 pixel, unchanged).

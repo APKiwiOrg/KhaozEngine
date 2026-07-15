@@ -391,7 +391,7 @@ public class Particle2DSystemTests
 
     // -- Live-set compaction (swap-remove) correctness --
     //
-    // Update/Draw/ActiveCount walk an O(live) sparse-set index instead of scanning the full pool; a burst
+    // Update/Draw/ActiveCount walk an O(live) sparse-set index instead of scanning the full pool. A burst
     // particle's death swap-removes its slot from that index. These tests pin down that the swap-remove keeps
     // exactly the right particles live (not off-by-one neighbours), correctly re-visits the slot swapped into a
     // just-vacated index within the SAME Update call, and reconciles correctly when the ring buffer overwrites a

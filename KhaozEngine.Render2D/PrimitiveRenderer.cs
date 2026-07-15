@@ -207,7 +207,7 @@ namespace KhaozEngine.Render2D
         /// of diameter, today's behaviour) while the diameter stays at or under <see cref="MaxFilledCircleRows"/>,
         /// otherwise the smallest step that brings the band count under the cap - so a very large radius
         /// rasterizes as a bounded number of proportionally taller bands instead of one draw call per pixel row.
-        /// Pure; extracted for headless tests.
+        /// Pure. Extracted for headless tests.
         /// </summary>
         public static int FilledCircleRowStep(float radius)
         {

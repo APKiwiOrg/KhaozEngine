@@ -160,7 +160,7 @@ namespace KhaozEngine.Tests.Render2D
         [InlineData("solitary", 5f)]
         public void Wrap_CachedResult_MatchesRecomputedResult_ForAMatrixOfInputs(string text, float maxWidth)
         {
-            // First call populates the cache; a distinct, unrelated call in between forces at least one other
+            // First call populates the cache. A distinct, unrelated call in between forces at least one other
             // key through the same cache before we re-query, so this cannot pass by coincidentally hitting an
             // empty cache both times.
             var populate = TextLayout.Wrap(Font, text, maxWidth);

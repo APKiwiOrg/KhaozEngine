@@ -16,13 +16,13 @@ namespace KhaozEngine.Gui
     /// </summary>
     public readonly struct SlotContent
     {
-        /// <summary>The icon id resolved through <see cref="SlotGrid.IconAtlas"/>; null or an unknown id draws no icon.</summary>
+        /// <summary>The icon id resolved through <see cref="SlotGrid.IconAtlas"/> (null or an unknown id draws no icon).</summary>
         public string? IconId { get; }
         /// <summary>The icon tint, multiplied over the icon before the disabled dim is applied.</summary>
         public Vector4 Tint { get; }
         /// <summary>Remaining-cooldown fraction in [0,1]: 0 = no sweep, 1 = fully covered. Clamped on construction.</summary>
         public float Cooldown { get; }
-        /// <summary>Stack / charge count drawn bottom-right; 0 or less draws no number.</summary>
+        /// <summary>Stack / charge count drawn bottom-right (0 or less draws no number).</summary>
         public int Count { get; }
         /// <summary>When true the icon draws greyed (RGB dimmed) so the slot reads as unavailable.</summary>
         public bool Disabled { get; }
@@ -280,7 +280,7 @@ namespace KhaozEngine.Gui
                 GuiDraw.CooldownSweep(batch, white, iconRect, content.Cooldown, GuiDraw.WithOpacity(CooldownTint, Opacity));
 
             // The stack count is a non-localizable number (the same escape hatch as the keybind glyphs), so it is a
-            // raw ToString; it needs the font Draw already receives.
+            // raw ToString. It needs the font Draw already receives.
             if (font != null && content.Count > 0)
             {
                 string txt = content.Count.ToString(CultureInfo.InvariantCulture);

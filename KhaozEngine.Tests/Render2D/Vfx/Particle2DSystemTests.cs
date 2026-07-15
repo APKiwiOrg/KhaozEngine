@@ -411,7 +411,7 @@ public class Particle2DSystemTests
             sys.Emit(Life(lives[i]), new Vector2(i, 0), 1);
         Assert.Equal(5, sys.ActiveCount);
 
-        sys.Update(0.1f);   // kills slots 0, 2, 4 in the same pass; slots 1, 3 must survive untouched
+        sys.Update(0.1f);   // kills slots 0, 2, 4 in the same pass. slots 1, 3 must survive untouched
 
         Assert.Equal(2, sys.ActiveCount);
         var survivorX = sys.ActiveParticles().Select(p => p.Position.X).OrderBy(x => x).ToList();

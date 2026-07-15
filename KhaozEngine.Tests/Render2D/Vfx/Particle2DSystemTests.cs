@@ -388,4 +388,92 @@ public class Particle2DSystemTests
         Assert.Equal(0, sys.ActiveCount);
         Assert.Equal(0, sys.FieldCount);
     }
+
+    // -- Live-set compaction (swap-remove) correctness --
+    //
+    // Update/Draw/ActiveCount walk an O(live) sparse-set index instead of scanning the full pool; a burst
+    // particle's death swap-removes its slot from that index. These tests pin down that the swap-remove keeps
+    // exactly the right particles live (not off-by-one neighbours), correctly re-visits the slot swapped into a
+    // just-vacated index within the SAME Update call, and reconciles correctly when the ring buffer overwrites a
+    // still-live slot.
+
+    // Distinct, short-lived particles so a single Update() kills several interleaved with survivors in one pass
+    // (life expires exactly at dt, so "dies this Update" is deterministic) - and X-origin identifies each one.
+    static Particle2DEmitterConfig Life(float life) => Fixed(0f, new Vector2(1, 0)) with { MinLife = life, MaxLife = life };
+
+    [Fact]
+    public void Update_SwapRemovesOnlyDeadBurstParticles_SurvivorsUnaffected()
+    {
+        var sys = new Particle2DSystem(capacity: 5, seed: 1);
+        // Slots 0..4, alternating short (dies at dt=0.1) / long (survives) life, identified by origin X.
+        float[] lives = { 0.1f, 100f, 0.1f, 100f, 0.1f };
+        for (int i = 0; i < lives.Length; i++)
+            sys.Emit(Life(lives[i]), new Vector2(i, 0), 1);
+        Assert.Equal(5, sys.ActiveCount);
+
+        sys.Update(0.1f);   // kills slots 0, 2, 4 in the same pass; slots 1, 3 must survive untouched
+
+        Assert.Equal(2, sys.ActiveCount);
+        var survivorX = sys.ActiveParticles().Select(p => p.Position.X).OrderBy(x => x).ToList();
+        Assert.Equal(new[] { 1f, 3f }, survivorX);
+    }
+
+    [Fact]
+    public void Update_ConsecutiveDeathsInOnePass_AllProcessed_NoneSkipped()
+    {
+        // Three consecutive deaths followed by one survivor stress-tests the "back the loop index up after a
+        // swap-remove" logic: if a swapped-in slot were skipped, a still-short-lived particle would survive
+        // this Update uncounted (ActiveCount too high) or get missed on death bookkeeping.
+        var sys = new Particle2DSystem(capacity: 4, seed: 1);
+        float[] lives = { 0.1f, 0.1f, 0.1f, 100f };
+        for (int i = 0; i < lives.Length; i++)
+            sys.Emit(Life(lives[i]), new Vector2(i, 0), 1);
+
+        sys.Update(0.1f);
+
+        Assert.Equal(1, sys.ActiveCount);
+        Assert.Equal(3f, sys.ActiveParticles().Single().Position.X);
+    }
+
+    [Fact]
+    public void RingOverwrite_OfStillLiveSlot_RemovesTheOverwrittenParticleFromLiveSet()
+    {
+        var sys = new Particle2DSystem(capacity: 2, seed: 1);
+        sys.Emit(Life(100f), new Vector2(0, 0), 1);   // slot 0
+        sys.Emit(Life(100f), new Vector2(1, 0), 1);   // slot 1
+        Assert.Equal(2, sys.ActiveCount);
+
+        sys.Emit(Life(100f), new Vector2(9, 0), 1);   // ring wraps: overwrites still-live slot 0
+
+        Assert.Equal(2, sys.ActiveCount);   // count unchanged: one replaced, one untouched
+        var xs = sys.ActiveParticles().Select(p => p.Position.X).OrderBy(x => x).ToList();
+        Assert.Equal(new[] { 1f, 9f }, xs);   // the original slot-0 particle (X=0) is gone, not double-counted
+    }
+
+    [Fact]
+    public void EmitAfterAllDead_RepopulatesDeadSlots_LiveSetStaysAccurate()
+    {
+        var sys = new Particle2DSystem(capacity: 3, seed: 1);
+        sys.Emit(Life(0.1f), Vector2.Zero, 3);
+        sys.Update(0.1f);
+        Assert.Equal(0, sys.ActiveCount);
+
+        sys.Emit(Life(100f), new Vector2(5, 0), 2);
+
+        Assert.Equal(2, sys.ActiveCount);
+        Assert.All(sys.ActiveParticles(), p => Assert.Equal(5f, p.Position.X));
+    }
+
+    [Fact]
+    public void Clear_ThenEmit_LiveSetIsCleanNotStale()
+    {
+        var sys = new Particle2DSystem(capacity: 4, seed: 1);
+        sys.Emit(Life(100f), Vector2.Zero, 4);
+        sys.Clear();
+
+        sys.Emit(Life(100f), new Vector2(7, 0), 2);
+
+        Assert.Equal(2, sys.ActiveCount);
+        Assert.All(sys.ActiveParticles(), p => Assert.Equal(7f, p.Position.X));
+    }
 }

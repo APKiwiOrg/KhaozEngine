@@ -157,6 +157,14 @@ world/camera space, screen space, or a transformed pass leaves `DeviceScale` at 
 a no-op there. Inside a point-space pass `SpriteBatch` also snaps glyph origins to device pixels, so text drawn
 with a `DpiFont` is crisp.
 
+## `SpriteBatch.DrawQuad`
+
+`DrawQuad(tex, topLeft, topRight, bottomRight, bottomLeft, srcUV, color)` draws an arbitrary convex quad from
+four corner points in the batch's authoring space, riding the same two-triangle path (and batching / z-order)
+as the rotated `Draw` overload. The source UV corners `(u0,v0)`, `(u1,v0)`, `(u1,v1)`, `(u0,v1)` map to the
+four corners in order. Corners need not form a rectangle, and two coincident corners are allowed (the quad
+collapses to a triangle), which is how the Gui radial cooldown fan is built.
+
 ## 2D particles + ambient fields (`Vfx`)
 
 `Particle2DSystem` is a fixed-size, zero-allocation, deterministic (seeded `XorRng`) screen-space particle pool.

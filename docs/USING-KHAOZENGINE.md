@@ -833,6 +833,42 @@ var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 
 ---
 
+## Action-bar icons and cooldowns (SlotContent + CooldownOverlay)
+
+A hotbar slot can carry a real icon, a radial cooldown sweep, and a stack count. The icon comes from an
+`IconAtlas`: either a baked core icon or a game texture you register yourself.
+
+1. Load your ability art and register icon ids (once, at load):
+
+    ```csharp
+    Texture2D fireballTex = surface.LoadTexture("assets/ui/fireball.png");
+    var icons = IconAtlas.Bake(surface);                       // the core set
+    icons.Register("game.fireball", fireballTex, new Vector4(0, 0, 1, 1));   // whole texture as one icon
+    ```
+
+2. Point the grid at the atlas and set per-slot content:
+
+    ```csharp
+    grid.IconAtlas = icons;
+    grid.SetContent(0, new SlotContent("game.fireball", Vector4.One, cooldown: 1f, count: 3));
+    ```
+
+3. Each frame, update the cooldown fraction (1 = just triggered / fully covered, 0 = ready) and redraw:
+
+    ```csharp
+    float remaining = MathF.Max(0f, cooldownEndTime - now) / cooldownDuration;   // 1 -> 0
+    grid.SetContent(0, new SlotContent("game.fireball", Vector4.One, cooldown: remaining, count: charges));
+    grid.Draw(batch, white, font);
+    ```
+
+The sweep is the MMO-standard "remaining" pie: the dark wedge is bounded by the 12 o'clock line and a
+trailing edge that sweeps clockwise as the fraction falls, revealing the icon clockwise from the top, with
+the boundary tracking the slot edge. For a one-off overlay outside a `SlotGrid`, `GuiSurface.CooldownOverlay(rect, fraction)`
+draws the same sweep over any rect, and `GuiSurface.Image(rect, tex, srcUV, tint)` draws an arbitrary texture
+without going through the icon registry.
+
+---
+
 ## Number + duration formatting (`NumberFormatter` / `TimeFormatter`)
 
 Two pure display formatters in `KhaozEngine.Primitives` (zero dependency; usable from a renderer, a headless

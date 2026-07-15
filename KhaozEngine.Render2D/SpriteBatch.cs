@@ -73,7 +73,7 @@ void main() {
 
         struct V
         {
-            public Vector2 Pos; public Vector2 Uv; public Vector4 Color;   // Pos is the corner in authoring space (pre-view-projection); the vertex shader applies the Vp UBO
+            public Vector2 Pos; public Vector2 Uv; public Vector4 Color;   // Pos is the corner in authoring space (pre-view-projection). The vertex shader applies the Vp UBO
             public Vector2 Local; public Vector4 Shape; public Vector2 Mode;
         }
 
@@ -150,11 +150,11 @@ void main() {
         const uint VpPayloadBytes = 64;   // one Matrix4x4
         const int VpSlotBytes = 256;      // Metal/D3D11/Vulkan-safe dynamic-offset alignment (one matrix per slot)
         IGpuBuffer _vpUbo;
-        IGpuResourceSet _vpSet;           // binds the VpPayloadBytes window of _vpUbo at offset 0; per-Begin offset supplied at draw time
+        IGpuResourceSet _vpSet;           // binds the VpPayloadBytes window of _vpUbo at offset 0, per-Begin offset supplied at draw time
         int _vpCapacity;                  // slots in _vpUbo
-        int _beginIndex;                  // Begins claimed this frame (reset by NewFrame); the current one's slot is _beginIndex-1
+        int _beginIndex;                  // Begins claimed this frame (reset by NewFrame). The current one's slot is _beginIndex-1
         uint _vpDynamicOffset;            // byte offset of the current Begin's slot, bound with set 1 on every draw
-        readonly List<IDisposable> _vpRetired = new();   // UBO buffers/sets a grow replaced; freed at Dispose (in-flight reads may remain)
+        readonly List<IDisposable> _vpRetired = new();   // UBO buffers/sets a grow replaced, freed at Dispose (in-flight reads may remain)
 
         IGpuCommandList _cl = null!;
         int _vw, _vh;
@@ -392,7 +392,7 @@ void main() {
 
         // Apply the live backend's clip-space-Y convention to the view-projection before it is uploaded to the Vp
         // UBO (the vertex shader multiplies it, so the correction rides on the matrix, not on any CPU-baked corner).
-        // Identity on Metal/D3D, flips clip-Y on inverted-Y backends (Vulkan). _vp is render-only; CPU world<->screen
+        // Identity on Metal/D3D, flips clip-Y on inverted-Y backends (Vulkan). _vp is render-only. CPU world<->screen
         // math uses Camera2D.GetView, so it is unaffected. See KhaozEngine.Gpu.GpuClip.
         Matrix4x4 Clip(Matrix4x4 viewProjection) => GpuClip.Correct(viewProjection, _gd.Capabilities);
 
@@ -503,7 +503,7 @@ void main() {
             Vector4 srcUV, Vector4 colorTop, Vector4 colorBottom,
             Vector2 localTL, Vector2 localTR, Vector2 localBR, Vector2 localBL, Vector4 shape, Vector2 mode)
         {
-            // Corners go in the batch's authoring space (world / screen / design units); the vertex shader applies
+            // Corners go in the batch's authoring space (world / screen / design units). The vertex shader applies
             // the per-Begin view-projection UBO, so there is no per-corner CPU transform here any more.
             var uTL = new Vector2(srcUV.X, srcUV.Y); var uTR = new Vector2(srcUV.Z, srcUV.Y);
             var uBR = new Vector2(srcUV.Z, srcUV.W); var uBL = new Vector2(srcUV.X, srcUV.W);
@@ -715,7 +715,7 @@ void main() {
         /// <summary>The per-Begin slot stride of the view-projection UBO (the dynamic-offset alignment). For tests.</summary>
         internal int ViewProjSlotBytes => VpSlotBytes;
 
-        /// <summary>The number of 256-byte slots the view-projection UBO currently holds; grows when a frame runs more
+        /// <summary>The number of 256-byte slots the view-projection UBO currently holds, growing when a frame runs more
         /// Begins than it had capacity for. For tests of the grow-with-retire path.</summary>
         internal int ViewProjSlotCapacity => _vpCapacity;
 
@@ -733,7 +733,7 @@ void main() {
         void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _groupByTexture = false; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; UploadViewProj(); }
 
         // Claim this Begin's own view-projection UBO slot and record its matrix into it. A distinct slot per Begin
-        // means no slot is overwritten within the frame's command list (see the _vpUbo field note); the slot's byte
+        // means no slot is overwritten within the frame's command list (see the _vpUbo field note). The slot's byte
         // offset is bound with set 1 on every draw of this batch. _vp is already clip-corrected by Begin's Clip().
         void UploadViewProj()
         {
@@ -746,7 +746,7 @@ void main() {
         // Grow _vpUbo to hold at least this many 256-byte slots. A grow retires (does not dispose) the old buffer and
         // set: earlier Begins this frame already recorded draws + slot writes against them, and a prior frame's
         // command list may still read them, so they are freed only at Dispose. The new buffer's earlier slots are
-        // simply unused (those Begins keep using the retired set); this Begin and later ones write into the new one.
+        // simply unused (those Begins keep using the retired set). This Begin and later ones write into the new one.
         void EnsureVpCapacity(int slots)
         {
             if (_vpCapacity >= slots) return;

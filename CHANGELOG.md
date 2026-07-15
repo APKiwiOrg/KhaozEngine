@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.107.0
+
+### Room3D signal-driven stair glide + CharacterAvatar deprecation
+
+Room3D adopts the signal-driven stair glide and CharacterAvatar is deprecated. The Showcase 3D room now drives its
+avatar through `ReplicatedCharacterAnimators` fed `CharacterController3D.ClimbRate` and `StepDeltaY`, matching the
+dungeon room, so both demo rooms present step traversal through the same canonical path. `CharacterAvatar` has no
+live consumers left and is marked `Obsolete` (additive and non-breaking, existing callers still compile with a
+warning). Prefer `ReplicatedCharacterAnimators` fed `CharacterSample` facts for any new character presentation.
+
+- **`CharacterAvatar`** (`KhaozEngine.Game.Render3D`, marked `[Obsolete]`): the turnkey third-person avatar has no
+  live consumers left, superseded by `ReplicatedCharacterAnimators` fed the controller's `ClimbRate`/`StepDeltaY`.
+  Additive and non-breaking: existing callers still compile with a deprecation warning.
+- **Showcase Room3D** (`KhaozEngine.Showcase`, demo-only): drives its avatar through `ReplicatedCharacterAnimators`
+  fed `CharacterController3D.ClimbRate`/`StepDeltaY` instead of `CharacterAvatar`, so both the dungeon room and the
+  3D room present step traversal through the same canonical path.
+
 ## 10.106.0
 
 ### Opt-in GPU skinning on the one-UBO-per-pipeline binding

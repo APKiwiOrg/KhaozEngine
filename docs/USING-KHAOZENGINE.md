@@ -671,6 +671,20 @@ for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(bat
 `Manager.Pointer`, so both share one click-through gate), and returns whether it consumed (to block screens
 below); set a screen non-pass-through for a modal.
 
+**The dormant-overlay trap.** `Screen.Update`'s bool return means "did THIS screen consume input THIS frame", not
+"did this screen receive input" - the two are different questions, and `receivesInput` already tells you the
+latter. A screen that stays in the stack all the time but is only sometimes showing/doing something (an
+always-mounted overlay, a toast, a hotkey-triggered panel) must return `false` while dormant. Returning `true`
+whenever it merely received input - a common shortcut - silently blocks every screen below it for as long as it
+sits in the stack, even while it is drawing nothing: every menu underneath stops responding to clicks and
+keypresses with no visible cause. Pair this with keeping `PassUpdateThrough` true while dormant and flipping it
+false only for the frames something is actually visible/interactive, so a modal moment blocks lower screens and
+an idle moment does not. `UpdateOverlayScreen` (`KhaozEngine.Gui`) is the reference implementation: each frame it
+recomputes `PassUpdateThrough` from its own visibility and returns `receivesInput && visible`, never a bare
+`true`. (There used to be a `Screen.InputConsumption` enum gesturing at this contract without `ScreenStack` ever
+reading it; it was removed in 10.111.0 as dead API - the bool-return contract above, sharpened in the `Screen.Update`
+XML doc, is the actual mechanism. See `CHANGELOG.md`.)
+
 **Theming: `GuiTheme` + `GuiStyle` (crisp default, 10.11.0)** - the default widget look is crisp: a neutral-dark
 palette with a blue accent, subtle 3px corners, 1px hairline borders, no bloom. `GuiTheme` is the central semantic
 palette every retained widget reads at construction. Rebrand the whole UI in one line at startup (before building

@@ -186,7 +186,7 @@ namespace KhaozEngine.Tests.Dungeon
             Assert.True(finalPhysY > upperFloorY + CapsuleHalfHeight - 0.25f,
                 $"climb did not reach the top: final Y {finalPhysY:F3}");
 
-            // Feed-forward is exactly bounded by MaxStepClimbSpeed*dt (SmoothedY += ClimbRate*dt); the critical-damp
+            // Feed-forward is exactly bounded by MaxStepClimbSpeed*dt (SmoothedY += ClimbRate*dt). The critical-damp
             // term adds a small correction on top to absorb quantization drift. A generous fixed headroom (well under
             // a raw single-riser pop of ~0.333 m, but comfortably above the feed-forward bound alone) catches a real
             // regression - a raw per-riser pop slipping through the glide - without being brittle to the damp term's

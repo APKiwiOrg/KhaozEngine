@@ -13,6 +13,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuPixelFormat.R8G8B8A8UNorm, PixelFormat.R8_G8_B8_A8_UNorm)]
         [InlineData(GpuPixelFormat.R32Float, PixelFormat.R32_Float)]
         [InlineData(GpuPixelFormat.D32FloatS8UInt, PixelFormat.D32_Float_S8_UInt)]
+        [InlineData(GpuPixelFormat.R16G16B16A16Float, PixelFormat.R16_G16_B16_A16_Float)]
         public void PixelFormat_RoundTrips(GpuPixelFormat engine, PixelFormat veldrid)
         {
             Assert.Equal(veldrid, VeldridMap.ToVeldrid(engine));

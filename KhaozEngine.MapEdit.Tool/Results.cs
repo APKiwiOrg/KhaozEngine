@@ -124,3 +124,36 @@ public sealed record CompanionLayerInfo(string Name, string HostLayer, int Seed,
 /// so an agent can inspect the current procedural setup without re-deriving it from raw document JSON.</summary>
 public sealed record ProceduralInfo(TerrainInfo Terrain, IReadOnlyList<BiomeBandInfo> Bands,
     IReadOnlyList<ScatterLayerInfo> ScatterLayers, IReadOnlyList<CompanionLayerInfo> CompanionLayers);
+
+/// <summary>One scatter exclusion read back for <see cref="ExclusionsInfo"/>. <see cref="Index"/> is the
+/// exclusion's list position, the same key <c>exclusion_edit</c>/<c>exclusion_remove</c>/<c>exclusion_rename</c>/
+/// <c>exclusion_set_layers</c> take. <see cref="Name"/> is null for an unnamed exclusion. <see cref="ShapeKind"/>
+/// is <c>"disc"</c>/<c>"rect"</c>/<c>"polygon"</c>/<c>"(none)"</c> and <see cref="ShapeSummary"/> is a compact
+/// human string of the shape's numbers (disc: center and radius, rect: min and max corners, polygon: point
+/// count). <see cref="Layers"/> null means the exclusion applies to every scatter layer, the same convention
+/// <see cref="KhaozEngine.MapDoc.MapExclusion.Layers"/> uses.</summary>
+public sealed record ExclusionInfo(int Index, string? Name, string ShapeKind, string ShapeSummary,
+    IReadOnlyList<string>? Layers);
+
+/// <summary>The scatter exclusions of the open document, in document order (<see cref="ExclusionInfo.Index"/> is
+/// the list position). The MCP read counterpart to <c>exclusion_add</c>/<c>exclusion_edit</c>/
+/// <c>exclusion_remove</c>/<c>exclusion_rename</c>/<c>exclusion_set_layers</c>.</summary>
+public sealed record ExclusionsInfo(IReadOnlyList<ExclusionInfo> Exclusions);
+
+/// <summary>One scatter override read back for <see cref="ScatterOverridesInfo"/>, full field fidelity.
+/// <see cref="Index"/> is the override's list position, the same key <c>scatter_override_edit</c>/
+/// <c>scatter_override_remove</c>/<c>scatter_override_rename</c>/<c>scatter_override_reorder</c> take, and
+/// document order is significant: the first override whose shape covers a point wins over any later one covering
+/// the same point. <see cref="ShapeKind"/>/<see cref="ShapeSummary"/> mirror <see cref="ExclusionInfo"/>'s shape
+/// fields. <see cref="Kinds"/> is null when the override carries no kind substitution, otherwise the
+/// <c>"id"</c> (weight 1) / <c>"id:weight"</c> convention <see cref="QueryService.FormatKinds"/> writes for
+/// scatter/companion layer kinds elsewhere. <see cref="Layers"/> null means the override applies to every scatter
+/// layer.</summary>
+public sealed record ScatterOverrideInfo(int Index, string? Name, string ShapeKind, string ShapeSummary,
+    float DensityMultiplier, IReadOnlyList<string>? Kinds, IReadOnlyList<string>? Layers);
+
+/// <summary>The scatter overrides of the open document, in document order (<see cref="ScatterOverrideInfo.Index"/>
+/// is the list position, and that order is first-match-wins significant). The MCP read counterpart to
+/// <c>scatter_override_add</c>/<c>scatter_override_edit</c>/<c>scatter_override_remove</c>/
+/// <c>scatter_override_rename</c>/<c>scatter_override_reorder</c>.</summary>
+public sealed record ScatterOverridesInfo(IReadOnlyList<ScatterOverrideInfo> ScatterOverrides);

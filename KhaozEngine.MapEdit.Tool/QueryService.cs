@@ -9,8 +9,9 @@ using KhaozEngine.Terrain;
 namespace KhaozEngine.MapEdit;
 
 /// <summary>Read-only world queries over the session's open document: ground sampling, walkability, rect scans
-/// over placements/NPC spawns/player spawns and a scatter layer preview, a brute-force flat-area search, and the
-/// full procedural setup read (<see cref="ProceduralInfo"/>). Every query reads through
+/// over placements/NPC spawns/player spawns and a scatter layer preview, a brute-force flat-area search, the full
+/// procedural setup read (<see cref="ProceduralInfo"/>), and the exclusion and scatter-override list reads
+/// (<see cref="ExclusionsInfo"/>, <see cref="ScatterOverridesInfo"/>). Every query reads through
 /// <see cref="MapEditSession.Field()"/> and <see cref="MapEditSession.WithDocument{T}"/>. None mutate.</summary>
 public sealed class QueryService(MapEditSession session)
 {
@@ -218,6 +219,73 @@ public sealed class QueryService(MapEditSession session)
             return new ProceduralInfo(terrain, bands, scatterLayers, companionLayers);
         });
     }
+
+    /// <summary>Reads the scatter exclusions of the open document, in document order
+    /// (<see cref="ExclusionInfo.Index"/> is the list position). The MCP read counterpart to
+    /// <c>exclusion_add</c>/<c>exclusion_edit</c>/<c>exclusion_remove</c>/<c>exclusion_rename</c>/
+    /// <c>exclusion_set_layers</c>: nothing here mutates or samples the terrain field, it only reflects the
+    /// document.</summary>
+    public ExclusionsInfo ExclusionsInfo()
+    {
+        return session.WithDocument((doc, _) =>
+        {
+            var exclusions = new List<ExclusionInfo>(doc.Exclusions.Count);
+            for (int i = 0; i < doc.Exclusions.Count; i++)
+            {
+                MapExclusion e = doc.Exclusions[i];
+                exclusions.Add(new ExclusionInfo(i, e.Name, ShapeKind(e.Shape), ShapeSummary(e.Shape),
+                    e.Layers?.ToArray()));
+            }
+            return new ExclusionsInfo(exclusions);
+        });
+    }
+
+    /// <summary>Reads the scatter overrides of the open document, in document order
+    /// (<see cref="ScatterOverrideInfo.Index"/> is the list position, and that order is first-match-wins
+    /// significant: an earlier override shadows a later one whose shape also covers the same point). The MCP read
+    /// counterpart to <c>scatter_override_add</c>/<c>scatter_override_edit</c>/<c>scatter_override_remove</c>/
+    /// <c>scatter_override_rename</c>/<c>scatter_override_reorder</c>.</summary>
+    public ScatterOverridesInfo ScatterOverridesInfo()
+    {
+        return session.WithDocument((doc, _) =>
+        {
+            var overrides = new List<ScatterOverrideInfo>(doc.ScatterOverrides.Count);
+            for (int i = 0; i < doc.ScatterOverrides.Count; i++)
+            {
+                MapScatterOverrideDoc o = doc.ScatterOverrides[i];
+                overrides.Add(new ScatterOverrideInfo(i, o.Name, ShapeKind(o.Shape), ShapeSummary(o.Shape),
+                    o.DensityMultiplier, o.Kinds is null ? null : FormatKinds(o.Kinds), o.Layers?.ToArray()));
+            }
+            return new ScatterOverridesInfo(overrides);
+        });
+    }
+
+    /// <summary>The shape's kind tag: <c>"disc"</c>/<c>"rect"</c>/<c>"polygon"</c>, or <c>"(none)"</c> for a null
+    /// shape. Mirrors <c>KhaozEngine.MapEditor.MapEditorScene.ShapeKind</c> (that method is private to the GUI
+    /// project, so this is a read-side twin rather than a shared call, kept in step by the same closed
+    /// <see cref="MapShapeDoc"/> type set).</summary>
+    static string ShapeKind(MapShapeDoc? shape) => shape switch
+    {
+        DiscShapeDoc => "disc",
+        RectShapeDoc => "rect",
+        PolygonShapeDoc => "polygon",
+        null => "(none)",
+        _ => shape.GetType().Name,
+    };
+
+    /// <summary>A compact human string of the shape's numbers (invariant culture): a disc reports its center and
+    /// radius, a rect its min and max corners, a polygon its point count (the polygon's actual points are not
+    /// spelled out here, keeping the summary short regardless of vertex count).</summary>
+    static string ShapeSummary(MapShapeDoc? shape) => shape switch
+    {
+        DiscShapeDoc d => string.Create(CultureInfo.InvariantCulture,
+            $"center ({d.CenterX}, {d.CenterZ}), radius {d.Radius}"),
+        RectShapeDoc r => string.Create(CultureInfo.InvariantCulture,
+            $"min ({r.MinX}, {r.MinZ}), max ({r.MaxX}, {r.MaxZ})"),
+        PolygonShapeDoc p => string.Create(CultureInfo.InvariantCulture, $"{p.Points.Count} points"),
+        null => "(none)",
+        _ => shape.GetType().Name,
+    };
 
     /// <summary>Formats a scatter kind list as one <c>"id"</c> (weight 1) / <c>"id:weight"</c> (invariant culture)
     /// entry per kind, the read-side mirror of <see cref="MutationService.ScatterLayerAdd"/>'s and

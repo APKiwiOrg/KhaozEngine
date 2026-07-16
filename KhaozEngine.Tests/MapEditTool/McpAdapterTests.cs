@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 66 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 68 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -42,14 +42,17 @@ namespace KhaozEngine.Tests.MapEditTool
         /// singleton). scatter_override_rename and scatter_override_reorder close the last scatter-override MCP
         /// parity gap: every scatter-override verb now routes through the Task 2 EditorCommand classes instead of
         /// a direct list mutation, and element_duplicate's scatter_override case (the tenth duplicatable kind)
-        /// reuses those same command classes and the GUI's own clone helpers.</summary>
+        /// reuses those same command classes and the GUI's own clone helpers. Round 8 Task 2 adds exclusions_info
+        /// and scatter_overrides_info, the read counterparts to the exclusion_* and scatter_override_* mutation
+        /// verbs that procedural_info does not cover (that read only reflects terrain, scatter layers, and
+        /// companion layers).</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
             "map_open", "map_create", "map_save", "map_validate", "map_summary",
             // Query
             "ground_height", "is_walkable", "placements_in_rect", "scatter_preview_in_rect", "find_flat_area",
-            "procedural_info",
+            "procedural_info", "exclusions_info", "scatter_overrides_info",
             // Placements
             "placement_add", "placement_move", "placement_rotate", "placement_scale", "placement_rename",
             "placement_remove",

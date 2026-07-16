@@ -684,10 +684,13 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Free a splat-terrain material's GPU resources (its texture arrays, params UBO, resource set) and
         /// release its slot. A <c>default</c>/Invalid handle is a no-op. Meshes still referencing it must be unloaded
-        /// first (they hold no reference after this).</summary>
+        /// first (they hold no reference after this). Also a no-op once <see cref="Dispose"/> has run: Dispose
+        /// already freed every splat material and cleared the backing list, so a caller that still holds a handle
+        /// (e.g. a world disposed after its owning scene) would otherwise index past the end of the now-empty list
+        /// and get an <see cref="ArgumentOutOfRangeException"/> instead of a silent no-op.</summary>
         public void UnloadSplatMaterial(SplatMaterialHandle h)
         {
-            if (!h.IsValid) return;
+            if (!h.IsValid || h.ListIndex >= _splatMaterials.Count) return;
             var m = _splatMaterials[h.ListIndex];
             m?.Dispose();
             _splatMaterials[h.ListIndex] = null;

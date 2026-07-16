@@ -78,6 +78,7 @@ namespace KhaozEngine.Telegraphs
                 Sparkle = r.Sparkle,
                 InteriorDim = r.InteriorDim,
                 Runner = r.Runner,
+                BaseFill = r.BaseFill,
             };
         }
 

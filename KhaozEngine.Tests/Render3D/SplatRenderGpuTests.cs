@@ -73,5 +73,26 @@ namespace KhaozEngine.Tests.Render3D
             scene.UnloadMesh(handle);
             scene.UnloadSplatMaterial(mat);
         }
+
+        // Dispose-order guard: Scene3D.Dispose clears the backing splat-material list, so a caller that still holds
+        // a handle after the scene is gone (a sink's ownsMaterial teardown, or a ViewportWorld disposed after its
+        // owning scene, see ViewportWorldDisposeOrderGpuTests) used to index past the end of that now-empty list and
+        // throw ArgumentOutOfRangeException. It must be a silent no-op instead.
+        [GpuFact]
+        public void UnloadSplatMaterial_AfterSceneDisposed_IsSafeNoOp()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            var f = gd.Factory;
+            using IGpuTexture finalTex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
+            var scene = new Scene3D(gd, finalFB.Outputs);
+
+            var mat = scene.LoadSplatMaterial(8, 8, FiveSolidLayers(8));
+
+            scene.Dispose();               // the owning scene, and every splat material it holds, is torn down first
+            scene.UnloadSplatMaterial(mat); // a caller still holding the handle must not throw
+        }
     }
 }

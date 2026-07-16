@@ -30,6 +30,13 @@ scene.GroundCone(bossPos, aimDirXZ, halfAngleRad: 0.6f, range: 12f, progress, Te
 This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRenderer2D` in
 `KhaozEngine.Telegraphs` reads none of them):
 
+- `FillMode` is honored here too. `TelegraphResolve` zeroes the outline alpha (plus `RimGlow` and
+  `Runner`) for `FillMode.Fill`, and zeroes the fill alpha for `FillMode.Outline`, before this
+  path ever queues a `GroundDecal`. Behavior fix: this path used to draw the outline band
+  unconditionally regardless of `FillMode` (only the 2D renderer honored it), and now agrees with
+  the 2D path. `FillMode.Fill` with a nonzero `BaseFill` is the borderless-telegraph recipe: the
+  full shape extent reads immediately with no outline, and the sweep brightens across it.
+
 - `FeatherWidth` maps to `GroundDecal.FeatherWidth` in WORLD UNITS: `Base()` clamps the style's
   0..1 feather fraction to 0..0.5 and multiplies it by the shape's characteristic size (the same
   size used for the world-space edge). 0 keeps the legacy hard fwidth-AA edge.
@@ -53,6 +60,10 @@ This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRe
   eases the fill alpha down deep inside the swept region while staying full near the sweep front,
   so the energy reads at the rim and the moving edge instead of pooling into the shape center.
   0 (legacy styles that never set it) is inert, byte-identical to before.
+- `BaseFill` on `ResolvedTelegraph` passes straight through to `GroundDecal.BaseFill`: a fraction
+  of the fill alpha painted across the entire shape from progress 0, independent of the sweep, so
+  a borderless (`FillMode.Fill`) telegraph's full danger extent reads immediately instead of only
+  the swept fraction. 0 (legacy styles that never set it) is inert, byte-identical to before.
 - `Scene3D.DecalQuality` (`GroundDecalQuality.Full` / `.Reduced`) is a scene-wide tier read by
   the decal pass itself, not by this mapping: `Reduced` drops the second noise octave and the
   edge sparkle for weak GPUs. Set it once on the `Scene3D`, not per decal.

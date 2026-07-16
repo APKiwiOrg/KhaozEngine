@@ -30,6 +30,13 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   - **`FlushPendingBuilds()`** forces every outstanding async build to complete + apply now (deterministic
     drain, ignores the budget). **`PrimeAround(playerPos)`** fills the whole ring around a point right away
     (a loading moment): use it to prime the first ring before the first frame. Both work in either mode.
+  - **`Invalidate(RectArea)`** / **`Invalidate(ChunkCoord)`** rebuild every currently loaded chunk the rect
+    (or the single coord) touches, in place, at its CURRENT LOD tier (no tier change, no ring reshuffle). This
+    is the partial-invalidation seam an editor uses: a bounded edit re-meshes only the chunks it actually
+    overlaps instead of the whole streamed ring. A chunk not currently loaded is left alone and picks up the
+    change the next time it loads naturally. Both overloads flush any in-flight async builds first, so a
+    build already running against the old state cannot land after the invalidation and overwrite it. Pair
+    with `Scene3DChunkSink.UpdateField` below: swap the field, then invalidate the touched area.
 - **`IAsyncChunkSink`** (extends `IChunkSink`) - the split seam the async streamer uses: **`BuildCpu(coord,
   lod)`** builds the chunk's mesh + scatter with no GPU (safe on a worker thread), **`Apply(coord, lod,
   cpuBuild, existing)`** creates/replaces the GPU buffers + physics on the frame thread. `Scene3DChunkSink`
@@ -54,6 +61,12 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   path (raycasts, capsule sweeps, dynamic-body rest all see it) instead of only the analytic
   `TerrainCollision` ground-follow delegate. Off by default: a game keeps the analytic delegate path exactly
   as before.
+  - **`UpdateField(field)`** swaps the field every FUTURE chunk build reads (mesh height/splat plus prop
+    scatter). An already-loaded chunk keeps its OLD field's shape until the caller invalidates or re-LODs it
+    (`TerrainStreamer.Invalidate`); this call only changes what a build starting after it reads. In async mode
+    the caller must flush in-flight builds first (`TerrainStreamer.FlushPendingBuilds`) before swapping, so a
+    build already running against the old field cannot land after the swap. The map editor runs its streamer
+    synchronously, so that ordering concern does not apply there.
 - **`PropLayer`** - one scatter or companion layer's config + mesh set + draw radius.
   `PropLayer.ScatterLayer(scatter, meshes, drawRadius)` / `CompanionLayer(hostLayerIndex, companions, meshes,
   drawRadius)` each have two overloads: the original `IReadOnlyDictionary<string, MeshHandle>` (one mesh per

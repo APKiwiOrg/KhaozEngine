@@ -917,7 +917,12 @@ NumberFormatter.Notation = NumberNotation.Simple;   // once, from the user setti
 NumberFormatter.Format(1_500_000);       // "1.50M"
 NumberFormatter.FormatInt(1234);         // "1K"   (0 decimals below 1000)
 NumberFormatter.Format(1234, NumberNotation.Scientific);   // "1.23E+003" (explicit override)
+NumberFormatter.Format(0.05);            // "0.05" (sub-1 magnitudes stay truthful, never round up to "0.1")
 ```
+
+Magnitudes below 1 automatically get extra decimal places so a small value never rounds away to a misleading
+digit (0.05 would otherwise render "0.1" - twice the real value). This only applies when `decimalsSmall > 0`,
+so `FormatInt` (which always asks for 0 small-value decimals) is unaffected and stays a plain integer count.
 
 `TimeFormatter.Format(seconds, style)` renders a duration in two `DurationStyle` shapes: `Clock` (the ticking
 colon clock `1:02:34`, rounds up to the next whole second - for timers/countdowns) and `Coarse` (the two-unit
@@ -2307,6 +2312,13 @@ modern style knobs below). The 3D path paints onto the ground/terrain via the de
 occluded by meshes. (EdgeThickness is authored in 2D pixels: the 3D ground path derives its own
 world-space edge from the decal size.)
 
+`FillMode` (`Outline` / `Fill` / `OutlineAndFill`) is honored by both renderers: `TelegraphResolve`
+zeroes the unwanted alpha before either path draws, so `Fill` also silences the outline-band
+effects (`RimGlow`, `OutlineRunner`) and `Outline` silences the fill (which in turn silences the
+fill-driven pattern, base fill, and sweep glow). Behavior fix: the 3D ground-decal path used to
+draw the outline band unconditionally regardless of `FillMode`, only the 2D renderer honored it.
+Both paths now agree.
+
 **Modern style knobs** (fields on `TelegraphStyle`, resolved by `TelegraphResolve` and consumed by
 the 3D ground-decal path only, see below):
 
@@ -2328,6 +2340,14 @@ the 3D ground-decal path only, see below):
   sweep edge instead of pooling flat across the whole shape. Presets use roughly 0.35 (dense) to
   0.6 (hollow). All seven set a nonzero value now, so every preset renders the hollow-rim look
   unless you dial it back to 0 on a custom style.
+- `BaseFill` - fraction of the fill alpha painted across the ENTIRE shape from progress 0,
+  independent of the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets the full
+  danger extent read immediately, the sweep then brightens across it. Presets use 0.3.
+
+**Borderless telegraphs**: set `FillMode = FillMode.Fill` (silences the outline band and its rim/
+runner effects) and give the style a nonzero `BaseFill` (all seven presets already do) so the full
+shape extent still reads before the sweep gets there instead of only the swept fraction being
+visible.
 
 `TelegraphAnim` gained four flags alongside the original four (`OutlinePulse`, `FillSweep`,
 `ColorRamp`, `ImpactFlash`):
@@ -2375,9 +2395,9 @@ The builder is pure and immediate-mode like every other telegraph call, so the C
         scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
-Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, RimGlow, SweepGlow, EdgeSparkle,
-OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash look. They
-are a 3D ground-decal feature.
+Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
+EdgeSparkle, OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash
+look, picking primitives by `FillMode` directly. They are a 3D ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same
@@ -3992,9 +4012,21 @@ status-strip panels draw through `SpriteBatch.DrawRounded` against a lifted dark
 column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWidth` (340, up from the old
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
+**Viewport rebuild performance.** A bounded terrain-feature edit (a lake or flatten drag, for example)
+reports a `DirtyRegion`, so `CheckWorldRebuild` re-meshes only the loaded chunks the edit's accumulated
+region overlaps (`ViewportWorld.PartialRebuild`) instead of tearing down and rebuilding the whole streamed
+world. A ridge or rim edit has unbounded reach and, like a scatter, exclusion, or terrain-scalar edit, still
+takes the full `ViewportWorld.Rebuild` path, throttled to at most once per
+`MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or
+draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the world every frame. Kit meshes
+and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF
+from disk; a toggle that changes their cached form (the "Textured props" toggle) calls
+`ViewportWorld.InvalidateKitMeshes` first.
+
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
-semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
-mechanics, the procedural setup editing mechanics, and the bake-region and rename mechanics in full.
+semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the
+feature apply-order and visibility mechanics, the procedural setup editing mechanics, and the bake-region and
+rename mechanics in full.
 
 ---
 

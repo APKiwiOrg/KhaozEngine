@@ -61,9 +61,24 @@ namespace KhaozEngine.Telegraphs
 
             float runner = (style.Animation & TelegraphAnim.OutlineRunner) != 0 ? energy : 0f;
 
+            // Honor FillMode at the resolve level so BOTH renderers agree (the 2D renderer picks primitives by
+            // FillMode, the 3D decal path draws whatever alphas it is handed and historically ignored the mode).
+            // Fill: no outline band and no outline-band effects (rim, runner). Outline: no fill (which also
+            // silences the fill-driven pattern, base fill, and sweep glow in the shader).
+            if (style.FillMode == FillMode.Fill)
+            {
+                outline = outline.WithAlpha(0f);
+                rimGlow = 0f;
+                runner = 0f;
+            }
+            else if (style.FillMode == FillMode.Outline)
+            {
+                fill = fill.WithAlpha(0f);
+            }
+
             return new ResolvedTelegraph(fill, outline, fillFraction, flash, style.EdgeThickness, style.FillMode, style.Blend,
                 style.FeatherWidth, style.Pattern, style.PatternSpeed, style.PatternScale, rimGlow, sweepGlow, sparkle,
-                MathUtil.Clamp01(style.InteriorDim), runner);
+                MathUtil.Clamp01(style.InteriorDim), runner, MathUtil.Clamp01(style.BaseFill));
         }
 
         // 0 below ~0.6, rising steeply to 1 at p=1. Quartic for a snappy late spike.

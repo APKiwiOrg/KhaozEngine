@@ -10,6 +10,12 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   `FillMode` (Outline/Fill/OutlineAndFill), `TelegraphBlend` (Alpha/Additive), composable
   `TelegraphAnim` flags, and the modern style knobs below. It's a plain struct, so `with`-style
   copies work for tweaking a preset.
+- `FillMode` is honored by both renderers: `TelegraphResolve` zeroes the unwanted alpha before
+  either path draws. `Fill` zeroes the outline alpha plus the outline-band effects (`RimGlow`,
+  `OutlineRunner`). `Outline` zeroes the fill alpha (which also silences the fill-driven pattern,
+  `BaseFill`, and sweep glow). Behavior fix: the 3D ground-decal path used to draw the outline
+  band unconditionally regardless of `FillMode`, and only the 2D renderer honored it. Both paths
+  now agree, so `FillMode.Fill` + a nonzero `BaseFill` is the borderless-telegraph recipe.
 - `TelegraphAnim` flags (composable, OR them together): `OutlinePulse`, `FillSweep`, `ColorRamp`,
   `ImpactFlash` (the original four), plus `RimGlow` (soft glow hugging the boundary), `SweepGlow`
   (bright leading edge on the `FillSweep` front, no-op without `FillSweep` also set, ramps in over
@@ -31,6 +37,10 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   - `InteriorDim` - how much the deep fill interior dims relative to the boundary and sweep
     front (0 = legacy uniform fill, 1 = fully hollow), concentrating energy at the rim. Presets
     use roughly 0.35 to 0.6. All seven set a nonzero value now.
+  - `BaseFill` - fraction of the fill alpha painted across the ENTIRE shape from progress 0,
+    independent of the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets a
+    borderless (`FillMode.Fill`) telegraph's full danger extent read immediately, the sweep then
+    brightens across it. Presets use 0.3.
 - Presets, each a distinct character to reach for by name:
 
   | Preset | Character |
@@ -52,10 +62,11 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   its flag is off).
 - `TelegraphRenderer2D` - immediate-mode 2D renderer over a caller-owned `SpriteBatch` +
   `PrimitiveRenderer`: `Begin(batch, primitives)`, then `Circle` / `Ring` / `Beam` / `Cone` /
-  `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only. **It reads none of the
-  modern style knobs above** (FeatherWidth, Pattern/PatternSpeed/PatternScale, EdgeEnergy,
-  InteriorDim, RimGlow, SweepGlow, EdgeSparkle, OutlineRunner) - those are a
-  `KhaozEngine.Telegraphs.Render3D` ground-decal feature.
+  `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only, picking primitives by
+  `FillMode` directly. **It reads none of the modern style knobs above** (FeatherWidth,
+  Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
+  EdgeSparkle, OutlineRunner) - those are a `KhaozEngine.Telegraphs.Render3D` ground-decal
+  feature.
 - `ZoneSense.Safe` is reserved for a future version (v1 renders it exactly like `Danger`).
 
 ```csharp

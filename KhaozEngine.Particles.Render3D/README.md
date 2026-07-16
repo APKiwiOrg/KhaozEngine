@@ -30,6 +30,11 @@ The per-emitter presentation recipe:
 - `Shape` and `ShapeParam`: the procedural sprite shape and its [0,1] tuning knob.
 - `Blend`: alpha or additive compositing.
 - `Stretch`: velocity-stretch factor. 0 keeps a round camera-facing quad, larger elongates along motion.
+- `Orientation`: `CameraFacing` (default) billboards toward the camera, or `FlatGround` lies flat in the
+  ground (XZ) plane for shockwave rings and ground glows.
+- `SoftFadeScale`: per-sprite multiplier on `Scene3D.ParticleSoftFade` (0 means 1, the default). A
+  `FlatGround` look wants a small value (around 0.1) so the floor immediately behind the coplanar quad does
+  not fade it out, and dense smoke can raise it for a longer, softer approach.
 - `Trails` and `TrailStyle`: when `Trails` is true and the pool has trail capacity, each particle's
   motion history is forwarded as a tapered ribbon to `Scene3D.DrawTrail`.
 - `TrailWidthScale`: trail half-width as a multiple of the particle's size (scaled down the tail).
@@ -40,6 +45,10 @@ The per-emitter presentation recipe:
 
 Trails are sampled oldest-to-newest, so the tail is faintest and thinnest and the head is full. Light
 selection is a small-K partial selection by alpha, no allocation, and never exceeds `Scene3D.MaxPointLights`.
+
+The `Shockwave` preset is the worked orientation example: its ring look is `FlatGround` with a small
+`SoftFadeScale` (0.12), and the ring phase lifts off the floor with `ParticleEffectPhase.OriginOffset`
+(y 0.09) so a quad exactly coplanar with the ground is not erased by the soft depth fade.
 
 ## `VfxPresets`
 

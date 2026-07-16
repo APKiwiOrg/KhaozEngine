@@ -2437,6 +2437,108 @@ just queue decals as before.
 
 ---
 
+## Modern particle VFX
+
+`KhaozEngine.Particles` (render-free sim) + `KhaozEngine.Particles.Render3D` (the turn-key adapter) + Render3D's
+modern particle pass replace the flat overlay-billboard look with depth-tested, soft-faded, procedurally-shaped
+sprites that feed bloom. The sim stays headless and deterministic. Presentation (shape, blend, stretch, trails,
+light links) lives in a `ParticleLook`, not in the particle. One `using KhaozEngine.Particles;` brings the sim
+types, the `Scene3D` extensions, and the presets into scope together.
+
+**Turn-key: a preset.** Each `VfxPresets` entry is a `VfxPreset` (a `ParticleEffect` schedule paired with one
+`ParticleLook` per phase). Play it through a `ParticleEffectPlayer` and draw the whole thing with one `DrawEffect`:
+
+```csharp
+using KhaozEngine.Particles;
+
+VfxPreset preset = VfxPresets.FireBurst;                  // fresh instance each get, mutate freely
+var player = new ParticleEffectPlayer(preset.Effect, maxInstances: 8, seed: 1);
+ParticleLook[] looks = preset.Looks.ToArray();
+
+// on a hit (origin on the ground, aimed along +Y):
+player.Play(impactPoint, Vector3.UnitY);
+
+// each frame, inside the 3D pass:
+player.Update(dt);
+scene.DrawEffect(player, looks);                          // one look per phase, shared light budget
+```
+
+Presets: `FireBurst`, `FrostShatter`, `HealMotes`, `EmberDrift`, `SparkShower`, `Shockwave`, `SmokePlume`,
+`ArcaneSparkle`. `looks.Length` must equal `player.PhaseCount`.
+
+**Authoring your own emitter.** `EmitterConfig` grew emission shapes, per-particle variance, life curves, spin, and
+turbulence. Every new field zero-defaults to the legacy look:
+
+```csharp
+var cfg = new EmitterConfig
+{
+    LifetimeMin = 0.3f, LifetimeMax = 0.6f,
+    SpeedMin = 5f, SpeedMax = 9f,
+    Shape = EmissionShape.Sphere, ShapeRadius = 0.2f, ShapeShell = 0.5f,   // spawn in a shell
+    VelocityMode = ParticleVelocityMode.Radial,                            // blow outward
+    Gravity = new Vector3(0f, -9f, 0f), Drag = 1.5f,
+    StartSize = 0.28f, EndSize = 0.05f,
+    StartColor = new Color(1f, 0.9f, 0.6f, 1f),
+    EndColor = new Color(1f, 0.4f, 0.1f, 0f),
+    SizeCurve = ParticleCurve.EaseOut,                                     // remap the size lerp
+    AlphaCurve = ParticleCurve.Flash(0.15f),                               // snap bright, then decay
+    SizeVariance = 0.3f, SpinMin = -3f, SpinMax = 3f,
+    TurbulenceStrength = 0.8f, TurbulenceFrequency = 0.6f,
+};
+```
+
+Build a multi-phase `ParticleEffect` from `ParticleEffectPhase`s (each a config plus
+`Delay`/`Duration`/`RatePerSecond`/`BurstCount`/`PoolCapacity`/`TrailSamples`/`OriginOffset`), or bake bursts
+straight into a `ParticleSystem` with `Emit`.
+
+**Drawing a raw system.** When you drive one `ParticleSystem` yourself, hand it a `ParticleLook` and let the
+adapter map every live particle to a sprite:
+
+```csharp
+var look = new ParticleLook
+{
+    Shape = ParticleShape.Ember, Blend = BillboardBlend.Additive,
+    Stretch = 0.3f,                             // elongate along on-screen motion
+    LightRadius = 2.5f, LightIntensity = 1.2f,  // link the brightest particles as point lights
+};
+scene.DrawParticles(system, in look, lightBudget: 4);
+```
+
+Or drop to the renderer directly: fill `ParticleSprite`s and call `scene.DrawParticle(in sprite)` /
+`scene.DrawParticles(spriteSpan)`.
+
+**Quality and soft fade** are host knobs, not cleared by `Begin`. Set the quality tier once when picking a graphics
+tier, the soft fade per frame:
+
+```csharp
+scene.ParticleQuality = ParticleQuality.Reduced;   // weak GPU: drop the 2nd noise octave + flicker
+scene.ParticleSoftFade = 0.35f;                    // world units, 0 disables the depth fade entirely
+```
+
+`ParticleSoftFade` dims a sprite as it nears geometry so smoke does not slice into the floor. A flat-ground sprite
+sits almost coplanar with the floor, so give those looks a small `SoftFadeScale` (around 0.1) or the floor just
+behind them fades them out. Lift them slightly off the surface too (the `Shockwave` ring uses `OriginOffset` y 0.09
+for exactly this).
+
+**Trails.** Give the pool history at construction (`new ParticleSystem(capacity, seed, trailSamples: 12)`, or set
+`ParticleEffectPhase.TrailSamples`), then set `Trails = true` on the look. The adapter forwards each particle's
+motion history to `DrawTrail` as a tapered ribbon, faintest and thinnest at the tail. `TrailWidthScale` scales the
+ribbon half-width against the particle size, `TrailStyle` its tint/blend/feather.
+
+**When to keep the legacy paths.** The modern pass is the default for spell and combat VFX. Two older paths stay:
+
+- `scene.DrawBillboard(worldPos, size, color, blend)` (untextured) is the LEGACY overlay: it draws after post,
+  unoccluded and always crisp, with no depth interaction and no bloom. Keep it for on-top markers and world sprites
+  you WANT never occluded.
+- `scene.DrawBillboard(texture, ...)` (textured) is the artist-texture path: an authored sprite or atlas frame
+  drawn into the model pass (depth-tested, no write). Use it when an artist supplies the texture instead of a
+  procedural shape.
+
+Both are byte-stable and fully supported. The procedural modern pass just covers the common
+glow/ember/streak/smoke/ring/glint vocabulary without an asset pipeline.
+
+---
+
 ## Terrain (`KhaozEngine.Terrain` / `KhaozEngine.Terrain.Render3D`)
 
 The overworld ground is an **analytic field**, not a baked heightmap. `TerrainField.SampleHeight(x, z)` is the

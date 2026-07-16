@@ -14,7 +14,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// colour resolves and before the post chain. Each sprite's parameters ride a per-instance vertex attribute
     /// stream (the Metal-safe instancing pattern the particle pass proves in production), the quad is expanded from
     /// <c>gl_VertexIndex</c> in the vertex shader, and the procedural shape + soft depth occlusion are evaluated in
-    /// the fragment shader. A single pipeline with a plain additive blend accumulates overlapping offset fields; the
+    /// the fragment shader. A single pipeline with a plain additive blend accumulates overlapping offset fields. The
     /// pipeline has NO depth test (the half-res target has no depth attachment) - occlusion is done in the fragment
     /// via the particle pass's texelFetch depth recipe, scaling the half-res <c>gl_FragCoord</c> up to the full-res
     /// depth texel. The written field is re-sampled by <see cref="PixelPostProcess"/>'s apply pass, so distortion
@@ -68,7 +68,7 @@ namespace KhaozEngine.Render3D.Rendering
         static readonly uint InstanceStride = (uint)Unsafe.SizeOf<DistortionInstance>();
 
         // Plain additive blend: overlapping offset fields sum. The target has no alpha lane (R16G16Float), so the
-        // alpha factors are inert; the colour factors (One, One) do the accumulation.
+        // alpha factors are inert, the colour factors (One, One) do the accumulation.
         static GpuBlendAttachment Additive => new(
             true,
             GpuBlendFactor.One, GpuBlendFactor.One, GpuBlendFunction.Add,
@@ -90,7 +90,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = new[] { Additive },
-                // No depth attachment on the offset target, so no depth test at the pipeline level; occlusion is a
+                // No depth attachment on the offset target, so no depth test at the pipeline level. Occlusion is a
                 // fragment-side offset fade.
                 DepthStencil = GpuDepthStencilState.Disabled,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),

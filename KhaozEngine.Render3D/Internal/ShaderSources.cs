@@ -1311,7 +1311,7 @@ void main() {
         offset = vec2(nx, ny) * 2.0;
     } else {
         // Lens: smooth radial bulge toward the center. A positive strength magnifies (pull inward), a negative one
-        // pinches (push outward); the sign rides on strength below. Param softens the falloff shoulder.
+        // pinches (push outward), the sign rides on strength below. Param softens the falloff shoulder.
         float falloff = 1.0 - smoothstep(0.0, mix(0.5, 1.0, param), d);
         offset = -vLocal * falloff;
     }

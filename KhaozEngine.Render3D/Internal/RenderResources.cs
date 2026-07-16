@@ -242,7 +242,7 @@ namespace KhaozEngine.Render3D.Internal
         }
 
         // Free the distortion target and reset its bookkeeping. Called by EnsureDistortion (on a free / size or
-        // divisor change) and by DisposeTargets (a resize disposes it; the next frame's EnsureDistortion re-lazies).
+        // divisor change) and by DisposeTargets (a resize disposes it, the next frame's EnsureDistortion re-lazies).
         void DisposeDistortion()
         {
             DistortFB?.Dispose(); DistortTex?.Dispose();

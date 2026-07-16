@@ -39,7 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint ToneBufferBytes = 16;                         // 1 vec4 (ToneUbo)
         internal const uint ApplyBufferBytes = 16;                        // 1 vec4 (ApplyUbo)
 
-        // The stored distortion offset field is in world-ish units (per-sprite Strength baked in); this fixed scale
+        // The stored distortion offset field is in world-ish units (per-sprite Strength baked in). This fixed scale
         // converts it to a UV excursion, and MaxExcursion clamps the total so stacked sprites cannot smear the whole
         // screen (D-S7). The host tunes magnitude per sprite via DistortionSprite.Strength, not these constants.
         internal const float DistortionUvScale = 0.04f;
@@ -484,7 +484,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             // Distortion apply: the chain's FIRST pass in BOTH modes. Re-samples the resolved scene (src is ColorTex
             // here) through the accumulated offset field, so every camera-response pass that follows (bloom, tonemap,
-            // quantize, outline, fxaa) sees the warped image. Writes ColorTex -> PingA; src then follows the ping-pong
+            // quantize, outline, fxaa) sees the warped image. Writes ColorTex -> PingA, then src follows the ping-pong
             // like any other pass. The FinalUbo/EdgeUbo parities already counted this pass in PrepareUniforms.
             if (distortionRuns)
             {

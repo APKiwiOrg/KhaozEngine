@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.ParticlesRender3D
         [Fact]
         public void BuildDistortionSprite_ScalesStrengthByParticleAlpha()
         {
-            // Strength 2 authored; a half-alpha particle halves the offset field, so fields fade with life.
+            // Strength 2 authored, and a half-alpha particle halves the offset field, so fields fade with life.
             DistortionSprite full = ParticleSceneExtensions.BuildDistortionSprite(Look(), Particle(alpha: 1f, norm: 0f));
             DistortionSprite half = ParticleSceneExtensions.BuildDistortionSprite(Look(), Particle(alpha: 0.5f, norm: 0f));
             DistortionSprite dead = ParticleSceneExtensions.BuildDistortionSprite(Look(), Particle(alpha: 0f, norm: 1f));
@@ -73,7 +73,7 @@ namespace KhaozEngine.Tests.ParticlesRender3D
         [Fact]
         public void Shockwave_HasOneActiveDistortionRingPhase()
         {
-            // The refraction ring look is active distortion; the visual ring + dust looks are not.
+            // The refraction ring look is active distortion, the visual ring + dust looks are not.
             var looks = VfxPresets.Shockwave.Looks;
             Assert.Equal(1, looks.Count(l => l.Distortion.IsActive));
             Assert.Contains(looks, l => l.Distortion.IsActive && l.Distortion.Shape == DistortionShape.Ripple);

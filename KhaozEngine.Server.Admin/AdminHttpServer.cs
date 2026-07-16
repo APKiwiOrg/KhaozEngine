@@ -1,7 +1,10 @@
 using System;
+using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.NetWorld;
@@ -100,6 +103,57 @@ public sealed class AdminHttpServer : IAsyncDisposable
             await admin.UnbanAsync(r.AccountId);
             return Results.Accepted();
         });
+
+        // Game-registered custom actions, dispatched through the same auth/TLS/JSON pipeline. Each handler runs on this
+        // HTTP request thread by contract (see ServerAdmin.RegisterAction): it enqueues mutations to the host thread
+        // and reads published snapshots, never touching the simulation directly.
+        g.MapGet("/actions", IResult () => Results.Json(admin.ActionNames.OrderBy(n => n, StringComparer.Ordinal)));
+
+        g.MapGet("/actions/{name}", Task<IResult> (HttpContext ctx, string name) =>
+            DispatchActionAsync(admin, name, null, ctx.RequestAborted));
+
+        g.MapPost("/actions/{name}", async Task<IResult> (HttpContext ctx, string name) =>
+        {
+            JsonElement? payload;
+            try
+            {
+                payload = await ReadOptionalJsonBodyAsync(ctx);
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "malformed json body" });
+            }
+            return await DispatchActionAsync(admin, name, payload, ctx.RequestAborted);
+        });
+    }
+
+    private static async Task<IResult> DispatchActionAsync(
+        ServerAdmin admin, string name, JsonElement? payload, CancellationToken requestAborted)
+    {
+        if (!admin.TryGetAction(name, out var handler)) return Results.NotFound();
+
+        // Hand the handler the request's cancellation token. Like the /accounts read (and unlike the atomic ban/unban
+        // writes) whether to honor it is the handler's call: a query can abort on client disconnect, a mutation it
+        // enqueues should not.
+        AdminActionResult result = await handler(payload, requestAborted);
+        return result.Status switch
+        {
+            AdminActionStatus.Ok => result.Payload is null ? Results.Ok() : Results.Json(result.Payload),
+            AdminActionStatus.Accepted => Results.Accepted(),
+            AdminActionStatus.BadRequest => Results.BadRequest(new { error = result.Error }),
+            _ => Results.StatusCode(StatusCodes.Status500InternalServerError),
+        };
+    }
+
+    private static async Task<JsonElement?> ReadOptionalJsonBodyAsync(HttpContext ctx)
+    {
+        // An empty or whitespace-only body means no payload. A present but malformed body throws JsonException, which
+        // the caller maps to 400. Clone so the element outlives the parsed document.
+        using var reader = new StreamReader(ctx.Request.Body);
+        string body = await reader.ReadToEndAsync(ctx.RequestAborted);
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        using JsonDocument doc = JsonDocument.Parse(body);
+        return doc.RootElement.Clone();
     }
 
     public Task StartAsync(CancellationToken cancellationToken = default) => app.StartAsync(cancellationToken);

@@ -5,6 +5,59 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.119.0
+
+Map-editor viewport perf round: bounded terrain-feature edits (lake/flatten drags) now invalidate only the
+chunks they touch instead of rebuilding the whole streamed world, kit meshes and the splat material persist
+across full rebuilds, and mid-gesture full rebuilds are throttled. One behaviour change for `MapEditorScene`
+subclasses (the `CheckWorldRebuild` seam, below).
+
+- **Partial viewport invalidation.** New `TerrainStreamer.Invalidate(RectArea)` / `Invalidate(ChunkCoord)`
+  rebuild every currently loaded chunk the rect (or single coord) touches, in place at its current LOD tier,
+  flushing in-flight async builds first so a stale build can never land after the invalidation. New
+  `Scene3DChunkSink.UpdateField(field)` swaps the field every future chunk build reads (the other half of the
+  seam: swap the field, then invalidate the touched area). On top of that seam, `FeatureGeometry` computes a
+  conservative world-space footprint AABB per built-in feature (padded 8 world units so re-normalled vertices
+  are covered too), each feature command reports a live `EditorCommand.DirtyRegion`,
+  `EditorDocument.PendingRebuildRegion` accumulates regions across commands with sticky-full semantics (one
+  unbounded command upgrades the whole pending batch to a full rebuild until acknowledged), and
+  `ViewportWorld.PartialRebuild(doc, registry, dirty)` re-meshes just the overlapped loaded chunks (field swap
+  plus streamer invalidate plus placement-cache invalidate, nothing torn down).
+- **Footprint reasoning.** A lake's true reach is `Radius * OuterFraction` (the carve fades to zero at the
+  authored `OuterFraction`, default 1.30), so the footprint honours it rather than assuming the bare radius. A
+  flatten's exact outer reach is `Radius`. Ridge and rim have unbounded reach (a rim's wall plateau never
+  fades back to zero beyond `OuterRadius`, a ridge is an unbounded band along its direction), so both always
+  fall back to the full rebuild, as does any unknown custom feature type.
+- **Kit meshes + splat material persist across `ViewportWorld.Rebuild`.** A full rebuild now tears down only
+  the sink + streamer, keeping the cached kit meshes and the retained splat material, so it no longer
+  re-decodes every prop glTF from disk. New `ViewportWorld.InvalidateKitMeshes()` frees the cache when the
+  cached form must change: the "Textured props" toggle invalidates first, then rebuilds.
+- **Gesture-aware full-rebuild throttle.** New `MapEditorOptions.GestureRebuildInterval` (default 0.25
+  seconds, 0 rebuilds every frame): while a drag or draw gesture is live, the FULL rebuild path runs at most
+  once per interval, leaving `WorldRebuildPending` untouched on a throttled frame so the first check after
+  the gesture ends always performs the final rebuild. The partial path is never throttled (cheap by
+  construction).
+- **BEHAVIOUR CHANGE, breaking for `MapEditorScene` subclasses.** The protected seam `CheckWorldRebuild()` is
+  now `CheckWorldRebuild(float dt)` (the throttle needs the frame delta), and `OnUpdate`'s step order changed
+  to camera, tools, chrome, rebuild, streaming (chrome moved before the rebuild check). The reorder fixes the
+  editor's one-frame inspector lag: a `PropertyGrid` scrub now rebuilds the streamed world the same frame,
+  like gizmo drags always did. A subclass overriding the old parameterless seam must update its signature.
+- **`Scene3D.UnloadSplatMaterial` dispose-order guard.** Unloading a splat material after the owning `Scene3D`
+  was disposed is now a silent no-op instead of an `ArgumentOutOfRangeException` (Dispose clears the backing
+  list, so a stale handle indexed past its end). A `ViewportWorld` or chunk sink disposed after its owning
+  scene no longer throws, retiring the teardown-ordering workaround `ke-mapedit`'s `RenderService` carried.
+- **Scope cuts (by design this round).** Exclusion, scatter-layer, companion, and terrain-scalar edits still
+  take the full-rebuild path (they report no bounded region, and the dirty-region seam exists so a later
+  round can narrow them). `Scene3D.UnloadTexture` has the identical latent post-dispose bug, deliberately
+  left out of scope. Deferred items recorded in `docs/MAP-EDITOR-DESIGN.md` under "Deferred out of this
+  round (mapedit-perf)".
+- **Tests.** `TerrainStreamerTests` (rect-to-chunk mapping incl. border touch, loaded-only, current-LOD
+  re-issue), `Scene3DChunkSinkTests` (field swap feeds future builds), `FeatureGeometryTests` (per-feature
+  footprints, margin, union), `EditorCommandsTests` (per-command `DirtyRegion`, sticky-full accumulation),
+  `MapEditorSceneTests` (partial-vs-full dispatch, throttle incl. gesture-end flush, same-frame inspector
+  rebuild, step order), `ViewportWorldTests` + `ViewportWorldDisposeOrderGpuTests` +
+  `SplatRenderGpuTests` (partial-rebuild contract, dispose-after-scene no-throw, unload guard).
+
 ## 10.118.0
 
 `NumberFormatter` fix: sub-1 magnitudes now keep truthful precision instead of rounding to a misleading digit

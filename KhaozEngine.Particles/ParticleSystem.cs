@@ -31,6 +31,16 @@ public sealed class ParticleSystem
     private readonly float[] _turbStrength;
     private readonly float[] _turbFreq;
 
+    // Optional per-particle motion-history ring (opt-in via the ctor; default 0 keeps the legacy footprint).
+    // _trailPos/_trailAge are one contiguous block per particle slot (capacity x _trailSamples), swap-removed
+    // with the particle. Head is the next write slot, count the valid samples, since the sub-interval carry.
+    private readonly int _trailSamples;
+    private readonly Vector3[] _trailPos;
+    private readonly float[] _trailAge;
+    private readonly int[] _trailCount;
+    private readonly int[] _trailHead;
+    private readonly float[] _trailSince;
+
     private XorRng _rng;
     private int _count;
 
@@ -40,7 +50,7 @@ public sealed class ParticleSystem
     // Accumulated simulation time (seconds), advanced once per Update, drives the turbulence field.
     private float _time;
 
-    public ParticleSystem(int capacity, uint seed = 1)
+    public ParticleSystem(int capacity, uint seed = 1, int trailSamples = 0)
     {
         if (capacity < 0)
         {
@@ -61,6 +71,25 @@ public sealed class ParticleSystem
         _spin = new float[capacity];
         _turbStrength = new float[capacity];
         _turbFreq = new float[capacity];
+
+        _trailSamples = trailSamples > 0 ? trailSamples : 0;
+        if (_trailSamples > 0)
+        {
+            _trailPos = new Vector3[capacity * _trailSamples];
+            _trailAge = new float[capacity * _trailSamples];
+            _trailCount = new int[capacity];
+            _trailHead = new int[capacity];
+            _trailSince = new float[capacity];
+        }
+        else
+        {
+            _trailPos = Array.Empty<Vector3>();
+            _trailAge = Array.Empty<float>();
+            _trailCount = Array.Empty<int>();
+            _trailHead = Array.Empty<int>();
+            _trailSince = Array.Empty<float>();
+        }
+
         _rng = new XorRng(seed);
     }
 
@@ -72,6 +101,12 @@ public sealed class ParticleSystem
 
     /// <summary>The live particles, contiguous, for a renderer to iterate.</summary>
     public ReadOnlySpan<Particle> Active => _particles.AsSpan(0, _count);
+
+    /// <summary>Per-particle trail history depth (samples). 0 when trails are disabled.</summary>
+    public int TrailCapacity => _trailSamples;
+
+    /// <summary>Seconds between trail captures. Default 1/30 s. Ignored when trails are disabled.</summary>
+    public float TrailSampleInterval { get; set; } = 1f / 30f;
 
     /// <summary>
     /// Spawn a burst of up to <c>min(count, Capacity - ActiveCount)</c> particles at <paramref name="origin"/>.
@@ -173,6 +208,15 @@ public sealed class ParticleSystem
             _spin[idx] = spin;
             _turbStrength[idx] = cfg.TurbulenceStrength;
             _turbFreq[idx] = cfg.TurbulenceFrequency;
+
+            if (_trailSamples > 0)
+            {
+                // Reset the ring and seed it with the spawn point so a fresh trail starts at the emitter.
+                _trailHead[idx] = 0;
+                _trailCount[idx] = 0;
+                _trailSince[idx] = 0f;
+                PushTrail(idx, spawnPos, 0f);
+            }
         }
     }
 
@@ -210,6 +254,17 @@ public sealed class ParticleSystem
 
             p.Position += p.Velocity * dt;
             p.Rotation += _spin[i] * dt;
+
+            if (_trailSamples > 0)
+            {
+                _trailSince[i] += dt;
+                if (_trailSince[i] >= TrailSampleInterval)
+                {
+                    // Carry the remainder (do not zero) so the long-run cadence tracks the interval.
+                    _trailSince[i] -= TrailSampleInterval;
+                    PushTrail(i, p.Position, p.Age);
+                }
+            }
 
             float n = p.Norm;
 
@@ -281,7 +336,62 @@ public sealed class ParticleSystem
             _spin[i] = _spin[last];
             _turbStrength[i] = _turbStrength[last];
             _turbFreq[i] = _turbFreq[last];
+
+            if (_trailSamples > 0)
+            {
+                int n = _trailSamples;
+                Array.Copy(_trailPos, last * n, _trailPos, i * n, n);
+                Array.Copy(_trailAge, last * n, _trailAge, i * n, n);
+                _trailCount[i] = _trailCount[last];
+                _trailHead[i] = _trailHead[last];
+                _trailSince[i] = _trailSince[last];
+            }
         }
+    }
+
+    /// <summary>Append a sample to particle <paramref name="i"/>'s ring, advancing the head and capping the count.</summary>
+    private void PushTrail(int i, Vector3 pos, float age)
+    {
+        int n = _trailSamples;
+        int baseIdx = i * n;
+        int h = _trailHead[i];
+        _trailPos[baseIdx + h] = pos;
+        _trailAge[baseIdx + h] = age;
+        _trailHead[i] = (h + 1) % n;
+        if (_trailCount[i] < n)
+        {
+            _trailCount[i]++;
+        }
+    }
+
+    /// <summary>
+    /// Copy particle <paramref name="particleIndex"/>'s trail history into <paramref name="destination"/>,
+    /// oldest-to-newest, and return the number copied. Returns 0 when trails are disabled or the index is not
+    /// a live particle. When the destination is shorter than the history, the newest samples are kept.
+    /// </summary>
+    public int GetTrail(int particleIndex, Span<ParticleTrailPoint> destination)
+    {
+        if (_trailSamples <= 0 || particleIndex < 0 || particleIndex >= _count)
+        {
+            return 0;
+        }
+
+        int n = _trailSamples;
+        int baseIdx = particleIndex * n;
+        int count = _trailCount[particleIndex];
+        int head = _trailHead[particleIndex];
+        int copy = Math.Min(count, destination.Length);
+
+        // Oldest valid sample sits count slots behind the head; skip the excess oldest when the span is short.
+        int oldest = ((head - count) % n + n) % n;
+        int skip = count - copy;
+        for (int j = 0; j < copy; j++)
+        {
+            int ring = (oldest + skip + j) % n;
+            destination[j] = new ParticleTrailPoint(_trailPos[baseIdx + ring], _trailAge[baseIdx + ring]);
+        }
+
+        return copy;
     }
 
     /// <summary>

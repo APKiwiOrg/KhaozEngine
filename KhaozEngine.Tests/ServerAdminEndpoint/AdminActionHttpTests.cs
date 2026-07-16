@@ -179,6 +179,27 @@ public class AdminActionHttpTests
     }
 
     /// <summary>
+    /// A body containing the literal JSON null parses to a JsonElement of ValueKind.Null (HasValue true), which
+    /// would make the canonical handler idiom payload?.GetProperty(...) throw a 500. Dispatch must normalize it so
+    /// absent, empty, whitespace-only, and JSON-null bodies all reach the handler as a null payload.
+    /// </summary>
+    [Fact]
+    public async Task JsonNullBody_DispatchesWithNullPayload()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        admin.RegisterAction("whoami", (JsonElement? payload, CancellationToken _) =>
+            Task.FromResult(AdminActionResult.Ok(new { hadPayload = payload.HasValue })));
+        await using Harness h = await StartAsync(admin);
+
+        HttpResponseMessage resp = await h.Client.PostAsync(h.BaseUrl + "/actions/whoami",
+            new StringContent("null", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Assert.False(doc.RootElement.GetProperty("hadPayload").GetBoolean());
+    }
+
+    /// <summary>
     /// Dispatch must hand the handler the request's RequestAborted token, mirroring GET /accounts. A real request
     /// token is cancellable, default(CancellationToken) is not, so CanBeCanceled proves it was forwarded.
     /// </summary>

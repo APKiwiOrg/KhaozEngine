@@ -147,12 +147,15 @@ public sealed class AdminHttpServer : IAsyncDisposable
 
     private static async Task<JsonElement?> ReadOptionalJsonBodyAsync(HttpContext ctx)
     {
-        // An empty or whitespace-only body means no payload. A present but malformed body throws JsonException, which
-        // the caller maps to 400. Clone so the element outlives the parsed document.
+        // Absent, empty, whitespace-only, and JSON-null bodies all mean no payload, so the canonical handler idiom
+        // payload?.GetProperty(...) is safe (a ValueKind.Null element would satisfy HasValue and throw there). A
+        // present but malformed body throws JsonException, which the caller maps to 400. Clone so the element
+        // outlives the parsed document.
         using var reader = new StreamReader(ctx.Request.Body);
         string body = await reader.ReadToEndAsync(ctx.RequestAborted);
         if (string.IsNullOrWhiteSpace(body)) return null;
         using JsonDocument doc = JsonDocument.Parse(body);
+        if (doc.RootElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
         return doc.RootElement.Clone();
     }
 

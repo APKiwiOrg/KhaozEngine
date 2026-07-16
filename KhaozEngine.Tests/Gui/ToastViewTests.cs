@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Windowing;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gui;
@@ -120,5 +122,143 @@ public class ToastViewTests
 
         // Bounds.X(10) + MarginX(6) = 16.
         Assert.Equal(16f, r.X);
+    }
+
+    // --- input: tap-dismiss + BlockRegion ---
+
+    static InputState Frame(Vector2 pos, bool down)
+    {
+        var b = new HashSet<MouseButton>();
+        if (down) b.Add(MouseButton.Left);
+        return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+            b, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+    }
+
+    // Safely inside the window frame (960x540) and outside every toast bounds anchored at TopRight.
+    static readonly Vector2 Outside = new(10, 10);
+
+    [Fact]
+    public void Tap_inside_the_top_toast_dismisses_it_and_Update_returns_true()
+    {
+        var stack = new ToastStack();
+        stack.Show(LocalizedText.Raw("hi"));
+        ToastView view = MakeView(stack);
+        Rect bounds = view.GetToastBounds(0);
+        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
+
+        var p = new Pointer();
+        p.Update(Frame(inside, false));   // idle
+        view.Update(p);
+        p.Update(Frame(inside, true));    // press inside
+        view.Update(p);
+        p.Update(Frame(inside, false));   // release inside
+        bool dismissed = view.Update(p);
+
+        Assert.True(dismissed);
+        Assert.Empty(stack.Active);
+    }
+
+    [Fact]
+    public void Press_origin_outside_the_toast_does_not_dismiss_on_release_inside()
+    {
+        var stack = new ToastStack();
+        stack.Show(LocalizedText.Raw("hi"));
+        ToastView view = MakeView(stack);
+        Rect bounds = view.GetToastBounds(0);
+        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
+
+        var p = new Pointer();
+        p.Update(Frame(Outside, false));  // idle outside
+        view.Update(p);
+        p.Update(Frame(Outside, true));   // press OUTSIDE
+        view.Update(p);
+        p.Update(Frame(inside, false));   // drag in, release INSIDE
+        bool dismissed = view.Update(p);
+
+        Assert.False(dismissed);
+        Assert.Single(stack.Active);
+    }
+
+    [Fact]
+    public void Tap_on_the_older_toast_dismisses_only_that_toast()
+    {
+        var stack = new ToastStack();
+        stack.Show(LocalizedText.Raw("hi"));
+        Toast older = stack.Active[0];
+        stack.Show(LocalizedText.Raw("hi"));
+        Toast newest = stack.Active[0];
+        ToastView view = MakeView(stack);
+        Rect bounds = view.GetToastBounds(1);   // the older toast, stacked below the newest
+        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
+
+        var p = new Pointer();
+        p.Update(Frame(inside, false));
+        view.Update(p);
+        p.Update(Frame(inside, true));
+        view.Update(p);
+        p.Update(Frame(inside, false));
+        bool dismissed = view.Update(p);
+
+        Assert.True(dismissed);
+        Assert.Single(stack.Active);
+        Assert.Same(newest, stack.Active[0]);
+        Assert.DoesNotContain(older, stack.Active);
+    }
+
+    [Fact]
+    public void Update_blocks_the_pointer_over_a_toasts_bounds()
+    {
+        var stack = new ToastStack();
+        stack.Show(LocalizedText.Raw("hi"));
+        ToastView view = MakeView(stack);
+        Rect bounds = view.GetToastBounds(0);
+        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
+
+        var p = new Pointer();
+        p.Update(Frame(inside, false));
+        view.Update(p);
+
+        Assert.True(p.IsBlocked(inside));
+        Assert.False(p.IsBlocked(Outside));
+    }
+
+    [Fact]
+    public void Tap_on_a_sticky_toast_dismisses_it()
+    {
+        var stack = new ToastStack();
+        stack.ShowSticky(LocalizedText.Raw("hi"));
+        ToastView view = MakeView(stack);
+        Rect bounds = view.GetToastBounds(0);
+        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
+
+        var p = new Pointer();
+        p.Update(Frame(inside, false));
+        view.Update(p);
+        p.Update(Frame(inside, true));
+        view.Update(p);
+        p.Update(Frame(inside, false));
+        bool dismissed = view.Update(p);
+
+        Assert.True(dismissed);
+        Assert.Empty(stack.Active);
+    }
+
+    [Fact]
+    public void Tap_outside_every_toast_dismisses_nothing()
+    {
+        var stack = new ToastStack();
+        stack.Show(LocalizedText.Raw("hi"));
+        ToastView view = MakeView(stack);
+
+        var p = new Pointer();
+        p.Update(Frame(Outside, false));
+        view.Update(p);
+        p.Update(Frame(Outside, true));
+        view.Update(p);
+        p.Update(Frame(Outside, false));
+        bool dismissed = view.Update(p);
+
+        Assert.False(dismissed);
+        Assert.Single(stack.Active);
     }
 }

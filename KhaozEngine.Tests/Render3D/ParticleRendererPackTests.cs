@@ -110,7 +110,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void PackFlipGrid_QuantizesMotionStrength_ToSixtyFourth()
         {
-            // 0 and 1 land exactly; 4 is capped at the top byte (255) so the whole packed value stays <= 2^24-1 and
+            // 0 and 1 land exactly. 4 is capped at the top byte (255) so the whole packed value stays <= 2^24-1 and
             // every field stays exact in float32, decoding to within one 1/64 quantum of 4.
             (_, _, float m0) = UnpackFlipGrid(ParticleRenderer.PackFlipGrid(255, 255, 0f));
             Assert.Equal(0f, m0);

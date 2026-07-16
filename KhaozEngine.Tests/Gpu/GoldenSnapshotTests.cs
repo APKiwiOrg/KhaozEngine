@@ -880,6 +880,86 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_ParticlesFlipbook()
+        {
+            MeshHandle floor = default;
+            Scene3D.TextureHandle atlas = default, mv = default;
+            const int Cols = 4, Rows = 4, CellPx = 32;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(16f, 0.1f));
+                    (byte[] ap, int aw, int ah) = FlipbookTestSheets.Atlas(Cols, Rows, CellPx);
+                    atlas = scene.LoadTexture(ap, aw, ah);
+                    (byte[] mp, int mw, int mh) = FlipbookTestSheets.UniformMotion(Cols, Rows, CellPx, 200, 128);
+                    mv = scene.LoadTexture(mp, mw, mh);
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = true;      // pinned explicit, matching the other 3D goldens
+                    scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.09f, 1f);
+                    scene.Camera.Frame(new Vector3(0f, 0.9f, 0.2f), new Vector3(6.4f, 2.6f, 4.4f));
+                    scene.EffectTimeSeconds = 0f;   // frozen time => deterministic
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.Identity, new Color(0.10f, 0.10f, 0.13f, 1f));
+
+                    // A back row of atlas frames: integer cells (0, 5, 10) plus a mid-blend (2.5), tint white so the
+                    // sheet hues show. Locks per-frame cell selection + the cross-fade blend.
+                    float[] frames = { 0f, 2.5f, 5f, 10f };
+                    for (int i = 0; i < frames.Length; i++)
+                    {
+                        scene.DrawParticle(new ParticleSprite
+                        {
+                            Position = new Vector3((i - 1.5f) * 1.55f, 1.5f, -1.6f),
+                            Size = 0.62f,
+                            Color = new Color(1f, 1f, 1f, 0.95f),
+                            Flipbook = new ParticleFlipbook(atlas, Cols, Rows, Loop: true),
+                            FlipbookFrame = frames[i],
+                            Blend = BillboardBlend.Alpha,
+                        });
+                    }
+
+                    // A motion-vector-warped frame (offset MV sheet, strength 2): locks the two-tap warp path.
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(-2.4f, 1.0f, 1.3f),
+                        Size = 0.7f,
+                        Color = new Color(1f, 1f, 1f, 1f),
+                        Flipbook = new ParticleFlipbook(atlas, Cols, Rows, mv, MotionStrength: 2f, Loop: true),
+                        FlipbookFrame = 6.5f,
+                        Blend = BillboardBlend.Alpha,
+                    });
+
+                    // Procedural sprites interleaved at different depths: the global back-to-front sort splits the
+                    // stream into per-atlas runs (procedural = dummy pair), so this locks run-splitting + ordering.
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(1.9f, 1.1f, 1.5f),
+                        Size = 0.7f,
+                        Color = new Color(1f, 0.72f, 0.35f, 0.95f),
+                        Shape = ParticleShape.SoftGlow,
+                        ShapeParam = 0.35f,
+                        Seed = 0.41f,
+                        Blend = BillboardBlend.Additive,
+                    });
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(0.4f, 1.3f, 0.4f),
+                        Size = 0.5f,
+                        Color = new Color(0.6f, 0.85f, 1f, 1f),
+                        Shape = ParticleShape.Ember,
+                        ShapeParam = 0.5f,
+                        Seed = 0.71f,
+                        Blend = BillboardBlend.Additive,
+                    });
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_particles_flipbook", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden3D_Beam_DepthInterleaved()
         {
             MeshHandle box = default;

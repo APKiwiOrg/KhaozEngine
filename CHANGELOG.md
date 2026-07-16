@@ -5,6 +5,65 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.128.0
+
+HDR rendering pipeline: the internal colour chain now renders at float16 with an ACES filmic tonemap, on by
+default, so shading carries values above 1.0 and hot cores bloom, desaturate, and roll off instead of clipping at
+the old UNorm boundary. A one-line escape hatch (`Post.Hdr.Enabled = false`) restores the exact pre-HDR (10.126.0)
+output, byte-identical and golden-proven. Design record: `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md` (Tier 1 of the
+AAA VFX program).
+
+- **BREAKING LOOK (default behaviour change, not an API break).** Every consumer's rendered 3D output shifts the
+  frame it repins: bright content (emissive materials, beams, particles, sky/sun, water glints, telegraph energy
+  lanes) no longer hard-clips, it tonemaps. This is the point of the release. If you need the previous look exactly,
+  set `scene.Post.Hdr.Enabled = false` to restore the legacy UNorm chain and pass order BYTE-IDENTICAL to 10.126.0
+  (proven by the `scene3d_hdr_off` golden, whose reference grids are literal copies of the pre-HDR `scene3d` grids).
+- **KhaozEngine.Render3D (additive API + default HDR).** New `PixelPostProcessSettings.Hdr` (`HdrSettings`, on by
+  default) renders `ColorTex`/`MsColor`/`PingA`/`PingB`/`BloomA`/`BloomB` at `R16G16B16A16Float`, blooms the
+  over-range highlights PRE-tonemap, then maps the float scene back to LDR with a `TonemapOperator` (`AcesFilmic`
+  default, `Reinhard` and `Clamp` as debug/stylistic alternates) scaled by `Exposure` (linear pre-tonemap
+  multiplier, default 1.0, clamped non-negative). The encoded-normal and linear-depth MRT targets, the swapchain,
+  and everything post-blit stay LDR. Tonemapping is display-referred (no separate scene-linear conversion pass), so
+  the current art direction is preserved with headroom added.
+- **Authoring over 1.0 is the unclamped `Color`.** No new per-material intensity field: `Color` is unclamped float
+  storage and every colour path (materials, particles, beams, trails, sky, water, lights) already transports values
+  above 1.0 end-to-end. `new Color(4f, 2f, 1f)`, `color.ScaleRgb(3f)`, and `Material.Glowing` are the idioms, and
+  giving a beam/particle/sky/water colour a value above 1.0 makes it bloom and saturate. In legacy mode those same
+  values clamp at the UNorm boundary as before.
+- **Bloom is now HDR-aware.** In HDR mode the bright-pass reads the PRE-tonemap float16 scene, so `Threshold`/`Knee`
+  operate on pre-tonemap luma that can exceed 1.0. Set a threshold at or above 1.0 so only genuinely over-range
+  content halos and merely well-lit white does not. Legacy mode keeps the historical [0,1] threshold semantics.
+  Bloom stays opt-in (`Bloom.Enabled` default false), so no silent default shift rides on this. Chain order in HDR
+  mode is Bloom (pre-tonemap) then Tonemap then Quantize/Outline/FXAA/Blit, so the retro palette/pixelation passes
+  run AFTER the tonemap and a per-game retro look survives on top of HDR.
+- **KhaozEngine.Gpu (additive).** New `GpuPixelFormat.R16G16B16A16Float` member, the half-float colour target format
+  the HDR chain renders into.
+- **Decal energy headroom.** `DecalFrag`'s final-rgb clamp upper bound is now a uniform (`MaxRgb`, 1.0 in legacy,
+  float16-max in HDR), so telegraph energy lanes can exceed 1.0 and bloom. Legacy output stays bit-identical.
+- **Fix: edge pass parity across the chain flip.** The outline pass mixes chain content (V-flipped once per
+  preceding fullscreen pass) with the never-flipped raw MRT normal/depth. With HDR on, the tonemap pass always
+  precedes it, so the edge field rendered vertically mirrored. `EdgeFrag` now carries the per-mode parity and
+  samples normal/depth V-flipped when it is odd. This ALSO fixes a latent legacy bug: the quantize+outline combo
+  computed parity 1 all along and was simply never pinned by a golden. Golden-covered configs that compute 0 stay
+  byte-identical. Caught by `Golden3D_SkyWorldSun`'s semantic sun-pixel assert.
+- **Fix: resource-set rebinds across same-size target recreates.** `RenderResources` now bumps a `Generation`
+  counter on every `Create`, and the four renderers that cache resource sets over its textures (post chain,
+  particles, decals, water) guard rebinds on it instead of on dimensions. A sample-count-only (MSAA toggle) resize
+  recreates every target at unchanged size, so the old dimension guards early-outed and left sets referencing
+  disposed textures: Metal tolerated the zombie reference, but D3D11 faulted with E_INVALIDARG and Vulkan with a
+  use-after-dispose. A latent crash independent of HDR, surfaced by the new MSAA golden.
+- **Tests and goldens.** Full rebake of every 3D golden on metal, direct3d11, and vulkan (the HDR default flips them
+  all), plus three new pins: `scene3d_hdr_off` (grids pre-seeded as copies of the pre-HDR `scene3d` grids, proving
+  the escape hatch is byte-identical), `scene3d_hdr_bloom` (over-range emissive + pre-tonemap bloom), and
+  `scene3d_hdr_msaa` (float16 MSAA resolve, also the guard for the resource-set fix above). New behaviour GpuFacts
+  (emissive brightening through ACES, threshold-above-1 extraction, HDR toggle round-trip byte-stability, float16
+  MSAA resolve, the alpha-lane starfield marker surviving the tonemap) plus tonemap UBO-layout and shader-pair
+  validation in the headless suite.
+- **Compatibility.** API is purely additive (`HdrSettings`, `TonemapOperator`, `GpuPixelFormat.R16G16B16A16Float`,
+  widened internal `RenderResources` signatures). Default behaviour deliberately changes (HDR on): rendered output
+  shifts on repin, restored byte-identically to 10.126.0 with `Hdr.Enabled = false`. The alpha-lane contract, blit
+  paths, RenderScale semantics, and the post-post overlay/Gui/2D path are unchanged in both modes.
+
 ## 10.127.1
 
 Showcase cleanup: a tile-menu hub, one consolidated tabbed 2D & GUI room, and shared room chrome

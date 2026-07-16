@@ -124,8 +124,8 @@ public class NavigationLocomotionAcceptanceTests
             new Vector2(goal.X, goal.Z));
 
         Assert.True(finalDist > 0.8f,
-            $"straight-line steering reached the goal (final XZ dist {finalDist:F2}); the rock is not blocking as intended");
+            $"straight-line steering reached the goal (final XZ dist {finalDist:F2}). The rock is not blocking as intended");
         Assert.True(state.Position.X < Rock.X,
-            $"straight-line steering pushed the agent past the rock centre to x={state.Position.X:F2}; it should stall on the near side");
+            $"straight-line steering pushed the agent past the rock centre to x={state.Position.X:F2}. It should stall on the near side");
     }
 }

@@ -776,7 +776,7 @@ quality.Update(im, focused: nav.Focused == 2);   // Enter opens the dropdown; Up
 // Pointer still works on every row regardless of focus (each overload runs the pointer path first).
 ```
 
-`KhaozEngine.Showcase`'s Settings screen (`RoomGui.cs`) is the runnable reference: pick the "Gui" room, open Settings, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
+`KhaozEngine.Showcase`'s Settings dialog (`Room2DGui.cs`) is the runnable reference: enter the "2D & GUI" room, open the "Screens & dialogs" tab, launch the Settings dialog, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
 
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
@@ -876,6 +876,109 @@ var pips = new ProgressBar(new Rect(hudX, hudY, 240, 12), comboFrac)
 { SegmentCount = 5, SegmentFillMode = SegmentFillMode.Discrete };   // combo points light as whole pips
 var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 { FillDirection = FillDirection.BottomToTop };                   // vertical, grows upward
+```
+
+---
+
+## Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)
+
+A headless, retained stack of transient/sticky notification popups (status messages, loot pickups, connection
+state) that a `ToastView` draws corner-anchored with tap-to-dismiss. The model (`ToastStack`) and the presenter
+(`ToastView`) are separate on purpose, the same split as `DiagnosticsOverlay`/`PatchNotesView`: the model can be
+shown from anywhere in your game code with no `Screen` or `GuiSurface` in scope, and the view just renders
+whatever is currently active.
+
+```csharp
+var toasts = new ToastStack();                                              // model: no rendering/input state
+var view = new ToastView(toasts, measurer: font) { Bounds = viewport.DesignBounds };   // presenter, corner-anchored
+
+toasts.Show(Strings.ItemPickedUp, ToastKind.Standard);            // 6s default duration
+toasts.Show(Strings.LowHealth, ToastKind.Warning, duration: 3f);
+toasts.Show(Strings.ConnectionLost, ToastKind.Danger);
+```
+
+**Hosting pattern A: a plain host with a single `Pointer`** (a `GuiSurface` Run-loop game with no `ScreenStack`).
+Tick the stack with a raw frame delta, update the view against your one pointer, and draw it last so toasts sit
+on top of the rest of the HUD:
+
+```csharp
+toasts.Update(dt);              // raw frame dt, see the real-dt contract below
+view.Update(pointer);           // tap-dismiss
+view.Draw(batch, white, font);  // drawn last so toasts sit on top
+```
+
+**Hosting pattern B: a `ScreenStack` host.** Put the `ToastView` inside a permanent overlay `Screen` - a high
+`DrawOrder` so it updates first and draws last, `AlwaysReceivesInput = true` so toasts stay tappable under a
+modal, and `PassUpdateThrough = true` paired with a dismissal-only `Update` return that keeps the reported
+consumption honest and keeps the pattern portable to screens that don't set `AlwaysReceivesInput`. The
+`ToastStack` model is NOT owned by that
+screen: the room/game ticks it with its own raw frame dt, because a `ScreenStack`'s dt can be sim-scaled while
+toasts must keep counting down at real speed regardless. `KhaozEngine.Showcase`'s `ToastOverlayScreen`
+(`Room2DGui.cs`) is the reference implementation. Read it before copying this pattern into a game:
+
+```csharp
+sealed class ToastOverlayScreen : Screen
+{
+    readonly ToastView _view;
+
+    public ToastOverlayScreen(ToastStack toasts, IDesignViewport vp, SpriteFont font)
+    {
+        _view = new ToastView(toasts, font) { Bounds = vp.DesignBounds };
+        DrawOrder = 100;              // topmost: updated first, drawn last
+        AlwaysReceivesInput = true;   // stays tappable under a modal screen
+        PassUpdateThrough = true;     // never blocks the screens below
+    }
+
+    public override bool Update(float dt, bool receivesInput) =>
+        receivesInput && _view.Update(Manager.Pointer);   // true only on an actual tap-dismiss
+
+    public override void Draw(SpriteBatch batch) => _view.Draw(batch, white, font);
+}
+
+// In the room/game:
+_toasts = new ToastStack();
+_stack.Add(new ToastOverlayScreen(_toasts, viewport, font));   // permanent, topmost
+
+// Every frame, tick the MODEL with the room's own raw dt, never the ScreenStack's:
+_toasts.Update(rawFrameDt);
+```
+
+**Real-dt contract.** `ToastStack.Update(float realDt)` MUST be fed a raw, unscaled frame delta (`Frame.Dt` or
+`GameClock.RealDeltaSeconds`), never a sim-scaled dt. A paused or slow-motion game still needs a "connection
+lost" toast to count down and dismiss at real speed, not sim speed.
+
+**Sticky + keyed channels.** A toast with `duration <= 0` (or shown via `ShowSticky`) never expires on its own -
+only a tap dismisses it, and it draws no countdown timer bar. A non-null `key` shared between two `Show` calls
+replaces the earlier toast in place (same slot, fresh `Remaining`) instead of stacking a second one, which is
+how a repeated status line stays pinned. The two combine for a maintenance-banner pattern: show a sticky toast
+on a channel, then later replace it on the same key with a timed one:
+
+```csharp
+const string ServerStatusKey = "server-status";
+
+// Maintenance starts: a sticky toast that only a tap (or the update below) removes.
+toasts.ShowSticky(Strings.ServerUpdating, ToastKind.Warning, key: ServerStatusKey);
+
+// ...maintenance ends: replaces the sticky toast IN PLACE with a timed one on the same key.
+toasts.Show(Strings.ServerBackOnline, ToastKind.Standard, duration: 4f, key: ServerStatusKey);
+```
+
+**Theme overrides.** `ToastTheme` carries the per-`ToastKind` palette (`ToastPalette`: background/border/
+timer-bar/text) and the layout metrics (width, padding, gap, margins, timer bar height, corner anchor). Unlike
+`GuiTheme.Default`, `ToastTheme.Default` is not a shared, assignable instance - it hands back a fresh default
+`ToastTheme` every time it's read. To reskin every toast in a game, build one `ToastTheme` instance yourself and
+pass it into every `ToastView` you construct (or hold a shared reference and mutate its fields), rather than
+trying to override a global default:
+
+```csharp
+static readonly ToastTheme GameToastTheme = new()
+{
+    Corner = OverlayCorner.BottomRight,
+    Width = 260f,
+    Standard = new ToastPalette(Background: darkPanel, Border: accent, TimerBar: accent, Text: Color.White),
+};
+
+var view = new ToastView(toasts, font, GameToastTheme);   // pass the shared instance explicitly
 ```
 
 ---

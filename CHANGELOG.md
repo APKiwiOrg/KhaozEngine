@@ -5,6 +5,80 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.127.1
+
+Showcase cleanup: a tile-menu hub, one consolidated tabbed 2D & GUI room, and shared room chrome
+(title band, controls hints, status line, toggle toasts) across every room. No package API changed,
+this release is the `KhaozEngine.Showcase` app plus its docs.
+
+- **Consolidated 2D & GUI room (`KhaozEngine.Showcase`).** The old "2D sprites + text", "GUI +
+  widgets", and "Input + audio" rooms folded into one `Room2DGui` hosting a `TabBar` of five pages:
+  Widgets (relaid into three labelled columns - form, HUD, skinned chrome - and gaining a
+  `NumberField` demo), Sprites & text (scale / tint / alpha sprite series plus a TTF type specimen,
+  in framed cards), Input & audio (the gesture playground clamped inside a panel beside a labelled
+  status card), Immediate mode (plus a disabled-button preset), and Screens & dialogs (launchers
+  for the modal Settings dialog, the pause overlay - now shown over the real tab host, the
+  placeholder green host screen is gone - patch notes, and the 10.127.0 toast stack demo, re-seated
+  here from the old GUI menu). Per-screen Back buttons are dropped: Esc backs out one level and
+  Tab/Shift+Tab switch tabs. `Room2D.cs`, `RoomGui.cs`, and `RoomInput.cs` are deleted.
+- **Tile-menu hub.** The menu is a centred 2-column tile grid, each tile a room title over a
+  one-line blurb, with spatial arrow/WASD navigation (clamped grid moves on the headless
+  `ShowcaseMenu`, covered by new tests), a subtitle, a hint line, and an engine-version footer read
+  from the `KhaozEngine.Game` assembly's informational version.
+- **Shared room chrome.** New `IShowcaseRoom` + `ShowcaseHud`: every room (map editor excepted, it
+  carries its own chrome) wears a consistent title band top-left, a controls-hint band above the
+  display readout, and an optional live status line (RoomNet's connection/RTT/loss/entities,
+  Room3D's skinning A/B readout). The 3D rooms' render toggles (outline, cel, retro, palette,
+  starfield, collision overlay, GPU skinning) now toast on-screen instead of writing to the
+  console, so a windowed run finally shows what a toggle did.
+- **Mini-game layout.** Catcher lays out from the live design bounds instead of a hardcoded
+  960x540, so the field fills the window, and its copy moved into the localization catalog.
+- **Localization.** All static showcase copy (room titles and blurbs, controls hints, tab labels,
+  section headers, captions, mini-game strings) resolves through `ShowcaseStrings.resx` (~60 new
+  entries), keeping the showcase the worked example of the catalog-first rule. Dynamic diagnostics
+  stay raw under `[LocalizationExempt]`.
+- **Room registry.** `ShowcaseApp.Rooms` entries are now `ShowcaseRoomEntry(StringId Title,
+  StringId Blurb, Func<GameScene> Factory)`, and KE_SHOWCASE_ROOM matches a case-insensitive
+  prefix of the resolved title.
+
+## 10.127.0
+
+New KhaozEngine.Gui toast notification stack, ported from the Nullwake reference implementation: a
+headless `ToastStack` model plus a `ToastView` presenter, with sticky toasts, keyed replacement
+channels, and real-time auto-dismiss.
+
+- **KhaozEngine.Gui (additive): `ToastStack`/`Toast`/`ToastKind`/`ToastTheme`/`ToastView`.** The
+  model/presenter split mirrors `DiagnosticsOverlay`/`PatchNotesView`: `ToastStack` holds no
+  rendering or input state, `ToastView` draws it corner-anchored and reads a shared pointer for
+  tap-dismiss. Three typed kinds (`ToastKind.Standard`/`Warning`/`Danger`) each resolve to a
+  themeable `ToastPalette` (background/border/timer-bar/text) via `ToastTheme`, anchored to any
+  `OverlayCorner` with configurable width, padding, gap, and margin metrics.
+- **Real-time auto-dismiss.** `ToastStack.Show` defaults to `DefaultDuration` (6 seconds) and
+  `Update` takes a raw, unscaled frame delta so toasts keep counting down at real speed while the
+  game is paused or slowed, never the scaled simulation delta.
+- **MaxVisible cap with sticky-aware eviction.** `ToastStack.MaxVisible` (default 5) is enforced on
+  every `Show`/`Update`. Over the cap, the oldest non-sticky toast is evicted first, scanning from
+  the end. Only once every remaining toast is sticky does the oldest sticky toast get evicted, so an
+  all-sticky flood still stays bounded.
+- **First-class sticky toasts.** Passing `duration <= 0` to `Show` (or calling `ShowSticky`) marks a
+  toast sticky (`Toast.IsSticky`): it never expires on its own, `ToastStack.Update` never decrements
+  it, and `ToastView` draws it with no timer bar. A tap is the only way to dismiss it.
+- **Keyed replacement channels.** `Show` with a non-null `key` replaces any currently active toast
+  sharing that key in place (same index, no reordering, no eviction), so a repeated status line
+  ("reconnecting", then "connected") stays pinned at its slot instead of growing the stack.
+  `ToastStack.Clear(key)` removes that channel's toast outright.
+- **Tap-dismiss on the shared pointer.** `ToastView` hit-tests taps via the press-origin invariant
+  (`IsTapIn`) and consumes the dismissing gesture on the shared `InputManager`/`Pointer` so a tap
+  through a toast never falls through to whatever is underneath.
+- **Word-wrapped, localized messages.** `Toast.Message` is a `LocalizedText` resolved through the
+  localization catalog at draw time, word-wrapped to the toast's fixed width, growing `MinHeight`
+  as needed. A finite-duration toast draws a shrinking timer bar along its edge.
+- **Showcase demo + docs.** `KhaozEngine.Showcase`'s `RoomGui` gained a toast stack demo screen
+  (`ToastOverlayScreen`), documenting the `ScreenStack` hosting pattern for a permanent overlay
+  screen (`AlwaysReceivesInput`, high `DrawOrder`) whose model keeps counting down independent of
+  which screen is on top. Headless test coverage includes localized-resolution facts. Usage
+  documented in the `KhaozEngine.Gui` package README and `docs/USING-KHAOZENGINE.md`.
+
 ## 10.126.0
 
 Ground-up particle/VFX modernization: shaped procedural sprites with soft depth fade and velocity

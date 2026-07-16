@@ -20,9 +20,9 @@ namespace KhaozEngine.Tests.Showcase
         public void Resx_ResolvesKnownKeys()
         {
             var cat = Catalog();
-            Assert.Equal("Settings", cat.Get("Menu.Settings"));
-            Assert.Equal("Play", cat.Get("MiniGame.Play"));
-            Assert.Equal("Back", cat.Get("Common.Back"));
+            Assert.Equal("KhaozEngine Showcase", cat.Get("Hub.Title"));
+            Assert.Equal("Boot screen", cat.Get("Room.Boot.Title"));
+            Assert.Equal("Pause overlay", cat.Get("Screens.Overlay"));
         }
 
         [Fact]

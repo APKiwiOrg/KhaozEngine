@@ -219,7 +219,7 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `PropertyGrid` tracks the row under the pointer during `Update` as `HoveredRow` (`PropertyRow?`, null
     when the pointer is over no row or in the gap between rows) plus a public `RowLabelBounds(int)` (was
     private) returning that row's label rect. A host draws its own `Tooltip` after the grid's `Draw`
-    (escaping the grid's scissor, the same pattern `PatchNotesView` and `RoomGui` use), anchored to
+    (escaping the grid's scissor, the same pattern `PatchNotesView` and `Room2DGui` use), anchored to
     `RowLabelBounds` of `HoveredRow`'s index, showing `HoveredRow.Description` immediately on hover with no
     delay infra. `HeaderRow` is a `PropertyRow` with no getter/setter and `SpansFullWidth` true: a
     full-width label band with a distinct background fill and a 24f row height (vs the default 28f), used
@@ -317,6 +317,34 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   beside a `DiagnosticsOverlay` in the same style. `LegendEntry(Color Swatch, string Label)` is one row. The
   collision-shape debug overlay (`KhaozEngine.Render3D.Debug.CollisionShapeOverlay`) is the first consumer,
   and it is reusable by any future overlay layer.
+- **Toast notifications (`Toast`/`ToastKind` + `ToastStack`/`ToastTheme`/`ToastView`).** A headless, retained
+  stack of transient/sticky notification popups (status messages, loot pickups, connection state), drawn
+  corner-anchored with tap-to-dismiss. `ToastStack` is the model: `Show(LocalizedText, ToastKind = Standard,
+  float? duration = null, string? key = null)` adds a toast (`ToastKind.Standard`/`Warning`/`Danger` pick the
+  palette). `duration` `null` defaults to `DefaultDuration` (6s), `<= 0` makes it sticky (`ShowSticky` is the
+  shorthand - never expires on its own, only a tap dismisses it, and it draws no countdown timer bar). A
+  non-null `key` shared with an already-active toast REPLACES that toast in place, at its current index, with
+  fresh state, instead of stacking a new one - the mechanism for a repeated status line ("reconnecting" then
+  "reconnected") that stays pinned at one slot without reordering or growing the stack. `Dismiss(Toast)` /
+  `Dismiss(int)` remove one toast, `Clear(string key)` removes by key, `ClearAll()` empties the stack.
+  `MaxVisible` (default 5) caps how many toasts show at once. Over the cap the oldest NON-STICKY toast is
+  evicted first, and only once every remaining toast is sticky does the oldest sticky one get evicted, so a
+  flood of transient toasts never buries a sticky warning. `Update(float realDt)` counts down every non-sticky
+  toast's `Remaining` and enforces `MaxVisible`. It MUST be fed a raw, unscaled frame delta (`Frame.Dt` /
+  `GameClock.RealDeltaSeconds`), never a sim-scaled dt, so toasts keep counting down at real speed while the
+  game is paused or slowed. `ToastView` is the corner-anchored layout/input/draw widget: `GetToastBounds(index)`
+  is the shared layout both `Update(Pointer)` (tap-dismiss via the press-origin invariant, blocking each
+  toast's region for a beneath layer via `Pointer.BlockRegion`, and consuming the gesture on a dismissing tap
+  so it can't also fire a widget underneath) and `Draw(SpriteBatch, Texture2D, SpriteFont)` (themed fill/border
+  per `ToastKind`, word-wrapped vertically centered text, and a shrinking countdown timer bar on non-sticky
+  toasts only) read, so hit-testing and pixels always agree. `ToastTheme` supplies the per-`ToastKind` palette
+  (`ToastPalette`: background/border/timer-bar/text) and the layout metrics (`Width`, `MinHeight`, `Gap`,
+  padding, `TimerBarHeight`, `BorderThickness`, margins, and the anchor `Corner`, default
+  `OverlayCorner.TopRight`). Unlike `GuiTheme.Default`, `ToastTheme.Default` is not a shared, assignable
+  instance - it hands back a fresh default `ToastTheme` on every access, so reskinning every toast in a game
+  means building one `ToastTheme` instance and passing it into every `ToastView` you construct. See
+  `docs/USING-KHAOZENGINE.md` for both hosting patterns (a plain single-`Pointer` host and a permanent
+  `ScreenStack` overlay screen).
 
 **Editor inspector widgets (`NumberField` / `TreeView` / `PropertyGrid`).** The three widgets an inspector
 panel is built from: a scrubbable/typeable number field, a hierarchy outline, and the grid that hosts typed

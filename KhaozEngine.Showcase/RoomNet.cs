@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text;
+using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
@@ -91,8 +92,26 @@ namespace KhaozEngine.Showcase
     /// meadow so the local client's Snapshot() replicates visible remote players. Every replicated entity (local +
     /// bots) is drawn as an animated character via <see cref="ReplicatedCharacterAnimators"/>, falling back to a
     /// capsule per entity if the character asset fails to load.</summary>
-    public sealed class RoomNet : GameScene, IGameScene3D
+    public sealed class RoomNet : GameScene, IGameScene3D, IShowcaseRoom
     {
+        static readonly StringId[] Hints = { ShowcaseStrings.ControlsNet };
+
+        public StringId Title => ShowcaseStrings.RoomNetTitle;
+        public IReadOnlyList<StringId> ControlsHints => Hints;
+
+        // The chrome's status line: the local client's connection state, smoothed RTT + packet loss, and the
+        // replicated entity count (local + bots). Null before OnEnter builds the client (and after OnExit nulls it
+        // out on the way to a re-enter), so the chrome shows no status then.
+        public string? StatusLine
+        {
+            get
+            {
+                if (_client is null) return null;
+                ClientNetStats stats = _client.NetStats;
+                return $"Net: {_client.ConnectionState}  RTT {stats.RttMs:0}ms  Loss {stats.PacketLoss * 100f:0.0}%  Entities {_client.Snapshot().Count}";
+            }
+        }
+
         const int GridRadius = 3;
         const float CapsuleRadius = 0.3f;
         const float CapsuleHalfHeight = 0.9f;
@@ -105,8 +124,6 @@ namespace KhaozEngine.Showcase
         const int BindAttempts = 5;
 
         Scene3D _scene = null!;
-        Texture2D _white = null!;
-        DpiFont _hud = null!;
 
         // Guards OnExit/OnUpdate/OnDraw3D against running before OnEnter has built the per-enter state (and
         // OnEnter against leftover state from a previous visit).
@@ -145,9 +162,9 @@ namespace KhaozEngine.Showcase
         /// active. See <see cref="ShowcaseApp"/>'s HUD wiring.</summary>
         public ClientNetStats? NetStats => _client is null ? null : _client.NetStats;
 
-        public RoomNet Init(Scene3D scene, Texture2D white, DpiFont hud)
+        public RoomNet Init(Scene3D scene)
         {
-            _scene = scene; _white = white; _hud = hud;
+            _scene = scene;
             return this;
         }
 
@@ -325,23 +342,8 @@ namespace KhaozEngine.Showcase
             }
         }
 
-        // Net status HUD: local client's connection state, RTT + packet loss (ClientNetStats, smoothed over a
-        // rolling ~1s window), and the replicated entity count (local + bots). Guarded so it no-ops before
-        // OnEnter has built _client (and OnExit has nulled it back out on the way to a re-enter).
-        // Net status HUD draws through the point-space UI pass, so its text is crisp on HiDPI.
-        public override void OnDrawUi(SpriteBatch batch)
-        {
-            if (_client is null) return;
-            var ui = Manager!.UiViewport;
-            if (ui is null) return;
-            SpriteFont hud = _hud.For(ui.DpiScale);
-
-            ClientNetStats stats = _client.NetStats;
-            string line1 = $"Net: {_client.ConnectionState}   RTT {stats.RttMs:0}ms   Loss {stats.PacketLoss * 100f:0.0}%";
-            string line2 = $"Entities: {_client.Snapshot().Count}";
-            batch.DrawString(hud, line1, new Vector2(20, 16), (Color)GuiTheme.Default.Text);
-            batch.DrawString(hud, line2, new Vector2(20, 16 + hud.LineHeight), (Color)GuiTheme.Default.TextMuted);
-        }
+        // The net status line is the shared chrome's StatusLine now (see the property above), so this room draws no
+        // 2D overlay of its own.
 
         public override void OnExit()
         {

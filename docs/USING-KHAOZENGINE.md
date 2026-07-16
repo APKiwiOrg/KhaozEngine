@@ -2257,11 +2257,71 @@ determinism hash).
     tg.Circle(center, radius, progress, TelegraphStyle.Generic);
     tg.End();
 
-Shapes: Circle, Ring, Beam, Cone, Arc. Styles: Generic / Fire / Poison presets, or a TelegraphStyle
-(fill/outline color, edge thickness, opacity, FillMode, TelegraphAnim flags
-[OutlinePulse | FillSweep | ColorRamp | ImpactFlash], blend). The 3D path paints onto the ground/terrain
-via the depth buffer and is occluded by meshes. (EdgeThickness is authored in 2D pixels; the 3D ground
-path derives its own world-space edge from the decal size.)
+Shapes: Circle, Ring, Beam, Cone, Arc. Styles: seven presets (below), or a TelegraphStyle
+(fill/outline color, edge thickness, opacity, FillMode, TelegraphAnim flags, blend, plus the
+modern style knobs below). The 3D path paints onto the ground/terrain via the depth buffer and is
+occluded by meshes. (EdgeThickness is authored in 2D pixels: the 3D ground path derives its own
+world-space edge from the decal size.)
+
+**Modern style knobs** (fields on `TelegraphStyle`, resolved by `TelegraphResolve` and consumed by
+the 3D ground-decal path only, see below):
+
+- `FeatherWidth` - soft-edge band width, as a fraction of the shape's characteristic size (radius
+  for Circle/Arc, outer radius for Ring, width for Beam, range for Cone). 0 keeps the legacy hard
+  anti-aliased edge. Presets use roughly 0.06 (crisp) to 0.18 (soft).
+- `Pattern` (`TelegraphFillPattern`) - interior fill texture. `Solid` (default) is the legacy flat
+  tint. `ScrollingNoise` drifts value noise across the shape. `RadialNoise` flows it radially
+  outward from the shape center.
+- `PatternSpeed` - pattern animation rate, in cycles per second of `Scene3D.EffectTimeSeconds`.
+- `PatternScale` - noise cells across the shape's characteristic size. 0 falls back to 6.
+- `EdgeEnergy` - master strength multiplier for the RimGlow / SweepGlow / EdgeSparkle animations
+  below. 0 means the default full strength of 1, so leaving it unset is not "off". Set an
+  explicit value to scale the glow and sparkle up or down.
+
+`TelegraphAnim` gained three flags alongside the original four (`OutlinePulse`, `FillSweep`,
+`ColorRamp`, `ImpactFlash`):
+
+- `RimGlow` - soft glow hugging the shape boundary, pulsing with cast progress.
+- `SweepGlow` - bright soft leading edge riding the `FillSweep` front. No-op without `FillSweep`
+  also set.
+- `EdgeSparkle` - sparse animated sparkle cells along the shape boundary.
+
+**Presets** (`TelegraphStyle.Generic` / `.Fire` / `.Poison` / `.Steel` / `.Frost` / `.Nature` /
+`.Arcane`), each a distinct character to reach for by name instead of hand-tuning fields:
+
+- `Generic` - neutral red-orange danger zone, alpha-blended, all core animations on.
+- `Fire` - additive warm glow, scrolling noise, edge sparkle.
+- `Poison` - toxic green, alpha-blended, pulsing outline.
+- `Steel` - cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle.
+- `Frost` - pale ice blue, wide soft feather, slow radial noise flow, rim glow and edge sparkle,
+  no sweep glow.
+- `Nature` - verdant green, soft organic drift, rim glow and sweep glow, no pulse or flash.
+- `Arcane` - violet additive energy, radial noise, every animation flag on (full edge energy).
+
+`Scene3D.DecalQuality` (`GroundDecalQuality.Full` by default) is a scene-wide, host-set tier for
+the ground-decal pass: `Reduced` drops the second noise octave and the edge sparkle for weak
+GPUs, leaving the base fill, feathered edge, rim, and sweep energy unchanged. Set it once when
+picking a graphics tier. It is not cleared by `Begin`.
+
+    scene.DecalQuality = GroundDecalQuality.Reduced;   // e.g. behind a low-graphics-settings toggle
+
+The noise scroll, rim shimmer, and edge sparkle all animate off `Scene3D.EffectTimeSeconds`, the
+same host-set per-frame clock beams and water already use (see above). Set it once per frame in
+your draw callback. Leaving it at 0 (never set) renders a static pattern, same as an unset beam.
+
+**Residue** (`GroundTelegraphs.BuildResidueCircle` / `scene.GroundResidueCircle`, 3D only): a
+one-shot fading, slightly expanding scorch/frost mark for the moment after a telegraph resolves.
+The builder is pure and immediate-mode like every other telegraph call, so the CONSUMER tracks
+`age01` (0 = just resolved, 1 = gone) and stops calling once it reaches 1:
+
+    residueAge += dt;
+    float age01 = Math.Clamp(residueAge / ResidueLifetime, 0f, 1f);
+    if (age01 < 1f)
+        scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
+
+**The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
+Pattern/PatternSpeed/PatternScale, EdgeEnergy, RimGlow, SweepGlow, EdgeSparkle, and residue) and
+always renders the flat legacy fill/outline/pulse/flash look. They are a 3D ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same

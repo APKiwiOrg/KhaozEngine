@@ -19,18 +19,20 @@ namespace KhaozEngine.Render3D.Rendering
 
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
         // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the shadow tail (the
-        // key-light shadow-map matrix + params) = mat4 (64) + vec4 (16) = 80, so 688 + 80 = 768 bytes total.
+        // key-light shadow-map matrix + params) = mat4 (64) + 2*vec4 (32) = 96, so 688 + 96 = 784 bytes total.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
         internal const uint LightArraysBytes = 2 * LightArrayBytes;   // both point-light arrays = 512
-        // The shadow tail (mat4 LightViewProj + vec4 ShadowParams) rides in the SAME frame UBO after the light
-        // arrays (a SECOND UBO in the set mis-binds on Metal; see the splat-params note below), so both the model and
-        // splat passes read the shadow map from their one bound UBO. ShadowParams.x = 1/mapResolution (PCF texel
-        // step), .y = constant bias, .z = slope bias, .w = shadow strength (0 = shadow map inactive this frame).
-        internal const uint ShadowTailBytes = 64 + 16;               // mat4 + vec4 = 80
+        // The shadow tail (mat4 LightViewProj + vec4 ShadowParams + vec4 ShadowParams2) rides in the SAME frame UBO
+        // after the light arrays (a SECOND UBO in the set mis-binds on Metal, see the splat-params note below), so both
+        // the model and splat passes read the shadow map from their one bound UBO. ShadowParams.x = 1/mapResolution
+        // (PCF texel step), .y = constant bias, .z = slope bias, .w = shadow strength (0 = shadow map inactive this
+        // frame). ShadowParams2.x = normal-offset world size (texel-world-size x ShadowNormalOffset, CPU-baked so it is
+        // extent-aware); .yzw reserved.
+        internal const uint ShadowTailBytes = 64 + 32;               // mat4 + 2*vec4 = 96
         internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
-        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 768
+        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 784
 
         // ---- GPU skinning (opt-in) combined-buffer geometry. The whole skinned pipeline reads ONE dynamic-offset
         // UBO at set 0 binding 0 (both stages) laid out as { mat4 Mvp; mat4 Model; mat4 P; <frame block>; mat4
@@ -59,11 +61,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="ShadowTailOffset"/>): the world-&gt;light-clip matrix the receivers sample the shadow map with,
         /// plus the PCF/bias/strength params. <see cref="Params"/> is (1/mapResolution, constantBias, slopeBias,
         /// strength); strength 0 means the shadow map is inactive this frame, so the shader leaves the key light
-        /// unshadowed (byte-stable with ShadowMode.Off). 80 bytes = mat4 + vec4.</summary>
+        /// unshadowed (byte-stable with ShadowMode.Off). <see cref="Params2"/>.x is the normal-offset world size
+        /// (texel-world-size x ShadowNormalOffset, CPU-baked); .yzw reserved. 96 bytes = mat4 + 2*vec4.</summary>
         internal struct ShadowUbo
         {
             public Matrix4x4 LightViewProj;   // 64
             public Vector4 Params;            // 16: x = 1/res (PCF texel step), y = const bias, z = slope bias, w = strength
+            public Vector4 Params2;           // 16: x = normal-offset world size (texelWorld * ShadowNormalOffset); yzw reserved
         }
 
         /// <summary>One dynamic point light, packed for the std140 UBO arrays: <see cref="PosRadius"/> is
@@ -425,12 +429,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="SetFrameUniforms"/> when the shadow-map tier is active; leave unset (or pass a zero-strength
         /// tail) for no shadows. The value is uploaded by <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the model UBO and
         /// each splat material UBO. <paramref name="lightViewProj"/> is already GPU-clip-corrected by the caller.</summary>
-        public void SetShadowUniforms(Matrix4x4 lightViewProj, float invResolution, float constantBias, float slopeBias, float strength)
+        public void SetShadowUniforms(Matrix4x4 lightViewProj, float invResolution, float constantBias, float slopeBias, float strength, float normalOffsetWorld)
         {
             _shadow = new ShadowUbo
             {
                 LightViewProj = lightViewProj,
                 Params = new Vector4(invResolution, constantBias, slopeBias, strength),
+                Params2 = new Vector4(normalOffsetWorld, 0f, 0f, 0f),
             };
         }
 

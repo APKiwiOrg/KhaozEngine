@@ -1578,11 +1578,18 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `ShadowFocusRadius` (default `16`, world units the map covers per axis - smaller packs texels onto the near
       action for crisper shadows at less coverage); `ShadowGroundHeight` (world Y the focus is fitted onto, default
       `0`); `ShadowStrength` (0..1 shadow darkness, default `0.85`).
-    - **Bias tuning** (`ShadowConstantBias` default `0.004`, `ShadowSlopeBias` default `0.006`): the two biases
-      defeat self-shadow acne. Too small => **acne** (a lit surface stipples itself with shadow); too large =>
-      **peter-panning** (the shadow detaches from the caster's feet). The slope bias adds extra offset on
-      steeply-lit surfaces. If you see acne, raise the constant bias first, then the slope bias; if shadows float off
-      their casters, lower them. A tighter `ShadowFocusRadius` (bigger texels per world unit) tolerates less bias.
+    - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
+      default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
+      (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
+      surface along the geometric normal by that many shadow-map TEXELS (world-scaled by the texel size, so it stays
+      correct as `ShadowFocusRadius` / `ShadowMapResolution` change), grazing-angle-weighted so it is largest where
+      acne is worst and zero facing the light. That lets the two DEPTH biases stay tiny, so the shadow keeps contact.
+      The depth biases act in light-clip NDC z over the light's full depth range (`4 * ShadowFocusRadius` world units),
+      so they were world-coupled to the radius - `ShadowConstantBias` dropped from `0.004` to `0.0004` (the old value
+      was ~0.25 world units of depth bias at the default radius, which peter-panned thin casters' contact shadows).
+      If you still see acne, raise `ShadowNormalOffset` first (say 3-4 texels), then the depth biases. If shadows float
+      off their casters, lower the depth biases (the normal offset does not cause peter-panning). Set
+      `ShadowNormalOffset = 0` to fall back to depth-bias-only.
     - **Depth-pass dirty-skip** (automatic, presentation-neutral): the 2048^2 depth map persists across frames, so the
       depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - the fitted light
       matrix (which folds in the light direction, focus, and camera), the rigid caster set + world transforms, the map

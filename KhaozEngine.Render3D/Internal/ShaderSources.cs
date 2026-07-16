@@ -27,16 +27,24 @@ namespace KhaozEngine.Render3D.Internal
         public const string LightingCommonGlsl = @"
 // 3x3 PCF shadow lookup. keyShadow returns 1 = fully lit, 0 = fully in shadow, sampled from the key light's
 // depth map. worldPos is projected into light-clip via ShadowMat; a manual depth compare (the R32F map holds the
-// caster's light-space depth) with a constant + slope-scaled bias defeats acne. ShadowParams.x = 1/mapResolution
-// (the PCF texel step), .y = constant bias, .z = slope bias, .w = strength (0 => the caller skips this entirely).
-// ndl is the receiver's N.L to the key light, used to scale the slope bias (grazing surfaces need more). This lives
-// in the shared block so ModelFrag and SplatFrag shadow identically; the shadow map + sampler are passed in because
-// GLSL cannot reference a fragment's own bindings from a shared function.
+// caster's light-space depth) with a constant + slope-scaled bias plus a NORMAL OFFSET defeats acne. ShadowParams.x
+// = 1/mapResolution (the PCF texel step), .y = constant bias, .z = slope bias, .w = strength (0 => the caller skips
+// this entirely). ndl is the receiver's N.L to the key light, used to scale the slope bias AND the normal offset
+// (grazing surfaces need more). Ngeo is the receiver's GEOMETRIC world normal and normalOffsetWorld is the world
+// distance (texel-world-size x ShadowNormalOffset, CPU-baked so it is extent-aware) the sample point is pushed off
+// the surface along Ngeo before projecting - the standard normal-offset bias, which suppresses self-shadow acne
+// without a large depth bias so the shadow keeps contact with the caster's feet (no peter-panning). This lives in the
+// shared block so ModelFrag and SplatFrag shadow identically. The shadow map + sampler are passed in because GLSL
+// cannot reference a fragment's own bindings from a shared function.
 // Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the point of use inside; GLSL forbids a
 // sampler2D(...) constructor as a call ARGUMENT ('sampler constructor must appear at point of use').
-float sampleKeyShadow(texture2D shadowTex, sampler shadowSamp, mat4 shadowMat, vec4 shadowParams, vec3 worldPos, float ndl) {
+float sampleKeyShadow(texture2D shadowTex, sampler shadowSamp, mat4 shadowMat, vec4 shadowParams, vec3 worldPos, vec3 Ngeo, float ndl, float normalOffsetWorld) {
     if (shadowParams.w <= 0.0) return 1.0;                 // shadow map inactive this frame => fully lit
-    vec4 lc = shadowMat * vec4(worldPos, 1.0);
+    // Normal-offset bias: push the sample point off the surface along its geometric normal, scaled by the grazing
+    // angle to the key light (sin = sqrt(1-ndl^2), largest where acne is worst, zero facing the light head-on).
+    float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));
+    vec3 samplePos = worldPos + Ngeo * (normalOffsetWorld * slopeSin);
+    vec4 lc = shadowMat * vec4(samplePos, 1.0);
     if (lc.w <= 0.0) return 1.0;
     vec3 proj = lc.xyz / lc.w;                             // light-clip; xy in [-1,1], z in [0,1]
     vec2 uv = proj.xy * 0.5 + 0.5;                         // to [0,1] texture space
@@ -118,6 +126,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // shadow tail (offset 688): world->light-clip for the shadow map (unused by the vertex stage)
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -169,6 +178,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // world->light-clip for the key-light shadow map (offset 688)
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
@@ -227,7 +237,7 @@ void main() {
     // Key-light shadow: sampled AFTER the material maps (Metal first-sample-order: ShadowMap is binding 5, sampled
     // last). N.L to the key light scales the slope bias. keyShadow == 1 when the map is off (byte-stable with Off).
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
@@ -257,6 +267,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
+    vec4 ShadowParams2;
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
 layout(set=0, binding=2) uniform texture2D NormalMap;
@@ -309,7 +320,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
@@ -346,7 +357,8 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
-    mat4 bones[128];       // offset 960: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
+    vec4 ShadowParams2;
+    mat4 bones[128];       // offset 976: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -427,6 +439,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
+    vec4 ShadowParams2;
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -467,7 +480,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
@@ -495,6 +508,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
+    vec4 ShadowParams2;
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -548,7 +562,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
@@ -574,7 +588,8 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // shadow tail (offset 688): world->light-clip for the shadow map
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
-    vec4 TintTiling[5];   // per-material params appended (offset 768): xyz = tint, w = tiles/metre
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
+    vec4 TintTiling[5];   // per-material params appended (offset 784): xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -639,7 +654,8 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // world->light-clip for the key-light shadow map (offset 688)
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
-    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 768)
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
+    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 784)
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -746,7 +762,7 @@ void main() {
     // Key-light shadow: sampled AFTER the terrain arrays (Metal first-sample-order: ShadowMap is binding 4, last).
     // Terrain RECEIVES shadows identically to models via the same shared helper. keyShadow == 1 when the map is off.
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;

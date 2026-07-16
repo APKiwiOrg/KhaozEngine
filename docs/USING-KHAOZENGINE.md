@@ -917,7 +917,12 @@ NumberFormatter.Notation = NumberNotation.Simple;   // once, from the user setti
 NumberFormatter.Format(1_500_000);       // "1.50M"
 NumberFormatter.FormatInt(1234);         // "1K"   (0 decimals below 1000)
 NumberFormatter.Format(1234, NumberNotation.Scientific);   // "1.23E+003" (explicit override)
+NumberFormatter.Format(0.05);            // "0.05" (sub-1 magnitudes stay truthful, never round up to "0.1")
 ```
+
+Magnitudes below 1 automatically get extra decimal places so a small value never rounds away to a misleading
+digit (0.05 would otherwise render "0.1" - twice the real value). This only applies when `decimalsSmall > 0`,
+so `FormatInt` (which always asks for 0 small-value decimals) is unaffected and stays a plain integer count.
 
 `TimeFormatter.Format(seconds, style)` renders a duration in two `DurationStyle` shapes: `Clock` (the ticking
 colon clock `1:02:34`, rounds up to the next whole second - for timers/countdowns) and `Coarse` (the two-unit

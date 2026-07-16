@@ -107,7 +107,7 @@ namespace KhaozEngine.Render3D.Internal
             HdrColor = hdrColor;
             uint uw = (uint)w, uh = (uint)h, s = (uint)SampleCount;
             var rt = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
-            // The colour-carrying targets go float16 in HDR mode for over-range headroom; the encoded-normal (UNorm)
+            // The colour-carrying targets go float16 in HDR mode for over-range headroom. The encoded-normal (UNorm)
             // and linear-depth (R32Float) attachments are format-fixed regardless.
             var colorFmt = hdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
 

@@ -193,7 +193,7 @@ namespace KhaozEngine.Render3D.Rendering
             _paletteFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.PingA, samp, _palBuf));
             _paletteFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.PingB, samp, _palBuf));
             // Edge outline reads the colour source + the (format-fixed) normal/linear-depth MRT attachments. The PingB
-            // source only arises in the HDR chain (after tonemap+quantize); legacy only ever feeds it ColorTex/PingA.
+            // source only arises in the HDR chain (after tonemap+quantize). Legacy only ever feeds it ColorTex/PingA.
             _edgeFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.ColorTex, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
             _edgeFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.PingA, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
             _edgeFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.PingB, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
@@ -392,7 +392,7 @@ namespace KhaozEngine.Render3D.Rendering
             // Bloom: bright-pass -> separable blur (half-res) -> additive composite back into a full-res ping. Runs
             // only when RenderResources.BloomAllocated (Scene3D requests the half-res targets only while
             // Bloom.Enabled), so bloom off costs exactly zero extra passes. In HDR mode this runs FIRST, reading the
-            // raw float16 scene so over-range cores halo before the tonemap compresses them; in legacy mode it runs
+            // raw float16 scene so over-range cores halo before the tonemap compresses them. In legacy mode it runs
             // third, reading the already-LDR post src.
             void RunBloom()
             {

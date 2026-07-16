@@ -14,6 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// vs legacy look, with a smoke assert only (content present, file written). Deterministic (EffectTimeSeconds 0,
     /// fixed seeds). Skipped unless KE_GPU_TESTS=1 (needs a Metal device).
     /// </summary>
+    [Collection("HdrGpu")]   // serialise with HdrPipelineGpuTests: two concurrent Metal contexts crash the driver
     public sealed class HdrShowcaseGpuTests
     {
         const int W = 640, H = 360;

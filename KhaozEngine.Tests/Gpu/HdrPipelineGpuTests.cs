@@ -7,6 +7,13 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
+    // The HDR GPU test classes each spin up many headless Metal device contexts. xUnit parallelizes distinct test
+    // classes by default, and two GPU-heavy classes creating device contexts at once crashes the Metal driver (the
+    // same contention the other GPU classes hit when run together). Grouping both HDR classes into ONE collection with
+    // parallelization disabled serialises them, so the combined verification filter runs them back to back.
+    [CollectionDefinition("HdrGpu", DisableParallelization = true)]
+    public sealed class HdrGpuCollection { }
+
     /// <summary>
     /// Behavioural GPU proofs of the HDR pipeline (float16 colour chain + pre-tonemap bloom + ACES tonemap) that a
     /// coarse RGB golden grid cannot express: over-range emissive stays separable through the filmic curve, bloom
@@ -14,6 +21,7 @@ namespace KhaozEngine.Tests.Gpu
     /// works, and the background alpha marker survives the tonemap pass. All scenes are deterministic
     /// (EffectTimeSeconds 0, fixed camera and transforms). Skipped unless KE_GPU_TESTS=1 (needs a Metal device).
     /// </summary>
+    [Collection("HdrGpu")]
     public sealed class HdrPipelineGpuTests
     {
         const int W = 128, H = 128;

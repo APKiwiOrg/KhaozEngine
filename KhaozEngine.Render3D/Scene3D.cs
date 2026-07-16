@@ -1538,7 +1538,7 @@ namespace KhaozEngine.Render3D
             bool hdrChanged = _res.HdrColor != Post.Hdr.Enabled;
             if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged)
             {
-                // A pipeline in flight may reference the old sample count / colour format / targets; a MSAA or HDR
+                // A pipeline in flight may reference the old sample count / colour format / targets. A MSAA or HDR
                 // toggle is rare, so idling before recreating the MRT + rebuilding pipelines is cheap insurance. An
                 // HDR toggle changes the MRT colour attachment format, so every MRT-writing renderer's pipeline must
                 // be rebuilt too (RebuildMrtRenderers), exactly like a sample-count change.

@@ -19,7 +19,7 @@ namespace KhaozEngine.Render3D
     /// HDR post-chain settings: render the internal colour targets at <c>R16G16B16A16Float</c> so shading can carry
     /// values above 1.0, bloom the over-range highlights BEFORE tonemapping, then map the float scene back to LDR
     /// <c>[0,1]</c> with a filmic <see cref="TonemapOperator"/> ahead of the retro/AA passes and the swapchain blit.
-    /// Reachable as <see cref="PixelPostProcessSettings.Hdr"/>; follows the <see cref="BloomSettings"/> /
+    /// Reachable as <see cref="PixelPostProcessSettings.Hdr"/>. Follows the <see cref="BloomSettings"/> /
     /// <see cref="SkySettings"/> precedent of a plain settings bag with sensible defaults.
     /// <para>
     /// Unlike <see cref="BloomSettings"/>, this is ON by default (<see cref="Enabled"/> == true): the float colour

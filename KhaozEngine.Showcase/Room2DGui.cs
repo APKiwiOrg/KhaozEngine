@@ -356,7 +356,9 @@ namespace KhaozEngine.Showcase
             { Align = TextAlign.Center, Color = new Vector4(0.98f, 0.94f, 0.78f, 1f) };
             _skinBar = new ProgressBar(new Rect(_cx, _top + 140f, 160f, 34f), 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
             _info = new Button(new Rect(_cx, _top + 190f, 160f, 32f), ShowcaseStrings.WidgetsHoverForTip, A.Small);
-            _confirm = new Button(new Rect(_cx, Content.Bottom - 60f, 160f, 48f), ShowcaseStrings.WidgetsConfirm, A.Small,
+            // Anchored low as the column's primary action, but kept clear of the shared chrome's translucent
+            // controls band (which the point-space hud draws over the bottom ~64 design points).
+            _confirm = new Button(new Rect(_cx, Content.Bottom - 100f, 160f, 48f), ShowcaseStrings.WidgetsConfirm, A.Small,
                 () => Stack.Add(new PopupScreen(A, _name.Text, _difficulty.SelectedLabel))) { Style = GuiStyle.Primary };
 
             _tip = new Tooltip(A.Small, A.Small) { Viewport = new Vector2(db.Width, db.Height) };

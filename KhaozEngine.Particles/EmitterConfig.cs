@@ -45,6 +45,20 @@ public struct EmitterConfig
     /// <summary>RGBA colour at death (set alpha to 0 to fade out).</summary>
     public Color EndColor;
 
+    // --- Modernisation fields (all zero-default = exactly the legacy behaviour above) ---
+
+    /// <summary>Spawn volume around the origin. Default <see cref="EmissionShape.Point"/> spawns at the origin.</summary>
+    public EmissionShape Shape;
+
+    /// <summary>Radius of the spawn <see cref="Shape"/> (world units). Ignored for <see cref="EmissionShape.Point"/>.</summary>
+    public float ShapeRadius;
+
+    /// <summary>0 fills the shape volume, 1 spawns only on its surface/edge (a shell). Blends in between.</summary>
+    public float ShapeShell;
+
+    /// <summary>How the initial velocity direction is chosen. Default <see cref="ParticleVelocityMode.Cone"/>.</summary>
+    public ParticleVelocityMode VelocityMode;
+
     /// <summary>A short-lived, fast, fading spark (good additive hit/muzzle burst).</summary>
     public static EmitterConfig Spark => new()
     {

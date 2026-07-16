@@ -70,14 +70,40 @@ public sealed class ParticleSystem
 
         for (int i = 0; i < count; i++)
         {
+            // RNG draw discipline: the legacy prefix (life, direction, speed) stays byte-identical for a
+            // zero-default config. Every new feature's draws are gated and appended after that prefix, so an
+            // unmodernised burst consumes exactly the historical sequence.
             float life = _rng.Range(cfg.LifetimeMin, cfg.LifetimeMax);
-            Vector3 dir = SampleConeDirection(cfg.Direction, cfg.SpreadDegrees);
+
+            // Direction is drawn up-front only in Cone mode; Radial derives it from the spawn offset below.
+            Vector3 coneDir = default;
+            if (cfg.VelocityMode == ParticleVelocityMode.Cone)
+            {
+                coneDir = SampleConeDirection(cfg.Direction, cfg.SpreadDegrees);
+            }
+
             float speed = _rng.Range(cfg.SpeedMin, cfg.SpeedMax);
+
+            // Shape offset draws come after the legacy prefix.
+            Vector3 offset = cfg.Shape == EmissionShape.Point ? Vector3.Zero : SampleShapeOffset(cfg);
+            Vector3 spawnPos = origin + offset;
+
+            Vector3 dir;
+            if (cfg.VelocityMode == ParticleVelocityMode.Radial)
+            {
+                float offLenSq = offset.LengthSquared();
+                // Outward through the spawn point when it is off the origin, else fall back to a sphere draw.
+                dir = offLenSq > 1e-12f ? offset / MathF.Sqrt(offLenSq) : SampleSphere();
+            }
+            else
+            {
+                dir = coneDir;
+            }
 
             int idx = _count++;
             _particles[idx] = new Particle
             {
-                Position = origin,
+                Position = spawnPos,
                 Velocity = dir * speed,
                 Age = 0f,
                 Life = life,
@@ -188,6 +214,58 @@ public sealed class ParticleSystem
         float r = MathF.Sqrt(MathF.Max(0f, 1f - z * z));
         float phi = (MathF.PI * 2f) * _rng.NextFloat();
         return new Vector3(r * MathF.Cos(phi), r * MathF.Sin(phi), z);
+    }
+
+    /// <summary>
+    /// Sample a spawn offset (from the origin) inside/on the configured <see cref="EmissionShape"/>. Draws in
+    /// a fixed order so the modernised burst stays deterministic. Never called for
+    /// <see cref="EmissionShape.Point"/>.
+    /// </summary>
+    private Vector3 SampleShapeOffset(in EmitterConfig cfg)
+    {
+        switch (cfg.Shape)
+        {
+            case EmissionShape.Sphere:
+            {
+                Vector3 dir = SampleSphere();
+                float u = _rng.NextFloat();
+                float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Cbrt(u), 1f, cfg.ShapeShell);
+                return dir * r;
+            }
+            case EmissionShape.Hemisphere:
+            {
+                Vector3 dir = SampleSphere();
+                float u = _rng.NextFloat();
+                float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Cbrt(u), 1f, cfg.ShapeShell);
+                Vector3 offset = dir * r;
+                Vector3 axis = SafeAxis(cfg.Direction);
+                float d = Vector3.Dot(offset, axis);
+                if (d < 0f)
+                {
+                    // Fold the below-axis half up so the dome opens along the axis.
+                    offset -= 2f * d * axis;
+                }
+                return offset;
+            }
+            case EmissionShape.Disc:
+            {
+                Vector3 axis = SafeAxis(cfg.Direction);
+                BuildBasis(axis, out Vector3 t, out Vector3 b);
+                float phi = (MathF.PI * 2f) * _rng.NextFloat();
+                float u = _rng.NextFloat();
+                float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Sqrt(u), 1f, cfg.ShapeShell);
+                return (t * MathF.Cos(phi) + b * MathF.Sin(phi)) * r;
+            }
+            default:
+                return Vector3.Zero;
+        }
+    }
+
+    /// <summary>Unit axis from <paramref name="dir"/>, defaulting to <c>+Y</c> when it is ~zero.</summary>
+    private static Vector3 SafeAxis(Vector3 dir)
+    {
+        float lenSq = dir.LengthSquared();
+        return lenSq < 1e-12f ? Vector3.UnitY : dir / MathF.Sqrt(lenSq);
     }
 
     /// <summary>Two unit vectors orthogonal to <paramref name="n"/> and to each other.</summary>

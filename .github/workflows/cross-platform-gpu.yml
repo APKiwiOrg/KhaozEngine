@@ -1,8 +1,11 @@
-# cross-platform-gpu: desktop GPU golden-snapshot matrix (Win D3D11 / Linux Vulkan / macOS Metal).
+# cross-platform-gpu: desktop GPU test matrix (Win D3D11 / Linux Vulkan / macOS Metal).
 #
 # What this does:
-#   * On push / pull_request to main it VERIFIES the committed per-backend goldens
-#     (KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt) on a real runner for each desktop backend.
+#   * On push / pull_request to main it runs the WHOLE test suite (every [GpuFact], golden and
+#     behavioral, plus the headless suite) on a real runner for each desktop backend, so the golden
+#     snapshots AND every other GPU-backed test class get verified per backend, not just the ones
+#     named "Golden". Committed per-backend goldens live at
+#     KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt.
 #   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
 #     Linux Vulkan (Mesa lavapipe).
 #
@@ -44,7 +47,7 @@ on:
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
       - 'KhaozEngine.Tests/Gpu/**'
-      # GoldenGridTests live here and match the ~Golden matrix filter, so this dir must trigger too
+      # GoldenGridTests live here and run as part of the full suite below, so this dir must trigger too
       # (the 10.18.1 LF fix shipped without a matrix run because only Tests/Gpu was watched).
       - 'KhaozEngine.Tests/Imaging/**'
       - '.github/workflows/cross-platform-gpu.yml'
@@ -146,12 +149,17 @@ jobs:
         continue-on-error: true
         run: vulkaninfo --summary || true
 
-      - name: Run GPU golden tests
+      # Runs the FULL test suite (all [GpuFact] tests, golden and behavioral, plus the headless suite)
+      # against this backend, mirroring ci.yml's exclusion. Previously this filtered to
+      # "FullyQualifiedName~Golden", which meant every GpuFact class without "Golden" in its name never
+      # ran on any backend. LiveSocket is excluded here for the same reason ci.yml excludes it (needs a
+      # live network peer, not available on these runners).
+      - name: Run full test suite
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
-        run: dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden"
+        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
 
       # On a verify FAILURE: upload the got/want/diff evidence PNGs the golden compare wrote, so the visual
       # regression can be eyeballed from the run without re-running. ignore = no spurious failure when a leg

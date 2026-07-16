@@ -50,7 +50,7 @@ namespace KhaozEngine.Telegraphs
         public readonly float SweepGlow;
 
         /// <summary>
-        /// Edge sparkle energy (0..1). Multiplied by edge energy; 0 if EdgeSparkle flag is off.
+        /// Edge sparkle energy (0..1). Multiplied by edge energy. 0 if EdgeSparkle flag is off.
         /// </summary>
         public readonly float Sparkle;
 

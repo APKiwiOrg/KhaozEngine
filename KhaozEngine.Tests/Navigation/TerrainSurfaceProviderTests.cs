@@ -134,6 +134,31 @@ public class TerrainSurfaceProviderTests
     }
 
     [Fact]
+    public void SurfaceCoveringCollider_StillStandable()
+    {
+        var terrain = new TerrainCollision(FlatField());
+        var center = new Vector2(5f, 5f);
+        var surfaces = new WorldSurfaces(new[] { new WorldSurface(FlatTop(0.4f), center, 1f, 0f, 0f) });
+        var colliders = new WorldColliders(new[] { WorldCollider.Cylinder(center, 1.5f) });
+        float probeRadius = 0.5f * 0.70710678f;
+        var provider = new TerrainSurfaceProvider(terrain, MathF.PI / 2f, surfaces, colliders, probeRadius);
+
+        // The prop's surface footprint and the cylinder's collider footprint both cover (5, 5): the
+        // surface must win, returning the prop top instead of being blocked by the collider beneath it.
+        bool onBoth = provider.TrySample(5f, 5f, out float h, out float hr);
+
+        Assert.True(onBoth);
+        Assert.Equal(0.4f, h, 3);
+        Assert.Equal(float.PositiveInfinity, hr);
+
+        // Same provider, a point still inside the collider's radius but outside the surface's footprint:
+        // this must be blocked, proving the collider genuinely bites here and the pass above is not vacuous.
+        bool colliderOnly = provider.TrySample(5f, 6.4f, out _, out _);
+
+        Assert.False(colliderOnly);
+    }
+
+    [Fact]
     public void Deterministic()
     {
         var terrain = new TerrainCollision(BumpyField());

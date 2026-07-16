@@ -10,26 +10,59 @@ namespace KhaozEngine.Showcase
     /// </summary>
     internal static class ShowcaseStrings
     {
-        // Menu
-        public static readonly StringId GuiTitle = new("Gui.Title");
-        public static readonly StringId MenuSettings = new("Menu.Settings");
-        public static readonly StringId MenuWidgets = new("Menu.Widgets");
-        public static readonly StringId MenuImmediate = new("Menu.Immediate");
-        public static readonly StringId MenuOverlayDemo = new("Menu.OverlayDemo");
-        public static readonly StringId MenuPatchNotes = new("Menu.PatchNotes");
-        public static readonly StringId MenuFooter = new("Menu.Footer");
+        // Hub (the tile menu)
+        public static readonly StringId HubTitle = new("Hub.Title");
+        public static readonly StringId HubSubtitle = new("Hub.Subtitle");
+        public static readonly StringId HubHint = new("Hub.Hint");
+        public static readonly StringId HubEngineVersion = new("Hub.EngineVersion");
 
-        // Settings
+        // Room tiles: one Title + one Blurb per registered room, in menu order.
+        public static readonly StringId RoomGui2DTitle = new("Room.Gui2D.Title");
+        public static readonly StringId RoomGui2DBlurb = new("Room.Gui2D.Blurb");
+        public static readonly StringId RoomMiniGameTitle = new("Room.MiniGame.Title");
+        public static readonly StringId RoomMiniGameBlurb = new("Room.MiniGame.Blurb");
+        public static readonly StringId RoomBootTitle = new("Room.Boot.Title");
+        public static readonly StringId RoomBootBlurb = new("Room.Boot.Blurb");
+        public static readonly StringId RoomWorldTitle = new("Room.World.Title");
+        public static readonly StringId RoomWorldBlurb = new("Room.World.Blurb");
+        public static readonly StringId RoomNetTitle = new("Room.Net.Title");
+        public static readonly StringId RoomNetBlurb = new("Room.Net.Blurb");
+        public static readonly StringId RoomDungeonTitle = new("Room.Dungeon.Title");
+        public static readonly StringId RoomDungeonBlurb = new("Room.Dungeon.Blurb");
+        public static readonly StringId RoomMapEditorTitle = new("Room.MapEditor.Title");
+        public static readonly StringId RoomMapEditorBlurb = new("Room.MapEditor.Blurb");
+
+        // Per-room controls hints (the chrome's bottom band).
+        public static readonly StringId ControlsGui2D = new("Controls.Gui2D");
+        public static readonly StringId ControlsMiniGame = new("Controls.MiniGame");
+        public static readonly StringId ControlsBoot = new("Controls.Boot");
+        public static readonly StringId ControlsWorld1 = new("Controls.World1");
+        public static readonly StringId ControlsWorld2 = new("Controls.World2");
+        public static readonly StringId ControlsNet = new("Controls.Net");
+        public static readonly StringId ControlsDungeon = new("Controls.Dungeon");
+
+        // 2D and GUI room: tab labels.
+        public static readonly StringId TabWidgets = new("Tab.Widgets");
+        public static readonly StringId TabSprites = new("Tab.Sprites");
+        public static readonly StringId TabInput = new("Tab.Input");
+        public static readonly StringId TabImmediate = new("Tab.Immediate");
+        public static readonly StringId TabScreens = new("Tab.Screens");
+
+        // Settings dialog
         public static readonly StringId SettingsTitle = new("Settings.Title");
         public static readonly StringId SettingsVolume = new("Settings.Volume");
         public static readonly StringId SettingsFullscreen = new("Settings.Fullscreen");
         public static readonly StringId SettingsHelp = new("Settings.Help");
 
-        // Widgets
+        // Widgets page
         public static readonly StringId WidgetsTitle = new("Widgets.Title");
+        public static readonly StringId WidgetsSectionForm = new("Widgets.SectionForm");
+        public static readonly StringId WidgetsSectionHud = new("Widgets.SectionHud");
+        public static readonly StringId WidgetsSectionSkin = new("Widgets.SectionSkin");
         public static readonly StringId WidgetsName = new("Widgets.Name");
         public static readonly StringId WidgetsNamePlaceholder = new("Widgets.NamePlaceholder");
         public static readonly StringId WidgetsDifficulty = new("Widgets.Difficulty");
+        public static readonly StringId WidgetsPartySize = new("Widgets.PartySize");
         public static readonly StringId WidgetsList = new("Widgets.List");
         public static readonly StringId WidgetsHoverForTip = new("Widgets.HoverForTip");
         public static readonly StringId WidgetsConfirm = new("Widgets.Confirm");
@@ -38,18 +71,49 @@ namespace KhaozEngine.Showcase
         public static readonly StringId WidgetsTipLine2 = new("Widgets.TipLine2");
         public static readonly StringId WidgetsHotbar = new("Widgets.Hotbar");
         public static readonly StringId WidgetsLoading = new("Widgets.Loading");
+        public static readonly StringId WidgetsCastBar = new("Widgets.CastBar");
+        public static readonly StringId WidgetsPips = new("Widgets.Pips");
+        public static readonly StringId WidgetsResource = new("Widgets.Resource");
         public static readonly StringId WidgetsSkinTitle = new("Widgets.SkinTitle");
         public static readonly StringId WidgetsSkinButton = new("Widgets.SkinButton");
         public static readonly StringId WidgetsSkinPanel = new("Widgets.SkinPanel");
 
-        // Overlay demo
-        public static readonly StringId OverlayTitle = new("Overlay.Title");
-        public static readonly StringId OverlayHint = new("Overlay.Hint");
-        public static readonly StringId OverlayPush = new("Overlay.Push");
+        // Sprites and text page
+        public static readonly StringId SpritesSectionSprites = new("Sprites.SectionSprites");
+        public static readonly StringId SpritesSectionText = new("Sprites.SectionText");
+        public static readonly StringId SpritesCaptionScale = new("Sprites.CaptionScale");
+        public static readonly StringId SpritesCaptionTint = new("Sprites.CaptionTint");
+        public static readonly StringId SpritesCaptionAlpha = new("Sprites.CaptionAlpha");
+
+        // Input and audio page: static row labels (values are raw diagnostics).
+        public static readonly StringId InputGesture = new("Input.Gesture");
+        public static readonly StringId InputClock = new("Input.Clock");
+        public static readonly StringId InputSimTime = new("Input.SimTime");
+        public static readonly StringId InputLastSfx = new("Input.LastSfx");
+        public static readonly StringId InputGamepad = new("Input.Gamepad");
+        public static readonly StringId InputClipboard = new("Input.Clipboard");
+        public static readonly StringId InputKeys = new("Input.Keys");
+
+        // Screens and dialogs page
+        public static readonly StringId ScreensIntro = new("Screens.Intro");
+        public static readonly StringId ScreensSettings = new("Screens.Settings");
+        public static readonly StringId ScreensSettingsCaption = new("Screens.SettingsCaption");
+        public static readonly StringId ScreensOverlay = new("Screens.Overlay");
+        public static readonly StringId ScreensOverlayCaption = new("Screens.OverlayCaption");
+        public static readonly StringId ScreensPatchNotes = new("Screens.PatchNotes");
+        public static readonly StringId ScreensPatchNotesCaption = new("Screens.PatchNotesCaption");
+
+        // Overlay demo (the pause overlay pushed from the Screens page)
         public static readonly StringId OverlayPaused = new("Overlay.Paused");
         public static readonly StringId OverlayResume = new("Overlay.Resume");
 
         // Mini-game
+        public static readonly StringId MiniGameTitle = new("MiniGame.Title");
+        public static readonly StringId MiniGameTagline = new("MiniGame.Tagline");
+        public static readonly StringId MiniGameScore = new("MiniGame.Score");
+        public static readonly StringId MiniGameLives = new("MiniGame.Lives");
+        public static readonly StringId MiniGameFinalScore = new("MiniGame.FinalScore");
+        public static readonly StringId MiniGameGameOver = new("MiniGame.GameOver");
         public static readonly StringId MiniGamePlay = new("MiniGame.Play");
         public static readonly StringId MiniGameBackToMenu = new("MiniGame.BackToMenu");
         public static readonly StringId MiniGameRetry = new("MiniGame.Retry");
@@ -72,6 +136,5 @@ namespace KhaozEngine.Showcase
         public static readonly StringId BootStepAssets = new("Boot.StepAssets");
         public static readonly StringId BootStepAudio = new("Boot.StepAudio");
         public static readonly StringId BootStepWorld = new("Boot.StepWorld");
-        public static readonly StringId BootHint = new("Boot.Hint");
     }
 }

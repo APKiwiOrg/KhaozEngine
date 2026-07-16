@@ -161,7 +161,13 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     byte-identical): a header band (`HeaderHeight` + `DrawHeader`) above the scroll region; a slide-up animation
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
     within `MinHeight`/`MaxHeight` (`Resizable`); and a dimmed `Scrim` with tap-outside-to-close (`ScrimDismissed`).
-    Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set).
+    Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set). Opt-in height glide
+    (10.120.0, `HeightGlideSeconds`, default 0 = off): when the caller-owned `Bounds` height changes while the
+    panel is visible (e.g. a content-driven height recompute after ItemCount changes), `EffectiveHeight` eases
+    toward the new target over that many seconds instead of snapping, via the new dt-fed
+    `Update(Pointer, InputState, float dt)` overload (the legacy no-dt `Update(Pointer, InputState)` overload never
+    glides). Always snaps on the first update and whenever the panel is fully hidden (`TransitionAlpha <= 0`), and
+    never fights an active drag-resize.
   - `TreeView` - scrollable outline over `TreeNode` roots (a `LocalizedText` label, children, an `Expanded`
     flag, a caller-owned `Tag`). `VisibleRows()` is the depth-first walk skipping collapsed subtrees. A tap in a
     row's caret zone (the `Indent`-wide band at its depth) toggles expansion for a node with children, a tap

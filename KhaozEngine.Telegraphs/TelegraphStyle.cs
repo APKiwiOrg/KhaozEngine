@@ -13,9 +13,10 @@ namespace KhaozEngine.Telegraphs
     public enum TelegraphFillPattern
     {
         Solid = 0,
-        /// <summary>Value noise scrolling across the shape, tinted by the fill color.</summary>
+        /// <summary>Domain-warped value noise drifting across the shape into wispy filaments, tinted by
+        /// the fill color.</summary>
         ScrollingNoise = 1,
-        /// <summary>Value noise flowing radially outward from the shape center.</summary>
+        /// <summary>Cartesian vortex swirl, spiral arms orbiting the shape center over time.</summary>
         RadialNoise = 2,
     }
 

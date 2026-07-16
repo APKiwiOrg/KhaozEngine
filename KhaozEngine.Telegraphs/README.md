@@ -12,19 +12,25 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   copies work for tweaking a preset.
 - `TelegraphAnim` flags (composable, OR them together): `OutlinePulse`, `FillSweep`, `ColorRamp`,
   `ImpactFlash` (the original four), plus `RimGlow` (soft glow hugging the boundary), `SweepGlow`
-  (bright leading edge on the `FillSweep` front, no-op without `FillSweep` also set), and
-  `EdgeSparkle` (sparse animated sparkle cells along the boundary).
+  (bright leading edge on the `FillSweep` front, no-op without `FillSweep` also set, ramps in over
+  the first fifth of the cast so an early sweep doesn't engulf the whole shape center),
+  `EdgeSparkle` (sparse animated sparkle cells along the boundary), and `OutlineRunner` (rotating
+  dash segments orbiting the outline band, a rune-ring feel).
 - Modern style knobs on `TelegraphStyle` (consumed by the 3D ground-decal path only, see the
   callout below):
   - `FeatherWidth` - soft-edge band, as a fraction of the shape's characteristic size. 0 keeps
     the legacy hard anti-aliased edge.
   - `Pattern` (`TelegraphFillPattern`): `Solid` (legacy flat tint, default), `ScrollingNoise`
-    (value noise scrolling across the shape), `RadialNoise` (value noise flowing radially
-    outward from the shape center).
+    (domain-warped value noise drifting across the shape into wispy filaments, not round
+    scrolling blobs), `RadialNoise` (a Cartesian vortex swirl, spiral arms orbiting the shape
+    center over time, no polar singularity at the center).
   - `PatternSpeed` - pattern animation rate, cycles per second of the scene effect clock.
   - `PatternScale` - noise cells across the shape's characteristic size. 0 falls back to 6.
   - `EdgeEnergy` - master strength multiplier for `RimGlow` / `SweepGlow` / `EdgeSparkle`. 0
     means the default full strength of 1 (not off). Set an explicit value to scale it.
+  - `InteriorDim` - how much the deep fill interior dims relative to the boundary and sweep
+    front (0 = legacy uniform fill, 1 = fully hollow), concentrating energy at the rim. Presets
+    use roughly 0.35 to 0.6. All seven set a nonzero value now.
 - Presets, each a distinct character to reach for by name:
 
   | Preset | Character |
@@ -32,23 +38,24 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   | `Generic` | Neutral red-orange danger zone, alpha-blended, fill sweep + color ramp + impact flash, plus rim and sweep glow (no outline pulse). |
   | `Fire` | Additive warm glow, scrolling noise, edge sparkle. |
   | `Poison` | Toxic green, alpha-blended, pulsing outline, plus rim and sweep glow. |
-  | `Steel` | Cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle. |
-  | `Frost` | Pale ice blue, wide soft feather, slow radial noise flow, rim glow + edge sparkle, no sweep glow. |
+  | `Steel` | Cool grey, crisp edge, fine brushed-grain noise, outline dash runner, no rim glow or sparkle. |
+  | `Frost` | Pale ice blue, wide soft feather, slow vortex swirl, rim glow + edge sparkle, no sweep glow. |
   | `Nature` | Verdant green, soft organic drift, rim glow + sweep glow, no pulse or flash. |
-  | `Arcane` | Violet additive energy, radial noise, every animation flag on. |
+  | `Arcane` | Violet additive energy, vortex swirl, every animation flag on. |
 
   Copy a preset and tweak fields.
 - `TelegraphResolve.Resolve(progress, style)` - the pure progress-to-visual mapping. No state,
   no allocation, no randomness, same inputs give the same output. Returns a `ResolvedTelegraph`:
   final fill/outline colors (opacity + pulse already applied), swept fill fraction, impact-flash
   term, edge thickness, fill mode, blend, plus the resolved feather fraction, pattern +
-  speed + scale, and rim glow / sweep glow / sparkle energies (each 0 when its flag is off).
+  speed + scale, interior dim, and rim glow / sweep glow / sparkle / runner energies (each 0 when
+  its flag is off).
 - `TelegraphRenderer2D` - immediate-mode 2D renderer over a caller-owned `SpriteBatch` +
   `PrimitiveRenderer`: `Begin(batch, primitives)`, then `Circle` / `Ring` / `Beam` / `Cone` /
   `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only. **It reads none of the
   modern style knobs above** (FeatherWidth, Pattern/PatternSpeed/PatternScale, EdgeEnergy,
-  RimGlow, SweepGlow, EdgeSparkle) - those are a `KhaozEngine.Telegraphs.Render3D` ground-decal
-  feature.
+  InteriorDim, RimGlow, SweepGlow, EdgeSparkle, OutlineRunner) - those are a
+  `KhaozEngine.Telegraphs.Render3D` ground-decal feature.
 - `ZoneSense.Safe` is reserved for a future version (v1 renders it exactly like `Danger`).
 
 ```csharp

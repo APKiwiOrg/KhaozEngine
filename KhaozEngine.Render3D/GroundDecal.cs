@@ -16,9 +16,11 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>Flat fill, no procedural texture (legacy default).</summary>
         Solid = 0,
-        /// <summary>Value noise scrolled in decal-local XZ (drifting cloud look).</summary>
+        /// <summary>Domain-warped value noise drifting in decal-local XZ (wispy filament look, not round
+        /// scrolling blobs).</summary>
         ScrollingNoise = 1,
-        /// <summary>Value noise in polar (radius, angle) space, scrolling radially (radiating rings look).</summary>
+        /// <summary>Cartesian vortex swirl: spiral arms orbiting the decal center over time, no polar
+        /// singularity at the center.</summary>
         RadialNoise = 2,
     }
 

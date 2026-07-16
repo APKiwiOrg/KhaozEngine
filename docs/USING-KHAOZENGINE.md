@@ -2278,21 +2278,30 @@ the 3D ground-decal path only, see below):
   for Circle/Arc, outer radius for Ring, width for Beam, range for Cone). 0 keeps the legacy hard
   anti-aliased edge. Presets use roughly 0.06 (crisp) to 0.18 (soft).
 - `Pattern` (`TelegraphFillPattern`) - interior fill texture. `Solid` (default) is the legacy flat
-  tint. `ScrollingNoise` drifts value noise across the shape. `RadialNoise` flows it radially
-  outward from the shape center.
+  tint. `ScrollingNoise` is domain-warped value noise drifting across the shape: the warp bends the
+  drift into wispy filaments instead of round scrolling blobs. `RadialNoise` is a Cartesian vortex
+  swirl, spiral arms orbiting the shape center over time (Cartesian sampling, so there is no polar
+  singularity mushing the center into a blob).
 - `PatternSpeed` - pattern animation rate, in cycles per second of `Scene3D.EffectTimeSeconds`.
 - `PatternScale` - noise cells across the shape's characteristic size. 0 falls back to 6.
 - `EdgeEnergy` - master strength multiplier for the RimGlow / SweepGlow / EdgeSparkle animations
   below. 0 means the default full strength of 1, so leaving it unset is not "off". Set an
   explicit value to scale the glow and sparkle up or down.
+- `InteriorDim` - how much the deep fill interior dims relative to the boundary and sweep front
+  (0 = legacy uniform fill, 1 = fully hollow). Concentrates the energy at the rim and the moving
+  sweep edge instead of pooling flat across the whole shape. Presets use roughly 0.35 (dense) to
+  0.6 (hollow). All seven set a nonzero value now, so every preset renders the hollow-rim look
+  unless you dial it back to 0 on a custom style.
 
-`TelegraphAnim` gained three flags alongside the original four (`OutlinePulse`, `FillSweep`,
+`TelegraphAnim` gained four flags alongside the original four (`OutlinePulse`, `FillSweep`,
 `ColorRamp`, `ImpactFlash`):
 
 - `RimGlow` - soft glow hugging the shape boundary, pulsing with cast progress.
 - `SweepGlow` - bright soft leading edge riding the `FillSweep` front. No-op without `FillSweep`
-  also set.
+  also set. Ramps in over the first fifth of the cast, so an early-cast sweep never engulfs the
+  whole (still tiny) swept region into a bright ball at the shape center.
 - `EdgeSparkle` - sparse animated sparkle cells along the shape boundary.
+- `OutlineRunner` - rotating dash segments orbiting the outline band, a rune-ring feel.
 
 **Presets** (`TelegraphStyle.Generic` / `.Fire` / `.Poison` / `.Steel` / `.Frost` / `.Nature` /
 `.Arcane`), each a distinct character to reach for by name instead of hand-tuning fields:
@@ -2301,11 +2310,12 @@ the 3D ground-decal path only, see below):
   flash, plus rim and sweep glow (no outline pulse).
 - `Fire` - additive warm glow, scrolling noise, edge sparkle.
 - `Poison` - toxic green, alpha-blended, pulsing outline, plus rim and sweep glow.
-- `Steel` - cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle.
-- `Frost` - pale ice blue, wide soft feather, slow radial noise flow, rim glow and edge sparkle,
-  no sweep glow.
+- `Steel` - cool grey, crisp edge, fine brushed-grain noise, outline dash runner, no rim glow or
+  sparkle.
+- `Frost` - pale ice blue, wide soft feather, slow vortex swirl, rim glow and edge sparkle, no
+  sweep glow.
 - `Nature` - verdant green, soft organic drift, rim glow and sweep glow, no pulse or flash.
-- `Arcane` - violet additive energy, radial noise, every animation flag on (full edge energy).
+- `Arcane` - violet additive energy, vortex swirl, every animation flag on (full edge energy).
 
 `Scene3D.DecalQuality` (`GroundDecalQuality.Full` by default) is a scene-wide, host-set tier for
 the ground-decal pass: `Reduced` drops the second noise octave and the edge sparkle for weak
@@ -2329,8 +2339,9 @@ The builder is pure and immediate-mode like every other telegraph call, so the C
         scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
-Pattern/PatternSpeed/PatternScale, EdgeEnergy, RimGlow, SweepGlow, EdgeSparkle, and residue) and
-always renders the flat legacy fill/outline/pulse/flash look. They are a 3D ground-decal feature.
+Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, RimGlow, SweepGlow, EdgeSparkle,
+OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash look. They
+are a 3D ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same

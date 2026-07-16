@@ -579,7 +579,9 @@ full path is throttled while a drag or draw gesture is live (`EditorToolControll
 it runs at most once per `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the
 throttle), with `WorldRebuildPending` left untouched on a throttled frame so the very next check after the
 gesture ends always performs the final full rebuild. The partial path is never throttled (it is cheap by
-construction).
+construction). A bounded `DirtyRegion` comes from `FeatureGeometry.TryFootprint` for terrain features and
+`ShapeGeometry.TryBounds` for exclusion / scatter-override shapes (both a padded AABB), so a gizmo drag on
+any of those stays on the never-throttled partial path instead of the gesture-throttled full one.
 
 **Same-frame inspector rebuild.** A terrain-feature parameter scrub lands through the `PropertyGrid`
 inspector, which is polled inside `UpdateChrome`, now BEFORE `CheckWorldRebuild` in the per-frame order (moved

@@ -1052,8 +1052,201 @@ namespace KhaozEngine.Tests.MapEditor
         {
             // A terrain-scalar edit (here the water level) changes the whole world, so it reports no bounded region.
             Assert.Null(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f).DirtyRegion);
-            // An exclusion add is whole-zone by design this round too.
-            Assert.Null(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }).DirtyRegion);
+            // A biome band's reach spans the whole doc (bounded only in its elevation-range Z slice, a possible
+            // future narrowing), so it stays whole-zone too.
+            Assert.Null(new AddBiomeBandCommand(new MapBiomeBand()).DirtyRegion);
+        }
+
+        // A disc's ShapeGeometry.TryBounds AABB: center +/- radius, padded by ShapeBoundsMargin.
+        static RectArea DiscBounds(float cx, float cz, float radius)
+        {
+            float r = MathF.Abs(radius) + ShapeGeometry.ShapeBoundsMargin;
+            return new RectArea(cx - r, cz - r, cx + r, cz + r);
+        }
+
+        static RectArea AssertRectArea(RectArea? region)
+        {
+            Assert.NotNull(region);
+            return region!.Value;
+        }
+
+        // ---- DirtyRegion: exclusion shape commands ------------------------------------------------------
+
+        [Fact]
+        public void AddExclusionCommand_DirtyRegion_IsAddedShapeBounds()
+        {
+            var exclusion = new MapExclusion { Shape = new DiscShapeDoc { CenterX = 4f, CenterZ = -6f, Radius = 3f } };
+            RectArea region = AssertRectArea(new AddExclusionCommand(exclusion).DirtyRegion);
+            RectArea expected = DiscBounds(4f, -6f, 3f);
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void RemoveExclusionCommand_DirtyRegion_IsRemovedShapeBounds_AfterApply()
+        {
+            var doc = Sample();   // exclusion[0] is a disc at (-32, 22) r30
+            var disc = Assert.IsType<DiscShapeDoc>(doc.Exclusions[0].Shape);
+            var cmd = new RemoveExclusionCommand(0);
+
+            Assert.Null(cmd.DirtyRegion);   // before Apply the removed value is unknown, so no region yet
+            cmd.Apply(doc);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = DiscBounds(disc.CenterX, disc.CenterZ, disc.Radius);
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void EditExclusionShapeCommand_DirtyRegion_UnionsOldAndNewShapeBounds()
+        {
+            var oldShape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f };
+            var newShape = new DiscShapeDoc { CenterX = 20f, CenterZ = 0f, Radius = 5f };   // dragged +20 x
+            var cmd = new EditExclusionShapeCommand(0, newShape, oldShape);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = FeatureGeometry.Union(DiscBounds(0f, 0f, 5f), DiscBounds(20f, 0f, 5f));
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void EditExclusionShapeCommand_DirtyRegion_TracksLatestNewValueAfterMerge()
+        {
+            // TryMerge rewrites _newShape as a drag coalesces, and DirtyRegion is computed live, so it must cover
+            // the LATEST new shape, not the one captured at construction (the EditFeatureCommand idiom).
+            var v0 = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f };
+            var v1 = new DiscShapeDoc { CenterX = 10f, CenterZ = 0f, Radius = 5f };
+            var v2 = new DiscShapeDoc { CenterX = 30f, CenterZ = 0f, Radius = 5f };
+            var cmd = new EditExclusionShapeCommand(0, v1, v0);
+
+            Assert.True(cmd.TryMerge(new EditExclusionShapeCommand(0, v2, v1)));
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = FeatureGeometry.Union(DiscBounds(0f, 0f, 5f), DiscBounds(30f, 0f, 5f));   // v0 .. v2, not v1
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void EditExclusionShapeCommand_DirtyRegion_NullWhenEitherEndpointIsUnbounded()
+        {
+            var boundedShape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f };
+            var emptyPolygon = new PolygonShapeDoc();   // no points: TryBounds fails
+
+            Assert.Null(new EditExclusionShapeCommand(0, emptyPolygon, boundedShape).DirtyRegion);
+            Assert.Null(new EditExclusionShapeCommand(0, boundedShape, emptyPolygon).DirtyRegion);
+        }
+
+        [Fact]
+        public void EditExclusionLayersCommand_DirtyRegion_IsShapeBounds_UnaffectedByLayerChange()
+        {
+            var doc = Sample();   // exclusion[0] is a disc at (-32, 22) r30
+            var disc = Assert.IsType<DiscShapeDoc>(doc.Exclusions[0].Shape);
+            var cmd = new EditExclusionLayersCommand(0, new List<string> { "trees" }, null);
+
+            Assert.Null(cmd.DirtyRegion);   // before Apply/Revert has captured the shape, no region yet
+            cmd.Apply(doc);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = DiscBounds(disc.CenterX, disc.CenterZ, disc.Radius);
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        // ---- DirtyRegion: scatter-override shape commands -----------------------------------------------
+
+        [Fact]
+        public void AddScatterOverrideCommand_DirtyRegion_IsAddedShapeBounds()
+        {
+            var scatterOverride = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 5f } };
+            RectArea region = AssertRectArea(new AddScatterOverrideCommand(scatterOverride).DirtyRegion);
+            RectArea expected = DiscBounds(1f, 2f, 5f);
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void RemoveScatterOverrideCommand_DirtyRegion_IsRemovedShapeBounds_AfterApply()
+        {
+            var doc = Sample();   // scatterOverride[0] is a rect
+            var rect = Assert.IsType<RectShapeDoc>(doc.ScatterOverrides[0].Shape);
+            var cmd = new RemoveScatterOverrideCommand(0);
+
+            Assert.Null(cmd.DirtyRegion);
+            cmd.Apply(doc);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            float m = ShapeGeometry.ShapeBoundsMargin;
+            AssertBounds(region, rect.MinX - m, rect.MinZ - m, rect.MaxX + m, rect.MaxZ + m);
+        }
+
+        [Fact]
+        public void EditScatterOverrideShapeCommand_DirtyRegion_UnionsOldAndNewShapeBounds_IncludingAfterMerge()
+        {
+            var v0 = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 4f };
+            var v1 = new DiscShapeDoc { CenterX = 8f, CenterZ = 0f, Radius = 4f };
+            var v2 = new DiscShapeDoc { CenterX = 24f, CenterZ = 0f, Radius = 4f };
+            var cmd = new EditScatterOverrideShapeCommand(0, v1, v0);
+
+            RectArea firstRegion = AssertRectArea(cmd.DirtyRegion);
+            RectArea firstExpected = FeatureGeometry.Union(DiscBounds(0f, 0f, 4f), DiscBounds(8f, 0f, 4f));
+            AssertBounds(firstRegion, firstExpected.MinX, firstExpected.MinZ, firstExpected.MaxX, firstExpected.MaxZ);
+
+            // Live-computed, never cached: after a merge rewrites _newShape, the region covers v0..v2, not v0..v1.
+            Assert.True(cmd.TryMerge(new EditScatterOverrideShapeCommand(0, v2, v1)));
+            RectArea mergedRegion = AssertRectArea(cmd.DirtyRegion);
+            RectArea mergedExpected = FeatureGeometry.Union(DiscBounds(0f, 0f, 4f), DiscBounds(24f, 0f, 4f));
+            AssertBounds(mergedRegion, mergedExpected.MinX, mergedExpected.MinZ, mergedExpected.MaxX, mergedExpected.MaxZ);
+        }
+
+        [Fact]
+        public void EditScatterOverrideValuesCommand_DirtyRegion_IsShapeBounds_UnaffectedByValueChange()
+        {
+            var shape = new DiscShapeDoc { CenterX = 3f, CenterZ = -1f, Radius = 6f };
+            var oldValue = new MapScatterOverrideDoc { Shape = shape, DensityMultiplier = 1f };
+            var newValue = new MapScatterOverrideDoc { Shape = shape, DensityMultiplier = 0.25f };
+            var cmd = new EditScatterOverrideValuesCommand(0, newValue, oldValue);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = DiscBounds(3f, -1f, 6f);
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void ReorderScatterOverrideCommand_DirtyRegion_UnionsInclusiveFromToRange()
+        {
+            // Three overrides: reorder index 0 to index 2 spans the WHOLE range, so the dirty region must cover
+            // override 1 too (sandwiched in the middle), not just the two endpoints 0 and 2, per the brief's
+            // from..to-range choice (a reorder shuffles first-match-wins precedence for every override in between,
+            // not only the moved one).
+            var doc = Sample();
+            doc.ScatterOverrides.Clear();
+            var o0 = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } };
+            var o1 = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 50f, CenterZ = 50f, Radius = 2f } };   // far away: proves it's included
+            var o2 = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 10f, CenterZ = 0f, Radius = 2f } };
+            doc.ScatterOverrides.Add(o0);
+            doc.ScatterOverrides.Add(o1);
+            doc.ScatterOverrides.Add(o2);
+            var cmd = new ReorderScatterOverrideCommand(0, 2);
+
+            Assert.Null(cmd.DirtyRegion);   // before Apply/Revert has captured the range, no region yet
+            cmd.Apply(doc);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = FeatureGeometry.Union(
+                FeatureGeometry.Union(DiscBounds(0f, 0f, 2f), DiscBounds(50f, 50f, 2f)),
+                DiscBounds(10f, 0f, 2f));
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void ReorderScatterOverrideCommand_DirtyRegion_NullWhenAnyShapeInRangeIsUnbounded()
+        {
+            var doc = Sample();
+            doc.ScatterOverrides.Clear();
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } });
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new PolygonShapeDoc() });   // empty polygon: unbounded
+            var cmd = new ReorderScatterOverrideCommand(0, 1);
+
+            cmd.Apply(doc);
+
+            Assert.Null(cmd.DirtyRegion);   // any unbounded shape in the range forces a full rebuild
         }
 
         [Fact]
@@ -1126,7 +1319,9 @@ namespace KhaozEngine.Tests.MapEditor
 
             ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));   // a bounded rect
             Assert.NotNull(ed.PendingRebuildRegion);
-            ed.Execute(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }));
+            // A biome band edit has no bounded reach (unlike an exclusion, which now narrows to its shape's
+            // bounds), so it is the null-region command that turns the pending region full-sticky here.
+            ed.Execute(new AddBiomeBandCommand(new MapBiomeBand()));
 
             Assert.True(ed.WorldRebuildPending);
             Assert.Null(ed.PendingRebuildRegion);   // a null-region command turns the pending region full-sticky
@@ -1139,7 +1334,7 @@ namespace KhaozEngine.Tests.MapEditor
             var ed = new EditorDocument(doc);
             var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
 
-            ed.Execute(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }));
+            ed.Execute(new AddBiomeBandCommand(new MapBiomeBand()));
             Assert.Null(ed.PendingRebuildRegion);   // full from the outset
             ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));   // a later bounded rect cannot un-stick it
 
@@ -1154,7 +1349,7 @@ namespace KhaozEngine.Tests.MapEditor
             var ed = new EditorDocument(doc);
             var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
 
-            ed.Execute(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }));
+            ed.Execute(new AddBiomeBandCommand(new MapBiomeBand()));
             ed.AcknowledgeWorldRebuild();
             Assert.False(ed.WorldRebuildPending);
             Assert.Null(ed.PendingRebuildRegion);

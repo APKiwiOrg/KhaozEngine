@@ -1,4 +1,6 @@
+using System;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
 
@@ -63,6 +65,63 @@ internal static class ShapeGeometry
             }
             default:
                 return null;
+        }
+    }
+
+    /// <summary>Margin (world units) padded around a shape's exact bounds for the dirty-region rect an exclusion
+    /// or scatter-override edit invalidates. Both only ever reach scatter (<c>PropScatter.InExclusion</c> /
+    /// <c>OverrideFor</c>), a pointwise <see cref="IArea2D.Contains"/> test with no falloff and no height/normal
+    /// reach, so the true correctness floor is 0: a chunk's candidate cells are tested directly against the
+    /// shape, with nothing beyond its own bounds able to change. The margin exists only to cover two boundary
+    /// effects: chunk invalidation maps a world rect to the whole chunks it touches (inclusive of a shape edge
+    /// sitting exactly on a chunk seam), and a disc/rect authored with a boundary exactly on a seam can drift
+    /// either way by float rounding. 2 m is generous headroom over both without approaching
+    /// <see cref="FeatureGeometry.FootprintMargin"/>'s 8 m, which pads a height/normal reach this shape-only case
+    /// does not have.</summary>
+    internal const float ShapeBoundsMargin = 2f;
+
+    /// <summary>A conservative world-space AABB covering <paramref name="shape"/>, padded by
+    /// <see cref="ShapeBoundsMargin"/>: a disc's center +/- radius, a rect's Min/Max (normalized if authored with
+    /// Min &gt; Max), or the min/max over a polygon's points. False (and a default area) for a null shape or an
+    /// empty polygon (no points to bound), the same no-guessing rule <see cref="TryCenter"/> follows: a false
+    /// here means the edit takes the full rebuild.</summary>
+    internal static bool TryBounds(MapShapeDoc? shape, out RectArea area)
+    {
+        switch (shape)
+        {
+            case DiscShapeDoc d:
+            {
+                float r = MathF.Abs(d.Radius) + ShapeBoundsMargin;
+                area = new RectArea(d.CenterX - r, d.CenterZ - r, d.CenterX + r, d.CenterZ + r);
+                return true;
+            }
+            case RectShapeDoc r:
+            {
+                float minX = MathF.Min(r.MinX, r.MaxX) - ShapeBoundsMargin;
+                float minZ = MathF.Min(r.MinZ, r.MaxZ) - ShapeBoundsMargin;
+                float maxX = MathF.Max(r.MinX, r.MaxX) + ShapeBoundsMargin;
+                float maxZ = MathF.Max(r.MinZ, r.MaxZ) + ShapeBoundsMargin;
+                area = new RectArea(minX, minZ, maxX, maxZ);
+                return true;
+            }
+            case PolygonShapeDoc p when p.Points.Count > 0:
+            {
+                float minX = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
+                foreach (float[] pt in p.Points)
+                {
+                    float x = pt.Length > 0 ? pt[0] : 0f;
+                    float z = pt.Length > 1 ? pt[1] : 0f;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (z < minZ) minZ = z;
+                    if (z > maxZ) maxZ = z;
+                }
+                area = new RectArea(minX - ShapeBoundsMargin, minZ - ShapeBoundsMargin, maxX + ShapeBoundsMargin, maxZ + ShapeBoundsMargin);
+                return true;
+            }
+            default:
+                area = default;
+                return false;
         }
     }
 }

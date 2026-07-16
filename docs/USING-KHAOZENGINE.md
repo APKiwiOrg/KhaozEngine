@@ -4568,10 +4568,13 @@ shared 260) now split independently, giving the grouped companion/scatter-layer 
 **Viewport rebuild performance.** A bounded terrain-feature edit (a lake or flatten drag, for example)
 reports a `DirtyRegion`, so `CheckWorldRebuild` re-meshes only the loaded chunks the edit's accumulated
 region overlaps (`ViewportWorld.PartialRebuild`) instead of tearing down and rebuilding the whole streamed
-world. A ridge or rim edit has unbounded reach and, like a scatter layer, exclusion, scatter override, or
-terrain-scalar edit, still takes the full `ViewportWorld.Rebuild` path (a scatter override's `DirtyRegion`
-narrowing is deferred, see the `KhaozEngine` `docs/MAP-EDITOR-DESIGN.md` deferred-work note), throttled to
-at most once per
+world. An exclusion or scatter-override edit (add, remove, shape drag/scrub, layer/value edit, or reorder)
+narrows the same way, to `ShapeGeometry.TryBounds` (a padded shape AABB: both only ever reach scatter, a
+pointwise test with no falloff, so the shape's own bounds are exact). A ridge or rim edit has unbounded
+reach and, like a scatter layer, companion layer, or terrain-scalar edit, still takes the full
+`ViewportWorld.Rebuild` path (see the `KhaozEngine` `docs/MAP-EDITOR-DESIGN.md` deferred-work note for the
+one remaining gap: a biome band is bounded only in its elevation-range Z slice, not narrowed yet),
+throttled to at most once per
 `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or
 draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the world every frame. Kit meshes
 and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF

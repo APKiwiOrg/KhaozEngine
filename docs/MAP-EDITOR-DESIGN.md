@@ -432,9 +432,22 @@ still take the full-rebuild path by design this round (the dirty-region seam exi
 can narrow them), and ridge and rim features always fall back to full rebuild since their reach is
 unbounded.
 
-**Deferred out of this round (scatter-overrides)**: DirtyRegion narrowing for override shapes still
-takes the full-rebuild path (the shape bound could narrow like features do, once a later round picks
-that up). Exclusions were deliberately not added to the Ctrl+Up/Down reorder chord: their masks combine
+**Resolved (mapedit-playtest-fixes)**: DirtyRegion narrowing for exclusion and scatter-override shapes,
+deferred by the scatter-overrides round below, now ships. `ShapeGeometry.TryBounds` (a disc/rect/polygon
+AABB padded by `ShapeBoundsMargin`, 2 m) gives every exclusion and scatter-override command a bounded
+dirty region: the two shape commands (`EditExclusionShapeCommand`/`EditScatterOverrideShapeCommand`)
+union old and new shape bounds live (never cached, so a merged drag still covers the latest endpoint),
+add/remove report the touched shape's bounds, the layers/values whole-value commands report their
+(unchanged) shape's bounds, and `ReorderScatterOverrideCommand` unions every override shape across the
+inclusive from..to index range (not just the two endpoints: a reorder also flips first-match-wins
+precedence for every override sandwiched in between, so the whole range is the honest cheap cover).
+Fixes the choppy-drag feel an exclusion or scatter-override gizmo drag used to have (every frame fell to
+the throttled full-rebuild path, same as terrain scalars). Terrain scalars and biome bands are
+unaffected and stay whole-doc (a biome band is bounded only in its elevation-range Z slice, a possible
+future narrowing).
+
+**Deferred out of this round (scatter-overrides)**: Exclusions were deliberately not added to the
+Ctrl+Up/Down reorder chord: their masks combine
 as a set union where order never changes which ground ends up excluded, so a reorder chord would be
 meaningless for them (scatter overrides get the chord because their order is genuinely significant,
 first-match-wins). Polygon override shapes remain MCP-authored and inspector-read-only, the same as

@@ -37,13 +37,16 @@ public abstract class EditorCommand : IEditorCommand
     internal abstract bool AffectsWorld { get; }
 
     /// <summary>The world-space region this command's edit can change, or null when the edit's reach is not a
-    /// bounded rect (so the viewport must rebuild the WHOLE streamed world). The base returns null: only the feature
-    /// commands, whose reach is a single feature's <see cref="FeatureGeometry.TryFootprint"/> disc, narrow it. Read
-    /// by the document's pending-rebuild-region accumulation (<see cref="EditorDocument"/>) and only meaningful while
-    /// <see cref="AffectsWorld"/> is true. Every other <see cref="AffectsWorld"/> command (terrain scalars,
-    /// exclusions, scatter overrides, scatter layers, companions) keeps the null default: whole-zone by design
-    /// this round. Narrowing a scatter override's <see cref="DirtyRegion"/> to its shape's bounds, the same way a
-    /// future feature narrowing would, is a known later refinement, not this round's scope.</summary>
+    /// bounded rect (so the viewport must rebuild the WHOLE streamed world). The base returns null: the feature
+    /// commands narrow it to a single feature's <see cref="FeatureGeometry.TryFootprint"/> disc, and the
+    /// exclusion / scatter-override commands narrow it to their shape's <see cref="ShapeGeometry.TryBounds"/>
+    /// (both a pointwise scatter-only reach, so a padded shape AABB is exact). Read by the document's
+    /// pending-rebuild-region accumulation (<see cref="EditorDocument"/>) and only meaningful while
+    /// <see cref="AffectsWorld"/> is true. Every other <see cref="AffectsWorld"/> command (terrain scalars, biome
+    /// bands, scatter layers, companions) keeps the null default: a terrain scalar or biome band's reach spans
+    /// the whole doc (a biome band is bounded only in its elevation-range Z slice, a possible future narrowing),
+    /// and a scatter-layer or companion-layer edit changes generation rules read across every loaded chunk.
+    /// </summary>
     internal virtual RectArea? DirtyRegion => null;
 
     /// <inheritdoc/>
@@ -1061,6 +1064,12 @@ public sealed class AddExclusionCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
+    /// <remarks>The added exclusion's shape bounds, or null when its shape has no bounded AABB (no shape, or an
+    /// empty polygon).</remarks>
+    internal override RectArea? DirtyRegion =>
+        ShapeGeometry.TryBounds(_exclusion.Shape, out RectArea area) ? area : null;
+
+    /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.Exclusions.Add(_exclusion);
 
     /// <inheritdoc/>
@@ -1081,6 +1090,13 @@ public sealed class RemoveExclusionCommand : EditorCommand, IVisibilityEffect
     public override string Label => "Remove exclusion";
     internal override bool AffectsWorld => true;
     VisibilityOp IVisibilityEffect.Effect => VisibilityOp.RemoveAt(SelectionKind.Exclusion, _index);
+
+    /// <inheritdoc/>
+    /// <remarks>The removed exclusion's shape bounds, or null before <see cref="Apply"/> has captured it (the
+    /// removed value is not known until then) or when its shape has no bounded AABB (the
+    /// <see cref="RemoveFeatureCommand"/> capture-timing idiom).</remarks>
+    internal override RectArea? DirtyRegion =>
+        _removed is not null && ShapeGeometry.TryBounds(_removed.Shape, out RectArea area) ? area : null;
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -1122,6 +1138,22 @@ public sealed class EditExclusionShapeCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Edit exclusion shape";
     internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    /// <remarks>The union of the old and new shape bounds (both endpoints of a drag or scrub change scatter), or
+    /// null when either endpoint has no bounded AABB. Computed live from the CURRENT <see cref="_oldShape"/> /
+    /// <see cref="_newShape"/> every read, never cached: <see cref="TryMerge"/> rewrites <see cref="_newShape"/>
+    /// as a drag coalesces, so a cached region would stop covering the latest endpoint mid-drag (the
+    /// <see cref="EditFeatureCommand"/> idiom).</remarks>
+    internal override RectArea? DirtyRegion
+    {
+        get
+        {
+            if (!ShapeGeometry.TryBounds(_oldShape, out RectArea oldArea)) return null;
+            if (!ShapeGeometry.TryBounds(_newShape, out RectArea newArea)) return null;
+            return FeatureGeometry.Union(oldArea, newArea);
+        }
+    }
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.Exclusions[_index].Shape = _newShape;
@@ -1210,6 +1242,7 @@ public sealed class EditExclusionLayersCommand : EditorCommand
     readonly int _index;
     List<string>? _newLayers;
     readonly List<string>? _oldLayers;
+    MapShapeDoc? _shape;   // the exclusion's own shape, captured on Apply/Revert (this command never changes it)
 
     /// <summary>Creates the command replacing exclusion <paramref name="index"/>'s layer filter with
     /// <paramref name="newLayers"/>, capturing <paramref name="oldLayers"/> for revert. Both lists are copied
@@ -1227,10 +1260,26 @@ public sealed class EditExclusionLayersCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Layers = _newLayers?.ToList();
+    /// <remarks>The exclusion's own shape bounds: this command changes which layers the exclusion applies to,
+    /// not the shape, but scatter is still only rejected inside that shape, so the shape's bounds are the whole
+    /// dirty reach. Null before the first <see cref="Apply"/>/<see cref="Revert"/> has captured the shape (the
+    /// <see cref="RemoveFeatureCommand"/> capture-timing idiom), or when the shape has no bounded AABB.</remarks>
+    internal override RectArea? DirtyRegion =>
+        _shape is not null && ShapeGeometry.TryBounds(_shape, out RectArea area) ? area : null;
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.Exclusions[_index].Layers = _oldLayers?.ToList();
+    public override void Apply(MapDocument doc)
+    {
+        _shape = doc.Exclusions[_index].Shape;
+        doc.Exclusions[_index].Layers = _newLayers?.ToList();
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        _shape = doc.Exclusions[_index].Shape;
+        doc.Exclusions[_index].Layers = _oldLayers?.ToList();
+    }
 
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
@@ -1261,6 +1310,12 @@ public sealed class AddScatterOverrideCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
+    /// <remarks>The added override's shape bounds, or null when its shape has no bounded AABB (no shape, or an
+    /// empty polygon).</remarks>
+    internal override RectArea? DirtyRegion =>
+        ShapeGeometry.TryBounds(_override.Shape, out RectArea area) ? area : null;
+
+    /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.ScatterOverrides.Add(_override);
 
     /// <inheritdoc/>
@@ -1281,6 +1336,13 @@ public sealed class RemoveScatterOverrideCommand : EditorCommand, IVisibilityEff
     public override string Label => "Remove scatter override";
     internal override bool AffectsWorld => true;
     VisibilityOp IVisibilityEffect.Effect => VisibilityOp.RemoveAt(SelectionKind.ScatterOverride, _index);
+
+    /// <inheritdoc/>
+    /// <remarks>The removed override's shape bounds, or null before <see cref="Apply"/> has captured it (the
+    /// removed value is not known until then) or when its shape has no bounded AABB (the
+    /// <see cref="RemoveFeatureCommand"/> capture-timing idiom).</remarks>
+    internal override RectArea? DirtyRegion =>
+        _removed is not null && ShapeGeometry.TryBounds(_removed.Shape, out RectArea area) ? area : null;
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -1322,6 +1384,22 @@ public sealed class EditScatterOverrideShapeCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Edit scatter override shape";
     internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    /// <remarks>The union of the old and new shape bounds (both endpoints of a drag or scrub change scatter), or
+    /// null when either endpoint has no bounded AABB. Computed live from the CURRENT <see cref="_oldShape"/> /
+    /// <see cref="_newShape"/> every read, never cached: <see cref="TryMerge"/> rewrites <see cref="_newShape"/>
+    /// as a drag coalesces, so a cached region would stop covering the latest endpoint mid-drag (the
+    /// <see cref="EditExclusionShapeCommand"/> idiom).</remarks>
+    internal override RectArea? DirtyRegion
+    {
+        get
+        {
+            if (!ShapeGeometry.TryBounds(_oldShape, out RectArea oldArea)) return null;
+            if (!ShapeGeometry.TryBounds(_newShape, out RectArea newArea)) return null;
+            return FeatureGeometry.Union(oldArea, newArea);
+        }
+    }
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.ScatterOverrides[_index].Shape = _newShape;
@@ -1371,6 +1449,13 @@ public sealed class EditScatterOverrideValuesCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Edit scatter override values";
     internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    /// <remarks>The override's own shape bounds: Shape carries through unchanged (see the class doc comment), so
+    /// <see cref="_newValue"/> and <see cref="_oldValue"/> share the same shape reference and either reads it.
+    /// Null when the shape has no bounded AABB.</remarks>
+    internal override RectArea? DirtyRegion =>
+        ShapeGeometry.TryBounds(_newValue.Shape, out RectArea area) ? area : null;
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.ScatterOverrides[_index] = _newValue;
@@ -1468,6 +1553,12 @@ public sealed class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEf
     readonly int _fromIndex;
     readonly int _toIndex;
 
+    // The overrides spanning the inclusive [min(from,to), max(from,to)] index range, captured after Apply/Revert
+    // moves them (see the DirtyRegion doc comment for why that range, not just the two endpoints). A shallow
+    // GetRange copy: same object references as the live list, so a later mutation of one of these shapes (by a
+    // different command entirely) is still read live through DirtyRegion's TryBounds call, never a cached value.
+    List<MapScatterOverrideDoc>? _affected;
+
     /// <summary>Creates the command moving the scatter override at <paramref name="fromIndex"/> to
     /// <paramref name="toIndex"/> in the scatter override list. Both must be non-negative.</summary>
     public ReorderScatterOverrideCommand(int fromIndex, int toIndex)
@@ -1484,10 +1575,44 @@ public sealed class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEf
     VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Reorder(SelectionKind.ScatterOverride, _fromIndex, _toIndex);
 
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
+    /// <remarks>The union of every override shape's bounds across the inclusive index range
+    /// [min(from,to), max(from,to)], read live off <see cref="_affected"/> (captured after <see cref="Apply"/> /
+    /// <see cref="Revert"/>, the <see cref="RemoveFeatureCommand"/> capture-timing idiom: null before either has
+    /// run). A reorder's precise dirty reach is genuinely the whole range, not just the two endpoints: moving one
+    /// override past the others also flips ITS relative first-match-wins order against every override sandwiched
+    /// in between, so any of them could start (or stop) governing ground wherever it overlaps another override in
+    /// the range, not only where the moved one overlaps something. The full range union is a cheap, honest cover
+    /// for that (scatter overrides are few in practice). Narrowing to just the two endpoints would silently drop
+    /// the sandwiched ones' own reach. Null when any override shape in the range has no bounded AABB (an empty
+    /// polygon), which forces a full rebuild rather than risk an incomplete partial one.</remarks>
+    internal override RectArea? DirtyRegion
+    {
+        get
+        {
+            if (_affected is null) return null;
+            RectArea? union = null;
+            foreach (MapScatterOverrideDoc o in _affected)
+            {
+                if (!ShapeGeometry.TryBounds(o.Shape, out RectArea area)) return null;
+                union = union is RectArea acc ? FeatureGeometry.Union(acc, area) : area;
+            }
+            return union;
+        }
+    }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => Move(doc, _toIndex, _fromIndex);
+    public override void Apply(MapDocument doc)
+    {
+        Move(doc, _fromIndex, _toIndex);
+        CaptureAffected(doc);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        Move(doc, _toIndex, _fromIndex);
+        CaptureAffected(doc);
+    }
 
     // A list move (remove at `from`, re-insert at `to`), its own inverse. Range-guards both endpoints against the
     // live list up front so a bad index is a precise ArgumentOutOfRangeException, not an opaque list throw.
@@ -1499,6 +1624,16 @@ public sealed class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEf
         MapScatterOverrideDoc scatterOverride = doc.ScatterOverrides[from];
         doc.ScatterOverrides.RemoveAt(from);
         doc.ScatterOverrides.Insert(to, scatterOverride);
+    }
+
+    // Snapshots the [min(from,to), max(from,to)] slice of the (now-moved) list into _affected for DirtyRegion.
+    // The SET of overrides occupying that index range is identical before and after Move (only elements strictly
+    // between from and to shift within the range, and the moved element itself lands inside it), so reading the
+    // range post-move gives the same set DirtyRegion would need pre-move.
+    void CaptureAffected(MapDocument doc)
+    {
+        int lo = Math.Min(_fromIndex, _toIndex), hi = Math.Max(_fromIndex, _toIndex);
+        _affected = doc.ScatterOverrides.GetRange(lo, hi - lo + 1);
     }
 }
 

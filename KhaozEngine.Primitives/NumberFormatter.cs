@@ -102,7 +102,7 @@ public static class NumberFormatter
     static string FormatSimple(double abs, int decimalsSmall, int decimalsLarge)
     {
         if (abs < 1000)
-            return abs.ToString("F" + decimalsSmall.ToString(Inv), Inv);
+            return FormatBelowThousand(abs, decimalsSmall, decimalsLarge);
 
         string largeFmt = "F" + decimalsLarge.ToString(Inv);
 
@@ -122,7 +122,7 @@ public static class NumberFormatter
     static string FormatScientific(double abs, int decimalsSmall, int decimalsLarge)
     {
         if (abs < 1000)
-            return abs.ToString("F" + decimalsSmall.ToString(Inv), Inv);
+            return FormatBelowThousand(abs, decimalsSmall, decimalsLarge);
 
         return abs.ToString("E" + decimalsLarge.ToString(Inv), Inv);
     }
@@ -130,7 +130,7 @@ public static class NumberFormatter
     static string FormatEngineering(double abs, int decimalsSmall, int decimalsLarge)
     {
         if (abs < 1000)
-            return abs.ToString("F" + decimalsSmall.ToString(Inv), Inv);
+            return FormatBelowThousand(abs, decimalsSmall, decimalsLarge);
 
         // Engineering notation: exponent is always a multiple of 3.
         int exp = (int)Math.Floor(Math.Log10(abs));
@@ -138,5 +138,52 @@ public static class NumberFormatter
         double mantissa = abs / Math.Pow(10, engExp);
 
         return mantissa.ToString("F" + decimalsLarge.ToString(Inv), Inv) + "E" + engExp.ToString(Inv);
+    }
+
+    // A "F"-formatted decimal count beyond this is pointless: doubles only carry ~15-17 significant decimal
+    // digits, so this just bounds pathological output for values approaching double.Epsilon.
+    const int MaxSmallValueDecimals = 17;
+
+    /// <summary>
+    /// Formats a magnitude below 1,000 (the shared tail of all three notations). Values below 1 get enough
+    /// decimal places to show their leading significant digit truthfully - the fixed-decimalsSmall behaviour
+    /// (1 decimal by default) silently rounds a value like 0.05 up to "0.1", doubling what it visually reports.
+    /// Values at or above 1 - and any call that explicitly asks for zero small-value decimals, e.g.
+    /// <see cref="FormatInt(double)"/>'s integer-count contract - are unaffected: exactly <paramref name="decimalsSmall"/>
+    /// decimals, unchanged from the original behaviour.
+    /// </summary>
+    static string FormatBelowThousand(double abs, int decimalsSmall, int decimalsLarge)
+    {
+        if (decimalsSmall > 0 && abs > 0 && abs < 1)
+            return abs.ToString("F" + SmallValueDecimals(abs, decimalsSmall, decimalsLarge).ToString(Inv), Inv);
+
+        return abs.ToString("F" + decimalsSmall.ToString(Inv), Inv);
+    }
+
+    /// <summary>
+    /// Decimal places needed to show at least one truthful significant digit of a sub-1 magnitude, floored at
+    /// <c>max(decimalsSmall, decimalsLarge)</c> (so ordinary sub-1 values like 0.25 or 0.5 - which already fit in
+    /// that floor - are unaffected beyond gaining the same precision large-value mantissas already use), and
+    /// extended further for smaller magnitudes (0.005, 0.0005, ...) so they never silently round away to "0.00".
+    /// </summary>
+    static int SmallValueDecimals(double abs, int decimalsSmall, int decimalsLarge)
+    {
+        int baseline = Math.Max(decimalsSmall, decimalsLarge);
+        int leadingZeros = Math.Max(0, -OrderOfMagnitude(abs) - 1);
+        return Math.Min(Math.Max(baseline, leadingZeros + 1), MaxSmallValueDecimals);
+    }
+
+    /// <summary>
+    /// The base-10 exponent of <paramref name="abs"/>'s leading (correctly-rounded) significant digit, e.g. -2
+    /// for 0.05, -1 for 0.1 or 0.999. Round-trips through the BCL "E0" formatter rather than
+    /// <see cref="Math.Log10(double)"/> so a value that rounds up across a power-of-ten boundary (0.9996 -> "1E+000")
+    /// reports the exponent of what will actually be displayed, not a raw-log10 value that floating-point noise
+    /// can floor to the wrong side of an exact power of ten.
+    /// </summary>
+    static int OrderOfMagnitude(double abs)
+    {
+        string sci = abs.ToString("E0", Inv);
+        int eIndex = sci.IndexOf('E');
+        return int.Parse(sci.AsSpan(eIndex + 1), NumberStyles.Integer | NumberStyles.AllowLeadingSign, Inv);
     }
 }

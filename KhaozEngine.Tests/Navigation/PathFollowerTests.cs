@@ -199,4 +199,34 @@ public class PathFollowerTests
         Assert.Equal(Vector2.Zero, output.WorldDir);
         Assert.Equal(Vector2.Zero, output.ActiveWaypoint);
     }
+
+    [Fact]
+    public void Reset_ClearsPathAndCooldown_NextTickPlansImmediately()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(10f, 10f), 0)));
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(10f, 10f), 0)));
+        var config = new PathFollowConfig { ReplanCooldownSeconds = 0.5f };
+        var follower = new PathFollower(planner, config);
+        Vector3 position = new Vector3(0f, 0f, 0f);
+        Vector3 goal = new Vector3(10f, 0f, 10f);
+
+        // Tick 1: plan once.
+        follower.Tick(position, goal, AgentRadius, 0.1f);
+        Assert.Equal(1, planner.CallCount);
+
+        // Tick 2: cooldown is still hot (0.4 remaining), same goal, no replan.
+        PathFollowOutput beforeReset = follower.Tick(position, goal, AgentRadius, 0.1f);
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(PathFollowState.Following, beforeReset.State);
+
+        // Act: clear path and cooldown.
+        follower.Reset();
+
+        // Assert: next tick plans immediately (cooldown is 0), CallCount becomes 2.
+        PathFollowOutput afterReset = follower.Tick(position, goal, AgentRadius, 0f);
+        Assert.Equal(2, planner.CallCount);
+        Assert.Equal(PathFollowState.Following, afterReset.State);
+        Assert.Equal(new Vector2(5f, 5f), afterReset.ActiveWaypoint);
+    }
 }

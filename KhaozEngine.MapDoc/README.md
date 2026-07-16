@@ -30,6 +30,12 @@ A map document (`MapDocument`) has:
   unlike features, are a closed structure.
 - **`scatterOverrides`** (`MapScatterOverrideDoc`) - shapes that tweak scatter density and/or kind mix
   inside a region, first matching override (document order) wins. Builds into `ScatterConfig.Overrides`.
+  Carries an optional `Name` too (default null, null or empty means unnamed, unique when non-empty among
+  scatter overrides), added to the closed scatter-override item schema as `"name": {"type": ["string",
+  "null"]}` since scatter overrides, like exclusions, are a closed structure. This is a format
+  forward-compat break: a document with a named scatter override fails schema validation on engines built
+  before this version, since the item schema is closed (`additionalProperties: false`). The exclusions
+  `Name` field above set the precedent for accepting that break when adding a name to a closed item.
 - **`placements`** - authored props/buildings: stable id, kind, position (Y optional, ground-snapped if
   absent), yaw, scale, tags.
 - **`spawns`** - NPC spawn markers (archetype id, position, enabled flag, tags), interpreted by the game.

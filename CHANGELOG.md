@@ -5,6 +5,60 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.125.0
+
+A full editing surface for scatter overrides (`MapScatterOverrideDoc`) in both `KhaozEngine.MapEditor`
+and `KhaozEngine.MapEdit.Tool`, closing the last unsurfaced document element: a draw tab, a transform
+gizmo, a grouped inspector, an outline category, and two new MCP verbs.
+
+- **Draw, select, gizmo, and outline surface.** A new `DrawScatterOverride` tool mode rubber-bands a disc
+  or shift-drag rect the same way `DrawExclusion` does, a new `SelectionKind.ScatterOverride` makes overrides
+  pickable and gizmo-draggable (translate XZ + uniform scale, no rotation, the same disc/rect affordance
+  exclusions and regions get), and a new outline category lists them with drag-to-reorder. Overlay picking
+  in Select mode now resolves priority feature beats exclusion beats scatter override beats region: the
+  override sits between exclusion and region since it is rarer and larger than an exclusion (so the more
+  specific exclusion wins where they overlap) yet more specific than the broad gameplay region it usually
+  sits inside.
+- **Grouped inspector.** `BuildScatterOverrideInspector` adds Identity / State / Shape / Scatter / Layers
+  header groups: Scatter carries a `DensityMultiplier` scalar and a `Kinds` substitution row (the same
+  comma-separated `"id:weight"` text convention the scatter-layer rule editor uses), and Layers carries the
+  same All-layers-plus-per-layer targeting rows the exclusion inspector already had, now shared through a
+  common `AddLayerTargetingRows` helper. A new `VisibilityGroup.ScatterOverrides` gives overrides their own
+  Layers-panel row and per-element Visible row, the same as every other overlay-backed kind.
+- **Optional unique `Name`, a format forward-compat break.** `MapScatterOverrideDoc.Name` (null or empty
+  means unnamed, unique among named overrides, validator-enforced) follows the precedent
+  `MapExclusion.Name` set: added to the closed scatter-override item schema as
+  `"name": {"type": ["string", "null"]}`. Because the item schema is closed
+  (`additionalProperties: false`), a document with a NAMED scatter override fails schema validation on
+  engines built before this version. Same closed-schema tradeoff already accepted for exclusion names, no
+  format version bump.
+- **Six new `EditorCommand`s.** `AddScatterOverrideCommand`, `RemoveScatterOverrideCommand`,
+  `EditScatterOverrideShapeCommand`, `EditScatterOverrideValuesCommand`, `RenameScatterOverrideCommand`,
+  and `ReorderScatterOverrideCommand` are the only mutation path, wired to both the Ctrl+Up/Ctrl+Down chord
+  and outline drag-and-drop.
+- **Order-significant reorder, deliberately unlike exclusion reorder.** A scatter's override lookup
+  resolves the FIRST matching override in list order, so `ReorderScatterOverrideCommand.AffectsWorld` is
+  true and a reorder always triggers a streamed-world rebuild, both from the GUI (Ctrl+Up/Ctrl+Down or an
+  outline drag) and from the new `scatter_override_reorder` MCP verb. This is a deliberate divergence from
+  `ReorderExclusionCommand`, which is `AffectsWorld` false since exclusions combine as a pure set union
+  where order never changes what is masked. Exclusions were left off the Ctrl+Up/Ctrl+Down chord entirely
+  for the same reason, a reorder chord would be meaningless for them.
+- **`ke-mapedit` verb surface, 64 to 66 tools.** New `scatter_override_rename(index, name?)` and
+  `scatter_override_reorder(fromIndex, toIndex)` verbs. The existing `scatter_override_add`/`edit`/`remove`
+  verbs are re-plumbed through the same `EditorCommand` types the GUI uses instead of mutating the document
+  list directly, so an MCP-driven scatter-override edit is undoable inside the same editor session, closing
+  the gap between the MCP and GUI mutation paths.
+- **`element_duplicate` gains its 10th kind.** `scatter_override` joins the index-addressed kind list
+  (`feature`, `exclusion`, `biome_band`), reusing the exact clone and uniquify-name logic
+  `EditorToolController.DuplicateSelection` already uses so a GUI-driven and an MCP-driven duplicate can
+  never drift apart.
+- **Deferred out of this round**, recorded in `docs/MAP-EDITOR-DESIGN.md`: `DirtyRegion` narrowing for
+  override shapes (still full-rebuild, could narrow like feature edits do in a later round), polygon
+  override shapes stay MCP-authored and inspector-read-only (same as polygon exclusions and regions), a
+  cosmetic MCP `kinds: []` versus GUI `Kinds: null` JSON representation asymmetry (runtime-identical), and
+  `scatter_override_edit` called with no optional arguments is a dirty-marking no-op, consistent with the
+  other mutation verbs.
+
 ## 10.124.0
 
 A pure day/night cycle mapping for `KhaozEngine.Render3D`: feed `SunCycle.Evaluate` a normalized time of day

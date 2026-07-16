@@ -74,9 +74,9 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection (see
 Duplicate below), Delete removes the current selection. R snaps the selected placement to the ground (an
 undoable re-move with a null Y, a no-op when nothing placement-shaped is selected or the placement is
-already grounded). Ctrl+Up and Ctrl+Down reorder the selected terrain feature one step earlier or later in
-the fold order (see Feature apply order below), clamped at the list ends so a boundary press lands no
-command. Bare 1..9 recalls a camera bookmark and Shift+1..9 stores one (see Camera bookmarks below). Escape
+already grounded). Ctrl+Up and Ctrl+Down reorder the selected terrain feature or scatter override one step
+earlier or later in its list (see Feature apply order below), clamped at the list ends so a boundary press
+lands no command. Bare 1..9 recalls a camera bookmark and Shift+1..9 stores one (see Camera bookmarks below). Escape
 cancels an in-flight gizmo/draw gesture and returns to Select. Every Ctrl chord above also fires on Cmd
 (Super): `InputState.IsCommandDown` treats the two as the same modifier, so the Windows/Linux chords work
 unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that one frame, since both chords
@@ -170,18 +170,19 @@ and rebuilds its button list on a mismatch, so the Open Recent list never goes s
 ## Duplicate
 
 Ctrl+D (Cmd+D on a Mac) duplicates the current selection through `EditorToolController.DuplicateSelection()`,
-mirroring the `DeleteSelection` dispatcher's shape across all nine selectable kinds (placement, spawn, player
-spawn, feature, exclusion, region, biome band, scatter layer, companion layer). Each duplicate is a deep
-clone with a fresh, unique identity, added through that kind's own `Add` command and immediately sealed as
-its own undo step, then selected: a placement, spawn, or player spawn gets a fresh id off the same
-`placement-N` / `spawn-N` / `player-N` generated-name scheme a freshly placed element already uses, not a
-name derived from the source id. A named feature or exclusion gets a uniquified `<name>-copy`/`-copy-2`
-suffix while an unnamed one stays unnamed (index-keyed, no collision to dodge). A region always takes a fresh
-generated name, the same as a freshly drawn one, and a scatter or companion layer gets `<name>-copy` uniquified
-the same way. Every kind that carries a position (placement, spawn, player spawn, feature, exclusion, region)
-offsets its clone by +2/+2 world units on X/Z so it never lands exactly on top of its source. A biome band,
-a scatter layer, and a companion layer have no position: a biome band clones verbatim (it has no name
-either), while a scatter or companion layer still takes the uniquified `<name>-copy` name described above.
+mirroring the `DeleteSelection` dispatcher's shape across all ten selectable kinds (placement, spawn, player
+spawn, feature, exclusion, scatter override, region, biome band, scatter layer, companion layer). Each
+duplicate is a deep clone with a fresh, unique identity, added through that kind's own `Add` command and
+immediately sealed as its own undo step, then selected: a placement, spawn, or player spawn gets a fresh id
+off the same `placement-N` / `spawn-N` / `player-N` generated-name scheme a freshly placed element already
+uses, not a name derived from the source id. A named feature, exclusion, or scatter override gets a
+uniquified `<name>-copy`/`-copy-2` suffix while an unnamed one stays unnamed (index-keyed, no collision to
+dodge). A region always takes a fresh generated name, the same as a freshly drawn one, and a scatter or
+companion layer gets `<name>-copy` uniquified the same way. Every kind that carries a position (placement,
+spawn, player spawn, feature, exclusion, scatter override, region) offsets its clone by +2/+2 world units on
+X/Z so it never lands exactly on top of its source. A biome band, a scatter layer, and a companion layer
+have no position: a biome band clones verbatim (it has no name either), while a scatter or companion layer
+still takes the uniquified `<name>-copy` name described above.
 
 `DuplicateSelection()` returns a `DuplicateResult?` (the duplicated kind plus its fresh id/name/index), or
 null when nothing was duplicated: an empty selection, the Terrain singleton (nothing to clone), or a custom
@@ -291,20 +292,22 @@ width, giving the wider companion/scatter-layer rows and their group headers roo
 
 ## Viewport overlays
 
-Exclusions, regions, and terrain-feature markers are otherwise-invisible authoring shapes, so with
-`MapEditorOptions.ShowOverlays` (default true) the viewport draws them as translucent ground fills:
-exclusions red, regions blue, and a small amber marker disc at each terrain feature's center, with the
-selected element brightened. They render through the `Scene3D` debug-fill pass, which runs depth-disabled
-after post, so the overlays composite always-on-top of the terrain for authoring visibility rather than
-depth-testing against it. `MapEditorScene.ComputeOverlayDrawList` is the pure, headless-tested doc-to-draw
-step, and only the per-entry GPU submission lives in `DrawOverlays`. Set `ShowOverlays` false to hide the lot.
+Exclusions, scatter overrides, regions, and terrain-feature markers are otherwise-invisible authoring
+shapes, so with `MapEditorOptions.ShowOverlays` (default true) the viewport draws them as translucent
+ground fills: exclusions red, scatter overrides orange, regions blue, and a small amber marker disc at
+each terrain feature's center, with the selected element brightened. They render through the `Scene3D`
+debug-fill pass, which runs depth-disabled after post, so the overlays composite always-on-top of the
+terrain for authoring visibility rather than depth-testing against it. `MapEditorScene.ComputeOverlayDrawList`
+is the pure, headless-tested doc-to-draw step, and only the per-entry GPU submission lives in `DrawOverlays`.
+Set `ShowOverlays` false to hide the lot.
 
 ## Shape and feature editing
 
-The exclusion and region inspectors show the shape as live-editable rows, not a read-only summary:
-`MapEditorScene.AddShapeRows` adds a `ChoiceRow` (kind: `disc` / `rect`) plus one `FloatRow` per parameter
-(disc gets CenterX/CenterZ/Radius, rect gets MinX/MinZ/MaxX/MaxZ), each writing a clone of the live
-`MapShapeDoc` with one field changed through `EditExclusionShapeCommand`/`EditRegionShapeCommand`, whose
+The exclusion, scatter override, and region inspectors show the shape as live-editable rows, not a
+read-only summary: `MapEditorScene.AddShapeRows` adds a `ChoiceRow` (kind: `disc` / `rect`) plus one
+`FloatRow` per parameter (disc gets CenterX/CenterZ/Radius, rect gets MinX/MinZ/MaxX/MaxZ), each writing a
+clone of the live `MapShapeDoc` with one field changed through
+`EditExclusionShapeCommand`/`EditScatterOverrideShapeCommand`/`EditRegionShapeCommand`, whose
 same-index/name `TryMerge` coalesces a scrub into one undo step. Switching the kind ChoiceRow converts the
 shape center-preservingly (`MapEditorScene.ConvertShape`): a disc becomes the square of side `2r` around its
 center, a rect becomes the disc centered on the rect with half its longer extent as the radius. A polygon
@@ -312,34 +315,39 @@ shape is read-only v1 (kind + point count, no conversion in or out). A kind conv
 one) is caught by `MapEditorScene.SyncShapeInspector`, which rebuilds the inspector's row set the next chrome
 step so disc rows swap to rect rows and back.
 
-Exclusions, regions, and terrain features are also draggable through the transform gizmo once selected
-(`EditorToolController.TryGizmoTarget`/`RestrictHandle`, shared geometry helpers `ShapeGeometry`/
-`FeatureGeometry`): translate XZ moves the shape/feature center and the scale handle resizes its primary
-radius (a lake or flatten's `Radius`, a rim's `InnerRadius`/`OuterRadius` scaled together, a ridge's
-`Width`). A ridge or a rim with at least one pass also draws a yaw ring (`GizmoAffordance.MoveScaleRotate`):
-dragging it rotates the ridge's stored direction, or offsets every one of the rim's pass angles together by
-the same delta, tracking the cursor around the ring the same way the placement gizmo's ring does. A lake, a
-flatten, a passless rim, and the disc/rect shapes (exclusion or region) carry no orientation to show, so they
-keep the plain translate XZ + scale handle set with no ring at all, and none of these draw the placement
-gizmo's unusable +Y arrow either way. The drag snapshots the pre-drag shape/feature on grab and rewrites it
-from that fixed start each frame, routed through the same `Edit*ShapeCommand`/`EditFeatureCommand` merge as
-an inspector scrub, so a whole drag coalesces into one undo step.
+Exclusions, scatter overrides, regions, and terrain features are also draggable through the transform gizmo
+once selected (`EditorToolController.TryGizmoTarget`/`RestrictHandle`, shared geometry helpers
+`ShapeGeometry`/`FeatureGeometry`): translate XZ moves the shape/feature center and the scale handle
+resizes its primary radius (a lake or flatten's `Radius`, a rim's `InnerRadius`/`OuterRadius` scaled
+together, a ridge's `Width`). A ridge or a rim with at least one pass also draws a yaw ring
+(`GizmoAffordance.MoveScaleRotate`): dragging it rotates the ridge's stored direction, or offsets every one
+of the rim's pass angles together by the same delta, tracking the cursor around the ring the same way the
+placement gizmo's ring does. A lake, a flatten, a passless rim, and the disc/rect shapes (exclusion, scatter
+override, or region) carry no orientation to show, so they keep the plain translate XZ + scale handle set
+with no ring at all, and none of these draw the placement gizmo's unusable +Y arrow either way. The drag
+snapshots the pre-drag shape/feature on grab and rewrites it from that fixed start each frame, routed
+through the same `Edit*ShapeCommand`/`EditFeatureCommand` merge as an inspector scrub, so a whole drag
+coalesces into one undo step.
 
 Any selected gizmo target also arms a body drag, not just placements and spawns: pressing anywhere on the
 object itself, away from every gizmo handle, and moving the pointer past
 `EditorToolController.BodyDragThreshold` (6 screen-space units, matching the outline tree's own row-drag
 threshold) drags it in XZ through the same translate-XZ path the gizmo's arrows use, starting from the
 press-time ground point (a placement or spawn moves via `MovePlacementCommand`/`MoveSpawnCommand`, a feature,
-exclusion, or region translates through the same command its gizmo arrows already use). A release below the
-threshold is a plain tap: the selection the press already made stands, and no history entry lands. The gizmo
-handles themselves are unaffected. A press that lands on a handle still grabs that handle exactly as before.
+exclusion, scatter override, or region translates through the same command its gizmo arrows already use). A
+release below the threshold is a plain tap: the selection the press already made stands, and no history
+entry lands. The gizmo handles themselves are unaffected. A press that lands on a handle still grabs that
+handle exactly as before.
 
 **Overlay picking.** In `Select` mode, a ray that hits only the terrain (no placement or spawn) falls back
 to `OverlayPicking.Pick`, a containment test over the otherwise-invisible authoring shapes: a feature marker
 (a disc of `OverlayPicking.FeatureMarkerRadius` at its center, matching the drawn overlay marker) beats an
-exclusion beats a region, even when the point also lies inside a lower-priority shape, with a
-nearest-shape-center tiebreak within one category for overlapping same-category shapes. This is what makes
-exclusions, regions, and feature markers selectable with the mouse instead of only through the outline tree.
+exclusion beats a scatter override beats a region, even when the point also lies inside a lower-priority
+shape, with a nearest-shape-center tiebreak within one category for overlapping same-category shapes. The
+scatter override sits between exclusion and region because it is rarer and usually larger than an
+exclusion (so the more specific exclusion wins where they overlap) yet more specific than a broad gameplay
+region (so the override wins over the region it sits inside). This is what makes exclusions, scatter
+overrides, regions, and feature markers selectable with the mouse instead of only through the outline tree.
 
 **Feature placement.** `EditorToolMode.EditFeature` click-places a default-parameterized feature of
 `EditorToolController.PlaceFeatureType` (list-selected from the bottom-left panel, see Kit palette above) at
@@ -386,17 +394,18 @@ outline while a drag is armed is not yet supported: the drop geometry freezes at
 drag started at.
 
 Both reorder paths also call `EditorVisibility.RemapIndex(kind, fromIndex, toIndex)` right alongside the
-reorder command, so a per-element hide follows the moved feature or exclusion to its new slot instead of
-staying pinned to the old one. `Delete` on a selected feature or exclusion likewise calls
-`EditorVisibility.RemoveIndex(kind, index)` (wired through `EditorToolController.OnIndexRemoved`), dropping
-the removed element's hide entry and shifting every later hidden index down by one. Undo/redo of a reorder
-or delete does not re-follow the hide (the same v1 limit the selection-follow above already documents).
+reorder command, so a per-element hide follows the moved feature, exclusion, or scatter override to its new
+slot instead of staying pinned to the old one. `Delete` on a selected feature, exclusion, or scatter
+override likewise calls `EditorVisibility.RemoveIndex(kind, index)` (wired through
+`EditorToolController.OnIndexRemoved`), dropping the removed element's hide entry and shifting every later
+hidden index down by one. Undo/redo of a reorder or delete does not re-follow the hide (the same v1 limit
+the selection-follow above already documents).
 
 ## Visibility
 
 `EditorVisibility` is editor-session view state, not part of the document: it gates whole
-`VisibilityGroup`s (`Placements`, `Spawns`, `Water`, `Exclusions`, `Regions`, `FeatureMarkers`), named
-scatter layers, and individual elements, and none of it is saved or undoable. A group or element toggle
+`VisibilityGroup`s (`Placements`, `Spawns`, `Water`, `Exclusions`, `ScatterOverrides`, `Regions`,
+`FeatureMarkers`), named scatter layers, and individual elements, and none of it is saved or undoable. A group or element toggle
 writes straight to `EditorVisibility`, never through `EditorDocument.Execute`, so hiding something never
 dirties the document (no leading `*` in the status strip) and never lands an undo step.
 
@@ -456,13 +465,14 @@ GPU-free and fully unit-tested:
 - `EditorHistory` is the engine's first undo/redo command stack, with gesture coalescing (a drag collapses
   to one undo step).
 - `EditorCommands` are the reversible edits over the document model (placements, spawns, player spawns,
-  exclusions, regions, terrain features, terrain globals). Commands are the only mutation path, so undo is
-  total by construction. `EditTerrainCommand` carries all seven terrain-wide scalars as nullable fields
-  (WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency, DetailOctaves): a caller
-  passes only the fields it is changing, each field merges independently on a same-command follow-up (a
-  scrub coalesces into one undo step per field, not per command), and the `MutationService` seed-only
-  special case collapsed into this one widened command. `ReorderFeatureCommand` moves a terrain feature
-  within the list (see Feature apply order above). It never coalesces, so each reorder is its own undo step.
+  exclusions, scatter overrides, regions, terrain features, terrain globals). Commands are the only mutation
+  path, so undo is total by construction. `EditTerrainCommand` carries all seven terrain-wide scalars as
+  nullable fields (WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency,
+  DetailOctaves): a caller passes only the fields it is changing, each field merges independently on a
+  same-command follow-up (a scrub coalesces into one undo step per field, not per command), and the
+  `MutationService` seed-only special case collapsed into this one widened command. `ReorderFeatureCommand`
+  and `ReorderScatterOverrideCommand` move a terrain feature or a scatter override within its list (see
+  Feature apply order above). Neither coalesces, so each reorder is its own undo step.
   `SetSpawnArchetypeCommand` and `SetPlayerSpawnYawCommand` make an NPC spawn's archetype id and a player
   spawn's yaw both undoable and dirty-marking through the same free-typed-row, same-id-merge pattern the
   rename rows use (an earlier gap left NPC archetype retyping outside the command stack, fixed alongside the
@@ -480,10 +490,11 @@ GPU-free and fully unit-tested:
   the transform-gizmo drag (coalesced into one undo step, sealed on release). The place modes place on the
   press (a ground-snapped Add) and keep tracking the ground point while the pointer stays held, so the whole
   press-hold-release gesture coalesces into that one Add's undo step. The draw modes rubber-band a disc
-  (drag) or rect (shift-drag) into an exclusion or an auto-named region. The
-  bake mode drags a rect on the ground and bakes the `BakeLayer` scatter over it. The three draw tools
-  (draw-exclusion, draw-region, bake-region) are one shot: a completed gesture (the release that emits the
-  command) falls back to Select automatically, so the next click picks the shape rather than starting another.
+  (drag) or rect (shift-drag) into an exclusion, a scatter override, or an auto-named region. The
+  bake mode drags a rect on the ground and bakes the `BakeLayer` scatter over it. The four draw tools
+  (draw-exclusion, draw-scatter-override, draw-region, bake-region) are one shot: a completed gesture (the
+  release that emits the command) falls back to Select automatically, so the next click picks the shape
+  rather than starting another.
   An abandoned gesture (Escape, a mode switch, or a degenerate sub-threshold click that emits nothing) keeps
   the tool armed. `EditorToolController.ModeHint` returns a one-line description of the active tool, folding in
   `PlaceKind` / `SpawnArchetype`, which the scene renders in the status strip.
@@ -517,10 +528,14 @@ keep coalescing into later, unrelated edits of the same object.
 
 `EditorCommand.AffectsWorld` (internal) classifies each command: terrain features (add, edit, remove, and
 reorder via `ReorderFeatureCommand`), terrain globals (the water level, `EditTerrainCommand`), scatter
-exclusions, and bake-region are `true` (they change terrain shape or scatter inputs). Placement/spawn/region
-edits are `false` (they draw outside the streamed sink, so a drag never triggers a chunk rebuild).
-`EditorDocument` sets `WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld`
-is true.
+exclusions, scatter overrides (add, edit, remove, AND reorder via `ReorderScatterOverrideCommand`, unlike an
+exclusion reorder), and bake-region are `true` (they change terrain shape or scatter inputs). A rename-only
+edit (`RenameScatterOverrideCommand`) is `false`, since a name change affects neither shape nor lookup
+order. An exclusion reorder (`ReorderExclusionCommand`) is also `false`, since exclusions combine as a set
+union with no order dependency (see Feature apply order above), the one place a reorder command does NOT
+match its sibling add/edit/remove commands' `AffectsWorld` value. Placement/spawn/region edits are `false`
+(they draw outside the streamed sink, so a drag never triggers a chunk rebuild). `EditorDocument` sets
+`WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld` is true.
 
 A scatter-layer visibility toggle also rebuilds the streamed world, but through a separate path
 (`MapEditorScene.RebuildWorldForVisibility` calling `ViewportWorld.Rebuild` directly), never through
@@ -588,26 +603,30 @@ name, so a rename must move the selection to the new key. An immediate
 deferred until the Name row itself loses focus. A different selection made first, an outline click or a
 viewport pick while the row is still focused, wins over the stale pending re-select and drops it.
 
-Terrain features and exclusions carry an optional `Name` too (`MapFeature.Name` / `MapExclusion.Name`, empty
-means unnamed), but they are selected by list INDEX, not by name, so their Name row uses the separate
-`MapEditorScene.AddIndexNameRow` variant: a rename routes through `RenameFeatureCommand` /
-`RenameExclusionCommand` (rejecting an unchanged or colliding non-empty target the same way, but ALLOWING a
-blank target since Name is optional there) and never touches the selection, since the index a rename targets
-never moves. The outline label falls back to the index when Name is empty: `"[i] type"` for a feature,
-`"exclusion[i]"` for an exclusion. An exclusion's label always carries a trailing targeting hint from its
-`Layers` too, `" (all)"` for a null filter or `" (trees, groundcover)"` style for an explicit one
-(`MapEditorScene.TargetingHint`), so the outline alone shows which scatter layers it masks.
+Terrain features, exclusions, and scatter overrides carry an optional `Name` too (`MapFeature.Name` /
+`MapExclusion.Name` / `MapScatterOverrideDoc.Name`, empty means unnamed), but they are selected by list
+INDEX, not by name, so their Name row uses the separate `MapEditorScene.AddIndexNameRow` variant: a rename
+routes through `RenameFeatureCommand` / `RenameExclusionCommand` / `RenameScatterOverrideCommand` (rejecting
+an unchanged or colliding non-empty target the same way, but ALLOWING a blank target since Name is optional
+there) and never touches the selection, since the index a rename targets never moves. The outline label
+falls back to the index when Name is empty: `"[i] type"` for a feature, `"exclusion[i]"` for an exclusion,
+`"override[i]"` for a scatter override. An exclusion's or a scatter override's label always carries a
+trailing targeting hint from its `Layers` too, `" (all)"` for a null filter or `" (trees, groundcover)"`
+style for an explicit one (`MapEditorScene.TargetingHint`), so the outline alone shows which scatter layers
+it masks or retunes.
 
-The exclusion inspector also gets layer-targeting rows below its Name row (`MapEditorScene.AddExclusionLayerRows`):
-an "All layers" `BoolRow` bound to `Layers == null` (masks every layer, including future ones), plus one
-`BoolRow` per document scatter layer while an explicit list is in effect. Checking All ON collapses the list
-to null. Checking it OFF materializes the full explicit layer list. The per-layer rows are hidden (not merely
-disabled, there is no live per-row enabled hook) while All is on, reflowing into view the next chrome step
-once All goes off, through the same `SyncShapeInspector` rebuild-on-mismatch idiom the shape-kind conversion
-uses. Manually re-checking every layer does NOT auto-collapse back to null: only the All toggle itself
-produces null, so an explicit list stays explicit even when it happens to name every layer. Every layer-row
-change routes through `EditExclusionLayersCommand`, which is `AffectsWorld` true (a targeting change affects
-what the streamed scatter draws).
+The exclusion and scatter override inspectors also get layer-targeting rows below their other rows
+(`MapEditorScene.AddExclusionLayerRows` / `AddScatterOverrideLayerRows`, both routed through the shared
+`AddLayerTargetingRows` helper): an "All layers" `BoolRow` bound to `Layers == null` (masks or retunes every
+layer, including future ones), plus one `BoolRow` per document scatter layer while an explicit list is in
+effect. Checking All ON collapses the list to null. Checking it OFF materializes the full explicit layer
+list. The per-layer rows are hidden (not merely disabled, there is no live per-row enabled hook) while All is
+on, reflowing into view the next chrome step once All goes off, through the same `SyncShapeInspector`
+rebuild-on-mismatch idiom the shape-kind conversion uses. Manually re-checking every layer does NOT
+auto-collapse back to null: only the All toggle itself produces null, so an explicit list stays explicit
+even when it happens to name every layer. Every layer-row change routes through
+`EditExclusionLayersCommand` or `EditScatterOverrideValuesCommand` (the whole-value path for a scatter
+override), each `AffectsWorld` true (a targeting change affects what the streamed scatter draws).
 
 ## Procedural setup editing
 

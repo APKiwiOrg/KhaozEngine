@@ -82,5 +82,74 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(a.FillFraction, b.FillFraction, 6);
             Assert.Equal(a.FlashAdd, b.FlashAdd, 6);
         }
+
+        [Fact]
+        public void Rim_glow_zero_without_flag_and_pulsing_with_flag()
+        {
+            var off = TelegraphStyle.Steel;
+            off.Animation &= ~TelegraphAnim.RimGlow;
+            Assert.Equal(0f, TelegraphResolve.Resolve(0.5f, off).RimGlow);
+
+            var on = TelegraphStyle.Frost;
+            float a = TelegraphResolve.Resolve(0.10f, on).RimGlow;
+            float b = TelegraphResolve.Resolve(0.30f, on).RimGlow;
+            Assert.True(a > 0f);
+            Assert.True(b > 0f);
+            Assert.NotEqual(a, b);
+        }
+
+        [Fact]
+        public void Sweep_glow_requires_both_flags_and_fades_out_at_completion()
+        {
+            var s = TelegraphStyle.Nature;
+            Assert.True(TelegraphResolve.Resolve(0.5f, s).SweepGlow > 0f);
+            Assert.Equal(0f, TelegraphResolve.Resolve(1f, s).SweepGlow, 3);
+
+            var noSweep = s;
+            noSweep.Animation &= ~TelegraphAnim.FillSweep;
+            Assert.Equal(0f, TelegraphResolve.Resolve(0.5f, noSweep).SweepGlow);
+        }
+
+        [Fact]
+        public void Sparkle_passes_energy_through_when_flagged()
+        {
+            Assert.True(TelegraphResolve.Resolve(0.5f, TelegraphStyle.Arcane).Sparkle > 0f);
+            Assert.Equal(0f, TelegraphResolve.Resolve(0.5f, TelegraphStyle.Steel).Sparkle);
+        }
+
+        [Fact]
+        public void Edge_energy_zero_means_default_full_strength()
+        {
+            var s = TelegraphStyle.Arcane;
+            Assert.Equal(0f, s.EdgeEnergy);
+            var r = TelegraphResolve.Resolve(0.5f, s);
+            Assert.True(r.RimGlow > 0.2f);
+
+            s.EdgeEnergy = 0.5f;
+            var half = TelegraphResolve.Resolve(0.5f, s);
+            Assert.Equal(r.RimGlow * 0.5f, half.RimGlow, 4);
+            Assert.Equal(r.SweepGlow * 0.5f, half.SweepGlow, 4);
+            Assert.Equal(r.Sparkle * 0.5f, half.Sparkle, 4);
+        }
+
+        [Fact]
+        public void Pattern_feather_and_scale_pass_through_resolve()
+        {
+            var r = TelegraphResolve.Resolve(0.4f, TelegraphStyle.Frost);
+            Assert.Equal(TelegraphFillPattern.RadialNoise, r.Pattern);
+            Assert.Equal(TelegraphStyle.Frost.PatternSpeed, r.PatternSpeed);
+            Assert.Equal(TelegraphStyle.Frost.PatternScale, r.PatternScale);
+            Assert.Equal(TelegraphStyle.Frost.FeatherWidth, r.FeatherFraction);
+        }
+
+        [Fact]
+        public void Legacy_seven_arg_resolved_ctor_still_compiles_with_zero_new_fields()
+        {
+            var r = new ResolvedTelegraph(Color.White, Color.White, 1f, 0f, 2f,
+                FillMode.Fill, TelegraphBlend.Alpha);
+            Assert.Equal(0f, r.RimGlow);
+            Assert.Equal(TelegraphFillPattern.Solid, r.Pattern);
+            Assert.Equal(0f, r.FeatherFraction);
+        }
     }
 }

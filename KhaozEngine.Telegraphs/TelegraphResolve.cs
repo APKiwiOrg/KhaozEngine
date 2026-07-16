@@ -40,7 +40,21 @@ namespace KhaozEngine.Telegraphs
             Color fill = fillRgb.WithAlpha(MathUtil.Clamp01(fillRgb.A * op));
             Color outline = style.OutlineColor.WithAlpha(MathUtil.Clamp01(style.OutlineColor.A * op * pulse));
 
-            return new ResolvedTelegraph(fill, outline, fillFraction, flash, style.EdgeThickness, style.FillMode, style.Blend);
+            float energy = style.EdgeEnergy > 0f ? style.EdgeEnergy : 1f;
+
+            float rimGlow = 0f;
+            if ((style.Animation & TelegraphAnim.RimGlow) != 0)
+                rimGlow = energy * (0.65f + 0.35f * MathF.Sin(p * MathF.Tau * 2.5f));
+
+            float sweepGlow = 0f;
+            if ((style.Animation & TelegraphAnim.SweepGlow) != 0
+                && (style.Animation & TelegraphAnim.FillSweep) != 0)
+                sweepGlow = energy * MathF.Sin(p * MathF.PI);
+
+            float sparkle = (style.Animation & TelegraphAnim.EdgeSparkle) != 0 ? energy : 0f;
+
+            return new ResolvedTelegraph(fill, outline, fillFraction, flash, style.EdgeThickness, style.FillMode, style.Blend,
+                style.FeatherWidth, style.Pattern, style.PatternSpeed, style.PatternScale, rimGlow, sweepGlow, sparkle);
         }
 
         // 0 below ~0.6, rising steeply to 1 at p=1. Quartic for a snappy late spike.

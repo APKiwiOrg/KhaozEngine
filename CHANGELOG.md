@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.124.0
+
+A pure day/night cycle mapping for `KhaozEngine.Render3D`: feed `SunCycle.Evaluate` a normalized time of day
+and it returns a full lighting snapshot (sun direction, sky gradient, sun disc, key/fill/ambient light) that
+`SunCycle.Apply` writes onto an existing scene's `Post`. Additive minor, zero shader, UBO, or engine default
+changes, so the `scene3d_sky`/`scene3d_sky_world_sun` goldens are untouched.
+
+- **New `SunCycle` static class** (`SunCycle.Evaluate(float timeOfDay, SunCycleSettings) -> SunCycleState`,
+  `SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)`) in `KhaozEngine.Render3D`, a peer to
+  `SkySettings`/`ShadowMode`. A pure function of time, no engine-owned clock: the caller supplies a
+  normalized `timeOfDay` (0 is midnight, 0.5 is solar noon, any float wraps), ticked by the game (an MMO
+  replicates it from the server so every client sees the same sky).
+- **Sun arc from latitude, declination, and heading.** `SunCycleSettings.LatitudeDegrees` /
+  `SolarDeclinationDegrees` place the sun on a standard elevation/azimuth arc, `HeadingDegrees` rotates the
+  whole path around the vertical axis so a level can aim sunrise wherever it wants, and the resulting
+  `LightDirection` follows `PixelPostProcessSettings.LightDirection` semantics (the direction the key light
+  travels).
+- **Elevation-keyed palette blending, not time-keyed.** `SunCycleSettings.DayPalette` / `DuskPalette` /
+  `NightPalette` (each a `SunCyclePalette`: horizon/zenith/sun/key/ambient/fill colors) blend by sun
+  elevation across `TwilightStartElevationDegrees` / `NightFullElevationDegrees`, so the same settings hold
+  up at any latitude or day length. `SunCyclePalette.DefaultDay()` / `DefaultDusk()` / `DefaultNight()` seed
+  the defaults, and `DefaultDay()` reproduces the engine's existing `Sky`/`Post` look exactly.
+- **The night decision.** The sun disc hides below the horizon (`Sky.SunEnabled = false`, `Sky.SunColor`
+  faded out over `SunDiscFadeElevationDegrees`), and the key light switches to a virtual moon placed
+  opposite the sun so `LightDirection` still points downward instead of going dark. The key dips to zero
+  across the horizon crossing (`HorizonKeyDipDegrees`) so the 180 degree azimuth flip between sun and moon
+  is never visible, and the ambient floor never reaches pure black so night stays playable. A visible moon
+  disc and a secondary night key light are deferred follow-ups, see `docs/ROADMAP.md`.
+- **Zero shader, UBO, or default change.** `SunCycle.Apply` writes only fields the engine already updates
+  from the CPU every frame (`Post.LightDirection` / `LightColor` / `AmbientColor` / `FillLightColor`,
+  `Post.Sky.HorizonColor` / `ZenithColor` / `SunColor` / `SunEnabled`), so no golden rebake, no rendering
+  path change, and existing scenes that never call `SunCycle` stay byte-stable.
+- **Headless test coverage.** `KhaozEngine.Tests/Render3D/SunCycleTests.cs` covers the arc math (noon
+  elevation, wraparound, morning/evening sun side, heading rotation, polar and equatorial edge cases),
+  palette blending continuity, the horizon key dip and disc fade, and `Apply` touching exactly the
+  documented fields.
+
 ## 10.123.0
 
 NPC navigation: a new `KhaozEngine.Navigation` package brings engine-owned pathfinding so game NPC brains

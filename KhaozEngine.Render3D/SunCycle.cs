@@ -246,7 +246,14 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public static void Apply(in SunCycleState state, PixelPostProcessSettings post)
         {
-            throw new NotImplementedException();
+            post.LightDirection = state.LightDirection;
+            post.LightColor = state.LightColor;
+            post.AmbientColor = state.AmbientColor;
+            post.FillLightColor = state.FillLightColor;
+            post.Sky.HorizonColor = state.HorizonColor;
+            post.Sky.ZenithColor = state.ZenithColor;
+            post.Sky.SunColor = state.SunColor;
+            post.Sky.SunEnabled = state.SunEnabled;
         }
     }
 }

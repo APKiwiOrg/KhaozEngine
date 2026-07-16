@@ -226,5 +226,31 @@ namespace KhaozEngine.Tests.Render3D
             AssertColorEqual(morning.FillLightColor, evening.FillLightColor);
             Assert.True(MathF.Sign(morning.LightDirection.X) != MathF.Sign(evening.LightDirection.X), "morning and evening key light should point to opposite sides");
         }
+
+        [Fact]
+        public void Apply_writes_the_lighting_fields_and_nothing_else()
+        {
+            var post = new PixelPostProcessSettings();
+            post.Sky.Enabled = true;
+            var anchorBefore = post.Sky.Anchor;
+            var radiusBefore = post.Sky.SunRadius;
+            var haloBefore = post.Sky.HaloStrength;
+            var fillDirBefore = post.FillLightDirection;
+            var state = SunCycle.Evaluate(0.5f, new SunCycleSettings());
+            SunCycle.Apply(state, post);
+            Assert.Equal(state.LightDirection, post.LightDirection);
+            Assert.Equal(state.LightColor, post.LightColor);
+            Assert.Equal(state.AmbientColor, post.AmbientColor);
+            Assert.Equal(state.FillLightColor, post.FillLightColor);
+            Assert.Equal(state.HorizonColor, post.Sky.HorizonColor);
+            Assert.Equal(state.ZenithColor, post.Sky.ZenithColor);
+            Assert.Equal(state.SunColor, post.Sky.SunColor);
+            Assert.Equal(state.SunEnabled, post.Sky.SunEnabled);
+            Assert.True(post.Sky.Enabled);
+            Assert.Equal(anchorBefore, post.Sky.Anchor);
+            Assert.Equal(radiusBefore, post.Sky.SunRadius);
+            Assert.Equal(haloBefore, post.Sky.HaloStrength);
+            Assert.Equal(fillDirBefore, post.FillLightDirection);
+        }
     }
 }

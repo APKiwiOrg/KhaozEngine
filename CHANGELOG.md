@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.114.0
+
+World-anchored sky sun disc: the sun now projects to its true world-space direction (point-at-infinity through
+the camera projection) instead of sliding around the screen as the camera orbits, with the legacy stylized
+placement kept as an opt-in. Minor bump: additive `SunAnchor` API plus a corrected default for the sun disc.
+
+- New `SunAnchor` enum (`World`, `StylizedBackdrop`) and `SkySettings.Anchor` (default `World`). `World`
+  anchors the sun disc to the world-space sun direction via a real point-at-infinity projection (rotate the
+  world sun direction into view space, project through the camera projection, perspective-divide) and draws it
+  only when the sun is in front of the camera. Orbiting the camera keeps the disc fixed over the world
+  direction the light comes from, and a pure camera translation never moves it.
+- `StylizedBackdrop` preserves the exact pre-existing camera-relative placement (the sun's view-space right/up
+  read directly as screen NDC, visible above the view horizon). It is the correct choice for the orthographic
+  iso camera, where a directional sun is a point at infinity with no finite screen position and `World`
+  therefore suppresses the disc. Under a perspective camera `World` is the physically-correct placement.
+- Handedness: the engine's cameras build the view with `CreateLookAt` (right-handed, looking down `-Z`), so a
+  direction is in front of the camera when its view-space `z < 0` and, for a perspective projection, its clip
+  `w = -viewZ > 0` yields a finite NDC. Verified against `IsoCamera3D`/`FollowCamera3D`/`FlyCamera3D`.
+- The projection is done entirely on the CPU (`SkyMath.ProjectSunWorldToNdc` / `ProjectSunStylizedToNdc`,
+  dispatched by `SkyMath.ProjectSunToNdc(SunAnchor, ...)`) and its result rides in the existing sky UBO
+  `SunNdc` slot, so the GPU sky UBO layout (96 bytes) and the GLSL `SkyFrag` are unchanged: one uniform buffer
+  per pipeline, no shader edit, no vertex-input change. `SkyRenderer.PackUbo` / `Draw` gain a `Matrix4x4
+  projection` parameter, and `Scene3D` passes `ActiveCamera.Projection`.
+- Day/night readiness (no code change needed, now covered by a test): a per-frame `Post.LightDirection` change
+  re-renders the shadow depth map. `Scene3D.ComputeShadowLightViewProj` derives the fitted light matrix from
+  `Post.LightDirection`, so a moving sun flips `lightMatrixChanged` and dirties the depth pass, while a held
+  sun still lets a static scene reuse the persistent map.
+- Goldens: new `scene3d_sky_world_sun` (perspective off-axis camera, world-anchored disc, baked Metal + D3D11 +
+  Vulkan) with a guard that ties the rendered disc to the CPU projection. The existing `scene3d_sky` /
+  `scene3d_water` goldens (ortho iso camera) are pinned to `SunAnchor.StylizedBackdrop`, so they stay
+  byte-identical.
+
 ## 10.113.0
 
 Modern telegraph rendering: soft feathered edges, animated noise fills, rim/sweep/sparkle edge energy, and

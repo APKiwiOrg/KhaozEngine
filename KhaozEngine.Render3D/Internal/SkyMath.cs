@@ -25,17 +25,73 @@ namespace KhaozEngine.Render3D.Internal
         }
 
         /// <summary>
-        /// Place the sun (a DIRECTIONAL light, so a direction, not a position) at a screen NDC point by rotating the
-        /// sun direction into VIEW space with <paramref name="view"/> and reading off its right/up components. View
-        /// space is right(+x)/up(+y)/-forward(-z), so a NORMALIZED direction's (x,y) are already screen-relative and
-        /// in [-1,1]; the disc sits at that screen position (right maps to +ndc.x, up to +ndc.y). This is a stylized
-        /// backdrop placement (not a physical point-at-infinity projection, which blows up under the orthographic iso
-        /// camera): it keeps the disc agreeing with the light AZIMUTH for BOTH the ortho iso camera and the
-        /// perspective follow camera. The sun is "visible" when it is above the view horizon (<c>viewDir.y &gt; 0</c>,
-        /// i.e. in the upper sky) - the shader suppresses the disc otherwise, so a sun below the horizon (behind/under
-        /// the camera) does not paint into the sky.
+        /// Place the sun disc at a screen NDC point according to <paramref name="anchor"/>: the world-anchored
+        /// point-at-infinity projection (<see cref="SunAnchor.World"/>, the default) or the legacy stylized backdrop
+        /// (<see cref="SunAnchor.StylizedBackdrop"/>). Returns <c>false</c> (disc suppressed) when the sun has no
+        /// on-screen position for that anchor (behind the camera, below the horizon, or a directional sun under an
+        /// orthographic projection). Called once per frame by <see cref="Rendering.SkyRenderer.PackUbo"/>. The shader
+        /// reads only the resulting NDC, so both anchors share the same GLSL <c>SkyFrag</c> unchanged.
         /// </summary>
-        public static bool ProjectSunToNdc(Matrix4x4 view, Vector3 sunDir, out Vector2 ndc)
+        /// <param name="anchor">World (physical projection) or StylizedBackdrop (camera-relative placement).</param>
+        /// <param name="view">The camera view matrix (rotation used, translation ignored, w=0).</param>
+        /// <param name="projection">The camera projection matrix (used by <see cref="SunAnchor.World"/> only).</param>
+        /// <param name="sunDir">World-space direction TO the sun.</param>
+        /// <param name="ndc">Sun's screen NDC (x,y in [-1,1], y up) when visible, else <see cref="Vector2.Zero"/>.</param>
+        public static bool ProjectSunToNdc(SunAnchor anchor, Matrix4x4 view, Matrix4x4 projection, Vector3 sunDir, out Vector2 ndc)
+            => anchor == SunAnchor.StylizedBackdrop
+                ? ProjectSunStylizedToNdc(view, sunDir, out ndc)
+                : ProjectSunWorldToNdc(view, projection, sunDir, out ndc);
+
+        /// <summary>
+        /// World-anchored placement (<see cref="SunAnchor.World"/>): a true point-at-infinity projection. Rotate the
+        /// world sun direction into view space (rotation only, so a pure camera MOVE never shifts the disc, only a
+        /// camera ROTATION does), reject it when it is not in FRONT of the camera, then project the view-space
+        /// direction as a homogeneous point at infinity (<c>w=0</c>) through <paramref name="projection"/> and
+        /// perspective-divide. Orbiting the camera keeps the disc fixed over the world direction the sun really lies
+        /// in.
+        /// <para>
+        /// Handedness: the engine's cameras build <c>view</c> with <see cref="Matrix4x4.CreateLookAt"/> (right-handed,
+        /// looking down <c>-Z</c> in view space), row-vector convention (<c>clip = worldRow * matrix</c>). So a
+        /// direction IN FRONT of the camera has view-space <c>z &lt; 0</c>, and for a perspective projection its clip
+        /// <c>w = -viewZ &gt; 0</c> gives a finite NDC. For an ORTHOGRAPHIC projection the clip <c>w</c> collapses to
+        /// <c>0</c> (a directional sun has no finite screen position under parallel view rays), so the disc is
+        /// suppressed - use <see cref="SunAnchor.StylizedBackdrop"/> for the ortho iso look.
+        /// </para>
+        /// </summary>
+        public static bool ProjectSunWorldToNdc(Matrix4x4 view, Matrix4x4 projection, Vector3 sunDir, out Vector2 ndc)
+        {
+            // Rotate the direction into view space (w=0: ignore the view translation). Row-vector convention, matching
+            // the rest of the engine (clip = worldRow * matrix).
+            Vector3 d = Vector3.Normalize(sunDir);
+            var vd = new Vector3(
+                d.X * view.M11 + d.Y * view.M21 + d.Z * view.M31,
+                d.X * view.M12 + d.Y * view.M22 + d.Z * view.M32,
+                d.X * view.M13 + d.Y * view.M23 + d.Z * view.M33);
+            // Right-handed view (CreateLookAt looks down -Z): in front of the camera is view-space z < 0. A sun at or
+            // behind the camera plane has no place in the sky.
+            if (vd.Z >= -1e-4f) { ndc = Vector2.Zero; return false; }
+
+            // Project the view-space direction as a point at infinity (w-row = 0) through the projection, then
+            // perspective-divide. Perspective: clip.w = -vd.z > 0 -> finite NDC. Orthographic: clip.w = 0 -> no finite
+            // screen position for a directional sun (parallel rays), so suppress the disc.
+            Vector4 clip = Vector4.Transform(new Vector4(vd, 0f), projection);
+            if (clip.W <= 1e-6f) { ndc = Vector2.Zero; return false; }
+            ndc = new Vector2(clip.X / clip.W, clip.Y / clip.W);
+            return true;
+        }
+
+        /// <summary>
+        /// Legacy stylized backdrop placement (<see cref="SunAnchor.StylizedBackdrop"/>): place the sun (a DIRECTIONAL
+        /// light, so a direction, not a position) at a screen NDC point by rotating the sun direction into VIEW space
+        /// with <paramref name="view"/> and reading off its right/up components. View space is right(+x)/up(+y)/
+        /// -forward(-z), so a NORMALIZED direction's (x,y) are already screen-relative and in [-1,1]. The disc sits at
+        /// that screen position (right maps to +ndc.x, up to +ndc.y). This is NOT a physical point-at-infinity
+        /// projection (which degenerates under the orthographic iso camera): it keeps the disc agreeing with the light
+        /// AZIMUTH for BOTH the ortho iso camera and the perspective follow camera. The sun is "visible" when it is
+        /// above the view horizon (<c>viewDir.y &gt; 0</c>, i.e. in the upper sky) - a sun below the horizon
+        /// (behind/under the camera) does not paint into the sky.
+        /// </summary>
+        public static bool ProjectSunStylizedToNdc(Matrix4x4 view, Vector3 sunDir, out Vector2 ndc)
         {
             // Rotate the direction into view space (w=0: ignore the view translation). Row-vector convention, matching
             // the rest of the engine (clip = worldRow * matrix).

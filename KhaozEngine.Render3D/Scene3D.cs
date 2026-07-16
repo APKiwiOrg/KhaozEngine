@@ -1980,7 +1980,7 @@ namespace KhaozEngine.Render3D
             // pixels). Fully skipped when off, so a sky-off frame renders byte-identical to before this pass existed.
             if (Post.Sky.Enabled)
             {
-                _sky.Draw(cl, _res, ActiveCamera.View, Post.LightDirection, Post.Sky);
+                _sky.Draw(cl, _res, ActiveCamera.View, ActiveCamera.Projection, Post.LightDirection, Post.Sky);
                 _frameStats.DrawCalls++;
             }
 

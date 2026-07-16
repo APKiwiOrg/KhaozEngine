@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.113.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.114.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -111,9 +111,11 @@ Ordered gap list (2026-07-07 feature audit):
    per-frame instance counts grow past linear-scan comfort - today every queued instance and skinned draw is
    tested against the frustum in one flat pass each frame, fine at current scene sizes but a candidate for a
    grid/quadtree broad-phase if a much larger streamed world pushes per-frame counts up.
-4. Sky follow-ups (the gradient + key-light-aligned sun disc background shipped in 10.20.0, a screen-space
-   formulation that works under both ortho and perspective cameras): a physical point-at-infinity sun
-   projection for perspective cameras, and a full cubemap/skybox when water or a specific scene pulls for it.
+4. Sky follow-ups (the gradient + key-light-aligned sun disc shipped in 10.20.0, the world-anchored
+   point-at-infinity sun projection shipped in 10.114.0 as `SunAnchor.World`): a full cubemap/skybox when water
+   or a specific scene pulls for it, and a day/night cycle helper (a sun-elevation-driven sky tint + ambient
+   ramp that drives `Post.LightDirection` over time, building on the now world-anchored sun and the shadow map
+   already re-rendering when the light moves).
 5. Water follow-ups (the animated water surface shipped in 10.28.0: `Scene3D.DrawWater` + `WaterSettings`,
    shore fade, sky-derived fresnel tint, sun glint, no reflections): shore foam, per-game wave tuning once
    Ruinborne adopts it, dropping the unused `Res` UBO field, and a water-footprint-scoped golden guard.

@@ -388,7 +388,10 @@ public sealed class GridPathPlanner : IPathPlanner
     /// 8-neighbor move (same layer, Chebyshev distance exactly one). Anything else in a reconstructed
     /// chain is a link crossing, since within a layer A* only ever steps to an adjacent cell. Same-layer
     /// links joining Chebyshev-adjacent cells are indistinguishable from grid steps and get smoothed like
-    /// one, which is benign because such cells are LOS-clear by construction.</summary>
+    /// one. No shipped adapter emits such links (DungeonNav stairs always cross layers). An adapter that
+    /// emits a same-layer diagonally adjacent link should prefer orthogonally adjacent cells, a smoothed
+    /// diagonal link segment is corner-checked by the line walk on only one of the two companion cells,
+    /// not both like a real diagonal grid step.</summary>
     static bool IsGridStep((int Layer, int Cx, int Cz) a, (int Layer, int Cx, int Cz) b)
     {
         if (a.Layer != b.Layer)

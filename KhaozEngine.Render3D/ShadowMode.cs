@@ -132,7 +132,7 @@ namespace KhaozEngine.Render3D
         /// map, to defeat self-shadow acne on lit surfaces. Too small = acne (surface shadows itself), too large =
         /// peter-panning (the shadow detaches from the caster's contact). Since <see cref="ShadowNormalOffset"/> now
         /// carries the acne defence, this stays tiny: default <c>0.0004</c> (was 0.004 - an order of magnitude smaller
-        /// once the normal offset landed; the old value put ~0.25 world units of depth bias at the default radius,
+        /// once the normal offset landed. The old value put ~0.25 world units of depth bias at the default radius,
         /// which peter-panned thin casters' contact shadows). See the bias-tuning note in docs/USING-KHAOZENGINE.md.</summary>
         public float ShadowConstantBias = 0.0004f;
 

@@ -5,6 +5,35 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.115.0
+
+ShadowMap contact fix: the cast shadow now connects at the caster's feet instead of peter-panning (detaching)
+away from them. Root cause was the depth bias acting in ortho NDC z over the light's full depth range
+(`4 * ShadowFocusRadius` world units), so the default `ShadowConstantBias` `0.004` was ~0.25 world units of
+depth bias at the default radius 16 - larger than a thin caster's (foot/leg) front-to-back margin, which
+overwhelmed the second-depth (front-cull) trick. Measured gap: 0.12 world units at 45deg elevation, 0.30 at
+25deg (grazing). Behaviour fix plus one additive setting: minor bump.
+
+- New `ShadowSettings.ShadowNormalOffset` (default `2.5`, in shadow-map texels): the primary acne defence. The
+  receiver's sample position is pushed off the surface along its geometric normal by that many texels,
+  world-scaled by the shadow map's texel size (so it is automatically extent-aware as `ShadowFocusRadius` /
+  `ShadowMapResolution` change) and grazing-angle-weighted (largest where self-shadow acne is worst, zero
+  facing the light). This is the standard normal-offset bias, which suppresses acne without a large depth bias,
+  so the shadow keeps contact with the caster's feet. Set `0` to fall back to depth-bias-only.
+- `ShadowSettings.ShadowConstantBias` default dropped `0.004` -> `0.0004` and `ShadowSlopeBias` `0.006` ->
+  `0.0015` (an order of magnitude, now that the normal offset carries the acne defence). The knobs are
+  unchanged in meaning and still work. Games that raised these to fight acne can lower them or rely on the
+  normal offset.
+- The frame UBO shadow tail grew one vec4 (`ShadowParams2`, whose `.x` is the CPU-baked normal-offset world
+  size): `ModelRenderer.UboBytes` 768 -> 784. Fragment-only shader change (the shared `sampleKeyShadow` helper
+  and the five fragments that call it), no vertex-input signature change. UBO-layout tripwire tests updated.
+- Front-face (second-depth) depth-pass culling is unchanged: it still halves the residual bias sensitivity.
+- New `ShadowContactGoldenTests` (cross-backend property golden): asserts the cast shadow of a thin caster
+  connects within a few shadow texels of its feet and the lit ground carries no self-shadow acne, at the
+  default bias settings, so a regression that raises the depth bias (re-detaching the shadow) or drops the
+  normal offset (re-introducing acne) trips. `scene3d_shadow_map` and `scene3d_splat_shadow` goldens rebaked
+  (sub-tolerance shift on their thick-caster scenes).
+
 ## 10.114.0
 
 World-anchored sky sun disc: the sun now projects to its true world-space direction (point-at-infinity through

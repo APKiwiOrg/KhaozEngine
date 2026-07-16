@@ -76,7 +76,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(litLum > 0.30f, $"lit ground too dark to run the test (litLum {litLum:0.###}); scene/camera changed?");
             float shadowThresh = 0.62f * litLum;
 
-            // 1) CONTACT: scan the ground along z=0 from just past the foot outward; the first ground texel below the
+            // 1) CONTACT: scan the ground along z=0 from just past the foot outward. The first ground texel below the
             //    shadow threshold is the shadow start. The gap to the foot must be within a few shadow texels.
             float texelWorld = ShadowMapMath.TexelWorldSize(Radius, ShadowMapRendererResolution());
             float shadowStartX = float.NaN;
@@ -92,7 +92,7 @@ namespace KhaozEngine.Tests.Gpu
                 $"shadow peter-pans: it starts {gapWorld:0.###} world units ({gapTexels:0.#} shadow texels) from the caster's feet " +
                 $"(threshold 4 texels). The old defaults detached it by ~8 texels here. Did the depth bias regress up or ShadowNormalOffset drop?");
 
-            // 2) NO ACNE: sample a grid of LIT ground (-X side, off-shadow Z lanes); almost none may be spuriously dark.
+            // 2) NO ACNE: sample a grid of LIT ground (-X side, off-shadow Z lanes). Almost none may be spuriously dark.
             int total = 0, dark = 0;
             float acneThresh = 0.75f * litLum;   // a genuinely lit texel is ~litLum; acne pulls it well below
             for (float gx = -4.0f; gx <= -0.7f; gx += 0.2f)
@@ -109,7 +109,7 @@ namespace KhaozEngine.Tests.Gpu
                 $"(threshold 5%). Did ShadowNormalOffset drop or the depth bias go to zero?");
         }
 
-        // The renderer clamps the shadow map to its allocated resolution; the default is the settings' 2048 here.
+        // The renderer clamps the shadow map to its allocated resolution, which defaults to the settings' 2048 here.
         static int ShadowMapRendererResolution() => new ShadowSettings().ShadowMapResolution;
 
         static float AvgGroundLum(byte[] rgba, IsoCamera3D cam, Vector3[] pts)
@@ -120,9 +120,9 @@ namespace KhaozEngine.Tests.Gpu
             return n == 0 ? 0f : sum / n;
         }
 
-        // Project a ground world point, average a 3x3 window; report luminance (0..1) and whether the pixel is GROUND
+        // Project a ground world point, average a 3x3 window, report luminance (0..1) and whether the pixel is GROUND
         // (the neutral-albedo tile, lit or shadowed) rather than the green caster. The caster albedo is green so every
-        // caster face is green-dominant; the neutral ground never is.
+        // caster face is green-dominant, which the neutral ground never is.
         static bool SampleGround(byte[] rgba, IsoCamera3D cam, Vector3 world, out float lum, out bool ground)
         {
             lum = 0; ground = false;

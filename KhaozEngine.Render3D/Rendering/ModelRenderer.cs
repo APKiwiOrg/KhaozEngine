@@ -29,7 +29,7 @@ namespace KhaozEngine.Render3D.Rendering
         // the model and splat passes read the shadow map from their one bound UBO. ShadowParams.x = 1/mapResolution
         // (PCF texel step), .y = constant bias, .z = slope bias, .w = shadow strength (0 = shadow map inactive this
         // frame). ShadowParams2.x = normal-offset world size (texel-world-size x ShadowNormalOffset, CPU-baked so it is
-        // extent-aware); .yzw reserved.
+        // extent-aware). The .yzw are reserved.
         internal const uint ShadowTailBytes = 64 + 32;               // mat4 + 2*vec4 = 96
         internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
         internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 784

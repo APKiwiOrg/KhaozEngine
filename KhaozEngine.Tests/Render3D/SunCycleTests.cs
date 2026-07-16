@@ -28,6 +28,14 @@ namespace KhaozEngine.Tests.Render3D
         static void AssertFiniteColor(Color c) =>
             Assert.True(float.IsFinite(c.R) && float.IsFinite(c.G) && float.IsFinite(c.B) && float.IsFinite(c.A), $"color not finite: {c}");
 
+        static void AssertColorEqual(Color expected, Color actual)
+        {
+            Assert.Equal(expected.R, actual.R, 1e-4);
+            Assert.Equal(expected.G, actual.G, 1e-4);
+            Assert.Equal(expected.B, actual.B, 1e-4);
+            Assert.Equal(expected.A, actual.A, 1e-4);
+        }
+
         [Fact]
         public void Noon_places_the_sun_at_peak_elevation()
         {
@@ -102,6 +110,121 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.True(st.LightDirection.Y <= 1e-4f, $"light should never travel upward at t={t}, Y={st.LightDirection.Y}");
                 Assert.Equal(1f, st.LightDirection.Length(), 1e-3);
             }
+        }
+
+        [Fact]
+        public void Midnight_sun_is_below_the_horizon_and_the_disc_is_hidden()
+        {
+            var s = new SunCycleSettings();
+            var midnight = SunCycle.Evaluate(0f, s);
+            Assert.True(midnight.SunElevationDegrees < 0f, $"midnight elevation should be negative, got {midnight.SunElevationDegrees}");
+            Assert.False(midnight.SunEnabled);
+            Assert.True(midnight.SunColor.R < 1e-4f && midnight.SunColor.G < 1e-4f && midnight.SunColor.B < 1e-4f, $"night disc should be black, got {midnight.SunColor}");
+        }
+
+        [Fact]
+        public void Night_key_light_is_the_virtual_moon()
+        {
+            var s = new SunCycleSettings();
+            var midnight = SunCycle.Evaluate(0f, s);
+            Assert.True(midnight.LightDirection.Y < -0.3f, $"night key should point well downward, got {midnight.LightDirection}");
+            var night = s.NightPalette.LightColor;
+            Assert.Equal(night.R, midnight.LightColor.R, 1e-3);
+            Assert.Equal(night.G, midnight.LightColor.G, 1e-3);
+            Assert.Equal(night.B, midnight.LightColor.B, 1e-3);
+        }
+
+        [Fact]
+        public void High_noon_with_default_palettes_reproduces_the_engine_default_look()
+        {
+            var s = new SunCycleSettings();
+            var noon = SunCycle.Evaluate(0.5f, s);
+            Assert.True(noon.SunEnabled);
+            AssertColorEqual(new Color(0.62f, 0.70f, 0.80f, 1f), noon.HorizonColor);
+            AssertColorEqual(new Color(0.22f, 0.42f, 0.72f, 1f), noon.ZenithColor);
+            AssertColorEqual(new Color(1f, 0.96f, 0.85f, 1f), noon.SunColor);
+            AssertColorEqual(new Color(1f, 0.95f, 0.86f, 1f), noon.LightColor);
+            AssertColorEqual(new Color(0.16f, 0.19f, 0.30f, 1f), noon.AmbientColor);
+            AssertColorEqual(new Color(0.20f, 0.24f, 0.34f, 1f), noon.FillLightColor);
+        }
+
+        [Fact]
+        public void Night_is_not_pitch_black()
+        {
+            var midnight = SunCycle.Evaluate(0f, new SunCycleSettings());
+            Assert.True(midnight.AmbientColor.R >= 0.05f, $"ambient R too dark: {midnight.AmbientColor.R}");
+            Assert.True(midnight.AmbientColor.G >= 0.05f, $"ambient G too dark: {midnight.AmbientColor.G}");
+            Assert.True(midnight.AmbientColor.B >= 0.05f, $"ambient B too dark: {midnight.AmbientColor.B}");
+            float keyMag = midnight.LightColor.R + midnight.LightColor.G + midnight.LightColor.B;
+            Assert.True(keyMag > 0f, "night key light should not be fully black");
+        }
+
+        [Fact]
+        public void Sun_disc_fades_to_nothing_at_the_horizon()
+        {
+            // lat 0, dec 0 puts the exact horizon crossing at t = 0.25.
+            var s = new SunCycleSettings { LatitudeDegrees = 0f, SolarDeclinationDegrees = 0f };
+            Assert.True(SunCycle.Evaluate(0.251f, s).SunColor.R < 0.05f);
+            Assert.False(SunCycle.Evaluate(0.249f, s).SunEnabled);
+        }
+
+        [Fact]
+        public void Key_light_dips_to_zero_across_the_horizon_flip()
+        {
+            var s = new SunCycleSettings { LatitudeDegrees = 0f, SolarDeclinationDegrees = 0f };
+            var atCrossing = SunCycle.Evaluate(0.25f, s);
+            Assert.True(MathF.Abs(atCrossing.LightColor.R) < 1e-3f);
+            Assert.True(MathF.Abs(atCrossing.LightColor.G) < 1e-3f);
+            Assert.True(MathF.Abs(atCrossing.LightColor.B) < 1e-3f);
+            var prev = SunCycle.Evaluate(0.245f, s);
+            for (float t = 0.2451f; t <= 0.255f; t += 0.0001f)
+            {
+                var cur = SunCycle.Evaluate(t, s);
+                Assert.True(MathF.Abs(cur.LightColor.R - prev.LightColor.R) < 0.05f);
+                Assert.True(MathF.Abs(cur.LightColor.G - prev.LightColor.G) < 0.05f);
+                Assert.True(MathF.Abs(cur.LightColor.B - prev.LightColor.B) < 0.05f);
+                prev = cur;
+            }
+        }
+
+        [Fact]
+        public void Color_output_is_continuous_over_the_full_day()
+        {
+            var s = new SunCycleSettings();
+            var prev = SunCycle.Evaluate(0f, s);
+            for (float t = 0.001f; t <= 1f; t += 0.001f)
+            {
+                var cur = SunCycle.Evaluate(t, s);
+                AssertSmooth(prev.HorizonColor, cur.HorizonColor, 0.03f, t);
+                AssertSmooth(prev.ZenithColor, cur.ZenithColor, 0.03f, t);
+                AssertSmooth(prev.AmbientColor, cur.AmbientColor, 0.03f, t);
+                AssertSmooth(prev.FillLightColor, cur.FillLightColor, 0.03f, t);
+                AssertSmooth(prev.LightColor, cur.LightColor, 0.25f, t);
+                AssertSmooth(prev.SunColor, cur.SunColor, 0.25f, t);
+                prev = cur;
+            }
+        }
+
+        static void AssertSmooth(Color a, Color b, float bound, float t)
+        {
+            Assert.True(MathF.Abs(a.R - b.R) < bound, $"R jump at t={t}: {a.R}->{b.R}");
+            Assert.True(MathF.Abs(a.G - b.G) < bound, $"G jump at t={t}: {a.G}->{b.G}");
+            Assert.True(MathF.Abs(a.B - b.B) < bound, $"B jump at t={t}: {a.B}->{b.B}");
+        }
+
+        [Fact]
+        public void Same_elevation_gives_the_same_palette()
+        {
+            var s = new SunCycleSettings();
+            var morning = SunCycle.Evaluate(0.3f, s);
+            var evening = SunCycle.Evaluate(0.7f, s);
+            AssertColorEqual(morning.HorizonColor, evening.HorizonColor);
+            AssertColorEqual(morning.ZenithColor, evening.ZenithColor);
+            AssertColorEqual(morning.SunColor, evening.SunColor);
+            AssertColorEqual(morning.LightColor, evening.LightColor);
+            AssertColorEqual(morning.AmbientColor, evening.AmbientColor);
+            AssertColorEqual(morning.FillLightColor, evening.FillLightColor);
+            Assert.True(MathF.Sign(morning.LightDirection.X) != MathF.Sign(evening.LightDirection.X), "morning and evening key light should point to opposite sides");
         }
     }
 }

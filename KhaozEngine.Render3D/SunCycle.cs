@@ -203,9 +203,39 @@ namespace KhaozEngine.Render3D
             // The key dips to zero at the crossing so the 180 degree azimuth flip is invisible.
             Vector3 lightDir = elDeg > 0f ? -sunToward : sunToward;
 
-            return new SunCycleState(
-                lightDir, elDeg,
-                default, default, default, elDeg > 0f, default, default, default);
+            float twilightBand = MathF.Max(1e-3f, settings.TwilightStartElevationDegrees);
+            float nightBand = MathF.Max(1e-3f, MathF.Abs(settings.NightFullElevationDegrees));
+            SunCyclePalette from = settings.DuskPalette;
+            SunCyclePalette to;
+            float s;
+            if (elDeg >= 0f)
+            {
+                to = settings.DayPalette;
+                s = MathUtil.SmoothStep(0f, twilightBand, elDeg);
+            }
+            else
+            {
+                to = settings.NightPalette;
+                s = MathUtil.SmoothStep(0f, nightBand, -elDeg);
+            }
+
+            Color horizon = Color.Lerp(from.HorizonColor, to.HorizonColor, s);
+            Color zenith = Color.Lerp(from.ZenithColor, to.ZenithColor, s);
+            Color ambient = Color.Lerp(from.AmbientColor, to.AmbientColor, s);
+            Color fill = Color.Lerp(from.FillColor, to.FillColor, s);
+            Color key = Color.Lerp(from.LightColor, to.LightColor, s);
+            Color sun = Color.Lerp(from.SunColor, to.SunColor, s);
+
+            float keyDip = MathUtil.SmoothStep(
+                0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
+            key = key.ScaleRgb(keyDip);
+
+            bool sunEnabled = elDeg > 0f;
+            float discFade = MathUtil.SmoothStep(
+                0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), elDeg);
+            sun = sun.ScaleRgb(discFade);
+
+            return new SunCycleState(lightDir, elDeg, horizon, zenith, sun, sunEnabled, key, ambient, fill);
         }
 
         /// <summary>

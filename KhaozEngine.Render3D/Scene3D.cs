@@ -346,7 +346,7 @@ namespace KhaozEngine.Render3D
         {
             _gd = gd;
             _targetOutput = targetOutput;
-            _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight);
+            _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled);
             // Shadow-map resolution is a construction-time knob (the map is bound into every material set, so its
             // handle must stay stable). Read the initial ShadowMapResolution from settings; a game sets it before
             // creating the scene. Clamped inside the shadow renderer.
@@ -1540,7 +1540,7 @@ namespace KhaozEngine.Render3D
                 // A pipeline in flight may reference the old sample count / targets; a MSAA change is rare, so idling
                 // before recreating the MRT + rebuilding pipelines is cheap insurance.
                 if (sampleChanged) _gd.WaitForIdle();
-                _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled);
+                _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled, Post.Hdr.Enabled);
                 _post.BindTargets(_res);
                 _transitions.BindTargets(_res);
                 if (sampleChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count

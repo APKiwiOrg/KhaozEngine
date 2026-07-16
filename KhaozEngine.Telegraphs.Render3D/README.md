@@ -15,7 +15,9 @@ game never drags in Render3D. Presentation only, holds no sim state.
   `scene.DrawGroundDecal`.
 - Edge/outline width is derived in world units as a small fraction of the shape's size, so a big
   AoE gets a proportionally bigger rim. `TelegraphStyle.EdgeThickness` is authored in 2D pixels
-  and is deliberately ignored on this path.
+  and is deliberately ignored on this path. `TelegraphStyle.EdgeWidthWorld` is an opt-in world-unit
+  override: 0 (default) keeps the derived auto-scaling edge, a positive value pins the stroke at
+  any shape size instead (useful for a thin crisp static ring at a large radius).
 - Beams and cones aim with an XZ direction vector. Decals gate on terrain height with sane
   defaults, so a zone hugs the ground instead of smearing up cliffs.
 
@@ -40,6 +42,9 @@ This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRe
 - `FeatherWidth` maps to `GroundDecal.FeatherWidth` in WORLD UNITS: `Base()` clamps the style's
   0..1 feather fraction to 0..0.5 and multiplies it by the shape's characteristic size (the same
   size used for the world-space edge). 0 keeps the legacy hard fwidth-AA edge.
+  `TelegraphStyle.FeatherWidthWorld` is an opt-in override on top of this: 0 (default) keeps the
+  derived shape-relative feather above, a positive value feeds `GroundDecal.FeatherWidth` directly
+  in world units instead, skipping the characteristic-size multiply.
 - `TelegraphStyle.Pattern` (a `TelegraphFillPattern`) casts directly onto `GroundDecal.Pattern`
   (a `DecalFillPattern`, `GroundDecal`'s own enum in `KhaozEngine.Render3D`): the two enums share
   the same `Solid`/`ScrollingNoise`/`RadialNoise` values on purpose, one per fill style, so the

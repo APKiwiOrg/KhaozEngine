@@ -41,6 +41,13 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
     independent of the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets a
     borderless (`FillMode.Fill`) telegraph's full danger extent read immediately, the sweep then
     brightens across it. Presets use 0.3.
+  - `EdgeWidthWorld` - opt-in world-unit override for the outline / AA edge half-width on the 3D
+    ground-decal path. 0 (default) keeps the derived auto-scaling edge (5% of the shape's
+    characteristic size, clamped to 0.03..0.3 world units). A positive value pins the stroke at
+    any shape size.
+  - `FeatherWidthWorld` - opt-in world-unit override for the feather band on the 3D ground-decal
+    path. 0 (default) keeps the shape-relative `FeatherWidth` fraction. A positive value pins the
+    feather in world units.
 - Presets, each a distinct character to reach for by name:
 
   | Preset | Character |
@@ -65,8 +72,8 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only, picking primitives by
   `FillMode` directly. **It reads none of the modern style knobs above** (FeatherWidth,
   Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-  EdgeSparkle, OutlineRunner) - those are a `KhaozEngine.Telegraphs.Render3D` ground-decal
-  feature.
+  EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld) - those are a
+  `KhaozEngine.Telegraphs.Render3D` ground-decal feature.
 - `ZoneSense.Safe` is reserved for a future version (v1 renders it exactly like `Danger`).
 
 ```csharp

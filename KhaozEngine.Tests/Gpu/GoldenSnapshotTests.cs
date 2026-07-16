@@ -777,6 +777,90 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_ParticlesModern()
+        {
+            MeshHandle floor = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(16f, 0.1f));
+                    scene.Post.Starfield = false;   // flat background so the shapes + fade read cleanly
+                    scene.Post.Outline = true;      // pinned explicit, matching the other 3D goldens
+                    scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.09f, 1f);
+                    scene.Camera.Frame(new Vector3(0f, 0.9f, 0.2f), new Vector3(6.4f, 2.6f, 4.4f));
+                    scene.EffectTimeSeconds = 0f;   // frozen time => deterministic noise/flicker terms
+                },
+                drawFrame: scene =>
+                {
+                    // Dark floor: gives the additive sprites contrast and the half-sunk glow a surface to
+                    // soft-fade against.
+                    scene.Draw(floor, Matrix4x4.Identity, new Color(0.10f, 0.10f, 0.13f, 1f));
+
+                    // One of each procedural shape across the back row: locks the SDF shaping, the premultiplied
+                    // additive compositing, and the per-shape params at their canonical showcase values.
+                    ParticleShape[] shapes =
+                    {
+                        ParticleShape.SoftGlow, ParticleShape.Ember, ParticleShape.Spark,
+                        ParticleShape.Wisp, ParticleShape.Ring, ParticleShape.Star,
+                    };
+                    Color[] tints =
+                    {
+                        new(1.0f, 0.72f, 0.35f, 0.95f), new(1.0f, 0.45f, 0.15f, 1.0f),
+                        new(1.0f, 0.85f, 0.45f, 1.0f), new(0.62f, 0.64f, 0.70f, 0.85f),
+                        new(0.55f, 0.85f, 1.0f, 0.95f), new(0.75f, 0.55f, 1.0f, 1.0f),
+                    };
+                    for (int i = 0; i < shapes.Length; i++)
+                    {
+                        scene.DrawParticle(new ParticleSprite
+                        {
+                            Position = new Vector3((i - 2.5f) * 1.55f, 1.5f, -1.6f),
+                            Size = 0.62f,
+                            Color = tints[i],
+                            Shape = shapes[i],
+                            ShapeParam = 0.35f,
+                            LifeNorm = 0.45f,
+                            Seed = 0.137f + 0.61f * i,
+                            Blend = i == 3 ? BillboardBlend.Alpha : BillboardBlend.Additive,
+                        });
+                    }
+
+                    // A velocity-stretched spark: locks the camera-plane stretch path.
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(-2.4f, 1.1f, 1.3f),
+                        Velocity = new Vector3(7f, 2f, 0f),
+                        Size = 0.4f,
+                        Color = new Color(1f, 0.85f, 0.45f, 1f),
+                        Shape = ParticleShape.Spark,
+                        ShapeParam = 0.5f,
+                        LifeNorm = 0.3f,
+                        Seed = 0.71f,
+                        Stretch = 0.35f,
+                        Blend = BillboardBlend.Additive,
+                    });
+
+                    // A glow half-sunk into the floor: locks the soft depth fade (its lower half must fade at
+                    // the surface, not clip). Queued NEAR-ish last with the alpha wisp above queued earlier, so
+                    // a broken back-to-front sort would change the composite.
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(1.9f, 0.08f, 1.5f),
+                        Size = 0.85f,
+                        Color = new Color(1f, 0.72f, 0.35f, 0.95f),
+                        Shape = ParticleShape.SoftGlow,
+                        ShapeParam = 0.35f,
+                        LifeNorm = 0.3f,
+                        Seed = 0.41f,
+                        Blend = BillboardBlend.Additive,
+                    });
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_particles_modern", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden3D_Beam_DepthInterleaved()
         {
             MeshHandle box = default;

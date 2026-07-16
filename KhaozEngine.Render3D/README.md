@@ -115,10 +115,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only
   scene depth, so it fills only where no mesh drew, never touches the MRT normal/depth the outline pass reads, and
-  costs nothing when off (`Sky.Enabled == false`, existing scenes byte-stable). Screen-space, so it reads under both
-  the orthographic `IsoCamera3D` and the perspective `FollowCamera3D`. The sun direction **defaults to the key light**
-  (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows); override with
-  `Sky.SunDirectionOverride`. The pure math is `SkyMath` (gradient + sun falloff + `ProjectSunToNdc`).
+  costs nothing when off (`Sky.Enabled == false`, existing scenes byte-stable). The sun direction **defaults to the
+  key light** (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows). Override with
+  `Sky.SunDirectionOverride`. `Sky.Anchor` (a `SunAnchor`, default `SunAnchor.World`) chooses how the disc is placed:
+  `World` anchors it to the world-space sun direction via a true point-at-infinity projection through the camera (the
+  disc stays fixed over the world direction the sun lies in as the camera orbits, and is hidden when the sun is behind
+  the camera - correct for the perspective `FollowCamera3D`/`FlyCamera3D`. It degenerates under the orthographic
+  `IsoCamera3D`, where a directional sun has no finite screen position, so pick `StylizedBackdrop` there).
+  `StylizedBackdrop` keeps the legacy
+  camera-relative placement (view-space right/up read as screen NDC, visible above the view horizon), which works
+  under both cameras and is the pick for the iso look. The pure math is `SkyMath` (gradient + sun falloff +
+  `ProjectSunToNdc`, which dispatches on the anchor to `ProjectSunWorldToNdc` / `ProjectSunStylizedToNdc`).
 - Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in LDR threshold +
   separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
   bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,

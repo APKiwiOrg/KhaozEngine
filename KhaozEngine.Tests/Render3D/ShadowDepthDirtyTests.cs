@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
@@ -81,6 +82,45 @@ namespace KhaozEngine.Tests.Render3D
 
             // A different mesh handle (unloaded + reloaded into a new generation) is a change even at the same count.
             Assert.True(Scene3D.ShadowCastersChanged(Runs((3, 1, 1)), Models(0f), Runs((3, 2, 1)), Models(0f)));
+        }
+
+        // ---- Day/night readiness: a moving sun re-renders the shadow depth map --------------------------------------
+        // Scene3D computes shadowLightVp = ComputeShadowLightViewProj(eye) -> ShadowMapMath.BuildLightViewProj(
+        // normalize(Post.LightDirection), focus, ...) each frame, and dirties the depth pass when
+        // _lastShadowLightVp != shadowLightVp (lightMatrixChanged). So a per-frame LightDirection change (a day/night
+        // cycle) must produce a DIFFERENT light matrix and therefore re-render the depth map, not reuse the stale one.
+
+        [Fact]
+        public void A_changed_light_direction_produces_a_different_light_matrix()
+        {
+            // Same focus / radius / resolution, only the light direction moved (sun crossing the sky): the fitted
+            // world->light-clip matrix must change, otherwise the shadow would stay frozen against the old sun.
+            var focus = new Vector3(2f, 0f, -1f);
+            var noon = ShadowMapMath.BuildLightViewProj(new Vector3(-0.2f, -1f, -0.1f), focus, radius: 16f, resolution: 2048);
+            var evening = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, radius: 16f, resolution: 2048);
+            Assert.NotEqual(noon, evening);
+        }
+
+        [Fact]
+        public void A_moving_sun_dirties_the_shadow_depth_pass()
+        {
+            // Reproduce the exact Scene3D wiring: lightMatrixChanged = (_lastShadowLightVp != shadowLightVp). A sun
+            // that moved between frames flips that true, so ShadowDepthPassDirty returns true (re-render), even though
+            // nothing else changed (static casters, same resolution). This is the day/night dirty-tracking guarantee.
+            var focus = new Vector3(2f, 0f, -1f);
+            var last = ShadowMapMath.BuildLightViewProj(new Vector3(-0.2f, -1f, -0.1f), focus, 16f, 2048);
+            var now = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, 16f, 2048);
+            bool lightMatrixChanged = last != now;
+            Assert.True(lightMatrixChanged);
+            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                resolutionChanged: false, lightMatrixChanged: lightMatrixChanged, casterDataChanged: false));
+
+            // And when the sun HOLDS still (identical direction), the light matrix is unchanged, so a static scene
+            // correctly reuses the persistent depth map (not dirtied by the light).
+            var held = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, 16f, 2048);
+            Assert.Equal(now, held);
+            Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                resolutionChanged: false, lightMatrixChanged: now != held, casterDataChanged: false));
         }
 
         [Fact]

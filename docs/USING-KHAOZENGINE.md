@@ -2729,6 +2729,87 @@ guarantees.
 
 ---
 
+## NPC navigation (`KhaozEngine.Navigation`)
+
+Render-free, deterministic NPC pathfinding: bake a clearance grid once, query it for any agent radius, plan
+routes through a swappable `IPathPlanner` seam, then drive per-tick steering through a `PathFollower` that
+feeds `CharacterMovement.StepTowards` (`KhaozEngine.Locomotion`). `using KhaozEngine.Navigation;`:
+
+### Bake at boot
+
+Bake once from the same overworld data the game already loads (analytic terrain slope plus static XZ prop
+colliders), not per query:
+
+```csharp
+NavGrid grid = NavGridBaker.BakeOverworld(
+    terrain, colliders,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, maxSlopeRadians: MathF.PI / 4f);
+var space = NavSpace.Single(grid);
+```
+
+A cell is blocked when the terrain slope at its center exceeds `maxSlopeRadians`, an optional
+`extraBlocked(x, z)` gameplay exclusion returns true (a scripted no-go zone), or a nearby `WorldCollider`
+overlaps a conservative center-point probe. One bake serves every agent radius: the walkable rasterization
+and the clearance transform run once, and the per-query radius check (`NavGrid.IsPassable`) is the only
+thing that varies between a rat and a bear querying the same grid.
+
+For a multi-floor dungeon, `DungeonNav.Bake(layout, originX, originZ, baseY)` (`KhaozEngine.Dungeon`) builds
+the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid` layer per floor, joined by
+directed `NavLink` stair connections a climber crosses between floors, at the same cell size and world
+anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons" above.
+
+### Plan a route
+
+`GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an
+8-connected A* search with corner-cut prevention and string-pulled waypoints, crossing layers over
+`NavSpace.Links` where present:
+
+```csharp
+var planner = new GridPathPlanner(space);
+NavPath path = planner.FindPath(start, goal, agentRadius: 0.4f);   // PathQueryBudget.Default
+// path.Status: Complete (reached the goal), Partial (ran out of budget, waypoints reach as far as it got),
+// or Unreachable (no route, or an endpoint failed to snap onto a passable cell within SnapRadius)
+```
+
+### Follow it every tick
+
+A game brain rarely wants to call `FindPath` itself: `PathFollower` owns the replan decision (stored path
+exhausted, the goal drifted, or the agent strayed off the planned corridor, each gated by a cooldown) and
+hands back a per-tick world-space direction:
+
+```csharp
+var follower = new PathFollower(planner);   // one instance per agent, PathFollowConfig.Default
+
+// every AI tick:
+PathFollowOutput output = follower.Tick(agent.Position, goal.Position, agentRadius, dt);
+if (output.State == PathFollowState.Following)
+{
+    agent = CharacterMovement.StepTowards(agent, output.WorldDir, run: false, dt,
+        terrain.GroundHeight, tuning, world: physics);
+}
+// Arrived: agent.Position is within AcceptRadius of the goal, output.WorldDir is zero.
+// Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
+```
+
+`output.WorldDir` is the raw follow direction only. A dynamic-avoidance pass (steering around other agents
+or a late-appearing obstacle) is expected to run after the follower and before `StepTowards`, adjusting
+`WorldDir` without touching the follower's own path state.
+
+### Budget knobs
+
+`PathQueryBudget` (handed to `IPathPlanner.FindPath`, and to every `PathFollower` replan via
+`PathFollowConfig.Budget`) caps search cost: `MaxExpandedNodes` (default 4096) before the search gives up
+and returns `Partial`, and `SnapRadius` (default 3 world units) for nudging an endpoint onto a passable
+cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6, arrival distance),
+`GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
+`CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
+due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the
+`KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
+limitations, and the full config surface.
+
+---
+
 ## Bounded zones (`RimFeature` + `WorldBounds` + the slope gate)
 
 A designed zone (a start town/lake ringed by impassable mountains with one road out) wants a border that is both

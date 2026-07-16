@@ -283,6 +283,32 @@ incidental `NullReferenceException` from an unguarded `Split` call. Since `Versi
 `ArgumentNullException.ThrowIfNull` before delegating, so a null argument still fails loudly with a
 documented, more precise exception type instead of silently comparing as `0.0.0`.
 
+## Pathfinding seam: IPathPlanner
+
+`KhaozEngine.Navigation` adds five edges, all acyclic:
+
+```
+KhaozEngine.Navigation -> KhaozEngine.Primitives   (System.Numerics only)
+KhaozEngine.Navigation -> KhaozEngine.Collision     (WorldColliders footprints, NavGridBaker.BakeOverworld)
+KhaozEngine.Navigation -> KhaozEngine.Terrain       (TerrainCollision slope, NavGridBaker.BakeOverworld)
+KhaozEngine.Dungeon -> KhaozEngine.Navigation       (DungeonNav.Bake turns a DungeonLayout into a NavSpace)
+KhaozEngine.Foundation -> KhaozEngine.Navigation    (umbrella ProjectReference, like every other Foundation package)
+```
+
+`IPathPlanner` (`FindPath(start, goal, agentRadius, budget) -> NavPath`) is the seam callers code against.
+`GridPathPlanner` is the one shipped implementation, grid A* over a `NavSpace`. Unlike the seams in the table
+above, there is no third-party library on the other side of this one: the point of the interface is not
+containment but swappability of the *algorithm* itself, so a future planner (a navmesh, a flow field, a
+hierarchical search) can replace or sit alongside `GridPathPlanner` without touching `PathFollower` or any
+other call site. `PathFollower` and `PathPlannerExtensions.FindPath` (the default-budget convenience
+overload) depend on the interface only, never on `GridPathPlanner` directly.
+
+`Dungeon -> Navigation` is a forward edge onto a package that itself sits earlier in the dependency graph:
+`Navigation` depends only on `Primitives`/`Collision`/`Terrain`, all of which `Dungeon` already reached
+transitively through `MapDoc` (`MapDoc -> Terrain`, and `Terrain` itself depends on both `Primitives` and
+`Collision`), so the new edge introduces no cycle. `DungeonNav.Bake` lives in `KhaozEngine.Dungeon` and
+returns a `KhaozEngine.Navigation.NavSpace`, but nothing in `Navigation` references `Dungeon` back.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

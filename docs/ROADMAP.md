@@ -4,22 +4,13 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.122.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.123.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. NPC navigation / pathfinding (design approved 2026-07-16, in flight)
-
-Engine-owned pathfinding that respects terrain walkability (the walkable slice shipped in 10.x) plus prop and
-static collision, so game NPC brains consume a path instead of hardcoded pursuit. Current behavior: NPCs chase
-in straight lines and get stuck on every prop (playtest finding, 2026-07-14: Ruinborne wolves pinned behind
-rocks). Decided at design time: grid A* over baked clearance grids behind an `IPathPlanner` seam (navmesh
-stays a reserved future implementation), engine-owned `PathFollower`, overworld and dungeon substrates both
-in v1. Full design: [NPC-NAVIGATION-DESIGN.md](NPC-NAVIGATION-DESIGN.md). First consumer: Ruinborne wolves.
-
-### 2. Physics: ragdolls and vehicles (pull-gated)
+### 1. Physics: ragdolls and vehicles (pull-gated)
 
 The joint foundation shipped in 10.30.0 (ball socket, hinge and slider with limits, distance, weld, plus
 hinge/slider motors and servos and the distance winch on the `IPhysicsWorld` seam), on top of 10.29.0's
@@ -58,7 +49,7 @@ StepHeight above terrain still fails the gate and dead-stalls. Pre-existing beha
 rather than regressed (the near-vertical band is unaffected), but the proper fix is to track the capsule's
 current support height including props and gate against that. Documented in the `StepUpEligible` doc comment.
 
-### 3. Map editor (design approved 2026-07-09, in flight)
+### 2. Map editor (design approved 2026-07-09, in flight)
 
 The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain config, authored
 placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine

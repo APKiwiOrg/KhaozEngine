@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -80,6 +81,106 @@ namespace KhaozEngine.Tests.Render3D
                 s.Shape = shape;
                 Assert.Equal((byte)shape, ParticleRenderer.PackInstance(s).Shape.X);
             }
+        }
+
+        // Mirror the fragment shader's IFlip.w decode (grid + quantized motion strength) so the tests pin the exact
+        // round-trip the GPU relies on.
+        static (int cols, int rows, float mstr) UnpackFlipGrid(float packed)
+        {
+            int cols = (int)(packed % 256f);
+            int rows = (int)(MathF.Floor(packed / 256f) % 256f);
+            float mstr = MathF.Floor(packed / 65536f) / 64f;
+            return (cols, rows, mstr);
+        }
+
+        [Fact]
+        public void PackFlipGrid_RoundTripsColsRows_AcrossFullRange()
+        {
+            // Every field must stay exact through float32, including the corners of the 1..255 grid range.
+            foreach (int cols in new[] { 1, 2, 7, 16, 128, 254, 255 })
+                foreach (int rows in new[] { 1, 2, 8, 16, 200, 255 })
+                {
+                    float packed = ParticleRenderer.PackFlipGrid(cols, rows, 1f);
+                    (int dc, int dr, _) = UnpackFlipGrid(packed);
+                    Assert.Equal(cols, dc);
+                    Assert.Equal(rows, dr);
+                }
+        }
+
+        [Fact]
+        public void PackFlipGrid_QuantizesMotionStrength_ToSixtyFourth()
+        {
+            // 0 and 1 land exactly; 4 is capped at the top byte (255) so the whole packed value stays <= 2^24-1 and
+            // every field stays exact in float32, decoding to within one 1/64 quantum of 4.
+            (_, _, float m0) = UnpackFlipGrid(ParticleRenderer.PackFlipGrid(255, 255, 0f));
+            Assert.Equal(0f, m0);
+
+            (_, _, float m1) = UnpackFlipGrid(ParticleRenderer.PackFlipGrid(255, 255, 1f));
+            Assert.Equal(1f, m1);
+
+            (int dc, int dr, float m4) = UnpackFlipGrid(ParticleRenderer.PackFlipGrid(255, 255, 4f));
+            Assert.Equal(255, dc);   // grid survives even at the max-strength corner
+            Assert.Equal(255, dr);
+            Assert.InRange(m4, 4f - 1f / 64f, 4f);
+        }
+
+        [Fact]
+        public void ResolveFrames_Loop_WrapsFrameBAcrossTheSeam()
+        {
+            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(15.25f, 16, loop: true);
+            Assert.Equal(15f, fa);
+            Assert.Equal(0f, fb);
+            Assert.Equal(0.25f, blend, 5);
+        }
+
+        [Fact]
+        public void ResolveFrames_Loop_MidSheet()
+        {
+            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(2.5f, 16, loop: true);
+            Assert.Equal(2f, fa);
+            Assert.Equal(3f, fb);
+            Assert.Equal(0.5f, blend, 5);
+        }
+
+        [Fact]
+        public void ResolveFrames_OneShot_ClampsAtLastFrame_BlendZero()
+        {
+            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(15.25f, 16, loop: false);
+            Assert.Equal(15f, fa);
+            Assert.Equal(15f, fb);   // no next cell past the sheet, so frameB pins to the last too
+            Assert.Equal(0f, blend);
+        }
+
+        [Fact]
+        public void ResolveFrames_OneShot_MidSheetBlends()
+        {
+            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(2.5f, 16, loop: false);
+            Assert.Equal(2f, fa);
+            Assert.Equal(3f, fb);
+            Assert.Equal(0.5f, blend, 5);
+        }
+
+        [Fact]
+        public void PackInstance_Procedural_PacksZeroFlipLane()
+        {
+            // A sprite with no flipbook must pack Flip = (0,0,0,0): the shader reads w <= 0.5 as "procedural" and
+            // discards the atlas taps, so the procedural output stays byte-identical.
+            Assert.Equal(Vector4.Zero, ParticleRenderer.PackInstance(Sprite()).Flip);
+        }
+
+        [Fact]
+        public void PackInstance_ActiveFlipbook_PacksResolvedFramesAndGrid()
+        {
+            ParticleSprite s = Sprite();
+            s.Flipbook = new ParticleFlipbook(new Scene3D.TextureHandle(0), 4, 4, MotionStrength: 1f, Loop: true);
+            s.FlipbookFrame = 15.25f;   // 4x4 = 16 frames, wraps
+
+            ParticleRenderer.ParticleInstance p = ParticleRenderer.PackInstance(s);
+            (float fa, float fb, float blend) = ParticleRenderer.ResolveFrames(15.25f, 16, loop: true);
+            Assert.Equal(fa, p.Flip.X);
+            Assert.Equal(fb, p.Flip.Y);
+            Assert.Equal(blend, p.Flip.Z, 5);
+            Assert.Equal(ParticleRenderer.PackFlipGrid(4, 4, 1f), p.Flip.W);
         }
     }
 }

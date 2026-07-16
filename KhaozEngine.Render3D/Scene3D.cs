@@ -1977,7 +1977,7 @@ namespace KhaozEngine.Render3D
                     _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, CollectionsMarshal.AsSpan(_shadowDecals));
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_shadowDecals));
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -2105,7 +2105,7 @@ namespace KhaozEngine.Render3D
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
                 // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, CollectionsMarshal.AsSpan(_decals));
+                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepth call above the sky pass) for the shore fade. Depth test ON (so

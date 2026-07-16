@@ -55,7 +55,7 @@ namespace KhaozEngine.Render3D.Rendering
         struct FrameUniforms
         {
             public Matrix4x4 InvViewProj;   // RAW (un-clip-corrected), matching Camera.ScreenToRay picking
-            public Vector4 TimeQ;           // x = effect time seconds, y = quality (1 full / 0 reduced), zw reserved
+            public Vector4 TimeQ;           // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w reserved
         }
 
         /// <summary>A maximal run of consecutive queued decals sharing one blend, drawn as one instanced call.</summary>
@@ -269,10 +269,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Draw all queued decals into ColorDepthFB (lit color + read-only scene depth) as one instanced draw
         /// per blend run. <paramref name="timeSeconds"/> drives the animated noise + edge energy and
         /// <paramref name="quality"/> folds into the Frame UBO's quality lane (Reduced drops the second noise octave and
-        /// the edge sparkle). Caller guarantees the model pass is complete (depth written) and the framebuffer is free
-        /// to rebind. Returns the number of GPU draw calls issued (= blend-run count), so the caller keeps its frame
-        /// stats honest. No-op (returns 0) when empty.</summary>
-        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, ReadOnlySpan<GroundDecal> decals)
+        /// the edge sparkle). <paramref name="hdr"/> raises the final-rgb clamp ceiling from 1.0 (LDR, bit-identical to
+        /// the legacy chain) to the float16 max so the energy lanes can push telegraph cores over 1.0 and bloom. Caller
+        /// guarantees the model pass is complete (depth written) and the framebuffer is free to rebind. Returns the
+        /// number of GPU draw calls issued (= blend-run count), so the caller keeps its frame stats honest. No-op
+        /// (returns 0) when empty.</summary>
+        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, ReadOnlySpan<GroundDecal> decals)
         {
             if (decals.Length == 0) return 0;
             EnsureCapacity(decals.Length);
@@ -281,10 +283,13 @@ namespace KhaozEngine.Render3D.Rendering
             // screen->world like Camera.ScreenToRay picking, which is CPU/backend-independent. The clip-CORRECTED
             // matrix, by contrast, positions the footprint QUAD so it lands on the same pixels the geometry does.
             Matrix4x4.Invert(viewProj, out var inv);
+            // maxRgb ceiling on TimeQ.z: 1.0 keeps the legacy clamp bit-identical, 65504.0 (float16 max) lets the HDR
+            // chain carry over-range decal energy into the pre-tonemap bloom.
+            float maxRgb = hdr ? 65504f : 1f;
             var frame = new FrameUniforms
             {
                 InvViewProj = inv,
-                TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, 0f, 0f),
+                TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, maxRgb, 0f),
             };
             cl.UpdateBuffer(_frameUbo, 0, in frame);
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);

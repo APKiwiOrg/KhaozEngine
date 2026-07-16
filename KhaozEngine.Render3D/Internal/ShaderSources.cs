@@ -1652,7 +1652,7 @@ layout(set=0, binding=1) uniform sampler Samp;
 // and the time/quality value share this single Frame block, grown from 64 to 80 bytes.
 layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
-    vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), zw reserved
+    vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w reserved
 };
 layout(location=0) in vec4 Center;    // xyz world center, w = rotation (radians about +Y)
 layout(location=1) in vec4 Size;      // per-shape params (see GroundDecal.Size)
@@ -1862,10 +1862,12 @@ void main() {
         rgb = mix(rgb, Outline.rgb, clamp(oband * dash * Energy.w * 0.85, 0.0, 1.0));
         a = max(a, oband * dash * Energy.w * Outline.a);
     }
-    rgb = clamp(rgb, 0.0, 1.0);
+    // Ceiling is TimeQ.z: 1.0 in LDR (bit-identical to the legacy clamp), 65504.0 (float16 max) in HDR so the
+    // energy lanes can push telegraph cores over 1.0 and bloom before the tonemap compresses them.
+    rgb = clamp(rgb, 0.0, TimeQ.z);
 
     // Impact flash: brighten toward white. Kept exactly where the legacy shader had it.
-    rgb = clamp(rgb + Params.z, 0.0, 1.0);
+    rgb = clamp(rgb + Params.z, 0.0, TimeQ.z);
 
     if (a <= 0.001) discard;
     // Edge-energy lanes (rim/sweep glow, max-composited) can push a above 1 on float render targets. Legacy

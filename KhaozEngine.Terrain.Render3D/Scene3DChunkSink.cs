@@ -27,7 +27,7 @@ namespace KhaozEngine.Terrain
     public sealed class Scene3DChunkSink : IAsyncChunkSink, IDisposable
     {
         readonly Scene3D _scene;
-        readonly TerrainField _field;
+        TerrainField _field;
         readonly IReadOnlyList<PropLayer> _layers;
         readonly float _chunkSize;
         readonly Scene3D.SplatMaterialHandle _material;
@@ -159,10 +159,20 @@ namespace KhaozEngine.Terrain
         /// <summary>The first layer's placements for a chunk (back-compat for the single-layer path).</summary>
         internal IReadOnlyList<PropPlacement> ScatterFor(ChunkCoord coord) => ScatterLayersFor(coord)[0];
 
+        /// <summary>Swap the field used for every future chunk build (mesh height/splat + prop scatter). This is
+        /// the other half of the editor invalidation seam: a chunk already loaded keeps the OLD field's mesh shape
+        /// until the caller invalidates or re-LODs it (see <see cref="TerrainStreamer.Invalidate(RectArea)"/>).
+        /// This call only changes what a FUTURE build reads. In async mode the caller must flush in-flight builds
+        /// (<see cref="TerrainStreamer.FlushPendingBuilds"/>) before swapping, so a build already running against
+        /// the old field cannot land after the swap. The map editor runs the streamer in synchronous mode, so this
+        /// does not apply there.</summary>
+        public void UpdateField(TerrainField field) => _field = field ?? throw new ArgumentNullException(nameof(field));
+
         /// <summary>The opaque CPU payload <see cref="BuildCpu"/> hands to <see cref="Apply"/>: the pure-CPU mesh and
         /// the per-layer scatter, both built off the analytic field with no GPU device. Everything here is safe to
-        /// compute on a worker thread. The GPU upload + physics registration happen later in <see cref="Apply"/>.</summary>
-        sealed class CpuBuild
+        /// compute on a worker thread. The GPU upload + physics registration happen later in <see cref="Apply"/>.
+        /// Internal (not private) so headless tests can inspect a CPU build's mesh without a GPU device.</summary>
+        internal sealed class CpuBuild
         {
             public TerrainChunkMesh Mesh = null!;
             public IReadOnlyList<PropPlacement>[] LayerProps = Array.Empty<IReadOnlyList<PropPlacement>>();

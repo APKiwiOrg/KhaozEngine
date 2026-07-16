@@ -178,5 +178,43 @@ namespace KhaozEngine.Tests.Terrain
                     PropLayer.CompanionLayer(0, comp, NoMeshes(), 40f),
                 }, chunkSize: 60f));
         }
+
+        static TerrainField Flat(float height) => new TerrainField(new TerrainConfig
+        {
+            GentleAmplitude = 0f,
+            Biomes = new[]
+            {
+                new BiomeBand { Start = float.NegativeInfinity, End = float.PositiveInfinity, Biome = BiomeId.Meadow, BaseHeight = height, HillAmplitude = 0f },
+            },
+        });
+
+        [Fact]
+        public void UpdateField_swaps_field_for_subsequent_BuildCpu_calls()
+        {
+            var fieldA = Flat(0f);
+            var fieldB = Flat(5f);
+            var sink = new Scene3DChunkSink(scene: null!, fieldA, new ScatterConfig(),
+                propMeshes: NoMeshes(), chunkSize: 60f, propDrawRadius: 90f);
+            var coord = new ChunkCoord(0, 0);
+
+            var before = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 1);
+            sink.UpdateField(fieldB);
+            var after = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 1);
+
+            for (int i = 0; i < before.Mesh.SurfaceVertexCount; i++)
+                Assert.Equal(0f, before.Mesh.Mesh.Vertices[i].Position.Y, 3);
+            for (int i = 0; i < after.Mesh.SurfaceVertexCount; i++)
+                Assert.Equal(5f, after.Mesh.Mesh.Vertices[i].Position.Y, 3);
+        }
+
+        [Fact]
+        public void UpdateField_null_throws()
+        {
+            var field = Flat(0f);
+            var sink = new Scene3DChunkSink(scene: null!, field, new ScatterConfig(),
+                propMeshes: NoMeshes(), chunkSize: 60f, propDrawRadius: 90f);
+
+            Assert.Throws<ArgumentNullException>(() => sink.UpdateField(null!));
+        }
     }
 }

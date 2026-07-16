@@ -5,6 +5,44 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.121.0
+
+Cascaded shadow maps for the `ShadowMap` tier plus an outer-boundary fade, killing the visible square
+coverage box that followed the camera. The single ortho map is replaced by N concentric cascades (default 3)
+fitted from the tight near cascade out to a new far reach, sampled by picking the tightest cascade per
+fragment, with the coverage edge faded to lit instead of a hard cut. Additive minor, `ShadowMode.Off`/`Blob`
+byte-stable, and existing `ShadowMap` scenes whose shadows fall within the near cascade are unchanged.
+
+- **Cascaded shadow maps (CSM).** `ShadowMode.ShadowMap` now renders `ShadowSettings.ShadowCascadeCount`
+  concentric cascades (default `3`, clamped `1..4` via `ResolvedCascadeCount`) into ONE R32F atlas texture,
+  columns side by side. Cascade 0 keeps `ShadowFocusRadius` (so near-shadow contact is preserved and
+  `ShadowCascadeCount == 1` reproduces the pre-cascade single map), and the outer cascades grow via a
+  practical log/linear-blended split out to the new `ShadowSettings.ShadowMaxDistance` (default `130`,
+  clamped `>= ShadowFocusRadius` via `ResolvedMaxDistance`) - so distant shadows exist without softening the
+  near ones. `ShadowMapResolution` (default `2048`) now means the PER-CASCADE resolution, so the atlas is
+  `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults); drop the count or the
+  resolution for a lower-end profile.
+- **Outer edge fade.** The receiver picks the tightest cascade containing the fragment (a small-margin
+  containment test, falling outward), PCF-samples it with a per-cascade texel scale AND a per-cascade
+  normal-offset world size (so far cascades do not acne and near ones do not detach), and fades the shadow
+  term to fully lit toward the OUTERMOST cascade's UV border (which sits at `ShadowMaxDistance` from the
+  focus). This replaces the old hard UV early-out, so the coverage limit is invisible in normal play instead
+  of a sliding box edge. A single cascade fades at its own border (the pre-cascade map, softened).
+- **Frame-UBO shadow tail grew** from a single `mat4 ShadowMat` + 2 `vec4` (96 bytes, `UboBytes` 784) to
+  `mat4 ShadowMat[4]` + 3 `vec4` (`ShadowParams`, `ShadowParams2`, `ShadowNormalOffsets`; 304 bytes,
+  `UboBytes` 992). The depth pass renders casters once per cascade into that cascade's atlas column via a
+  clip-space column-transform matrix (`ShadowMapMath.AtlasColumnTransform`) plus a per-column scissor (there
+  is no viewport in the command-list seam); the per-cascade light matrices ride in one dynamic-offset UBO.
+  Depth-pass cost at the defaults measured at ~0.04 ms median (3 cascades, 2048/cascade, 61 casters, 1280x720,
+  Metal), and it stays dirty-tracked so a static scene skips it (the light-matrix compare now spans all
+  cascades, so a moving sun still re-renders).
+- **New / changed public API:** `ShadowSettings.ShadowCascadeCount`, `ShadowSettings.ShadowMaxDistance`,
+  `ShadowSettings.ResolvedCascadeCount`, `ShadowSettings.ResolvedMaxDistance`, `ShadowSettings.MinCascades` /
+  `MaxCascades`. `ShadowCascadeCount` and `ShadowMapResolution` are read when `Scene3D` is constructed (the
+  atlas is allocated up front for a stable bound handle), so set them before creating the scene.
+- **Out of scope (unchanged):** terrain casting (terrain still receives, does not cast), alpha-tested cutout
+  casters, and the GPU-skinned caster default (still opt-in and off).
+
 ## 10.120.0
 
 Borderless telegraphs: `TelegraphStyle.FillMode` is now honored on the 3D ground-decal path (a behaviour

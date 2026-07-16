@@ -1584,27 +1584,38 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     slopes without also painting up a caster - no need to clamp it to hide leg-repaint. Which entities cast is the
     game's call - typically each character casts (submit its footprint each frame) and props opt in by size. With
     `Off` the queue is ignored, so submitting blobs unconditionally is safe.
-  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional shadow map with PCF (the "A"-tier target).
-    A depth-only pass renders the instanced casters into an orthographic light-space depth map fitted around the
-    camera focus (texel-snapped each frame to kill shimmer under camera pan), which the model AND terrain fragments
-    sample with 3x3 PCF + slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so
-    a shadow reads as shade, not blackness). Casters shadow the ground and each other. **Terrain receives but does
-    not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API
-    to opt in: every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device
-    reports `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample
-    the depth target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
+  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional CASCADED shadow map with PCF (the "A"-tier
+    target). A depth-only pass renders the instanced casters into an orthographic light-space depth ATLAS -
+    `ShadowCascadeCount` concentric cascades (default 3) side by side in one R32F texture, fitted from the tight near
+    cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance` and texel-snapped per cascade to kill shimmer under camera
+    pan. The model AND terrain fragments pick the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF +
+    slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade,
+    not blackness), fading the shadow to fully lit toward the outermost cascade's border so the coverage limit is
+    invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does not cast**
+    (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API to opt in:
+    every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device reports
+    `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample the depth
+    target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
     `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
-    - Knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`; a **construction-time** knob - set it
-      before creating the `Scene3D`, since the map is bound into every material set - drop to 1024/512 on low-end);
-      `ShadowFocusRadius` (default `16`, world units the map covers per axis - smaller packs texels onto the near
-      action for crisper shadows at less coverage); `ShadowGroundHeight` (world Y the focus is fitted onto, default
-      `0`); `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+    - **Cascade knobs** (on `ShadowSettings`): `ShadowCascadeCount` (default `3`, clamped `1..4` by `ResolvedCascadeCount`)
+      concentric cascades. Cascade 0 stays `ShadowFocusRadius` tight for crisp near shadows (so `ShadowCascadeCount == 1`
+      is the pre-cascade single map plus the edge fade); the rest grow to `ShadowMaxDistance` (default `130` world units,
+      the far reach, clamped `>= ShadowFocusRadius` by `ResolvedMaxDistance`) via a log/linear-blended split, so distant
+      shadows exist without softening the near ones. `ShadowMapResolution` is the **per-cascade** resolution, so the atlas
+      costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) - drop the count or the
+      resolution for a lower-end profile.
+    - Other knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`, per cascade; a **construction-time**
+      knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
+      material set - drop to 1024/512 on low-end); `ShadowFocusRadius` (default `16`, cascade-0 coverage half-extent -
+      smaller packs texels onto the near action); `ShadowGroundHeight` (world Y the focus is fitted onto, default `0`);
+      `ShadowStrength` (0..1 shadow darkness, default `0.85`).
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
-      surface along the geometric normal by that many shadow-map TEXELS (world-scaled by the texel size, so it stays
-      correct as `ShadowFocusRadius` / `ShadowMapResolution` change), grazing-angle-weighted so it is largest where
+      surface along the geometric normal by that many shadow-map TEXELS (world-scaled by the texel size PER CASCADE, so
+      each cascade offsets by its own texel width - far cascades more, near ones less, so far cascades do not acne and
+      near ones do not detach), grazing-angle-weighted so it is largest where
       acne is worst and zero facing the light. That lets the two DEPTH biases stay tiny, so the shadow keeps contact.
       The depth biases act in light-clip NDC z over the light's full depth range (`4 * ShadowFocusRadius` world units),
       so they were world-coupled to the radius - `ShadowConstantBias` dropped from `0.004` to `0.0004` (the old value
@@ -1612,11 +1623,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       If you still see acne, raise `ShadowNormalOffset` first (say 3-4 texels), then the depth biases. If shadows float
       off their casters, lower the depth biases (the normal offset does not cause peter-panning). Set
       `ShadowNormalOffset = 0` to fall back to depth-bias-only.
-    - **Depth-pass dirty-skip** (automatic, presentation-neutral): the 2048^2 depth map persists across frames, so the
-      depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - the fitted light
-      matrix (which folds in the light direction, focus, and camera), the rigid caster set + world transforms, the map
-      resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
-      forces a re-render). An unchanged static scene reuses the prior map and skips every caster draw, so a mostly-static
+    - **Depth-pass dirty-skip** (automatic, presentation-neutral): the cascade atlas persists across frames, so the
+      depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - ANY of the fitted
+      cascade matrices (which fold in the light direction, focus, and camera, so a moving sun or a camera pan past a
+      texel re-renders), the rigid caster set + world transforms, the map resolution, or any animated skinned caster
+      present (a bone pose can change every frame, so any skinned caster forces a re-render). An unchanged static scene
+      reuses the prior atlas and skips every caster draw, so a mostly-static
       view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw calls to
       `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when the tier is
       not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is still applied

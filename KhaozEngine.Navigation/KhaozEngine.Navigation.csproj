@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Navigation</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Engine-owned NPC navigation: clearance-grid walkability (one bake serves every agent radius), grid A* pathfinding behind an IPathPlanner seam with string-pulled waypoints, node budgets and partial paths, and a PathFollower that turns a moving goal into a per-tick steering direction for CharacterMovement.StepTowards. Render-free, deterministic.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
+    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+  </ItemGroup>
+</Project>

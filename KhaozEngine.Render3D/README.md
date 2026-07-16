@@ -43,8 +43,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the device with `AntiAliasing.ResolveFor(caps)` (clamps MSAA to `GpuCapabilities.MaxMsaaSampleCount` or falls back
   to FXAA, never throws). Default `Off`, so the low-level `RenderScale` / `Supersample` fields still govern.
   SSAA supersamples the whole image (geometry AND shaded interiors, the only one that kills high-frequency terrain
-  shimmer) and now downsamples correctly at ANY factor via a mip-filtered blit; FXAA is a cheap one-pass edge
-  smoother; MSAA multisamples geometry edges only. `RenderQuality` is the extension point for further quality knobs.
+  shimmer) and now downsamples correctly at ANY factor via a mip-filtered blit. FXAA is a cheap one-pass edge
+  smoother. MSAA multisamples geometry edges only. `RenderQuality` is the extension point for further quality knobs.
   `RenderScale.FixedInternal` (the default) keeps a single bilinear tap on its final downscale for byte-stable
   goldens, which under-samples on a window smaller than the fixed internal target. Opt into the same mip-filtered
   blit machinery there too with `PixelPostProcessSettings.MipFilterFixedInternalDownscale` (default `false`), or
@@ -57,28 +57,33 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `Begin`, like the ground-decal queue); the blob is drawn as a dark `Circle` `GroundDecal` through the existing
   depth-reconstructed ground-decal projection, BEFORE the skinned character pass so a caster's own body occludes its
   own blob (ground-receiver-only: terrain and rigid props receive the blob, characters do not - the Y-band never
-  repaints a character's legs). Radius follows the caster footprint; strength fades with height above ground
+  repaints a character's legs). Radius follows the caster footprint. Strength fades with height above ground
   (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
   - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast; terrain receives only) into
-  an ortho light-space depth map fitted around the camera focus (texel-snapped to kill shimmer), which the shared
-  lighting block PCF-samples (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models
-  and terrain. Every drawn mesh casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`:
-  `ShadowMapResolution` (default `2048`, a construction-time knob), `ShadowFocusRadius`/`ShadowGroundHeight`,
-  `ShadowStrength`, and the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias
-  that is the primary acne defence and keeps the shadow connected to the caster's feet) plus the tiny residual depth
-  biases `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample
-  support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The depth map persists across frames,
-  so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (the fitted light matrix, the
-  rigid caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior
-  map, so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
-  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
+  a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` concentric cascades (default 3) side by side in one
+  R32F texture, from the tight near cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance`, texel-snapped per cascade
+  to kill shimmer. The shared lighting block picks the tightest cascade per fragment and PCF-samples it (3x3 +
+  slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models and terrain, fading the term to lit at
+  the outermost cascade's border so the coverage limit is invisible (no hard box, no sliding coverage). Every drawn mesh
+  casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via
+  `ResolvedCascadeCount`) and `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it
+  `>= ShadowFocusRadius`); `ShadowMapResolution` (default `2048`, now the PER-CASCADE resolution - a construction-time
+  knob alongside `ShadowCascadeCount`, so the atlas is `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes);
+  `ShadowFocusRadius`/`ShadowGroundHeight`, `ShadowStrength`, and the acne biases `ShadowNormalOffset` (default `2.5`
+  texels, the extent-aware normal-offset bias, scaled PER CASCADE so far cascades do not acne and near ones do not
+  detach) plus the tiny residual depth biases `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a
+  device without depth-sample support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas
+  persists across frames, so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY
+  cascade's fitted matrix, the rigid caster set/transforms, the resolution, or any animated skinned caster present) and
+  otherwise reuses the prior atlas, so a mostly-static scene stops repainting it every frame. A skipped pass adds zero
+  shadow draw calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
 - Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
   bounding sphere is entirely outside the camera frustum, so off-screen terrain chunks and props cost nothing to
   draw. Pixel-neutral by construction (only provably-offscreen geometry is dropped), so existing renders stay
-  byte-stable; set it `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
+  byte-stable. Set it `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
   caster still writes the shadow map, so its shadow lands on-screen). Read the win from `Scene3D.DrawnInstances` /
   `Scene3D.CulledInstances`. Mesh-local bounds (`MeshBounds`, computed once at `LoadMesh`) feed the pure plane math
   `FrustumPlanes.Extract(camera.ViewProjection)` + `IntersectsAabb`/`IntersectsSphere` (headless, allocation-free).
@@ -140,7 +145,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   alpha-0 background pixel into an opaque one). **LDR, not HDR**: the internal target is `R8G8B8A8UNorm` (no
   over-1.0 headroom), so the bright-pass thresholds the already-tonemapped-to-[0,1] colour rather than a linear HDR
   value - still a convincing glow on beams/emissive materials/bright billboards, but it will not bloom a surface
-  that is merely well-lit white; lower `Threshold` for a softer cutoff. The pure math (`BloomMath`: the knee curve,
+  that is merely well-lit white. Lower `Threshold` for a softer cutoff. The pure math (`BloomMath`: the knee curve,
   gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL bright-pass/blur shaders
   exactly.
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus

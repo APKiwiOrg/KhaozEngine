@@ -81,7 +81,7 @@ DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 are greedy axis-run merges, not one shape per tile: a contiguous wall run along a row becomes one `BoxShape`,
 same for a contiguous walkable floor run (stair-tread cells are excluded, they are covered by their stair's step
 boxes instead). Each stair run climbs one floor over a three-cell run as a row of solid upright box steps (riser
-under the default step-up height, so the character mounts every tread; a single pitched ramp box is not walkable
+under the default step-up height, so the character mounts every tread. A single pitched ramp box is not walkable
 from a flush floor), matching the greybox stair mesh. See `KhaozEngine.Showcase`'s "Dungeon (walk)" room
 for a wiring example (generate once, stamp, load the kit meshes, spawn the player at the `Entrance`
 marker). Note the demo wires rendering and the walk camera only, it does not register the physics statics.
@@ -185,6 +185,32 @@ per floor for quick visual inspection (a fixed debug palette, not game content).
 and loads the target map document if it already exists (so repeated bakes accumulate), otherwise creates a
 fresh one.
 
+## NPC pathfinding (`DungeonNav`)
+
+`DungeonNav.Bake(layout, originX, originZ, baseY)` (`KhaozEngine.Navigation`) turns a generated layout into
+a navigable `NavSpace` for NPC pathfinding: one `NavGrid` layer per floor, joined by directed stair `NavLink`
+connections a climber crosses between floors. Render-free and deterministic: the same layout always bakes the
+same space.
+
+```csharp
+using KhaozEngine.Dungeon;
+using KhaozEngine.Navigation;
+
+NavSpace space = DungeonNav.Bake(layout, originX: 120f, originZ: 0f, baseY: 0f);
+var planner = new GridPathPlanner(space);
+```
+
+Each floor f becomes one `NavGrid` layer covering the world-Y band `[baseY + f * FloorHeightMeters, baseY +
+(f + 1) * FloorHeightMeters]`, with a cell walkable exactly when `DungeonLayout.IsWalkable` is true for its
+`GetCell` kind on that floor. The XZ plane is anchored at `(originX, originZ)` with cell size
+`DungeonLayout.CellSizeMeters`, matching the dungeon sinks' own tile-to-world mapping, so a baked `NavGrid`
+lines up cell-for-cell with the same layout's `MapDoc` bake and runtime stamp.
+
+Every stair run contributes a pair of directed links joining its top tread (`DungeonCellKind.StairUpper`, on
+the lower floor) to its landing (`DungeonCellKind.StairTop`, one cell past the top tread on the floor above):
+one link each way, so a path can climb or descend the stair. Landings are found by scanning every `StairTop`
+cell on each floor `f >= 1` and matching it to the single 4-adjacent `StairUpper` cell on floor `f - 1`.
+
 ## Determinism and completability
 
 - **Deterministic.** Every random draw goes through `DeterministicRng` streams derived from the seed by name
@@ -201,7 +227,7 @@ fresh one.
   every reported error) if it fails, so an un-completable dungeon can never leave the generator. `Verify` is
   pure and read-only, so a hand-edited or hand-authored layout can be checked the same way.
 
-Depends on `KhaozEngine.Primitives`, `KhaozEngine.MapDoc`, and `KhaozEngine.Physics`. In the `Foundation`
-umbrella metapackage.
+Depends on `KhaozEngine.Primitives`, `KhaozEngine.MapDoc`, `KhaozEngine.Physics`, and `KhaozEngine.Navigation`
+(`DungeonNav`). In the `Foundation` umbrella metapackage.
 
-Part of [KhaozEngine](https://github.com/APKiwi/KhaozEngine).
+Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

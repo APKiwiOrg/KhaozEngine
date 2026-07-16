@@ -79,6 +79,7 @@
     <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
     <ProjectReference Include="../KhaozEngine.MapEdit.Tool/KhaozEngine.MapEdit.Tool.csproj" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
     <ProjectReference Include="../KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />

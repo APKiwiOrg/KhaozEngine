@@ -2,14 +2,14 @@
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
 on it. The engine is **MonoGame-free**: Silk.NET windowing/input, Veldrid behind `KhaozEngine.Gpu` for the GPU,
-Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first; the rest
+Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
 is reference.
 
 ---
 
 ## Mental model: one data flow
 
-A game subclasses `GameApp` (2D) or `GameApp3D` (3D). The base owns the window and the per-frame loop; the game
+A game subclasses `GameApp` (2D) or `GameApp3D` (3D). The base owns the window and the per-frame loop. The game
 fills in seams.
 
 ```
@@ -43,13 +43,13 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    once per frame before `OnUpdate`. If you use an `InputManager` directly (e.g. for menu nav), call
    `Update(input, viewport)` once per frame, before you query it.
 3. **Hit-test with the bounds helpers, never with raw position + button.** Use `IsTapIn`, `IsPressingIn`,
-   `IsHoveringIn`, `IsDraggingIn`, etc. `IsTapIn` enforces the press-origin invariant; a hand-rolled
+   `IsHoveringIn`, `IsDraggingIn`, etc. `IsTapIn` enforces the press-origin invariant. A hand-rolled
    `IsPointerDown && rect.Contains(pos)` does not, and it leaks clicks.
 4. **An overlay above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every
    frame, and the layer beneath must guard its actions with `IsInputBlocked(point)`. This is half of the
-   click-through fix; the other half is `IsTapIn`.
+   click-through fix. The other half is `IsTapIn`.
 5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
-   drawn. `GameApp` does this for you; if you build your own loop, do it yourself.
+   drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
 6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
@@ -74,7 +74,7 @@ head inherit two build-property defaults from `KhaozEngine.Foundation`:
 .NET 9+ marks the x64 apphost CET / shadow-stack compatible by default. On Windows 10 builds with only partial
 CET support (e.g. 20H2) that hard-aborts at boot: *"Your Windows doesn't fully support CET."* `CETCompat` is an
 apphost (game-head) MSBuild property, and the engine ships libraries, not an apphost, so it cannot be set from
-engine code; Foundation ships it as a `buildTransitive` props default instead, which every head inherits whether
+engine code. Foundation ships it as a `buildTransitive` props default instead, which every head inherits whether
 Foundation is a direct reference or pulled in through `Game2D`/`Game3D`. A `normal`-importance build message
 announces it (visible at `-v normal` and in IDE build output; the default minimal `dotnet build` stays quiet).
 
@@ -111,7 +111,7 @@ host (no `GameApp`) gets the same attach from the `AppWindow` constructor. **Opt
 **Crash visibility with no console.** A fatal *startup* crash on a WinExe launched from Explorer (no window yet,
 no console) would otherwise be silent. `GameApp` installs a last-chance net in exactly that case (a Windows GUI
 launch that ended up with no console) that writes the unhandled exception to a file under
-`%LOCALAPPDATA%\KhaozEngine\crash\`. This is the floor; the recommended richer path is still to wire
+`%LOCALAPPDATA%\KhaozEngine\crash\`. This is the floor. The recommended richer path is still to wire
 `KhaozEngine.Diagnostics.CrashHandler.Install()` with a `FileSink` (see the Diagnostics / logging section below),
 which routes every fatal to your game's `game.log` regardless of console. `KhaozEngine.Showcase` is the reference
 desktop head and ships as `WinExe`.
@@ -817,6 +817,22 @@ tip.Show(Strings.CopperOre, LocalizedText.Raw("x128"), bodyLines, anchor); // le
 tip.Update(pointer);                               // auto-dismisses on tap-outside in TapOutside mode
 tip.Draw(batch, white);
 ```
+
+**`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
+panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
+every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the
+new overload to smooth it instead:
+
+```csharp
+panel.HeightGlideSeconds = 0.15f;               // exponential time constant in seconds
+panel.Bounds = panel.Bounds with { Height = ComputeNeededHeight() };  // may change frame to frame
+panel.Update(pointer, input, dt);               // dt-fed overload: EffectiveHeight eases toward the new height
+```
+
+The glide always snaps (no easing) on the first update and whenever the panel is fully hidden
+(`TransitionAlpha <= 0`), so a panel still OPENS directly at its needed height, and it never fights an active
+`Resizable` drag. The legacy `Update(pointer, input)` overload never feeds dt, so it never glides regardless of
+`HeightGlideSeconds`.
 
 **HUD widgets: `SlotGrid` + `ProgressBar` (10.78.0)** - two additive widgets for inventory / status HUDs. `SlotGrid`
 lays out `Count` uniform square slots wrapping at `Columns` (`Bounds`.X/Y is the origin; the footprint is `ContentSize`
@@ -1584,27 +1600,38 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     slopes without also painting up a caster - no need to clamp it to hide leg-repaint. Which entities cast is the
     game's call - typically each character casts (submit its footprint each frame) and props opt in by size. With
     `Off` the queue is ignored, so submitting blobs unconditionally is safe.
-  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional shadow map with PCF (the "A"-tier target).
-    A depth-only pass renders the instanced casters into an orthographic light-space depth map fitted around the
-    camera focus (texel-snapped each frame to kill shimmer under camera pan), which the model AND terrain fragments
-    sample with 3x3 PCF + slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so
-    a shadow reads as shade, not blackness). Casters shadow the ground and each other. **Terrain receives but does
-    not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API
-    to opt in: every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device
-    reports `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample
-    the depth target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
+  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional CASCADED shadow map with PCF (the "A"-tier
+    target). A depth-only pass renders the instanced casters into an orthographic light-space depth ATLAS -
+    `ShadowCascadeCount` concentric cascades (default 3) side by side in one R32F texture, fitted from the tight near
+    cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance` and texel-snapped per cascade to kill shimmer under camera
+    pan. The model AND terrain fragments pick the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF +
+    slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade,
+    not blackness), fading the shadow to fully lit toward the outermost cascade's border so the coverage limit is
+    invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does not cast**
+    (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API to opt in:
+    every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device reports
+    `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample the depth
+    target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
     `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
-    - Knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`; a **construction-time** knob - set it
-      before creating the `Scene3D`, since the map is bound into every material set - drop to 1024/512 on low-end);
-      `ShadowFocusRadius` (default `16`, world units the map covers per axis - smaller packs texels onto the near
-      action for crisper shadows at less coverage); `ShadowGroundHeight` (world Y the focus is fitted onto, default
-      `0`); `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+    - **Cascade knobs** (on `ShadowSettings`): `ShadowCascadeCount` (default `3`, clamped `1..4` by `ResolvedCascadeCount`)
+      concentric cascades. Cascade 0 stays `ShadowFocusRadius` tight for crisp near shadows (so `ShadowCascadeCount == 1`
+      is the pre-cascade single map plus the edge fade); the rest grow to `ShadowMaxDistance` (default `130` world units,
+      the far reach, clamped `>= ShadowFocusRadius` by `ResolvedMaxDistance`) via a log/linear-blended split, so distant
+      shadows exist without softening the near ones. `ShadowMapResolution` is the **per-cascade** resolution, so the atlas
+      costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) - drop the count or the
+      resolution for a lower-end profile.
+    - Other knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`, per cascade; a **construction-time**
+      knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
+      material set - drop to 1024/512 on low-end); `ShadowFocusRadius` (default `16`, cascade-0 coverage half-extent -
+      smaller packs texels onto the near action); `ShadowGroundHeight` (world Y the focus is fitted onto, default `0`);
+      `ShadowStrength` (0..1 shadow darkness, default `0.85`).
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
-      surface along the geometric normal by that many shadow-map TEXELS (world-scaled by the texel size, so it stays
-      correct as `ShadowFocusRadius` / `ShadowMapResolution` change), grazing-angle-weighted so it is largest where
+      surface along the geometric normal by that many shadow-map TEXELS (world-scaled by the texel size PER CASCADE, so
+      each cascade offsets by its own texel width - far cascades more, near ones less, so far cascades do not acne and
+      near ones do not detach), grazing-angle-weighted so it is largest where
       acne is worst and zero facing the light. That lets the two DEPTH biases stay tiny, so the shadow keeps contact.
       The depth biases act in light-clip NDC z over the light's full depth range (`4 * ShadowFocusRadius` world units),
       so they were world-coupled to the radius - `ShadowConstantBias` dropped from `0.004` to `0.0004` (the old value
@@ -1612,11 +1639,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       If you still see acne, raise `ShadowNormalOffset` first (say 3-4 texels), then the depth biases. If shadows float
       off their casters, lower the depth biases (the normal offset does not cause peter-panning). Set
       `ShadowNormalOffset = 0` to fall back to depth-bias-only.
-    - **Depth-pass dirty-skip** (automatic, presentation-neutral): the 2048^2 depth map persists across frames, so the
-      depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - the fitted light
-      matrix (which folds in the light direction, focus, and camera), the rigid caster set + world transforms, the map
-      resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
-      forces a re-render). An unchanged static scene reuses the prior map and skips every caster draw, so a mostly-static
+    - **Depth-pass dirty-skip** (automatic, presentation-neutral): the cascade atlas persists across frames, so the
+      depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - ANY of the fitted
+      cascade matrices (which fold in the light direction, focus, and camera, so a moving sun or a camera pan past a
+      texel re-renders), the rigid caster set + world transforms, the map resolution, or any animated skinned caster
+      present (a bone pose can change every frame, so any skinned caster forces a re-render). An unchanged static scene
+      reuses the prior atlas and skips every caster draw, so a mostly-static
       view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw calls to
       `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when the tier is
       not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is still applied
@@ -2793,6 +2821,87 @@ dotnet run --project tools/KeDungeon -- bake --layout layout.json --map zone.map
 Exit codes: 0 success, 1 a failed `verify`, 2 an unknown verb or a missing/invalid option, 3 malformed input
 JSON. See the `KhaozEngine.Dungeon` package README for the full kit contract and determinism/completability
 guarantees.
+
+---
+
+## NPC navigation (`KhaozEngine.Navigation`)
+
+Render-free, deterministic NPC pathfinding: bake a clearance grid once, query it for any agent radius, plan
+routes through a swappable `IPathPlanner` seam, then drive per-tick steering through a `PathFollower` that
+feeds `CharacterMovement.StepTowards` (`KhaozEngine.Locomotion`). `using KhaozEngine.Navigation;`:
+
+### Bake at boot
+
+Bake once from the same overworld data the game already loads (analytic terrain slope plus static XZ prop
+colliders), not per query:
+
+```csharp
+NavGrid grid = NavGridBaker.BakeOverworld(
+    terrain, colliders,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, maxSlopeRadians: MathF.PI / 4f);
+var space = NavSpace.Single(grid);
+```
+
+A cell is blocked when the terrain slope at its center exceeds `maxSlopeRadians`, an optional
+`extraBlocked(x, z)` gameplay exclusion returns true (a scripted no-go zone), or a nearby `WorldCollider`
+overlaps a conservative center-point probe. One bake serves every agent radius: the walkable rasterization
+and the clearance transform run once, and the per-query radius check (`NavGrid.IsPassable`) is the only
+thing that varies between a rat and a bear querying the same grid.
+
+For a multi-floor dungeon, `DungeonNav.Bake(layout, originX, originZ, baseY)` (`KhaozEngine.Dungeon`) builds
+the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid` layer per floor, joined by
+directed `NavLink` stair connections a climber crosses between floors, at the same cell size and world
+anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons" above.
+
+### Plan a route
+
+`GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an
+8-connected A* search with corner-cut prevention and string-pulled waypoints, crossing layers over
+`NavSpace.Links` where present:
+
+```csharp
+var planner = new GridPathPlanner(space);
+NavPath path = planner.FindPath(start, goal, agentRadius: 0.4f);   // PathQueryBudget.Default
+// path.Status: Complete (reached the goal), Partial (ran out of budget, waypoints reach as far as it got),
+// or Unreachable (no route, or an endpoint failed to snap onto a passable cell within SnapRadius)
+```
+
+### Follow it every tick
+
+A game brain rarely wants to call `FindPath` itself: `PathFollower` owns the replan decision (stored path
+exhausted, the goal drifted, or the agent strayed off the planned corridor, each gated by a cooldown) and
+hands back a per-tick world-space direction:
+
+```csharp
+var follower = new PathFollower(planner);   // one instance per agent, PathFollowConfig.Default
+
+// every AI tick:
+PathFollowOutput output = follower.Tick(agent.Position, goal.Position, agentRadius, dt);
+if (output.State == PathFollowState.Following)
+{
+    agent = CharacterMovement.StepTowards(agent, output.WorldDir, run: false, dt,
+        terrain.GroundHeight, tuning, world: physics);
+}
+// Arrived: agent.Position is within AcceptRadius of the goal, output.WorldDir is zero.
+// Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
+```
+
+`output.WorldDir` is the raw follow direction only. A dynamic-avoidance pass (steering around other agents
+or a late-appearing obstacle) is expected to run after the follower and before `StepTowards`, adjusting
+`WorldDir` without touching the follower's own path state.
+
+### Budget knobs
+
+`PathQueryBudget` (handed to `IPathPlanner.FindPath`, and to every `PathFollower` replan via
+`PathFollowConfig.Budget`) caps search cost: `MaxExpandedNodes` (default 4096) before the search gives up
+and returns `Partial`, and `SnapRadius` (default 3 world units) for nudging an endpoint onto a passable
+cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6, arrival distance),
+`GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
+`CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
+due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the
+`KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
+limitations, and the full config surface.
 
 ---
 

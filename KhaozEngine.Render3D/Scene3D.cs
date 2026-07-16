@@ -77,8 +77,16 @@ namespace KhaozEngine.Render3D
         // signature buffers are swapped (not copied) when a dirty pass commits, so the check stays allocation-free.
         bool _shadowPassRendered;             // a real depth pass has rendered since construction (map holds valid content)
         bool _shadowPassSkippedLastFrame;     // the last rendered frame reused the prior depth map (public signal below)
-        Matrix4x4 _lastShadowLightVp;         // ComputeShadowLightViewProj output of the last rendered pass
-        int _lastShadowResolution;            // allocated shadow-map resolution at the last rendered pass
+        // Per-cascade CPU (pre-GPU-clip-correct) fit matrices for THIS frame (0.._cascadeCount-1 valid). The GPU-clip
+        // corrected RECEIVER matrices + the column-transformed DEPTH matrices are derived from them each frame.
+        readonly Matrix4x4[] _cascadeCpuVps = new Matrix4x4[ShadowSettings.MaxCascades];
+        readonly Matrix4x4[] _cascadeReceiverVps = new Matrix4x4[ShadowSettings.MaxCascades];  // GPU-clip-corrected, receiver-sampled
+        readonly Matrix4x4[] _cascadeDepthVps = new Matrix4x4[ShadowSettings.MaxCascades];      // receiver * atlas-column transform (depth pass)
+        readonly float[] _cascadeNormalOffsets = new float[ShadowSettings.MaxCascades];
+        int _cascadeCount;                    // active cascade count this frame
+        readonly Matrix4x4[] _lastCascadeCpuVps = new Matrix4x4[ShadowSettings.MaxCascades];    // last rendered pass's per-cascade CPU fit
+        int _lastShadowCascadeCount;          // last rendered pass's cascade count
+        int _lastShadowResolution;            // allocated per-cascade shadow-map resolution at the last rendered pass
         List<(int Index, int Generation, uint Count)> _lastShadowCasterRuns = new();   // last pass's non-splat caster runs
         List<Matrix4x4> _lastShadowCasterModels = new();                               // last pass's caster world matrices
         List<(int Index, int Generation, uint Count)> _shadowCasterRunsScratch = new();   // this-frame scratch (swapped in on commit)
@@ -261,9 +269,9 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// True when the last rendered frame SKIPPED the key-light shadow depth pass and reused the previous frame's
         /// shadow map. The pass is skipped only when every shadow-relevant input is unchanged since the last rendered
-        /// pass: the fitted light matrix (<see cref="ComputeShadowLightViewProj"/>, which folds in the light
-        /// direction, focus, and camera), the rigid caster set + world transforms, the map resolution, and no animated
-        /// skinned caster is present (a skinned caster's bone pose can change every frame, so it always re-renders).
+        /// pass: the fitted cascade matrices (<see cref="ComputeShadowCascades"/>, which fold in the light direction,
+        /// focus, and camera), the rigid caster set + world transforms, the map resolution, and no animated skinned
+        /// caster is present (a skinned caster's bone pose can change every frame, so it always re-renders).
         /// Always <c>false</c> when the resolved shadow tier is not <see cref="ShadowMode.ShadowMap"/>, and on any
         /// frame the depth pass re-rendered. A diagnostics/HUD signal for the static-scene shadow optimisation:
         /// presentation-neutral (a skipped frame shadows identically to a re-rendered one, since the map content is
@@ -325,7 +333,8 @@ namespace KhaozEngine.Render3D
             // Shadow-map resolution is a construction-time knob (the map is bound into every material set, so its
             // handle must stay stable). Read the initial ShadowMapResolution from settings; a game sets it before
             // creating the scene. Clamped inside the shadow renderer.
-            _model = new ModelRenderer(gd, _res.ModelFB.Outputs, Post.Quality.Shadows.ShadowMapResolution);
+            _model = new ModelRenderer(gd, _res.ModelFB.Outputs,
+                Post.Quality.Shadows.ShadowMapResolution, Post.Quality.Shadows.ResolvedCascadeCount);
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
@@ -1488,20 +1497,21 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// This frame's key-light shadow ortho world-&gt;light-clip matrix (CPU-authored, NOT GPU-clip-corrected):
-        /// fits the light-space box around the ground point the camera is looking at, texel-snapped. Factored out
-        /// of <see cref="RenderShadowDepthPass"/> so the exact same matrix drives both the depth pass AND the
-        /// pre-skin-pass shadow-caster visibility test in <see cref="RenderInternal"/> (an off-camera skinned draw
-        /// within this volume must still be CPU-skinned so its shadow lands on-screen) - computing it once and
-        /// passing it to both avoids any risk of the two ever disagreeing on the fit.
+        /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> concentric cascades (CPU-authored, NOT
+        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> and return the count. Every cascade centres on the
+        /// same ground point the camera is looking at. Cascade 0 is the tight near map
+        /// (<see cref="ShadowSettings.ShadowFocusRadius"/>) and the rest grow geometrically out to
+        /// <see cref="ShadowSettings.ResolvedMaxDistance"/> (the practical split), each texel-snapped independently so
+        /// none shimmers under a camera pan. Factored out of <see cref="RenderShadowDepthPass"/> so the same matrices
+        /// drive the depth pass, the receiver tail AND the pre-skin-pass caster-visibility test (the outermost cascade
+        /// is the widest shadow volume), so the passes can never disagree on the fit.
         /// </summary>
-        Matrix4x4 ComputeShadowLightViewProj(Vector3 eye)
+        int ComputeShadowCascades(Vector3 eye)
         {
             var shadows = Post.Quality.Shadows;
-            // Focus the map on the ground the camera looks at: intersect the view-forward ray with the ground plane
-            // (y = ShadowGroundHeight). This centres the limited-radius map on the scene under the camera, not on the
-            // eye. If the ray is near-parallel to the ground (looking along the horizon), fall back to a point a fixed
-            // distance ahead. A limited radius packs texels onto the near action; receivers outside it are lit.
+            // Focus the cascades on the ground the camera looks at: intersect the view-forward ray with the ground
+            // plane (y = ShadowGroundHeight). This centres the maps on the scene under the camera, not on the eye. If
+            // the ray is near-parallel to the ground (looking along the horizon), fall back to a fixed distance ahead.
             Vector3 fwd = ActiveCamera.Forward;
             Vector3 focus;
             if (fwd.Y < -1e-3f)
@@ -1515,96 +1525,133 @@ namespace KhaozEngine.Render3D
                 focus = eye + fwd * shadows.ShadowFocusDistance;
             }
             Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
-            int res = _model.ShadowMap.Resolution;   // the actual allocated resolution (clamped)
-            return Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, shadows.ShadowFocusRadius, res);
+            int res = _model.ShadowMap.Resolution;         // the actual allocated per-cascade resolution (clamped)
+            int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
+            Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
+            Internal.ShadowMapMath.FillCascadeRadii(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
+            for (int i = 0; i < count; i++)
+                _cascadeCpuVps[i] = Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, radii[i], res);
+            _cascadeCount = count;
+            return count;
         }
 
         /// <summary>
-        /// Set this frame's RECEIVER shadow tail on the model/splat frame UBO from the fitted light matrix
-        /// <paramref name="lightVp"/> (<see cref="ComputeShadowLightViewProj"/>): GPU-clip-correct it (the depth pass
-        /// renders to texture, so its matrix uses the same convention as the model pass's ViewProj, and the receivers
-        /// sample with the SAME corrected matrix), derive the inverse-resolution + bias/strength, and hand it to the
-        /// model renderer (uploaded with the frame UBO in the model pass). Always called when the shadow-map tier is
-        /// active - whether or not the depth map is re-rendered this frame (the dirty-skip reuses the persistent map),
-        /// so the receivers always sample it with the matrix it was baked against, and bias/strength changes apply
-        /// even on a skipped frame. Returns the GPU-clip-corrected matrix the depth pass draws with.
+        /// Set this frame's RECEIVER shadow tail on the model/splat frame UBO from the fitted cascades in
+        /// <see cref="_cascadeCpuVps"/>: GPU-clip-correct each cascade (the depth pass renders to texture, same
+        /// convention as the model pass's ViewProj) into <see cref="_cascadeReceiverVps"/>, bake the atlas-column
+        /// transform onto each for the depth pass into <see cref="_cascadeDepthVps"/>, derive the per-cascade
+        /// normal-offset world sizes + the fade params, and hand them to the model renderer (uploaded with the frame
+        /// UBO in the model pass). Always called when the shadow-map tier is active - whether or not the atlas is
+        /// re-rendered this frame (the dirty-skip reuses it) - so the receivers always sample with the matrices the
+        /// atlas was baked against, and bias/strength changes apply even on a skipped frame.
         /// </summary>
-        Matrix4x4 SetShadowReceiverTail(Matrix4x4 lightVp)
+        void SetShadowReceiverTail()
         {
             var shadows = Post.Quality.Shadows;
-            Matrix4x4 lightVpGpu = GpuClip.Correct(lightVp, _gd.Capabilities);
-            int res = _model.ShadowMap.Resolution;   // the actual allocated resolution (clamped)
-            float invRes = 1f / Math.Max(1, res);
-            // Normal-offset world size = the world width of one shadow texel (2*radius/resolution) x the tunable
-            // ShadowNormalOffset (in texels). Baked here (CPU) so it stays extent-aware: change the focus radius or
-            // resolution and the receiver's normal offset tracks the texel size automatically. The shader scales it by
-            // the grazing angle to the key light and offsets the sample point along the surface normal, which lets the
-            // depth bias stay tiny (no peter-panning) while still killing self-shadow acne.
-            float texelWorld = Internal.ShadowMapMath.TexelWorldSize(shadows.ShadowFocusRadius, res);
-            float normalOffsetWorld = texelWorld * MathF.Max(0f, shadows.ShadowNormalOffset);
-            _model.SetShadowUniforms(lightVpGpu, invRes, shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength, normalOffsetWorld);
-            return lightVpGpu;
+            int count = _cascadeCount;
+            int res = _model.ShadowMap.Resolution;
+            float texelStep = 1f / Math.Max(1, res);
+            Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
+            Internal.ShadowMapMath.FillCascadeRadii(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
+            for (int i = 0; i < count; i++)
+            {
+                _cascadeReceiverVps[i] = GpuClip.Correct(_cascadeCpuVps[i], _gd.Capabilities);
+                // Bake the atlas-column placement onto the depth matrix (there is no viewport): the receiver samples
+                // with the plain per-cascade matrix and maps UV into the column itself.
+                _cascadeDepthVps[i] = _cascadeReceiverVps[i] * Internal.ShadowMapMath.AtlasColumnTransform(i, count);
+                // Per-cascade normal-offset world size = one cascade texel's world width (2*radius_i/res) x the tunable
+                // ShadowNormalOffset (in texels), so far cascades (bigger texels) offset more and near ones less - the
+                // 10.116.0 normal offset scaled per cascade, which keeps far cascades acne-free and near ones attached.
+                float texelWorld = Internal.ShadowMapMath.TexelWorldSize(radii[i], res);
+                _cascadeNormalOffsets[i] = texelWorld * MathF.Max(0f, shadows.ShadowNormalOffset);
+            }
+            // Outermost-cascade UV border fade width (fraction of the map) so the coverage edge fades to lit instead of
+            // a hard box. maxDistance (the outer cascade's coverage reach = ShadowMaxDistance for count>1, else the
+            // focus radius) rides in the UBO as the documented coverage distance. The fade itself is UV-border-driven.
+            float border = 0.12f;
+            float maxDist = count > 1 ? shadows.ResolvedMaxDistance : shadows.ShadowFocusRadius;
+            _model.SetShadowUniforms(_cascadeReceiverVps.AsSpan(0, count), count, texelStep,
+                shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength,
+                maxDist, border, _cascadeNormalOffsets.AsSpan(0, count));
         }
 
         /// <summary>
-        /// Render the key-light shadow depth pass for this frame using the already-fitted GPU-clip-corrected
-        /// <paramref name="lightVpGpu"/> (from <see cref="SetShadowReceiverTail"/>): bind + clear the shadow map, then
-        /// draw every rigid + skinned caster into it (reusing the already-uploaded instance/skinned buffers). Terrain
-        /// (splat meshes) do NOT cast (model-only casting - terrain self-shadowing is visually negligible in the
-        /// test scenes and the flat MMO ground has no overhangs). Terrain always RECEIVES via the shared lighting
-        /// block. NEVER camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn unconditionally
-        /// (an entry only got there because it is visible to the main pass, the shadow pass, or both - see
-        /// <see cref="ClassifySkinnedVisibility"/>). The receiver tail is set separately and always (even on a skipped
-        /// frame), so this only records depth. Runs only when the tier is ShadowMap AND the dirty check requires a
-        /// re-render (see <see cref="ShadowDepthPassDirty"/>). An unchanged static scene reuses the persistent map.
+        /// Render the key-light cascaded shadow depth pass for this frame using the already-fitted cascade DEPTH
+        /// matrices in <see cref="_cascadeDepthVps"/> (from <see cref="SetShadowReceiverTail"/>): clear the atlas, then
+        /// draw every rigid + skinned caster into EACH cascade's atlas column (reusing the already-uploaded
+        /// instance/skinned buffers). Terrain (splat meshes) do NOT cast (model-only casting - terrain self-shadowing
+        /// is visually negligible in the test scenes and the flat MMO ground has no overhangs). Terrain always RECEIVES
+        /// via the shared lighting block. NEVER camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn
+        /// unconditionally (an entry only got there because it is visible to the main pass, the shadow pass, or both -
+        /// see <see cref="ClassifySkinnedVisibility"/>). The receiver tail is set separately and always (even on a
+        /// skipped frame), so this only records depth. Runs only when the tier is ShadowMap AND the dirty check
+        /// requires a re-render (see <see cref="ShadowDepthPassDirty"/>). An unchanged static scene reuses the atlas.
         /// </summary>
-        void RenderShadowDepthPass(IGpuCommandList cl, Matrix4x4 lightVpGpu)
+        void RenderShadowDepthPass(IGpuCommandList cl)
         {
-            // Depth pass: bind + clear the shadow map, then draw every rigid caster run + skinned caster. Reuses the
-            // instance buffer the model pass uploaded (no second upload). Splat (terrain) runs are skipped (receive-only).
-            _model.BeginShadowPass(cl, lightVpGpu);
-            if (_instanceData.Count > 0)
+            // Cascaded depth pass: clear the whole atlas + upload every cascade's column-transformed matrix, then draw
+            // every rigid + skinned caster ONCE PER CASCADE into that cascade's atlas column (scissor-clipped). Reuses
+            // the instance buffer the model pass uploaded (no second upload). Splat (terrain) runs are skipped
+            // (receive-only). Each caster is drawn count times, so the depth-pass draw count scales with the cascade
+            // count (the accepted cost of cascaded coverage, measured by the GPU pass-timing tests).
+            int count = _cascadeCount;
+            _model.BeginShadowPass(cl, _cascadeDepthVps.AsSpan(0, count), count);
+
+            // Rigid + CPU-skinned casters draw with the rigid depth pipeline + the per-cascade light matrix (bound by
+            // the dynamic offset in BeginShadowCascadeRigid). CPU-skinned reuses the same rigid pipeline/light UBO.
+            for (int c = 0; c < count; c++)
             {
-                foreach (var run in _runs)
+                _model.BeginShadowCascadeRigid(cl, c);
+                if (_instanceData.Count > 0)
                 {
-                    if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
-                    var m = _meshes[run.Mesh.Index];
-                    if (m is not { } mesh) continue;
-                    if (mesh.SplatMaterial >= 0) continue;   // terrain does not cast (receive-only)
-                    _model.DrawShadowCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count);
-                    CountMeshDraw(mesh.IndexCount, run.Count);
+                    foreach (var run in _runs)
+                    {
+                        if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
+                        var m = _meshes[run.Mesh.Index];
+                        if (m is not { } mesh) continue;
+                        if (mesh.SplatMaterial >= 0) continue;   // terrain does not cast (receive-only)
+                        _model.DrawShadowCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, run.Start, run.Count);
+                        CountMeshDraw(mesh.IndexCount, run.Count);
+                    }
+                }
+                if (!UseGpuSkinning)
+                {
+                    for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
+                    {
+                        var dr = _cpuSkinnedDraws[d];
+                        _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
+                        CountSkinnedDraw(dr.IndexCount);
+                    }
                 }
             }
-            if (UseGpuSkinning)
+
+            // GPU-skinned casters (opt-in): one combined-UBO slot per (cascade, caster), folding that cascade's
+            // column-transformed matrix. Pack every slot first, then bind + draw per cascade (the same update-then-draw
+            // ordering the splat sync uses). A draw outside a cascade's ortho volume clips away.
+            if (UseGpuSkinning && _gpuSkinnedDraws.Count > 0)
             {
-                // GPU-skinned casters: fold LightMvp = world * lightViewProj + the palette into each draw's combined
-                // slot, then draw through the skinned depth pipeline (rest-pose buffer, per-draw dynamic offset). Pack
-                // every slot first, then bind + draw (the same update-then-draw ordering the splat sync uses). A draw
-                // outside the shadow ortho volume clips away, exactly like the CPU path drawing all entries.
                 var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
-                for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
+                int gpuCount = _gpuSkinnedDraws.Count;
+                for (int c = 0; c < count; c++)
+                    for (int d = 0; d < gpuCount; d++)
+                    {
+                        var dr = _gpuSkinnedDraws[d];
+                        _model.PackSkinnedShadowSlot(cl, (uint)(c * gpuCount + d), dr.World, _cascadeDepthVps[c],
+                            boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
+                        _frameStats.BufferUpdateBytes += (long)(1 + dr.BoneCount) * 64;
+                    }
+                for (int c = 0; c < count; c++)
                 {
-                    var dr = _gpuSkinnedDraws[d];
-                    _model.PackSkinnedShadowSlot(cl, dr.Slot, dr.World, lightVpGpu, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
-                    _frameStats.BufferUpdateBytes += (long)(1 + dr.BoneCount) * 64;
-                }
-                if (_gpuSkinnedDraws.Count > 0) _model.BindSkinnedShadowPass(cl);
-                for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
-                {
-                    var dr = _gpuSkinnedDraws[d];
-                    _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.Slot);
-                    CountSkinnedDraw(dr.IndexCount);
-                }
-            }
-            else
-            {
-                for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
-                {
-                    var dr = _cpuSkinnedDraws[d];
-                    _model.DrawShadowSkinnedCaster(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d);
-                    CountSkinnedDraw(dr.IndexCount);
+                    _model.BindShadowCascadeSkinned(cl, c);
+                    for (int d = 0; d < gpuCount; d++)
+                    {
+                        var dr = _gpuSkinnedDraws[d];
+                        _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat, (uint)(c * gpuCount + d));
+                        CountSkinnedDraw(dr.IndexCount);
+                    }
                 }
             }
+            _model.EndShadowPass(cl);
         }
 
         /// <summary>
@@ -1657,18 +1704,18 @@ namespace KhaozEngine.Render3D
             FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(vp) : default;
             ComputeMainPassVisibility(camFrustum);
 
-            // Resolve the shadow tier + (when active) this frame's light-space ortho matrix BEFORE the CPU skin
-            // pass below, so an off-camera skinned draw's shadow-caster visibility can be decided up front (see
+            // Resolve the shadow tier + (when active) this frame's cascade fit BEFORE the CPU skin pass below, so an
+            // off-camera skinned draw's shadow-caster visibility can be decided up front (see
             // ClassifySkinnedVisibility): a character camera-culled from the main pass but still inside the shadow
-            // ortho volume must still be CPU-skinned so its shadow lands on-screen. RenderShadowDepthPass (below)
-            // reuses shadowLightVp instead of recomputing it, so the two passes can never disagree on the matrix.
+            // volume must still be CPU-skinned so its shadow lands on-screen. RenderShadowDepthPass (below) reuses the
+            // fitted cascades instead of recomputing them, so the two passes can never disagree on the fit. The
+            // OUTERMOST cascade is the widest shadow volume, so its frustum bounds the caster-visibility test.
             bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
-            Matrix4x4 shadowLightVp = default;
             FrustumPlanes shadowFrustum = default;
             if (shadowMapActive)
             {
-                shadowLightVp = ComputeShadowLightViewProj(eye);
-                shadowFrustum = FrustumPlanes.Extract(shadowLightVp);
+                int cc = ComputeShadowCascades(eye);
+                shadowFrustum = FrustumPlanes.Extract(_cascadeCpuVps[cc - 1]);
             }
 
             // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
@@ -1743,7 +1790,8 @@ namespace KhaozEngine.Render3D
                     if (_gpuSkinnedDraws.Count > 0)
                     {
                         _model.EnsureSkinnedMainCapacity((uint)_gpuSkinnedDraws.Count);
-                        if (shadowMapActive) _model.EnsureSkinnedShadowCapacity((uint)_gpuSkinnedDraws.Count);
+                        // One skinned-depth slot per (cascade, caster): each cascade folds its own light matrix.
+                        if (shadowMapActive) _model.EnsureSkinnedShadowCapacity((uint)(_gpuSkinnedDraws.Count * Math.Max(1, _cascadeCount)));
                     }
                 }
                 else if (_cpuSkinnedDraws.Count > 0)
@@ -1755,39 +1803,41 @@ namespace KhaozEngine.Render3D
             }
             int skinnedCasterCount = UseGpuSkinning ? _gpuSkinnedDraws.Count : _cpuSkinnedDraws.Count;
 
-            // Key-light shadow map (ShadowMode.ShadowMap): a depth-only pass over the SAME instanced casters into the
-            // ortho light-space map, BEFORE the model pass, so the model + splat fragments sample it. Off/Blob leave
-            // the shadow tail at strength 0, so the frame is byte-stable (no depth pass, the shader never taps the
-            // map). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that tail).
-            // shadowMapActive / shadowLightVp were resolved above (before the CPU skin pass), so this reuses the
-            // exact same matrix the skinned-visibility split was computed against.
+            // Key-light cascaded shadow map (ShadowMode.ShadowMap): a depth-only pass over the SAME instanced casters
+            // into the ortho light-space cascade atlas, BEFORE the model pass, so the model + splat fragments sample it.
+            // Off/Blob leave the shadow tail at strength 0, so the frame is byte-stable (no depth pass, the shader never
+            // taps the atlas). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that
+            // tail). shadowMapActive + the cascade fit were resolved above (before the CPU skin pass), so this reuses
+            // the exact same matrices the skinned-visibility split was computed against.
             float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, postMs = 0f;
             long timingStart = 0;
             _shadowPassSkippedLastFrame = false;
             if (shadowMapActive)
             {
                 timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-                // Always set the receiver tail so the model + splat fragments sample the map (whether or not its depth
-                // is re-rendered this frame). Then decide whether the depth pass must actually re-run: the 2048^2 map
+                // Always set the receiver tail so the model + splat fragments sample the atlas (whether or not its depth
+                // is re-rendered this frame). Then decide whether the depth pass must actually re-run: the atlas
                 // persists across frames, so an unchanged static scene reuses it and skips every caster draw.
-                Matrix4x4 lightVpGpu = SetShadowReceiverTail(shadowLightVp);
+                SetShadowReceiverTail();
                 CaptureShadowCasters(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
                 bool dirty = ShadowDepthPassDirty(
                     hadPrevious: _shadowPassRendered,
                     anySkinnedCaster: skinnedCasterCount > 0,
                     resolutionChanged: _model.ShadowMap.Resolution != _lastShadowResolution,
-                    lightMatrixChanged: _lastShadowLightVp != shadowLightVp,
+                    // ANY cascade's fitted matrix moving (a camera pan past a texel, or a moving sun) re-renders.
+                    lightMatrixChanged: ShadowCascadeVpsChanged(_cascadeCpuVps, _cascadeCount, _lastCascadeCpuVps, _lastShadowCascadeCount),
                     casterDataChanged: ShadowCastersChanged(
                         _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels));
                 if (dirty)
                 {
-                    RenderShadowDepthPass(cl, lightVpGpu);
+                    RenderShadowDepthPass(cl);
                     // Commit this frame's signature as next frame's reference. Swap the reused buffers (no copy/alloc):
                     // the scratch now holds the just-rendered casters, so make it the kept copy and reuse the old kept
                     // copy as next frame's scratch.
                     (_lastShadowCasterRuns, _shadowCasterRunsScratch) = (_shadowCasterRunsScratch, _lastShadowCasterRuns);
                     (_lastShadowCasterModels, _shadowCasterModelsScratch) = (_shadowCasterModelsScratch, _lastShadowCasterModels);
-                    _lastShadowLightVp = shadowLightVp;
+                    Array.Copy(_cascadeCpuVps, _lastCascadeCpuVps, _cascadeCount);
+                    _lastShadowCascadeCount = _cascadeCount;
                     _lastShadowResolution = _model.ShadowMap.Resolution;
                     _shadowPassRendered = true;
                 }
@@ -2616,6 +2666,20 @@ namespace KhaozEngine.Render3D
             if (runsA.Count != runsB.Count || modelsA.Count != modelsB.Count) return true;
             for (int i = 0; i < runsA.Count; i++) if (runsA[i] != runsB[i]) return true;
             for (int i = 0; i < modelsA.Count; i++) if (modelsA[i] != modelsB[i]) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Pure compare of two per-cascade fitted-matrix sets (the CPU pre-clip-correct <see cref="ShadowMapMath.BuildLightViewProj"/>
+        /// outputs, cascade 0..count-1 in order). Returns <c>true</c> when they DIFFER (a different count, or ANY
+        /// cascade's matrix moved), so the depth pass must re-render - a camera pan past a texel or a moving sun (which
+        /// re-fits every cascade) both trip it, while a fully static scene compares equal and reuses the persistent
+        /// atlas. No GPU, headless-testable (the day/night dirty-tracking guarantee, now across all cascades).
+        /// </summary>
+        internal static bool ShadowCascadeVpsChanged(ReadOnlySpan<Matrix4x4> a, int aCount, ReadOnlySpan<Matrix4x4> b, int bCount)
+        {
+            if (aCount != bCount) return true;
+            for (int i = 0; i < aCount; i++) if (a[i] != b[i]) return true;
             return false;
         }
 

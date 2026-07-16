@@ -9,6 +9,7 @@
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />

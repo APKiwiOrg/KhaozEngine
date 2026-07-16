@@ -21,6 +21,82 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>A stable fallback light direction (straight down) when the caller's is degenerate/zero.</summary>
         static readonly Vector3 FallbackLightDir = new(0f, -1f, 0f);
 
+        /// <summary>Blend weight (0 = uniform/linear split, 1 = logarithmic split) for the practical cascade split.
+        /// A logarithmic split packs texels onto the near cascades (where the eye is closest to the ground and needs
+        /// the most resolution) but leaves the far cascade too coarse, and a uniform split wastes near texels. The
+        /// standard PSSM compromise blends the two. <c>0.6</c> leans logarithmic (crisper near shadows).</summary>
+        public const float DefaultSplitLambda = 0.6f;
+
+        /// <summary>
+        /// Fill <paramref name="radii"/> (length == <paramref name="count"/>) with each concentric cascade's focus
+        /// radius, from the tight near cascade (<paramref name="focusRadius"/>) out to the far cascade
+        /// (<paramref name="maxDistance"/>), via the practical split (a <paramref name="lambda"/>-blend of a
+        /// logarithmic and a linear progression). Cascade 0 is ALWAYS exactly <paramref name="focusRadius"/> (so the
+        /// near-shadow contact quality is preserved and <c>count == 1</c> reproduces the pre-cascade single map), and
+        /// the outermost cascade is ALWAYS exactly <paramref name="maxDistance"/>. With <c>count == 1</c> the single
+        /// entry is <paramref name="focusRadius"/> (<paramref name="maxDistance"/> unused). Pure, headless-tested.
+        /// </summary>
+        public static void FillCascadeRadii(Span<float> radii, int count, float focusRadius, float maxDistance, float lambda = DefaultSplitLambda)
+        {
+            int n = Math.Clamp(count, 1, radii.Length);
+            float near = MathF.Max(focusRadius, 1e-3f);
+            float far = MathF.Max(maxDistance, near);   // never fit the outer cascade tighter than the near one
+            float lam = Math.Clamp(lambda, 0f, 1f);
+            if (n == 1) { radii[0] = near; return; }
+            for (int i = 0; i < n; i++)
+            {
+                float f = (float)i / (n - 1);                       // 0 at cascade 0, 1 at the outer cascade
+                float lin = near + (far - near) * f;                // linear (uniform) progression
+                float log = near * MathF.Pow(far / near, f);        // logarithmic (geometric) progression
+                radii[i] = lam * log + (1f - lam) * lin;            // exact at the ends (f==0 -> near, f==1 -> far)
+            }
+        }
+
+        /// <summary>
+        /// Clip-space X remap that packs one cascade's full ortho frustum into column <paramref name="index"/> of a
+        /// <paramref name="count"/>-wide side-by-side shadow atlas (there is no viewport in the command-list seam, so
+        /// the column placement is baked into the depth-pass matrix and a per-column scissor clips the overflow). It
+        /// scales clip.x by <c>1/count</c> and biases it to the column's NDC sub-range, leaving Y and Z (the stored
+        /// depth) untouched, so the receiver can sample with the plain per-cascade matrix and map UV into the column
+        /// itself. Post-multiply it onto the GPU-clip-corrected per-cascade matrix (row-vector convention:
+        /// <c>depthMat = receiverMat * AtlasColumnTransform(i, n)</c>). <c>count == 1</c> is the identity.
+        /// </summary>
+        public static Matrix4x4 AtlasColumnTransform(int index, int count)
+        {
+            int n = Math.Max(1, count);
+            int i = Math.Clamp(index, 0, n - 1);
+            float sx = 1f / n;
+            float bx = -1f + (2f * i + 1f) / n;   // maps clip.x [-1,1] -> column i NDC range
+            // Row-vector clip' = clip * C:  clip'.x = sx*clip.x + bx*clip.w, and y,z,w are unchanged.
+            var c = Matrix4x4.Identity;
+            c.M11 = sx;
+            c.M41 = bx;
+            return c;
+        }
+
+        /// <summary>
+        /// Pick the tightest cascade whose light-clip projection of <paramref name="worldPos"/> lands inside its map
+        /// (UV within <paramref name="uvMargin"/>..1-<paramref name="uvMargin"/> and depth in [0,1]), scanning from
+        /// cascade 0 outward, mirroring the receiver shader's selection. Returns the cascade index, or <c>-1</c> when
+        /// the point is beyond every cascade (fully lit / faded). The matrices are the per-cascade RECEIVER matrices
+        /// (world-&gt;light-clip, as sampled). Pure. Lets the headless test pin "a point at distance d falls in the
+        /// expected cascade" without a GPU.
+        /// </summary>
+        public static int SelectCascade(ReadOnlySpan<Matrix4x4> receiverMats, int count, Vector3 worldPos, float uvMargin = 0f)
+        {
+            int n = Math.Min(count, receiverMats.Length);
+            for (int i = 0; i < n; i++)
+            {
+                Vector4 lc = Vector4.Transform(new Vector4(worldPos, 1f), receiverMats[i]);
+                if (lc.W <= 0f) continue;
+                float x = lc.X / lc.W, y = lc.Y / lc.W, z = lc.Z / lc.W;
+                float u = x * 0.5f + 0.5f, v = y * 0.5f + 0.5f;
+                if (u < uvMargin || u > 1f - uvMargin || v < uvMargin || v > 1f - uvMargin || z < 0f || z > 1f) continue;
+                return i;
+            }
+            return -1;
+        }
+
         /// <summary>World size (in world units) of ONE shadow-map texel for a fit of the given
         /// <paramref name="radius"/> at <paramref name="resolution"/> texels: <c>2*radius/resolution</c>. Used both
         /// for the texel snap and to hand the fragment shader its filter kernel step.</summary>

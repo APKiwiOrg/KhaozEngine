@@ -5,7 +5,9 @@ namespace KhaozEngine.Telegraphs
     /// <summary>
     /// The concrete per-frame visual a renderer draws: final fill/outline colors (alphas already multiplied by
     /// opacity + pulse), the swept fill fraction (0..1 of the shape's extent that is filled this frame), an
-    /// additive impact-flash term (0..1), and the blend/fill mode carried through from the style. Produced by
+    /// additive impact-flash term (0..1), and the blend/fill mode carried through from the style. Also carries
+    /// the resolved feather width, fill pattern (with its speed and scale), and the rim/sweep/sparkle edge-energy
+    /// terms that drive the modern ground-decal renderer's glow effects. Produced by
     /// <see cref="TelegraphResolve.Resolve"/>; holds no shape geometry (the renderer applies
     /// <see cref="FillFraction"/> to the shape).
     /// </summary>

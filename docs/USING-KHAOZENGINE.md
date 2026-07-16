@@ -2292,7 +2292,7 @@ the 3D ground-decal path only, see below):
 - `Generic` - neutral red-orange danger zone, alpha-blended, fill sweep, color ramp, impact
   flash, plus rim and sweep glow (no outline pulse).
 - `Fire` - additive warm glow, scrolling noise, edge sparkle.
-- `Poison` - toxic green, alpha-blended, pulsing outline.
+- `Poison` - toxic green, alpha-blended, pulsing outline, plus rim and sweep glow.
 - `Steel` - cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle.
 - `Frost` - pale ice blue, wide soft feather, slow radial noise flow, rim glow and edge sparkle,
   no sweep glow.

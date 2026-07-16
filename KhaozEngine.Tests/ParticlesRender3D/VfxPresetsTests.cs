@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.ParticlesRender3D
         public static TheoryData<string> PresetNames => new()
         {
             "FireBurst", "FrostShatter", "HealMotes", "EmberDrift",
-            "SparkShower", "Shockwave", "SmokePlume", "ArcaneSparkle",
+            "SparkShower", "Shockwave", "SmokePlume", "ArcaneSparkle", "HeatHaze",
         };
 
         static VfxPreset Resolve(string name) => name switch
@@ -26,6 +26,7 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             "Shockwave" => VfxPresets.Shockwave,
             "SmokePlume" => VfxPresets.SmokePlume,
             "ArcaneSparkle" => VfxPresets.ArcaneSparkle,
+            "HeatHaze" => VfxPresets.HeatHaze,
             _ => throw new ArgumentOutOfRangeException(nameof(name), name, "unknown preset"),
         };
 

@@ -756,5 +756,102 @@ namespace KhaozEngine.Tests.MapEditTool
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
+
+        // ---- exclusions_info / scatter_overrides_info read paths ------------------------------------------------
+
+        [Fact]
+        public void ExclusionsInfo_ReturnsDocumentOrderWithShapeSummaries()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                var query = new QueryService(session);
+
+                // index 1: rect, layer-targeted, unnamed.
+                mutation.ExclusionAdd("{\"type\":\"rect\",\"minX\":0,\"minZ\":0,\"maxX\":20,\"maxZ\":15}",
+                    layers: new[] { "trees" });
+                // index 2: polygon, all-layers, named.
+                mutation.ExclusionAdd(
+                    "{\"type\":\"polygon\",\"points\":[[-10,-10],[10,-10],[10,10],[-10,10]]}");
+                mutation.ExclusionRename(2, "camp");
+
+                IReadOnlyList<ExclusionInfo> exclusions = query.ExclusionsInfo().Exclusions;
+                Assert.Equal(3, exclusions.Count);
+
+                // index 0: from SampleDoc, a disc, unnamed, all-layers (null Layers).
+                ExclusionInfo disc = exclusions[0];
+                Assert.Equal(0, disc.Index);
+                Assert.Null(disc.Name);
+                Assert.Equal("disc", disc.ShapeKind);
+                Assert.Equal("center (-32, 22), radius 30", disc.ShapeSummary);
+                Assert.Null(disc.Layers);
+
+                ExclusionInfo rect = exclusions[1];
+                Assert.Equal(1, rect.Index);
+                Assert.Null(rect.Name);
+                Assert.Equal("rect", rect.ShapeKind);
+                Assert.Equal("min (0, 0), max (20, 15)", rect.ShapeSummary);
+                Assert.Equal(new[] { "trees" }, rect.Layers);
+
+                ExclusionInfo polygon = exclusions[2];
+                Assert.Equal(2, polygon.Index);
+                Assert.Equal("camp", polygon.Name);
+                Assert.Equal("polygon", polygon.ShapeKind);
+                Assert.Equal("4 points", polygon.ShapeSummary);
+                Assert.Null(polygon.Layers);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterOverridesInfo_ReturnsDocumentOrderWithKindsAndShapeSummaries()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                var query = new QueryService(session);
+
+                // index 1: disc, all-layers, kind substitution, named.
+                mutation.ScatterOverrideAdd("{\"type\":\"disc\",\"centerX\":5,\"centerZ\":5,\"radius\":8}",
+                    densityMultiplier: 1.2f, kinds: new[] { "pine_a:2", "oak_a" });
+                mutation.ScatterOverrideRename(1, "meadow-boost");
+                // index 2: polygon, all-layers, no kind substitution, unnamed.
+                mutation.ScatterOverrideAdd("{\"type\":\"polygon\",\"points\":[[0,0],[10,0],[5,10]]}");
+
+                IReadOnlyList<ScatterOverrideInfo> overrides = query.ScatterOverridesInfo().ScatterOverrides;
+                Assert.Equal(3, overrides.Count);
+
+                // index 0: from SampleDoc, a rect, layer-targeted, no Kinds, unnamed.
+                ScatterOverrideInfo rect = overrides[0];
+                Assert.Equal(0, rect.Index);
+                Assert.Null(rect.Name);
+                Assert.Equal("rect", rect.ShapeKind);
+                Assert.Equal("min (0, 0), max (50, 50)", rect.ShapeSummary);
+                Assert.Equal(0.5f, rect.DensityMultiplier);
+                Assert.Null(rect.Kinds);
+                Assert.Equal(new[] { "trees" }, rect.Layers);
+
+                ScatterOverrideInfo disc = overrides[1];
+                Assert.Equal(1, disc.Index);
+                Assert.Equal("meadow-boost", disc.Name);
+                Assert.Equal("disc", disc.ShapeKind);
+                Assert.Equal("center (5, 5), radius 8", disc.ShapeSummary);
+                Assert.Equal(1.2f, disc.DensityMultiplier);
+                Assert.Equal(new[] { "pine_a:2", "oak_a" }, disc.Kinds);
+                Assert.Null(disc.Layers);
+
+                ScatterOverrideInfo polygon = overrides[2];
+                Assert.Equal(2, polygon.Index);
+                Assert.Null(polygon.Name);
+                Assert.Equal("polygon", polygon.ShapeKind);
+                Assert.Equal("3 points", polygon.ShapeSummary);
+                Assert.Equal(1f, polygon.DensityMultiplier);
+                Assert.Null(polygon.Kinds);
+                Assert.Null(polygon.Layers);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
     }
 }

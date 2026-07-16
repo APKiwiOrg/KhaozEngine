@@ -235,14 +235,6 @@ public sealed class EditorToolController
     /// Defaults to everything pickable, and the scene points it at its <see cref="EditorVisibility.IsElementVisible"/>.</summary>
     public Func<SelectionKind, string, bool> IsVisible { get; set; } = static (_, _) => true;
 
-    /// <summary>Invoked with (kind, index) right after a Feature, Exclusion, or ScatterOverride delete shrinks its
-    /// list, so a caller (the scene, wired to <see cref="EditorVisibility.RemoveIndex"/>) can drop that index's hide
-    /// entry and shift every later hidden index down by one, keeping a hide glued to the surviving elements'
-    /// identities. Never invoked for the id/name-keyed kinds (Placement/Spawn/Region), whose hide keys need no
-    /// index remap on delete. Optional (null default), so a headless controller test that never wires this just
-    /// skips the notification.</summary>
-    public Action<SelectionKind, int>? OnIndexRemoved { get; set; }
-
     /// <summary>True while a Select-mode gizmo drag is in flight.</summary>
     public bool IsDragging => _dragging;
 
@@ -905,18 +897,15 @@ public sealed class EditorToolController
             case SelectionKind.Feature:
                 if (!TryFeatureIndex(sel.Id, out int fi)) return;
                 _document.Execute(new RemoveFeatureCommand(fi));
-                OnIndexRemoved?.Invoke(SelectionKind.Feature, fi);
                 break;
             case SelectionKind.Exclusion:
                 if (!int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int ei)
                     || ei < 0 || ei >= _document.Doc.Exclusions.Count) return;
                 _document.Execute(new RemoveExclusionCommand(ei));
-                OnIndexRemoved?.Invoke(SelectionKind.Exclusion, ei);
                 break;
             case SelectionKind.ScatterOverride:
                 if (!TryScatterOverrideIndex(sel.Id, out int oi)) return;
                 _document.Execute(new RemoveScatterOverrideCommand(oi));
-                OnIndexRemoved?.Invoke(SelectionKind.ScatterOverride, oi);
                 break;
             case SelectionKind.Region:
                 if (!RegionExists(sel.Id)) return;
@@ -926,7 +915,6 @@ public sealed class EditorToolController
                 if (!int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bi)
                     || bi < 0 || bi >= _document.Doc.Terrain.Biomes.Count) return;
                 _document.Execute(new RemoveBiomeBandCommand(bi));
-                OnIndexRemoved?.Invoke(SelectionKind.BiomeBand, bi);   // no band hide today, but keeps the index-remap path uniform
                 break;
             default:
                 return;

@@ -385,6 +385,22 @@ namespace KhaozEngine.Particles
                         },
                         BurstCount = 10, PoolCapacity = 24,
                     },
+                    // Refraction ring: a lifted flat-ground quad that expands with the nova and warps the scene
+                    // behind it (a refractive shockwave), driven by the distortion look below. Same schedule as the
+                    // visual ring so the warp tracks it.
+                    new ParticleEffectPhase
+                    {
+                        Config = new EmitterConfig
+                        {
+                            LifetimeMin = 0.5f, LifetimeMax = 0.5f,
+                            StartSize = 0.2f, EndSize = 2.2f,
+                            StartColor = new Color(1f, 1f, 1f, 1f),
+                            EndColor = new Color(1f, 1f, 1f, 0f),
+                            SizeCurve = ParticleCurve.EaseOut,
+                            AlphaCurve = ParticleCurve.EaseOut,
+                        },
+                        BurstCount = 1, PoolCapacity = 4, OriginOffset = new Vector3(0f, 0.09f, 0f),
+                    },
                 };
 
                 var looks = new[]
@@ -397,6 +413,82 @@ namespace KhaozEngine.Particles
                         Orientation = ParticleOrientation.FlatGround, SoftFadeScale = 0.12f,
                     },
                     new ParticleLook { Shape = ParticleShape.Wisp, Blend = BillboardBlend.Alpha },
+                    // The refraction ring: flat on the ground, a Ripple offset band that fades with the particle's
+                    // alpha. Active distortion, so this phase warps the scene instead of drawing a visible sprite.
+                    new ParticleLook
+                    {
+                        Orientation = ParticleOrientation.FlatGround,
+                        Distortion = new DistortionLook
+                        {
+                            Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+                        },
+                    },
+                };
+
+                return new VfxPreset(new ParticleEffect(phases), looks);
+            }
+        }
+
+        /// <summary>A shimmering heat haze: a slow rising column that warps the scene (heat distortion) under a faint
+        /// warm additive shimmer. For braziers, lava, desert air, engine exhaust.</summary>
+        public static VfxPreset HeatHaze
+        {
+            get
+            {
+                var phases = new[]
+                {
+                    // Heat column: slow, large, soft sprites rising, driving the distortion wobble (no visible sprite).
+                    new ParticleEffectPhase
+                    {
+                        Config = new EmitterConfig
+                        {
+                            LifetimeMin = 1.5f, LifetimeMax = 2.5f,
+                            SpeedMin = 0.4f, SpeedMax = 0.9f,
+                            Direction = Vector3.UnitY, SpreadDegrees = 12f,
+                            Shape = EmissionShape.Disc, ShapeRadius = 0.8f, ShapeShell = 0.2f,
+                            Gravity = new Vector3(0f, 0.6f, 0f), Drag = 0.3f,
+                            StartSize = 1.2f, EndSize = 1.8f,
+                            StartColor = new Color(1f, 1f, 1f, 0.6f),
+                            EndColor = new Color(1f, 1f, 1f, 0f),
+                            SizeCurve = ParticleCurve.EaseOut,
+                            AlphaCurve = ParticleCurve.FadeInOut(0.3f),
+                            TurbulenceStrength = 0.4f, TurbulenceFrequency = 0.4f,
+                        },
+                        Duration = 2.5f, RatePerSecond = 6f, PoolCapacity = 32,
+                    },
+                    // Faint warm shimmer: a subtle additive wisp over the warped air, so the effect reads even on a
+                    // flat background where refraction alone is invisible.
+                    new ParticleEffectPhase
+                    {
+                        Config = new EmitterConfig
+                        {
+                            LifetimeMin = 1f, LifetimeMax = 1.8f,
+                            SpeedMin = 0.3f, SpeedMax = 0.7f,
+                            Direction = Vector3.UnitY, SpreadDegrees = 18f,
+                            Shape = EmissionShape.Disc, ShapeRadius = 0.7f, ShapeShell = 0.3f,
+                            Gravity = new Vector3(0f, 0.5f, 0f), Drag = 0.4f,
+                            StartSize = 0.5f, EndSize = 0.9f,
+                            StartColor = new Color(1f, 0.85f, 0.7f, 0.12f),
+                            EndColor = new Color(1f, 0.8f, 0.6f, 0f),
+                            SizeCurve = ParticleCurve.EaseOut,
+                            AlphaCurve = ParticleCurve.FadeInOut(0.3f),
+                            TurbulenceStrength = 0.5f, TurbulenceFrequency = 0.5f,
+                        },
+                        Duration = 2.5f, RatePerSecond = 10f, PoolCapacity = 32,
+                    },
+                };
+
+                var looks = new[]
+                {
+                    // Active Heat distortion: this phase warps the scene, drawing no visible sprite.
+                    new ParticleLook
+                    {
+                        Distortion = new DistortionLook
+                        {
+                            Shape = DistortionShape.Heat, ShapeParam = 0.5f, Strength = 0.8f, SoftFadeScale = 1f,
+                        },
+                    },
+                    new ParticleLook { Shape = ParticleShape.Wisp, Blend = BillboardBlend.Additive },
                 };
 
                 return new VfxPreset(new ParticleEffect(phases), looks);

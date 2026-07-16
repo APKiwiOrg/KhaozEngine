@@ -11,7 +11,8 @@ automatically, so this is transparent to every other package.
 
 - `Color` - RGBA float struct, a typed wrapper over `Vector4` (implicit to `Vector4`, explicit back).
   `FromBytes`, `FromHex`/`ToHex`, `WithAlpha`, `ScaleRgb` (scale RGB, keep alpha - dim a color without
-  making it translucent, unlike `* float`), `* float`, unclamped `Lerp`.
+  making it translucent, unlike `* float`), `ScaleRgbClamped` (`ScaleRgb`, but each scaled channel clamped
+  to 0..1 - a brighten factor that would otherwise overshoot 1.0), `* float`, unclamped `Lerp`.
 - `DeterministicRng` - seeded xorshift128+ (splitmix64 init), reproducible across .NET versions and
   platforms. `State` get/set for save/resume, `CreateDerived("combat")` for decorrelated per-subsystem
   streams, `StableHash` for a platform-stable string hash.
@@ -29,6 +30,9 @@ automatically, so this is transparent to every other package.
   test against an axis-aligned box, true at `t >= 0` with `tNear` the entry distance (0 when the origin starts
   inside). Directions need not be normalized, `tNear` is in units of the direction's length, and an
   axis-parallel ray hits only when the origin already lies within that axis's slab (no division, no NaN risk).
+  A degenerate zero-length ray (zero direction) hits, at `tNear` 0, only when the origin already lies inside
+  the box on every axis. A NaN component in either the origin or the direction always misses (without the
+  explicit check, the all-false NaN comparisons would fall through the slab test as an always-pass hit).
 - `IDesignViewport` - the fakeable design-viewport seam (design size, scale + letterbox offset,
   screen to design mapping, and the `DesignBounds`/`ContentBounds`/`WindowBounds` rects) that rendering,
   layout, and headless tests target. Moved here from Windowing in 9.0.0, which carries the concrete

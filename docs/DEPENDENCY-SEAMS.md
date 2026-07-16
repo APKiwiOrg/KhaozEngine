@@ -89,6 +89,11 @@ KhaozEngine.Server.Admin -> Microsoft.AspNetCore.App [shared framework, Framewor
 A server that does not want an admin HTTP endpoint never references `Server.Admin`, so the web stack stays
 out of its dependency closure.
 
+The game-registered admin action registry (`ServerAdmin.RegisterAction`/`ActionNames`/`TryGetAction`, since
+10.131.0) lives on `ServerAdmin` itself, on the `NetWorld` side of this edge, not in `Server.Admin`. The
+`/actions` HTTP routes in `Server.Admin` are a thin dispatch shell over that registry, so this edge is
+unchanged: `Server.Admin` still only references `NetWorld`, `WorldStore`, and `Microsoft.AspNetCore.App`.
+
 ## Commerce wallet seams
 
 `KhaozEngine.Commerce` splits into three seams, not one, because the wallet has three independent axes a
@@ -376,8 +381,17 @@ ride in the SAME frame UBO after the point-light arrays, so each pass binds exac
 comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The modern particle pass follows it too: its
 single set-0 frame UBO carries the clip-corrected ViewProj, the raw InvViewProj, the camera basis + eye, the
 effect time, and the soft-fade / quality params, while every per-sprite value rides an instanced
-vertex-attribute stream and the scene depth texture + sampler sit at set 0 bindings 1 and 2 (textures past the
-first UBO map fine). See `../KhaozEngine.Render3D/Rendering/ParticleRenderer.cs`. The vertex half of the fault plus the
+vertex-attribute stream and the textures sit at set 0 bindings 1..5, sampled statically in binding order (the
+Metal rule): the scene depth texture + sampler at 1 and 2, then the flipbook motion sheet, atlas sheet, and
+atlas sampler at 3, 4, and 5 (motion precedes atlas so the static sample order supplies the warp vectors before
+the atlas taps that consume them). Procedural sprites bind 1x1 dummy atlas + neutral motion textures for the
+same static sample, so a procedural-only frame is byte-identical. Textures past the first UBO map fine. See
+`../KhaozEngine.Render3D/Rendering/ParticleRenderer.cs`. The sibling screen-space distortion pass follows the
+identical contract: one set-0 frame UBO (the same clip-corrected ViewProj + raw InvViewProj + camera basis +
+params block, with a half-to-full texel ratio folded in), every per-sprite value on an instanced vertex-attribute
+stream, and the scene depth texture + point sampler at set 0 bindings 1 and 2, writing a signed offset field that
+the post chain's fullscreen apply pass re-samples the resolved colour through as its FIRST pass (see
+`../KhaozEngine.Render3D/Rendering/DistortionRenderer.cs`). The vertex half of the fault plus the
 fold-into-one fix are proven offscreen by `GpuSkinningReproGpuTests` variant 3
 (`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone`). The SHIPPED GPU-skinning pass
 (`Scene3D.UseGpuSkinning`, `SkinnedModelVert`/`SkinnedModelFrag`) is the full instance: one combined

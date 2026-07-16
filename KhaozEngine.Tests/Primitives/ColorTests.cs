@@ -71,6 +71,34 @@ public class ColorTests
         Assert.Equal(new Color(0.2f * factor, 0.4f * factor, 0.6f * factor, 0.8f), c);
     }
 
+    [Fact]
+    public void ScaleRgbClamped_ScalesRgbAndPreservesAlpha_WhenInRange()
+    {
+        var c = new Color(0.2f, 0.4f, 0.6f, 0.8f).ScaleRgbClamped(0.5f);
+        Assert.Equal(new Color(0.1f, 0.2f, 0.3f, 0.8f), c);   // same result as ScaleRgb while nothing overshoots
+    }
+
+    [Fact]
+    public void ScaleRgbClamped_ClampsChannelsAboveOne_AlphaUntouched()
+    {
+        // 1.6x over a bright base pushes R and G past 1.0 (clamped to 1), while B stays in range, scaled normally.
+        // Alpha is neither scaled nor clamped (it was already 1 here), matching ScaleRgb's alpha-preserving
+        // contract. Compared channel-by-channel with a float tolerance (not full-struct equality) since 0.3f *
+        // 1.6f is not bit-exact with the literal 0.48f.
+        var c = new Color(0.9f, 0.8f, 0.3f, 1f).ScaleRgbClamped(1.6f);
+        Assert.Equal(1f, c.R, 5);
+        Assert.Equal(1f, c.G, 5);
+        Assert.Equal(0.48f, c.B, 5);
+        Assert.Equal(1f, c.A, 5);
+    }
+
+    [Fact]
+    public void ScaleRgbClamped_ClampsChannelsBelowZero()
+    {
+        var c = new Color(0.2f, 0.4f, 0.6f, 0.8f).ScaleRgbClamped(-0.5f);
+        Assert.Equal(new Color(0f, 0f, 0f, 0.8f), c);   // negative factor would otherwise go negative per channel
+    }
+
     // --- error paths ---
 
     [Fact]

@@ -24,6 +24,8 @@ public enum VisibilityGroup
     Regions,
     /// <summary>Terrain feature center markers.</summary>
     FeatureMarkers,
+    /// <summary>Player start markers.</summary>
+    PlayerSpawns,
 }
 
 /// <summary>Editor-session visibility state: which whole groups (<see cref="VisibilityGroup"/>) draw, which named
@@ -110,6 +112,7 @@ public sealed class EditorVisibility
         {
             case SelectionKind.Placement: group = VisibilityGroup.Placements; return true;
             case SelectionKind.Spawn: group = VisibilityGroup.Spawns; return true;
+            case SelectionKind.PlayerSpawn: group = VisibilityGroup.PlayerSpawns; return true;
             case SelectionKind.Exclusion: group = VisibilityGroup.Exclusions; return true;
             case SelectionKind.ScatterOverride: group = VisibilityGroup.ScatterOverrides; return true;
             case SelectionKind.Region: group = VisibilityGroup.Regions; return true;
@@ -124,11 +127,11 @@ public sealed class EditorVisibility
     /// shifted-through range moves one slot to make room, exactly mirroring the RemoveAt(from) + Insert(to) list
     /// move the reorder commands themselves perform (<see cref="ReorderFeatureCommand"/> /
     /// <see cref="ReorderExclusionCommand"/>), so a hide stays glued to the ELEMENT rather than the slot. Handles
-    /// both drag directions (from below to, or from above to) and is a no-op when the indices are equal. Call
-    /// this from the two reorder paths (the outline drop handler and the Ctrl+Up/Down single-step reorder)
-    /// alongside the reorder command itself. Undo/redo of a reorder does NOT re-follow the element (the same v1
-    /// limit the reorder commands' own selection-follow already documents), and that residual is deferred to the
-    /// ledger, not fixed here.</summary>
+    /// both drag directions (from below to, or from above to) and is a no-op when the indices are equal. Driven by
+    /// the reorder command's <see cref="IVisibilityEffect"/> through the <see cref="EditorDocument"/> event path,
+    /// so a hide survives undo and redo of the reorder: applying the command remaps forward, and undoing it applies
+    /// the inverse (<c>RemapIndex(toIndex, fromIndex)</c>), the same swap the command's own Revert performs on the
+    /// list.</summary>
     public void RemapIndex(SelectionKind kind, int fromIndex, int toIndex)
     {
         if (fromIndex == toIndex) return;
@@ -150,10 +153,11 @@ public sealed class EditorVisibility
 
     /// <summary>Drops the hide entry for the element removed at <paramref name="index"/> of <paramref name="kind"/>
     /// (if it was hidden) and shifts every later hidden index of that kind down by one, mirroring the list's own
-    /// RemoveAt(index) shift, so a hide stays glued to the surviving elements' identities. Call this from a
-    /// feature/exclusion/scatter-override delete path alongside the remove command itself. Undo of the delete does
-    /// NOT restore the
-    /// dropped hide (the same v1 residual as <see cref="RemapIndex"/>, deferred to the ledger).</summary>
+    /// RemoveAt(index) shift, so a hide stays glued to the surviving elements' identities. Driven by the remove
+    /// command's <see cref="IVisibilityEffect"/> through the <see cref="EditorDocument"/> event path. Undoing the
+    /// delete applies the inverse (<see cref="InsertIndex"/>), which shifts the surviving hides back up. The removed
+    /// element's OWN hide is dropped here and not recovered on undo (it was never part of the reversible document),
+    /// an accepted view-only residual.</summary>
     public void RemoveIndex(SelectionKind kind, int index)
     {
         _hidden.Remove((kind, index.ToString(CultureInfo.InvariantCulture)));
@@ -167,6 +171,42 @@ public sealed class EditorVisibility
         }
         foreach ((int oldIndex, int _) in moves) _hidden.Remove((kind, oldIndex.ToString(CultureInfo.InvariantCulture)));
         foreach ((int _, int newIndex) in moves) _hidden.Add((kind, newIndex.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>Shifts every hidden index of <paramref name="kind"/> at or above <paramref name="index"/> up by one,
+    /// making room for an element re-inserted at <paramref name="index"/>, the exact inverse of
+    /// <see cref="RemoveIndex"/>'s shift-down. Drives the undo of a delete through the remove command's
+    /// <see cref="IVisibilityEffect"/> (the <see cref="EditorDocument"/> event path), so a hide on a surviving
+    /// element lands back on its original slot. It does NOT restore a hide for the re-inserted element itself: that
+    /// hide was dropped by the forward <see cref="RemoveIndex"/> and is not part of the reversible document (the same
+    /// accepted view-only residual documented there).</summary>
+    public void InsertIndex(SelectionKind kind, int index)
+    {
+        List<(int OldIndex, int NewIndex)> moves = new();
+        foreach ((SelectionKind Kind, string Id) key in _hidden)
+        {
+            if (key.Kind != kind) continue;
+            if (!int.TryParse(key.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i)) continue;
+            if (i >= index) moves.Add((i, i + 1));
+        }
+        // Two passes (remove every old key, THEN add every new key), for the same reason RemapIndex does: an
+        // interleaved remove+add can drop an entry when one shifted key equals another not-yet-processed old key.
+        foreach ((int oldIndex, int _) in moves) _hidden.Remove((kind, oldIndex.ToString(CultureInfo.InvariantCulture)));
+        foreach ((int _, int newIndex) in moves) _hidden.Add((kind, newIndex.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>Moves the hide entry for an id/name-keyed element of <paramref name="kind"/> from
+    /// <paramref name="oldKey"/> to <paramref name="newKey"/> when it is hidden, a no-op otherwise (nothing hidden
+    /// under the old key, or the keys match). Drives a rename through the rename command's
+    /// <see cref="IVisibilityEffect"/> (the <see cref="EditorDocument"/> event path) so a hide follows the element
+    /// across execute, undo, and redo of the rename, leaving no orphan hide under the abandoned key.</summary>
+    public void RenameKey(SelectionKind kind, string oldKey, string newKey)
+    {
+        ArgumentNullException.ThrowIfNull(oldKey);
+        ArgumentNullException.ThrowIfNull(newKey);
+        if (string.Equals(oldKey, newKey, StringComparison.Ordinal)) return;
+        if (!_hidden.Remove((kind, oldKey))) return;
+        _hidden.Add((kind, newKey));
     }
 
     // The RemoveAt(from) + Insert(to) list-move remap for a single index, the same formula the reorder commands

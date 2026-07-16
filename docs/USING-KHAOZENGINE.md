@@ -55,6 +55,9 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
    (content beneath bleeds through) or, at low factors, invisibility - use it only when you mean to fade.
+   `ScaleRgb` is unclamped, so a brighten factor over an already-bright color can overshoot 1.0 per channel.
+   Use `color.ScaleRgbClamped(factor)` (same contract, each scaled channel clamped to 0..1) whenever the
+   factor can push a channel out of range, e.g. a UI "selected" highlight tint.
 7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.
@@ -510,7 +513,10 @@ for the player to accept "any connected controller".
 and Ctrl/Cmd+V clipboard paste - without reaching for the raw window input. There is an `InputManager` overload of
 `Apply` that reads `State` for you, so the call is one line; pass `allowPaste: false` to suppress paste. Paste
 appends `Clipboard.TryGetClipboardText()` through the same `filter` + `maxLength` path as typed chars (so a digits
-filter strips letters out of pasted text too), firing on the V press edge only.
+filter strips letters out of pasted text too), firing on the V press edge only. `filter` is a
+`Func<string, char, bool>` receiving the buffer as it accumulates THIS call (not a pre-call snapshot) alongside the
+candidate char, so a stateful filter (e.g. `NumberField`'s "at most one dot") sees every char already admitted
+earlier in the same multi-key frame or paste.
 
 ### Action maps + rebinding (`KhaozEngine.Windowing.Actions`)
 
@@ -776,7 +782,7 @@ quality.Update(im, focused: nav.Focused == 2);   // Enter opens the dropdown; Up
 // Pointer still works on every row regardless of focus (each overload runs the pointer path first).
 ```
 
-`KhaozEngine.Showcase`'s Settings screen (`RoomGui.cs`) is the runnable reference: pick the "Gui" room, open Settings, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
+`KhaozEngine.Showcase`'s Settings dialog (`Room2DGui.cs`) is the runnable reference: enter the "2D & GUI" room, open the "Screens & dialogs" tab, launch the Settings dialog, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
 
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
@@ -876,6 +882,109 @@ var pips = new ProgressBar(new Rect(hudX, hudY, 240, 12), comboFrac)
 { SegmentCount = 5, SegmentFillMode = SegmentFillMode.Discrete };   // combo points light as whole pips
 var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 { FillDirection = FillDirection.BottomToTop };                   // vertical, grows upward
+```
+
+---
+
+## Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)
+
+A headless, retained stack of transient/sticky notification popups (status messages, loot pickups, connection
+state) that a `ToastView` draws corner-anchored with tap-to-dismiss. The model (`ToastStack`) and the presenter
+(`ToastView`) are separate on purpose, the same split as `DiagnosticsOverlay`/`PatchNotesView`: the model can be
+shown from anywhere in your game code with no `Screen` or `GuiSurface` in scope, and the view just renders
+whatever is currently active.
+
+```csharp
+var toasts = new ToastStack();                                              // model: no rendering/input state
+var view = new ToastView(toasts, measurer: font) { Bounds = viewport.DesignBounds };   // presenter, corner-anchored
+
+toasts.Show(Strings.ItemPickedUp, ToastKind.Standard);            // 6s default duration
+toasts.Show(Strings.LowHealth, ToastKind.Warning, duration: 3f);
+toasts.Show(Strings.ConnectionLost, ToastKind.Danger);
+```
+
+**Hosting pattern A: a plain host with a single `Pointer`** (a `GuiSurface` Run-loop game with no `ScreenStack`).
+Tick the stack with a raw frame delta, update the view against your one pointer, and draw it last so toasts sit
+on top of the rest of the HUD:
+
+```csharp
+toasts.Update(dt);              // raw frame dt, see the real-dt contract below
+view.Update(pointer);           // tap-dismiss
+view.Draw(batch, white, font);  // drawn last so toasts sit on top
+```
+
+**Hosting pattern B: a `ScreenStack` host.** Put the `ToastView` inside a permanent overlay `Screen` - a high
+`DrawOrder` so it updates first and draws last, `AlwaysReceivesInput = true` so toasts stay tappable under a
+modal, and `PassUpdateThrough = true` paired with a dismissal-only `Update` return that keeps the reported
+consumption honest and keeps the pattern portable to screens that don't set `AlwaysReceivesInput`. The
+`ToastStack` model is NOT owned by that
+screen: the room/game ticks it with its own raw frame dt, because a `ScreenStack`'s dt can be sim-scaled while
+toasts must keep counting down at real speed regardless. `KhaozEngine.Showcase`'s `ToastOverlayScreen`
+(`Room2DGui.cs`) is the reference implementation. Read it before copying this pattern into a game:
+
+```csharp
+sealed class ToastOverlayScreen : Screen
+{
+    readonly ToastView _view;
+
+    public ToastOverlayScreen(ToastStack toasts, IDesignViewport vp, SpriteFont font)
+    {
+        _view = new ToastView(toasts, font) { Bounds = vp.DesignBounds };
+        DrawOrder = 100;              // topmost: updated first, drawn last
+        AlwaysReceivesInput = true;   // stays tappable under a modal screen
+        PassUpdateThrough = true;     // never blocks the screens below
+    }
+
+    public override bool Update(float dt, bool receivesInput) =>
+        receivesInput && _view.Update(Manager.Pointer);   // true only on an actual tap-dismiss
+
+    public override void Draw(SpriteBatch batch) => _view.Draw(batch, white, font);
+}
+
+// In the room/game:
+_toasts = new ToastStack();
+_stack.Add(new ToastOverlayScreen(_toasts, viewport, font));   // permanent, topmost
+
+// Every frame, tick the MODEL with the room's own raw dt, never the ScreenStack's:
+_toasts.Update(rawFrameDt);
+```
+
+**Real-dt contract.** `ToastStack.Update(float realDt)` MUST be fed a raw, unscaled frame delta (`Frame.Dt` or
+`GameClock.RealDeltaSeconds`), never a sim-scaled dt. A paused or slow-motion game still needs a "connection
+lost" toast to count down and dismiss at real speed, not sim speed.
+
+**Sticky + keyed channels.** A toast with `duration <= 0` (or shown via `ShowSticky`) never expires on its own -
+only a tap dismisses it, and it draws no countdown timer bar. A non-null `key` shared between two `Show` calls
+replaces the earlier toast in place (same slot, fresh `Remaining`) instead of stacking a second one, which is
+how a repeated status line stays pinned. The two combine for a maintenance-banner pattern: show a sticky toast
+on a channel, then later replace it on the same key with a timed one:
+
+```csharp
+const string ServerStatusKey = "server-status";
+
+// Maintenance starts: a sticky toast that only a tap (or the update below) removes.
+toasts.ShowSticky(Strings.ServerUpdating, ToastKind.Warning, key: ServerStatusKey);
+
+// ...maintenance ends: replaces the sticky toast IN PLACE with a timed one on the same key.
+toasts.Show(Strings.ServerBackOnline, ToastKind.Standard, duration: 4f, key: ServerStatusKey);
+```
+
+**Theme overrides.** `ToastTheme` carries the per-`ToastKind` palette (`ToastPalette`: background/border/
+timer-bar/text) and the layout metrics (width, padding, gap, margins, timer bar height, corner anchor). Unlike
+`GuiTheme.Default`, `ToastTheme.Default` is not a shared, assignable instance - it hands back a fresh default
+`ToastTheme` every time it's read. To reskin every toast in a game, build one `ToastTheme` instance yourself and
+pass it into every `ToastView` you construct (or hold a shared reference and mutate its fields), rather than
+trying to override a global default:
+
+```csharp
+static readonly ToastTheme GameToastTheme = new()
+{
+    Corner = OverlayCorner.BottomRight,
+    Width = 260f,
+    Standard = new ToastPalette(Background: darkPanel, Border: accent, TimerBar: accent, Text: Color.White),
+};
+
+var view = new ToastView(toasts, font, GameToastTheme);   // pass the shared instance explicitly
 ```
 
 ---
@@ -1739,7 +1848,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Post.LightDirection`/`LightColor`/`AmbientColor`/`FillLightColor` every call. If your game reads those values
     to drive something else (for example a water horizon tint sampled from `Sky.HorizonColor`), re-tie it after
     `Apply` runs so it does not read a stale value from before the time of day advanced.
-- **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur LDR bloom pass
+- **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
   turn it on.
@@ -1748,28 +1857,78 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     the blurred result back onto the full-resolution image. The half-res pair is allocated lazily - only while
     `Bloom.Enabled` - so bloom off costs zero extra GPU memory, and it is re-derived from the CURRENT internal
     target size on every resize, so it works under both `RenderScale.FixedInternal` and `.MatchViewport`.
-  - Knobs: `Bloom.Threshold` (0..1 luma, default `0.7` - the cutoff above which a pixel starts contributing),
+  - Knobs: `Bloom.Threshold` (default `0.7` - the luma cutoff above which a pixel starts contributing),
     `Bloom.Knee` (default `0.15` - the smoothstep ramp half-width around `Threshold`; `0` = a hard threshold),
     `Bloom.Intensity` (default `0.6` - the additive strength of the blurred glow), and `Bloom.Radius` (default `4`
     taps per side - the gaussian blur's reach; `0` = a sharp unblurred glow matching the thresholded shape exactly).
     Lower `Threshold` for a softer/more-pervasive glow, raise it so only the brightest highlights bloom; raise
     `Radius` for a wider, softer halo at a roughly linear extra cost.
-  - Pass order: bloom runs AFTER palette quantize and the edge outline (so the glow composites on top of - and is
-    never itself posterized or drawn with a dark outline - the stylized colour), and BEFORE FXAA (so FXAA's
-    edge-smoothing also polishes the bloom composite, not just the pre-bloom image). It never touches the MRT
-    normal/depth the outline pass reads (bloom only ever reads/writes colour targets), and it respects
-    `TransparentBackground` (the composite preserves the source alpha unchanged, so bloom never resurrects an
-    alpha-0 background pixel into an opaque one).
-  - **LDR, not HDR**: the internal render target is `R8G8B8A8UNorm` (there is no HDR pipeline, and none planned),
-    so the bright-pass thresholds the already-tonemapped-to-[0,1] lit colour rather than an over-1.0 linear value.
-    This still reads as a convincing glow on beams/emissive materials (`Material.Glowing`)/bright billboards - the
-    motivating cases - but it will not bloom a surface that is merely well-lit white; tune `Threshold` down if a
-    scene needs a softer cutoff. The pure math (`BloomMath`: the knee curve, gaussian weight generation, half-res
-    sizing) is headless-tested and mirrors the GLSL bright-pass/blur shaders exactly.
+  - Pass order depends on the mode. In HDR mode (the default) bloom runs FIRST, on the float16 scene BEFORE the
+    tonemap, so hot cores over 1.0 halo and then desaturate through the filmic curve, and the tonemap/quantize/
+    outline/FXAA passes run on the composited result (so a bloom+quantize combination posterizes the halo, the
+    stylized chain sits after tonemap). In legacy mode (`Post.Hdr.Enabled = false`) bloom runs AFTER palette quantize
+    and the edge outline (so the glow composites on top of, and is never itself posterized or outlined by, the
+    stylized colour) and BEFORE FXAA. In both modes it never touches the MRT normal/depth the outline pass reads
+    (bloom only ever reads/writes colour targets), and it respects `TransparentBackground` (the composite preserves
+    the source alpha unchanged, so bloom never resurrects an alpha-0 background pixel into an opaque one).
+  - **HDR vs legacy threshold** (see "HDR and tonemapping" below): in HDR mode (the default) the internal target is
+    float16 (`R16G16B16A16Float`) and the bright-pass reads the PRE-tonemap scene, so `Threshold` sees luma that can
+    exceed 1.0. Set it at or above 1.0 so only genuinely over-range content (a `new Color(4f, 2f, 1f)` emissive, a
+    hot beam core) blooms and merely well-lit white stays put. In legacy mode the target is `R8G8B8A8UNorm` with no
+    over-1.0 headroom, so the bright-pass thresholds the already-clamped-to-[0,1] lit colour and the historical
+    threshold feel holds (tune `Threshold` down for a softer cutoff). Either way it reads as a convincing glow on
+    beams/emissive materials (`Material.Glowing`)/bright billboards, the motivating cases. The pure math (`BloomMath`:
+    the knee curve, gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL
+    bright-pass/blur shaders exactly.
+- **HDR and tonemapping** (`Post.Hdr`, an `HdrSettings`, **on by default**): the internal colour chain renders at
+  float16 (`R16G16B16A16Float`) so shading carries values above 1.0, the over-range highlights bloom BEFORE
+  tonemapping, then a filmic `TonemapOperator` maps the float scene back to LDR ahead of the retro/AA passes and the
+  swapchain blit. Unlike bloom this is ON by default, it is the standard look now. What changed on repin: bright
+  content (emissive materials, beams, particles, sun/sky, water glints, telegraph energy lanes) no longer hard-clips
+  at the UNorm boundary. Hot cores desaturate toward white and roll off through the filmic S-curve instead of
+  flattening to a primary, so every glowing feature reads hotter and more cohesive at once. Because it is a
+  default-behaviour change, every consumer's rendered output shifts the frame it repins.
+  ```csharp
+  scene.Post.Hdr.Enabled  = true;                       // default: the float16 + ACES filmic chain
+  scene.Post.Hdr.Operator = TonemapOperator.AcesFilmic; // Reinhard / Clamp are the alternates
+  scene.Post.Hdr.Exposure = 1f;                         // linear scene multiplier before the tonemap
+  ```
+  - **Escape hatch** (`Post.Hdr.Enabled = false`): restores the exact legacy chain (UNorm targets, no tonemap, the
+    historical Quantize -> Outline -> Bloom -> FXAA order) BYTE-IDENTICAL to the pre-HDR (10.126.0) output,
+    golden-proven (the `scene3d_hdr_off` pin's reference grids are literal copies of the pre-HDR `scene3d` grids).
+    This is the one-line revert for a retro/pixel-palette game that depends on the quantized LDR result, or for
+    anyone who needs the old look back exactly.
+  - **Operator** (`Post.Hdr.Operator`, a `TonemapOperator`, **default `AcesFilmic`**): the curve that maps the float
+    scene to LDR. `AcesFilmic` (Krzysztof Narkowicz 2015 fit) is the default, a filmic S-curve where hot cores
+    desaturate toward white instead of clipping to a flat primary, no tuning knobs, pure ALU so per-backend goldens
+    stay stable. `Reinhard` is a softer, flatter roll-off that never fully reaches white. `Clamp` applies exposure
+    then hard-clips (the raw over-range clipping a plain LDR pipeline would show), an A/B reference for what the
+    tonemap buys.
+  - **Exposure** (`Post.Hdr.Exposure`, a `float`, **default `1.0`**): a linear multiplier on the scene colour BEFORE
+    the operator. Above 1 pushes more of the scene into the highlight roll-off (brighter, hotter cores), below 1
+    pulls it back. Clamped non-negative at upload. Ignored when `Hdr.Enabled = false`.
+  - **Authoring intensity above 1.0**: there is no separate "emissive intensity" field. The engine's `Color` is
+    unclamped float storage and every colour path (materials, particles, beams, trails, sky, water, lights)
+    transports values above 1.0 end-to-end, so the over-range authoring surface IS the colour itself. Use
+    `new Color(4f, 2f, 1f)` for four units of warm energy, `color.ScaleRgb(3f)` to push an existing colour hot, or
+    `Material.Glowing` for a self-lit surface, and give beam/particle/sky/water colours values above 1.0 where you
+    want them to bloom and saturate. In legacy mode those same over-1.0 values simply clamp at the UNorm boundary as
+    before, so authoring is forward-compatible either way.
+  - **Chain order and the retro path**: in HDR mode the order is Bloom (pre-tonemap, over-range input) -> Tonemap ->
+    Quantize -> Outline -> FXAA -> Blit. The retro passes (palette quantize, pixelation) and FXAA run AFTER the
+    tonemap, on the tonemapped LDR values, so the per-game retro/pixel look survives on top of HDR (it just operates
+    on a filmic-mapped image instead of a raw-clamped one). Consequence: with bloom AND quantize both on, the halo is
+    quantized too (bloom composites before the palette pass), the historical anti-banding "bloom after quantize" order
+    is a property of legacy mode. Everything after the blit (overlay renderers, Gui, 2D) is unchanged in both modes.
+  - Formats: HDR mode flips the colour targets (`ColorTex`/`MsColor`/`PingA`/`PingB`/`BloomA`/`BloomB`) to
+    `R16G16B16A16Float`. The encoded-normal and linear-depth MRT targets, the swapchain, and everything post-blit
+    stay LDR. MSAA resolves the float16 target (the `scene3d_hdr_msaa` golden proves the resolve). The tonemap runs
+    on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
+    current art direction is preserved, just with headroom added.
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
   animated water surface - a flat, alpha-blended plane with procedural normal perturbation, a fresnel-style blend
   between a deep tint and a sky-derived horizon tint, a key-light specular sun glint, and depth-sampled shore fade.
-  **No reflections/probes** (roadmap gap #9 is separate and not attempted here) - this is an LDR stylized surface,
+  **No reflections/probes** (roadmap gap #9 is separate and not attempted here) - this is a stylized surface,
   not a physically accurate one.
   - **Request** (per-frame, WHERE to draw): call `scene.DrawWater(new WaterPlane(centerX, surfaceY, centerZ,
     halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
@@ -2491,7 +2650,7 @@ scene.DrawEffect(player, looks);                          // one look per phase,
 ```
 
 Presets: `FireBurst`, `FrostShatter`, `HealMotes`, `EmberDrift`, `SparkShower`, `Shockwave`, `SmokePlume`,
-`ArcaneSparkle`. `looks.Length` must equal `player.PhaseCount`.
+`ArcaneSparkle`, `HeatHaze`. `looks.Length` must equal `player.PhaseCount`.
 
 **Authoring your own emitter.** `EmitterConfig` grew emission shapes, per-particle variance, life curves, spin, and
 turbulence. Every new field zero-defaults to the legacy look:
@@ -2534,6 +2693,41 @@ scene.DrawParticles(system, in look, lightBudget: 4);
 Or drop to the renderer directly: fill `ParticleSprite`s and call `scene.DrawParticle(in sprite)` /
 `scene.DrawParticles(spriteSpan)`.
 
+**Flipbook playback (authored sheets).** Procedural shapes are the default identity and cover the common
+glow/ember/streak/smoke/ring/glint vocabulary with no assets. For offline-simmed sheets (EmberGen-class smoke,
+fire, explosions) a look can instead play an authored flipbook: a grid of frame cells packed into one texture,
+sampled per frame in the same particle pass. It is purely additive, a look that never sets a flipbook stays fully
+procedural and costs nothing extra. Load the atlas (and an optional motion-vector sheet on the same grid) with
+`Scene3D.LoadTexture`, then hand a `ParticleFlipbook` to the look:
+
+```csharp
+Scene3D.TextureHandle atlas  = scene.LoadTexture(sheetRgba, 512, 512);   // an 8x8 grid = 64 frames
+Scene3D.TextureHandle motion = scene.LoadTexture(mvRgba, 512, 512);      // optional, same grid
+
+var look = new ParticleLook
+{
+    Blend = BillboardBlend.Additive,
+    Flipbook = new ParticleFlipbook(atlas, Columns: 8, Rows: 8,
+                                    MotionTexture: motion, MotionStrength: 1f, Loop: true),
+    FlipbookMode = ParticleFlipbookMode.TimeLoop,   // looping fire/smoke
+    FlipbookFps = 24f,                              // TimeLoop only, 0 means 12
+    // FlipbookRandomStart defaults true: stagger each particle's start frame by its Seed
+};
+scene.DrawParticles(system, in look);
+```
+
+`FlipbookMode` picks how the frame advances. `LifeOneShot` (the default) sweeps the sheet once across a particle's
+life and clamps on the last cell, for one-shot explosion and impact sheets where the sheet is the whole life.
+`TimeLoop` advances at `FlipbookFps` and wraps at the seam (set `Loop = true` on the spec so the wrap is seamless),
+for continuous fire and smoke. `FlipbookRandomStart` (default true, `TimeLoop` only) offsets each particle's start
+frame by its `Seed` so a burst of identical looping sprites does not play in lockstep. A motion-vector sheet drives
+a two-tap frame warp that reads fluid at low frame counts, and a plain sheet (no `MotionTexture`, or
+`MotionStrength = 0`) simply cross-fades between frames, no flag needed.
+
+At the engine level, `ParticleSprite` carries the same `Flipbook` spec plus a continuous `FlipbookFrame` (integer
+part = current cell, fractional part = blend toward the next), so a raw `DrawParticle`/`DrawParticles` caller drives
+frame timing itself. The adapter's `FlipbookMode` is just the policy that resolves `FlipbookFrame` for you.
+
 **Quality and soft fade** are host knobs, not cleared by `Begin`. Set the quality tier once when picking a graphics
 tier, the soft fade per frame:
 
@@ -2563,6 +2757,78 @@ ribbon half-width against the particle size, `TrailStyle` its tint/blend/feather
 
 Both are byte-stable and fully supported. The procedural modern pass just covers the common
 glow/ember/streak/smoke/ring/glint vocabulary without an asset pipeline.
+
+---
+
+## Screen-space distortion
+
+Distortion sprites warp the pixels behind them instead of drawing over them: heat haze, refractive shockwave
+rings, splash lensing. They accumulate a signed screen-space offset field and the resolved scene colour
+re-samples through it as the FIRST post-chain pass, so the warp precedes every camera-response pass (bloom halos
+follow the warped sources, the tonemap and the retro palette see the warped image). Queue them on `Scene3D`, one
+per frame inside the 3D pass:
+
+```csharp
+scene.DrawDistortion(new DistortionSprite
+{
+    Position = impactPoint,
+    Size = 1.5f,                                 // half-size in world units
+    Shape = DistortionShape.Ripple,             // a shockwave ring
+    ShapeParam = 0.15f,                          // ring band thickness (0 tight, 1 fat)
+    Strength = 1.5f,                             // offset magnitude, the one authoring dial
+    Orientation = ParticleOrientation.FlatGround,
+    SoftFadeScale = 0.12f,                       // flat-on-ground, so a small fade
+});
+// or a batch: scene.DrawDistortions(spriteSpan);
+```
+
+The three shapes and when to reach for each:
+
+- `Ripple` - a radial ring of outward offsets. Shockwaves and impact rings (usually `FlatGround`). `ShapeParam`
+  is the band thickness.
+- `Heat` - an upward-scrolling noise wobble over the footprint. Braziers, lava, desert air, exhaust.
+  `ShapeParam` is the wobble frequency.
+- `Lens` - a smooth radial bulge. Splashes and force bubbles. A positive `Strength` magnifies (pulls pixels
+  inward), a negative one pinches. `ShapeParam` softens the falloff shoulder.
+
+`Strength` is the magnitude dial (world-ish units), and for `Lens` its sign chooses magnify vs pinch. The apply
+pass converts it to a UV excursion and clamps the total to a small maximum, so stacking many hot sprites can
+never smear the whole screen. Sprites are depth-occluded against the scene like the modern particle pass: a wall
+between the camera and the sprite fades its offsets to zero. `SoftFadeScale` multiplies `Scene3D.ParticleSoftFade`
+for that fade (0 means 1). A flat-on-ground ripple wants a small value so the floor just behind it does not erase
+it.
+
+Quality is a host knob, not cleared by `Begin` (the `ParticleQuality` pattern). Set it once when picking a
+graphics tier:
+
+```csharp
+scene.DistortionQuality = DistortionQuality.Reduced;   // weak GPU: single heat octave + quarter-res field
+```
+
+`Full` (the default) renders the offset field at half resolution with both heat noise octaves. `Reduced` drops to
+quarter-res and a single octave.
+
+**Zero cost when unused.** A frame that queues no distortion sprite allocates no offset target, clears nothing,
+runs no apply pass, and renders byte-identically to before distortion existed. The half/quarter-res field is
+allocated lazily the first frame a sprite is queued and freed on the next resize when it goes unused.
+
+**The adapter path.** `KhaozEngine.Particles.Render3D` drives distortion off a particle emitter: set
+`ParticleLook.Distortion` (a `DistortionLook`) with a non-zero `Strength` and that phase emits one distortion
+sprite per live particle INSTEAD of a visible sprite, each sprite's strength scaled by the particle's alpha so
+the field fades with life. `VfxPresets.Shockwave` already carries a refraction-ring phase, and `VfxPresets.HeatHaze`
+is a ready-made shimmering-air preset (a heat column plus a faint warm additive shimmer).
+
+```csharp
+var look = new ParticleLook
+{
+    Orientation = ParticleOrientation.FlatGround,
+    Distortion = new DistortionLook
+    {
+        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+    },
+};
+scene.DrawParticles(system, in look);   // this phase warps the scene instead of drawing sprites
+```
 
 ---
 
@@ -3925,7 +4191,10 @@ never stomped. The grid draws in two passes (every row's label+editor, then a la
 still draws inside the grid's own scissor, so it clips at the grid bounds (a host wanting it to spill past the
 grid calls `Dropdown.DrawOverlay` itself after the grid's `Draw`). A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
 (longest fitting prefix plus three ASCII dots) instead of running under the neighbouring cell or getting
-hard-cut by the scissor mid-glyph. `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
+hard-cut by the scissor mid-glyph. `TruncateWithEllipsis(text, maxWidth, measureWidth)` is public (the one
+public member of `GuiDraw`), so a host can fit its own single-line text the same way: pass your own measure
+function (e.g. `s => font.Measure(s).X`), and it binary-searches the longest fitting prefix, pure and
+headless-testable (the map editor's status strip draws through it). `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
 outline panel beside the inspector:
 
 ```csharp
@@ -4198,9 +4467,12 @@ row under `HostKinds` whenever a non-empty value matches none of the current hos
 no kind in the host layer"), live-tracked through edits, host swaps, and undo/redo. See the
 `KhaozEngine.MapEditor` README's "Procedural setup editing" section for the full mechanics.
 
-**Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates seven
-`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers), named scatter layers,
-and individual elements, and toggling any of it never dirties the document or lands an undo step. With
+**Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates eight
+`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns), named scatter layers,
+and individual elements, and toggling any of it never dirties the document or lands an undo step. A per-element
+hide follows its element across reorder, delete, and rename (including undo and redo), driven by the
+reorder/remove/rename commands' `IVisibilityEffect` through `EditorDocument`'s
+`CommandApplied`/`CommandRedone`/`CommandUndone` events. With
 nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`): a `BoolRow` per
 group, then one per scatter layer in the open document (toggling a scatter layer also rebuilds the streamed
 world so its props actually drop out). Every element inspector also gets a per-element "Visible" `BoolRow`.
@@ -4334,12 +4606,12 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (66 tools).**
+**Verb surface (68 tools).**
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
 | Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
@@ -4374,7 +4646,11 @@ terrain/band/layer setup back at full field fidelity, including rules however th
 matches every host, or when a populated `HostKinds` intersects the host layer's kit ids, false only for the
 silent no-op mismatch case). `companion_layer_add`/`companion_layer_edit` detect that same mismatch on the
 layer they just wrote and append ", host kinds match no kind in the host layer" to the result's detail when
-it applies, mirroring the GUI editor's read-only warning row.
+it applies, mirroring the GUI editor's read-only warning row. `exclusions_info` and
+`scatter_overrides_info` are the same read counterpart for the exclusion and scatter-override lists: every
+element in document order (first-match-wins order for overrides) with index, optional name, shape kind and
+a one-line shape summary, layer targeting, and (for overrides) the density multiplier and `Kinds` in the
+same `"id"`/`"id:weight"` convention, round-trippable into `scatter_override_add`/`edit`.
 
 `element_duplicate(kind, id?, index?)` duplicates one document element, mirroring the GUI's own Ctrl+D
 duplicate (see Duplicate above) exactly: same `+2/+2` world-unit offset, same `<name>-copy` uniquifying for
@@ -7005,6 +7281,29 @@ composes the three: `BanAsync` persists then kicks if the account is online; `Li
 the enumeration; unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
 `AccountsSupported`).
 
+**Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed registry a game
+populates at startup: `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)`,
+a synchronous convenience overload `RegisterAction(string name, Func<JsonElement?, AdminActionResult> handler)`,
+`ActionNames`, and `TryGetAction`. A name must match `^[a-z0-9][a-z0-9-]{0,63}$`. An invalid or duplicate name
+throws `ArgumentException`. The backing store is a `ConcurrentDictionary`, so registering is thread-safe even
+though it normally happens once before the endpoint starts.
+
+```csharp
+var admin = new ServerAdmin(server, banStore, accountStore);
+admin.RegisterAction("set-time", payload =>
+{
+    float t = payload?.GetProperty("timeOfDay").GetSingle() ?? 0f;
+    gameClockQueue.Enqueue(t);
+    return AdminActionResult.Accepted();
+});
+```
+
+`AdminActionResult` is the handler's return type: `Ok(payload = null)` for a query (the payload, if any, is
+serialized as the JSON response body), `Accepted()` for a mutation the handler enqueued, or `BadRequest(error)`
+to reject the request with a reason. The threading contract matches `IAdminControllable` above: the handler runs
+on the caller's thread (an HTTP request thread), so it must never touch simulation state directly, a mutation
+enqueues to the host thread, and a read returns a published snapshot.
+
 **HTTPS endpoint (`KhaozEngine.Server.Admin`).** An opt-in package (the only one that pulls ASP.NET Core, via a
 `FrameworkReference`; not in the `Server` umbrella - add it explicitly). It hosts a minimal Kestrel REST API over a
 `ServerAdmin`, TLS + a single bearer token:
@@ -7023,9 +7322,13 @@ await endpoint.StopAsync();
 ```
 
 Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`,
-`POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`. Mutations return
-202; capabilities not wired return 501. Bind defaults to loopback. There are no changes to the game client wire
-protocol.
+`POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions`
+(lists registered action names, sorted ordinal), `GET /actions/{name}` (dispatches with a null payload),
+`POST /actions/{name}` (dispatches with an optional JSON body). Mutations return 202. Capabilities not wired
+return 501. An unknown action name returns 404. A malformed JSON body returns 400 with `{ "error": "malformed
+json body" }`. An absent, empty, whitespace-only, or literal JSON-null request body all reach the handler as a
+null payload, so the common `payload?.GetProperty(...)` idiom is safe against a caller that posts nothing. Bind
+defaults to loopback. There are no changes to the game client wire protocol.
 
 ### Client self-rescue / unstuck
 

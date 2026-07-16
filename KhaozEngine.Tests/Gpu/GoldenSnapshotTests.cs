@@ -24,12 +24,13 @@ namespace KhaozEngine.Tests.Gpu
         static readonly string FontPath = System.IO.Path.Combine(
             System.AppContext.BaseDirectory, "Assets", "Roboto-Regular.ttf");
 
-        [GpuFact]
-        public void Golden3D_FixedAsymmetricScene()
+        // The FIXED asymmetric scene3d scene, single-sourced so the HDR-default golden (Golden3D_FixedAsymmetricScene)
+        // and the legacy opt-out golden (Golden3D_HdrOff_MatchesLegacyChain) render the exact same content and cannot
+        // drift apart. extraSetup runs last, after the shared camera/outline/mesh setup, so a test can flip a post knob.
+        static byte[] CaptureScene3dScene(Action<Scene3D> extraSetup)
         {
             MeshHandle floor = default, sphere = default, box = default;
-
-            byte[] rgba = Render3DSnapshot.Capture(W, H,
+            return Render3DSnapshot.Capture(W, H,
                 setup: scene =>
                 {
                     floor = scene.LoadMesh(MeshPrimitives.Tile(6f, 0.1f));
@@ -39,6 +40,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Outline = true;
                     // Fixed framing of an asymmetric region so an orientation flip moves content visibly.
                     scene.Camera.Frame(new Vector3(0.4f, 0.4f, -0.2f), new Vector3(5f, 3f, 5f));
+                    extraSetup(scene);
                 },
                 drawFrame: scene =>
                 {
@@ -58,8 +60,25 @@ namespace KhaozEngine.Tests.Gpu
                         new Color(0.9f, 0.85f, 0.2f, 1f));
                 },
                 frames: 2);
+        }
 
+        [GpuFact]
+        public void Golden3D_FixedAsymmetricScene()
+        {
+            // Renders under the HDR-default chain now (float16 + ACES tonemap). The committed scene3d grids predate HDR
+            // and are rebaked by the coordinator, so this is EXPECTED to fail locally until that bake lands.
+            byte[] rgba = CaptureScene3dScene(_ => { });
             GoldenCompare.AssertOrUpdate("scene3d", rgba, W, H);
+        }
+
+        [GpuFact]
+        public void Golden3D_HdrOff_MatchesLegacyChain()
+        {
+            // The exact scene3d scene (shared helper) with the HDR chain opted out. The coordinator pre-seeds
+            // scene3d_hdr_off by copying the committed legacy scene3d grids, proving the escape hatch is byte-identical
+            // to the pre-HDR output on all three backends. Not baked in this stage.
+            byte[] rgba = CaptureScene3dScene(scene => scene.Post.Hdr.Enabled = false);
+            GoldenCompare.AssertOrUpdate("scene3d_hdr_off", rgba, W, H);
         }
 
         [GpuFact]
@@ -861,6 +880,133 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_ParticlesFlipbook()
+        {
+            MeshHandle floor = default;
+            Scene3D.TextureHandle atlas = default, mv = default;
+            const int Cols = 4, Rows = 4, CellPx = 32;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(16f, 0.1f));
+                    (byte[] ap, int aw, int ah) = FlipbookTestSheets.Atlas(Cols, Rows, CellPx);
+                    atlas = scene.LoadTexture(ap, aw, ah);
+                    (byte[] mp, int mw, int mh) = FlipbookTestSheets.UniformMotion(Cols, Rows, CellPx, 200, 128);
+                    mv = scene.LoadTexture(mp, mw, mh);
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = true;      // pinned explicit, matching the other 3D goldens
+                    scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.09f, 1f);
+                    scene.Camera.Frame(new Vector3(0f, 0.9f, 0.2f), new Vector3(6.4f, 2.6f, 4.4f));
+                    scene.EffectTimeSeconds = 0f;   // frozen time => deterministic
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.Identity, new Color(0.10f, 0.10f, 0.13f, 1f));
+
+                    // A back row of atlas frames: integer cells (0, 5, 10) plus a mid-blend (2.5), tint white so the
+                    // sheet hues show. Locks per-frame cell selection + the cross-fade blend.
+                    float[] frames = { 0f, 2.5f, 5f, 10f };
+                    for (int i = 0; i < frames.Length; i++)
+                    {
+                        scene.DrawParticle(new ParticleSprite
+                        {
+                            Position = new Vector3((i - 1.5f) * 1.55f, 1.5f, -1.6f),
+                            Size = 0.62f,
+                            Color = new Color(1f, 1f, 1f, 0.95f),
+                            Flipbook = new ParticleFlipbook(atlas, Cols, Rows, Loop: true),
+                            FlipbookFrame = frames[i],
+                            Blend = BillboardBlend.Alpha,
+                        });
+                    }
+
+                    // A motion-vector-warped frame (offset MV sheet, strength 2): locks the two-tap warp path.
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(-2.4f, 1.0f, 1.3f),
+                        Size = 0.7f,
+                        Color = new Color(1f, 1f, 1f, 1f),
+                        Flipbook = new ParticleFlipbook(atlas, Cols, Rows, mv, MotionStrength: 2f, Loop: true),
+                        FlipbookFrame = 6.5f,
+                        Blend = BillboardBlend.Alpha,
+                    });
+
+                    // Procedural sprites interleaved at different depths: the global back-to-front sort splits the
+                    // stream into per-atlas runs (procedural = dummy pair), so this locks run-splitting + ordering.
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(1.9f, 1.1f, 1.5f),
+                        Size = 0.7f,
+                        Color = new Color(1f, 0.72f, 0.35f, 0.95f),
+                        Shape = ParticleShape.SoftGlow,
+                        ShapeParam = 0.35f,
+                        Seed = 0.41f,
+                        Blend = BillboardBlend.Additive,
+                    });
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = new Vector3(0.4f, 1.3f, 0.4f),
+                        Size = 0.5f,
+                        Color = new Color(0.6f, 0.85f, 1f, 1f),
+                        Shape = ParticleShape.Ember,
+                        ShapeParam = 0.5f,
+                        Seed = 0.71f,
+                        Blend = BillboardBlend.Additive,
+                    });
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_particles_flipbook", rgba, W, H);
+        }
+
+        [GpuFact]
+        public void Golden3D_Distortion()
+        {
+            MeshHandle floor = default;
+            Scene3D.TextureHandle tex = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    // A colourful grid albedo on the floor gives the screen-space warp visible edges to bend at the
+                    // coarse golden-grid scale (a flat floor would average out).
+                    (byte[] ap, int aw, int ah) = FlipbookTestSheets.Atlas(8, 8, 24);
+                    tex = scene.LoadTexture(ap, aw, ah);
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(16f, 0.1f), tex);
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = true;      // pinned explicit, matching the other 3D goldens (HDR default on)
+                    scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.09f, 1f);
+                    scene.Camera.Frame(new Vector3(0f, 0.6f, 0.1f), new Vector3(6.0f, 2.6f, 4.2f));
+                    scene.EffectTimeSeconds = 0f;   // frozen time => deterministic noise/ring terms
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.Identity);
+                    // One of each shape at fixed positions over the textured floor: locks the ripple ring band, the
+                    // lens bulge, and the heat wobble through the full offset-field + apply-pass path. Fixed seeds +
+                    // frozen time keep every term deterministic.
+                    scene.DrawDistortion(new DistortionSprite
+                    {
+                        Position = new Vector3(-2.2f, 1.1f, -1.2f), Size = 1.3f,
+                        Shape = DistortionShape.Ripple, ShapeParam = 0.2f, Strength = 2.2f, Seed = 0.13f,
+                    });
+                    scene.DrawDistortion(new DistortionSprite
+                    {
+                        Position = new Vector3(2.0f, 1.0f, -1.0f), Size = 1.3f,
+                        Shape = DistortionShape.Lens, ShapeParam = 0.4f, Strength = 2.0f, Seed = 0.41f,
+                    });
+                    scene.DrawDistortion(new DistortionSprite
+                    {
+                        Position = new Vector3(0f, 1.2f, 0.4f), Size = 1.4f,
+                        Shape = DistortionShape.Heat, ShapeParam = 0.5f, Strength = 1.6f, Seed = 0.7f,
+                    });
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_distortion", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden3D_Beam_DepthInterleaved()
         {
             MeshHandle box = default;
@@ -1349,6 +1495,87 @@ namespace KhaozEngine.Tests.Gpu
                 frames: 2);
 
             GoldenCompare.AssertOrUpdate("perspective_outline", rgba, W, H);
+        }
+
+        // The HDR payoff pin: the float16 chain carries over-range emissive/beam/particle energy into the pre-tonemap
+        // bloom, then the ACES curve compresses it back to LDR. HDR is the default, bloom explicitly on. Deterministic
+        // (EffectTimeSeconds 0, fixed seeds). Baked by the coordinator (not in this stage).
+        [GpuFact]
+        public void Golden3D_HdrEmissiveBloom()
+        {
+            MeshHandle floor = default, sphere = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(8f, 0.1f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.7f));
+                    scene.Post.Starfield = false;
+                    scene.Post.BackgroundColor = new Color(0.02f, 0.03f, 0.05f, 1f);
+                    scene.Post.Bloom.Enabled = true;
+                    scene.Post.Bloom.Threshold = 1.1f;
+                    scene.Post.Bloom.Intensity = 0.7f;
+                    scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4f, 6f));
+                    scene.EffectTimeSeconds = 0f;
+                },
+                drawFrame: scene =>
+                {
+                    // Dim floor so the over-range highlights read as the bloom source, not the whole scene.
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.16f, 0.18f, 0.22f, 1f));
+                    // Hot over-range emissive sphere (5x red core).
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(-1.4f, 0.7f, 0.6f), Color.Black,
+                        Material.Glowing(new Color(5f, 2.5f, 1f, 1f)));
+                    // Over-range beam: the core rides 4x so its thin line blooms through the tonemap.
+                    scene.DrawBeam(new Vector3(1.6f, 0.5f, -1.6f), new Vector3(1.6f, 0.5f, 1.8f), 0.28f,
+                        new Color(1f, 0.5f, 0.2f, 1f),
+                        BeamStyle.Default with { CoreColor = new Color(4f, 1f, 0.5f, 1f), Taper = 0.2f });
+                    // A small deterministic modern-particle burst with over-range additive tint (fixed seeds).
+                    Span<ParticleSprite> burst = stackalloc ParticleSprite[4];
+                    for (int i = 0; i < burst.Length; i++)
+                        burst[i] = new ParticleSprite
+                        {
+                            Position = new Vector3(-0.2f + 0.35f * i, 0.5f + 0.12f * i, 1.4f - 0.2f * i),
+                            Size = 0.3f,
+                            Color = new Color(3.2f, 2.4f, 0.8f, 1f),   // over-range additive glow -> feeds bloom
+                            Shape = ParticleShape.Ember,
+                            Seed = 0.13f * (i + 1),
+                            Blend = BillboardBlend.Additive,
+                        };
+                    scene.DrawParticles(burst);
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_hdr_bloom", rgba, W, H);
+        }
+
+        // HDR + MSAA(4): the float16 multisampled resolve on a minimal scene (a lit cube + one emissive sphere), so the
+        // MSAA edge variance stays inside the coarse grid tolerance. Baked by the coordinator (not in this stage).
+        [GpuFact]
+        public void Golden3D_HdrMsaa()
+        {
+            MeshHandle cube = default, sphere = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    cube = scene.LoadMesh(MeshPrimitives.Box(1.0f));
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.6f));
+                    scene.Post.Starfield = false;
+                    scene.Post.BackgroundColor = new Color(0.03f, 0.04f, 0.06f, 1f);
+                    scene.Post.Quality.AntiAliasing = AntiAliasing.Msaa(4);
+                    scene.Camera.Frame(new Vector3(0f, 0.3f, 0f), new Vector3(4.5f, 3.5f, 4.5f));
+                    scene.EffectTimeSeconds = 0f;
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(cube, Matrix4x4.CreateRotationY(0.5f) * Matrix4x4.CreateTranslation(-1.1f, 0.5f, 0f),
+                        new Color(0.35f, 0.6f, 0.85f, 1f));
+                    scene.Draw(sphere, Matrix4x4.CreateTranslation(1.2f, 0.6f, 0.2f), Color.Black,
+                        Material.Glowing(new Color(3f, 1.6f, 0.6f, 1f)));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_hdr_msaa", rgba, W, H);
         }
     }
 }

@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D
         readonly TrailRenderer _trails;
         readonly Rendering.GroundDecalRenderer _decalRenderer;
         readonly Rendering.ParticleRenderer _particleRenderer;
+        readonly Rendering.DistortionRenderer _distortionRenderer;
         readonly Rendering.SkyRenderer _sky;
         readonly Rendering.WaterRenderer _water;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
@@ -121,7 +122,13 @@ namespace KhaozEngine.Render3D
         // frame into _particleSorted (ONE premultiplied stream, so alpha and additive sprites interleave
         // correctly), then drawn as a single instanced call after the water pass. Cleared each Begin().
         readonly List<ParticleSprite> _particleSprites = new();
+        // Per-frame screen-space distortion sprites (cleared each Begin like the particle queue). Whether any are
+        // queued drives the lazy allocation of the offset field and whether the post apply pass runs.
+        readonly List<DistortionSprite> _distortionSprites = new();
         readonly List<ParticleSprite> _particleSorted = new();
+        // Cached delegate mapping a TextureHandle list index to its GPU texture, handed to the particle renderer's
+        // per-atlas run batching (flipbook sprites). Cached so the per-frame draw allocates no closure.
+        Func<int, IGpuTexture?>? _particleTexResolver;
         // Glowing beams (lasers/thrusters/tethers): queued in submission order, flushed as one additive draw
         // into the model FB alongside the textured billboards (depth-interleaved, so geometry occludes them).
         readonly List<BeamItem> _beamItems = new();
@@ -309,6 +316,12 @@ namespace KhaozEngine.Render3D
         /// flicker for weak GPUs. Presentation-only and host-owned: NOT cleared by <see cref="Begin"/>.</summary>
         public ParticleQuality ParticleQuality { get; set; } = ParticleQuality.Full;
 
+        /// <summary>Quality tier for the screen-space distortion pass (<see cref="Render3D.DistortionQuality.Full"/> by
+        /// default). <see cref="Render3D.DistortionQuality.Reduced"/> drops the second heat noise octave and renders
+        /// the offset field at quarter resolution instead of half. Presentation-only and host-owned: NOT cleared by
+        /// <see cref="Begin"/>.</summary>
+        public DistortionQuality DistortionQuality { get; set; } = DistortionQuality.Full;
+
         /// <summary>Soft-particle fade distance in world units for the modern particle pass: a sprite's coverage
         /// fades to zero as the scene surface behind it comes within this distance, so effects sit IN the world
         /// instead of clipping hard against geometry. 0 disables the fade (and its depth-texture work).
@@ -346,7 +359,7 @@ namespace KhaozEngine.Render3D
         {
             _gd = gd;
             _targetOutput = targetOutput;
-            _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight);
+            _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled);
             // Shadow-map resolution is a construction-time knob (the map is bound into every material set, so its
             // handle must stay stable). Read the initial ShadowMapResolution from settings; a game sets it before
             // creating the scene. Clamped inside the shadow renderer.
@@ -375,6 +388,10 @@ namespace KhaozEngine.Render3D
             // after the water pass, sampling the resolved scene depth for the soft fade. Default empty (no
             // DrawParticle call queued == the pass never runs, existing scenes byte-stable).
             _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs);
+            // Screen-space distortion writes into its own lazily allocated half/quarter-res offset field (a fixed
+            // R16G16Float output, never multisampled, so it needs no SetOutputs), re-sampled by the post apply pass.
+            // Default empty (no DrawDistortion call queued == nothing allocated, no apply pass, existing scenes byte-stable).
+            _distortionRenderer = new Rendering.DistortionRenderer(gd);
             // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
             // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
             _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -772,15 +789,27 @@ namespace KhaozEngine.Render3D
         /// texture can be shared by several meshes/materials, the scene can't know who else references it - any mesh
         /// still bound to this texture must be unloaded first or simply not drawn afterwards (mirrors
         /// <see cref="UnloadSplatMaterial"/>). Without this, textures only free at <see cref="Dispose"/>, so a
-        /// long-lived scene that streams or reloads textured assets leaks one native texture per load.</summary>
+        /// long-lived scene that streams or reloads textured assets leaks one native texture per load. Also a no-op
+        /// once <see cref="Dispose"/> has run: Dispose already freed every texture and cleared the backing list, so
+        /// a caller that still holds a handle (e.g. a world disposed after its owning scene) would otherwise index
+        /// past the end of the now-empty list and get an <see cref="ArgumentOutOfRangeException"/> instead of a
+        /// silent no-op (mirrors <see cref="UnloadSplatMaterial"/>'s guard).</summary>
         public void UnloadTexture(TextureHandle h)
         {
-            if (!h.IsValid) return;
+            if (!h.IsValid || h.ListIndex >= _textures.Count) return;
             int i = h.ListIndex;
             _textures[i]?.Dispose();
             _textures[i] = null;
             if (i < _texBillboardSets.Count) { _texBillboardSets[i]?.Dispose(); _texBillboardSets[i] = null; }
+            // The particle renderer caches per-atlas resource sets keyed by this list index, so drop them too. A
+            // later load reusing this freed slot would otherwise bind the stale (disposed) texture.
+            _particleRenderer.InvalidateTextureSets();
         }
+
+        // Map a TextureHandle list index to its GPU texture for the particle renderer's flipbook run batching. Out
+        // of range or unloaded slots return null, so the renderer falls back to its dummy textures.
+        IGpuTexture? ResolveTextureByListIndex(int listIndex) =>
+            listIndex >= 0 && listIndex < _textures.Count ? _textures[listIndex] : null;
 
         /// <summary>Number of texture slots still holding a live GPU texture (loaded and not yet unloaded). For tests.</summary>
         internal int LiveTextureCount
@@ -929,6 +958,7 @@ namespace KhaozEngine.Render3D
             _billboardAdditive.Clear();
             _particleSprites.Clear();
             _particleSorted.Clear();
+            _distortionSprites.Clear();
             _texBillboardItems.Clear();
             _beamItems.Clear();
             _trailItems.Clear();
@@ -1360,6 +1390,24 @@ namespace KhaozEngine.Render3D
         /// <see cref="Begin"/> clears the queue and the draw methods enqueue.</summary>
         internal int ParticleSpriteCount => _particleSprites.Count;
 
+        /// <summary>Queue one screen-space distortion sprite (heat haze, refractive ring, splash lens). The whole
+        /// queue accumulates into a lazily allocated half/quarter-res offset field the post chain's FIRST pass
+        /// re-samples the scene colour through, so refraction precedes every camera-response pass. Depth-occluded
+        /// against the scene like <see cref="DrawParticle(in ParticleSprite)"/>. Cleared in <see cref="Begin"/>. A
+        /// frame that queues none allocates nothing and renders byte-identically to before distortion existed.
+        /// Gated by <see cref="DistortionQuality"/>.</summary>
+        public void DrawDistortion(in DistortionSprite sprite) => _distortionSprites.Add(sprite);
+
+        /// <summary>Queue a batch of screen-space distortion sprites, see <see cref="DrawDistortion(in DistortionSprite)"/>.</summary>
+        public void DrawDistortions(ReadOnlySpan<DistortionSprite> sprites)
+        {
+            for (int i = 0; i < sprites.Length; i++) _distortionSprites.Add(sprites[i]);
+        }
+
+        /// <summary>Count of distortion sprites queued this frame. Internal: lets tests assert <see cref="Begin"/>
+        /// clears the queue and the draw methods enqueue.</summary>
+        internal int DistortionSpriteCount => _distortionSprites.Count;
+
         // ---- Glowing beams (lasers/thrusters/tethers): a camera-facing strip a->b, additive, depth-interleaved
         //      into the model pass so geometry occludes it. Soft core+halo + optional taper/pulse/scroll in the
         //      fragment shader; animation reads EffectTimeSeconds. ----
@@ -1535,15 +1583,18 @@ namespace KhaozEngine.Render3D
             int samples = ResolvedMsaaSamples();
             bool sampleChanged = _res.SampleCount != samples;
             bool bloomChanged = _res.BloomAllocated != Post.Bloom.Enabled;
-            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged)
+            bool hdrChanged = _res.HdrColor != Post.Hdr.Enabled;
+            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged)
             {
-                // A pipeline in flight may reference the old sample count / targets; a MSAA change is rare, so idling
-                // before recreating the MRT + rebuilding pipelines is cheap insurance.
-                if (sampleChanged) _gd.WaitForIdle();
-                _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled);
+                // A pipeline in flight may reference the old sample count / colour format / targets. A MSAA or HDR
+                // toggle is rare, so idling before recreating the MRT + rebuilding pipelines is cheap insurance. An
+                // HDR toggle changes the MRT colour attachment format, so every MRT-writing renderer's pipeline must
+                // be rebuilt too (RebuildMrtRenderers), exactly like a sample-count change.
+                if (sampleChanged || hdrChanged) _gd.WaitForIdle();
+                _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled, Post.Hdr.Enabled);
                 _post.BindTargets(_res);
                 _transitions.BindTargets(_res);
-                if (sampleChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count
+                if (sampleChanged || hdrChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count / colour format
             }
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;
@@ -1722,10 +1773,18 @@ namespace KhaozEngine.Render3D
             // The caps-resolved FXAA decision (AntiAliasingMode.Fxaa, or an MSAA request the device couldn't honour
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.
             bool runFxaa = ResolvedAa().Mode == AntiAliasingMode.Fxaa;
+            // Distortion is lazily allocated per frame (unlike bloom, which is a resize-time decision): whether any
+            // distortion sprite is queued is known now (queues fill between Begin and Render). (Re)allocate the
+            // offset field at half res (Full) or quarter res (Reduced) when sprites are queued, free it when none,
+            // then rebind the post apply set over it if that bumped the target generation (a cheap early-out
+            // otherwise). Byte-neutral when never used. The apply-pass parity is stable from here through Run.
+            bool distortionActive = _distortionSprites.Count > 0;
+            _res.EnsureDistortion(distortionActive, DistortionQuality == DistortionQuality.Full ? 2 : 4);
+            _post.BindTargets(_res);
             // Edge pass needs the camera's depth convention (perspective vs ortho + near/far) to linearize depth
             // under perspective; derived from the projection matrix so no camera-interface change is required.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(ActiveCamera.Projection);
-            _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa);
+            _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa, distortionActive);
 
             // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
             // teleport cut). Snapshot ColorTex here, at the top of the frame, before the model pass overwrites it. No-op
@@ -1974,7 +2033,7 @@ namespace KhaozEngine.Render3D
                     _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, CollectionsMarshal.AsSpan(_shadowDecals));
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_shadowDecals));
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -2102,7 +2161,7 @@ namespace KhaozEngine.Render3D
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
                 // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, CollectionsMarshal.AsSpan(_decals));
+                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepth call above the sky pass) for the shore fade. Depth test ON (so
@@ -2129,9 +2188,10 @@ namespace KhaozEngine.Render3D
             {
                 BuildSortedParticles();
                 BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 pRight, out Vector3 pUp);
+                _particleTexResolver ??= ResolveTextureByListIndex;
                 _frameStats.DrawCalls += _particleRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, eye, pRight, pUp,
                     EffectTimeSeconds, ParticleSoftFade, ParticleQuality, Post.BackgroundColor.R,
-                    CollectionsMarshal.AsSpan(_particleSorted));
+                    CollectionsMarshal.AsSpan(_particleSorted), _particleTexResolver);
                 _frameStats.Instances += _particleSorted.Count;
             }
 
@@ -2155,9 +2215,24 @@ namespace KhaozEngine.Render3D
             // previous frame exists (guards against sampling a blank target the frame right after a resize).
             _transitions.NoteFrameResolved();
 
+            // Screen-space distortion offset field: accumulate the queued distortion sprites into the (lazily
+            // allocated above) half/quarter-res target, reading the resolved scene depth (via the ResolveDepth above
+            // the sky pass) for occlusion, BEFORE the post chain re-samples the scene colour through it (the apply
+            // pass is _post.Run's FIRST pass). Same camera basis + background marker as the particle pass. resRatio
+            // (the full-res/offset-res divisor) matches EnsureDistortion's divisor so the fragment scales its
+            // half/quarter-res gl_FragCoord to the full-res depth texel. Fully skipped when nothing is queued.
+            if (distortionActive && _res.DistortAllocated)
+            {
+                BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 dRight, out Vector3 dUp);
+                float resRatio = DistortionQuality == DistortionQuality.Full ? 2f : 4f;
+                _frameStats.DrawCalls += _distortionRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, eye, dRight, dUp,
+                    EffectTimeSeconds, ParticleSoftFade, DistortionQuality, Post.BackgroundColor.R, resRatio,
+                    CollectionsMarshal.AsSpan(_distortionSprites));
+            }
+
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-            _post.Run(cl, _res, target, Post, runFxaa);
+            _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
 
@@ -2443,6 +2518,7 @@ namespace KhaozEngine.Render3D
             _trails.Dispose();
             _decalRenderer.Dispose();
             _particleRenderer.Dispose();
+            _distortionRenderer.Dispose();
             _sky.Dispose();
             _water.Dispose();
             _overlayMeshes.Dispose();

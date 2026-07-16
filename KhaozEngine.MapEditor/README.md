@@ -393,24 +393,29 @@ Terrain) has no list-order semantics, so a drag attempted there is rejected as a
 outline while a drag is armed is not yet supported: the drop geometry freezes at the scroll position the
 drag started at.
 
-Both reorder paths also call `EditorVisibility.RemapIndex(kind, fromIndex, toIndex)` right alongside the
-reorder command, so a per-element hide follows the moved feature, exclusion, or scatter override to its new
-slot instead of staying pinned to the old one. `Delete` on a selected feature, exclusion, or scatter
-override likewise calls `EditorVisibility.RemoveIndex(kind, index)` (wired through
-`EditorToolController.OnIndexRemoved`), dropping the removed element's hide entry and shifting every later
-hidden index down by one. Undo/redo of a reorder or delete does not re-follow the hide (the same v1 limit
-the selection-follow above already documents).
+A per-element hide follows the moved, deleted, or renamed element automatically, driven by an
+`IVisibilityEffect` the reorder, remove, and rename commands carry (`VisibilityOp` describing a
+reorder / remove / rename). `EditorDocument` raises `CommandApplied` / `CommandRedone` / `CommandUndone`
+around each mutation (before `DocumentChanged`), and `MapEditorScene` subscribes once: a forward op runs
+`RemapIndex` / `RemoveIndex` / `RenameKey` on execute and redo, and its inverse (`RemapIndex` with swapped
+endpoints, `InsertIndex`, `RenameKey` with swapped keys) runs on undo. So a hide survives undo and redo of a
+reorder, delete, or rename, and a rename moves the hide with the key leaving no orphan under the old one.
+This is the single source of hide maintenance: the reorder / delete call sites no longer remap inline (the
+old `EditorToolController.OnIndexRemoved` callback is gone), so a single reorder remaps exactly once. The one
+residual: a deleted element's own hide is dropped and not restored on undo (it was never part of the
+reversible document), an accepted view-only limit.
 
 ## Visibility
 
 `EditorVisibility` is editor-session view state, not part of the document: it gates whole
 `VisibilityGroup`s (`Placements`, `Spawns`, `Water`, `Exclusions`, `ScatterOverrides`, `Regions`,
-`FeatureMarkers`), named scatter layers, and individual elements, and none of it is saved or undoable. A group or element toggle
+`FeatureMarkers`, `PlayerSpawns`), named scatter layers, and individual elements, and none of it is saved or undoable. A group or element toggle
 writes straight to `EditorVisibility`, never through `EditorDocument.Execute`, so hiding something never
 dirties the document (no leading `*` in the status strip) and never lands an undo step.
 
 **Layers panel.** The empty-selection inspector (`MapEditorScene.BuildLayersInspector`) is the Layers
-panel: one `BoolRow` per `VisibilityGroup` (raw dev-tool labels, `FeatureMarkers` reads "Feature markers"),
+panel: one `BoolRow` per `VisibilityGroup` (raw dev-tool labels, `FeatureMarkers` reads "Feature markers",
+`ScatterOverrides` reads "Scatter overrides", `PlayerSpawns` reads "Player spawns"),
 a **Rendering** section holding the "Textured props" `BoolRow` bound to `MapEditorOptions.TexturedProps`,
 then one `BoolRow` per named scatter layer in the open document. A group toggle only gates draws and picks,
 no rebuild. The "Textured props" toggle and a scatter-layer toggle both also call `ViewportWorld.Rebuild`
@@ -523,6 +528,15 @@ hide itself from `IsDirty`). Undo and Redo also raise the barrier themselves, so
 undo never re-merges into the command that was just reverted. Call `SealGesture()` yourself after any
 custom multi-frame gesture you drive through `EditorDocument.Execute` directly, or a drag-like edit will
 keep coalescing into later, unrelated edits of the same object.
+
+Every `FloatRow` the inspector builds goes through a single `AddFloatRow` helper that wires
+`FloatRow.GestureEnded` (a pass-through of `NumberField.GestureEnded`, firing once a scrub that moved the
+field's value releases, or a typed edit commits) to `SealGesture`. So the SAME field's scrub still coalesces
+into one undo step (unchanged, `EditTerrainCommand.TryMerge` merges ANY two terrain edits within one
+gesture), but scrubbing one field then a DIFFERENT one back to back - e.g. `WaterLevel` then `BiomeBlend` -
+now seals between them and lands as two separate undo steps instead of silently merging into one just
+because no explicit tool-level boundary (a mode switch, a pointer release elsewhere) happened to fall
+between the two drags.
 
 ## Rebuild semantics
 

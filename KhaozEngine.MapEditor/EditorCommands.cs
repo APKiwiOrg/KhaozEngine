@@ -227,6 +227,93 @@ public abstract class EditorCommand : IEditorCommand
     }
 }
 
+/// <summary>A command that carries a view-only visibility maintenance side effect (<see cref="Effect"/>): the
+/// per-element hide set follows the element the command moves, removes, or renames, across execute / undo / redo.
+/// Implemented by the reorder, remove, and rename commands and consumed by the <see cref="EditorDocument"/> command
+/// events (<see cref="EditorDocument.CommandApplied"/> / <c>CommandUndone</c> / <c>CommandRedone</c>). Internal: the
+/// effect is engine-private editor plumbing, never part of the reversible document, so a game head scripting a
+/// command never sees or supplies it. The property is read at event time, not cached, so a command whose fields
+/// mutate after construction (a merged <see cref="RenameRegionCommand"/>) always reports its live effect.</summary>
+internal interface IVisibilityEffect
+{
+    /// <summary>The forward visibility maintenance this command implies (applied on execute / redo, inverted on
+    /// undo). Read live, so it reflects any post-construction field mutation (region rename merge).</summary>
+    VisibilityOp Effect { get; }
+}
+
+/// <summary>Which of the three visibility maintenance shapes a <see cref="VisibilityOp"/> carries.</summary>
+internal enum VisibilityOpKind
+{
+    /// <summary>A list reorder: <see cref="EditorVisibility.RemapIndex"/> forward, the swapped remap inverted.</summary>
+    Reorder,
+    /// <summary>A list delete: <see cref="EditorVisibility.RemoveIndex"/> forward, <see cref="EditorVisibility.InsertIndex"/> inverted.</summary>
+    RemoveAt,
+    /// <summary>A key rename: <see cref="EditorVisibility.RenameKey"/> forward, the swapped rename inverted.</summary>
+    Rename,
+}
+
+/// <summary>One unit of view-only visibility maintenance a command implies, mapping a document mutation onto the
+/// editor's per-element hide set so a hide stays glued to its element. Applied forward on execute / redo
+/// (<see cref="ApplyForward"/>) and inverted on undo (<see cref="ApplyInverse"/>), mirroring the command's own
+/// Apply / Revert. Constructed through the three factories (<see cref="Reorder"/>, <see cref="RemoveAt"/>,
+/// <see cref="Rename"/>). The index shapes leave the key fields null and the rename shape leaves the index fields
+/// zero.</summary>
+internal readonly struct VisibilityOp
+{
+    readonly VisibilityOpKind _kind;
+    readonly SelectionKind _selectionKind;
+    readonly int _from;
+    readonly int _to;
+    readonly string? _oldKey;
+    readonly string? _newKey;
+
+    VisibilityOp(VisibilityOpKind kind, SelectionKind selectionKind, int from, int to, string? oldKey, string? newKey)
+    {
+        _kind = kind;
+        _selectionKind = selectionKind;
+        _from = from;
+        _to = to;
+        _oldKey = oldKey;
+        _newKey = newKey;
+    }
+
+    /// <summary>A reorder of <paramref name="kind"/> moving the element at <paramref name="from"/> to
+    /// <paramref name="to"/>.</summary>
+    public static VisibilityOp Reorder(SelectionKind kind, int from, int to) =>
+        new VisibilityOp(VisibilityOpKind.Reorder, kind, from, to, null, null);
+
+    /// <summary>A delete of the element at <paramref name="index"/> of <paramref name="kind"/>.</summary>
+    public static VisibilityOp RemoveAt(SelectionKind kind, int index) =>
+        new VisibilityOp(VisibilityOpKind.RemoveAt, kind, index, 0, null, null);
+
+    /// <summary>A rename of <paramref name="kind"/> from <paramref name="oldKey"/> to <paramref name="newKey"/>.</summary>
+    public static VisibilityOp Rename(SelectionKind kind, string oldKey, string newKey) =>
+        new VisibilityOp(VisibilityOpKind.Rename, kind, 0, 0, oldKey, newKey);
+
+    /// <summary>Applies the maintenance in the forward direction (on execute / redo) to <paramref name="visibility"/>.</summary>
+    public void ApplyForward(EditorVisibility visibility)
+    {
+        switch (_kind)
+        {
+            case VisibilityOpKind.Reorder: visibility.RemapIndex(_selectionKind, _from, _to); break;
+            case VisibilityOpKind.RemoveAt: visibility.RemoveIndex(_selectionKind, _from); break;
+            case VisibilityOpKind.Rename: visibility.RenameKey(_selectionKind, _oldKey!, _newKey!); break;
+        }
+    }
+
+    /// <summary>Applies the inverse maintenance (on undo) to <paramref name="visibility"/>, mirroring the command's
+    /// own Revert: a reorder swaps its endpoints, a remove becomes an insert, and a rename swaps its keys.</summary>
+    public void ApplyInverse(EditorVisibility visibility)
+    {
+        switch (_kind)
+        {
+            case VisibilityOpKind.Reorder: visibility.RemapIndex(_selectionKind, _to, _from); break;
+            case VisibilityOpKind.RemoveAt: visibility.InsertIndex(_selectionKind, _from); break;
+            case VisibilityOpKind.Rename: visibility.RenameKey(_selectionKind, _newKey!, _oldKey!); break;
+        }
+    }
+}
+
 // ---- placements ------------------------------------------------------------------------------------------
 
 /// <summary>Appends an authored placement to the document. Absorbs a same-id <see cref="MovePlacementCommand"/> that
@@ -454,7 +541,7 @@ public sealed class ScalePlacementCommand : EditorCommand
 /// <summary>Renames a placement. Placements are keyed by id, so the id-carrying selection follows the rename.
 /// The target id must be unique: <see cref="Apply"/> throws (before it mutates) if a placement already carries
 /// the new id, so a rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
-public sealed class RenamePlacementCommand : EditorCommand
+public sealed class RenamePlacementCommand : EditorCommand, IVisibilityEffect
 {
     readonly string _oldId;
     readonly string _newId;
@@ -469,6 +556,7 @@ public sealed class RenamePlacementCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Rename placement";
     internal override bool AffectsWorld => false;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Rename(SelectionKind.Placement, _oldId, _newId);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -690,7 +778,7 @@ public sealed class SetSpawnArchetypeCommand : EditorCommand
 /// <summary>Renames a spawn. Spawns are keyed by id, so the id-carrying selection follows the rename. The target
 /// id must be unique: <see cref="Apply"/> throws (before it mutates) if a spawn already carries the new id, so a
 /// rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
-public sealed class RenameSpawnCommand : EditorCommand
+public sealed class RenameSpawnCommand : EditorCommand, IVisibilityEffect
 {
     readonly string _oldId;
     readonly string _newId;
@@ -705,6 +793,7 @@ public sealed class RenameSpawnCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Rename spawn";
     internal override bool AffectsWorld => false;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Rename(SelectionKind.Spawn, _oldId, _newId);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -928,7 +1017,7 @@ public sealed class SetPlayerSpawnEnabledCommand : EditorCommand
 /// rename. The target id must be unique: <see cref="Apply"/> throws (before it mutates) if a player spawn already
 /// carries the new id, so a rejected rename lands no undo step. The in-Apply guard is load-bearing here because
 /// the editor GUI executes renames without a validate-and-revert net. Renames never coalesce (no merge).</summary>
-public sealed class RenamePlayerSpawnCommand : EditorCommand
+public sealed class RenamePlayerSpawnCommand : EditorCommand, IVisibilityEffect
 {
     readonly string _oldId;
     readonly string _newId;
@@ -943,6 +1032,7 @@ public sealed class RenamePlayerSpawnCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Rename player spawn";
     internal override bool AffectsWorld => false;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Rename(SelectionKind.PlayerSpawn, _oldId, _newId);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -979,7 +1069,7 @@ public sealed class AddExclusionCommand : EditorCommand
 
 /// <summary>Removes the exclusion at the given index, restoring it at that index on revert. Affects the
 /// streamed world.</summary>
-public sealed class RemoveExclusionCommand : EditorCommand
+public sealed class RemoveExclusionCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _index;
     MapExclusion? _removed;
@@ -990,10 +1080,14 @@ public sealed class RemoveExclusionCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Remove exclusion";
     internal override bool AffectsWorld => true;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.RemoveAt(SelectionKind.Exclusion, _index);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
+        int count = doc.Exclusions.Count;
+        if (_index < 0 || _index >= count)
+            throw new ArgumentOutOfRangeException(nameof(_index), _index, $"RemoveExclusionCommand: index is out of range (count {count}).");
         _removed = doc.Exclusions[_index];
         doc.Exclusions.RemoveAt(_index);
     }
@@ -1175,7 +1269,7 @@ public sealed class AddScatterOverrideCommand : EditorCommand
 
 /// <summary>Removes the scatter override at the given index, restoring it at that index on revert. Affects the
 /// streamed world.</summary>
-public sealed class RemoveScatterOverrideCommand : EditorCommand
+public sealed class RemoveScatterOverrideCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _index;
     MapScatterOverrideDoc? _removed;
@@ -1186,10 +1280,14 @@ public sealed class RemoveScatterOverrideCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Remove scatter override";
     internal override bool AffectsWorld => true;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.RemoveAt(SelectionKind.ScatterOverride, _index);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
+        int count = doc.ScatterOverrides.Count;
+        if (_index < 0 || _index >= count)
+            throw new ArgumentOutOfRangeException(nameof(_index), _index, $"RemoveScatterOverrideCommand: index is out of range (count {count}).");
         _removed = doc.ScatterOverrides[_index];
         doc.ScatterOverrides.RemoveAt(_index);
     }
@@ -1365,7 +1463,7 @@ public sealed class RenameScatterOverrideCommand : EditorCommand
 /// reorder forces a full viewport world rebuild. Both indices are range-guarded (non-negative in the constructor,
 /// in-range against the live list at apply time, each with a precise <see cref="ArgumentOutOfRangeException"/>).
 /// <see cref="Revert"/> moves it back (self-inverse), and it never coalesces (no merge).</summary>
-public sealed class ReorderScatterOverrideCommand : EditorCommand
+public sealed class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _fromIndex;
     readonly int _toIndex;
@@ -1383,6 +1481,7 @@ public sealed class ReorderScatterOverrideCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Reorder scatter override";
     internal override bool AffectsWorld => true;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Reorder(SelectionKind.ScatterOverride, _fromIndex, _toIndex);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
@@ -1801,7 +1900,7 @@ public sealed class RemoveRegionCommand : EditorCommand
 /// name, so a rejected rename lands no undo step. A chained rename, where the next command's old name matches
 /// this one's current new name (the same-name-pair a per-keystroke commit produces), coalesces into this command
 /// instead of pushing its own step: previously every keystroke of a region rename landed its own undo entry.</summary>
-public sealed class RenameRegionCommand : EditorCommand
+public sealed class RenameRegionCommand : EditorCommand, IVisibilityEffect
 {
     readonly string _oldName;
     string _newName;
@@ -1817,6 +1916,9 @@ public sealed class RenameRegionCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Rename region";
     internal override bool AffectsWorld => false;
+    // Reads _newName LIVE (not cached): a TryMerge folds a follow-on rename into this command, advancing _newName,
+    // so the visibility effect the document events read after a merge always targets the merged final name.
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Rename(SelectionKind.Region, _oldName, _newName);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -2136,7 +2238,7 @@ public sealed class AddFeatureCommand : EditorCommand
 
 /// <summary>Removes the terrain feature at the given index, restoring it at that index on revert. Affects the
 /// streamed world.</summary>
-public sealed class RemoveFeatureCommand : EditorCommand
+public sealed class RemoveFeatureCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _index;
     MapFeature? _removed;
@@ -2147,6 +2249,7 @@ public sealed class RemoveFeatureCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Remove terrain feature";
     internal override bool AffectsWorld => true;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.RemoveAt(SelectionKind.Feature, _index);
 
     /// <inheritdoc/>
     /// <remarks>The removed feature's footprint, or null before <see cref="Apply"/> has captured it (the removed
@@ -2159,6 +2262,9 @@ public sealed class RemoveFeatureCommand : EditorCommand
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
+        int count = doc.Terrain.Features.Count;
+        if (_index < 0 || _index >= count)
+            throw new ArgumentOutOfRangeException(nameof(_index), _index, $"RemoveFeatureCommand: index is out of range (count {count}).");
         _removed = doc.Terrain.Features[_index];
         doc.Terrain.Features.RemoveAt(_index);
     }
@@ -2284,7 +2390,7 @@ public sealed class RenameFeatureCommand : EditorCommand
 /// overlap. Reordering is therefore how the author picks the winner between overlapping features (a lake and a
 /// flatten over the same clearing, say): move the feature that should win to a later position. <see cref="Revert"/>
 /// moves it back. Affects the streamed world (terrain shape changes), and never coalesces (no merge).</summary>
-public sealed class ReorderFeatureCommand : EditorCommand
+public sealed class ReorderFeatureCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _fromIndex;
     readonly int _toIndex;
@@ -2300,6 +2406,7 @@ public sealed class ReorderFeatureCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Reorder terrain feature";
     internal override bool AffectsWorld => true;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Reorder(SelectionKind.Feature, _fromIndex, _toIndex);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
@@ -2325,7 +2432,7 @@ public sealed class ReorderFeatureCommand : EditorCommand
 /// are range-guarded (non-negative in the constructor, in-range against the live list at apply time, each with a
 /// precise <see cref="ArgumentOutOfRangeException"/>). <see cref="Revert"/> moves it back (self-inverse), and it
 /// never coalesces (no merge).</summary>
-public sealed class ReorderExclusionCommand : EditorCommand
+public sealed class ReorderExclusionCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _fromIndex;
     readonly int _toIndex;
@@ -2343,6 +2450,7 @@ public sealed class ReorderExclusionCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Reorder exclusion";
     internal override bool AffectsWorld => false;
+    VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Reorder(SelectionKind.Exclusion, _fromIndex, _toIndex);
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);

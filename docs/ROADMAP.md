@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.126.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **11.1.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -121,10 +121,11 @@ Ordered gap list (2026-07-07 feature audit):
 5. Water follow-ups (the animated water surface shipped in 10.28.0: `Scene3D.DrawWater` + `WaterSettings`,
    shore fade, sky-derived fresnel tint, sun glint, no reflections): shore foam, per-game wave tuning once
    Ruinborne adopts it, dropping the unused `Res` UBO field, and a water-footprint-scoped golden guard.
-6. Bloom follow-ups (the LDR threshold + separable-blur bloom shipped in 10.27.0, opt-in via
+6. Bloom follow-ups (the threshold + separable-blur bloom shipped in 10.27.0, opt-in via
    `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
-   and a second blur octave only if a game pulls for wider halos. The full HDR/tonemap pipeline is now planned
-   as Tier 1 of the AAA VFX program below (supersedes the earlier "not planned" call).
+   and a second blur octave only if a game pulls for wider halos. The HDR/tonemap pipeline shipped (float16 chain
+   + ACES filmic tonemap + pre-tonemap bloom, on by default, escape hatch `Post.Hdr.Enabled = false`), see the
+   CHANGELOG.
 7. Animation follow-ups (layered blending shipped in 10.31.0: `LayeredAnimator` with bone masks, override and
    local-frame additive layers, and one-shot or held actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
    placement) waits for adoption feedback, action-trigger replication stays a game-message pattern, and a
@@ -137,24 +138,11 @@ Ordered gap list (2026-07-07 feature audit):
 The particles/VFX domain specifically targets modern AAA effect quality (Diablo 4 / PoE2 / Lost Ark class
 impact and ambience) on top of the 10.126.0 modernization (procedural shaped sprites, curves, emission
 shapes, soft particles, effect scheduler, `Particles.Render3D` adapter, design record
-`docs/PARTICLES-VFX-DESIGN-2026-07-16.md`). Three tiers, ordered by visual impact per engineering cost.
-The general rendering bar above is unchanged, this program is scoped to effects and the pipeline pieces
-they sit on.
-
-**Tier 1 (one engine program, scoped 2026-07-16, next up for this domain):**
-
-1. HDR pipeline + filmic tonemap + HDR bloom. Float16 internal targets, emissive values above 1.0,
-   bloom moved pre-tonemap so hot cores saturate and halo naturally. The single biggest visual
-   multiplier, and it upgrades every glowing feature at once (particles, beams, trails, telegraphs,
-   sky, water glints). Must compose with the retro post path (palette/pixelation quantize after
-   tonemap) and forces a full golden rebake on all three backends.
-2. Flipbook particles with motion-vector blending. Atlas playback (per-particle frame index) plus
-   motion-vector frame interpolation in the particle pass, so offline-simmed smoke/fire/explosion
-   sheets (EmberGen class) read fluid at low frame counts. Complements, not replaces, the procedural
-   shapes: procedural stays the identity for sparks, glows, magic, rings.
-3. Screen-space distortion pass. Distortion particles write an offset buffer, the resolved scene
-   color re-samples through it: heat haze, refractive shockwaves, splash lensing. High AAA-feel per
-   cost.
+`docs/PARTICLES-VFX-DESIGN-2026-07-16.md`). Ordered by visual impact per engineering cost. Tier 1 shipped as
+one engine program (HDR pipeline 10.128.0, flipbook particles 10.129.0, screen-space distortion 10.130.0,
+design record `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`), so Tiers 2 and 3 are what remain, Tier 2 next when a
+game pulls for it. The general rendering bar above is unchanged, this program is scoped to effects and the
+pipeline pieces they sit on.
 
 **Tier 2 (independent follow-up features, each its own worktree when pulled):** lit smoke (fold the
 existing light arrays into the particle UBO, wrap term + fake spherical normals), mesh particles

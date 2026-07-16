@@ -103,5 +103,52 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 10f, out _, -1f));
         }
+
+        [Fact]
+        public void NaNStep_Throws()
+        {
+            // ThrowIfNegativeOrZero passes NaN through (NaN <= 0 is false), which used to march forever with
+            // t += NaN turning every subsequent sample into NaN too - a silent miss instead of a clear reject.
+            var field = FlatField(2f);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 10f, out _, float.NaN));
+        }
+
+        [Fact]
+        public void NaNMaxDistance_Throws()
+        {
+            // maxDistance had no explicit guard at all: prevT(0) < NaN is false, so the march loop never ran and the
+            // call silently reported a miss instead of rejecting the bad input.
+            var field = FlatField(2f);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), float.NaN, out _));
+        }
+
+        [Fact]
+        public void ExtremeMaxDistanceToStepRatio_StillTerminates()
+        {
+            // Once t is huge relative to step, float32 addition stalls (t + step == t, at t/step past ~2^24: the
+            // 24-bit mantissa can no longer represent the smaller increment) - a real reproduction inherently takes
+            // that many march iterations regardless of the absolute step/maxDistance magnitudes chosen (t grows by a
+            // constant step each iteration, so reaching a t/step ratio of ~2^24 always takes ~2^24 iterations). The
+            // guard's whole point is to jump straight to maxDistance once that happens, terminating in ~16.7 million
+            // steps instead of hanging for the nominal (and here effectively unreachable) maxDistance/step count.
+            // DetailOctaves 0 keeps each of those steps to Fbm's fixed 4-octave noise call (no Turbulence term) so
+            // the test completes in a few seconds instead of stacking a second octave loop on every sample.
+            var field = new TerrainField(new TerrainConfig
+            {
+                Seed = 7,
+                GentleAmplitude = 0f,
+                DetailOctaves = 0,
+                Biomes = new[]
+                {
+                    new BiomeBand { Start = float.NegativeInfinity, End = float.PositiveInfinity, Biome = BiomeId.Meadow, BaseHeight = 2f, HillAmplitude = 0f },
+                },
+            });
+            // A horizontal ray held well above the flat ground never crosses it, so the march runs the full
+            // distance without an early return, forcing it through the stall path.
+            bool hit = TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, 0f, 0f), 1e12f, out _, step: 0.01f);
+            Assert.False(hit);
+        }
     }
 }

@@ -16,12 +16,18 @@ namespace KhaozEngine.Terrain
         /// false when it stays above for the whole distance. A ray starting below the surface returns true
         /// at the origin. step is the coarse march length in t units, bisected 24 times on a crossing.
         /// The final march sample is clamped to exactly maxDistance, so a crossing inside the last partial
-        /// step is still found. step must be positive (ArgumentOutOfRangeException otherwise).</summary>
+        /// step is still found. step must be positive (ArgumentOutOfRangeException otherwise). NaN fails that
+        /// same check by explicit guard, since ThrowIfNegativeOrZero's "&lt;= 0" comparison is false for NaN and
+        /// would otherwise pass it through to turn the whole march into a silent NaN-poisoned miss. maxDistance
+        /// is guarded the same way for the same reason (a NaN maxDistance makes the very first loop condition
+        /// false, again a silent miss instead of a clear reject).</summary>
         public static bool Raycast(TerrainField field, Vector3 origin, Vector3 direction, float maxDistance,
             out Vector3 hit, float step = 0.25f)
         {
             ArgumentNullException.ThrowIfNull(field);
+            if (float.IsNaN(step)) throw new ArgumentOutOfRangeException(nameof(step), step, "step must not be NaN.");
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(step);
+            if (float.IsNaN(maxDistance)) throw new ArgumentOutOfRangeException(nameof(maxDistance), maxDistance, "maxDistance must not be NaN.");
 
             if (origin.Y - field.SampleHeight(origin.X, origin.Z) <= 0f)
             {

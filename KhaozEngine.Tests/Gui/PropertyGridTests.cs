@@ -489,6 +489,83 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(3f * 28f, grid.ScrollOffset, 3);             // 3 * 28 = 84
         }
 
+        // The wheel step is continuous (ScrollDelta * WheelSpeed), not rounded to an integer notch count: a
+        // fractional delta (a trackpad, or a partial accumulated notch) moves the matching fraction of a whole
+        // notch's distance, unlike the old GetScrollIn((int)MathF.Round(...)) path.
+        [Fact]
+        public void Wheel_ScrollsContinuously_NoNotchRounding()
+        {
+            var grid = new PropertyGrid(Area);
+            for (int i = 0; i < 10; i++) grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("R"), () => "-"));
+
+            var input = new InputManager();
+            Step(input, grid, new Vector2(150, 75), false, scroll: -0.5f);   // half a wheel unit down
+            Assert.Equal(84f * 0.5f, grid.ScrollOffset, 3);   // half of the whole-unit 84 (28 avg row * 3/notch), not 0 or 84
+
+            Step(input, grid, new Vector2(150, 75), false, scroll: -0.25f);   // another quarter unit
+            Assert.Equal(84f * 0.75f, grid.ScrollOffset, 3);
+        }
+
+        // WheelSpeed is exposed under the same name/idiom as ScrollablePanel.WheelSpeed, computed from
+        // AverageRowHeight * WheelRowsPerNotch so a grid with taller or shorter rows still feels aligned with a
+        // TreeView using its own RowHeight * WheelRowsPerNotch.
+        [Fact]
+        public void WheelSpeed_MatchesAverageRowHeightTimesWheelRowsPerNotch()
+        {
+            var grid = new PropertyGrid(Area);
+            for (int i = 0; i < 4; i++) grid.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("R"), () => "-"));
+            Assert.Equal(28f * 3f, grid.WheelSpeed, 3);   // default row height 28, default WheelRowsPerNotch 3
+
+            grid.WheelRowsPerNotch = 5f;
+            Assert.Equal(28f * 5f, grid.WheelSpeed, 3);
+        }
+
+        // ---- Partial-row input clamp: a row straddling Bounds' bottom edge is still visually clipped by the
+        // grid's scissor at Draw time, so its INPUT reach must match - a tap in the sliver below Bounds must not
+        // register, even though the row's own (unclamped) editor cell would otherwise cover that point. ----
+
+        [Fact]
+        public void PartiallyVisibleRow_DoesNotReactBelowBounds()
+        {
+            float val = 5f;
+            // Bounds shorter (20px) than one row (28px): row 0's cell (Y 0..28) straddles Bounds.Bottom by 8px.
+            var grid = new PropertyGrid(new Rect(0, 0, 300, 20));
+            var row = new FloatRow(LocalizedText.Raw("V"), () => val, v => val = v, min: 0f, max: 100f);
+            grid.Rows.Add(row);
+
+            var input = new InputManager();
+            // Inside the row's UNCLAMPED cell (X in the editor column, Y 0..28) but below Bounds.Bottom (20) -
+            // exactly the sliver the scissor already clips at Draw time.
+            var inSliver = new Vector2(200f, 25f);
+            Tap(input, grid, inSliver);
+
+            Assert.False(row.Field.IsEditing);   // the clamped cell keeps the sliver outside the field's hit-test
+            Assert.False(grid.WasChanged);
+        }
+
+        // ---- FloatRow.GestureEnded: a direct pass-through of NumberField.GestureEnded, the hook MapEditorScene
+        // wires to EditorDocument.SealGesture so scrubbing two different rows seals two separate undo steps. ----
+
+        [Fact]
+        public void FloatRow_GestureEnded_MirrorsFieldGestureEnded()
+        {
+            float val = 5f;
+            var row = new FloatRow(LocalizedText.Raw("V"), () => val, v => val = v, min: 0f, max: 100f, dragScale: 0.1f);
+            int fired = 0;
+            row.GestureEnded += () => fired++;
+
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var input = new InputManager();
+            var inside = new Vector2(100f, 14f);
+            input.Update(Frame(inside, false)); row.Update(cell, input, 0f);
+            input.Update(Frame(inside, true)); row.Update(cell, input, 0f);                       // press
+            input.Update(Frame(new Vector2(140f, 14f), true)); row.Update(cell, input, 0f);       // real scrub, still held
+            Assert.Equal(0, fired);
+
+            input.Update(Frame(new Vector2(140f, 14f), false)); row.Update(cell, input, 0f);      // release: seals
+            Assert.Equal(1, fired);
+        }
+
         // ---- HeaderRow: a label-only row spanning the grid's full width, no editor cell. ----
 
         [Fact]

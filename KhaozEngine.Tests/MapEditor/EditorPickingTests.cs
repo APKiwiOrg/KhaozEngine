@@ -133,6 +133,39 @@ namespace KhaozEngine.Tests.MapEditor
             Near(1.5f, result.Point.Y);
         }
 
+        // ---- player spawn pick + group gate ------------------------------------------------------------
+
+        [Fact]
+        public void Pick_PlayerSpawn_GatedByPlayerSpawnsGroup()
+        {
+            var doc = new MapDocument
+            {
+                Id = "player-pick",
+                Bounds = new MapBounds { MinX = -100f, MinZ = -100f, MaxX = 100f, MaxZ = 100f },
+            };
+            doc.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-1", X = 0f, Z = 10f });
+            TerrainField field = FlatField();
+            var origin = new Vector3(0f, 100f, 10f);
+            var down = new Vector3(0f, -1f, 0f);
+
+            // Visible by default: the player spawn box picks like the NPC spawn box (same fixed 1.5-tall marker box).
+            var visibility = new EditorVisibility();
+            bool hit = EditorPicking.Pick(doc, field, origin, down, 1000f, HeightOf,
+                out EditorPicking.PickResult result, visibility.IsElementVisible);
+            Assert.True(hit);
+            Assert.Equal(SelectionKind.PlayerSpawn, result.Kind);
+            Assert.Equal("player-1", result.Id);
+
+            // Turning off the PlayerSpawns group hides every player spawn from picking too (draw / pick lockstep,
+            // via EditorVisibility.IsElementVisible mapping PlayerSpawn to VisibilityGroup.PlayerSpawns), so the ray
+            // falls through to terrain.
+            visibility.SetGroup(VisibilityGroup.PlayerSpawns, false);
+            bool gated = EditorPicking.Pick(doc, field, origin, down, 1000f, HeightOf,
+                out EditorPicking.PickResult gatedResult, visibility.IsElementVisible);
+            Assert.True(gated);
+            Assert.Equal(SelectionKind.None, gatedResult.Kind);   // gated out: terrain wins
+        }
+
         // ---- terrain fallback --------------------------------------------------------------------------
 
         [Fact]

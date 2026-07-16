@@ -42,9 +42,53 @@ The per-emitter presentation recipe:
 - `LightRadius` and `LightIntensity`: `LightRadius > 0` with a positive `LightIntensity` links the
   brightest live particles as budgeted point lights. Per-particle intensity is scaled by the particle's
   alpha, so a fading particle dims its light. 0 disables the light link.
+- `Flipbook`: an optional `ParticleFlipbook` (atlas `TextureHandle`, `Columns` x `Rows` grid, optional
+  motion-vector sheet + `MotionStrength`, `Loop`). Default (an invalid texture) keeps the look on the
+  procedural `Shape` path. When set, the adapter resolves each sprite's `FlipbookFrame` and the atlas frame
+  replaces the procedural shape. Load the sheets with `Scene3D.LoadTexture`.
+- `FlipbookMode`: `LifeOneShot` (default) sweeps the sheet once across a particle's life and clamps on the
+  last cell (one-shot explosion/impact sheets), or `TimeLoop` advances at `FlipbookFps` and wraps (looping
+  fire/smoke). Only read when `Flipbook` is active.
+- `FlipbookFps`: playback rate for `TimeLoop`, in frames per second. 0 is treated as 12. Ignored by
+  `LifeOneShot`.
+- `FlipbookRandomStart`: for `TimeLoop`, staggers each particle's start frame by its seed so a burst of
+  identical looping sprites does not play in lockstep. Defaults to true (set false for a synchronized loop).
+- `Distortion`: an optional `DistortionLook` (`Shape`, `ShapeParam`, `Strength`, `SoftFadeScale`). When
+  `Strength` is non-zero the phase emits one `DistortionSprite` per live particle INSTEAD of a visible sprite, so
+  it WARPS the scene behind it (heat haze, refractive shockwave ring, splash lens) rather than drawing over it.
+  Each sprite's strength is scaled by the particle's alpha so the field fades with life. The inactive default
+  (`Strength` 0) keeps the phase on the normal `Shape` / `Flipbook` particle path. See the Render3D distortion
+  pass in `docs/USING-KHAOZENGINE.md`.
+
+```csharp
+var look = new ParticleLook
+{
+    Orientation = ParticleOrientation.FlatGround,
+    Distortion = new DistortionLook
+    {
+        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+    },
+};
+```
 
 Trails are sampled oldest-to-newest, so the tail is faintest and thinnest and the head is full. Light
 selection is a small-K partial selection by alpha, no allocation, and never exceeds `Scene3D.MaxPointLights`.
+
+A flipbook look, motion-vector sheet optional (a motion sheet reads fluid at low frame counts, a plain
+sheet cross-fades between frames):
+
+```csharp
+Scene3D.TextureHandle atlas = scene.LoadTexture(sheetRgba, 512, 512);   // an 8x8 grid = 64 frames
+
+var look = new ParticleLook
+{
+    Blend = BillboardBlend.Additive,
+    Flipbook = new ParticleFlipbook(atlas, Columns: 8, Rows: 8, Loop: true),
+    FlipbookMode = ParticleFlipbookMode.TimeLoop,
+    FlipbookFps = 24f,
+};
+scene.DrawParticles(system, in look);
+```
 
 The `Shockwave` preset is the worked orientation example: its ring look is `FlatGround` with a small
 `SoftFadeScale` (0.12), and the ring phase lifts off the floor with `ParticleEffectPhase.OriginOffset`
@@ -61,9 +105,12 @@ read at roughly 8 to 12 world units from the camera, origin on the ground, +Y up
 - `HealMotes`: gentle rising green-gold star sparkles that softly light the target.
 - `EmberDrift`: ambient warm embers drifting up on turbulence (braziers, campfires).
 - `SparkShower`: a single fountain of stretched sparks arcing up and falling.
-- `Shockwave`: a fast expanding ground ring plus a low outward puff of dust.
+- `Shockwave`: a fast expanding ground ring plus a low outward puff of dust, with a refraction-ring phase that
+  warps the scene behind the nova (an active `Ripple` distortion look).
 - `SmokePlume`: a steady rising column of soft, turbulent smoke.
 - `ArcaneSparkle`: swirling violet-to-cyan magic sparkles that pulse and faintly light the caster.
+- `HeatHaze`: a shimmering heat haze, a slow rising column that warps the scene (a `Heat` distortion) under a
+  faint warm additive shimmer. For braziers, lava, desert air, exhaust.
 
 ## Usage
 

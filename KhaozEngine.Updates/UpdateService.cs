@@ -93,6 +93,7 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         maxTotalDownloadBytes = options.MaxTotalDownloadBytes;
         maxManifestBytes = options.MaxManifestBytes;
         localManifestPath = Path.Combine(appDataDir, "update-manifest.json");
+        recheckIntervalSeconds = options.RecheckInterval is { TotalSeconds: > 0 } ri ? ri.TotalSeconds : 0.0;
 
         DetectInterruptedApply();
         CleanStaleStagingDirs();
@@ -102,6 +103,10 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
     /// <summary>Checks for a newer build and computes the download plan (with resume).</summary>
     public async Task CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
+        // Restart the periodic recheck clock: a manual (or gate-driven) check counts as "just checked",
+        // so a Tick-driven recheck does not fire moments later. Cheap and harmless in every state.
+        recheckAccumulator = 0.0;
+
         if (state is UpdateState.Downloading or UpdateState.Applying)
         {
             return;
@@ -432,6 +437,7 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
 
     public void Dispose()
     {
+        disposed = true;
         if (options.DisposeSource && source is IDisposable disposable)
         {
             disposable.Dispose();

@@ -309,6 +309,32 @@ transitively through `MapDoc` (`MapDoc -> Terrain`, and `Terrain` itself depends
 `Collision`), so the new edge introduces no cycle. `DungeonNav.Bake` lives in `KhaozEngine.Dungeon` and
 returns a `KhaozEngine.Navigation.NavSpace`, but nothing in `Navigation` references `Dungeon` back.
 
+## Surface-source seam: INavSurfaceProvider (a deliberate non-edge)
+
+The step-aware overworld bake (`NavGridBaker.BakeOverworldSteps`) needs a per-cell walkable surface
+height. The obvious source for a game with real physics is a downward probe against its `IPhysicsWorld`
+(`PhysicsGroundProbe` or similar), which would suggest a `KhaozEngine.Navigation -> KhaozEngine.Physics`
+edge. That edge was deliberately NOT added:
+
+```
+KhaozEngine.Navigation -> KhaozEngine.Primitives   (unchanged)
+KhaozEngine.Navigation -> KhaozEngine.Collision     (unchanged)
+KhaozEngine.Navigation -> KhaozEngine.Terrain       (unchanged)
+KhaozEngine.Navigation -x KhaozEngine.Physics       (no edge - INavSurfaceProvider is the seam instead)
+```
+
+`INavSurfaceProvider` (`TrySample(x, z, out height, out headroom) -> bool`) is the surface-source seam:
+`KhaozEngine.Navigation` codes against the interface only. `TerrainSurfaceProvider`, the shipped default,
+implements it over `KhaozEngine.Terrain`/`KhaozEngine.Collision`, both dependencies the package already
+has. A game that wants a physics-probe surface instead implements `INavSurfaceProvider` itself (or wraps a
+delegate in `DelegateSurfaceProvider`) in its own code, over its own `IPhysicsWorld`, and hands the
+provider to `BakeOverworldSteps`. `KhaozEngine.Navigation`'s dependencies stay exactly `Primitives`,
+`Collision`, `Terrain`, matching the package-global rule that a nav bake never re-touches a physics world
+at query time (it already does not re-touch `TerrainCollision`/`WorldColliders` either, per
+`NavGridBaker.BakeOverworld`). This is the same shape as the pathfinding seam above: an interface exists
+not to contain a third-party library, but to keep an optional data source out of a package's dependency
+graph while still letting a consumer plug one in.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

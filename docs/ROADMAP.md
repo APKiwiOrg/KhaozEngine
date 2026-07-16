@@ -10,25 +10,14 @@ Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. NPC navigation: vertical worlds (step-budget surfaces, then multi-level overworld)
+### 1. NPC navigation: vertical worlds (multi-level overworld)
 
-Extend `KhaozEngine.Navigation` beyond the flat single-layer overworld bake so NPCs can path up
-stairs, onto standable props and platforms, and ultimately across bridges and overhangs. Scheduled
-as the follow-on to the 10.123.0 navigation release (first consumer: Ruinborne wolves chasing
-players onto rocks, platforms, and stairs). Two phases, each gets its own design spec + plan when
-scheduled:
-
-1. Step-budget surface bake (first): the overworld bake stores a per-cell walkable surface height
-   (from a downward physics probe or `WorldSurfaces` prop tops) instead of testing a flat band above
-   analytic terrain, and neighbor walkability becomes rise-within-StepHeight plus headroom-clear.
-   Still a single `NavGrid` layer, so the planner and follower need no changes. Makes ramps,
-   staircases, and low standable props walkable in the open world (closes the recorded
-   standable-top-props non-goal from [NPC-NAVIGATION-DESIGN.md](NPC-NAVIGATION-DESIGN.md)).
-2. Multi-level overworld (the destination): auto-extract layered walkable surfaces plus inter-layer
-   links from the physics world, so two surfaces can coexist at one XZ (bridges, overhangs, roofed
-   interiors). `NavSpace` layers, links, and cross-layer planning already shipped and are proven by
-   the dungeon adapter, the new work is the layered-surface extraction bake and link generation at
-   climbable transitions.
+Extend `KhaozEngine.Navigation` beyond the step-aware single-layer overworld bake so NPCs can path
+across bridges, overhangs, and roofed interiors where two walkable surfaces coexist at one XZ.
+Auto-extract layered walkable surfaces plus inter-layer links from the physics world. `NavSpace`
+layers, links, and cross-layer planning already shipped and are proven by the dungeon adapter, so the
+remaining work is the layered-surface extraction bake and link generation at climbable transitions.
+Gets its own design spec + plan when scheduled.
 
 ### 2. Physics: ragdolls and vehicles (pull-gated)
 

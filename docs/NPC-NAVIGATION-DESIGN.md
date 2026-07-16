@@ -97,6 +97,10 @@ out-of-bounds regions). Colliders with a finite standable `Top` still block in v
 conservative: nav routes around low props the character could technically step onto. Recorded as a
 follow-up.
 
+Low standable props, ramps, and staircases are now walkable via the step-aware
+`NavGridBaker.BakeOverworldSteps` bake (a separate entry point from `BakeOverworld` above), see
+[NAV-STEP-SURFACES-DESIGN.md](NAV-STEP-SURFACES-DESIGN.md).
+
 **Dungeon** (`DungeonNav.Bake(DungeonLayout)`, in `Dungeon`): one `NavGrid` layer per floor straight
 from `DungeonCellKind.IsWalkable`, stair cells become inter-layer links between the floors they
 connect.
@@ -191,7 +195,6 @@ one). Windowed playtest of wolf-chases-player-around-rock is the final gate.
 - Runtime region invalidation. Seam shaped, not shipped.
 - Async or time-sliced path request queue. Planner is stateless so a queue wraps it later.
 - Per-cell traversal cost weights (mud, roads). Follow-up parallel array.
-- Standable-top props as walkable nav surface (walking over low rocks, `WorldSurfaces` tops).
 - Cross-cell planning over streamed per-shard grids. Today a `NavSpace` covers whatever bounds the
   game bakes.
 - Navmesh planner. The `IPathPlanner` seam is the reserved slot if a game ever pulls for it.

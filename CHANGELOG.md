@@ -5,6 +5,39 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## TODO-VERSION
+
+Step-aware overworld navigation bake: `KhaozEngine.Navigation` gets a per-cell surface height field and
+a rise-within-StepHeight walkability rule, so ramps, staircases, and low standable props are walkable
+without leaving the flat single-layer grid. Closes the standable-top-props non-goal. Design record:
+`docs/NAV-STEP-SURFACES-DESIGN.md`.
+
+- **KhaozEngine.Navigation (additive).** `INavSurfaceProvider` (`TrySample(x, z, out height, out
+  headroom)`) is the new surface-source seam a bake reads instead of testing a flat band above analytic
+  terrain, plus `DelegateSurfaceProvider` for a game that wants to supply one without a named class. The
+  default implementation, `TerrainSurfaceProvider`, is analytic terrain raised to any `WorldSurfaces` prop
+  top covering the point, so a creature stands on a low rock, ramp, or platform instead of routing around
+  it. `NavGrid.FromSurfaces` bakes a grid from a per-cell `NavSurfaceSample` (standable, height, headroom),
+  folding the rise-within-StepHeight-plus-headroom rule into the blocked mask, and records the per-cell
+  surface height (`NavGrid.SurfaceHeightAt`, `NavGrid.HasSurfaceHeights`). `NavGridBaker.BakeOverworldSteps`
+  wires it end to end: hand it an `INavSurfaceProvider`, a step height, and an agent height, and it bakes
+  the region the same way `BakeOverworld` does today.
+- **Closes the standable-top-props non-goal.** Ramps, staircases, and low standable props (rocks,
+  platforms) are now walkable in the overworld bake. See `docs/NPC-NAVIGATION-DESIGN.md`.
+- **Conservatism.** A step taller than the configured step height still blocks its higher side by one
+  cell (the standable top itself bakes standable, but the cell one step up from it does not), so a
+  too-tall step is impassable rather than only steep. Phase 2 (multi-level layered surfaces, tracked in
+  `docs/ROADMAP.md`) removes this by giving the tall side its own layer instead of eroding it.
+- **Unchanged.** The planner (`GridPathPlanner`) and follower (`PathFollower`) take no changes: a
+  step-aware grid is still one `NavGrid` layer. `NavGridBaker.BakeOverworld` and `NavGrid.FromWalkable`
+  are untouched, so every existing caller keeps building the same grids the same way (backward
+  compatible). `KhaozEngine.Navigation`'s dependencies stay exactly `Primitives`, `Collision`, `Terrain`:
+  a physics-probe surface source is a game-implemented `INavSurfaceProvider`, not an engine dependency on
+  `KhaozEngine.Physics`.
+- **Tests.** New headless coverage for the internal step-reachability pass, `NavGrid.FromSurfaces`,
+  `TerrainSurfaceProvider`, and `NavGridBaker.BakeOverworldSteps`, plus a planner/follower acceptance test
+  proving a ramp or low prop routes across instead of around.
+
 ## 10.126.0
 
 Ground-up particle/VFX modernization: shaped procedural sprites with soft depth fade and velocity

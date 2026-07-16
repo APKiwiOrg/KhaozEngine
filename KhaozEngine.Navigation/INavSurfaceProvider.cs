@@ -4,10 +4,11 @@ namespace KhaozEngine.Navigation;
 
 /// <summary>
 /// The per-cell surface source the step-surface overworld bake reads: the walkable surface height and
-/// the headroom above it at a world XZ point. The default engine implementation is TerrainSurfaceProvider
-/// (analytic terrain raised by <c>WorldSurfaces</c> prop tops). A game supplies its own (for example a
-/// downward <c>PhysicsGroundProbe</c> raycast) by implementing this interface, so the bake reads a
-/// physics-derived surface without KhaozEngine.Navigation taking a dependency on KhaozEngine.Physics.
+/// the headroom above it at a world XZ point. The default engine implementation is
+/// <see cref="TerrainSurfaceProvider"/> (analytic terrain raised by <c>WorldSurfaces</c> prop tops). A game
+/// supplies its own (for example a downward <c>PhysicsGroundProbe</c> raycast) by implementing this
+/// interface, so the bake reads a physics-derived surface without KhaozEngine.Navigation taking a
+/// dependency on KhaozEngine.Physics.
 /// Must be deterministic: identical inputs must return identical outputs, or the bake is not deterministic.
 /// </summary>
 public interface INavSurfaceProvider

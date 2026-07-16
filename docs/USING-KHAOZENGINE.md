@@ -2983,6 +2983,32 @@ the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid` la
 directed `NavLink` stair connections a climber crosses between floors, at the same cell size and world
 anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons" above.
 
+### Bake ramps, stairs, and standable props
+
+`BakeOverworld` tests a flat band above analytic terrain, so a low rock, a ramp, or a staircase bakes as a
+hard wall. `NavGridBaker.BakeOverworldSteps` bakes a per-cell walkable surface height instead, and marks a
+step between neighboring cells walkable when the rise is within a step height and the headroom clears an
+agent height, so ramps, staircases, and low standable props become walkable without leaving a single
+`NavGrid` layer:
+
+```csharp
+var provider = new TerrainSurfaceProvider(terrain, maxSlopeRadians: MathF.PI / 4f, surfaces, colliders,
+    colliderProbeRadius: 0.5f * 0.70710678f);
+NavGrid grid = NavGridBaker.BakeOverworldSteps(
+    provider,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f);
+```
+
+`TerrainSurfaceProvider` is the shipped `INavSurfaceProvider`: analytic terrain height raised to any
+`WorldSurfaces` prop top covering the point, so a creature stands on the prop instead of routing around
+it. A game that wants a different surface source (a downward physics raycast against its own
+`IPhysicsWorld`, for example) implements `INavSurfaceProvider` itself, or wraps a delegate in
+`DelegateSurfaceProvider`. Either way `KhaozEngine.Navigation` reads the surface only through the
+interface and never takes a dependency on `KhaozEngine.Physics`. The planner and follower below are
+unchanged: a step-aware grid is still one `NavGrid` layer, so `GridPathPlanner` and `PathFollower` need no
+new code to route across a ramp or a low rock.
+
 ### Plan a route
 
 `GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an

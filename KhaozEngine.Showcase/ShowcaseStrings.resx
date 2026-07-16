@@ -92,7 +92,6 @@
   <data name="Settings.Volume" xml:space="preserve"><value>Volume</value></data>
   <data name="Settings.Fullscreen" xml:space="preserve"><value>Fullscreen</value></data>
   <data name="Settings.Help" xml:space="preserve"><value>Drag the slider or toggle the switch. This help text wraps to the panel width via TextLayout.</value></data>
-  <data name="Widgets.Title" xml:space="preserve"><value>Widgets</value></data>
   <data name="Widgets.SectionForm" xml:space="preserve"><value>Form widgets</value></data>
   <data name="Widgets.SectionHud" xml:space="preserve"><value>HUD widgets</value></data>
   <data name="Widgets.SectionSkin" xml:space="preserve"><value>Skinned chrome</value></data>
@@ -111,7 +110,6 @@
   <data name="Widgets.CastBar" xml:space="preserve"><value>Cast bar</value></data>
   <data name="Widgets.Pips" xml:space="preserve"><value>Pips</value></data>
   <data name="Widgets.Resource" xml:space="preserve"><value>Resource</value></data>
-  <data name="Widgets.SkinTitle" xml:space="preserve"><value>Skinned chrome + bars</value></data>
   <data name="Widgets.SkinButton" xml:space="preserve"><value>Skinned</value></data>
   <data name="Widgets.SkinPanel" xml:space="preserve"><value>9-slice frame</value></data>
   <data name="Sprites.SectionSprites" xml:space="preserve"><value>Textured sprites</value></data>

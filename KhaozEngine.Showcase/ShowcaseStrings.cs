@@ -55,7 +55,6 @@ namespace KhaozEngine.Showcase
         public static readonly StringId SettingsHelp = new("Settings.Help");
 
         // Widgets page
-        public static readonly StringId WidgetsTitle = new("Widgets.Title");
         public static readonly StringId WidgetsSectionForm = new("Widgets.SectionForm");
         public static readonly StringId WidgetsSectionHud = new("Widgets.SectionHud");
         public static readonly StringId WidgetsSectionSkin = new("Widgets.SectionSkin");
@@ -74,7 +73,6 @@ namespace KhaozEngine.Showcase
         public static readonly StringId WidgetsCastBar = new("Widgets.CastBar");
         public static readonly StringId WidgetsPips = new("Widgets.Pips");
         public static readonly StringId WidgetsResource = new("Widgets.Resource");
-        public static readonly StringId WidgetsSkinTitle = new("Widgets.SkinTitle");
         public static readonly StringId WidgetsSkinButton = new("Widgets.SkinButton");
         public static readonly StringId WidgetsSkinPanel = new("Widgets.SkinPanel");
 

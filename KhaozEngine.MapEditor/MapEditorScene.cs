@@ -59,6 +59,16 @@ public sealed class MapEditorOptions
     /// only, read at load time via <see cref="ViewportWorld.TexturedPropsEnabled"/>, so flipping it rebuilds the
     /// streamed world (see the Layers-panel "Textured props" row).</summary>
     public bool TexturedProps = true;
+
+    /// <summary>Minimum seconds between FULL viewport rebuilds while a drag or draw gesture is live
+    /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>), so a fast
+    /// mid-gesture edit stream (dragging a lake's radius, say) does not re-mesh the whole streamed world every
+    /// frame. The default 0.25 keeps the viewport visibly live during a drag without paying for a rebuild on
+    /// every frame. 0 disables the throttle (rebuilds every frame, the pre-throttle behaviour). Only the FULL
+    /// rebuild path is throttled: a bounded-region <see cref="MapEditorScene.PartialRebuildWorld"/> is cheap by
+    /// construction and always runs immediately, and once the gesture ends the very next check performs the
+    /// final full rebuild regardless of this interval.</summary>
+    public float GestureRebuildInterval = 0.25f;
 }
 
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
@@ -191,6 +201,12 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     bool _built;
     string _statusText = "";
+
+    // Seconds accumulated toward the next throttled full rebuild while a drag or draw gesture is live (see
+    // CheckWorldRebuild). Reset to 0 on every full rebuild that actually runs, gesture or not, so a gesture always
+    // starts its throttling window fresh from whenever the last full rebuild landed. Never touched by the partial
+    // path, so a run of partial rebuilds mid-gesture cannot starve the eventual full one.
+    float _gestureRebuildAccumulator;
 
     // The modal exit dialog (decision 3), non-null only while it is open. Shift+Escape builds a fresh one keyed to
     // the current dirty state. Its footer-button callbacks save / quit / dismiss. While non-null it is drawn last
@@ -415,8 +431,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (_exitDialog is not null) { UpdateExitDialog(dt); return; }
         UpdateCamera(dt);
         UpdateTools(dt);
-        CheckWorldRebuild();
         UpdateChrome(dt);
+        CheckWorldRebuild(dt);
         UpdateStreaming(dt);
     }
 
@@ -442,14 +458,22 @@ public class MapEditorScene : GameScene, IGameScene3D
         _controller.Update(BuildFrameInput(dt));
     }
 
-    /// <summary>Consumes a pending world rebuild after the tool step, so an edit this frame lands in the streamed
-    /// world before the next frame's pick. A pending edit that reported a bounded region
+    /// <summary>Consumes a pending world rebuild after every edit source this frame (tools, then chrome, which
+    /// covers the property-grid inspector), so an edit from either one lands in the streamed world before the
+    /// next frame's pick. A pending edit that reported a bounded region
     /// (<see cref="EditorDocument.PendingRebuildRegion"/>) rebuilds ONLY the chunks that region overlaps via
-    /// <see cref="PartialRebuildWorld"/>. A null region (a whole-world edit, or the partial path declining because
-    /// the world is not built) falls through to the full <see cref="RebuildWorld"/>. Either way the rebuild is
-    /// acknowledged so it fires once. Overridable for headless order tests, and it dispatches through the two rebuild
-    /// seams so a headless test can observe the routing without a device.</summary>
-    protected virtual void CheckWorldRebuild()
+    /// <see cref="PartialRebuildWorld"/>, never throttled (it is cheap by construction). A null region (a
+    /// whole-world edit, or the partial path declining because the world is not built) falls through to the full
+    /// <see cref="RebuildWorld"/>, which IS throttled while a drag or draw gesture is live
+    /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>): a full
+    /// rebuild only runs once <see cref="MapEditorOptions.GestureRebuildInterval"/> seconds have accumulated since
+    /// the last one, so a fast mid-gesture edit stream does not re-mesh the whole world every frame. The pending
+    /// flag is left untouched on a throttled-skip frame (not acknowledged), so the very next check after the
+    /// gesture ends falls straight through to the unthrottled branch and performs the final full rebuild with no
+    /// extra plumbing. Either way a rebuild that actually ran is acknowledged so it fires once. Overridable for
+    /// headless order tests, and it dispatches through the two rebuild seams so a headless test can observe the
+    /// routing without a device.</summary>
+    protected virtual void CheckWorldRebuild(float dt)
     {
         if (!_document.WorldRebuildPending) return;
         if (_document.PendingRebuildRegion is RectArea dirty && PartialRebuildWorld(dirty))
@@ -457,8 +481,18 @@ public class MapEditorScene : GameScene, IGameScene3D
             _document.AcknowledgeWorldRebuild();
             return;
         }
+
+        if (_controller.IsDragging || _controller.IsDrawing)
+        {
+            _gestureRebuildAccumulator += dt;
+            if (_gestureRebuildAccumulator < _options.GestureRebuildInterval) return;   // throttled: stays pending
+        }
+
         if (RebuildWorld())
+        {
             _document.AcknowledgeWorldRebuild();
+            _gestureRebuildAccumulator = 0f;
+        }
     }
 
     /// <summary>Partial-rebuild seam: re-mesh only the loaded chunks overlapping <paramref name="dirty"/> and
@@ -475,7 +509,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>Full-rebuild seam for a pending edit with no bounded region: rebuild the whole streamed world and
     /// re-point the tool controller at the fresh field. Returns false (a no-op) when the viewport is not built, so
     /// <see cref="CheckWorldRebuild"/> leaves the rebuild pending rather than throwing. Overridable so a headless
-    /// test can observe the dispatch without a device. (Task 4 wraps its throttle around this full path only.)</summary>
+    /// test can observe the dispatch without a device. <see cref="CheckWorldRebuild"/> wraps its gesture throttle
+    /// around this full path only, never around <see cref="PartialRebuildWorld"/>.</summary>
     protected virtual bool RebuildWorld()
     {
         if (!_viewport.IsBuilt) return false;

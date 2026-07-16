@@ -3946,8 +3946,9 @@ column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWi
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
-semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
-mechanics, the procedural setup editing mechanics, and the bake-region and rename mechanics in full.
+semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the
+feature apply-order and visibility mechanics, the procedural setup editing mechanics, and the bake-region and
+rename mechanics in full.
 
 ---
 

@@ -347,7 +347,11 @@ identically in both stages (each stage uses its slice). Keep per-mesh TEXTURES a
 The model and splat-terrain passes follow this: the shadow-map matrix and the per-material splat params
 ride in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform buffer
 (see the splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the `SplatVert`
-comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The vertex half of the fault plus the
+comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The modern particle pass follows it too: its
+single set-0 frame UBO carries the clip-corrected ViewProj, the raw InvViewProj, the camera basis + eye, the
+effect time, and the soft-fade / quality params, while every per-sprite value rides an instanced
+vertex-attribute stream and the scene depth texture + sampler sit at set 0 bindings 1 and 2 (textures past the
+first UBO map fine). See `../KhaozEngine.Render3D/Rendering/ParticleRenderer.cs`. The vertex half of the fault plus the
 fold-into-one fix are proven offscreen by `GpuSkinningReproGpuTests` variant 3
 (`FoldMatrixIntoBoneBuffer_VertexReadsOneResource_ReadsEveryBone`). The SHIPPED GPU-skinning pass
 (`Scene3D.UseGpuSkinning`, `SkinnedModelVert`/`SkinnedModelFrag`) is the full instance: one combined

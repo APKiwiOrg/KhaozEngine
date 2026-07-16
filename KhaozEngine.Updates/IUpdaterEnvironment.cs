@@ -1,3 +1,5 @@
+using System;
+
 #nullable enable
 
 namespace KhaozEngine.Updates;
@@ -59,6 +61,13 @@ public interface IUpdaterEnvironment
     void DeleteFile(string path);
     void DeleteDirectory(string path);
     void Sleep(int milliseconds);
+
+    /// <summary>
+    /// The current UTC wall-clock time, used to stamp the post-update marker's completion time. Abstracted
+    /// so the timestamp is deterministic in headless tests. The default returns
+    /// <see cref="DateTimeOffset.UtcNow"/>, which is what the real shim uses.
+    /// </summary>
+    DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
 
     /// <summary>Blocks until the process with <paramref name="pid"/> exits or the timeout elapses.</summary>
     void WaitForParentExit(int pid, int timeoutMilliseconds);

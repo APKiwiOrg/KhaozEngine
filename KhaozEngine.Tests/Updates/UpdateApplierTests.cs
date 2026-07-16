@@ -685,4 +685,106 @@ public sealed class UpdateApplierTests
 
         Assert.Contains(env.Log_, m => m.Contains("single-instance guard"));
     }
+
+    // ---- Post-update relaunch marker (update-applied.json): the shim tells the relaunched game an update just landed ----
+
+    private static readonly string AppliedMarker = Path.Combine(AppData, "update-applied.json");
+
+    [Fact]
+    public void Apply_Success_WritesPostUpdateMarkerWithVersionAndTime()
+    {
+        var env = new FakeUpdaterEnvironment { UtcNow = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero) };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.True(env.Files.ContainsKey(AppliedMarker));
+        PostUpdateRelaunchInfo info =
+            System.Text.Json.JsonSerializer.Deserialize<PostUpdateRelaunchInfo>(env.Files[AppliedMarker])!;
+        Assert.Equal("2.0.0", info.Version);       // Config's TargetVersion
+        Assert.Equal(env.UtcNow, info.AppliedAtUtc);
+    }
+
+    [Fact]
+    public void Apply_RolledBack_DoesNotWritePostUpdateMarker()
+    {
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("a.dll")] = "a-new";
+        env.Files[StagingPath("b.dll")] = "b-new";
+        env.Files[InstallPath("a.dll")] = "a-old";
+        env.Files[InstallPath("b.dll")] = "b-old";
+        env.Files[InstallPath("Game")] = "exe";
+        env.ThrowOnCopyFrom.Add(StagingPath("b.dll")); // b never copies -> rollback
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "a.dll", "b.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        Assert.False(env.Files.ContainsKey(AppliedMarker)); // rolled back: never signalled a completed update
+    }
+
+    [Fact]
+    public void Apply_CodeSignatureInvalid_DoesNotWritePostUpdateMarker()
+    {
+        // Rolls back AFTER files were copied but BEFORE commit, so this pins the marker to the commit boundary.
+        var env = new FakeUpdaterEnvironment { CodeSignatureValid = false };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.RolledBack, result.Outcome);
+        Assert.False(env.Files.ContainsKey(AppliedMarker));
+    }
+
+    [Fact]
+    public void Apply_GameStillRunning_DoesNotWritePostUpdateMarker()
+    {
+        var env = new FakeUpdaterEnvironment { ParentAlivePolls = 1000 }; // never exits within the budget
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.AbortedGameStillRunning, result.Outcome);
+        Assert.False(env.Files.ContainsKey(AppliedMarker)); // deferred, untouched: no signal
+    }
+
+    [Fact]
+    public void Apply_PostCommitSettleFailure_StillWrotePostUpdateMarker()
+    {
+        // The marker is stamped after commit and before the settle wait, so a post-commit finish failure
+        // must NOT lose it (the update did land).
+        var env = new FakeUpdaterEnvironment { ThrowOnSettleCheck = true };
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env);
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);
+        Assert.True(env.Files.ContainsKey(AppliedMarker));
+    }
+
+    [Fact]
+    public void Apply_PostUpdateMarkerWriteFails_UpdateStillSucceeds()
+    {
+        // A marker write failure is best-effort: it must never fail or roll back the committed update.
+        var env = new FakeUpdaterEnvironment();
+        env.Files[StagingPath("game.dll")] = "v2";
+        env.Files[InstallPath("game.dll")] = "v1";
+        env.Files[InstallPath("Game")] = "exe";
+        env.ThrowOnWriteTo.Add(AppliedMarker);
+
+        ApplyResult result = UpdateApplier.Apply(Config(new() { "game.dll" }), env); // must not throw
+
+        Assert.Equal(ApplyOutcome.Succeeded, result.Outcome);   // committed update stands
+        Assert.Equal("v2", env.Files[InstallPath("game.dll")]); // files installed
+        Assert.Equal(InstallPath("Game"), env.RelaunchedExe);   // and relaunched
+        Assert.False(env.Files.ContainsKey(AppliedMarker));     // the failed write left no marker
+        Assert.Contains(env.Log_, m => m.Contains("post-update marker")); // swallowed failure was logged
+    }
 }

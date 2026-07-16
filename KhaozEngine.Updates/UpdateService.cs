@@ -70,6 +70,14 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
     /// </summary>
     public bool PreviousUpdateInterrupted { get; private set; }
 
+    /// <summary>
+    /// Set (once, at construction) when this boot is a post-update auto-relaunch: carries the applied
+    /// version and the UTC apply-completion time read from the <c>update-applied.json</c> marker the shim
+    /// wrote just before relaunching. Null on an ordinary launch. The marker is read once and deleted, so a
+    /// later launch sees null again. A consumer can use it to suppress a boot-time "welcome back" prompt.
+    /// </summary>
+    public PostUpdateRelaunchInfo? PostUpdateRelaunch { get; private set; }
+
     /// <summary>Raised on every state transition and download-progress tick.</summary>
     public event Action? StateChanged;
 
@@ -96,6 +104,7 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         recheckIntervalSeconds = options.RecheckInterval is { TotalSeconds: > 0 } ri ? ri.TotalSeconds : 0.0;
 
         DetectInterruptedApply();
+        DetectPostUpdateRelaunch();
         CleanStaleStagingDirs();
         CleanStaleRelocateDirs();
     }
@@ -499,6 +508,47 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         catch
         {
             // Diagnostic only; never block startup on this.
+        }
+    }
+
+    /// <summary>
+    /// Reads and deletes the <c>update-applied.json</c> marker the updater shim writes just before it
+    /// relaunches the game after a successful apply, exposing it as <see cref="PostUpdateRelaunch"/>.
+    /// Mirrors <see cref="DetectInterruptedApply"/>: read once, then delete, so a later launch sees null.
+    /// A corrupt or unreadable marker is tolerated (left null) and still deleted so it never persists.
+    /// </summary>
+    private void DetectPostUpdateRelaunch()
+    {
+        string marker = Path.Combine(appDataDir, "update-applied.json");
+        try
+        {
+            if (!File.Exists(marker))
+            {
+                return;
+            }
+
+            try
+            {
+                PostUpdateRelaunchInfo? info = JsonSerializer.Deserialize(
+                    File.ReadAllText(marker), UpdatesJsonContext.Default.PostUpdateRelaunchInfo);
+                if (info is not null)
+                {
+                    PostUpdateRelaunch = info;
+                    log.Info($"Post-update relaunch: applied v{info.Version} at {info.AppliedAtUtc:o}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Corrupt or unreadable marker: tolerate it, leave PostUpdateRelaunch null, and fall through
+                // to the delete below so a bad file never persists across launches.
+                log.Info($"Ignoring unreadable post-update marker: {ex.Message}");
+            }
+
+            File.Delete(marker);
+        }
+        catch
+        {
+            // Diagnostic only, never block startup on this.
         }
     }
 

@@ -133,10 +133,11 @@ Ordered gap list (2026-07-07 feature audit):
 5. Water follow-ups (the animated water surface shipped in 10.28.0: `Scene3D.DrawWater` + `WaterSettings`,
    shore fade, sky-derived fresnel tint, sun glint, no reflections): shore foam, per-game wave tuning once
    Ruinborne adopts it, dropping the unused `Res` UBO field, and a water-footprint-scoped golden guard.
-6. Bloom follow-ups (the LDR threshold + separable-blur bloom shipped in 10.27.0, opt-in via
+6. Bloom follow-ups (the threshold + separable-blur bloom shipped in 10.27.0, opt-in via
    `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
-   and a second blur octave only if a game pulls for wider halos. The full HDR/tonemap pipeline is now planned
-   as Tier 1 of the AAA VFX program below (supersedes the earlier "not planned" call).
+   and a second blur octave only if a game pulls for wider halos. The HDR/tonemap pipeline shipped (float16 chain
+   + ACES filmic tonemap + pre-tonemap bloom, on by default, escape hatch `Post.Hdr.Enabled = false`), see the
+   CHANGELOG.
 7. Animation follow-ups (layered blending shipped in 10.31.0: `LayeredAnimator` with bone masks, override and
    local-frame additive layers, and one-shot or held actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
    placement) waits for adoption feedback, action-trigger replication stays a game-message pattern, and a
@@ -155,16 +156,11 @@ they sit on.
 
 **Tier 1 (one engine program, scoped 2026-07-16, next up for this domain):**
 
-1. HDR pipeline + filmic tonemap + HDR bloom. Float16 internal targets, emissive values above 1.0,
-   bloom moved pre-tonemap so hot cores saturate and halo naturally. The single biggest visual
-   multiplier, and it upgrades every glowing feature at once (particles, beams, trails, telegraphs,
-   sky, water glints). Must compose with the retro post path (palette/pixelation quantize after
-   tonemap) and forces a full golden rebake on all three backends.
-2. Flipbook particles with motion-vector blending. Atlas playback (per-particle frame index) plus
+1. Flipbook particles with motion-vector blending. Atlas playback (per-particle frame index) plus
    motion-vector frame interpolation in the particle pass, so offline-simmed smoke/fire/explosion
    sheets (EmberGen class) read fluid at low frame counts. Complements, not replaces, the procedural
    shapes: procedural stays the identity for sparks, glows, magic, rings.
-3. Screen-space distortion pass. Distortion particles write an offset buffer, the resolved scene
+2. Screen-space distortion pass. Distortion particles write an offset buffer, the resolved scene
    color re-samples through it: heat haze, refractive shockwaves, splash lensing. High AAA-feel per
    cost.
 

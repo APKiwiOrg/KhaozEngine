@@ -148,29 +148,42 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   // each frame, timeOfDay in [0,1) comes from YOUR game clock:
   SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
   ```
-- Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in LDR threshold +
+- Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in threshold +
   separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
   bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,
   blurs it separably (horizontal then vertical, `Radius` taps per side, gaussian weights via `BloomMath`), and adds
-  it back onto the full-resolution image at `Intensity` strength. Runs AFTER palette quantize + the edge outline
-  (so the glow composites on top of - and is never itself posterized/outlined by - the stylized chain) and BEFORE
-  FXAA (so FXAA also smooths the bloom composite's edges). Costs nothing when off (`Bloom.Enabled == false`, no
-  extra passes, no half-res targets allocated, existing scenes byte-stable); the half-res pair is lazily allocated
+  it back onto the full-resolution image at `Intensity` strength. In HDR mode (the default) it runs FIRST, on the
+  float16 scene BEFORE the tonemap (hot cores over 1.0 halo then desaturate through the filmic curve). In legacy
+  mode it runs AFTER palette quantize + the edge outline (so the glow composites on top of, and is never itself
+  posterized/outlined by, the stylized chain) and BEFORE FXAA. Costs nothing when off (`Bloom.Enabled == false`, no
+  extra passes, no half-res targets allocated, existing scenes byte-stable), the half-res pair is lazily allocated
   the first frame it is enabled and freed the frame it is disabled, re-derived from the CURRENT internal target size
   on every resize (works under both `RenderScale.FixedInternal` and `.MatchViewport`). Respects
   `TransparentBackground` (the composite pass preserves the source alpha unchanged, so bloom never resurrects an
-  alpha-0 background pixel into an opaque one). **LDR, not HDR**: the internal target is `R8G8B8A8UNorm` (no
-  over-1.0 headroom), so the bright-pass thresholds the already-tonemapped-to-[0,1] colour rather than a linear HDR
-  value - still a convincing glow on beams/emissive materials/bright billboards, but it will not bloom a surface
-  that is merely well-lit white. Lower `Threshold` for a softer cutoff. The pure math (`BloomMath`: the knee curve,
-  gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL bright-pass/blur shaders
-  exactly.
+  alpha-0 background pixel into an opaque one). HDR-aware threshold: in HDR mode the target is float16
+  (`R16G16B16A16Float`) and the bright-pass reads the PRE-tonemap scene, so `Threshold` sees luma over 1.0 (set it at
+  or above 1.0 to bloom only genuinely over-range content). In legacy mode the target is `R8G8B8A8UNorm` with no
+  over-1.0 headroom, so it thresholds the already-clamped-to-[0,1] colour (lower `Threshold` for a softer cutoff).
+  Either way it is a convincing glow on beams/emissive materials/bright billboards. The pure math (`BloomMath`: the
+  knee curve, gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL bright-pass/blur
+  shaders exactly.
+- HDR + filmic tonemap: `PixelPostProcessSettings.Hdr` (an `HdrSettings`, **on by default**) renders the internal
+  colour chain at float16 (`R16G16B16A16Float`) so shading carries values above 1.0, blooms the over-range
+  highlights BEFORE tonemapping, then maps the float scene back to LDR with a filmic `TonemapOperator` (`AcesFilmic`
+  default, `Reinhard`/`Clamp` alternates) modulated by `Exposure`. Hot cores desaturate toward white and roll off
+  instead of hard-clipping at the UNorm boundary, so every glowing feature (emissive, beams, particles, sky, water
+  glints, telegraphs) reads hotter at once. Authored via unclamped `Color` (a `new Color(4f, 2f, 1f)` emissive
+  carries four units of energy), no new per-material field. The retro passes (palette quantize, pixelation) and FXAA
+  run AFTER the tonemap, so a per-game retro look survives on top of HDR. Default behaviour changed: every consumer's
+  render shifts on repin. `Hdr.Enabled = false` restores the exact legacy UNorm chain and pass order BYTE-IDENTICAL
+  to the pre-HDR output (golden-proven via `scene3d_hdr_off`). Formats: only the colour targets flip, the
+  encoded-normal/linear-depth MRTs, the swapchain, and everything post-blit stay LDR.
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus
   `PixelPostProcessSettings.Water` (a `WaterSettings`, **default no request queued = no pass, no cost**) draws an
   opt-in animated water surface - a flat, alpha-blended, procedurally-perturbed plane with a fresnel-style blend
   between `DeepColor` and a sky-derived `HorizonColor`, a key-light specular sun glint (`GlintStrength`/
   `GlintExponent`), and depth-sampled shore fade (`ShoreFadeDistance`). **No reflections/probes** (out of scope) -
-  an LDR stylized surface. Drawn after the sky + ground decals, before the MRT resolve, with depth test ON (`Less`,
+  a stylized surface. Drawn after the sky + ground decals, before the MRT resolve, with depth test ON (`Less`,
   so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the outline
   pass reads is untouched - matching the ground-decal/beam/textured-billboard depth-interleave convention). Time is
   driven by the same `Scene3D.EffectTimeSeconds` clock the beam pulse/scroll uses (freeze it for a deterministic

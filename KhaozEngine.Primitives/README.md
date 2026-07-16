@@ -19,7 +19,10 @@ automatically, so this is transparent to every other package.
   Copy the struct to snapshot. Use `DeterministicRng` when you need resume or derived streams.
 - `MathUtil` - `Clamp01`, `Lerp`, `InverseLerp`, `SmoothStep(a, b, x)` (clamped Hermite).
 - `Easing` - `Linear`/`SmoothStep`/`EaseIn`/`EaseOut`/`EaseInOut`, all clamped to [0,1].
-- `ViewportMath` - `Fit` (letterbox) and `Cover` (crop) uniform-scale factors for aspect-preserving fits.
+- `ViewportMath` - `Fit` (letterbox) and `Cover` (crop) uniform-scale factors for aspect-preserving fits, plus
+  `CoverAnchored` (the rect form of `Cover`: cover a viewport at a uniform scale with the image's normalized
+  anchor pinned to a screen point, enlarged to reach every edge from an off-centre anchor - camera-tracked
+  backgrounds) and device-pixel snapping (`SnapToDevicePixel` / `SnapRectToDevice` / `SnapLengthToDevice`).
 - `Rect` - axis-aligned pixel rect (top-left origin) with `Contains`, the input hit-testing rect.
 - `RayMath` - allocation-free 3D ray-intersection helpers (`System.Numerics`), zero-dependency leaf math for
   editor picking and future spatial queries. `IntersectAabb(origin, direction, min, max, out tNear)` is a slab

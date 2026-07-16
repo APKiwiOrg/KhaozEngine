@@ -21,6 +21,50 @@ public static class ViewportMath
         => MathF.Max(dstWidth / srcWidth, dstHeight / srcHeight);
 
     /// <summary>
+    /// Destination rect for drawing a <paramref name="srcWidth"/> x <paramref name="srcHeight"/> image so it
+    /// COVERS <paramref name="viewport"/> at a uniform (aspect-preserving) scale, with the image's normalized
+    /// anchor (<paramref name="anchorU"/>, <paramref name="anchorV"/>, each 0..1) landing on <paramref name="anchor"/>.
+    /// This is the rect form of <see cref="Cover(float,float,float,float)"/>: <c>Cover</c> gives the scale for a
+    /// centred image, this gives the full rect for an image pinned by an arbitrary anchor - e.g. a camera-tracked
+    /// background whose focal point follows a pan/zoom. The image is enlarged as far as needed to reach every
+    /// viewport edge even when the anchor is off-centre (so no gap ever shows behind it), never below
+    /// <paramref name="minHeight"/> (the caller's desired resting size - pass 0 for a pure cover), then a
+    /// <paramref name="margin"/> (&gt;= 1) of slack is applied against sub-pixel edge seams. The result is
+    /// undistorted: width and height keep the source aspect ratio.
+    /// </summary>
+    /// <param name="srcWidth">Source image width. Only its ratio to <paramref name="srcHeight"/> matters.</param>
+    /// <param name="srcHeight">Source image height. A non-positive value is treated as a 1:1 aspect.</param>
+    /// <param name="viewport">The rectangle to cover, in the same space as <paramref name="anchor"/>.</param>
+    /// <param name="anchor">Screen point the source anchor is pinned to.</param>
+    /// <param name="anchorU">Normalized horizontal source anchor (0 = left edge, 0.5 = centre, 1 = right edge).</param>
+    /// <param name="anchorV">Normalized vertical source anchor (0 = top edge, 0.5 = centre, 1 = bottom edge).</param>
+    /// <param name="minHeight">Lower bound on the drawn height, so the image never shrinks below a desired scale.</param>
+    /// <param name="margin">Coverage slack multiplier (&gt;= 1); 1 is exact, ~1.02 hides sub-pixel edge seams.</param>
+    public static Rect CoverAnchored(float srcWidth, float srcHeight, Rect viewport, Vector2 anchor,
+        float anchorU = 0.5f, float anchorV = 0.5f, float minHeight = 0f, float margin = 1f)
+    {
+        float aspect = srcHeight > 0f ? srcWidth / srcHeight : 1f;
+
+        // Clamp the anchor off the 0/1 extremes so each side's "reach" is never zero (which would demand an
+        // infinite size). An anchor sitting on an edge still covers: the opposite side then drives the size.
+        float u = Math.Clamp(anchorU, 1e-3f, 1f - 1e-3f);
+        float v = Math.Clamp(anchorV, 1e-3f, 1f - 1e-3f);
+
+        float ax = anchor.X - viewport.X; // anchor relative to the viewport origin
+        float ay = anchor.Y - viewport.Y;
+
+        // Width the image must span so it reaches both the left and right viewport edges from the anchor, and the
+        // height for top/bottom. Fold the height requirement into a width via the aspect so one uniform size
+        // satisfies both axes; hold the caller's minimum; then apply the slack margin. Height derives from aspect.
+        float reqW = MathF.Max(ax / u, (viewport.Width - ax) / (1f - u));
+        float reqH = MathF.Max(ay / v, (viewport.Height - ay) / (1f - v));
+        float width = MathF.Max(MathF.Max(reqW, reqH * aspect), MathF.Max(minHeight, 0f) * aspect) * MathF.Max(1f, margin);
+        float height = width / aspect;
+
+        return new Rect(anchor.X - u * width, anchor.Y - v * height, width, height);
+    }
+
+    /// <summary>
     /// Snap an authoring coordinate so its mapped device pixel (<c>coord * scale + offset</c>) is a whole number,
     /// returned back in authoring units. A non-positive <paramref name="scale"/> (a non-pixel space) is a no-op.
     /// </summary>

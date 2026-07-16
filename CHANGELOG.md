@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.115.0
+
+Telegraph VFX polish: hollow-rim energy profile, vortex and warped-flow fills, and an outline dash runner. Additive
+minor on 10.113.0's modern telegraphs. The deep fill interior now dims so energy concentrates at the rim and the
+moving sweep front instead of pooling into a bright ball at the shape center, the noise fills read as wispy filaments
+and a Cartesian vortex swirl rather than uniform speckle, and Steel/Arcane gain rotating dash segments on the outline
+band. Legacy all-zero-lane decals render IEEE-identically, so the `telegraph_ground` goldens are unchanged.
+
+- `TelegraphStyle` gains `InteriorDim` (0 = legacy uniform fill, presets 0.35 to 0.6): the deep fill interior dims by
+  this fraction so the rim and the swept front stay bright while the center reads hollow. New `TelegraphAnim.OutlineRunner`
+  flag adds rotating dash segments along the outline band, set on the Steel and Arcane presets.
+- `ResolvedTelegraph` gains `InteriorDim` + `Runner` with a new 16-arg constructor. Both prior constructors are retained.
+  `TelegraphResolve` ramps `SweepGlow` in over the first fifth of the cast, so the early-cast glow band no longer floods
+  the tiny swept region at cast start.
+- `GroundDecal` gains `InteriorDim` + `Runner`, packed into the spare `PatternP.w` and `Energy.w` instance lanes, so the
+  decal instance layout does not grow.
+- Decal shader: `ScrollingNoise` is now domain-warped wispy filaments, `RadialNoise` is a Cartesian vortex swirl (spiral
+  arms, no polar center singularity), with filament-contrast fill mapping, a narrowed sweep-glow band, softer smaller
+  sparkle glints, and the outline dash runner. The zero-neutral contract holds: a decal with all new lanes at zero
+  renders bit-for-bit as before.
+- Goldens: `telegraph_modern` intentionally changed (rebaked on Metal, D3D11, and Vulkan). `telegraph_ground` and every
+  other golden are unchanged within tolerance.
+
 ## 10.114.0
 
 World-anchored sky sun disc: the sun now projects to its true world-space direction (point-at-infinity through

@@ -1722,8 +1722,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   ```
   - **The engine owns no clock.** `SunCycle.Evaluate` takes a plain `float timeOfDay` (0 is midnight, 0.5 is solar
     noon, any value wraps) and `SunCycleSettings` (latitude/declination/heading shape the sun arc, plus the
-    twilight/night elevation bands). The game owns the clock, ticks it, and decides how it advances; in an MMO the
-    server replicates the time to clients so every player sees the same sky.
+    twilight/night elevation bands). The game owns the clock, ticks it, and decides how it advances, and in an MMO
+    the server replicates the time to clients so every player sees the same sky.
   - **Night handling.** Below the horizon the sun disc hides (`Sky.SunEnabled = false`, `Sky.SunColor` faded to
     black) and the key light switches to a virtual moon placed opposite the sun, so `Post.LightDirection` still
     points somewhere downward instead of flipping to darkness. The key light dips to zero across the horizon

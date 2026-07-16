@@ -106,6 +106,15 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(Sample(), new RemoveExclusionCommand(0));
 
         [Fact]
+        public void RemoveExclusion_RangeGuardsIndex()
+        {
+            // Sample() carries exactly one exclusion (index 0), so -1 and 1 are both out of range.
+            var doc = Sample();
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new RemoveExclusionCommand(-1)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new RemoveExclusionCommand(1)));
+        }
+
+        [Fact]
         public void AddRegion_RoundTrips() =>
             AssertRoundTrip(Sample(), new AddRegionCommand(new MapRegion { Name = "camp", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 3f } }));
 
@@ -355,6 +364,15 @@ namespace KhaozEngine.Tests.MapEditor
             AssertRoundTrip(Sample(), new RemoveFeatureCommand(0));
 
         [Fact]
+        public void RemoveFeature_RangeGuardsIndex()
+        {
+            // Sample() carries exactly two features (indices 0-1), so -1 and 2 are both out of range.
+            var doc = Sample();
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new RemoveFeatureCommand(-1)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new RemoveFeatureCommand(2)));
+        }
+
+        [Fact]
         public void AddFeature_RestoresOnUndo_AndAffectsWorld()
         {
             var ed = new EditorDocument(Sample());
@@ -446,6 +464,36 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Throws<ArgumentOutOfRangeException>(() => new ReorderExclusionCommand(0, -2));
             // A valid-looking index that overruns the live list is caught precisely at apply time.
             Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new ReorderExclusionCommand(0, 5)));
+        }
+
+        [Fact]
+        public void RemoveCommand_BadIndex_Execute_LeavesDocumentHistoryAndVisibilityUntouched()
+        {
+            // A remove command's range guard throws from Apply BEFORE any document mutation. EditorHistory.Execute
+            // calls Apply first and only pushes the undo step / clears redo afterward, and EditorDocument.Execute
+            // only raises MarkWorldRebuild/CommandApplied/DocumentChanged after History.Execute returns - so a
+            // throwing Apply must leave the document, the undo/redo stacks, and (since visibility maintenance is
+            // itself driven off CommandApplied, the exact wiring MapEditorScene uses) the hide set all untouched.
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            var visibility = new EditorVisibility();
+            visibility.SetElementHidden(SelectionKind.Exclusion, "0", true);   // pre-existing hide on the one exclusion
+
+            int commandAppliedCount = 0, documentChangedCount = 0;
+            ed.CommandApplied += cmd => { commandAppliedCount++; if (cmd is IVisibilityEffect effect) effect.Effect.ApplyForward(visibility); };
+            ed.DocumentChanged += () => documentChangedCount++;
+
+            string before = Save(doc);
+            Assert.Throws<ArgumentOutOfRangeException>(() => ed.Execute(new RemoveExclusionCommand(5)));   // past-end
+
+            Assert.Equal(before, Save(doc));                          // document unchanged
+            Assert.Single(doc.Exclusions);
+            Assert.False(ed.History.CanUndo);                         // nothing pushed
+            Assert.Equal(0, ed.History.UndoDepth);
+            Assert.Equal(0, commandAppliedCount);                     // CommandApplied never fired
+            Assert.Equal(0, documentChangedCount);                    // DocumentChanged never fired
+            Assert.False(ed.WorldRebuildPending);
+            Assert.True(visibility.IsElementHidden(SelectionKind.Exclusion, "0"));   // hide survives untouched
         }
 
         [Fact]
@@ -1682,6 +1730,15 @@ namespace KhaozEngine.Tests.MapEditor
         [Fact]
         public void RemoveScatterOverride_RoundTrips() =>
             AssertRoundTrip(Sample(), new RemoveScatterOverrideCommand(0));
+
+        [Fact]
+        public void RemoveScatterOverride_RangeGuardsIndex()
+        {
+            // Sample() carries exactly one scatter override (index 0), so -1 and 1 are both out of range.
+            var doc = Sample();
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new RemoveScatterOverrideCommand(-1)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new RemoveScatterOverrideCommand(1)));
+        }
 
         [Fact]
         public void EditScatterOverrideShapeCommand_AppliesRevertsMerges()

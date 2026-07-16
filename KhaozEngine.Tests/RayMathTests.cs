@@ -51,5 +51,35 @@ namespace KhaozEngine.Tests
             Assert.True(RayMath.IntersectAabb(new Vector3(-5f, 0f, 0f), new Vector3(2f, 0f, 0f), Min, Max, out float t));
             Assert.Equal(2f, t, 4);
         }
+
+        [Fact]
+        public void ZeroLengthRay_HitsOnlyWhenOriginIsInside()
+        {
+            // A degenerate ray (no direction) never leaves the origin. Pinned semantics: it hits, at tNear 0, only
+            // when the origin already lies inside the box on every axis, and otherwise misses.
+            Assert.True(RayMath.IntersectAabb(Vector3.Zero, Vector3.Zero, Min, Max, out float t));
+            Assert.Equal(0f, t);
+            Assert.False(RayMath.IntersectAabb(new Vector3(5f, 0f, 0f), Vector3.Zero, Min, Max, out _));
+        }
+
+        [Fact]
+        public void NaNDirectionComponent_Misses()
+        {
+            // A NaN direction component used to fall through every comparison in SlabAxis (NaN comparisons are all
+            // false) and return true unconditionally, making it an always-pass slab. It must miss instead.
+            float nan = float.NaN;
+            Assert.False(RayMath.IntersectAabb(Vector3.Zero, new Vector3(nan, 1f, 1f), Min, Max, out _));
+            Assert.False(RayMath.IntersectAabb(Vector3.Zero, new Vector3(1f, nan, 1f), Min, Max, out _));
+            Assert.False(RayMath.IntersectAabb(Vector3.Zero, new Vector3(1f, 1f, nan), Min, Max, out _));
+        }
+
+        [Fact]
+        public void NaNOriginComponent_Misses()
+        {
+            float nan = float.NaN;
+            Assert.False(RayMath.IntersectAabb(new Vector3(nan, 0f, 0f), new Vector3(1f, 1f, 1f), Min, Max, out _));
+            Assert.False(RayMath.IntersectAabb(new Vector3(0f, nan, 0f), new Vector3(1f, 1f, 1f), Min, Max, out _));
+            Assert.False(RayMath.IntersectAabb(new Vector3(0f, 0f, nan), new Vector3(1f, 1f, 1f), Min, Max, out _));
+        }
     }
 }

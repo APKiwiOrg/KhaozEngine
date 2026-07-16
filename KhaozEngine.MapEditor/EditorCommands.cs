@@ -1085,6 +1085,9 @@ public sealed class RemoveExclusionCommand : EditorCommand, IVisibilityEffect
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
+        int count = doc.Exclusions.Count;
+        if (_index < 0 || _index >= count)
+            throw new ArgumentOutOfRangeException(nameof(_index), _index, $"RemoveExclusionCommand: index is out of range (count {count}).");
         _removed = doc.Exclusions[_index];
         doc.Exclusions.RemoveAt(_index);
     }
@@ -1282,6 +1285,9 @@ public sealed class RemoveScatterOverrideCommand : EditorCommand, IVisibilityEff
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
+        int count = doc.ScatterOverrides.Count;
+        if (_index < 0 || _index >= count)
+            throw new ArgumentOutOfRangeException(nameof(_index), _index, $"RemoveScatterOverrideCommand: index is out of range (count {count}).");
         _removed = doc.ScatterOverrides[_index];
         doc.ScatterOverrides.RemoveAt(_index);
     }
@@ -2256,6 +2262,9 @@ public sealed class RemoveFeatureCommand : EditorCommand, IVisibilityEffect
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
+        int count = doc.Terrain.Features.Count;
+        if (_index < 0 || _index >= count)
+            throw new ArgumentOutOfRangeException(nameof(_index), _index, $"RemoveFeatureCommand: index is out of range (count {count}).");
         _removed = doc.Terrain.Features[_index];
         doc.Terrain.Features.RemoveAt(_index);
     }

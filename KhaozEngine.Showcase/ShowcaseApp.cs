@@ -113,6 +113,12 @@ namespace KhaozEngine.Showcase
             Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomWorldTitle, ShowcaseStrings.RoomWorldBlurb,
                 () => new Room3D().Init(Scene, _white, dpi22, _hud)));
 
+            // RoomVfx is the particles + modern VFX room: the nine authored VfxPresets played through a
+            // ParticleEffectPlayer and drawn with Render3D's modern particle pass (bloom on by default), on the same
+            // shared Scene3D as Room3D. Its bloom / HDR toggles toast through the shared hud.
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomVfxTitle, ShowcaseStrings.RoomVfxBlurb,
+                () => new RoomVfx().Init(Scene, _hud)));
+
             // RoomNet is the networked-walk room: authoritative WorldServer + local WorldClient over loopback UDP,
             // demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D. Its live
             // net stats surface through the chrome status line (no toggles, so no hud toasts needed).

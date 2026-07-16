@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.Physics;
@@ -24,8 +25,19 @@ namespace KhaozEngine.Showcase
     /// showcase's shared Scene3D (injected via Init, since a GameScene cannot reach the app's 3D surface). Builds
     /// its world in OnEnter and tears it down in OnExit (the Scene3D is shared with the other rooms, so it must
     /// leave no camera override or loaded ring behind). Esc returns to the menu.</summary>
-    public sealed class Room3D : GameScene, IGameScene3D
+    public sealed class Room3D : GameScene, IGameScene3D, IShowcaseRoom
     {
+        static readonly StringId[] Hints = { ShowcaseStrings.ControlsWorld1, ShowcaseStrings.ControlsWorld2 };
+
+        public StringId Title => ShowcaseStrings.RoomWorldTitle;
+        public IReadOnlyList<StringId> ControlsHints => Hints;
+
+        // The chrome's status line: the GPU-skinning A/B readout while an animated character is loaded (else null,
+        // so the chrome shows no status). Same content the old ad-hoc OnDrawUi HUD drew, now in the shared spot.
+        public string? StatusLine => _animated
+            ? $"Skinning: {(_scene.UseGpuSkinning ? "GPU (fold-matrix)" : "CPU")}   [F]   drawn {_scene.DrawnSkinnedInstances} / culled {_scene.CulledSkinnedInstances}"
+            : null;
+
         // distance-cull ring for instanced props around the focus point (matches TerrainWalkSample's PropDrawRadius).
         const float PropDrawRadius = 90f;
 
@@ -65,7 +77,8 @@ namespace KhaozEngine.Showcase
 
         Scene3D _scene = null!;
         Texture2D _white = null!;
-        DpiFont _hud = null!;
+        DpiFont _hudFont = null!;      // point-space overlay font (the F2 collision legend)
+        ShowcaseHud _hud = null!;      // shared chrome: toggle toasts land here
 
         // Guards OnExit against running before OnEnter has built the per-enter state (and OnEnter against
         // leftover state from a previous visit), so the room can be entered and exited repeatedly against the
@@ -161,9 +174,9 @@ namespace KhaozEngine.Showcase
         // steps to the same place Render3DSample does.
         int _palIdx = 2;
 
-        public Room3D Init(Scene3D scene, Texture2D white, DpiFont hud)
+        public Room3D Init(Scene3D scene, Texture2D white, DpiFont hudFont, ShowcaseHud hud)
         {
-            _scene = scene; _white = white; _hud = hud;
+            _scene = scene; _white = white; _hudFont = hudFont; _hud = hud;
             return this;
         }
 
@@ -342,21 +355,21 @@ namespace KhaozEngine.Showcase
             {
                 post.RenderScale = post.RenderScale == RenderScale.MatchViewport
                     ? RenderScale.FixedInternal : RenderScale.MatchViewport;
-                Console.WriteLine($"[post] RenderScale = {post.RenderScale}");
+                _hud.Toast($"[post] RenderScale = {post.RenderScale}");
             }
             if (Manager!.Input.WasPressed(Key.O))
             {
                 post.Outline = !post.Outline;
-                Console.WriteLine($"[post] Outline = {post.Outline}");
+                _hud.Toast($"[post] Outline = {post.Outline}");
             }
-            if (Manager!.Input.WasPressed(Key.L)) { post.OutlineDepthThreshold = MathF.Min(2f, post.OutlineDepthThreshold + 0.05f); Console.WriteLine($"[post] OutlineDepthThreshold = {post.OutlineDepthThreshold:0.00}"); }
-            if (Manager!.Input.WasPressed(Key.K)) { post.OutlineDepthThreshold = MathF.Max(0f, post.OutlineDepthThreshold - 0.05f); Console.WriteLine($"[post] OutlineDepthThreshold = {post.OutlineDepthThreshold:0.00}"); }
-            if (Manager!.Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
-            if (Manager!.Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); Console.WriteLine($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
+            if (Manager!.Input.WasPressed(Key.L)) { post.OutlineDepthThreshold = MathF.Min(2f, post.OutlineDepthThreshold + 0.05f); _hud.Toast($"[post] OutlineDepthThreshold = {post.OutlineDepthThreshold:0.00}"); }
+            if (Manager!.Input.WasPressed(Key.K)) { post.OutlineDepthThreshold = MathF.Max(0f, post.OutlineDepthThreshold - 0.05f); _hud.Toast($"[post] OutlineDepthThreshold = {post.OutlineDepthThreshold:0.00}"); }
+            if (Manager!.Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); _hud.Toast($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
+            if (Manager!.Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); _hud.Toast($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
             // Starfield background (A) and cel-shading bands (C), matching Render3DSample's A and C handlers.
-            if (Manager!.Input.WasPressed(Key.A)) { post.Starfield = !post.Starfield; Console.WriteLine($"[post] Starfield = {post.Starfield}"); }
-            if (Manager!.Input.WasPressed(Key.C)) { post.CelBands = post.CelBands == 0 ? 4 : 0; Console.WriteLine($"[post] CelBands = {post.CelBands}"); }
+            if (Manager!.Input.WasPressed(Key.A)) { post.Starfield = !post.Starfield; _hud.Toast($"[post] Starfield = {post.Starfield}"); }
+            if (Manager!.Input.WasPressed(Key.C)) { post.CelBands = post.CelBands == 0 ? 4 : 0; _hud.Toast($"[post] CelBands = {post.CelBands}"); }
 
             // Retro combo (R): toggles quantize+dither+pixelated together, cel bands, and the internal render
             // resolution, matching Render3DSample's R handler exactly.
@@ -366,20 +379,20 @@ namespace KhaozEngine.Showcase
                 post.Quantize = post.Dither = post.Pixelated = on;
                 post.CelBands = on ? 4 : 0;
                 post.RenderWidth = on ? 320 : 1920; post.RenderHeight = on ? 180 : 1080;
-                Console.WriteLine($"[post] Retro = {on}");
+                _hud.Toast($"[post] Retro = {on}");
             }
             // Palette cycle (P): steps ActivePalette through Palettes.All, matching Render3DSample's P handler.
             if (Manager!.Input.WasPressed(Key.P))
             {
                 _palIdx = (_palIdx + 1) % Palettes.All.Length;
                 post.ActivePalette = Palettes.All[_palIdx];
-                Console.WriteLine("[post] palette: " + post.ActivePalette.Name);
+                _hud.Toast("[post] palette: " + post.ActivePalette.Name);
             }
 
             if (Manager!.Input.WasPressed(Key.F2))
             {
                 _collisionOverlay.Enabled = !_collisionOverlay.Enabled;
-                Console.WriteLine($"[overlay] Collision shape overlay = {_collisionOverlay.Enabled}");
+                _hud.Toast($"[overlay] Collision shape overlay = {_collisionOverlay.Enabled}");
             }
 
             // GPU-skinning A/B (F): flip Scene3D.UseGpuSkinning live so the windowed skinned avatar can be eyeballed
@@ -388,7 +401,7 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.F))
             {
                 _scene.UseGpuSkinning = !_scene.UseGpuSkinning;
-                Console.WriteLine($"[skinning] UseGpuSkinning = {_scene.UseGpuSkinning} ({(_scene.UseGpuSkinning ? "GPU fold-matrix" : "CPU")})");
+                _hud.Toast($"[skinning] UseGpuSkinning = {_scene.UseGpuSkinning} ({(_scene.UseGpuSkinning ? "GPU fold-matrix" : "CPU")})");
             }
 
             // Physics world ticks once per frame before movement so newly-streamed props are registered.
@@ -486,23 +499,18 @@ namespace KhaozEngine.Showcase
             _collisionOverlay.Draw(scene);
         }
 
-        // The collision-legend overlay draws through the point-space UI pass, so its text is crisp on HiDPI.
+        // The collision-legend overlay draws through the point-space UI pass, so its text is crisp on HiDPI. Its
+        // viewport is shifted down 44 points so the anchored panel clears the shared chrome's title band. The
+        // skinning A/B readout is no longer drawn here: it is the chrome's StatusLine (see the property above).
         public override void OnDrawUi(SpriteBatch batch)
         {
             var ui = Manager!.UiViewport;
             if (ui is null) return;
             if (_collisionOverlay.Enabled)
-                _legend.Draw(batch, _hud.For(ui.DpiScale), _white, ui.DesignBounds);
-
-            // GPU-skinning A/B HUD (dev diagnostic): the active skinning path + the last frame's skinned draw counts,
-            // so the windowed CPU-vs-GPU check (F toggles) reads the state at a glance.
-            if (_animated)
             {
-                var font = _hud.For(ui.DpiScale);
-                string path = _scene.UseGpuSkinning ? "GPU (fold-matrix)" : "CPU";
-                string line = $"Skinning: {path}   [F]   drawn {_scene.DrawnSkinnedInstances} / culled {_scene.CulledSkinnedInstances}";
-                var color = _scene.UseGpuSkinning ? new Color(0.5f, 0.95f, 0.6f, 1f) : new Color(0.95f, 0.85f, 0.5f, 1f);
-                batch.DrawString(font, line, new Vector2(16f, ui.DesignBounds.Height - 40f), color);
+                Rect legendBounds = ui.DesignBounds;
+                legendBounds = new Rect(legendBounds.X, legendBounds.Y + 44f, legendBounds.Width, legendBounds.Height - 44f);
+                _legend.Draw(batch, _hudFont.For(ui.DpiScale), _white, legendBounds);
             }
         }
 

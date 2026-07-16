@@ -59,6 +59,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.ParticleVert, ShaderSources.ParticleFrag, "Particle");
 
         [Fact]
+        public void Distortion()
+            => ShaderValidation.ValidatePair(ShaderSources.DistortionVert, ShaderSources.DistortionFrag, "Distortion");
+
+        [Fact]
         public void Beam()
             => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamFrag, "Beam");
 
@@ -93,6 +97,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void PostFxaa()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.FxaaFrag, "PostFxaa");
+
+        [Fact]
+        public void Tonemap()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TonemapFrag, "Tonemap");
+
+        [Fact]
+        public void PostDistortionApply()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.DistortionApplyFrag, "PostDistortionApply");
 
         [Fact]
         public void PostBloomBright()

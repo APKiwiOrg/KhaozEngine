@@ -52,6 +52,39 @@ namespace KhaozEngine.Tests.ParticlesRender3D
         });
 
         [GpuFact]
+        public void DrawParticles_ActiveDistortion_EmitsDistortionSpritesNotParticles() => WithScene(scene =>
+        {
+            var sys = new ParticleSystem(64, seed: 7);
+            sys.Emit(Config(5f), Vector3.Zero, 10);
+            var look = new ParticleLook
+            {
+                Orientation = ParticleOrientation.FlatGround,
+                Distortion = new DistortionLook { Shape = DistortionShape.Ripple, Strength = 1.5f, SoftFadeScale = 0.12f },
+            };
+
+            scene.Begin();
+            scene.DrawParticles(sys, in look);
+
+            Assert.Equal(sys.ActiveCount, scene.DistortionSpriteCount);
+            Assert.Equal(0, scene.ParticleSpriteCount);   // an active-distortion look draws no visible sprite
+        });
+
+        [GpuFact]
+        public void DrawParticles_InactiveDistortion_EmitsParticlesAsBefore() => WithScene(scene =>
+        {
+            var sys = new ParticleSystem(64, seed: 7);
+            sys.Emit(Config(5f), Vector3.Zero, 10);
+            // Default look (no distortion) still queues particle sprites, none as distortion.
+            var look = new ParticleLook { Shape = ParticleShape.SoftGlow, Blend = BillboardBlend.Additive };
+
+            scene.Begin();
+            scene.DrawParticles(sys, in look);
+
+            Assert.Equal(sys.ActiveCount, scene.ParticleSpriteCount);
+            Assert.Equal(0, scene.DistortionSpriteCount);
+        });
+
+        [GpuFact]
         public void DrawParticles_ForwardsTrails_WhenEnabledAndCapacityPresent() => WithScene(scene =>
         {
             var sys = new ParticleSystem(64, seed: 7, trailSamples: 8);

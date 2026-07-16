@@ -58,22 +58,47 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Gui.Title" xml:space="preserve"><value>GUI + Widgets</value></data>
-  <data name="Menu.Settings" xml:space="preserve"><value>Settings</value></data>
-  <data name="Menu.Widgets" xml:space="preserve"><value>Widgets</value></data>
-  <data name="Menu.Immediate" xml:space="preserve"><value>Immediate</value></data>
-  <data name="Menu.OverlayDemo" xml:space="preserve"><value>Overlay demo</value></data>
-  <data name="Menu.PatchNotes" xml:space="preserve"><value>Patch Notes</value></data>
-  <data name="Menu.Toasts" xml:space="preserve"><value>Toasts</value></data>
-  <data name="Menu.Footer" xml:space="preserve"><value>Settings = core widgets    Widgets = heavy widgets    Immediate = GuiSurface    Overlay demo = push/pop    Patch Notes = changelog    Esc for menu</value></data>
+  <data name="Hub.Title" xml:space="preserve"><value>KhaozEngine Showcase</value></data>
+  <data name="Hub.Subtitle" xml:space="preserve"><value>Interactive tours of the engine's systems</value></data>
+  <data name="Hub.Hint" xml:space="preserve"><value>Arrows select  Enter opens  Esc leaves a room</value></data>
+  <data name="Hub.EngineVersion" xml:space="preserve"><value>KhaozEngine {0}</value></data>
+  <data name="Room.Gui2D.Title" xml:space="preserve"><value>2D &amp; GUI</value></data>
+  <data name="Room.Gui2D.Blurb" xml:space="preserve"><value>Sprites, text, widgets, input gestures and audio in one toolkit tour</value></data>
+  <data name="Room.MiniGame.Title" xml:space="preserve"><value>Mini-game: Catcher</value></data>
+  <data name="Room.MiniGame.Blurb" xml:space="preserve"><value>A tiny complete game: screen stack, input, HUD and looping music</value></data>
+  <data name="Room.Boot.Title" xml:space="preserve"><value>Boot screen</value></data>
+  <data name="Room.Boot.Blurb" xml:space="preserve"><value>Turn-key startup pipeline with staged progress and error retry</value></data>
+  <data name="Room.World.Title" xml:space="preserve"><value>3D overworld</value></data>
+  <data name="Room.World.Blurb" xml:space="preserve"><value>Streamed terrain, a town, physics and an animated character</value></data>
+  <data name="Room.Net.Title" xml:space="preserve"><value>Networked walk</value></data>
+  <data name="Room.Net.Blurb" xml:space="preserve"><value>Authoritative server with prediction and reconciliation over loopback</value></data>
+  <data name="Room.Dungeon.Title" xml:space="preserve"><value>Dungeon walk</value></data>
+  <data name="Room.Dungeon.Blurb" xml:space="preserve"><value>Generated multi-floor dungeon with walkable stairs</value></data>
+  <data name="Room.MapEditor.Title" xml:space="preserve"><value>Map editor</value></data>
+  <data name="Room.MapEditor.Blurb" xml:space="preserve"><value>The in-engine world editor over a demo map (Shift+Esc exits)</value></data>
+  <data name="Controls.Gui2D" xml:space="preserve"><value>Tab or Shift+Tab switch tabs  Esc back</value></data>
+  <data name="Controls.MiniGame" xml:space="preserve"><value>A/D or arrow keys move  Esc menu</value></data>
+  <data name="Controls.Boot" xml:space="preserve"><value>Enter replay  F toggle a failing step  Esc menu</value></data>
+  <data name="Controls.World1" xml:space="preserve"><value>WASD move  Shift run  Space jump  Right-drag orbit  Scroll zoom</value></data>
+  <data name="Controls.World2" xml:space="preserve"><value>O outline  C cel  R retro  P palette  A starfield  F2 collision  F skinning  M scale  L/K H/G thresholds</value></data>
+  <data name="Controls.Net" xml:space="preserve"><value>WASD move  Shift run  Space jump  Right-drag orbit  F1 diagnostics</value></data>
+  <data name="Controls.Dungeon" xml:space="preserve"><value>WASD move  Space jump  Right-drag orbit  O outline</value></data>
+  <data name="Tab.Widgets" xml:space="preserve"><value>Widgets</value></data>
+  <data name="Tab.Sprites" xml:space="preserve"><value>Sprites &amp; text</value></data>
+  <data name="Tab.Input" xml:space="preserve"><value>Input &amp; audio</value></data>
+  <data name="Tab.Immediate" xml:space="preserve"><value>Immediate mode</value></data>
+  <data name="Tab.Screens" xml:space="preserve"><value>Screens &amp; dialogs</value></data>
   <data name="Settings.Title" xml:space="preserve"><value>Settings</value></data>
   <data name="Settings.Volume" xml:space="preserve"><value>Volume</value></data>
   <data name="Settings.Fullscreen" xml:space="preserve"><value>Fullscreen</value></data>
   <data name="Settings.Help" xml:space="preserve"><value>Drag the slider or toggle the switch. This help text wraps to the panel width via TextLayout.</value></data>
-  <data name="Widgets.Title" xml:space="preserve"><value>Widgets</value></data>
+  <data name="Widgets.SectionForm" xml:space="preserve"><value>Form widgets</value></data>
+  <data name="Widgets.SectionHud" xml:space="preserve"><value>HUD widgets</value></data>
+  <data name="Widgets.SectionSkin" xml:space="preserve"><value>Skinned chrome</value></data>
   <data name="Widgets.Name" xml:space="preserve"><value>Name</value></data>
   <data name="Widgets.NamePlaceholder" xml:space="preserve"><value>type a name</value></data>
   <data name="Widgets.Difficulty" xml:space="preserve"><value>Difficulty</value></data>
+  <data name="Widgets.PartySize" xml:space="preserve"><value>Party size</value></data>
   <data name="Widgets.List" xml:space="preserve"><value>Scrollable list (wheel / drag)</value></data>
   <data name="Widgets.HoverForTip" xml:space="preserve"><value>hover for tip</value></data>
   <data name="Widgets.Confirm" xml:space="preserve"><value>Confirm...</value></data>
@@ -82,14 +107,32 @@
   <data name="Widgets.TipLine2" xml:space="preserve"><value>it would clip the top.</value></data>
   <data name="Widgets.Hotbar" xml:space="preserve"><value>Slot grid + progress</value></data>
   <data name="Widgets.Loading" xml:space="preserve"><value>Loading {0}%</value></data>
-  <data name="Widgets.SkinTitle" xml:space="preserve"><value>Skinned chrome + bars</value></data>
+  <data name="Widgets.CastBar" xml:space="preserve"><value>Cast bar</value></data>
+  <data name="Widgets.Pips" xml:space="preserve"><value>Pips</value></data>
+  <data name="Widgets.Resource" xml:space="preserve"><value>Resource</value></data>
   <data name="Widgets.SkinButton" xml:space="preserve"><value>Skinned</value></data>
   <data name="Widgets.SkinPanel" xml:space="preserve"><value>9-slice frame</value></data>
-  <data name="Overlay.Title" xml:space="preserve"><value>Overlay demo</value></data>
-  <data name="Overlay.Hint" xml:space="preserve"><value>Push overlay puts a transparent, dismissable pause screen on top of this one.</value></data>
-  <data name="Overlay.Push" xml:space="preserve"><value>Push overlay</value></data>
-  <data name="Overlay.Paused" xml:space="preserve"><value>PAUSED - Esc to resume</value></data>
-  <data name="Overlay.Resume" xml:space="preserve"><value>Resume</value></data>
+  <data name="Sprites.SectionSprites" xml:space="preserve"><value>Textured sprites</value></data>
+  <data name="Sprites.SectionText" xml:space="preserve"><value>Runtime TTF text</value></data>
+  <data name="Sprites.CaptionScale" xml:space="preserve"><value>Scale series</value></data>
+  <data name="Sprites.CaptionTint" xml:space="preserve"><value>Tint series</value></data>
+  <data name="Sprites.CaptionAlpha" xml:space="preserve"><value>Alpha series</value></data>
+  <data name="Input.Gesture" xml:space="preserve"><value>Gesture</value></data>
+  <data name="Input.Clock" xml:space="preserve"><value>Clock</value></data>
+  <data name="Input.SimTime" xml:space="preserve"><value>Sim time</value></data>
+  <data name="Input.LastSfx" xml:space="preserve"><value>Last SFX</value></data>
+  <data name="Input.Gamepad" xml:space="preserve"><value>Gamepad</value></data>
+  <data name="Input.Clipboard" xml:space="preserve"><value>Clipboard</value></data>
+  <data name="Input.Keys" xml:space="preserve"><value>Drag the box  Tap  Long-press resets  Space pause  1/2/3 speed  Z blip  X 3D thud  C/V clipboard</value></data>
+  <data name="Screens.Intro" xml:space="preserve"><value>Screens stack: modals freeze what is beneath, overlays show it through a scrim.</value></data>
+  <data name="Screens.Settings" xml:space="preserve"><value>Settings dialog</value></data>
+  <data name="Screens.SettingsCaption" xml:space="preserve"><value>A modal dialog with keyboard and gamepad focus</value></data>
+  <data name="Screens.Overlay" xml:space="preserve"><value>Pause overlay</value></data>
+  <data name="Screens.OverlayCaption" xml:space="preserve"><value>A transparent overlay that freezes this screen</value></data>
+  <data name="Screens.PatchNotes" xml:space="preserve"><value>Patch notes</value></data>
+  <data name="Screens.PatchNotesCaption" xml:space="preserve"><value>The turn-key player changelog panel</value></data>
+  <data name="Screens.Toasts" xml:space="preserve"><value>Toast stack</value></data>
+  <data name="Screens.ToastsCaption" xml:space="preserve"><value>Transient notifications: kinds, sticky, keyed replace</value></data>
   <data name="Toasts.Title" xml:space="preserve"><value>Toast Stack</value></data>
   <data name="Toasts.Standard" xml:space="preserve"><value>Standard toast</value></data>
   <data name="Toasts.Warning" xml:space="preserve"><value>Warning toast</value></data>
@@ -102,6 +145,14 @@
   <data name="Toasts.DangerMessage" xml:space="preserve"><value>That failed.</value></data>
   <data name="Toasts.StickyMessage" xml:space="preserve"><value>This one sticks around until you tap it.</value></data>
   <data name="Toasts.CounterMessage" xml:space="preserve"><value>Updated {0} times</value></data>
+  <data name="Overlay.Paused" xml:space="preserve"><value>PAUSED - Esc to resume</value></data>
+  <data name="Overlay.Resume" xml:space="preserve"><value>Resume</value></data>
+  <data name="MiniGame.Title" xml:space="preserve"><value>CATCHER</value></data>
+  <data name="MiniGame.Tagline" xml:space="preserve"><value>Catch the falling blocks</value></data>
+  <data name="MiniGame.Score" xml:space="preserve"><value>Score {0}</value></data>
+  <data name="MiniGame.Lives" xml:space="preserve"><value>Lives {0}</value></data>
+  <data name="MiniGame.FinalScore" xml:space="preserve"><value>Final score: {0}</value></data>
+  <data name="MiniGame.GameOver" xml:space="preserve"><value>GAME OVER</value></data>
   <data name="MiniGame.Play" xml:space="preserve"><value>Play</value></data>
   <data name="MiniGame.BackToMenu" xml:space="preserve"><value>Back to menu</value></data>
   <data name="MiniGame.Retry" xml:space="preserve"><value>Retry</value></data>
@@ -118,5 +169,4 @@
   <data name="Boot.StepAssets" xml:space="preserve"><value>Loading textures</value></data>
   <data name="Boot.StepAudio" xml:space="preserve"><value>Loading audio</value></data>
   <data name="Boot.StepWorld" xml:space="preserve"><value>Warming shaders</value></data>
-  <data name="Boot.Hint" xml:space="preserve"><value>Esc: menu    Enter: replay    F: toggle a forced failure</value></data>
 </root>

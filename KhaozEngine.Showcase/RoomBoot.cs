@@ -15,11 +15,17 @@ namespace KhaozEngine.Showcase
     /// Boot-screen demo: drives a real <see cref="BootPipeline"/> of fake, delayed loading steps (one determinate,
     /// one indeterminate, one determinate) through the same <see cref="BootScreenRenderer"/> the turn-key
     /// <see cref="BootScreen"/> uses. Enter replays the sequence, F toggles a forced failure to show the error +
-    /// retry state, Escape returns to the showcase menu. Like the other rooms the app injects the texture / font (a
-    /// <see cref="GameScene"/> cannot reach the device). The boot screen itself needs only those, no game assets.
+    /// retry state, Escape returns to the showcase menu (the controls hint is the shared chrome's bottom band now,
+    /// not drawn here). Like the other rooms the app injects the texture / font (a <see cref="GameScene"/> cannot
+    /// reach the device). The boot screen itself needs only those, no game assets.
     /// </summary>
-    public sealed class RoomBoot : GameScene
+    public sealed class RoomBoot : GameScene, IShowcaseRoom
     {
+        static readonly StringId[] Hints = { ShowcaseStrings.ControlsBoot };
+
+        public StringId Title => ShowcaseStrings.RoomBootTitle;
+        public IReadOnlyList<StringId> ControlsHints => Hints;
+
         Texture2D _white = null!;
         DpiFont _font = null!;
         GuiSurface _gui = null!;
@@ -113,16 +119,12 @@ namespace KhaozEngine.Showcase
                 ? new Rect(0f, 0f, ui.Width, ui.Height)
                 : new Rect(0f, 0f, m.FrameWidth, m.FrameHeight);
             float dpiScale = ui?.DpiScale ?? 1f;
-            float hintY = (ui?.Height ?? m.FrameHeight) - 28f;
 
             _gui.Begin(batch, m.UiPointer ?? new Pointer());
             BootScreenRenderer.Draw(batch, _gui, _white, _font, dpiScale, bounds, _pipeline.Snapshot(), _theme,
                 allowRetry: true, allowQuit: false, _elapsed, out bool retry, out _);
             if (retry) _pipeline.Retry();
-
-            // Room controls hint along the bottom (localized). Baked at its device size (0.5 * dpiScale) so it is crisp.
-            LocalizedText hint = ShowcaseStrings.BootHint;
-            batch.DrawString(_font.For(0.5f * dpiScale), hint.Resolve(), new Vector2(16f, hintY), new Color(0.7f, 0.75f, 0.85f, 1f), 0.5f);
+            // The controls hint (Enter replay / F toggle a failing step / Esc menu) is the shared chrome's bottom band.
         }
     }
 }

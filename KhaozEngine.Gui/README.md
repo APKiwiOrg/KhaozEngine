@@ -219,7 +219,7 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `PropertyGrid` tracks the row under the pointer during `Update` as `HoveredRow` (`PropertyRow?`, null
     when the pointer is over no row or in the gap between rows) plus a public `RowLabelBounds(int)` (was
     private) returning that row's label rect. A host draws its own `Tooltip` after the grid's `Draw`
-    (escaping the grid's scissor, the same pattern `PatchNotesView` and `RoomGui` use), anchored to
+    (escaping the grid's scissor, the same pattern `PatchNotesView` and `Room2DGui` use), anchored to
     `RowLabelBounds` of `HoveredRow`'s index, showing `HoveredRow.Description` immediately on hover with no
     delay infra. `HeaderRow` is a `PropertyRow` with no getter/setter and `SpansFullWidth` true: a
     full-width label band with a distinct background fill and a 24f row height (vs the default 28f), used

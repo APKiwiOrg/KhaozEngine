@@ -170,6 +170,26 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void ToneUbo_MarshalSize_EqualsToneBufferAllocation()
+        {
+            // GLSL: Tone { vec4 Params; } = 1 vec4 = 16 bytes (TonemapFrag).
+            Assert.Equal(16u, PixelPostProcess.ToneBufferBytes);
+            Assert.Equal(
+                (int)PixelPostProcess.ToneBufferBytes,
+                Marshal.SizeOf<PixelPostProcess.ToneUbo>());
+        }
+
+        [Fact]
+        public void ApplyUbo_MarshalSize_EqualsApplyBufferAllocation()
+        {
+            // GLSL: Apply { vec4 Params; } = 1 vec4 = 16 bytes (DistortionApplyFrag).
+            Assert.Equal(16u, PixelPostProcess.ApplyBufferBytes);
+            Assert.Equal(
+                (int)PixelPostProcess.ApplyBufferBytes,
+                Marshal.SizeOf<PixelPostProcess.ApplyUbo>());
+        }
+
+        [Fact]
         public void BlurScratch_MatchesBlurBuffer_And_GlslWeightsArray()
         {
             // The Blur block is `vec4 Texel; vec4 Params; vec4 Weights[BlurWeightSlots];`. The CPU scratch mirrors
@@ -360,6 +380,33 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 HorizonColor;", "vec4 WaveParams;", "vec4 ShoreGlint;", "vec4 Res;" })
                 Assert.True(ShaderSources.WaterVert.Contains(member),
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
+        }
+
+        // ---- Distortion offset-field pass UBO (DistortionRenderer) ----
+
+        [Fact]
+        public void DistortionFrameUbo_MarshalSize_EqualsFrameBufferBytes_And_GlslBlock()
+        {
+            // GLSL Frame block: 2 mat4 (ViewProj, InvViewProj) + 4 vec4 (CamRight, CamUp, CamPosTime, Params) =
+            // 128 + 64 = 192 bytes. If the struct or the shader block drift apart, the per-frame distortion UBO
+            // upload smears the camera basis / params. The other half lives in ShaderSources.DistortionVert/Frag.
+            Assert.Equal((int)DistortionRenderer.FrameBufferBytes, Marshal.SizeOf<DistortionRenderer.FrameUniforms>());
+            Assert.Equal(2 * 64 + 4 * 16, (int)DistortionRenderer.FrameBufferBytes);
+        }
+
+        [Fact]
+        public void DistortionShaders_DeclareTheFrameBlockMembers_InBothStages()
+        {
+            // Assert every member of the Frame block is present in BOTH stages (one UBO per set, declared identically
+            // in vertex and fragment or the driver builds two conflicting layouts). Other half: ShaderSources.Distortion*.
+            foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 CamRight;",
+                "vec4 CamUp;", "vec4 CamPosTime;", "vec4 Params;" })
+            {
+                Assert.True(ShaderSources.DistortionVert.Contains(member),
+                    $"DistortionVert lost '{member}': the Frame UBO block drifted from DistortionRenderer.FrameUniforms.");
+                Assert.True(ShaderSources.DistortionFrag.Contains(member),
+                    $"DistortionFrag lost '{member}': the Frame UBO block drifted from DistortionVert's declaration.");
+            }
         }
 
         [Fact]

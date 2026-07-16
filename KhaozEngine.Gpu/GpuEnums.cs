@@ -18,6 +18,12 @@ namespace KhaozEngine.Gpu
         R8UNorm,
         /// <summary>BGRA 8-bit-per-channel, unsigned normalized (common swapchain format).</summary>
         B8G8R8A8UNorm,
+        /// <summary>16-bit-float-per-channel RGBA. The HDR internal colour-target format (headroom above 1.0,
+        /// tonemapped back to LDR by the post chain before the swapchain blit).</summary>
+        R16G16B16A16Float,
+        /// <summary>Two-channel 16-bit-float (red + green). The screen-space distortion offset target: signed
+        /// per-pixel UV offsets accumulate here at half or quarter res, re-sampled by the post apply pass.</summary>
+        R16G16Float,
     }
 
     /// <summary>How a GPU texture may be used. Flags so a texture can be both a render target and sampled, etc.

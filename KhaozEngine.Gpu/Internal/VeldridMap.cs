@@ -16,6 +16,8 @@ namespace KhaozEngine.Gpu.Internal
             GpuPixelFormat.D24UNormS8UInt => PixelFormat.D24_UNorm_S8_UInt,
             GpuPixelFormat.R8UNorm => PixelFormat.R8_UNorm,
             GpuPixelFormat.B8G8R8A8UNorm => PixelFormat.B8_G8_R8_A8_UNorm,
+            GpuPixelFormat.R16G16B16A16Float => PixelFormat.R16_G16_B16_A16_Float,
+            GpuPixelFormat.R16G16Float => PixelFormat.R16_G16_Float,
             _ => throw new ArgumentOutOfRangeException(nameof(f), f, "Unmapped GpuPixelFormat"),
         };
 
@@ -27,6 +29,8 @@ namespace KhaozEngine.Gpu.Internal
             PixelFormat.D24_UNorm_S8_UInt => GpuPixelFormat.D24UNormS8UInt,
             PixelFormat.R8_UNorm => GpuPixelFormat.R8UNorm,
             PixelFormat.B8_G8_R8_A8_UNorm => GpuPixelFormat.B8G8R8A8UNorm,
+            PixelFormat.R16_G16_B16_A16_Float => GpuPixelFormat.R16G16B16A16Float,
+            PixelFormat.R16_G16_Float => GpuPixelFormat.R16G16Float,
             _ => throw new ArgumentOutOfRangeException(nameof(f), f, "Unmapped Veldrid PixelFormat"),
         };
 

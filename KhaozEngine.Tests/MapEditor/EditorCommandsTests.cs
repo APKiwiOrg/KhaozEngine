@@ -1602,5 +1602,185 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(ed.Undo());
             Assert.Equal("understory", doc.CompanionLayers[0].Name);
         }
+
+        // ---- scatter overrides (terrain-scatter affecting) ---------------------------------------------
+
+        [Fact]
+        public void AddScatterOverride_RoundTrips() =>
+            AssertRoundTrip(Sample(), new AddScatterOverrideCommand(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 1f, Radius = 5f } }));
+
+        [Fact]
+        public void RemoveScatterOverride_RoundTrips() =>
+            AssertRoundTrip(Sample(), new RemoveScatterOverrideCommand(0));
+
+        [Fact]
+        public void EditScatterOverrideShapeCommand_AppliesRevertsMerges()
+        {
+            var doc = Sample();
+            var original = Assert.IsType<RectShapeDoc>(doc.ScatterOverrides[0].Shape);
+            var v1 = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 40f };
+            var v2 = new RectShapeDoc { MinX = -72f, MinZ = -18f, MaxX = 8f, MaxZ = 62f };
+            string before = Save(doc);
+
+            // Apply replaces the shape instance and forces a world rebuild (scatter inputs changed).
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditScatterOverrideShapeCommand(0, v1, original));
+            Assert.Same(v1, doc.ScatterOverrides[0].Shape);
+            Assert.True(ed.WorldRebuildPending);
+
+            // A second edit of the same index coalesces (drag coalescing): the shape moves on, no new undo step.
+            ed.Execute(new EditScatterOverrideShapeCommand(0, v2, v1));
+            Assert.Same(v2, doc.ScatterOverrides[0].Shape);
+            Assert.Equal(1, ed.History.UndoDepth);
+
+            // One undo reverts the whole gesture to the original shape, deep-equal to the pre-edit document.
+            Assert.True(ed.Undo());
+            Assert.Same(original, doc.ScatterOverrides[0].Shape);
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));
+        }
+
+        [Fact]
+        public void EditScatterOverrideValuesCommand_AppliesRevertsMerges_AffectsWorld()
+        {
+            var doc = Sample();
+            MapScatterOverrideDoc live = doc.ScatterOverrides[0];
+            string before = Save(doc);
+
+            var v1 = new MapScatterOverrideDoc
+            {
+                Shape = live.Shape,
+                DensityMultiplier = 0.25f,
+                Kinds = new List<MapPropKind> { new MapPropKind { Id = "pine_a", Weight = 2f } },
+                Layers = new List<string> { "trees" },
+            };
+            var ed = new EditorDocument(doc);
+            ed.Execute(new EditScatterOverrideValuesCommand(0, v1, live));
+            Assert.Equal(0.25f, doc.ScatterOverrides[0].DensityMultiplier);
+            Assert.Equal(new List<string> { "trees" }, doc.ScatterOverrides[0].Layers);
+            Assert.True(ed.WorldRebuildPending);   // density/kind targeting changes scatter output
+
+            // A second edit of the same index coalesces (scrub coalescing), no new undo step.
+            var v2 = new MapScatterOverrideDoc { Shape = live.Shape, DensityMultiplier = 0.75f, Layers = new List<string> { "trees" } };
+            ed.Execute(new EditScatterOverrideValuesCommand(0, v2, v1));
+            Assert.Equal(0.75f, doc.ScatterOverrides[0].DensityMultiplier);
+            Assert.Equal(1, ed.History.UndoDepth);
+
+            // One undo reverts the whole gesture, deep-equal to the pre-edit document.
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void EditScatterOverrideValuesCommand_ConstructorCopiesLists_NoAliasing()
+        {
+            var doc = Sample();
+            MapShapeDoc shape = doc.ScatterOverrides[0].Shape!;
+            var newKinds = new List<MapPropKind> { new MapPropKind { Id = "pine_a", Weight = 1f } };
+            var newLayers = new List<string> { "trees" };
+            var oldLayers = new List<string> { "trees" };
+            var newValue = new MapScatterOverrideDoc { Shape = shape, DensityMultiplier = 0.9f, Kinds = newKinds, Layers = newLayers };
+            var oldValue = new MapScatterOverrideDoc { Shape = shape, DensityMultiplier = 0.5f, Layers = oldLayers };
+            var cmd = new EditScatterOverrideValuesCommand(0, newValue, oldValue);
+
+            // Mutate the caller's own lists after construction: if the command captured them by reference (not a
+            // copy), both Apply and Revert would observe this mutation instead of the value at construction.
+            newKinds.Add(new MapPropKind { Id = "mutated", Weight = 1f });
+            newLayers.Add("mutated-new");
+            oldLayers.Add("mutated-old");
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(cmd);
+            Assert.Equal(new List<string> { "trees" }, doc.ScatterOverrides[0].Layers);   // construction-time value
+            List<MapPropKind>? appliedKinds = doc.ScatterOverrides[0].Kinds;
+            Assert.NotNull(appliedKinds);
+            Assert.Single(appliedKinds!);
+            Assert.Equal("pine_a", appliedKinds![0].Id);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(new List<string> { "trees" }, doc.ScatterOverrides[0].Layers);   // construction-time old value
+        }
+
+        [Fact]
+        public void RenameScatterOverride_RoundTrip()
+        {
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Scatter overrides are index-addressed (no independent id), the same idiom as RenameExclusionCommand.
+            ed.Execute(new RenameScatterOverrideCommand(0, "shrine-clearing", null));
+            Assert.Equal("shrine-clearing", doc.ScatterOverrides[0].Name);
+            Assert.False(ed.WorldRebuildPending);   // renaming does not change scatter inputs
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+        }
+
+        [Fact]
+        public void RenameScatterOverrideCommand_GuardsDuplicates()
+        {
+            var doc = Sample();
+            doc.ScatterOverrides[0].Name = "shrine-clearing";
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Name = "second-patch", Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 1f, Radius = 5f } });
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            // Guards duplicates: renaming override 1 onto override 0's name throws before mutating anything, and
+            // leaves no undo step (the RenameExclusionCommand guard idiom).
+            Assert.Throws<InvalidOperationException>(() => ed.Execute(new RenameScatterOverrideCommand(1, "shrine-clearing", "second-patch")));
+            Assert.False(ed.History.CanUndo);
+            Assert.Equal(before, Save(doc));   // document untouched, byte for byte
+
+            // Renaming a scatter override to its OWN current name stays legal: the duplicate scan excludes the
+            // renaming override's own index.
+            ed.Execute(new RenameScatterOverrideCommand(0, "shrine-clearing", "shrine-clearing"));
+            Assert.Equal("shrine-clearing", doc.ScatterOverrides[0].Name);
+
+            // Clearing a name to null stays legal even with another already-unnamed override present: null never
+            // collides, it carries no key to clash on.
+            doc.ScatterOverrides[1].Name = null;
+            ed.Execute(new RenameScatterOverrideCommand(0, null, "shrine-clearing"));
+            Assert.Null(doc.ScatterOverrides[0].Name);
+        }
+
+        [Fact]
+        public void ReorderScatterOverrideCommand_RoundTrips_AndForcesWorldRebuild()
+        {
+            var doc = Sample();
+            doc.ScatterOverrides.Clear();
+            var o0 = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f }, DensityMultiplier = 0.2f };
+            var o1 = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 9f, CenterZ = 9f, Radius = 3f }, DensityMultiplier = 0.8f };
+            doc.ScatterOverrides.Add(o0);
+            doc.ScatterOverrides.Add(o1);
+            string before = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new ReorderScatterOverrideCommand(0, 1));   // move o0 to the end
+            Assert.Same(o1, doc.ScatterOverrides[0]);
+            Assert.Same(o0, doc.ScatterOverrides[1]);
+            // Unlike exclusions (a pure set union), an override's order is first-match-wins, so reordering changes
+            // which override governs overlapping ground: this DOES force a world rebuild (the deliberate inversion
+            // of ReorderExclusionCommand_RoundTrips_AndDoesNotForceWorldRebuild).
+            Assert.True(ed.WorldRebuildPending);
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));                 // byte-identical restore (deep equality)
+        }
+
+        [Fact]
+        public void ReorderScatterOverrideCommand_RangeGuardsIndexes()
+        {
+            var doc = Sample();
+            doc.ScatterOverrides.Clear();
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => new ReorderScatterOverrideCommand(-1, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new ReorderScatterOverrideCommand(0, -2));
+            // A valid-looking index that overruns the live list is caught precisely at apply time.
+            Assert.Throws<ArgumentOutOfRangeException>(() => new EditorDocument(doc).Execute(new ReorderScatterOverrideCommand(0, 5)));
+        }
     }
 }

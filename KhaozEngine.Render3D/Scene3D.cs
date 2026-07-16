@@ -38,6 +38,7 @@ namespace KhaozEngine.Render3D
         readonly BeamRenderer _beams;
         readonly TrailRenderer _trails;
         readonly Rendering.GroundDecalRenderer _decalRenderer;
+        readonly Rendering.ParticleRenderer _particleRenderer;
         readonly Rendering.SkyRenderer _sky;
         readonly Rendering.WaterRenderer _water;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
@@ -116,6 +117,11 @@ namespace KhaozEngine.Render3D
         readonly List<TexturedBillboardItem> _texBillboardSorted = new();
         readonly List<TexturedBillboardRun> _texBillboardRuns = new();
         readonly List<BillboardRenderer.BillboardVertex> _texBillboardVerts = new();
+        // Modern particle sprites (ParticleRenderer): queued in submission order, rebuilt back-to-front each
+        // frame into _particleSorted (ONE premultiplied stream, so alpha and additive sprites interleave
+        // correctly), then drawn as a single instanced call after the water pass. Cleared each Begin().
+        readonly List<ParticleSprite> _particleSprites = new();
+        readonly List<ParticleSprite> _particleSorted = new();
         // Glowing beams (lasers/thrusters/tethers): queued in submission order, flushed as one additive draw
         // into the model FB alongside the textured billboards (depth-interleaved, so geometry occludes them).
         readonly List<BeamItem> _beamItems = new();
@@ -298,6 +304,17 @@ namespace KhaozEngine.Render3D
         /// (NOT cleared by <see cref="Begin"/>), so set it once when picking a graphics tier.</summary>
         public GroundDecalQuality DecalQuality { get; set; } = GroundDecalQuality.Full;
 
+        /// <summary>Quality tier for the modern particle pass (<see cref="Render3D.ParticleQuality.Full"/> by
+        /// default). <see cref="Render3D.ParticleQuality.Reduced"/> drops the second noise octave and the ember
+        /// flicker for weak GPUs. Presentation-only and host-owned: NOT cleared by <see cref="Begin"/>.</summary>
+        public ParticleQuality ParticleQuality { get; set; } = ParticleQuality.Full;
+
+        /// <summary>Soft-particle fade distance in world units for the modern particle pass: a sprite's coverage
+        /// fades to zero as the scene surface behind it comes within this distance, so effects sit IN the world
+        /// instead of clipping hard against geometry. 0 disables the fade (and its depth-texture work).
+        /// Presentation-only and host-owned: NOT cleared by <see cref="Begin"/>.</summary>
+        public float ParticleSoftFade { get; set; } = 0.35f;
+
         /// <summary>
         /// The active screen-space teleport transition (<see cref="HardBlink"/> / <see cref="CameraDissolve"/>, or a
         /// custom <see cref="IScreenTransition"/>), drawn as a fullscreen pass over the final image each frame. The
@@ -354,6 +371,10 @@ namespace KhaozEngine.Render3D
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
             _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs);
+            // Modern particle sprites render into the same ColorDepthFB (lit colour + read-only scene depth)
+            // after the water pass, sampling the resolved scene depth for the soft fade. Default empty (no
+            // DrawParticle call queued == the pass never runs, existing scenes byte-stable).
+            _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs);
             // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
             // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
             _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -906,6 +927,8 @@ namespace KhaozEngine.Render3D
             _billboardAlphaItems.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
+            _particleSprites.Clear();
+            _particleSorted.Clear();
             _texBillboardItems.Clear();
             _beamItems.Clear();
             _trailItems.Clear();
@@ -1240,7 +1263,11 @@ namespace KhaozEngine.Render3D
         /// <summary>Queue a camera-facing soft-disc billboard centred at <paramref name="worldPos"/> with half-size
         /// <paramref name="size"/> (the quad spans 2*size across), tinted by <paramref name="color"/> (RGBA), using
         /// the given <paramref name="blend"/>. Cleared in <see cref="Begin"/>; drawn over the post image and the
-        /// debug lines. The game loops its particle system's <c>Active</c> span and calls this per particle.</summary>
+        /// debug lines. The game loops its particle system's <c>Active</c> span and calls this per particle. This is
+        /// the LEGACY particle path (unoccluded overlay, uniform soft disc): new effects should prefer the modern
+        /// <see cref="DrawParticle(in ParticleSprite)"/> pass, which is depth-tested, soft-faded against geometry,
+        /// shaped procedurally, and feeds bloom. This overlay remains fully supported for crisp always-on-top
+        /// markers.</summary>
         public void DrawBillboard(Vector3 worldPos, float size, Color color, BillboardBlend blend = BillboardBlend.Alpha)
         {
             // Alpha billboards defer to a back-to-front sort at render time (overlapping alpha must composite
@@ -1307,6 +1334,31 @@ namespace KhaozEngine.Render3D
         /// <summary>Count of textured billboards queued this frame. Internal: lets tests assert
         /// <see cref="Begin"/> clears the queue and the overloads enqueue.</summary>
         internal int TexturedBillboardCount => _texBillboardItems.Count;
+
+        // ---- Modern particle sprites: procedural SDF/noise shapes, depth-tested + soft-faded, premultiplied
+        //      single-stream compositing, drawn before the post chain (additive glow feeds bloom). ----
+
+        /// <summary>
+        /// Queue one modern particle <paramref name="sprite"/> for this frame. The whole queue renders as ONE
+        /// instanced draw after the water pass: back-to-front sorted, depth-tested against the scene (no write),
+        /// soft-faded where it approaches geometry (<see cref="ParticleSoftFade"/>), shaped procedurally in the
+        /// fragment shader (<see cref="ParticleShape"/>), at internal resolution BEFORE the post chain, so additive
+        /// sprites feed bloom and every sprite flows through the pixel post like meshes. Alpha and additive sprites
+        /// interleave correctly in the one sorted stream (premultiplied compositing). Cleared in <see cref="Begin"/>.
+        /// The game loops its particle system's <c>Active</c> span and queues one sprite per particle, or uses the
+        /// KhaozEngine.Particles.Render3D adapter package's turn-key extensions.
+        /// </summary>
+        public void DrawParticle(in ParticleSprite sprite) => _particleSprites.Add(sprite);
+
+        /// <summary>Queue a batch of modern particle sprites, see <see cref="DrawParticle(in ParticleSprite)"/>.</summary>
+        public void DrawParticles(ReadOnlySpan<ParticleSprite> sprites)
+        {
+            for (int i = 0; i < sprites.Length; i++) _particleSprites.Add(sprites[i]);
+        }
+
+        /// <summary>Count of modern particle sprites queued this frame. Internal: lets tests assert
+        /// <see cref="Begin"/> clears the queue and the draw methods enqueue.</summary>
+        internal int ParticleSpriteCount => _particleSprites.Count;
 
         // ---- Glowing beams (lasers/thrusters/tethers): a camera-facing strip a->b, additive, depth-interleaved
         //      into the model pass so geometry occludes it. Soft core+halo + optional taper/pulse/scroll in the
@@ -1470,6 +1522,7 @@ namespace KhaozEngine.Render3D
             _trails.SetOutputs(modelOut);
             _overlayMeshes.SetOutputs(modelOut);
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
+            _particleRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _sky.SetOutputs(_res.ColorDepthFB.Outputs);
             _water.SetOutputs(_res.ColorDepthFB.Outputs);
             _depthLines.SetOutputs(_res.ColorDepthFB.Outputs);
@@ -2064,6 +2117,24 @@ namespace KhaozEngine.Render3D
                 _frameStats.DrawCalls++;
             }
 
+            // Modern particle sprites: after the sky + decals + water (so effects composite over water surfaces),
+            // before the post chain, into ColorDepthFB with the depth test on (no write) so geometry occludes
+            // them. ONE premultiplied instanced draw over the back-to-front sorted queue: alpha smoke and additive
+            // glow interleave correctly, and additive energy feeds bloom. The fragment samples the resolved
+            // DepthColorTex (valid via the ResolveDepth call above the sky pass) for the soft fade, skipping
+            // samples that equal the background clear marker (Post.BackgroundColor red channel) so sprites never
+            // dim against empty sky. Fully skipped when nothing is queued, so a frame with no DrawParticle call
+            // renders byte-identical to before this pass existed.
+            if (_particleSprites.Count > 0)
+            {
+                BuildSortedParticles();
+                BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 pRight, out Vector3 pUp);
+                _frameStats.DrawCalls += _particleRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, eye, pRight, pUp,
+                    EffectTimeSeconds, ParticleSoftFade, ParticleQuality, Post.BackgroundColor.R,
+                    CollectionsMarshal.AsSpan(_particleSorted));
+                _frameStats.Instances += _particleSorted.Count;
+            }
+
             // Depth-tested debug wire volumes (DebugDepthMode.DepthTested): drawn into ColorDepthFB after the sky +
             // decals + water, which still holds the opaque meshes' depth, so terrain/props occlude the buried parts.
             // Depth test less-or-equal, NO depth write (never touches the MRT normal/linear-depth the outline pass
@@ -2155,6 +2226,22 @@ namespace KhaozEngine.Render3D
             _frameStats.DrawCalls++;
             _frameStats.Instances++;
             _frameStats.Triangles += indexCount / 3;
+        }
+
+        /// <summary>Rebuild <see cref="_particleSorted"/> from the queued particle sprites in BACK-TO-FRONT order
+        /// by view depth (reusing the shared sort scratch buffers, no per-frame allocation). The whole stream is
+        /// sorted regardless of blend: premultiplied compositing makes the additive sprites order-independent and
+        /// the alpha sprites order-correct in one draw. Ties keep submission order (stable sort).</summary>
+        void BuildSortedParticles()
+        {
+            _particleSorted.Clear();
+            int n = _particleSprites.Count;
+            if (n == 0) return;
+            _sortCenters.Clear();
+            for (int i = 0; i < n; i++) _sortCenters.Add(_particleSprites[i].Position);
+            TransparencySort.ComputeOrder(CollectionsMarshal.AsSpan(_sortCenters), n,
+                ActiveCamera.Eye, ActiveCamera.Forward, ref _sortKeys, ref _sortOrder);
+            for (int k = 0; k < n; k++) _particleSorted.Add(_particleSprites[_sortOrder[k]]);
         }
 
         /// <summary>Expand the queued alpha billboards into <see cref="_billboardAlpha"/> in BACK-TO-FRONT order:
@@ -2355,6 +2442,7 @@ namespace KhaozEngine.Render3D
             _beams.Dispose();
             _trails.Dispose();
             _decalRenderer.Dispose();
+            _particleRenderer.Dispose();
             _sky.Dispose();
             _water.Dispose();
             _overlayMeshes.Dispose();

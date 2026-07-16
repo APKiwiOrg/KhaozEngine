@@ -40,6 +40,12 @@ public enum SelectionKind
     /// <summary>A named companion layer (props ringing a scatter layer's hosts), keyed by its unique name.
     /// Outline-only and name-keyed for the same reasons as <see cref="ScatterLayer"/>.</summary>
     CompanionLayer,
+    /// <summary>A scatter override shape (a region-scoped density multiplier / kind substitution), keyed by its
+    /// list index as a string. Index-keyed like <see cref="Exclusion"/>: overrides carry no independent id and are
+    /// order-significant (first match wins), so the selection tracks the list position, and a delete or reorder
+    /// remaps it the same way it does for exclusions. Has viewport geometry (an authoring shape overlay), so it is
+    /// pickable and gizmo-draggable, unlike the outline-only layer kinds above.</summary>
+    ScatterOverride,
 }
 
 /// <summary>What is selected in the editor, by kind plus stable id (placement id, spawn id, feature index

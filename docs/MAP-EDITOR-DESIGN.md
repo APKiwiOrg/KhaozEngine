@@ -364,12 +364,7 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
   region orphans its hide entry instead of following it: the `Visible` row polls the live
   post-rename key, so the renamed element shows again by default while the old-key entry
   lingers unreachable in `EditorVisibility`, a stale-key leak rather than a correctness bug.
-  Scatter overrides (`MapScatterOverrideDoc`) have no editor surface at all: no palette
-  entry to place one, no inspector rows to edit its shape/density/kind-mix, and no reorder
-  command, unlike exclusions and terrain features. This one matters more than a typical
-  missing-surface gap: override order is first-match-wins (document order), not a set union
-  like exclusions, so once editing ships, reordering is gameplay-significant and not merely
-  cosmetic. Scatter-layer rule editing and companion `HostKinds`/`Kinds` editing are
+  Scatter-layer rule editing and companion `HostKinds`/`Kinds` editing are
   deliberately v1-crude (a carve-out taken at design time): a rule is a Biome choice plus a
   Density scalar plus a comma-separated `"id:weight"` text row parsed with the same
   `ParseKinds` convention `ke-mapedit` uses, rather than a per-kind row with its own weight
@@ -414,6 +409,21 @@ interval-change-mid-gesture tests. Also: exclusion, scatter-layer, companion, an
 still take the full-rebuild path by design this round (the dirty-region seam exists so a later round
 can narrow them), and ridge and rim features always fall back to full rebuild since their reach is
 unbounded.
+
+**Deferred out of this round (scatter-overrides)**: DirtyRegion narrowing for override shapes still
+takes the full-rebuild path (the shape bound could narrow like features do, once a later round picks
+that up). Exclusions were deliberately not added to the Ctrl+Up/Down reorder chord: their masks combine
+as a set union where order never changes which ground ends up excluded, so a reorder chord would be
+meaningless for them (scatter overrides get the chord because their order is genuinely significant,
+first-match-wins). Polygon override shapes remain MCP-authored and inspector-read-only, the same as
+polygon exclusions and regions: the shape editor's kind selector has no polygon option, so a polygon
+override can only be created over MCP and then shows as a read-only kind + point count row in the
+inspector. There is a cosmetic JSON representation asymmetry between the two authoring paths: the GUI
+always normalizes an empty kind list back to a null `Kinds` (no kinds means "all kinds"), while an MCP
+call that passes an explicit empty kinds array stores `[]` instead, which is runtime-identical but not
+byte-identical in the saved document. `scatter_override_edit` called with no optional arguments is a
+dirty-marking no-op: it still marks the session dirty even though nothing on the override actually
+changed, consistent with the other mutation verbs' behavior when called with no fields to change.
 
 - **Program phases**: Sculpting via the reserved `terrainOverrides` delta layer. Live
   server editing and hot reload. Multi-user editing. Polygon click-path authoring gesture

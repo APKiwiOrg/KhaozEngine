@@ -131,6 +131,23 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   camera-relative placement (view-space right/up read as screen NDC, visible above the view horizon), which works
   under both cameras and is the pick for the iso look. The pure math is `SkyMath` (gradient + sun falloff +
   `ProjectSunToNdc`, which dispatches on the anchor to `ProjectSunWorldToNdc` / `ProjectSunStylizedToNdc`).
+- `SunCycle` - a pure day/night mapping from a caller-supplied normalized time of day to the sky and lighting
+  above. `SunCycle.Evaluate(timeOfDay, SunCycleSettings)` walks a latitude/declination/heading sun arc and
+  returns a `SunCycleState` blended between `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette`
+  (three `SunCyclePalette` anchors) keyed on sun elevation, not time, so the same settings work at any
+  latitude or day length. `SunCycle.Apply(state, scene.Post)` writes it onto `Post.LightDirection`/
+  `LightColor`/`AmbientColor`/`FillLightColor` and `Post.Sky.HorizonColor`/`ZenithColor`/`SunColor`/
+  `SunEnabled`. Below the horizon the key light comes from a virtual moon placed opposite the sun, dipping to
+  zero across the crossing so the direction flip is invisible, and the night ambient floor stays above black
+  so scenes remain playable. The engine owns no clock: feed it your own game time (an MMO replicates it from
+  the server) each frame.
+
+  ```csharp
+  var cycle = new SunCycleSettings();
+  scene.Post.Sky.Enabled = true;
+  // each frame, timeOfDay in [0,1) comes from YOUR game clock:
+  SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
+  ```
 - Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in LDR threshold +
   separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
   bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,
@@ -161,6 +178,29 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the same `gl_FragCoord` + raw-inverse-view-projection convention the ground-decal pass uses. The pure math is
   `WaterMath` (internal: scrolling-normal perturbation, Schlick fresnel, Blinn-Phong glint, shore-fade curve, grid
   tessellation), headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag` exactly.
+- Modern particle pass: `Scene3D.DrawParticle(in ParticleSprite)` / `DrawParticles(ReadOnlySpan<ParticleSprite>)`
+  queue procedural particle sprites that render as ONE premultiplied-alpha instanced draw after the water pass and
+  BEFORE the post chain, so additive sprites feed bloom and every sprite flows through the pixel post like meshes.
+  A `ParticleSprite` carries position, velocity, size, rotation, colour, a `ParticleShape`, its shape param, life
+  norm, seed, velocity `Stretch`, `BillboardBlend`, a `ParticleOrientation`, and a per-sprite `SoftFadeScale`. The
+  six procedural shapes are SDF/noise in the fragment shader (no atlas): `SoftGlow` (soft gaussian disc, a premium
+  take on the legacy blob), `Ember` (hot core + warm halo with a subtle flicker), `Spark` (streak along local X,
+  pairs with velocity stretch), `Wisp` (noise-eroded smoke that dissolves at its edges with life instead of fading
+  uniformly), `Ring` (soft annulus for shockwaves and impact rings), `Star` (four-point glint for sparkles).
+  `ParticleOrientation` is `CameraFacing` (default) or `FlatGround` (the quad lies in the XZ plane, for shockwave
+  rings and ground glows). The whole queue sorts back-to-front and BOTH blend modes interleave in the one stream,
+  because the fragment premultiplies colour and zeroes the alpha lane for additive sprites. Depth state is test
+  LessEqual / no write against the resolved scene depth, and a soft depth fade (`Scene3D.ParticleSoftFade`, world
+  units, default 0.35, 0 disables the fade and its texture work) dims a sprite as it approaches geometry, scaled
+  per sprite by `SoftFadeScale` (a flat-ground sprite wants a small value like 0.1 so the floor just behind it does
+  not erase it). `Scene3D.ParticleQuality` (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second
+  noise octave and the ember flicker on weak GPUs. The pass obeys the engine one-UBO rule: a single set-0 frame
+  uniform, every per-sprite value on an instanced vertex-attribute stream, and the scene depth texture + sampler at
+  set 0 bindings 1 and 2 (the Metal-safe pattern the ground-decal pass proves). The untextured
+  `DrawBillboard(Vector3, float, Color, BillboardBlend)` overlay remains the LEGACY particle path (post-post,
+  unoccluded, always crisp, still fully supported for on-top markers), and the textured `DrawBillboard(TextureHandle, ...)`
+  overloads remain the artist-texture path. The turn-key `ParticleSystem`/`ParticleEffectPlayer` mapping lives in
+  `KhaozEngine.Particles.Render3D`. See `docs/USING-KHAOZENGINE.md`.
 - Motion trails: `Scene3D.DrawTrail(ReadOnlySpan<TrailSample>, TrailStyle)` (since 10.41.0) queues an immediate-mode
   tapered ribbon traced through an ordered list of recent world-space samples (oldest-first) - weapon swings,
   thruster streaks, projectile tracers. Each `TrailSample` carries a world position, per-sample ribbon half-width,

@@ -18,6 +18,8 @@ public enum VisibilityGroup
     Water,
     /// <summary>Scatter exclusion shapes.</summary>
     Exclusions,
+    /// <summary>Scatter override shapes (region-scoped density / kind tweaks).</summary>
+    ScatterOverrides,
     /// <summary>Named gameplay regions.</summary>
     Regions,
     /// <summary>Terrain feature center markers.</summary>
@@ -109,14 +111,15 @@ public sealed class EditorVisibility
             case SelectionKind.Placement: group = VisibilityGroup.Placements; return true;
             case SelectionKind.Spawn: group = VisibilityGroup.Spawns; return true;
             case SelectionKind.Exclusion: group = VisibilityGroup.Exclusions; return true;
+            case SelectionKind.ScatterOverride: group = VisibilityGroup.ScatterOverrides; return true;
             case SelectionKind.Region: group = VisibilityGroup.Regions; return true;
             case SelectionKind.Feature: group = VisibilityGroup.FeatureMarkers; return true;
             default: group = default; return false;
         }
     }
 
-    /// <summary>Shifts per-element hides across a list reorder of <paramref name="kind"/> (feature or exclusion,
-    /// the two index-keyed kinds): the moved element's own hide (if any) follows it from
+    /// <summary>Shifts per-element hides across a list reorder of <paramref name="kind"/> (feature, exclusion, or
+    /// scatter override, the index-keyed kinds): the moved element's own hide (if any) follows it from
     /// <paramref name="fromIndex"/> to <paramref name="toIndex"/>, and every OTHER hidden index inside the
     /// shifted-through range moves one slot to make room, exactly mirroring the RemoveAt(from) + Insert(to) list
     /// move the reorder commands themselves perform (<see cref="ReorderFeatureCommand"/> /
@@ -148,7 +151,8 @@ public sealed class EditorVisibility
     /// <summary>Drops the hide entry for the element removed at <paramref name="index"/> of <paramref name="kind"/>
     /// (if it was hidden) and shifts every later hidden index of that kind down by one, mirroring the list's own
     /// RemoveAt(index) shift, so a hide stays glued to the surviving elements' identities. Call this from a
-    /// feature/exclusion delete path alongside the remove command itself. Undo of the delete does NOT restore the
+    /// feature/exclusion/scatter-override delete path alongside the remove command itself. Undo of the delete does
+    /// NOT restore the
     /// dropped hide (the same v1 residual as <see cref="RemapIndex"/>, deferred to the ledger).</summary>
     public void RemoveIndex(SelectionKind kind, int index)
     {

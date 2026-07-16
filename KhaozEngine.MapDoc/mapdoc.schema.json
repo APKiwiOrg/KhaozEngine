@@ -127,6 +127,7 @@
         "required": ["shape"],
         "additionalProperties": false,
         "properties": {
+          "name": { "type": ["string", "null"] },
           "shape": { "$ref": "#/$defs/shape" },
           "densityMultiplier": { "type": "number", "minimum": 0 },
           "kinds": { "anyOf": [ { "$ref": "#/$defs/kinds" }, { "type": "null" } ] },

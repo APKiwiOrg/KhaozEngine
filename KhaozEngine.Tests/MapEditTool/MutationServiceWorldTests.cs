@@ -295,6 +295,148 @@ namespace KhaozEngine.Tests.MapEditTool
             finally { Directory.Delete(dir, recursive: true); }
         }
 
+        [Fact]
+        public void ScatterOverrideAdd_UnknownLayerFilter_RejectedAndReverted()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                int before = session.WithDocument((doc, _) => doc.ScatterOverrides.Count);
+                bool dirtyBefore = session.IsDirty;
+
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                    mutation.ScatterOverrideAdd(CoverRectJson, layers: new[] { "ghost" }));
+
+                Assert.StartsWith("mutation rejected:", ex.Message);
+                Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
+                Assert.Equal(before, session.WithDocument((doc, _) => doc.ScatterOverrides.Count));
+                Assert.Equal(dirtyBefore, session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterOverrideEdit_ShapeAndValuesTogether_AppliesBothCommands()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                int baseline = TreesTotal(session);
+                Assert.True(baseline > 0, "expected the sample doc to scatter trees in the test band");
+
+                // A tiny disc at the origin does not overlap the southern test band, so the baseline is
+                // untouched right after the add.
+                MutationResult add = mutation.ScatterOverrideAdd(
+                    "{\"type\":\"disc\",\"centerX\":0,\"centerZ\":0,\"radius\":1}",
+                    densityMultiplier: 1f, layers: new[] { "trees" });
+                int index = Assert.IsType<int>(add.Index);
+                Assert.Equal(baseline, TreesTotal(session));
+
+                // One call grows the shape to cover the band AND drops density to 0: the band only empties if
+                // BOTH the shape command and the values command landed, proving the two commands this single
+                // scatter_override_edit call emits are applied together rather than one silently dropped.
+                MutationResult edit = mutation.ScatterOverrideEdit(index, shapeJson: CoverRectJson, densityMultiplier: 0f);
+                Assert.Equal("scatter_override_edit", edit.Verb);
+                Assert.True(edit.WorldChanged);
+
+                MapScatterOverrideDoc edited = session.WithDocument((doc, _) => doc.ScatterOverrides[index]);
+                Assert.IsType<RectShapeDoc>(edited.Shape);
+                Assert.Equal(0f, edited.DensityMultiplier);
+                Assert.Equal(0, TreesTotal(session));
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterOverrideEdit_ShapeAndValuesTogether_RejectedRevertsBothAtomically()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                MutationResult add = mutation.ScatterOverrideAdd(
+                    "{\"type\":\"disc\",\"centerX\":0,\"centerZ\":0,\"radius\":1}", layers: new[] { "trees" });
+                int index = Assert.IsType<int>(add.Index);
+
+                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
+                bool dirtyBefore = session.IsDirty;
+
+                // Both the shape and the layer filter change in one call, and the layer filter is invalid: the
+                // whole edit (one sealed gesture, two commands) must revert together, leaving the document
+                // byte-for-byte unchanged, not just the values half.
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                    mutation.ScatterOverrideEdit(index, shapeJson: CoverRectJson, layers: new[] { "ghost" }));
+
+                Assert.StartsWith("mutation rejected:", ex.Message);
+                Assert.Contains("unknown scatter layer 'ghost'", ex.Message);
+                Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
+                Assert.Equal(dirtyBefore, session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterOverrideReorder_FirstMatchWins_SwapsWhichOverrideGoverns()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                int baseline = TreesTotal(session);
+                Assert.True(baseline > 0, "expected the sample doc to scatter trees in the test band");
+
+                MutationResult addX = mutation.ScatterOverrideAdd(CoverRectJson, densityMultiplier: 1f,
+                    layers: new[] { "trees" });
+                int xIndex = Assert.IsType<int>(addX.Index);
+                MutationResult addY = mutation.ScatterOverrideAdd(CoverRectJson, densityMultiplier: 0f,
+                    layers: new[] { "trees" });
+                int yIndex = Assert.IsType<int>(addY.Index);
+
+                // X (density 1, a no-op) was added first and wins the first-match lookup, so the band still
+                // scatters normally.
+                Assert.Equal(baseline, TreesTotal(session));
+
+                MutationResult reorder = mutation.ScatterOverrideReorder(xIndex, yIndex);
+                Assert.Equal("scatter_override_reorder", reorder.Verb);
+                Assert.True(reorder.WorldChanged);
+                Assert.Equal(yIndex, reorder.Index);
+
+                // Y (density 0) now comes first and wins instead: the band empties.
+                Assert.Equal(0, TreesTotal(session));
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void ScatterOverrideEditRemoveReorder_IndexOutOfRange_ThrowsArgumentException()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                ArgumentException ex = Assert.Throws<ArgumentException>(() =>
+                    mutation.ScatterOverrideEdit(99, densityMultiplier: 1f));
+                Assert.Contains("out of range", ex.Message);
+
+                // The same up-front guard protects remove and both reorder endpoints.
+                Assert.Throws<ArgumentException>(() => mutation.ScatterOverrideRemove(99));
+                Assert.Throws<ArgumentException>(() => mutation.ScatterOverrideReorder(0, 99));
+                Assert.Throws<ArgumentException>(() => mutation.ScatterOverrideReorder(99, 0));
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
         // ---- bake ---------------------------------------------------------------------------------------------
 
         [Fact]

@@ -16,6 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>LineVert+LineFrag (LineRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+BillboardFrag (BillboardRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+TexturedBillboardFrag (TexturedBillboardRenderer - reuses BillboardVert)</item>
+    /// <item>ParticleVert+ParticleFrag (ParticleRenderer modern particle sprites)</item>
     /// <item>BeamVert+BeamFrag (BeamRenderer)</item>
     /// <item>OverlayUnlitVert+OverlayUnlitFrag (OverlayMeshRenderer)</item>
     /// <item>DecalVert+DecalFrag (GroundDecalRenderer)</item>
@@ -52,6 +53,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TexturedBillboard()
             => ShaderValidation.ValidatePair(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardFrag, "TexturedBillboard");
+
+        [Fact]
+        public void Particle()
+            => ShaderValidation.ValidatePair(ShaderSources.ParticleVert, ShaderSources.ParticleFrag, "Particle");
 
         [Fact]
         public void Beam()

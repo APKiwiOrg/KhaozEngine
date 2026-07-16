@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Particles.Render3D</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The 3D arm of the KhaozEngine particle system: turn-key glue between the render-free KhaozEngine.Particles simulation and Render3D's modern particle pass. Scene3D extension methods (DrawParticles, DrawEffect) map a ParticleSystem / ParticleEffectPlayer through a per-emitter ParticleLook to DrawParticle, DrawTrail and budgeted AddLight, and ship a modern VFX preset library (FireBurst, FrostShatter, HealMotes, EmberDrift, SparkShower, Shockwave, SmokePlume, ArcaneSparkle). Kept separate from KhaozEngine.Particles so a headless server or 2D game never drags in Render3D. Presentation only, holds no sim state. MonoGame-free.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

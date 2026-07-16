@@ -249,7 +249,7 @@ public class ArchitectureTests
         },
         {
             "KhaozEngine.Game3D",
-            new[] { "Game2D", "Render3D", "Game.Render3D", "Telegraphs.Render3D", "Terrain.Render3D", "Physics" }
+            new[] { "Game2D", "Render3D", "Game.Render3D", "Telegraphs.Render3D", "Terrain.Render3D", "Particles.Render3D", "Physics" }
         },
         {
             "KhaozEngine.Server",

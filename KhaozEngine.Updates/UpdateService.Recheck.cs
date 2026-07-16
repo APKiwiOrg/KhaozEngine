@@ -25,8 +25,10 @@ public sealed partial class UpdateService
     /// or failed update) zeroes the clock, so a fresh full interval is required after the flow returns to
     /// Idle rather than an instant re-probe. On reaching the interval it resets the clock and starts a
     /// fire-and-forget <see cref="CheckForUpdateAsync"/> with the usual failure-swallowing semantics (a
-    /// down feed just rests at Idle). Call once per frame from the game loop thread. Allocation-free while
-    /// accumulating. A negative or NaN <paramref name="dtSeconds"/> is treated as zero.
+    /// down feed just rests at Idle). Call once per frame from the game loop thread. When
+    /// <see cref="UpdateServiceOptions.RecheckInterval"/> is set, call <see cref="CheckForUpdateAsync"/>
+    /// from that same thread too: the recheck clock is game-loop-thread-owned and a manual check resets it.
+    /// Allocation-free while accumulating. A negative or NaN <paramref name="dtSeconds"/> is treated as zero.
     /// </summary>
     public void Tick(float dtSeconds)
     {

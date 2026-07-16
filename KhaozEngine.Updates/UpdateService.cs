@@ -603,7 +603,19 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
     private void SetState(UpdateState newState)
     {
         state = newState;
-        StateChanged?.Invoke();
+        try
+        {
+            StateChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            // A consumer's StateChanged handler must never break the state machine. The state field is
+            // already written above, so a throwing subscriber is logged and swallowed rather than wedging
+            // the service (e.g. stuck in Checking with every recheck suppressed) or faulting a Tick-driven
+            // fire-and-forget check. This also keeps the recovery transition back to Idle safe when the
+            // same handler throws on every invocation.
+            log.Warn($"StateChanged subscriber threw: {ex.Message}");
+        }
     }
 
     private void SetError(string message)

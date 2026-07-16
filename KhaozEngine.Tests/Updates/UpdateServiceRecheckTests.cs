@@ -255,6 +255,28 @@ public sealed class UpdateServiceRecheckTests : IDisposable
     }
 
     [Fact]
+    public void Tick_ThrowingStateChangedSubscriber_DoesNotEscapeOrWedge()
+    {
+        SetupV2Available();
+        FeedUpToDate(); // the fired check lands back at Idle, proving the service is not wedged
+        using UpdateService svc = Build(recheckInterval: TimeSpan.FromSeconds(10));
+        // Throws on EVERY invocation, so the recovery transition back to Idle is exercised too.
+        svc.StateChanged += () => throw new InvalidOperationException("consumer handler bug");
+
+        Exception? escaped = Record.Exception(() => svc.Tick(10f));
+
+        Assert.Null(escaped); // a broken subscriber must never escape the game-loop Tick
+        Assert.Equal(1, source.CheckCalls); // the check itself still ran
+        Assert.Equal(UpdateState.Idle, svc.State); // not wedged in Checking
+
+        // A subsequent recheck still fires after a fresh full interval.
+        svc.Tick(9f);
+        Assert.Equal(1, source.CheckCalls);
+        svc.Tick(1f);
+        Assert.Equal(2, source.CheckCalls);
+    }
+
+    [Fact]
     public async Task CheckForUpdateAsync_ResetsRecheckAccumulator()
     {
         SetupV2Available();

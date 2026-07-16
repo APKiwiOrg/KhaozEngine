@@ -1556,6 +1556,10 @@ void main() {
     rgb = clamp(rgb + Params.z, 0.0, 1.0);
 
     if (a <= 0.001) discard;
+    // Edge-energy lanes (rim/sweep glow, max-composited) can push a above 1 on float render targets. Legacy
+    // decals (all-new lanes zero) already keep a = max(fillA, outlineA) in [0,1], so this clamp is an identity
+    // for them and only bites the modern energy path.
+    a = clamp(a, 0.0, 1.0);
     oColor = vec4(rgb, a);
 }";
 

@@ -2687,6 +2687,41 @@ scene.DrawParticles(system, in look, lightBudget: 4);
 Or drop to the renderer directly: fill `ParticleSprite`s and call `scene.DrawParticle(in sprite)` /
 `scene.DrawParticles(spriteSpan)`.
 
+**Flipbook playback (authored sheets).** Procedural shapes are the default identity and cover the common
+glow/ember/streak/smoke/ring/glint vocabulary with no assets. For offline-simmed sheets (EmberGen-class smoke,
+fire, explosions) a look can instead play an authored flipbook: a grid of frame cells packed into one texture,
+sampled per frame in the same particle pass. It is purely additive, a look that never sets a flipbook stays fully
+procedural and costs nothing extra. Load the atlas (and an optional motion-vector sheet on the same grid) with
+`Scene3D.LoadTexture`, then hand a `ParticleFlipbook` to the look:
+
+```csharp
+Scene3D.TextureHandle atlas  = scene.LoadTexture(sheetRgba, 512, 512);   // an 8x8 grid = 64 frames
+Scene3D.TextureHandle motion = scene.LoadTexture(mvRgba, 512, 512);      // optional, same grid
+
+var look = new ParticleLook
+{
+    Blend = BillboardBlend.Additive,
+    Flipbook = new ParticleFlipbook(atlas, Columns: 8, Rows: 8,
+                                    MotionTexture: motion, MotionStrength: 1f, Loop: true),
+    FlipbookMode = ParticleFlipbookMode.TimeLoop,   // looping fire/smoke
+    FlipbookFps = 24f,                              // TimeLoop only, 0 means 12
+    // FlipbookRandomStart defaults true: stagger each particle's start frame by its Seed
+};
+scene.DrawParticles(system, in look);
+```
+
+`FlipbookMode` picks how the frame advances. `LifeOneShot` (the default) sweeps the sheet once across a particle's
+life and clamps on the last cell, for one-shot explosion and impact sheets where the sheet is the whole life.
+`TimeLoop` advances at `FlipbookFps` and wraps at the seam (set `Loop = true` on the spec so the wrap is seamless),
+for continuous fire and smoke. `FlipbookRandomStart` (default true, `TimeLoop` only) offsets each particle's start
+frame by its `Seed` so a burst of identical looping sprites does not play in lockstep. A motion-vector sheet drives
+a two-tap frame warp that reads fluid at low frame counts, and a plain sheet (no `MotionTexture`, or
+`MotionStrength = 0`) simply cross-fades between frames, no flag needed.
+
+At the engine level, `ParticleSprite` carries the same `Flipbook` spec plus a continuous `FlipbookFrame` (integer
+part = current cell, fractional part = blend toward the next), so a raw `DrawParticle`/`DrawParticles` caller drives
+frame timing itself. The adapter's `FlipbookMode` is just the policy that resolves `FlipbookFrame` for you.
+
 **Quality and soft fade** are host knobs, not cleared by `Begin`. Set the quality tier once when picking a graphics
 tier, the soft fade per frame:
 

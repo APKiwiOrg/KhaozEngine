@@ -199,7 +199,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   six procedural shapes are SDF/noise in the fragment shader (no atlas): `SoftGlow` (soft gaussian disc, a premium
   take on the legacy blob), `Ember` (hot core + warm halo with a subtle flicker), `Spark` (streak along local X,
   pairs with velocity stretch), `Wisp` (noise-eroded smoke that dissolves at its edges with life instead of fading
-  uniformly), `Ring` (soft annulus for shockwaves and impact rings), `Star` (four-point glint for sparkles).
+  uniformly), `Ring` (soft annulus for shockwaves and impact rings), `Star` (four-point glint for sparkles). A sprite can
+  instead play an authored flipbook: set `ParticleSprite.Flipbook` (a `ParticleFlipbook` naming an atlas
+  `TextureHandle`, its `Columns` x `Rows` grid, an optional motion-vector sheet + `MotionStrength`, and `Loop`)
+  and a continuous `FlipbookFrame` (integer part = cell, fractional part = blend to the next, motion-vector warped
+  when a motion sheet is bound, else a plain cross-fade). Flipbooks are additive over the procedural shapes,
+  selected per-sprite, and a sprite that leaves `Flipbook` default renders byte-identically to the procedural path
+  (a 1x1 dummy atlas + neutral motion sheet keep procedural runs in the same one pipeline).
   `ParticleOrientation` is `CameraFacing` (default) or `FlatGround` (the quad lies in the XZ plane, for shockwave
   rings and ground glows). The whole queue sorts back-to-front and BOTH blend modes interleave in the one stream,
   because the fragment premultiplies colour and zeroes the alpha lane for additive sprites. Depth state is test
@@ -208,8 +214,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   per sprite by `SoftFadeScale` (a flat-ground sprite wants a small value like 0.1 so the floor just behind it does
   not erase it). `Scene3D.ParticleQuality` (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second
   noise octave and the ember flicker on weak GPUs. The pass obeys the engine one-UBO rule: a single set-0 frame
-  uniform, every per-sprite value on an instanced vertex-attribute stream, and the scene depth texture + sampler at
-  set 0 bindings 1 and 2 (the Metal-safe pattern the ground-decal pass proves). The untextured
+  uniform, every per-sprite value on an instanced vertex-attribute stream, and the textures at set 0 bindings 1..5
+  in the order they are sampled (scene depth + its sampler at 1 and 2, then the motion, atlas, and atlas sampler at
+  3, 4, 5 for flipbook playback), the Metal-safe pattern the ground-decal pass proves. The untextured
   `DrawBillboard(Vector3, float, Color, BillboardBlend)` overlay remains the LEGACY particle path (post-post,
   unoccluded, always crisp, still fully supported for on-top markers), and the textured `DrawBillboard(TextureHandle, ...)`
   overloads remain the artist-texture path. The turn-key `ParticleSystem`/`ParticleEffectPlayer` mapping lives in

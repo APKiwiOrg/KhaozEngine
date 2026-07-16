@@ -104,3 +104,106 @@ precedent) as debugging and stylistic escapes.
   byte-identical to 10.126.0, golden-proven.
 - The alpha-lane contract, blit paths (MatchViewport mip/trilinear, FixedInternal single-tap),
   RenderScale semantics, and the post-post overlay/Gui/2D path are unchanged in both modes.
+
+## Flipbook particles
+
+Authored-atlas playback in the modern particle pass: a sprite can name a flipbook sheet (a grid of frame
+cells packed into one texture) and a continuous frame position, and the fragment shader samples that frame
+instead of a procedural shape, with optional motion-vector frame interpolation. This is the offline-simmed
+half of the effect vocabulary (EmberGen-class smoke, fire, and explosion sheets) sitting beside the
+procedural shapes, not replacing them. Builds on the 10.126.0 procedural pass and rides the same one-UBO,
+sorted, premultiplied, bloom-feeding stream.
+
+### D-F1: Flipbook is presentation (look-level)
+
+The simulation (`KhaozEngine.Particles`) learns nothing about textures. A flipbook is renderer vocabulary,
+same class as shape, blend, stretch, and light links, so it lives on the presentation side: the spec sits
+on `ParticleSprite` (Render3D) and on `ParticleLook` (the `Particles.Render3D` adapter), never on the
+`Particle` or `EmitterConfig`. A headless server references the sim with no atlas concept in scope, and the
+sim's determinism story is untouched. The sim's per-particle `Seed` and life fraction are the only inputs
+the adapter reads to drive frame timing, both already present.
+
+### D-F2: One shader, dummy-texture zero-neutral
+
+No pipeline fork. The particle pass stays a single pipeline and the procedural-vs-flipbook choice is
+per-sprite, decided by the packed grid value in the instance stream (0 = procedural). A 1x1 white dummy
+atlas and a 1x1 neutral motion sheet (0.5, 0.5 encoded) are bound for procedural runs, sampled statically
+up front in binding order (the Metal rule), then discarded by the shader branch. A frame with no flipbook
+sprites therefore renders byte-identically to before flipbooks existed: the sample happens, the result is
+thrown away, and the procedural output path is untouched. The proof is that the committed
+`scene3d_particles_modern` goldens stay green with no rebake (see Testing).
+
+### D-F3: Motion-vector two-tap warp
+
+Frame interpolation is the classic two-tap motion-vector warp. Frame A is sampled warped forward along its
+encoded motion vector scaled by the blend fraction, frame B is sampled warped backward by (1 - blend), and
+the two mix by blend. A motion sheet reads fluid at low frame counts where a plain cross-fade ghosts. The
+key design property: a neutral motion texture (the (0.5, 0.5) encode = zero displacement) degrades the warp
+to a plain cross-fade automatically, so "no motion sheet authored" needs no flag and no shader variant. An
+absent `MotionTexture` binds the neutral dummy and the same math cross-fades. `MotionStrength` scales the
+displacement (0 = plain cross-fade even with a real sheet bound).
+
+### D-F4: Frame timing lives in the adapter
+
+Render3D receives only a resolved continuous `FlipbookFrame` plus the spec, so the render vocabulary stays
+policy-free. The `ParticleLook` adapter owns the timing via `ParticleFlipbookMode`:
+
+- `LifeOneShot` (default): frame = life fraction swept across the sheet once, clamping on the last cell. For
+  one-shot sheets (an explosion, an impact burst) where the sheet is the particle's whole life.
+- `TimeLoop`: frame = effect time * `FlipbookFps`, wrapping at the seam. For continuous sheets (looping fire
+  and smoke). `FlipbookRandomStart` (default true) staggers each particle's start frame by its `Seed` so a
+  burst of identical looping sprites does not play in lockstep.
+
+`Loop` on the spec (not the mode) controls whether the renderer's frame resolve wraps frame B across the
+seam or clamps it, keeping wrap policy in one place. The pure resolver `ResolveFlipbookFrame` and the pure
+`ResolveFrames` split (adapter picks the continuous position, renderer turns it into two integer indices
+plus a blend) are both headless-tested.
+
+### D-F5: Run-splitting preserves the global sort
+
+The pass keeps ONE globally back-to-front sorted stream. Sorting correctness is not negotiable (alpha smoke
+and additive glow interleave in that one stream), so the atlas cannot be a sort key. Instead the sorted
+stream is split, after the sort, into contiguous runs keyed by atlas pair (atlas texture, motion texture),
+one instanced draw per run at an instance-start offset into one packed buffer. This is the same-blend-run
+precedent the ground-decal pass established. Procedural sprites carry the dummy pair, so a run of adjacent
+procedural sprites merges into one dummy-pair draw and an all-procedural frame is exactly one draw (today's
+single draw). No sprite is ever reordered across runs, so the global depth order survives verbatim. The
+split is a pure `BuildRuns` helper, headless-tested (all-procedural = 1 run, interleaved atlas/proc/atlas =
+3 runs in order, adjacent same-atlas merge).
+
+### D-F6: IFlip instance packing (2^24-exact)
+
+A sixth instance vec4 `IFlip` carries the flipbook per-sprite data: x = frame A index, y = frame B index,
+z = blend, w = the packed grid and motion strength. The pack is
+`cols + rows * 256 + qstr * 65536` where `qstr = round(clamp(strength, 0, 4) * 64)`. The implementer's
+correction over the original plan: `qstr` is capped at 255, not left free. `clamp(strength,0,4) * 64`
+reaches 256 at strength 4, and 256 * 65536 = 2^24, which is the first integer float32 cannot represent
+exactly alongside the low cols/rows bits. Capping `qstr` at 255 keeps the whole packed value at or below
+2^24 - 1 so every field stays bit-exact in the float32 lane and the shader's mirror mod/floor decode is
+exact. Strength 4 quantizes to 255/64 (about 3.98) rather than corrupting the grid, a benign clamp at the
+very top of the authored range. One documented encode in `PackFlipGrid`, one decode in the shader, a
+headless round-trip test pins it. w > 0.5 is the procedural-vs-flipbook flag the shader branches on.
+
+### Testing
+
+The zero-neutral proof is that the committed `scene3d_particles_modern` goldens stay green on all three
+backends with NO rebake: the dummy-texture path renders procedural sprites byte-identically, so a golden
+baked before flipbooks existed still matches. A new `scene3d_particles_flipbook` golden pins the feature
+itself (a generated atlas plus motion sheet, sprites at fixed frames including one mid-blend and one
+motion-warped, interleaved with procedural sprites so run-splitting is exercised, over the dim floor with
+effect time and seeds frozen), baked on metal, direct3d11, and vulkan. Behaviour GpuFacts cover frame
+selection (frame 0 vs frame 10 read the matching atlas cells), cross-fade (a mid-frame reads a mix of both
+neighbours), the motion-vector warp (an offset-encoding motion sheet vs the neutral sheet reads measurably
+different, proving the taps moved), and byte-identical zero-neutral (a procedural scene renders the same
+before and after an atlas is loaded but not used). Every test sheet is generated procedurally in-test
+(distinct-hue cells, a known-offset motion encode), so the suite ships no asset files.
+
+### Compatibility statement
+
+Purely additive. New API: `ParticleFlipbook`, `ParticleSprite.Flipbook` / `FlipbookFrame`,
+`ParticleLook.Flipbook` / `FlipbookMode` / `FlipbookFps` / `FlipbookRandomStart`, `ParticleFlipbookMode`.
+Every field zero-defaults to the procedural path, so a sprite or look that never touches a flipbook renders
+exactly as before (golden-proven). The only non-additive detail is internal: the particle instance stride
+grows from 80 to 96 bytes for the extra `IFlip` vec4, invisible across the public API. Textures ride the
+existing `Scene3D.LoadTexture` / `TextureHandle` registry with per-atlas-pair cached resource sets (the
+textured-billboard precedent), so no new resource-ownership surface. SemVer minor.

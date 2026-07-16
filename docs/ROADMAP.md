@@ -156,11 +156,7 @@ they sit on.
 
 **Tier 1 (one engine program, scoped 2026-07-16, next up for this domain):**
 
-1. Flipbook particles with motion-vector blending. Atlas playback (per-particle frame index) plus
-   motion-vector frame interpolation in the particle pass, so offline-simmed smoke/fire/explosion
-   sheets (EmberGen class) read fluid at low frame counts. Complements, not replaces, the procedural
-   shapes: procedural stays the identity for sparks, glows, magic, rings.
-2. Screen-space distortion pass. Distortion particles write an offset buffer, the resolved scene
+1. Screen-space distortion pass. Distortion particles write an offset buffer, the resolved scene
    color re-samples through it: heat haze, refractive shockwaves, splash lensing. High AAA-feel per
    cost.
 

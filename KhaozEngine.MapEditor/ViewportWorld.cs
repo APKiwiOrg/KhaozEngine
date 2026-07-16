@@ -22,7 +22,7 @@ namespace KhaozEngine.MapEditor;
 /// the selected placement re-draws with the highlight tint through the per-call tint surface.
 /// <para>The class is split so the GPU-free surface (manifest parsing into <see cref="KindHeights"/>, the
 /// Build/Rebuild/Dispose state guards, the placement cache, and the selected/unselected <see cref="Partition"/>)
-/// is testable without a device; every GPU-touching call lives behind a small private method. It touches its
+/// is testable without a device. Every GPU-touching call lives behind a small private method. It touches its
 /// <see cref="Scene3D"/> only from <see cref="Build"/> onward, so the ctor and the state guards run headless.</para>
 /// </summary>
 public sealed class ViewportWorld : IDisposable
@@ -92,7 +92,7 @@ public sealed class ViewportWorld : IDisposable
             {
                 entries.Add(entry);
                 // First-manifest-wins on a duplicate id, matching the mesh tiebreak in LoadKitMeshes (keeps
-                // heights/categories/meshes consistent; heights used to be last-wins, a divergence closed here).
+                // heights/categories/meshes consistent. Heights used to be last-wins, a divergence closed here).
                 if (!heights.ContainsKey(entry.Id)) heights[entry.Id] = entry.HeightMeters;
                 if (!categories.ContainsKey(entry.Id)) categories[entry.Id] = entry.Category ?? stem;
             }
@@ -263,7 +263,7 @@ public sealed class ViewportWorld : IDisposable
     /// unguarded (a safe no-op after <see cref="Dispose"/>) so a late change event during teardown never throws.</summary>
     public void InvalidatePlacements() => _placements.Invalidate();
 
-    /// <summary>Frees the GPU world (loaded ring, sink, splat material, kit meshes). Idempotent; a call before
+    /// <summary>Frees the GPU world (loaded ring, sink, splat material, kit meshes). Idempotent. A call before
     /// <see cref="Build"/> is a no-op beyond flipping the disposed flag.</summary>
     public void Dispose()
     {
@@ -292,7 +292,7 @@ public sealed class ViewportWorld : IDisposable
 
         IReadOnlyList<PropLayer> layers = BuildPropLayers(doc);
         // No physics in the editor: the viewport only renders. Unlike Room3D's ownsMaterial: true, the WORLD
-        // (not the sink) owns the splat material here so it survives a Rebuild's TeardownStreaming; it is freed
+        // (not the sink) owns the splat material here so it survives a Rebuild's TeardownStreaming. It is freed
         // by TeardownKitMeshes instead (see Dispose / InvalidateKitMeshes).
         _sink = new Scene3DChunkSink(_scene, _field, layers, TerrainChunkRegion.DefaultSize,
             material: _splatMaterial, ownsMaterial: false);
@@ -433,7 +433,7 @@ public sealed class ViewportWorld : IDisposable
 
     // Frees every kit mesh this class uploaded plus the cached splat material (if loaded), and clears both caches
     // so the next BuildCore reloads them. Runs from Dispose (full teardown) and InvalidateKitMeshes (the
-    // textured-props toggle needs a fresh load since the mesh cache key is the entry id alone); a Rebuild never
+    // textured-props toggle needs a fresh load since the mesh cache key is the entry id alone). A Rebuild never
     // calls this, which is exactly what lets kit meshes and the splat material persist across it. A world that is
     // never disposed still leaks nothing: Scene3D.Dispose frees every mesh and splat material it holds directly,
     // independent of which caller "owns" them at this level (see KhaozEngine.MapEdit.Tool/RenderService.cs).

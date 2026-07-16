@@ -134,7 +134,9 @@ namespace KhaozEngine.Telegraphs
                 Pattern = style.Pattern == TelegraphFillPattern.Solid
                     ? DecalFillPattern.ScrollingNoise : (DecalFillPattern)style.Pattern,
                 PatternSpeed = 0.1f,
-                PatternScale = (style.PatternScale > 0f ? style.PatternScale : 6f) / charSize,
+                PatternScale = charSize > 1e-4f
+                    ? (style.PatternScale > 0f ? style.PatternScale : 6f) / charSize
+                    : 0f,
             };
         }
 

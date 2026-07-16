@@ -85,6 +85,15 @@ namespace KhaozEngine.Tests.Telegraphs
         }
 
         [Fact]
+        public void Residue_with_zero_radius_produces_finite_fields()
+        {
+            var d = GroundTelegraphs.BuildResidueCircle(Vector3.Zero, 0f, 0.5f, TelegraphStyle.Fire);
+            Assert.True(float.IsFinite(d.PatternScale));
+            Assert.Equal(0f, d.PatternScale);
+            Assert.True(float.IsFinite(d.FeatherWidth));
+        }
+
+        [Fact]
         public void Residue_is_pure_and_clamps_age()
         {
             var a = GroundTelegraphs.BuildResidueCircle(new Vector3(1f, 0f, 1f), 2f, 0.5f, TelegraphStyle.Frost);

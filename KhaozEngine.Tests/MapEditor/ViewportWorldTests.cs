@@ -198,6 +198,23 @@ namespace KhaozEngine.Tests.MapEditor
             vw.InvalidatePlacements();
         }
 
+        [Fact]
+        public void InvalidateKitMeshes_BeforeBuild_DoesNotThrow()
+        {
+            // Callable any time except after Dispose, including before the first Build: the cache is empty and the
+            // splat material was never loaded, so this must not touch the (null) scene.
+            ViewportWorld vw = Construct(TwoPropManifest);
+            vw.InvalidateKitMeshes();
+        }
+
+        [Fact]
+        public void InvalidateKitMeshes_AfterDispose_Throws()
+        {
+            ViewportWorld vw = Construct(TwoPropManifest);
+            vw.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => vw.InvalidateKitMeshes());
+        }
+
         // ---- selected/unselected partition -------------------------------------------------------------
 
         static EditorPlacement Ep(string id, string kind) =>

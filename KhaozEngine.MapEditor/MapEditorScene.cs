@@ -1625,7 +1625,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             "game loads.")));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Textured props"),
             () => _options.TexturedProps,
-            v => { _options.TexturedProps = v; RebuildWorldForVisibility(); },
+            v => { _options.TexturedProps = v; InvalidateViewportKitMeshes(); RebuildWorldForVisibility(); },
             LocalizedText.Raw("When on (the default, matching gameplay) a kit prop flagged textured shows its " +
                 "baked materials in the viewport. Turn off to render every prop in its flattened average colour " +
                 "instead, which can be easier to read while placing a dense textured forest. Editor view only, " +
@@ -1658,13 +1658,25 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// (hidden layers drop out of the fresh prop layers). Called directly from the Layers-panel scatter toggle,
     /// NOT through <see cref="EditorDocument.WorldRebuildPending"/> (visibility is not a document change). No-op
     /// until the world is built, and overridden headless in tests. Re-points the controller field at the rebuilt
-    /// world, matching <see cref="CheckWorldRebuild"/>.</summary>
+    /// world, matching <see cref="CheckWorldRebuild"/>. <see cref="ViewportWorld.Rebuild"/> retains the viewport's
+    /// kit meshes and splat material across this call, so a scatter-layer toggle (which never changes which mesh
+    /// form a kit id loads) does not need <see cref="InvalidateViewportKitMeshes"/> first, unlike the Textured
+    /// props toggle.</summary>
     protected virtual void RebuildWorldForVisibility()
     {
         if (!_viewport.IsBuilt) return;
         _viewport.Rebuild(_document.Doc, _document.Registry);
         _controller.Field = _viewport.Field;
     }
+
+    /// <summary>GPU seam: invalidates the viewport's retained kit-mesh cache (and its cached splat material) so the
+    /// next <see cref="RebuildWorldForVisibility"/> reloads every kit id from disk instead of serving a stale
+    /// cached form. The Textured props Layers-panel toggle calls this immediately before
+    /// <see cref="RebuildWorldForVisibility"/>, because <see cref="ViewportWorld.LoadKitMeshes"/> keys its cache on
+    /// the entry id alone and does not encode which form (textured parts vs. flattened) was loaded, so a retained
+    /// cache would otherwise serve the pre-toggle form. Overridden headless in tests (mirrors
+    /// <see cref="RebuildWorldForVisibility"/>).</summary>
+    protected virtual void InvalidateViewportKitMeshes() => _viewport.InvalidateKitMeshes();
 
     // The terrain root inspector: every terrain scalar as an editable row (each routed through the widened
     // EditTerrainCommand so scrubs coalesce and the scatter-honouring world rebuild fires), plus a read-only

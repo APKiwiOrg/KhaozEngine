@@ -64,17 +64,21 @@ namespace KhaozEngine.Tests.MapEditor
         // The DocScene idiom plus a RebuildWorldForVisibility spy: BuildWorld/TeardownWorld stay no-ops (so the
         // viewport is never actually built, matching DocScene), but the protected rebuild seam a Layers-panel
         // scatter-layer or Textured-props toggle calls is counted instead of running (which would no-op anyway
-        // since _viewport.IsBuilt is false headless). Lets a toggle test assert the rebuild call fired without a
-        // Scene3D device.
+        // since _viewport.IsBuilt is false headless). Also spies the InvalidateViewportKitMeshes seam the
+        // Textured-props toggle calls before the rebuild (the scatter-layer toggle does not call it), recording
+        // both into one ordered Log so a test can assert the textured toggle invalidates BEFORE it rebuilds.
         sealed class RebuildSpyDocScene : MapEditorScene
         {
             readonly Func<MapDocument> _factory;
             public int Rebuilds;
+            public int KitMeshInvalidations;
+            public readonly List<string> Log = new();
             public RebuildSpyDocScene(Func<MapDocument> factory) => _factory = factory;
             protected override void BuildWorld() { }
             protected override void TeardownWorld() { }
             protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
-            protected override void RebuildWorldForVisibility() => Rebuilds++;
+            protected override void RebuildWorldForVisibility() { Rebuilds++; Log.Add("rebuild"); }
+            protected override void InvalidateViewportKitMeshes() { KitMeshInvalidations++; Log.Add("invalidate"); }
         }
 
         // Injects a caller-supplied document AND a pure flat field on the controller (no GPU), so a viewport pick
@@ -2115,6 +2119,46 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(TapBool(textured));
             Assert.True(options.TexturedProps);
             Assert.Equal(2, scene.Rebuilds);
+        }
+
+        [Fact]
+        public void TexturedToggle_Flip_InvalidatesKitMeshes_ThenRebuilds()
+        {
+            // The textured/flattened form a kit id loads is keyed on the toggle at load time (ViewportWorld's mesh
+            // cache is keyed on entry id alone, not on which form was loaded), so the toggle must invalidate the
+            // retained cache BEFORE it rebuilds, or the rebuild would serve the stale cached form.
+            var options = new MapEditorOptions();
+            var scene = PushRebuildSpyDocScene(ValidDoc, options);
+            scene.Document.Selection.Clear();
+
+            BoolRow textured = BoolRowByLabel(scene.Inspector, "Textured props");
+            Assert.True(TapBool(textured));
+
+            Assert.Equal(1, scene.KitMeshInvalidations);
+            Assert.Equal(1, scene.Rebuilds);
+            Assert.Equal(new[] { "invalidate", "rebuild" }, scene.Log);
+        }
+
+        [Fact]
+        public void ScatterLayerVisibility_Flip_RebuildsWithoutInvalidatingKitMeshes()
+        {
+            // A scatter-layer visibility toggle only changes WHICH layers stream, never which mesh form an id
+            // loads, so it must rebuild without touching the retained kit-mesh cache.
+            var options = new MapEditorOptions();
+            var scene = PushRebuildSpyDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                return doc;
+            }, options);
+            scene.Document.Selection.Clear();
+
+            BoolRow layerRow = BoolRowByLabel(scene.Inspector, "trees");
+            Assert.True(TapBool(layerRow));
+
+            Assert.Equal(0, scene.KitMeshInvalidations);
+            Assert.Equal(1, scene.Rebuilds);
+            Assert.Equal(new[] { "rebuild" }, scene.Log);
         }
 
         // ---- categorized palette + filters ---------------------------------------------------------------

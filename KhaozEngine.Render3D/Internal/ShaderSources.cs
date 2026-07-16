@@ -989,11 +989,13 @@ layout(location=1) in vec4 IVelocityRot;  // xyz world velocity, w rotation (rad
 layout(location=2) in vec4 IColor;        // straight rgba tint (premultiplied by the fragment)
 layout(location=3) in vec4 IShape;        // x shape id, y shape param, z life norm, w seed
 layout(location=4) in vec4 IExtra;        // x stretch, y additivity (0 alpha / 1 additive), z orientation (0 camera / 1 flat ground), w soft-fade scale
+layout(location=5) in vec4 IFlip;         // x frameA, y frameB, z blend, w packed grid+strength (0 = procedural)
 layout(location=0) out vec2 vLocal;
 layout(location=1) out vec4 vColor;
 layout(location=2) out vec4 vShape;
 layout(location=3) out vec4 vExtra;       // x aspect (stretch elongation), y additivity, z orientation, w soft-fade scale
 layout(location=4) out vec3 vWorld;
+layout(location=5) out vec4 vFlip;        // flipbook frames + packed grid, passed straight through to the fragment
 void main() {
     // Two-triangle quad from gl_VertexIndex (0..5), the same instanced-quad path DecalVert uses.
     float u = (gl_VertexIndex == 1 || gl_VertexIndex == 3 || gl_VertexIndex == 4) ? 1.0 : 0.0;
@@ -1034,6 +1036,7 @@ void main() {
     vShape = IShape;
     vExtra = vec4(aspect, IExtra.y, IExtra.z, IExtra.w);
     vWorld = world;
+    vFlip = IFlip;
 }";
 
         public const string ParticleFrag = @"#version 450
@@ -1047,11 +1050,18 @@ layout(set=0, binding=0) uniform Frame {
 };
 layout(set=0, binding=1) uniform texture2D DepthTex;   // .r = scene NDC depth (single-channel R32F, resolved)
 layout(set=0, binding=2) uniform sampler Samp;
+// Flipbook atlas + motion-vector sheet. MotionTex sits at binding 3 and AtlasTex at binding 4 on purpose: Metal
+// requires every texture be sampled statically in binding order, and the two-tap warp needs the motion vectors
+// BEFORE it can offset the atlas taps, so motion must come first. AtlasSamp is the shared linear sampler for both.
+layout(set=0, binding=3) uniform texture2D MotionTex;
+layout(set=0, binding=4) uniform texture2D AtlasTex;
+layout(set=0, binding=5) uniform sampler AtlasSamp;
 layout(location=0) in vec2 vLocal;    // quad-local coords in [-1,1] (rotate/stretch with the quad)
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
 layout(location=3) in vec4 vExtra;    // x aspect, y additivity, zw reserved
 layout(location=4) in vec3 vWorld;    // fragment world position (flat across the quad's plane)
+layout(location=5) in vec4 vFlip;     // x frameA, y frameB, z blend, w packed grid+strength (0 = procedural)
 layout(location=0) out vec4 oColor;
 
 // Texture-free value noise, the exact polynomial-hash idiom the decal pass ships cross-backend goldens with
@@ -1077,6 +1087,33 @@ void main() {
     float t = CamPosTime.w;
     float quality = Params.y;
     float d = length(vLocal);
+
+    // Scene depth for the soft fade. Sampled unconditionally up front (Metal's static-sample rule, binding order
+    // DepthTex then MotionTex then AtlasTex). The fade MATH below stays gated on fadeDist, so hoisting the fetch
+    // here changes no output.
+    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
+    float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+
+    // Flipbook atlas playback (D-F6 grid decode + D-F3 two-tap motion-vector warp). Sampled statically here, after
+    // DepthTex and in binding order (MotionTex then AtlasTex), so Metal stays happy. Procedural sprites pack grid 0
+    // (useFlip false) and DISCARD these taps below, keeping their output byte-identical. safeCols guards the mod/div
+    // for that discarded path (a real flipbook always has cols >= 1, so it is a no-op there).
+    float packedW = vFlip.w;
+    bool useFlip = packedW > 0.5;
+    float cols = mod(packedW, 256.0);
+    float rows = mod(floor(packedW / 256.0), 256.0);
+    float mstr = floor(packedW / 65536.0) / 64.0;
+    float safeCols = max(cols, 1.0);
+    vec2 cell = 1.0 / max(vec2(cols, rows), vec2(1.0));
+    vec2 lu = vLocal * 0.5 + 0.5;                          // quad-local [0,1], rotates/stretches with the quad
+    vec2 uvA = (vec2(mod(vFlip.x, safeCols), floor(vFlip.x / safeCols)) + lu) * cell;
+    vec2 uvB = (vec2(mod(vFlip.y, safeCols), floor(vFlip.y / safeCols)) + lu) * cell;
+    vec2 mvA = (texture(sampler2D(MotionTex, AtlasSamp), uvA).rg * 2.0 - 1.0) * mstr * cell;
+    vec2 mvB = (texture(sampler2D(MotionTex, AtlasSamp), uvB).rg * 2.0 - 1.0) * mstr * cell;
+    float fb = vFlip.z;
+    vec4 texA = texture(sampler2D(AtlasTex, AtlasSamp), uvA - mvA * fb);
+    vec4 texB = texture(sampler2D(AtlasTex, AtlasSamp), uvB + mvB * (1.0 - fb));
+    vec4 flipCol = mix(texA, texB, fb);
 
     float mask;
     if (shape == 0) {
@@ -1129,8 +1166,6 @@ void main() {
     float fade = 1.0;
     float fadeDist = Params.x * vExtra.w;
     if (fadeDist > 0.0) {
-        ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
-        float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
         if (abs(depth - Params.z) > 1e-6) {
             vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, depth, 1.0);
             vec4 wp = InvViewProj * ndc;
@@ -1143,8 +1178,18 @@ void main() {
 
     // Premultiplied output under a (One, InverseSourceAlpha) blend: alpha sprites keep their coverage in the
     // alpha lane, additive sprites zero it (out = dst + rgb), so one sorted stream composites both correctly.
-    float a = clamp(vColor.a * mask, 0.0, 1.0) * fade;
-    oColor = vec4(vColor.rgb * a, a * (1.0 - vExtra.y));
+    // Flipbook sprites take coverage + colour from the atlas frame (tint * sheet). Procedural sprites keep the SDF
+    // mask path byte-for-byte.
+    float a;
+    vec3 rgb;
+    if (useFlip) {
+        a = clamp(vColor.a * flipCol.a, 0.0, 1.0) * fade;
+        rgb = vColor.rgb * flipCol.rgb * a;
+    } else {
+        a = clamp(vColor.a * mask, 0.0, 1.0) * fade;
+        rgb = vColor.rgb * a;
+    }
+    oColor = vec4(rgb, a * (1.0 - vExtra.y));
 }";
 
         // ---- Additive glowing beam (lasers/thrusters/tethers). Drawn INTO the model MRT alongside the meshes

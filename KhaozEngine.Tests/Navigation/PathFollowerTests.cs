@@ -45,6 +45,9 @@ public class PathFollowerTests
         Assert.Equal(PathFollowState.Following, output.State);
         Assert.Equal(new Vector2(5f, 5f), output.ActiveWaypoint);
         Assert.Equal(Vector2.Normalize(new Vector2(5f, 5f)), output.WorldDir);
+        // The follower must forward the exact agentRadius it was ticked with and the config's Budget.
+        Assert.Equal(AgentRadius, planner.Calls[0].AgentRadius);
+        Assert.Equal(PathFollowConfig.Default.Budget, planner.Calls[0].Budget);
     }
 
     [Fact]

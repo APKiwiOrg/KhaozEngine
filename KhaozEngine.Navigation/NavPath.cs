@@ -50,6 +50,11 @@ public sealed class NavPath
     {
         Status = status;
         Waypoints = waypoints ?? throw new ArgumentNullException(nameof(waypoints));
+        if (status == NavPathStatus.Unreachable && Waypoints.Count != 0)
+        {
+            throw new ArgumentException(
+                "An Unreachable NavPath must carry zero waypoints.", nameof(waypoints));
+        }
     }
 
     /// <summary>Shared, cached result for an unreachable query: <see cref="NavPathStatus.Unreachable"/>

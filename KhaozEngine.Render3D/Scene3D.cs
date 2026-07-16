@@ -1535,15 +1535,18 @@ namespace KhaozEngine.Render3D
             int samples = ResolvedMsaaSamples();
             bool sampleChanged = _res.SampleCount != samples;
             bool bloomChanged = _res.BloomAllocated != Post.Bloom.Enabled;
-            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged)
+            bool hdrChanged = _res.HdrColor != Post.Hdr.Enabled;
+            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged)
             {
-                // A pipeline in flight may reference the old sample count / targets; a MSAA change is rare, so idling
-                // before recreating the MRT + rebuilding pipelines is cheap insurance.
-                if (sampleChanged) _gd.WaitForIdle();
+                // A pipeline in flight may reference the old sample count / colour format / targets; a MSAA or HDR
+                // toggle is rare, so idling before recreating the MRT + rebuilding pipelines is cheap insurance. An
+                // HDR toggle changes the MRT colour attachment format, so every MRT-writing renderer's pipeline must
+                // be rebuilt too (RebuildMrtRenderers), exactly like a sample-count change.
+                if (sampleChanged || hdrChanged) _gd.WaitForIdle();
                 _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled, Post.Hdr.Enabled);
                 _post.BindTargets(_res);
                 _transitions.BindTargets(_res);
-                if (sampleChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count
+                if (sampleChanged || hdrChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count / colour format
             }
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;

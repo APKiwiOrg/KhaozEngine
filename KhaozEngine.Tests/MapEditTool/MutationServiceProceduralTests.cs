@@ -14,9 +14,12 @@ namespace KhaozEngine.Tests.MapEditTool
     /// <see cref="QueryService"/>: feature/exclusion rename, exclusion layer targeting, the widened terrain-scalar
     /// edit, the biome band triad, the scatter/companion layer triads plus their rename verbs, and the
     /// <see cref="QueryService.ProceduralInfo"/> read path, plus the Task 6 companion host-kinds mismatch note on
-    /// companion_layer_add/edit and the computed <see cref="CompanionLayerInfo.HostKindsMatchHost"/> flag. Every
-    /// mutation runs against <see cref="SampleDocs.SampleDoc"/> opened through a fresh session and holds the
-    /// shared apply, validate, revert-on-error invariant the rest of the suite already exercises.</summary>
+    /// companion_layer_add/edit and the computed <see cref="CompanionLayerInfo.HostKindsMatchHost"/> flag, plus
+    /// <see cref="MutationService.ScatterOverrideRename"/> (the scatter-override-overrides batch): unlike
+    /// <see cref="MutationService.ExclusionRename"/>'s empty-only convention, both null and empty clear a scatter
+    /// override's name back to unnamed. Every mutation runs against <see cref="SampleDocs.SampleDoc"/> opened
+    /// through a fresh session and holds the shared apply, validate, revert-on-error invariant the rest of the
+    /// suite already exercises.</summary>
     public class MutationServiceProceduralTests
     {
         static string NewTempDir()
@@ -124,6 +127,47 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 mutation.ExclusionSetLayers(0, null);
                 Assert.Null(session.WithDocument((doc, _) => doc.Exclusions[0].Layers));
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        // ---- scatter override rename ---------------------------------------------------------------------------
+
+        [Fact]
+        public void ScatterOverrideRename_NullAndEmptyBothClear_ThenDuplicateRejected()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+                mutation.ScatterOverrideAdd("{\"type\":\"disc\",\"centerX\":10,\"centerZ\":10,\"radius\":5}");
+
+                MutationResult rename = mutation.ScatterOverrideRename(0, "no-scatter-camp");
+                Assert.Equal("scatter_override_rename", rename.Verb);
+                Assert.False(rename.WorldChanged);
+                Assert.Equal(0, rename.Index);
+                Assert.Equal("no-scatter-camp", session.WithDocument((doc, _) => doc.ScatterOverrides[0].Name));
+
+                string before = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
+                bool dirtyBefore = session.IsDirty;
+
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+                    mutation.ScatterOverrideRename(1, "no-scatter-camp"));
+                Assert.Contains("already exists", ex.Message);
+
+                Assert.Equal(before, session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r)));
+                Assert.Equal(dirtyBefore, session.IsDirty);
+
+                // Unlike RenameExclusionCommand's empty-only convention, RenameScatterOverrideCommand treats both
+                // null and empty as clearing back to unnamed.
+                mutation.ScatterOverrideRename(0, "");
+                Assert.Null(session.WithDocument((doc, _) => doc.ScatterOverrides[0].Name));
+
+                mutation.ScatterOverrideRename(1, "temp-name");
+                mutation.ScatterOverrideRename(1, null);
+                Assert.Null(session.WithDocument((doc, _) => doc.ScatterOverrides[1].Name));
 
                 Assert.Empty(session.Validate().StructuralErrors);
             }

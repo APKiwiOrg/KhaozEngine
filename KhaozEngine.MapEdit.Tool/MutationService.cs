@@ -16,9 +16,12 @@ namespace KhaozEngine.MapEdit;
 /// <see cref="Apply(Func{MapDocument, MapDocRegistry, EditorCommand}, string, Func{EditorCommand, string}, bool)"/>,
 /// for verbs that need a document read to build the command): apply the <see cref="EditorCommand"/>, validate the
 /// document, and on any validation error revert the command and throw, so the in-session document is never left
-/// invalid. The few mutations with no command (terrain seed, scatter overrides, region bake) reproduce that same
-/// apply, validate, revert-on-error shape by hand inside one <see cref="MapEditSession.Mutate{T}"/> callback. A
-/// rejected mutation leaves the session exactly as it was before the attempt, including the dirty flag, because
+/// invalid. The few mutations with no command (terrain seed, region bake) reproduce that same apply, validate,
+/// revert-on-error shape by hand inside one <see cref="MapEditSession.Mutate{T}"/> callback. <see cref="ScatterOverrideEdit"/>
+/// reproduces that same shape too, but WITH commands: it can apply up to two <see cref="EditorCommand"/> instances
+/// (shape and/or values) under one lock, so a call touching both lands as one atomic edit with one combined
+/// revert-on-error. A rejected mutation leaves the session exactly as it was before the attempt, including the
+/// dirty flag, because
 /// <see cref="MapEditSession.Mutate{T}"/> only marks dirty when its callback returns normally and a rejected
 /// mutation throws out of that callback.</summary>
 public sealed class MutationService(MapEditSession session)
@@ -906,46 +909,48 @@ public sealed class MutationService(MapEditSession session)
         return result with { Index = index };
     }
 
-    // ---- scatter overrides (no command: direct list mutation + manual revert) -------------------------------
+    // ---- scatter overrides (scatter-input affecting) ----------------------------------------------------------
 
     /// <summary>Appends a scatter override (density multiplier and/or kind substitution) over a shape parsed from
-    /// <paramref name="shapeJson"/>, optionally filtered to <paramref name="layers"/>. Scatter overrides have no
-    /// <see cref="EditorCommand"/>, so this mutates the list directly inside one world-affecting
-    /// <see cref="MapEditSession.Mutate{T}"/>, validates, and reverts by removing the appended entry on failure,
-    /// mirroring the invariant the command paths get from the choke point. <paramref name="kinds"/> entries parse
-    /// as <c>"id"</c> (weight 1) or <c>"id:weight"</c>.</summary>
+    /// <paramref name="shapeJson"/>, optionally filtered to <paramref name="layers"/>. <paramref name="kinds"/>
+    /// entries parse as <c>"id"</c> (weight 1) or <c>"id:weight"</c>. Routes through
+    /// <see cref="AddScatterOverrideCommand"/> via the shared choke point, mirroring <see cref="ExclusionAdd"/>.</summary>
     public MutationResult ScatterOverrideAdd(string shapeJson, float densityMultiplier = 1f,
         IReadOnlyList<string>? kinds = null, IReadOnlyList<string>? layers = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(shapeJson);
 
-        return session.Mutate((doc, registry) =>
+        int addedIndex = -1;
+        MutationResult result = Apply((doc, registry) =>
         {
-            var over = new MapScatterOverrideDoc
+            MapShapeDoc shape = DocJson.ParseShape(shapeJson, registry);
+            addedIndex = doc.ScatterOverrides.Count;
+            return new AddScatterOverrideCommand(new MapScatterOverrideDoc
             {
-                Shape = DocJson.ParseShape(shapeJson, registry),
+                Shape = shape,
                 DensityMultiplier = densityMultiplier,
                 Kinds = kinds is null ? null : ParseKinds(kinds),
                 Layers = layers?.ToList(),
-            };
-            doc.ScatterOverrides.Add(over);
-
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-            if (errors.Count > 0)
-            {
-                doc.ScatterOverrides.Remove(over);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
-            }
-
-            int index = doc.ScatterOverrides.Count - 1;
-            return new MutationResult("scatter_override_add", $"added scatter override at index {index}",
-                WorldChanged: true, Index: index);
-        }, worldChanged: true);
+            });
+        }, "scatter_override_add", _ => $"added scatter override at index {addedIndex}", worldChanged: true);
+        return result with { Index = addedIndex };
     }
 
-    /// <summary>Edits the scatter override at <paramref name="index"/>, replacing only the supplied fields (a null
-    /// argument leaves that field unchanged). The whole entry is swapped for an edited copy so a validation
-    /// failure reverts by restoring the captured old entry, with the range check up front.</summary>
+    /// <summary>Edits the scatter override at <paramref name="index"/> (range-checked up front), replacing only
+    /// the supplied fields (a null argument leaves that field unchanged). Unlike the other scatter-override verbs
+    /// this is a bespoke path rather than a single call into <see cref="Apply(EditorCommand, string, string)"/>,
+    /// because a shape change and a values change are two independent <see cref="EditorCommand"/> classes
+    /// (<see cref="EditScatterOverrideShapeCommand"/> and <see cref="EditScatterOverrideValuesCommand"/>): a call
+    /// that supplies <paramref name="shapeJson"/> alone or a value field alone applies just that one command, and
+    /// a call that supplies both applies BOTH under this one <see cref="MapEditSession.Mutate{T}"/> lock, so they
+    /// land (and, on a validation failure, revert) as a single atomic edit, one sealed gesture, rather than two
+    /// independent mutations a caller could observe half-applied between them. When both commands are needed the
+    /// values command is applied first and the shape command second: <see cref="EditScatterOverrideValuesCommand.Apply"/>
+    /// replaces the WHOLE list entry (carrying the pre-edit shape through unchanged, by design, see that class's
+    /// own doc comment), so applying it after the shape command would silently discard the shape edit. The shape
+    /// command's <see cref="EditScatterOverrideShapeCommand.Apply"/> only ever touches the Shape property of
+    /// whatever entry currently sits at the index, so running it second layers the shape edit on top cleanly.
+    /// Revert then runs in the opposite order, the same coalescing-safe pattern.</summary>
     public MutationResult ScatterOverrideEdit(int index, string? shapeJson = null,
         float? densityMultiplier = null, IReadOnlyList<string>? kinds = null, IReadOnlyList<string>? layers = null)
     {
@@ -953,19 +958,31 @@ public sealed class MutationService(MapEditSession session)
         {
             RequireIndexInRange(index, doc.ScatterOverrides.Count, "scatter override", nameof(index));
             MapScatterOverrideDoc old = doc.ScatterOverrides[index];
-            var edited = new MapScatterOverrideDoc
-            {
-                Shape = shapeJson is null ? old.Shape : DocJson.ParseShape(shapeJson, registry),
-                DensityMultiplier = densityMultiplier ?? old.DensityMultiplier,
-                Kinds = kinds is null ? old.Kinds : ParseKinds(kinds),
-                Layers = layers is null ? old.Layers : layers.ToList(),
-            };
-            doc.ScatterOverrides[index] = edited;
+
+            EditScatterOverrideShapeCommand? shapeCommand = shapeJson is null ? null
+                : new EditScatterOverrideShapeCommand(index, DocJson.ParseShape(shapeJson, registry),
+                    old.Shape ?? throw new InvalidOperationException(
+                        $"scatter override at index {index} has no shape to edit."));
+
+            EditScatterOverrideValuesCommand? valuesCommand =
+                densityMultiplier is null && kinds is null && layers is null ? null
+                : new EditScatterOverrideValuesCommand(index, new MapScatterOverrideDoc
+                {
+                    Name = old.Name,
+                    Shape = old.Shape,
+                    DensityMultiplier = densityMultiplier ?? old.DensityMultiplier,
+                    Kinds = kinds is null ? old.Kinds : ParseKinds(kinds),
+                    Layers = layers is null ? old.Layers : layers.ToList(),
+                }, old);
+
+            valuesCommand?.Apply(doc);
+            shapeCommand?.Apply(doc);
 
             IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
             if (errors.Count > 0)
             {
-                doc.ScatterOverrides[index] = old;
+                shapeCommand?.Revert(doc);
+                valuesCommand?.Revert(doc);
                 throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
             }
 
@@ -974,26 +991,55 @@ public sealed class MutationService(MapEditSession session)
         }, worldChanged: true);
     }
 
-    /// <summary>Removes the scatter override at <paramref name="index"/> (range-checked up front), reverting by
-    /// re-inserting it at that index on a validation failure.</summary>
+    /// <summary>Removes the scatter override at <paramref name="index"/> (range-checked up front). Routes through
+    /// <see cref="RemoveScatterOverrideCommand"/> via the shared choke point, mirroring <see cref="ExclusionRemove"/>.</summary>
     public MutationResult ScatterOverrideRemove(int index)
     {
-        return session.Mutate((doc, registry) =>
+        MutationResult result = Apply((doc, _) =>
         {
             RequireIndexInRange(index, doc.ScatterOverrides.Count, "scatter override", nameof(index));
-            MapScatterOverrideDoc removed = doc.ScatterOverrides[index];
-            doc.ScatterOverrides.RemoveAt(index);
+            return new RemoveScatterOverrideCommand(index);
+        }, "scatter_override_remove", _ => $"removed scatter override at index {index}", worldChanged: true);
+        return result with { Index = index };
+    }
 
-            IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
-            if (errors.Count > 0)
-            {
-                doc.ScatterOverrides.Insert(index, removed);
-                throw new InvalidOperationException("mutation rejected: " + string.Join("; ", errors));
-            }
+    /// <summary>Renames the scatter override at <paramref name="index"/> (range-checked up front). Unlike
+    /// <see cref="ExclusionRename"/>/<see cref="FeatureRename"/>, <paramref name="name"/> is directly nullable
+    /// here rather than those verbs' empty-string-means-unnamed convention: <see cref="RenameScatterOverrideCommand"/>
+    /// normalizes both null and empty to unnamed itself (its own doc comment explains why), so this passes the
+    /// value straight through with no up-front null check. The target name must be unique among named scatter
+    /// overrides, validated inside <see cref="RenameScatterOverrideCommand.Apply"/> (rejected before it mutates,
+    /// so a rejected rename leaves the document unchanged). Renaming does not change shape, density, kinds, or
+    /// the layer filter, so it does not affect the streamed world.</summary>
+    public MutationResult ScatterOverrideRename(int index, string? name)
+    {
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.ScatterOverrides.Count, "scatter override", nameof(index));
+            string? oldName = doc.ScatterOverrides[index].Name;
+            return new RenameScatterOverrideCommand(index, name, oldName);
+        }, "scatter_override_rename", _ => $"renamed scatter override at index {index} to '{name}'",
+            worldChanged: false);
+        return result with { Index = index };
+    }
 
-            return new MutationResult("scatter_override_remove", $"removed scatter override at index {index}",
-                WorldChanged: true, Index: index);
-        }, worldChanged: true);
+    /// <summary>Moves the scatter override at <paramref name="fromIndex"/> to <paramref name="toIndex"/> (both
+    /// range-checked up front). Order is significant here: a scatter's override lookup resolves the FIRST
+    /// matching override in list order (see <see cref="ReorderScatterOverrideCommand"/>'s own doc comment for
+    /// why, including why that sets it apart from an exclusion's pure set-union combining), so which override
+    /// governs a given patch of ground depends on this order, and the reorder always affects the streamed world
+    /// (a full viewport rebuild).</summary>
+    public MutationResult ScatterOverrideReorder(int fromIndex, int toIndex)
+    {
+        MutationResult result = Apply((doc, _) =>
+        {
+            int count = doc.ScatterOverrides.Count;
+            RequireIndexInRange(fromIndex, count, "scatter override", nameof(fromIndex));
+            RequireIndexInRange(toIndex, count, "scatter override", nameof(toIndex));
+            return new ReorderScatterOverrideCommand(fromIndex, toIndex);
+        }, "scatter_override_reorder", _ => $"moved scatter override from index {fromIndex} to {toIndex}",
+            worldChanged: true);
+        return result with { Index = toIndex };
     }
 
     // ---- bake -----------------------------------------------------------------------------------------------
@@ -1049,13 +1095,14 @@ public sealed class MutationService(MapEditSession session)
     /// an MCP-driven duplicate and a GUI-driven duplicate can never drift apart. <paramref name="kind"/> is one of
     /// <c>placement</c>, <c>spawn</c>, <c>player_spawn</c>, <c>region</c>, <c>scatter_layer</c>,
     /// <c>companion_layer</c> (id/name-keyed, addressed by <paramref name="id"/>) or <c>feature</c>,
-    /// <c>exclusion</c>, <c>biome_band</c> (index-keyed, addressed by <paramref name="index"/>). Terrain has no
-    /// duplicate (it is a document singleton) and is intentionally not a valid kind here. Exactly one of
-    /// <paramref name="id"/> / <paramref name="index"/> must be supplied, matching the kind's addressing: the
-    /// other must be left null. Every failure throws a precise exception instead of silently doing nothing (an
-    /// unknown kind, a missing or wrong-shaped ref, an unresolved id, an out-of-range index, or a feature type
-    /// <see cref="KhaozEngine.MapEditor.FeatureGeometry.Translated"/> cannot offset), so the MCP adapter's
-    /// <c>ToolGuard</c> always surfaces a clean failure and never a silent no-op.</summary>
+    /// <c>exclusion</c>, <c>scatter_override</c>, <c>biome_band</c> (index-keyed, addressed by
+    /// <paramref name="index"/>). Terrain has no duplicate (it is a document singleton) and is intentionally not
+    /// a valid kind here. Exactly one of <paramref name="id"/> / <paramref name="index"/> must be supplied,
+    /// matching the kind's addressing: the other must be left null. Every failure throws a precise exception
+    /// instead of silently doing nothing (an unknown kind, a missing or wrong-shaped ref, an unresolved id, an
+    /// out-of-range index, or a feature type <see cref="KhaozEngine.MapEditor.FeatureGeometry.Translated"/> cannot
+    /// offset), so the MCP adapter's <c>ToolGuard</c> always surfaces a clean failure and never a silent
+    /// no-op.</summary>
     public MutationResult ElementDuplicate(string kind, string? id = null, int? index = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
@@ -1069,10 +1116,11 @@ public sealed class MutationService(MapEditSession session)
             "companion_layer" => DuplicateCompanionLayer(RequireId(kind, id, index)),
             "feature" => DuplicateFeature(RequireIndex(kind, id, index)),
             "exclusion" => DuplicateExclusion(RequireIndex(kind, id, index)),
+            "scatter_override" => DuplicateScatterOverride(RequireIndex(kind, id, index)),
             "biome_band" => DuplicateBiomeBand(RequireIndex(kind, id, index)),
             _ => throw new ArgumentException(
                 $"Unknown element kind '{kind}'. Valid kinds: placement, spawn, player_spawn, feature, " +
-                "exclusion, region, biome_band, scatter_layer, companion_layer.", nameof(kind)),
+                "exclusion, scatter_override, region, biome_band, scatter_layer, companion_layer.", nameof(kind)),
         };
     }
 
@@ -1264,6 +1312,41 @@ public sealed class MutationService(MapEditSession session)
             newIndex = doc.Exclusions.Count;   // appended at the current tail
             return new AddExclusionCommand(clone);
         }, "element_duplicate", _ => $"duplicated exclusion at index {index} as index {newIndex}", worldChanged: true);
+        return result with { Index = newIndex };
+    }
+
+    // Mirrors EditorToolController.DuplicateSelection's ScatterOverride case exactly (same field-by-field clone,
+    // same name-collision dodge, same offset), reusing that method's own CloneShapeOffset for the shape and this
+    // file's own CloneKinds for the Kinds list (a fresh MapPropKind per element, not a shared reference, the same
+    // aliasing-safety discipline CloneKinds already gives ScatterRuleEdit/CompanionLayerEdit).
+    MutationResult DuplicateScatterOverride(int index)
+    {
+        int newIndex = -1;
+        MutationResult result = Apply((doc, _) =>
+        {
+            RequireIndexInRange(index, doc.ScatterOverrides.Count, "scatter override", nameof(index));
+            MapScatterOverrideDoc source = doc.ScatterOverrides[index];
+            var clone = new MapScatterOverrideDoc
+            {
+                Name = source.Name,
+                Shape = source.Shape is { } shape
+                    ? EditorToolController.CloneShapeOffset(shape, DuplicateOffset, DuplicateOffset)
+                    : null,
+                DensityMultiplier = source.DensityMultiplier,
+                Kinds = source.Kinds is { } kinds ? CloneKinds(kinds) : null,
+                Layers = source.Layers is { } layers ? new List<string>(layers) : null,
+            };
+            // Same name-collision dodge as DuplicateFeature/DuplicateExclusion above: AddScatterOverrideCommand
+            // has no add-time guard (only RenameScatterOverrideCommand does).
+            if (!string.IsNullOrEmpty(clone.Name))
+            {
+                clone.Name = UniqueDuplicateName(clone.Name + "-copy",
+                    n => doc.ScatterOverrides.Any(o => string.Equals(o.Name, n, StringComparison.Ordinal)));
+            }
+            newIndex = doc.ScatterOverrides.Count;   // appended at the current tail
+            return new AddScatterOverrideCommand(clone);
+        }, "element_duplicate", _ => $"duplicated scatter override at index {index} as index {newIndex}",
+            worldChanged: true);
         return result with { Index = newIndex };
     }
 

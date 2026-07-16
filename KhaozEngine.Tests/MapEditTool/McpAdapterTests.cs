@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 64 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 66 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -37,9 +37,12 @@ namespace KhaozEngine.Tests.MapEditTool
         /// rather than folding yaw into player_spawn_move, mirroring how placement_rotate stays a separate verb
         /// from placement_move (the underlying commands are already distinct with independent TryMerge
         /// coalescing, so the MCP verb granularity follows the command granularity). element_duplicate (editor
-        /// round 7, decision 10) closes the duplicate MCP parity gap: one verb spanning all nine duplicatable
+        /// round 7, decision 10) closes the duplicate MCP parity gap: one verb spanning all ten duplicatable
         /// kinds, mirroring the editor's own Cmd+D exactly (Terrain has no duplicate, it is a document
-        /// singleton).</summary>
+        /// singleton). scatter_override_rename and scatter_override_reorder close the last scatter-override MCP
+        /// parity gap: every scatter-override verb now routes through the Task 2 EditorCommand classes instead of
+        /// a direct list mutation, and element_duplicate's scatter_override case (the tenth duplicatable kind)
+        /// reuses those same command classes and the GUI's own clone helpers.</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
@@ -60,14 +63,15 @@ namespace KhaozEngine.Tests.MapEditTool
             "biome_band_add", "biome_band_edit", "biome_band_remove",
             // Scatter
             "exclusion_add", "exclusion_edit", "exclusion_remove", "exclusion_rename", "exclusion_set_layers",
-            "scatter_override_add", "scatter_override_edit", "scatter_override_remove", "bake_region",
+            "scatter_override_add", "scatter_override_edit", "scatter_override_remove", "scatter_override_rename",
+            "scatter_override_reorder", "bake_region",
             "scatter_layer_add", "scatter_layer_edit", "scatter_layer_remove", "scatter_layer_rename",
             "scatter_rule_add", "scatter_rule_edit", "scatter_rule_remove",
             "companion_layer_add", "companion_layer_edit", "companion_layer_remove", "companion_layer_rename",
             // Regions
             "region_add", "region_edit_shape", "region_rename", "region_remove",
-            // Element duplicate (cross-kind: placement, spawn, player spawn, feature, exclusion, region,
-            // biome band, scatter layer, companion layer)
+            // Element duplicate (cross-kind: placement, spawn, player spawn, feature, exclusion, scatter
+            // override, region, biome band, scatter layer, companion layer)
             "element_duplicate",
             // Renders
             "render_topdown", "render_view",

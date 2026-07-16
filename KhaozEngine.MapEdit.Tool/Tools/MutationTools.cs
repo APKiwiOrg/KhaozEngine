@@ -264,6 +264,18 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("Zero-based index of the scatter override to remove.")] int index)
         => ToolGuard.Guard(() => mutation.ScatterOverrideRemove(index));
 
+    [McpServerTool(Name = "scatter_override_rename"), Description("Renames the scatter override at the given index. Null or empty clears the name back to unnamed. The new name must be unique among named scatter overrides.")]
+    public MutationResult ScatterOverrideRename(
+        [Description("Zero-based index of the scatter override to rename.")] int index,
+        [Description("New name for the scatter override. Null or empty clears the name back to unnamed.")] string? name)
+        => ToolGuard.Guard(() => mutation.ScatterOverrideRename(index, name));
+
+    [McpServerTool(Name = "scatter_override_reorder"), Description("Moves a scatter override from one index to another. Order is significant: a scatter's override lookup resolves the first matching override in list order, so this picks which override governs where shapes overlap.")]
+    public MutationResult ScatterOverrideReorder(
+        [Description("Zero-based current index of the scatter override.")] int fromIndex,
+        [Description("Zero-based target index for the scatter override.")] int toIndex)
+        => ToolGuard.Guard(() => mutation.ScatterOverrideReorder(fromIndex, toIndex));
+
     // ---- bake ---------------------------------------------------------------------------------------------
 
     [McpServerTool(Name = "bake_region"), Description("Freezes a scatter layer over a world rect into authored placements (each baked-<layer>-N with an explicit Y and a baked tag) and appends a covering exclusion limited to that layer so the frozen props are not re-scattered over themselves.")]
@@ -418,9 +430,9 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
 
     // ---- element duplicate (cross-kind) --------------------------------------------------------------------
 
-    [McpServerTool(Name = "element_duplicate"), Description("Duplicates one document element: a deep clone with a fresh unique identity, offset +2/+2 world units on X/Z for the kinds that carry a position. Mirrors the editor's own Cmd+D duplicate exactly (same id/name prefixes, same offset, named features/exclusions get a uniquified '-copy' suffix while unnamed ones stay unnamed). Terrain has no duplicate, since it is a document singleton. Exactly one of id or index must be supplied, matching the kind's own addressing.")]
+    [McpServerTool(Name = "element_duplicate"), Description("Duplicates one document element: a deep clone with a fresh unique identity, offset +2/+2 world units on X/Z for the kinds that carry a position. Mirrors the editor's own Cmd+D duplicate exactly (same id/name prefixes, same offset, named features/exclusions/scatter overrides get a uniquified '-copy' suffix while unnamed ones stay unnamed). Terrain has no duplicate, since it is a document singleton. Exactly one of id or index must be supplied, matching the kind's own addressing.")]
     public MutationResult ElementDuplicate(
-        [Description("Element kind: placement, spawn, player_spawn, region, scatter_layer, or companion_layer (id/name-keyed), or feature, exclusion, or biome_band (index-keyed).")] string kind,
+        [Description("Element kind: placement, spawn, player_spawn, region, scatter_layer, or companion_layer (id/name-keyed), or feature, exclusion, scatter_override, or biome_band (index-keyed).")] string kind,
         [Description("Id or name of the element to duplicate, for an id/name-keyed kind. Null for an index-keyed kind.")] string? id = null,
         [Description("Zero-based index of the element to duplicate, for an index-keyed kind (feature, exclusion, biome_band). Null for an id/name-keyed kind.")] int? index = null)
         => ToolGuard.Guard(() => mutation.ElementDuplicate(kind, id, index));

@@ -10,13 +10,14 @@ Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. NPC navigation / pathfinding
+### 1. NPC navigation / pathfinding (design approved 2026-07-16, in flight)
 
 Engine-owned pathfinding that respects terrain walkability (the walkable slice shipped in 10.x) plus prop and
 static collision, so game NPC brains consume a path instead of hardcoded pursuit. Current behavior: NPCs chase
 in straight lines and get stuck on every prop (playtest finding, 2026-07-14: Ruinborne wolves pinned behind
-rocks). Scope question to record: grid A* over the walkable slice vs a pre-baked navmesh, decide at design time.
-First consumer: Ruinborne wolves.
+rocks). Decided at design time: grid A* over baked clearance grids behind an `IPathPlanner` seam (navmesh
+stays a reserved future implementation), engine-owned `PathFollower`, overworld and dungeon substrates both
+in v1. Full design: [NPC-NAVIGATION-DESIGN.md](NPC-NAVIGATION-DESIGN.md). First consumer: Ruinborne wolves.
 
 ### 2. Physics: ragdolls and vehicles (pull-gated)
 

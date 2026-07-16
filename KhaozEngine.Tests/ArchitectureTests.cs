@@ -235,8 +235,8 @@ public class ArchitectureTests
             new[]
             {
                 "App", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon", "Ecs", "Http", "Identity",
-                "Locomotion", "MapDoc", "Objectives", "Persistence", "Physics", "Platform", "Primitives",
-                "Progression", "Serialization", "ServerStatus", "Social", "Terrain", "Updates",
+                "Locomotion", "MapDoc", "Navigation", "Objectives", "Persistence", "Physics", "Platform",
+                "Primitives", "Progression", "Serialization", "ServerStatus", "Social", "Terrain", "Updates",
             }
         },
         {

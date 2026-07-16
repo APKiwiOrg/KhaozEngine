@@ -67,17 +67,26 @@ public class GridPathPlannerBasicsTests
     }
 
     [Fact]
-    public void FindPath_LineOfSightBlocked_ReturnsUnreachable_AStarNotYetImplemented()
+    public void FindPath_LineOfSightBlocked_ByFullHeightWall_ReturnsPartialToward()
     {
-        // A solid wall column spans every row between the start and goal columns. Both endpoints snap
-        // fine, but no straight line clears the wall. A* (Task 7) will route around it, but this task
-        // must fall back to Unreachable instead.
+        // A solid wall column spans every row, fully dividing the grid, so no route reaches the goal on
+        // the far side. Before A* landed (Task 7) the non-line-of-sight branch fell back to Unreachable.
+        // A* now routes as far as it can and returns a Partial path that stops against the near face of
+        // the wall, closer to the goal than the start was.
         NavGrid grid = NavGrid.FromWalkable(20, 20, CellSize, 0f, 0f, (x, _) => x != 5);
         var planner = new GridPathPlanner(NavSpace.Single(grid));
 
-        NavPath path = planner.FindPath(new Vector3(1f, 0f, 5f), new Vector3(8f, 0f, 5f), AgentRadius, PathQueryBudget.Default);
+        var start = new Vector3(1f, 0f, 5f);
+        var goal = new Vector3(8f, 0f, 5f);
+        NavPath path = planner.FindPath(start, goal, AgentRadius, PathQueryBudget.Default);
 
-        Assert.Same(NavPath.Unreachable, path);
+        Assert.Equal(NavPathStatus.Partial, path.Status);
+        Assert.NotEmpty(path.Waypoints);
+        var startXz = new Vector2(start.X, start.Z);
+        var goalXz = new Vector2(goal.X, goal.Z);
+        Assert.True(
+            Vector2.Distance(path.Waypoints[^1].Position, goalXz) < Vector2.Distance(startXz, goalXz),
+            "partial path did not make progress toward the goal");
     }
 
     [Fact]

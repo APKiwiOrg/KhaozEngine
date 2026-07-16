@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
+using KhaozEngine.Tests.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Terrain
@@ -26,6 +28,34 @@ namespace KhaozEngine.Tests.Terrain
 
         public void ResetFrame() => OpsThisFrame = 0;
         sealed class Box { public Box(ChunkCoord c) { Coord = c; } public ChunkCoord Coord; }
+    }
+
+    // Forwards every op to a real Scene3DChunkSink but remembers each coord's opaque handle, so a test can inspect
+    // the production ChunkLoad after streamer ops. TerrainStreamer itself only tracks coord + LOD internally, never
+    // the handle, so there is no other way to reach it from outside the sink.
+    sealed class HandleTrackingSink : IChunkSink
+    {
+        readonly Scene3DChunkSink _inner;
+        readonly Dictionary<ChunkCoord, object> _handles = new();
+
+        public HandleTrackingSink(Scene3DChunkSink inner) => _inner = inner;
+
+        public object Load(ChunkCoord coord, int lod)
+        {
+            object handle = _inner.Load(coord, lod);
+            _handles[coord] = handle;
+            return handle;
+        }
+
+        public void ReLod(ChunkCoord coord, object handle, int lod) => _inner.ReLod(coord, handle, lod);
+
+        public void Unload(ChunkCoord coord, object handle)
+        {
+            _inner.Unload(coord, handle);
+            _handles.Remove(coord);
+        }
+
+        public Scene3DChunkSink.ChunkLoad HandleFor(ChunkCoord coord) => (Scene3DChunkSink.ChunkLoad)_handles[coord];
     }
 
     public class TerrainStreamerTests
@@ -354,5 +384,65 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(2, sink.ReLods[0].lod);          // rebuilt at the current tier, not reset to lod 0
             Assert.Equal(2, s.LodOf(target));              // tracked tier unchanged
         }
+
+        // --- Invalidate through the real Scene3DChunkSink (stale-trees regression, streamer level) -----------------
+        // GPU-gated: Scene3DChunkSink.Apply always uploads through a real Scene3D (UploadMesh has no GPU-free path).
+
+        static void WithScene(Action<Scene3D> body)
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            var f = gpu.GpuDevice.Factory;
+            using IGpuTexture tex = f.CreateTexture(GpuTextureDescription.Texture2D(
+                16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            using IGpuFramebuffer fb = f.CreateFramebuffer(null, tex);
+            using var scene = new Scene3D(gpu.GpuDevice, fb.Outputs);
+            body(scene);
+        }
+
+        static TerrainField Flat(float height, float waterLevel = 0f) => new TerrainField(new TerrainConfig
+        {
+            GentleAmplitude = 0f,
+            WaterLevel = waterLevel,
+            Biomes = new[]
+            {
+                new BiomeBand { Start = float.NegativeInfinity, End = float.PositiveInfinity, Biome = BiomeId.Meadow, BaseHeight = height, HillAmplitude = 0f },
+            },
+        });
+
+        static ScatterConfig OneKind(string id, int seed, float cell) => new ScatterConfig
+        {
+            Seed = seed,
+            CellSize = cell,
+            Jitter = 0.5f,
+            ClearingRadius = 0f,
+            MaxHeight = null,
+            Biomes = new[]
+            {
+                new BiomeScatterRule { Biome = BiomeId.Meadow, Density = 1f, Kinds = new[] { new PropKind(id, 1f) } },
+            },
+        };
+
+        [GpuFact]
+        public void Invalidate_AfterFieldSwap_RegeneratesChunkProps() => WithScene(scene =>
+        {
+            TerrainField fieldA = Flat(5f);                   // WaterLevel 0: the chunk's candidates are kept
+            TerrainField fieldB = Flat(5f, waterLevel: 10f);   // simulates dragging a lake over the chunk
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            var realSink = new Scene3DChunkSink(scene, fieldA, scatter, new Dictionary<string, MeshHandle>(),
+                chunkSize: 60f, propDrawRadius: 90f);
+            var sink = new HandleTrackingSink(realSink);
+            var cfg = new StreamerConfig(LoadRadius: 1, UnloadRadius: 2, MaxLoadsPerFrame: 100, ChunkSize: 60f);
+            var s = new TerrainStreamer(cfg, sink);
+            var target = new ChunkCoord(0, 0);
+
+            s.Update(new Vector3(30f, 0f, 30f), 1f / 60f);   // loads the ring around chunk (0,0), including target
+            Assert.Contains(target, s.Loaded);
+            Assert.True(sink.HandleFor(target).LayerProps[0].Count > 0);   // not vacuous: pre-carve chunk has trees
+
+            realSink.UpdateField(fieldB);
+            s.Invalidate(target);
+
+            Assert.Empty(sink.HandleFor(target).LayerProps[0]);   // regenerated: carved chunk has none left
+        });
     }
 }

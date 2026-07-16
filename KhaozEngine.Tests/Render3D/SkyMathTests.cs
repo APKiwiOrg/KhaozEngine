@@ -145,38 +145,40 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(UpTerm(0.04f) > 0.5f, "vertical reach is not aspect-scaled");
         }
 
-        // ---- Sun placement in screen NDC (from the view matrix) ---------------------------------------------------
+        // ---- Sun placement, STYLIZED backdrop (SunAnchor.StylizedBackdrop = legacy camera-relative) ---------------
+        // These lock the stylized math UNCHANGED vs the pre-World-anchor behaviour (view-space right/up read as NDC,
+        // visible above the view horizon). ProjectSunStylizedToNdc is the exact former ProjectSunToNdc body.
 
         [Fact]
-        public void ProjectSun_straight_up_is_visible_top_center()
+        public void ProjectSunStylized_straight_up_is_visible_top_center()
         {
             // Camera at +Z looking at origin (forward = -Z, up = +Y). Sun straight up (+Y) sits top-centre.
             var view = Matrix4x4.CreateLookAt(new Vector3(0, 0, 5), Vector3.Zero, Vector3.UnitY);
             var sunDir = new Vector3(0, 1, 0);
-            bool vis = SkyMath.ProjectSunToNdc(view, sunDir, out var ndc);
+            bool vis = SkyMath.ProjectSunStylizedToNdc(view, sunDir, out var ndc);
             Assert.True(vis);
             Assert.True(MathF.Abs(ndc.X) < 0.02f, $"sun straight up should be horizontally centred, got {ndc}");
             Assert.True(ndc.Y > 0.9f, $"sun straight up should be near the top, got {ndc}");
         }
 
         [Fact]
-        public void ProjectSun_below_the_view_horizon_is_not_visible()
+        public void ProjectSunStylized_below_the_view_horizon_is_not_visible()
         {
             // Sun straight down (-Y): below the horizon, not in the sky.
             var view = Matrix4x4.CreateLookAt(new Vector3(0, 0, 5), Vector3.Zero, Vector3.UnitY);
-            bool vis = SkyMath.ProjectSunToNdc(view, new Vector3(0, -1, 0), out _);
+            bool vis = SkyMath.ProjectSunStylizedToNdc(view, new Vector3(0, -1, 0), out _);
             Assert.False(vis);
             // And a sun exactly at the horizon (level, dead ahead) is also not "in the sky".
-            Assert.False(SkyMath.ProjectSunToNdc(view, new Vector3(0, 0, -1), out _));
+            Assert.False(SkyMath.ProjectSunStylizedToNdc(view, new Vector3(0, 0, -1), out _));
         }
 
         [Fact]
-        public void ProjectSun_up_and_right_lands_upper_right()
+        public void ProjectSunStylized_up_and_right_lands_upper_right()
         {
             // Sun up + right (in view space) => +x, +y NDC (upper-right of the screen).
             var view = Matrix4x4.CreateLookAt(new Vector3(0, 0, 5), Vector3.Zero, Vector3.UnitY);
             var sunDir = Vector3.Normalize(new Vector3(0.4f, 0.6f, -0.3f));
-            bool vis = SkyMath.ProjectSunToNdc(view, sunDir, out var ndc);
+            bool vis = SkyMath.ProjectSunStylizedToNdc(view, sunDir, out var ndc);
             Assert.True(vis);
             Assert.True(ndc.X > 0f, $"sun to the right should be +x NDC, got {ndc}");
             Assert.True(ndc.Y > 0f, $"sun above should be +y NDC, got {ndc}");
@@ -184,16 +186,109 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void ProjectSun_lands_on_screen_for_the_iso_golden_framing()
+        public void ProjectSunStylized_lands_on_screen_for_the_iso_golden_framing()
         {
             // Regression for the ortho iso camera: projecting a point at infinity blew up the NDC (huge off-screen
             // values); the direction-into-view-space placement must land inside the screen for the golden framing.
             var cam = new IsoCamera3D { AspectRatio = 480f / 320f };
             cam.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
             var sun = SkyMath.SunDirectionFromLight(new Vector3(-0.55f, -0.8f, -0.25f));
-            bool vis = SkyMath.ProjectSunToNdc(cam.View, sun, out var ndc);
+            bool vis = SkyMath.ProjectSunStylizedToNdc(cam.View, sun, out var ndc);
             Assert.True(vis, "the golden's sun is above/ahead, so it should be visible");
             Assert.True(MathF.Abs(ndc.X) <= 1f && MathF.Abs(ndc.Y) <= 1f, $"sun must land on-screen, got {ndc}");
+        }
+
+        // ---- Sun placement, WORLD anchor (SunAnchor.World, default = true point-at-infinity projection) -----------
+
+        static Matrix4x4 Perspective =>
+            Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 3f, 1f, 0.1f, 100f);
+
+        [Fact]
+        public void ProjectSunWorld_in_front_up_and_right_lands_upper_right()
+        {
+            // Camera at the origin looking down -Z (world +X = view right, +Y = view up). A world sun to the +X/+Y
+            // and in front (-Z) projects to the upper-right of the screen.
+            var view = Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 0, -1), Vector3.UnitY);
+            var sunDir = Vector3.Normalize(new Vector3(0.4f, 0.3f, -1f));
+            bool vis = SkyMath.ProjectSunWorldToNdc(view, Perspective, sunDir, out var ndc);
+            Assert.True(vis);
+            Assert.True(ndc.X > 0f, $"world sun to the right should be +x NDC, got {ndc}");
+            Assert.True(ndc.Y > 0f, $"world sun above should be +y NDC, got {ndc}");
+        }
+
+        [Fact]
+        public void ProjectSunWorld_tracks_the_world_direction_as_the_camera_rotates()
+        {
+            // World anchoring: the disc follows the SAME world sun direction as the camera orbits. Aiming the camera
+            // straight AT the world sun must centre the disc (~0,0), and it must be more centred than when the camera
+            // looks elsewhere - the disc is fixed to the world sun, not glued to the screen.
+            var sunDir = Vector3.Normalize(new Vector3(0.4f, 0.3f, -1f));
+
+            var lookAhead = Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 0, -1), Vector3.UnitY);
+            Assert.True(SkyMath.ProjectSunWorldToNdc(lookAhead, Perspective, sunDir, out var ndcAhead));
+
+            var lookAtSun = Matrix4x4.CreateLookAt(Vector3.Zero, sunDir, Vector3.UnitY);
+            Assert.True(SkyMath.ProjectSunWorldToNdc(lookAtSun, Perspective, sunDir, out var ndcAtSun));
+
+            Assert.True(MathF.Abs(ndcAtSun.X) < 1e-3f && MathF.Abs(ndcAtSun.Y) < 1e-3f,
+                $"aiming at the world sun should centre the disc, got {ndcAtSun}");
+            Assert.True(MathF.Abs(ndcAtSun.X) < MathF.Abs(ndcAhead.X),
+                $"turning toward the world sun should pull the disc toward centre ({ndcAtSun.X} !< {ndcAhead.X})");
+        }
+
+        [Fact]
+        public void ProjectSunWorld_is_invariant_under_pure_camera_translation()
+        {
+            // Same rotation, different eye position (pure translation): the disc must not move (the sun is a
+            // direction, w=0 drops the view translation).
+            var sunDir = Vector3.Normalize(new Vector3(0.2f, 0.5f, -1f));
+            var viewA = Matrix4x4.CreateLookAt(new Vector3(0, 0, 5), new Vector3(0, 0, 4), Vector3.UnitY);
+            var viewB = Matrix4x4.CreateLookAt(new Vector3(12, -3, 20), new Vector3(12, -3, 19), Vector3.UnitY);
+
+            Assert.True(SkyMath.ProjectSunWorldToNdc(viewA, Perspective, sunDir, out var ndcA));
+            Assert.True(SkyMath.ProjectSunWorldToNdc(viewB, Perspective, sunDir, out var ndcB));
+            Assert.Equal(ndcA.X, ndcB.X, 5);
+            Assert.Equal(ndcA.Y, ndcB.Y, 5);
+        }
+
+        [Fact]
+        public void ProjectSunWorld_behind_or_at_the_camera_plane_is_not_visible()
+        {
+            // Camera looks down -Z, so a world sun with +Z (behind) or at the camera plane (z=0) has no place in the
+            // sky - the disc must be suppressed (the pre-fix stylized path could paint a sun that was behind you).
+            var view = Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 0, -1), Vector3.UnitY);
+            Assert.False(SkyMath.ProjectSunWorldToNdc(view, Perspective, Vector3.Normalize(new Vector3(0.2f, 0.3f, 1f)), out _));
+            Assert.False(SkyMath.ProjectSunWorldToNdc(view, Perspective, new Vector3(1f, 0f, 0f), out _));   // exactly at the camera plane
+        }
+
+        [Fact]
+        public void ProjectSunWorld_under_orthographic_projection_degenerates_but_stylized_still_shows()
+        {
+            // A directional sun is a point at infinity: under an ORTHOGRAPHIC projection (parallel view rays) it has
+            // no finite screen position (clip.w collapses to 0), so World suppresses the disc. This is exactly why
+            // the ortho iso look needs SunAnchor.StylizedBackdrop, which DOES place it (from the view-space azimuth).
+            var cam = new IsoCamera3D { AspectRatio = 480f / 320f };
+            cam.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+            var sun = SkyMath.SunDirectionFromLight(new Vector3(-0.55f, -0.8f, -0.25f));
+
+            Assert.False(SkyMath.ProjectSunWorldToNdc(cam.View, cam.Projection, sun, out _));
+            Assert.True(SkyMath.ProjectSunStylizedToNdc(cam.View, sun, out _));
+        }
+
+        [Fact]
+        public void ProjectSunToNdc_dispatches_on_the_anchor()
+        {
+            // The public dispatch routes World -> ProjectSunWorldToNdc and StylizedBackdrop -> ProjectSunStylizedToNdc.
+            var cam = new IsoCamera3D { AspectRatio = 480f / 320f };
+            cam.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
+            var sun = SkyMath.SunDirectionFromLight(new Vector3(-0.55f, -0.8f, -0.25f));
+
+            // Ortho camera: World degenerates (hidden), StylizedBackdrop places it - so the dispatch results differ.
+            Assert.False(SkyMath.ProjectSunToNdc(SunAnchor.World, cam.View, cam.Projection, sun, out _));
+            Assert.True(SkyMath.ProjectSunToNdc(SunAnchor.StylizedBackdrop, cam.View, cam.Projection, sun, out var styl));
+            SkyMath.ProjectSunStylizedToNdc(cam.View, sun, out var direct);
+            Assert.Equal(direct.X, styl.X, 6);
+            Assert.Equal(direct.Y, styl.Y, 6);
         }
 
         // ---- Settings plumbing / sun-direction resolution ---------------------------------------------------------
@@ -231,10 +326,13 @@ namespace KhaozEngine.Tests.Render3D
                 HaloStrength = 0.6f,
                 HaloFalloff = 0.2f,
             };
-            var view = Matrix4x4.CreateLookAt(new Vector3(0, 0, 5), Vector3.Zero, Vector3.UnitY);
-            var light = new Vector3(0, -1, -0.2f);   // travels DOWN, so the sun is UP (visible in the sky)
+            // World anchor (the default): the camera looks down -Z, so the sun must be UP and in FRONT (world -Z) to
+            // be visible. Light travels down and toward +Z, so the sun sits up + toward -Z (in front of the camera).
+            var view = Matrix4x4.CreateLookAt(new Vector3(0, 0, 5), new Vector3(0, 0, 4), Vector3.UnitY);
+            var projection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 3f, 800f / 600f, 0.1f, 100f);
+            var light = new Vector3(0, -1, 0.2f);   // travels DOWN and toward +Z, so the sun is UP and toward -Z (in front)
 
-            var u = SkyRenderer.PackUbo(sky, view, light, renderWidth: 800, renderHeight: 600);
+            var u = SkyRenderer.PackUbo(sky, view, projection, light, renderWidth: 800, renderHeight: 600);
 
             Assert.Equal(sky.HorizonColor.R, u.Horizon.X, 4);
             Assert.Equal(sky.ZenithColor.B, u.Zenith.Z, 4);
@@ -253,7 +351,7 @@ namespace KhaozEngine.Tests.Render3D
         public void PackUbo_sun_disabled_sets_param_zero()
         {
             var sky = new SkySettings { SunEnabled = false };
-            var u = SkyRenderer.PackUbo(sky, Matrix4x4.Identity, new Vector3(0, -1, 0), 100, 100);
+            var u = SkyRenderer.PackUbo(sky, Matrix4x4.Identity, Matrix4x4.Identity, new Vector3(0, -1, 0), 100, 100);
             Assert.Equal(0f, u.Params.X, 4);
         }
     }

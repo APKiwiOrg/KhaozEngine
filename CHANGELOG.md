@@ -5,6 +5,140 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.118.0
+
+`NumberFormatter` fix: sub-1 magnitudes now keep truthful precision instead of rounding to a misleading digit
+(0.05 used to render "0.1", twice the real value). Patch, `KhaozEngine.Primitives` only.
+
+- Values below 1 (`abs > 0 && abs < 1`) now format with enough decimal places to show at least one truthful
+  significant digit, floored at `max(decimalsSmall, decimalsLarge)` so common sub-1 values (0.25, 0.5) simply
+  gain the same 2-decimal precision large-value mantissas already use, and extended further for smaller
+  magnitudes (0.005, 0.0005, ...) so they never silently round away to "0.00". The exponent is derived from
+  the BCL's "E0" formatter rather than `Math.Log10`, so a value that rounds up across a power-of-ten boundary
+  (0.9996 -> "1.00") reports the same exponent it will actually display, sidestepping floating-point noise at
+  exact powers of ten.
+- Unaffected: whole numbers, values at or above 1, and any call that explicitly passes `decimalsSmall: 0`
+  (notably `FormatInt`, whose zero-decimals integer-count contract is unchanged) - all keep byte-identical
+  output to before this release.
+- **Tests.** `NumberFormatterTests` +12 (0.05/0.1/0.15/0.25/0.5 truthful precision, smaller magnitudes
+  extending past the 2-decimal floor, Scientific/Engineering share the same fix, negative small values,
+  the sub-1/at-1 threshold boundary, explicit `decimalsSmall`/`decimalsLarge` as floors, the `decimalsSmall: 0`
+  opt-out incl. `FormatInt`, zero and >=1 regression pins).
+- **Consumer note (games).** Re-pin to adopt. Nullwake is the motivating consumer (precise-mode upgrade
+  deltas rendering half their real value); no other game code changes required.
+
+## 10.117.0
+
+In-session update recheck (opt-in `RecheckInterval` + `UpdateService.Tick`) and a post-update relaunch marker
+(`PostUpdateRelaunch`) land in `KhaozEngine.Updates`. Both additive and opt-in, existing behaviour unchanged:
+minor bump.
+
+- New `UpdateServiceOptions.RecheckInterval` (`TimeSpan?`, null by default = off) plus
+  `UpdateService.Tick(float dtSeconds)`: a long-running game re-checks the feed for a newer build on that
+  interval by calling `Tick(dt)` once per frame next to `UpdateOverlayActions.AutoAdvanceRequired`. The clock
+  accrues only while the service is `Idle` (any offered/downloading/ready/applying/failed flow zeroes it),
+  fires one offline-safe fire-and-forget `CheckForUpdateAsync` on reaching the interval, and no-ops when the
+  interval is null or non-positive. A manual `CheckForUpdateAsync` resets the accumulator. `Tick` and
+  `CheckForUpdateAsync` are owned by the game-loop thread, the accumulate path is allocation-free, and a
+  negative or NaN `dt` counts as zero.
+- `UpdateService.SetState` now swallows and logs a throwing `StateChanged` subscriber (the state field is
+  written first), so a broken handler can no longer wedge the state machine (e.g. stuck in Checking with every
+  recheck suppressed) or fault a Tick-driven fire-and-forget check.
+- New `PostUpdateRelaunchInfo` and the nullable `UpdateService.PostUpdateRelaunch`: after a committed apply the
+  shim writes an `update-applied.json` marker (applied `Version` + UTC `AppliedAtUtc`) into the game's app-data
+  dir just before relaunch, and the `UpdateService` constructor reads it once and deletes it. It is non-null
+  only on the boot that immediately follows an auto-applied update (null on an ordinary launch and on any later
+  launch), so a consumer can suppress a boot-time "welcome back" prompt when the version gap is small. Written
+  only on a committed apply (never on a rollback or a deferred game-still-running apply), best-effort so a write
+  failure never fails or rolls back the update, and a corrupt marker is tolerated as null and still deleted.
+- New default interface member `IUpdaterEnvironment.UtcNow` (returns `DateTimeOffset.UtcNow`) so the marker's
+  completion time is deterministic in headless tests, and `PostUpdateRelaunchInfo` is registered in the
+  source-generated `UpdatesJsonContext` (trim/AOT-safe).
+
+## 10.116.0
+
+ShadowMap contact fix: the cast shadow now connects at the caster's feet instead of peter-panning (detaching)
+away from them. Root cause was the depth bias acting in ortho NDC z over the light's full depth range
+(`4 * ShadowFocusRadius` world units), so the default `ShadowConstantBias` `0.004` was ~0.25 world units of
+depth bias at the default radius 16 - larger than a thin caster's (foot/leg) front-to-back margin, which
+overwhelmed the second-depth (front-cull) trick. Measured gap: 0.12 world units at 45deg elevation, 0.30 at
+25deg (grazing). Behaviour fix plus one additive setting: minor bump.
+
+- New `ShadowSettings.ShadowNormalOffset` (default `2.5`, in shadow-map texels): the primary acne defence. The
+  receiver's sample position is pushed off the surface along its geometric normal by that many texels,
+  world-scaled by the shadow map's texel size (so it is automatically extent-aware as `ShadowFocusRadius` /
+  `ShadowMapResolution` change) and grazing-angle-weighted (largest where self-shadow acne is worst, zero
+  facing the light). This is the standard normal-offset bias, which suppresses acne without a large depth bias,
+  so the shadow keeps contact with the caster's feet. Set `0` to fall back to depth-bias-only.
+- `ShadowSettings.ShadowConstantBias` default dropped `0.004` -> `0.0004` and `ShadowSlopeBias` `0.006` ->
+  `0.0015` (an order of magnitude, now that the normal offset carries the acne defence). The knobs are
+  unchanged in meaning and still work. Games that raised these to fight acne can lower them or rely on the
+  normal offset.
+- The frame UBO shadow tail grew one vec4 (`ShadowParams2`, whose `.x` is the CPU-baked normal-offset world
+  size): `ModelRenderer.UboBytes` 768 -> 784. Fragment-only shader change (the shared `sampleKeyShadow` helper
+  and the five fragments that call it), no vertex-input signature change. UBO-layout tripwire tests updated.
+- Front-face (second-depth) depth-pass culling is unchanged: it still halves the residual bias sensitivity.
+- New `ShadowContactGoldenTests` (cross-backend property golden): asserts the cast shadow of a thin caster
+  connects within a few shadow texels of its feet and the lit ground carries no self-shadow acne, at the
+  default bias settings, so a regression that raises the depth bias (re-detaching the shadow) or drops the
+  normal offset (re-introducing acne) trips. `scene3d_shadow_map` and `scene3d_splat_shadow` goldens rebaked
+  (sub-tolerance shift on their thick-caster scenes).
+
+## 10.115.0
+
+Telegraph VFX polish: hollow-rim energy profile, vortex and warped-flow fills, and an outline dash runner. Additive
+minor on 10.113.0's modern telegraphs. The deep fill interior now dims so energy concentrates at the rim and the
+moving sweep front instead of pooling into a bright ball at the shape center, the noise fills read as wispy filaments
+and a Cartesian vortex swirl rather than uniform speckle, and Steel/Arcane gain rotating dash segments on the outline
+band. Legacy all-zero-lane decals render IEEE-identically, so the `telegraph_ground` goldens are unchanged.
+
+- `TelegraphStyle` gains `InteriorDim` (0 = legacy uniform fill, presets 0.35 to 0.6): the deep fill interior dims by
+  this fraction so the rim and the swept front stay bright while the center reads hollow. New `TelegraphAnim.OutlineRunner`
+  flag adds rotating dash segments along the outline band, set on the Steel and Arcane presets.
+- `ResolvedTelegraph` gains `InteriorDim` + `Runner` with a new 16-arg constructor. Both prior constructors are retained.
+  `TelegraphResolve` ramps `SweepGlow` in over the first fifth of the cast, so the early-cast glow band no longer floods
+  the tiny swept region at cast start.
+- `GroundDecal` gains `InteriorDim` + `Runner`, packed into the spare `PatternP.w` and `Energy.w` instance lanes, so the
+  decal instance layout does not grow.
+- Decal shader: `ScrollingNoise` is now domain-warped wispy filaments, `RadialNoise` is a Cartesian vortex swirl (spiral
+  arms, no polar center singularity), with filament-contrast fill mapping, a narrowed sweep-glow band, softer smaller
+  sparkle glints, and the outline dash runner. The zero-neutral contract holds: a decal with all new lanes at zero
+  renders bit-for-bit as before.
+- Goldens: `telegraph_modern` intentionally changed (rebaked on Metal, D3D11, and Vulkan). `telegraph_ground` and every
+  other golden are unchanged within tolerance.
+
+## 10.114.0
+
+World-anchored sky sun disc: the sun now projects to its true world-space direction (point-at-infinity through
+the camera projection) instead of sliding around the screen as the camera orbits, with the legacy stylized
+placement kept as an opt-in. Minor bump: additive `SunAnchor` API plus a corrected default for the sun disc.
+
+- New `SunAnchor` enum (`World`, `StylizedBackdrop`) and `SkySettings.Anchor` (default `World`). `World`
+  anchors the sun disc to the world-space sun direction via a real point-at-infinity projection (rotate the
+  world sun direction into view space, project through the camera projection, perspective-divide) and draws it
+  only when the sun is in front of the camera. Orbiting the camera keeps the disc fixed over the world
+  direction the light comes from, and a pure camera translation never moves it.
+- `StylizedBackdrop` preserves the exact pre-existing camera-relative placement (the sun's view-space right/up
+  read directly as screen NDC, visible above the view horizon). It is the correct choice for the orthographic
+  iso camera, where a directional sun is a point at infinity with no finite screen position and `World`
+  therefore suppresses the disc. Under a perspective camera `World` is the physically-correct placement.
+- Handedness: the engine's cameras build the view with `CreateLookAt` (right-handed, looking down `-Z`), so a
+  direction is in front of the camera when its view-space `z < 0` and, for a perspective projection, its clip
+  `w = -viewZ > 0` yields a finite NDC. Verified against `IsoCamera3D`/`FollowCamera3D`/`FlyCamera3D`.
+- The projection is done entirely on the CPU (`SkyMath.ProjectSunWorldToNdc` / `ProjectSunStylizedToNdc`,
+  dispatched by `SkyMath.ProjectSunToNdc(SunAnchor, ...)`) and its result rides in the existing sky UBO
+  `SunNdc` slot, so the GPU sky UBO layout (96 bytes) and the GLSL `SkyFrag` are unchanged: one uniform buffer
+  per pipeline, no shader edit, no vertex-input change. `SkyRenderer.PackUbo` / `Draw` gain a `Matrix4x4
+  projection` parameter, and `Scene3D` passes `ActiveCamera.Projection`.
+- Day/night readiness (no code change needed, now covered by a test): a per-frame `Post.LightDirection` change
+  re-renders the shadow depth map. `Scene3D.ComputeShadowLightViewProj` derives the fitted light matrix from
+  `Post.LightDirection`, so a moving sun flips `lightMatrixChanged` and dirties the depth pass, while a held
+  sun still lets a static scene reuse the persistent map.
+- Goldens: new `scene3d_sky_world_sun` (perspective off-axis camera, world-anchored disc, baked Metal + D3D11 +
+  Vulkan) with a guard that ties the rendered disc to the CPU projection. The existing `scene3d_sky` /
+  `scene3d_water` goldens (ortho iso camera) are pinned to `SunAnchor.StylizedBackdrop`, so they stay
+  byte-identical.
+
 ## 10.113.0
 
 Modern telegraph rendering: soft feathered edges, animated noise fills, rim/sweep/sparkle edge energy, and

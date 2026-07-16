@@ -127,16 +127,29 @@ namespace KhaozEngine.Render3D
         /// Default <c>18</c>.</summary>
         public float ShadowFocusDistance = 18f;
 
-        /// <summary>Constant depth bias (in light-clip depth units) added when comparing a receiver's depth to the
-        /// shadow map, to defeat self-shadow acne on lit surfaces. Too small = acne (surface shadows itself), too
-        /// large = peter-panning (the shadow detaches from the caster's contact). Default <c>0.004</c>. See the
-        /// bias-tuning note in docs/USING-KHAOZENGINE.md.</summary>
-        public float ShadowConstantBias = 0.004f;
+        /// <summary>Constant depth bias (in light-clip depth units, ortho NDC z over the light's full near-far depth
+        /// range of <c>4 * ShadowFocusRadius</c> world units) added when comparing a receiver's depth to the shadow
+        /// map, to defeat self-shadow acne on lit surfaces. Too small = acne (surface shadows itself), too large =
+        /// peter-panning (the shadow detaches from the caster's contact). Since <see cref="ShadowNormalOffset"/> now
+        /// carries the acne defence, this stays tiny: default <c>0.0004</c> (was 0.004 - an order of magnitude smaller
+        /// once the normal offset landed. The old value put ~0.25 world units of depth bias at the default radius,
+        /// which peter-panned thin casters' contact shadows). See the bias-tuning note in docs/USING-KHAOZENGINE.md.</summary>
+        public float ShadowConstantBias = 0.0004f;
 
         /// <summary>Slope-scaled depth bias: extra bias proportional to the surface's grazing angle to the light
         /// (added on top of <see cref="ShadowConstantBias"/>), so steeply-lit polygons - which span many depth units
-        /// per texel - do not acne while flat-lit ones keep tight contact. Default <c>0.006</c>.</summary>
-        public float ShadowSlopeBias = 0.006f;
+        /// per texel - do not acne while flat-lit ones keep tight contact. With <see cref="ShadowNormalOffset"/>
+        /// handling the bulk of acne, this stays small: default <c>0.0015</c> (was 0.006).</summary>
+        public float ShadowSlopeBias = 0.0015f;
+
+        /// <summary>Normal-offset shadow bias, in shadow-map TEXELS: the receiver's sample position is pushed off its
+        /// surface along the geometric normal by this many texels (world-scaled by the shadow map's texel world size,
+        /// so it is automatically extent-aware as <see cref="ShadowFocusRadius"/> / <see cref="ShadowMapResolution"/>
+        /// change), then scaled by the grazing angle to the key light (maximal where self-shadow acne is worst, zero
+        /// when the surface faces the light head-on). This is the primary acne defence, which lets the depth biases
+        /// stay tiny so the shadow keeps contact with the caster's feet (no peter-panning). Default <c>2.5</c> (set
+        /// <c>0</c> to disable, falling back to depth-bias-only, which peter-pans unless the depth biases are raised).</summary>
+        public float ShadowNormalOffset = 2.5f;
 
         /// <summary>Shadow darkness (0 = shadows invisible, 1 = the key light's diffuse+spec fully removed in
         /// shadow). Multiplies ONLY the key light's contribution (fill + ambient are untouched), so a shadow reads

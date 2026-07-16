@@ -56,6 +56,17 @@ namespace KhaozEngine.Telegraphs
         /// </summary>
         public readonly float Sparkle;
 
+        /// <summary>
+        /// How much the deep fill interior dims relative to the boundary and sweep front (0 = legacy
+        /// uniform fill, 1 = fully hollow). Carried through from the style unchanged.
+        /// </summary>
+        public readonly float InteriorDim;
+
+        /// <summary>
+        /// Rotating outline dash-runner intensity. Multiplied by edge energy. 0 if OutlineRunner flag is off.
+        /// </summary>
+        public readonly float Runner;
+
         public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
             float edgeThickness, FillMode fillMode, TelegraphBlend blend)
             : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
@@ -67,6 +78,16 @@ namespace KhaozEngine.Telegraphs
             float edgeThickness, FillMode fillMode, TelegraphBlend blend,
             float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
             float patternScale, float rimGlow, float sweepGlow, float sparkle)
+            : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
+                featherFraction, pattern, patternSpeed, patternScale, rimGlow, sweepGlow, sparkle, 0f, 0f)
+        {
+        }
+
+        public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
+            float edgeThickness, FillMode fillMode, TelegraphBlend blend,
+            float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
+            float patternScale, float rimGlow, float sweepGlow, float sparkle,
+            float interiorDim, float runner)
         {
             FillColor = fillColor;
             OutlineColor = outlineColor;
@@ -82,6 +103,8 @@ namespace KhaozEngine.Telegraphs
             RimGlow = rimGlow;
             SweepGlow = sweepGlow;
             Sparkle = sparkle;
+            InteriorDim = interiorDim;
+            Runner = runner;
         }
     }
 }

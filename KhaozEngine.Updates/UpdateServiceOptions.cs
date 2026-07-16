@@ -55,6 +55,14 @@ public sealed class UpdateServiceOptions
     /// <summary>Whether <see cref="UpdateService.Dispose"/> disposes <see cref="Source"/> if it is disposable.</summary>
     public bool DisposeSource { get; init; } = true;
 
+    /// <summary>
+    /// Opt-in interval at which a long-running game re-checks the feed for a newer build while the
+    /// service is <see cref="UpdateState.Idle"/>, driven by <see cref="UpdateService.Tick"/> from the
+    /// game loop. Null (the default) leaves periodic re-checking off, so the caller's launch-time check
+    /// stays the only one and existing behaviour is unchanged. A non-positive value is likewise off.
+    /// </summary>
+    public TimeSpan? RecheckInterval { get; init; }
+
     /// <summary>Invoked just before the process exits to apply an update (flush state, save, etc.).</summary>
     public Action? OnBeforeForcedExit { get; init; }
 

@@ -387,6 +387,23 @@ screen shows it with retry / quit affordances). The server-status min-version ga
 `DrawBackground` hook). All player-facing copy lives in `BootStrings` (`boot.*` keys) with a built-in English
 fallback, so add those keys to your catalog to localize.
 
+### In-session update recheck + post-update relaunch (`UpdateService`)
+
+Two opt-in `UpdateService` conveniences for a long-running game, both driven from the game loop. Full
+mechanics live in [UPDATER.md](UPDATER.md).
+
+- **Periodic recheck.** A launch-time check misses a release that lands mid-session. Set
+  `UpdateServiceOptions.RecheckInterval` (a `TimeSpan?`, null by default = off) and call
+  `updates.Tick(dt)` once per frame next to `UpdateOverlayActions.AutoAdvanceRequired(updates)`. `Tick`
+  accrues time only while the service is `Idle` (any active flow zeroes it), fires one offline-safe
+  `CheckForUpdateAsync` on reaching the interval, and no-ops when the interval is null. Call `Tick` and
+  `CheckForUpdateAsync` from the same thread (a manual check resets the clock).
+- **Post-update relaunch marker.** After the shim applies an update and relaunches, the boot's
+  `UpdateService` exposes a non-null `PostUpdateRelaunch` (`PostUpdateRelaunchInfo`, with `Version` and
+  `AppliedAtUtc`), read once from an `update-applied.json` marker and then deleted, so it is null on every
+  ordinary launch. Check it at startup to suppress a "welcome back" / "what's new" prompt on a boot the
+  game restarted itself into.
+
 ### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
@@ -900,7 +917,12 @@ NumberFormatter.Notation = NumberNotation.Simple;   // once, from the user setti
 NumberFormatter.Format(1_500_000);       // "1.50M"
 NumberFormatter.FormatInt(1234);         // "1K"   (0 decimals below 1000)
 NumberFormatter.Format(1234, NumberNotation.Scientific);   // "1.23E+003" (explicit override)
+NumberFormatter.Format(0.05);            // "0.05" (sub-1 magnitudes stay truthful, never round up to "0.1")
 ```
+
+Magnitudes below 1 automatically get extra decimal places so a small value never rounds away to a misleading
+digit (0.05 would otherwise render "0.1" - twice the real value). This only applies when `decimalsSmall > 0`,
+so `FormatInt` (which always asks for 0 small-value decimals) is unaffected and stays a plain integer count.
 
 `TimeFormatter.Format(seconds, style)` renders a duration in two `DurationStyle` shapes: `Clock` (the ticking
 colon clock `1:02:34`, rounds up to the next whole second - for timers/countdowns) and `Coarse` (the two-unit
@@ -1578,11 +1600,18 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `ShadowFocusRadius` (default `16`, world units the map covers per axis - smaller packs texels onto the near
       action for crisper shadows at less coverage); `ShadowGroundHeight` (world Y the focus is fitted onto, default
       `0`); `ShadowStrength` (0..1 shadow darkness, default `0.85`).
-    - **Bias tuning** (`ShadowConstantBias` default `0.004`, `ShadowSlopeBias` default `0.006`): the two biases
-      defeat self-shadow acne. Too small => **acne** (a lit surface stipples itself with shadow); too large =>
-      **peter-panning** (the shadow detaches from the caster's feet). The slope bias adds extra offset on
-      steeply-lit surfaces. If you see acne, raise the constant bias first, then the slope bias; if shadows float off
-      their casters, lower them. A tighter `ShadowFocusRadius` (bigger texels per world unit) tolerates less bias.
+    - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
+      default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
+      (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
+      surface along the geometric normal by that many shadow-map TEXELS (world-scaled by the texel size, so it stays
+      correct as `ShadowFocusRadius` / `ShadowMapResolution` change), grazing-angle-weighted so it is largest where
+      acne is worst and zero facing the light. That lets the two DEPTH biases stay tiny, so the shadow keeps contact.
+      The depth biases act in light-clip NDC z over the light's full depth range (`4 * ShadowFocusRadius` world units),
+      so they were world-coupled to the radius - `ShadowConstantBias` dropped from `0.004` to `0.0004` (the old value
+      was ~0.25 world units of depth bias at the default radius, which peter-panned thin casters' contact shadows).
+      If you still see acne, raise `ShadowNormalOffset` first (say 3-4 texels), then the depth biases. If shadows float
+      off their casters, lower the depth biases (the normal offset does not cause peter-panning). Set
+      `ShadowNormalOffset = 0` to fall back to depth-bias-only.
     - **Depth-pass dirty-skip** (automatic, presentation-neutral): the 2048^2 depth map persists across frames, so the
       depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - the fitted light
       matrix (which folds in the light direction, focus, and camera), the rigid caster set + world transforms, the map
@@ -1641,8 +1670,20 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Sky.HaloFalloff` (halo width). **The sun direction defaults to the key light** (`Post.LightDirection`): the disc
     sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
     axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
-    point it elsewhere. The sun is drawn only when it is above the view horizon (behind/under the camera it is
-    suppressed), so a downward-looking iso view shows it near the top of the sky.
+    point it elsewhere.
+  - **Where the disc is placed** (`Sky.Anchor`, a `SunAnchor`, default `SunAnchor.World`):
+    - `SunAnchor.World` (default) anchors the disc to the WORLD-space sun direction with a true point-at-infinity
+      projection (rotate the world sun direction into view space, project through the camera projection,
+      perspective-divide). Orbiting the camera keeps the disc fixed over the world direction the sun really lies in
+      (it stays put over the mountains/features the light agrees with), and a pure camera translation never moves it.
+      The disc is drawn only when the sun is in FRONT of the camera. This is the physically-correct placement for the
+      perspective `FollowCamera3D`/`FlyCamera3D`. Under the orthographic `IsoCamera3D` a directional sun is a point at
+      infinity with no finite screen position (parallel view rays), so `World` suppresses the disc there - use
+      `StylizedBackdrop` for the iso look.
+    - `SunAnchor.StylizedBackdrop` is the legacy camera-relative placement: the sun's view-space right/up read
+      directly as screen NDC, visible whenever the sun is above the view horizon. Not a physical projection, but it
+      places the disc under BOTH the ortho iso camera and the perspective camera, which is what a decorative backdrop
+      wants. Pick it for a stylized sky, or for the orthographic iso camera where `World` degenerates.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur LDR bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
@@ -2278,21 +2319,30 @@ the 3D ground-decal path only, see below):
   for Circle/Arc, outer radius for Ring, width for Beam, range for Cone). 0 keeps the legacy hard
   anti-aliased edge. Presets use roughly 0.06 (crisp) to 0.18 (soft).
 - `Pattern` (`TelegraphFillPattern`) - interior fill texture. `Solid` (default) is the legacy flat
-  tint. `ScrollingNoise` drifts value noise across the shape. `RadialNoise` flows it radially
-  outward from the shape center.
+  tint. `ScrollingNoise` is domain-warped value noise drifting across the shape: the warp bends the
+  drift into wispy filaments instead of round scrolling blobs. `RadialNoise` is a Cartesian vortex
+  swirl, spiral arms orbiting the shape center over time (Cartesian sampling, so there is no polar
+  singularity mushing the center into a blob).
 - `PatternSpeed` - pattern animation rate, in cycles per second of `Scene3D.EffectTimeSeconds`.
 - `PatternScale` - noise cells across the shape's characteristic size. 0 falls back to 6.
 - `EdgeEnergy` - master strength multiplier for the RimGlow / SweepGlow / EdgeSparkle animations
   below. 0 means the default full strength of 1, so leaving it unset is not "off". Set an
   explicit value to scale the glow and sparkle up or down.
+- `InteriorDim` - how much the deep fill interior dims relative to the boundary and sweep front
+  (0 = legacy uniform fill, 1 = fully hollow). Concentrates the energy at the rim and the moving
+  sweep edge instead of pooling flat across the whole shape. Presets use roughly 0.35 (dense) to
+  0.6 (hollow). All seven set a nonzero value now, so every preset renders the hollow-rim look
+  unless you dial it back to 0 on a custom style.
 
-`TelegraphAnim` gained three flags alongside the original four (`OutlinePulse`, `FillSweep`,
+`TelegraphAnim` gained four flags alongside the original four (`OutlinePulse`, `FillSweep`,
 `ColorRamp`, `ImpactFlash`):
 
 - `RimGlow` - soft glow hugging the shape boundary, pulsing with cast progress.
 - `SweepGlow` - bright soft leading edge riding the `FillSweep` front. No-op without `FillSweep`
-  also set.
+  also set. Ramps in over the first fifth of the cast, so an early-cast sweep never engulfs the
+  whole (still tiny) swept region into a bright ball at the shape center.
 - `EdgeSparkle` - sparse animated sparkle cells along the shape boundary.
+- `OutlineRunner` - rotating dash segments orbiting the outline band, a rune-ring feel.
 
 **Presets** (`TelegraphStyle.Generic` / `.Fire` / `.Poison` / `.Steel` / `.Frost` / `.Nature` /
 `.Arcane`), each a distinct character to reach for by name instead of hand-tuning fields:
@@ -2301,11 +2351,12 @@ the 3D ground-decal path only, see below):
   flash, plus rim and sweep glow (no outline pulse).
 - `Fire` - additive warm glow, scrolling noise, edge sparkle.
 - `Poison` - toxic green, alpha-blended, pulsing outline, plus rim and sweep glow.
-- `Steel` - cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle.
-- `Frost` - pale ice blue, wide soft feather, slow radial noise flow, rim glow and edge sparkle,
-  no sweep glow.
+- `Steel` - cool grey, crisp edge, fine brushed-grain noise, outline dash runner, no rim glow or
+  sparkle.
+- `Frost` - pale ice blue, wide soft feather, slow vortex swirl, rim glow and edge sparkle, no
+  sweep glow.
 - `Nature` - verdant green, soft organic drift, rim glow and sweep glow, no pulse or flash.
-- `Arcane` - violet additive energy, radial noise, every animation flag on (full edge energy).
+- `Arcane` - violet additive energy, vortex swirl, every animation flag on (full edge energy).
 
 `Scene3D.DecalQuality` (`GroundDecalQuality.Full` by default) is a scene-wide, host-set tier for
 the ground-decal pass: `Reduced` drops the second noise octave and the edge sparkle for weak
@@ -2329,8 +2380,9 @@ The builder is pure and immediate-mode like every other telegraph call, so the C
         scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
-Pattern/PatternSpeed/PatternScale, EdgeEnergy, RimGlow, SweepGlow, EdgeSparkle, and residue) and
-always renders the flat legacy fill/outline/pulse/flash look. They are a 3D ground-decal feature.
+Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, RimGlow, SweepGlow, EdgeSparkle,
+OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash look. They
+are a 3D ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same

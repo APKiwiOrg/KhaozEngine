@@ -49,12 +49,21 @@ namespace KhaozEngine.Telegraphs
             float sweepGlow = 0f;
             if ((style.Animation & TelegraphAnim.SweepGlow) != 0
                 && (style.Animation & TelegraphAnim.FillSweep) != 0)
-                sweepGlow = energy * MathF.Sin(p * MathF.PI);
+            {
+                // Ramp the glow in over the first ~fifth of the cast: with an eased FillSweep the swept region is
+                // still tiny then, and a full-strength glow band wider than the region reads as a bright ball at
+                // the shape center rather than a leading edge.
+                float rampIn = MathUtil.Clamp01((p - 0.08f) / 0.14f);
+                sweepGlow = energy * MathF.Sin(p * MathF.PI) * rampIn;
+            }
 
             float sparkle = (style.Animation & TelegraphAnim.EdgeSparkle) != 0 ? energy : 0f;
 
+            float runner = (style.Animation & TelegraphAnim.OutlineRunner) != 0 ? energy : 0f;
+
             return new ResolvedTelegraph(fill, outline, fillFraction, flash, style.EdgeThickness, style.FillMode, style.Blend,
-                style.FeatherWidth, style.Pattern, style.PatternSpeed, style.PatternScale, rimGlow, sweepGlow, sparkle);
+                style.FeatherWidth, style.Pattern, style.PatternSpeed, style.PatternScale, rimGlow, sweepGlow, sparkle,
+                MathUtil.Clamp01(style.InteriorDim), runner);
         }
 
         // 0 below ~0.6, rising steeply to 1 at p=1. Quartic for a snappy late spike.

@@ -324,6 +324,78 @@ the default theme just adds the keys above to its catalog.
 
 ---
 
+## In-session recheck (long-running games)
+
+The launch-time check only catches a release that already exists when the game boots. A session that
+stays open for hours (an MMO client, a server, a game left running) can miss a build published mid-session.
+`UpdateService` can re-check on an interval while it is idle, so the same overlay / auto-advance flow then
+picks the update up without a restart.
+
+Opt in with `UpdateServiceOptions.RecheckInterval` (a `TimeSpan?`, default `null` = off) and drive it by
+calling `UpdateService.Tick(dt)` once per frame from the game loop, right next to the existing
+`AutoAdvanceRequired` call:
+
+```csharp
+using var service = new UpdateService(new UpdateServiceOptions
+{
+    // ...Source / CurrentVersion / AppDataDir / TrustedPublicKeys as usual...
+    RecheckInterval = TimeSpan.FromMinutes(30),   // opt-in. null (default) keeps existing behaviour
+});
+
+// ...once per frame in the game loop, on the same thread as CheckForUpdateAsync:
+service.Tick(dt);
+UpdateOverlayActions.AutoAdvanceRequired(service);
+```
+
+Semantics that matter for a reviewer:
+
+- **Idle-only accumulation.** `Tick` accrues time only while the service is `Idle`. Any other state (an
+  offered, downloading, ready, applying, or failed update) zeroes the clock, so a whole interval of quiet
+  Idle time must pass before the next recheck fires rather than an instant re-probe as a flow settles back
+  to Idle.
+- **Offline-safe, non-overlapping.** On reaching the interval it starts one fire-and-forget
+  `CheckForUpdateAsync`, which swallows failures back to Idle exactly like the launch-time check, and moves
+  Idle -> Checking synchronously so a second Tick cannot start an overlapping check.
+- **A manual check resets the clock.** `CheckForUpdateAsync` zeroes the accumulator, so a gate-driven or
+  player-driven check does not get double-fired moments later. Call `Tick` and `CheckForUpdateAsync` from
+  the same (game-loop) thread: the clock is owned by that thread.
+- **No-op by default.** Leaving `RecheckInterval` null (or non-positive) makes `Tick` a no-op, so a game
+  that does not opt in is unchanged. A negative or NaN `dt` counts as zero.
+
+A throwing `StateChanged` subscriber can no longer wedge the service: `SetState` writes the state field
+first, then swallows and logs a subscriber exception, so a recheck (or the recovery transition back to
+Idle) is never blocked by a broken handler.
+
+---
+
+## Detecting a post-update relaunch
+
+When the shim applies an update it relaunches the game, so the next boot is not an ordinary launch. The
+updater records that: right after the apply commits (new binaries verified, manifest installed) and before
+it relaunches, the shim writes an `update-applied.json` marker into the game's app-data dir holding the
+applied `Version` and the UTC `AppliedAtUtc`. The write is best-effort, so a failure to write it never
+fails or rolls back the committed update, and it is written only on a committed apply, never on a rollback
+or a deferred (game-still-running) apply.
+
+The `UpdateService` constructor reads that marker once and deletes it, exposing it as the nullable
+`PostUpdateRelaunch` (`PostUpdateRelaunchInfo`, with `Version` and `AppliedAtUtc`). This mirrors the
+interrupted-apply detection: read once, then delete, so it is non-null only on the boot that immediately
+follows an auto-applied update and null on every ordinary launch (a corrupt or unreadable marker is
+tolerated as null and still deleted, so a bad file never persists).
+
+The consumer pattern is to suppress a boot-time interruption when the version gap is small, e.g. skip a
+"welcome back" / "what's new" prompt on the boot that the game restarted itself into:
+
+```csharp
+if (service.PostUpdateRelaunch is { } applied)
+{
+    // auto-relaunch into applied.Version, completed at applied.AppliedAtUtc: skip the boot prompt
+    SkipWelcomeBack();
+}
+```
+
+---
+
 ## macOS: the `.app` re-sign caveat
 
 On macOS the game ships as an `<Game>.app` bundle (for the Finder / Dock icon; see [ICONS.md](ICONS.md) in
@@ -357,7 +429,10 @@ that first-launch limitation rather than treat a macOS rollback as a bug.
 2. `ke-updater genkey`; upload `private.pem` to Key Vault; commit + embed `public.pem`; wire it into
    `UpdateServiceOptions.TrustedPublicKeys`.
 3. Add the one-line shim project (`<OutputType>WinExe</OutputType>`) forwarding to `UpdaterShim.Main`, published next to the game.
-4. Construct `UpdateService` and fire the on-launch check (non-fatal on failure).
+4. Construct `UpdateService` and fire the on-launch check (non-fatal on failure). For a long-running
+   session, set `RecheckInterval` and call `Tick(dt)` per frame (see [In-session recheck](#in-session-recheck-long-running-games)),
+   and read `PostUpdateRelaunch` at startup to suppress a boot prompt after an auto-relaunch (see
+   [Detecting a post-update relaunch](#detecting-a-post-update-relaunch)).
 5. Add the OIDC federated credential + role assignments and the `publish-clients.yml` CI job (or
    `scripts/publish-update.sh`) that builds, manifests, signs from Key Vault, uploads, and flips the
    pointer last.

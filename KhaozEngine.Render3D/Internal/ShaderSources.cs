@@ -27,16 +27,24 @@ namespace KhaozEngine.Render3D.Internal
         public const string LightingCommonGlsl = @"
 // 3x3 PCF shadow lookup. keyShadow returns 1 = fully lit, 0 = fully in shadow, sampled from the key light's
 // depth map. worldPos is projected into light-clip via ShadowMat; a manual depth compare (the R32F map holds the
-// caster's light-space depth) with a constant + slope-scaled bias defeats acne. ShadowParams.x = 1/mapResolution
-// (the PCF texel step), .y = constant bias, .z = slope bias, .w = strength (0 => the caller skips this entirely).
-// ndl is the receiver's N.L to the key light, used to scale the slope bias (grazing surfaces need more). This lives
-// in the shared block so ModelFrag and SplatFrag shadow identically; the shadow map + sampler are passed in because
-// GLSL cannot reference a fragment's own bindings from a shared function.
+// caster's light-space depth) with a constant + slope-scaled bias plus a NORMAL OFFSET defeats acne. ShadowParams.x
+// = 1/mapResolution (the PCF texel step), .y = constant bias, .z = slope bias, .w = strength (0 => the caller skips
+// this entirely). ndl is the receiver's N.L to the key light, used to scale the slope bias AND the normal offset
+// (grazing surfaces need more). Ngeo is the receiver's GEOMETRIC world normal and normalOffsetWorld is the world
+// distance (texel-world-size x ShadowNormalOffset, CPU-baked so it is extent-aware) the sample point is pushed off
+// the surface along Ngeo before projecting - the standard normal-offset bias, which suppresses self-shadow acne
+// without a large depth bias so the shadow keeps contact with the caster's feet (no peter-panning). This lives in the
+// shared block so ModelFrag and SplatFrag shadow identically. The shadow map + sampler are passed in because GLSL
+// cannot reference a fragment's own bindings from a shared function.
 // Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the point of use inside; GLSL forbids a
 // sampler2D(...) constructor as a call ARGUMENT ('sampler constructor must appear at point of use').
-float sampleKeyShadow(texture2D shadowTex, sampler shadowSamp, mat4 shadowMat, vec4 shadowParams, vec3 worldPos, float ndl) {
+float sampleKeyShadow(texture2D shadowTex, sampler shadowSamp, mat4 shadowMat, vec4 shadowParams, vec3 worldPos, vec3 Ngeo, float ndl, float normalOffsetWorld) {
     if (shadowParams.w <= 0.0) return 1.0;                 // shadow map inactive this frame => fully lit
-    vec4 lc = shadowMat * vec4(worldPos, 1.0);
+    // Normal-offset bias: push the sample point off the surface along its geometric normal, scaled by the grazing
+    // angle to the key light (sin = sqrt(1-ndl^2), largest where acne is worst, zero facing the light head-on).
+    float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));
+    vec3 samplePos = worldPos + Ngeo * (normalOffsetWorld * slopeSin);
+    vec4 lc = shadowMat * vec4(samplePos, 1.0);
     if (lc.w <= 0.0) return 1.0;
     vec3 proj = lc.xyz / lc.w;                             // light-clip; xy in [-1,1], z in [0,1]
     vec2 uv = proj.xy * 0.5 + 0.5;                         // to [0,1] texture space
@@ -118,6 +126,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // shadow tail (offset 688): world->light-clip for the shadow map (unused by the vertex stage)
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -169,6 +178,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // world->light-clip for the key-light shadow map (offset 688)
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
@@ -227,7 +237,7 @@ void main() {
     // Key-light shadow: sampled AFTER the material maps (Metal first-sample-order: ShadowMap is binding 5, sampled
     // last). N.L to the key light scales the slope bias. keyShadow == 1 when the map is off (byte-stable with Off).
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
@@ -257,6 +267,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
+    vec4 ShadowParams2;
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
 layout(set=0, binding=2) uniform texture2D NormalMap;
@@ -309,7 +320,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
@@ -346,7 +357,8 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
-    mat4 bones[128];       // offset 960: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
+    vec4 ShadowParams2;
+    mat4 bones[128];       // offset 976: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -427,6 +439,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
+    vec4 ShadowParams2;
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -467,7 +480,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
@@ -495,6 +508,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;
     vec4 ShadowParams;
+    vec4 ShadowParams2;
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -548,7 +562,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
@@ -574,7 +588,8 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // shadow tail (offset 688): world->light-clip for the shadow map
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
-    vec4 TintTiling[5];   // per-material params appended (offset 768): xyz = tint, w = tiles/metre
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
+    vec4 TintTiling[5];   // per-material params appended (offset 784): xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -639,7 +654,8 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat;        // world->light-clip for the key-light shadow map (offset 688)
     vec4 ShadowParams;     // x=1/mapRes, y=constBias, z=slopeBias, w=strength (0 => shadows off)
-    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 768)
+    vec4 ShadowParams2;    // x=normalOffsetWorld (texelWorld * ShadowNormalOffset); yzw reserved
+    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 784)
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -746,7 +762,7 @@ void main() {
     // Key-light shadow: sampled AFTER the terrain arrays (Metal first-sample-order: ShadowMap is binding 4, last).
     // Terrain RECEIVES shadows identically to models via the same shared helper. keyShadow == 1 when the map is off.
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, ShadowMat, ShadowParams, vWorldPos, Ngeo, ndlKeyForShadow, ShadowParams2.x);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
@@ -1395,8 +1411,8 @@ layout(location=2) in vec4 Fill;      // rgb, a = fill alpha (already opacity-sc
 layout(location=3) in vec4 Outline;   // rgb, a = outline alpha
 layout(location=4) in vec4 Params;    // x=edgeThickness, y=fillFraction, z=flashAdd, w=shapeIndex
 layout(location=5) in vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=featherWidth (world units)
-layout(location=6) in vec4 PatternP;  // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=0
-layout(location=7) in vec4 Energy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=0
+layout(location=6) in vec4 PatternP;  // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
+layout(location=7) in vec4 Energy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
 layout(location=0) out vec4 oColor;
 
 // 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).
@@ -1500,21 +1516,43 @@ void main() {
         float n;
         if (patIdx < 1.5)
         {
-            // ScrollingNoise: value noise drifting across the decal-local XZ plane.
-            n = vnoise(local * cells + vec2(t, t * 0.7));
+            // ScrollingNoise: domain-warped value noise drifting across the decal-local XZ plane. The warp
+            // vector (itself low-frequency noise) bends the drift into wispy filaments instead of round blobs.
+            vec2 qp = local * cells;
+            vec2 drift = vec2(t, t * 0.7);
+            vec2 warp = vec2(vnoise(qp * 0.55 + drift * 0.6),
+                             vnoise(qp * 0.55 - drift * 0.4 + 17.3)) - 0.5;
+            n = vnoise(qp + warp * 2.6 + drift);
             if (TimeQ.y > 0.5)
-                n = 0.65 * n + 0.35 * vnoise(local * cells * 2.3 - vec2(t * 1.3, -t));
+                n = 0.62 * n + 0.38 * vnoise(qp * 2.3 + warp * 3.5 - vec2(t * 1.3, -t));
         }
         else
         {
-            // RadialNoise: value noise in polar (radius, angle) space, scrolling radially outward.
-            float rr = length(local) * cells;
-            float aa = atan(local.y, local.x);
-            n = vnoise(vec2(rr - t * 2.0, aa * 3.0));
+            // RadialNoise: vortex swirl. Rotate the sample domain by an angle growing with radius (spiral
+            // arms) and let the arms orbit over time. Sampling stays Cartesian, so there is no polar
+            // singularity mushing the shape center (the old radius/angle sampling compressed all angular
+            // cells into a blob at r -> 0).
+            float rr = length(local);
+            float twist = rr * cells * 0.5 - t * 1.6;
+            float cs2 = cos(twist), sn2 = sin(twist);
+            vec2 sp = vec2(local.x * cs2 - local.y * sn2, local.x * sn2 + local.y * cs2) * cells;
+            n = vnoise(sp + vec2(0.0, t * 0.9));
             if (TimeQ.y > 0.5)
-                n = 0.7 * n + 0.3 * vnoise(vec2(rr * 2.0 - t * 3.0, aa * 6.0));
+                n = 0.65 * n + 0.35 * vnoise(sp * 2.1 - vec2(t * 1.1, t * 0.5));
         }
-        fillA *= clamp(0.55 + 0.65 * n, 0.0, 1.2);
+        // Filament contrast: dark gaps between bright energy wisps, not a milky uniform modulation.
+        float filaments = smoothstep(0.35, 0.75, n);
+        fillA *= 0.35 + 0.95 * filaments;
+    }
+
+    // Hollow interior (PatternP.w = interiorDim, 0 = legacy uniform fill, gated so it is zero-neutral). Alpha
+    // eases down deep inside the swept region while staying full within a band of the sweep front, so the
+    // energy reads at the rim and the moving edge instead of pooling into a ball at the shape center.
+    if (PatternP.w > 0.0 && fillA > 0.0)
+    {
+        float hollowBand = edge * 3.0 + feather * 2.0;
+        float depthIn = clamp(-swept / max(hollowBand, 1e-4), 0.0, 1.0);
+        fillA *= 1.0 - PatternP.w * depthIn * depthIn;
     }
 
     vec3 rgb = Fill.rgb;
@@ -1535,20 +1573,34 @@ void main() {
     }
     if (Energy.y > 0.0)
     {
-        // Sweep glow: a leading-edge glow tracking the animated (swept) fill boundary.
-        float lead = 1.0 - smoothstep(0.0, edge * 2.0 + feather * 2.0, abs(swept));
+        // Sweep glow: a leading-edge glow tracking the animated (swept) fill boundary. The band is kept to
+        // roughly one edge-plus-feather width so an early-cast swept region is never fully engulfed (the
+        // resolver additionally ramps the energy in over the first fifth of the cast).
+        float lead = 1.0 - smoothstep(0.0, edge * 2.0 + feather, abs(swept));
         rgb += Outline.rgb * (lead * Energy.y * 0.7);
         a = max(a, lead * Energy.y * 0.6 * Fill.a);
     }
     if (Energy.z > 0.0 && TimeQ.y > 0.5)
     {
-        // Edge sparkle: brief per-cell twinkles along the boundary (Full quality only).
+        // Edge sparkle: brief per-cell twinkles along the boundary (Full quality only). Small cells and a
+        // smoothstepped threshold give soft glints rather than hard square flecks.
         float bmask = 1.0 - smoothstep(0.0, edge * 3.0 + feather, abs(sd));
-        vec2 cell = floor(local * 7.0);
-        float ph = hash21(cell + floor(TimeQ.x * 8.0));
-        float tw = step(0.965, ph);
+        vec2 cell = floor(local * 11.0);
+        float ph = hash21(cell + floor(TimeQ.x * 7.0));
+        float tw = smoothstep(0.94, 0.995, ph);
         rgb += vec3(1.0) * (bmask * tw * Energy.z);
         a = max(a, bmask * tw * Energy.z * 0.9);
+    }
+    if (Energy.w > 0.0)
+    {
+        // Outline runner: eight soft dash segments orbiting the outline band (rune-ring feel). Angular dashes
+        // are shape-agnostic: on radial shapes they orbit, on beams they stride along the length. The band mask
+        // keeps them strictly on the boundary, so the shape center is untouched.
+        float oband = 1.0 - smoothstep(edge, edge * 2.0 + feather, abs(sd));
+        float seg = fract(atan(local.y, local.x) * 1.2732395 + TimeQ.x * 0.45);
+        float dash = smoothstep(0.32, 0.42, seg) * (1.0 - smoothstep(0.78, 0.88, seg));
+        rgb = mix(rgb, Outline.rgb, clamp(oband * dash * Energy.w * 0.85, 0.0, 1.0));
+        a = max(a, oband * dash * Energy.w * Outline.a);
     }
     rgb = clamp(rgb, 0.0, 1.0);
 

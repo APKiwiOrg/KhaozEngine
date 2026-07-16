@@ -105,4 +105,5 @@ public sealed class UpdaterUiColor
 [JsonSerializable(typeof(ApplyUpdateConfig))]
 [JsonSerializable(typeof(ApplyUpdateUiConfig))]
 [JsonSerializable(typeof(UpdaterUiColor))]
+[JsonSerializable(typeof(PostUpdateRelaunchInfo))]
 public partial class UpdatesJsonContext : JsonSerializerContext;

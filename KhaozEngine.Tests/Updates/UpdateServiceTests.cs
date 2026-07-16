@@ -414,6 +414,61 @@ public sealed class UpdateServiceTests : IDisposable
         Assert.False(File.Exists(Path.Combine(appDataDir, "apply-in-progress.json"))); // cleared
     }
 
+    // --- Post-update relaunch marker (update-applied.json) ---
+
+    private string AppliedMarkerPath => Path.Combine(appDataDir, "update-applied.json");
+
+    private void WriteAppliedMarker(string version, DateTimeOffset appliedAtUtc)
+        => File.WriteAllText(AppliedMarkerPath, System.Text.Json.JsonSerializer.Serialize(
+            new PostUpdateRelaunchInfo { Version = version, AppliedAtUtc = appliedAtUtc }));
+
+    [Fact]
+    public void Ctor_ReadsAndDeletesPostUpdateMarker()
+    {
+        var applied = new DateTimeOffset(2026, 5, 6, 7, 8, 9, TimeSpan.Zero);
+        WriteAppliedMarker("2.0.0", applied);
+
+        using UpdateService svc = Build();
+
+        Assert.NotNull(svc.PostUpdateRelaunch);
+        Assert.Equal("2.0.0", svc.PostUpdateRelaunch!.Version);
+        Assert.Equal(applied, svc.PostUpdateRelaunch.AppliedAtUtc);
+        Assert.False(File.Exists(AppliedMarkerPath)); // read once, then deleted
+    }
+
+    [Fact]
+    public void Ctor_NoPostUpdateMarker_LeavesPostUpdateRelaunchNull()
+    {
+        using UpdateService svc = Build();
+
+        Assert.Null(svc.PostUpdateRelaunch);
+    }
+
+    [Fact]
+    public void Ctor_SecondConstruction_SeesNullPostUpdateRelaunch()
+    {
+        WriteAppliedMarker("2.0.0", DateTimeOffset.UtcNow);
+
+        using (UpdateService first = Build())
+        {
+            Assert.NotNull(first.PostUpdateRelaunch); // consumed and deleted here
+        }
+
+        using UpdateService second = Build();
+        Assert.Null(second.PostUpdateRelaunch); // marker gone: a later launch is an ordinary boot
+    }
+
+    [Fact]
+    public void Ctor_CorruptPostUpdateMarker_IsTolerated_NullAndRemoved()
+    {
+        File.WriteAllText(AppliedMarkerPath, "{ this is not valid json");
+
+        using UpdateService svc = Build();
+
+        Assert.Null(svc.PostUpdateRelaunch);
+        Assert.False(File.Exists(AppliedMarkerPath)); // corrupt marker cleared, not left to persist
+    }
+
     // --- Signed-manifest hardening (Task 5) ---
 
     [Fact]

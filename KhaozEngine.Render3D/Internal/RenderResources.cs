@@ -52,6 +52,14 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Whether the MRT is multisampled (<see cref="SampleCount"/> &gt; 1) and therefore needs a resolve.</summary>
         public bool Msaa => SampleCount > 1;
 
+        /// <summary>Bumped every time <see cref="Create"/> (re)allocates the targets, INCLUDING same-size recreates
+        /// (an MSAA sample-count, bloom, or HDR-format toggle recreates every texture at unchanged dimensions).
+        /// Renderers that cache resource sets over these textures must compare this, not the dimensions: a
+        /// dimension-based guard early-outs on a same-size recreate and leaves sets referencing disposed textures,
+        /// which Metal tolerates silently but D3D11 and Vulkan fault on (caught by the first MSAA golden on the
+        /// WARP and lavapipe CI legs).</summary>
+        public int Generation { get; private set; }
+
         // Single-sample targets the POST chain samples (also the MRT attachments when SampleCount == 1).
         public IGpuTexture ColorTex = null!;
         public IGpuTexture NormalTex = null!;
@@ -103,6 +111,7 @@ namespace KhaozEngine.Render3D.Internal
 
         void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor)
         {
+            Generation++;
             Width = w; Height = h; Mipped = mipped; SampleCount = sampleCount < 1 ? 1 : sampleCount;
             HdrColor = hdrColor;
             uint uw = (uint)w, uh = (uint)h, s = (uint)SampleCount;

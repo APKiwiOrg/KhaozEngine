@@ -87,7 +87,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly List<DecalRun> _runs = new();
         IGpuResourceSet? _set;
         RenderResources? _bound;
-        int _boundW, _boundH;
+        int _boundGen;
 
         static readonly uint InstanceStride = (uint)Unsafe.SizeOf<DecalInstance>();
 
@@ -162,10 +162,10 @@ namespace KhaozEngine.Render3D.Rendering
         {
             // Rebuild only when the targets change (the frame UBO handle is fixed for the renderer's life, so the set
             // does not churn on instance-buffer regrowth the way the old dynamic-offset set did).
-            if (_set != null && ReferenceEquals(_bound, res) && res.Width == _boundW && res.Height == _boundH) return;
+            if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             _set?.Dispose();
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex, _gd.PointSampler, _frameUbo));
-            _bound = res; _boundW = res.Width; _boundH = res.Height;
+            _bound = res; _boundGen = res.Generation;
         }
 
         /// <summary>Ensure the instance buffer + CPU scratch hold at least <paramref name="decalCount"/> entries,

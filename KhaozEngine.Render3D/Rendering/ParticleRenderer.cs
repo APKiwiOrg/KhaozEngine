@@ -56,7 +56,7 @@ namespace KhaozEngine.Render3D.Rendering
         ParticleInstance[] _packed = Array.Empty<ParticleInstance>();
         IGpuResourceSet? _set;
         RenderResources? _bound;
-        int _boundW, _boundH;
+        int _boundGen;
 
         static readonly uint InstanceStride = (uint)Unsafe.SizeOf<ParticleInstance>();
 
@@ -121,10 +121,12 @@ namespace KhaozEngine.Render3D.Rendering
 
         void BindTargets(RenderResources res)
         {
-            if (_set != null && ReferenceEquals(_bound, res) && res.Width == _boundW && res.Height == _boundH) return;
+            // Generation-based guard (not dimensions): a same-size recreate (MSAA/bloom/HDR toggle) also
+            // invalidates DepthColorTex, see RenderResources.Generation.
+            if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             _set?.Dispose();
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _frameUbo, res.DepthColorTex, _gd.PointSampler));
-            _bound = res; _boundW = res.Width; _boundH = res.Height;
+            _bound = res; _boundGen = res.Generation;
         }
 
         void EnsureCapacity(int spriteCount)

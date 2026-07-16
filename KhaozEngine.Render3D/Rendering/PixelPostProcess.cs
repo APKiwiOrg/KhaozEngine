@@ -180,8 +180,9 @@ namespace KhaozEngine.Render3D.Rendering
             // Rebuild the ping-output pipelines first if the ping colour format flipped (HDR float16 <-> legacy UNorm),
             // independent of the resource-set guard below (a pure format toggle keeps the same size/bloom state).
             RebuildPingPipelinesIfFormatChanged(res);
-            if (ReferenceEquals(_bound, res) && res.Width == _boundW && res.Height == _boundH
-                && res.BloomAllocated == _boundBloom && res.HdrColor == _boundHdr) return;
+            // Generation-based guard: any recreate of the targets bumps it, including same-size recreates (MSAA
+            // sample-count / bloom / HDR toggles), so the sets can never outlive the textures they reference.
+            if (ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             DisposeSets();
             var f = _gd.Factory;
             var samp = _gd.PointSampler;
@@ -233,11 +234,9 @@ namespace KhaozEngine.Render3D.Rendering
                 _compositePingBBloomA = f.CreateResourceSet(new GpuResourceSetDescription(_compositeLayout, res.PingB, res.BloomA!, lin, _compositeBuf));
             }
 
-            _bound = res; _boundW = res.Width; _boundH = res.Height; _boundBloom = res.BloomAllocated;
-            _boundHdr = res.HdrColor;
+            _bound = res; _boundGen = res.Generation;
         }
-        int _boundW, _boundH;
-        bool _boundBloom, _boundHdr;
+        int _boundGen;
 
         // Whether two ping output descriptions carry the same colour attachment format. The ping targets are always
         // one colour attachment, no depth, single-sample, so the first colour format is the only field that moves on

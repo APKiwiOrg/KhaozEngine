@@ -1477,6 +1477,34 @@ void main() {
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }";
 
+        // ---- Screen-space distortion apply: the FIRST post-chain pass (both modes). Re-samples the chain source
+        // through the accumulated half-res offset field so refraction warps the scene BEFORE every camera-response
+        // pass (bloom halos follow the warped sources, the retro path quantizes the warped image). Preserves each
+        // pixel's OWN alpha so the background/starfield marker never warps (warping it would corrupt the blit's
+        // marker semantics, D-S5). Only ever run when a distortion sprite was queued this frame
+        // (RenderResources.DistortAllocated), so a distortion-free frame is byte-identical to before distortion existed.
+        public const string DistortionApplyFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;        // the chain source (ColorTex on the first pass)
+layout(set=0, binding=1) uniform texture2D OffsetTex;  // half/quarter-res R16G16Float signed UV offset field
+layout(set=0, binding=2) uniform sampler Samp;         // linear: bilinear offset upsample + colour resample
+layout(set=0, binding=3) uniform Apply { vec4 Params; }; // .x = strength->UV scale, .y = max UV excursion clamp, zw reserved
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+void main() {
+    // Own tap first (binding order Src then OffsetTex, the Metal static-sample rule), keeping this pixel's own alpha
+    // so the background marker survives the warp.
+    vec4 own = texture(sampler2D(Src, Samp), vUv);
+    vec2 offset = texture(sampler2D(OffsetTex, Samp), vUv).rg;   // bilinear half-res upsample
+    // World-ish offset -> UV excursion, clamped so a hot mess of stacked sprites cannot smear the whole screen.
+    vec2 duv = clamp(offset * Params.x, -vec2(Params.y), vec2(Params.y));
+    // Keep the warped sample inside the viewport (half a texel in from each edge).
+    ivec2 sz = textureSize(sampler2D(Src, Samp), 0);
+    vec2 halfTexel = 0.5 / vec2(sz);
+    vec2 wuv = clamp(vUv + duv, halfTexel, vec2(1.0) - halfTexel);
+    vec3 warped = texture(sampler2D(Src, Samp), wuv).rgb;
+    oColor = vec4(warped, own.a);
+}";
+
         // ---- Palette quantize (+ optional Bayer dither) ----
         public const string PaletteFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;

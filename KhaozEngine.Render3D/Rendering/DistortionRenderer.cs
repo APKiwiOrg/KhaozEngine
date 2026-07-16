@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
@@ -143,11 +144,12 @@ namespace KhaozEngine.Render3D.Rendering
             Extra = new Vector4(s.Strength, s.Rotation, (int)s.Orientation, s.SoftFadeScale <= 0f ? 1f : s.SoftFadeScale),
         };
 
-        /// <summary>Draw the queued distortion sprites as one instanced call into <see cref="RenderResources.DistortFB"/>
-        /// (caller cleared it to zero first). No ordering needed: the additive accumulation is order-independent.
-        /// <paramref name="resRatio"/> is the full-res-to-offset-res texel ratio (2 for half, 4 for quarter) the
-        /// fragment uses to index the full-res depth. Returns the number of GPU draw calls issued (0 or 1). Caller
-        /// guarantees the scene depth is resolved (the fragment samples <see cref="RenderResources.DepthColorTex"/>).</summary>
+        /// <summary>Clear the offset field to zero then draw the queued distortion sprites as one instanced call into
+        /// <see cref="RenderResources.DistortFB"/> (the clear + additive accumulation share one render pass). No
+        /// ordering needed: the additive accumulation is order-independent. <paramref name="resRatio"/> is the
+        /// full-res-to-offset-res texel ratio (2 for half, 4 for quarter) the fragment uses to index the full-res
+        /// depth. Returns the number of GPU draw calls issued (0 or 1). Caller guarantees the scene depth is resolved
+        /// (the fragment samples <see cref="RenderResources.DepthColorTex"/>).</summary>
         public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, Vector3 eye, Vector3 right, Vector3 up,
             float timeSeconds, float softFade, DistortionQuality quality, float backgroundDepthMarker, float resRatio,
             ReadOnlySpan<DistortionSprite> sprites)
@@ -171,6 +173,9 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer(_instances!, 0, ((ReadOnlySpan<DistortionInstance>)_packed).Slice(0, sprites.Length));
 
             cl.SetFramebuffer(res.DistortFB);
+            // Clear the offset field to zero at the start of this pass (offsets accumulate additively, so a stale
+            // field would smear last frame's warp). Clear + draw stay one render pass.
+            cl.ClearColorTarget(0, Color.Transparent);
             cl.SetPipeline(_pipeline);
             cl.SetVertexBuffer(0, _instances!);
             cl.SetGraphicsResourceSet(0, SetFor(res));

@@ -23,6 +23,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal struct BrightUbo { public Vector4 Params; }       // .x=threshold, .y=knee
         internal struct CompositeUbo { public Vector4 Params; }    // .x=intensity
         internal struct ToneUbo { public Vector4 Params; }         // .x=exposure, .y=operator
+        internal struct ApplyUbo { public Vector4 Params; }        // .x=strength->UV scale, .y=max UV excursion clamp
 
         // Palette-quantize UBO sizing. The GLSL block is `vec4 Colors[MaxPaletteColors]; vec4 Info;` and the CPU
         // scratch mirrors it flat as floats. Named so UboLayoutTests can assert the scratch, the buffer, and the
@@ -36,6 +37,13 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint BrightBufferBytes = 16;                       // 1 vec4 (BrightUbo)
         internal const uint CompositeBufferBytes = 16;                    // 1 vec4 (CompositeUbo)
         internal const uint ToneBufferBytes = 16;                         // 1 vec4 (ToneUbo)
+        internal const uint ApplyBufferBytes = 16;                        // 1 vec4 (ApplyUbo)
+
+        // The stored distortion offset field is in world-ish units (per-sprite Strength baked in); this fixed scale
+        // converts it to a UV excursion, and MaxExcursion clamps the total so stacked sprites cannot smear the whole
+        // screen (D-S7). The host tunes magnitude per sprite via DistortionSprite.Strength, not these constants.
+        internal const float DistortionUvScale = 0.04f;
+        internal const float DistortionMaxExcursion = 0.05f;
 
         // Bloom blur UBO sizing. GLSL: `vec4 Texel; vec4 Params; vec4 Weights[BlurWeightSlots];` (BloomBlurFrag).
         // The CPU scratch mirrors it flat as floats (Texel + Params + Weights), like the palette scratch above.
@@ -54,16 +62,16 @@ namespace KhaozEngine.Render3D.Rendering
         // (CreateShadersFromSpirv compiles a PAIR and returns an opaque IGpuShaderSet) is unchanged.
         readonly Dictionary<(string vert, string frag), IGpuShaderSet> _shaderCache = new();
         readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag, _fxaaFrag, _toneFrag;
-        readonly IGpuShaderSet _brightFrag, _blurFrag, _compositeFrag;
+        readonly IGpuShaderSet _brightFrag, _blurFrag, _compositeFrag, _applyFrag;
         readonly IGpuResourceLayout _palLayout, _edgeLayout, _blitLayout, _fxaaLayout, _toneLayout;
-        readonly IGpuResourceLayout _brightLayout, _blurLayout, _compositeLayout;
+        readonly IGpuResourceLayout _brightLayout, _blurLayout, _compositeLayout, _applyLayout;
         // The ping-output pipelines are rebuilt on a ping colour-format change (the HDR float16 <-> legacy UNorm
         // toggle), so they are NOT readonly. The blit pipeline targets the swapchain (format-fixed) and stays readonly.
         IGpuPipeline _palPipe, _edgePipe, _fxaaPipe, _tonePipe;
-        IGpuPipeline _brightPipe, _blurPipe, _compositePipe;
+        IGpuPipeline _brightPipe, _blurPipe, _compositePipe, _applyPipe;
         readonly IGpuPipeline _blitPipe;
         readonly IGpuBuffer _palBuf, _edgeBuf, _finalBuf, _fxaaBuf, _toneBuf;
-        readonly IGpuBuffer _brightBuf, _blurBufH, _blurBufV, _compositeBuf;
+        readonly IGpuBuffer _brightBuf, _blurBufH, _blurBufV, _compositeBuf, _applyBuf;
         // The ping framebuffers' colour format the ping pipelines were last built for (compared in BindTargets to
         // detect the HDR toggle). Seeded to the ctor's pingOutput so the first BindTargets sees no change.
         GpuOutputDescription _pingOutput;
@@ -78,6 +86,9 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuResourceSet? _brightFromColor, _brightFromPingA, _brightFromPingB;   // bright-pass reads the full-res src (linear)
         IGpuResourceSet? _blurHFromBloomA, _blurVFromBloomB;                     // horizontal BloomA->BloomB (via _blurBufH), vertical BloomB->BloomA (via _blurBufV)
         IGpuResourceSet? _compositeColorBloomA, _compositePingABloomA, _compositePingBBloomA; // composite reads (full-res src, BloomA)
+        // Distortion apply set, only built while RenderResources.DistortAllocated (the offset field exists). The
+        // apply pass is always the chain's FIRST pass, so its source is always ColorTex - one set, not three.
+        IGpuResourceSet? _applyFromColor;
         RenderResources? _bound;
         readonly float[] _palScratch = new float[PaletteScratchFloats]; // reused per frame: 64 vec4 palette + count/dither
         readonly float[] _blurScratchH = new float[BlurScratchFloats];  // reused per frame: Texel + Params(dir=horizontal) + Weights
@@ -97,6 +108,7 @@ namespace KhaozEngine.Render3D.Rendering
             _blurBufV = f.CreateBuffer(new GpuBufferDescription(BlurBufferBytes, GpuBufferUsage.UniformBuffer)); // Texel+Params(V)+Weights
             _compositeBuf = f.CreateBuffer(new GpuBufferDescription(CompositeBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4
             _toneBuf = f.CreateBuffer(new GpuBufferDescription(ToneBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4
+            _applyBuf = f.CreateBuffer(new GpuBufferDescription(ApplyBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4
 
             // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source), compiled through
             // the (vert,frag) cache so each unique pair compiles + disposes once.
@@ -108,6 +120,7 @@ namespace KhaozEngine.Render3D.Rendering
             _blurFrag = Pair(f, ShaderSources.BloomBlurFrag);
             _compositeFrag = Pair(f, ShaderSources.BloomCompositeFrag);
             _toneFrag = Pair(f, ShaderSources.TonemapFrag);
+            _applyFrag = Pair(f, ShaderSources.DistortionApplyFrag);
 
             _palLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), S("Samp"), U("Pal")));
@@ -125,6 +138,8 @@ namespace KhaozEngine.Render3D.Rendering
                 T("Src"), T("Bloom"), S("Samp"), U("Composite")));
             _toneLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), S("Samp"), U("Tone")));
+            _applyLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                T("Src"), T("OffsetTex"), S("Samp"), U("Apply")));
 
             _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOutput);
             _edgePipe = FullscreenPipeline(f, _edgeFrag, _edgeLayout, pingOutput);
@@ -138,6 +153,7 @@ namespace KhaozEngine.Render3D.Rendering
             _brightPipe = FullscreenPipeline(f, _brightFrag, _brightLayout, pingOutput);
             _blurPipe = FullscreenPipeline(f, _blurFrag, _blurLayout, pingOutput);
             _compositePipe = FullscreenPipeline(f, _compositeFrag, _compositeLayout, pingOutput);
+            _applyPipe = FullscreenPipeline(f, _applyFrag, _applyLayout, pingOutput); // apply writes a full-res ping (first chain pass)
             _pingOutput = pingOutput;
         }
 
@@ -234,6 +250,14 @@ namespace KhaozEngine.Render3D.Rendering
                 _compositePingBBloomA = f.CreateResourceSet(new GpuResourceSetDescription(_compositeLayout, res.PingB, res.BloomA!, lin, _compositeBuf));
             }
 
+            if (res.DistortAllocated)
+            {
+                // Apply reads the chain source (always ColorTex, the first pass) + the half/quarter-res offset field,
+                // bilinearly (the offset upsample + the warped colour resample), writing to a full-res ping. Built
+                // only while the offset field exists, so a distortion-free frame allocates no apply set.
+                _applyFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_applyLayout, res.ColorTex, res.DistortTex!, lin, _applyBuf));
+            }
+
             _bound = res; _boundGen = res.Generation;
         }
         int _boundGen;
@@ -255,7 +279,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (SamePingFormat(pingOut, _pingOutput)) return;
             var f = _gd.Factory;
             _palPipe.Dispose(); _edgePipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
-            _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose();
+            _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose(); _applyPipe.Dispose();
             _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOut);
             _edgePipe = FullscreenPipeline(f, _edgeFrag, _edgeLayout, pingOut);
             _fxaaPipe = FullscreenPipeline(f, _fxaaFrag, _fxaaLayout, pingOut);
@@ -263,6 +287,7 @@ namespace KhaozEngine.Render3D.Rendering
             _brightPipe = FullscreenPipeline(f, _brightFrag, _brightLayout, pingOut);
             _blurPipe = FullscreenPipeline(f, _blurFrag, _blurLayout, pingOut);
             _compositePipe = FullscreenPipeline(f, _compositeFrag, _compositeLayout, pingOut);
+            _applyPipe = FullscreenPipeline(f, _applyFrag, _applyLayout, pingOut);
             _pingOutput = pingOut;
         }
 
@@ -270,7 +295,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <paramref name="runFxaa"/> is the caps-resolved FXAA decision from the scene (so an MSAA request the device
         /// can't honour can fall back to FXAA); it must match the value passed to <see cref="Run"/> so the flip parity
         /// lines up.</summary>
-        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa)
+        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa, bool distortionActive)
         {
             var pal = _palScratch;
             // Zero the colour region (MaxPaletteColors vec4 = 256 floats) so stale colors from a larger previous
@@ -287,6 +312,10 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer<float>(_palBuf, 0, pal);
 
             bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
+            // The apply pass runs iff a distortion sprite was queued AND its offset field is allocated (mirrors the
+            // bloomRuns pattern). It is the chain's FIRST pass in both modes, so it precedes the outline pass and the
+            // blit and is counted in BOTH parities below.
+            bool distortionRuns = distortionActive && res.DistortAllocated;
 
             // MRT-flip parity for the edge pass: every fullscreen chain pass flips the image vertically, but the
             // NormalTex/DepthColorTex the edge pass ALSO reads are raw MRT attachments that never pass through the
@@ -296,9 +325,9 @@ namespace KhaozEngine.Render3D.Rendering
             // (Fade.z, consumed by EdgeFrag). The historical golden-covered configs (legacy, quantize off) compute 0
             // here and stay byte-identical. This also fixes the latent legacy quantize+outline mirror, where the
             // edge field rendered upside down relative to the palette-quantized image.
-            int passesBeforeOutline = s.Hdr.Enabled
+            int passesBeforeOutline = (distortionRuns ? 1 : 0) + (s.Hdr.Enabled
                 ? (bloomRuns ? 1 : 0) + 1 + (s.Quantize ? 1 : 0)
-                : (s.Quantize ? 1 : 0);
+                : (s.Quantize ? 1 : 0));
             float mrtFlip = (passesBeforeOutline & 1) == 1 ? 1f : 0f;
 
             var edge = new EdgeUbo
@@ -352,6 +381,12 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.UpdateBuffer(_toneBuf, 0, in tone);
             }
 
+            if (distortionRuns)
+            {
+                var apply = new ApplyUbo { Params = new Vector4(DistortionUvScale, DistortionMaxExcursion, 0f, 0f) };
+                cl.UpdateBuffer(_applyBuf, 0, in apply);
+            }
+
             // Bug A: each fullscreen post pass flips vertically; the on-screen orientation depends on the parity of
             // how many ran. The blit cancels it so EVERY config is upright: flip the sampled V iff the number of
             // preceding post passes is EVEN. This rule is fully generic in the pass COUNT and order-independent - it
@@ -366,7 +401,9 @@ namespace KhaozEngine.Render3D.Rendering
             // into the main ping chain) - the bright-pass + separable blur are an off-chain branch (see
             // BloomCompositeFrag's fixed internal un-flip) and do not add to the main chain's parity. This rule
             // depends only on the settings, matching Run's pass sequence exactly in BOTH the HDR and legacy orders.
-            int precedingPasses = (s.Hdr.Enabled ? 1 : 0) + (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0)
+            // The distortion apply pass adds exactly one net main-chain pass (the FIRST pass, before either mode's
+            // branch), so it joins the blit flip parity too.
+            int precedingPasses = (distortionRuns ? 1 : 0) + (s.Hdr.Enabled ? 1 : 0) + (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0)
                                 + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
             float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;
 
@@ -378,10 +415,11 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }
 
-        public void Run(IGpuCommandList cl, RenderResources res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa)
+        public void Run(IGpuCommandList cl, RenderResources res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa, bool distortionActive)
         {
             IGpuTexture src = res.ColorTex;
             bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
+            bool distortionRuns = distortionActive && res.DistortAllocated;
 
             // Shared free-ping ping-pong for the single-input passes (tonemap / quantize / outline / FXAA): each
             // writes to the ping NOT holding src so no pass reads its own output. ColorTex/PingB -> PingA, PingA ->
@@ -442,6 +480,19 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.SetGraphicsResourceSet(0, compositeSet);
                 cl.Draw(3);
                 src = toPingB ? res.PingB : res.PingA;
+            }
+
+            // Distortion apply: the chain's FIRST pass in BOTH modes. Re-samples the resolved scene (src is ColorTex
+            // here) through the accumulated offset field, so every camera-response pass that follows (bloom, tonemap,
+            // quantize, outline, fxaa) sees the warped image. Writes ColorTex -> PingA; src then follows the ping-pong
+            // like any other pass. The FinalUbo/EdgeUbo parities already counted this pass in PrepareUniforms.
+            if (distortionRuns)
+            {
+                cl.SetFramebuffer(res.PingAFB);
+                cl.SetPipeline(_applyPipe);
+                cl.SetGraphicsResourceSet(0, _applyFromColor!);
+                cl.Draw(3);
+                src = res.PingA;
             }
 
             if (s.Hdr.Enabled)
@@ -506,24 +557,26 @@ namespace KhaozEngine.Render3D.Rendering
             _brightFromColor?.Dispose(); _brightFromPingA?.Dispose(); _brightFromPingB?.Dispose();
             _blurHFromBloomA?.Dispose(); _blurVFromBloomB?.Dispose();
             _compositeColorBloomA?.Dispose(); _compositePingABloomA?.Dispose(); _compositePingBBloomA?.Dispose();
+            _applyFromColor?.Dispose();
             _brightFromColor = _brightFromPingA = _brightFromPingB = null;
             _blurHFromBloomA = _blurVFromBloomB = null;
             _compositeColorBloomA = _compositePingABloomA = _compositePingBBloomA = null;
+            _applyFromColor = null;
         }
 
         public void Dispose()
         {
             DisposeSets();
             _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
-            _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose();
+            _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose(); _applyPipe.Dispose();
             _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose(); _fxaaLayout.Dispose(); _toneLayout.Dispose();
-            _brightLayout.Dispose(); _blurLayout.Dispose(); _compositeLayout.Dispose();
+            _brightLayout.Dispose(); _blurLayout.Dispose(); _compositeLayout.Dispose(); _applyLayout.Dispose();
             // Dispose each UNIQUE compiled shader set once (the cache is the single owner; _palFrag/_edgeFrag/... are
             // aliases into it, so disposing them again would double-dispose a shared set).
             foreach (var set in _shaderCache.Values) set.Dispose();
             _shaderCache.Clear();
             _palBuf.Dispose(); _edgeBuf.Dispose(); _finalBuf.Dispose(); _fxaaBuf.Dispose(); _toneBuf.Dispose();
-            _brightBuf.Dispose(); _blurBufH.Dispose(); _blurBufV.Dispose(); _compositeBuf.Dispose();
+            _brightBuf.Dispose(); _blurBufH.Dispose(); _blurBufV.Dispose(); _compositeBuf.Dispose(); _applyBuf.Dispose();
         }
     }
 }

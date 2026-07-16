@@ -180,6 +180,16 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void ApplyUbo_MarshalSize_EqualsApplyBufferAllocation()
+        {
+            // GLSL: Apply { vec4 Params; } = 1 vec4 = 16 bytes (DistortionApplyFrag).
+            Assert.Equal(16u, PixelPostProcess.ApplyBufferBytes);
+            Assert.Equal(
+                (int)PixelPostProcess.ApplyBufferBytes,
+                Marshal.SizeOf<PixelPostProcess.ApplyUbo>());
+        }
+
+        [Fact]
         public void BlurScratch_MatchesBlurBuffer_And_GlslWeightsArray()
         {
             // The Blur block is `vec4 Texel; vec4 Params; vec4 Weights[BlurWeightSlots];`. The CPU scratch mirrors

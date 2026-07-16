@@ -35,14 +35,14 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>
-    /// One screen-space distortion sprite as the renderer sees it. Queue with the <see cref="Scene3D"/>
-    /// DrawDistortion method. The whole queue accumulates into a lazily
+    /// One screen-space distortion sprite as the renderer sees it. Queue with
+    /// <see cref="Scene3D.DrawDistortion(in DistortionSprite)"/>. The whole queue accumulates into a lazily
     /// allocated half-res offset field with additive blend (overlapping fields sum), depth-occluded against the
     /// scene like the modern particle pass, and the post chain's FIRST pass re-samples the resolved scene colour
     /// through that field so warps precede every camera-response pass (bloom halos follow the warped sources, the
     /// retro path quantizes the warped image). A frame that queues no distortion sprite allocates nothing and
-    /// renders byte-identically to before distortion existed. Distortion is presentation-only, gated by the
-    /// <see cref="Scene3D"/> distortion-quality knob.
+    /// renders byte-identically to before distortion existed. Distortion is presentation-only, gated by
+    /// <see cref="Scene3D.DistortionQuality"/>.
     /// </summary>
     public struct DistortionSprite
     {

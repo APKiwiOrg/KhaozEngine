@@ -103,6 +103,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TonemapFrag, "Tonemap");
 
         [Fact]
+        public void PostDistortionApply()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.DistortionApplyFrag, "PostDistortionApply");
+
+        [Fact]
         public void PostBloomBright()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.BloomBrightFrag, "PostBloomBright");
 

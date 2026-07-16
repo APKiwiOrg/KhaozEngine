@@ -509,7 +509,7 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         // Presses in DrawExclusion mode over the flat field, which arms EditorToolController.IsDrawing without
-        // needing a placement to grab a gizmo handle on. The gesture stays live until EndGesture releases it.
+        // needing a placement to grab a gizmo handle on. The gesture stays live until EndDrawGesture releases it.
         static void ArmDrawGesture(ThrottleScene scene)
         {
             scene.Controller.Mode = EditorToolMode.DrawExclusion;

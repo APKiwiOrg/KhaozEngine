@@ -434,8 +434,12 @@ unbounded.
 
 **Resolved (mapedit-playtest-fixes)**: DirtyRegion narrowing for exclusion and scatter-override shapes,
 deferred by the scatter-overrides round below, now ships. `ShapeGeometry.TryBounds` (a disc/rect/polygon
-AABB padded by `ShapeBoundsMargin`, 2 m) gives every exclusion and scatter-override command a bounded
-dirty region: the two shape commands (`EditExclusionShapeCommand`/`EditScatterOverrideShapeCommand`)
+AABB) gives every exclusion and scatter-override command a bounded dirty region, padded by a margin the
+command captures at Apply time (`ShapeGeometry.BoundsMarginFor`: a 2 m base constant plus the document's
+largest scatter-layer jitter, because `PropScatter.Generate` assigns a candidate to its chunk by the
+un-jittered cell centre while testing exclusion/override membership at the jittered position, so a shape
+edit reaches up to Jitter beyond the shape and authored jitter has no clamp): the two shape commands
+(`EditExclusionShapeCommand`/`EditScatterOverrideShapeCommand`)
 union old and new shape bounds live (never cached, so a merged drag still covers the latest endpoint),
 add/remove report the touched shape's bounds, the layers/values whole-value commands report their
 (unchanged) shape's bounds, and `ReorderScatterOverrideCommand` unions every override shape across the

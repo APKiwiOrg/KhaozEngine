@@ -6,9 +6,10 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapEditor
 {
-    /// <summary>Headless tests for <see cref="ShapeGeometry.TryBounds"/>: the padded AABB an exclusion / scatter
-    /// override shape edit reports as its dirty region (a disc, a rect including an inverted-authored one, a
-    /// polygon, and the false cases: null and an empty polygon).</summary>
+    /// <summary>Headless tests for <c>ShapeGeometry.TryBounds</c> and <c>BoundsMarginFor</c>: the padded AABB an
+    /// exclusion / scatter override shape edit reports as its dirty region (a disc, a rect including an
+    /// inverted-authored one, a polygon, and the false cases: null and an empty polygon), and the jitter-aware
+    /// margin the commands capture at Apply.</summary>
     public class ShapeGeometryTests
     {
         static void AssertBounds(RectArea area, float minX, float minZ, float maxX, float maxZ)
@@ -87,6 +88,50 @@ namespace KhaozEngine.Tests.MapEditor
             // 8 m (this shape-only case has no height/normal reach to cover).
             Assert.Equal(2f, ShapeGeometry.ShapeBoundsMargin);
             Assert.True(ShapeGeometry.ShapeBoundsMargin < FeatureGeometry.FootprintMargin);
+        }
+
+        [Fact]
+        public void TryBounds_ExplicitMarginOverload_PadsByThatMargin()
+        {
+            // The commands pass their captured jitter-aware margin here instead of the bare constant.
+            var disc = new DiscShapeDoc { CenterX = 10f, CenterZ = -5f, Radius = 4f };
+
+            Assert.True(ShapeGeometry.TryBounds(disc, 7f, out RectArea area));
+            AssertBounds(area, 10f - 11f, -5f - 11f, 10f + 11f, -5f + 11f);
+        }
+
+        // ---- BoundsMarginFor: the jitter-aware dirty-region margin --------------------------------------
+
+        static MapDocument Doc(params float[] jitters)
+        {
+            var doc = new MapDocument { Id = "margin-test", Bounds = new MapBounds { MinX = -100f, MinZ = -100f, MaxX = 100f, MaxZ = 100f } };
+            for (int i = 0; i < jitters.Length; i++)
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = $"layer-{i}", Jitter = jitters[i] });
+            return doc;
+        }
+
+        [Fact]
+        public void BoundsMarginFor_NoLayers_IsBareConstant()
+        {
+            // No scatter layers means no candidates to flip, so the base constant alone is already conservative.
+            Assert.Equal(ShapeGeometry.ShapeBoundsMargin, ShapeGeometry.BoundsMarginFor(Doc()), 3);
+        }
+
+        [Fact]
+        public void BoundsMarginFor_AddsLargestLayerJitter()
+        {
+            // Scatter tests exclusion/override membership at the JITTERED candidate position while chunk
+            // assignment uses the un-jittered cell centre, so the margin must grow by the largest jitter. The
+            // authored Jitter field has no clamp, so a 5 m layer must be honoured, not squashed to a constant.
+            Assert.Equal(ShapeGeometry.ShapeBoundsMargin + 5f, ShapeGeometry.BoundsMarginFor(Doc(1.6f, 5f, 0.5f)), 3);
+        }
+
+        [Fact]
+        public void BoundsMarginFor_NegativeJitter_UsesMagnitude()
+        {
+            // A degenerate negative-authored jitter displaces candidates by the same magnitude (the hash offset
+            // is symmetric in |Jitter|), so the margin uses the absolute value.
+            Assert.Equal(ShapeGeometry.ShapeBoundsMargin + 3f, ShapeGeometry.BoundsMarginFor(Doc(-3f, 1.6f)), 3);
         }
     }
 }

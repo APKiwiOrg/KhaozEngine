@@ -1057,10 +1057,14 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Null(new AddBiomeBandCommand(new MapBiomeBand()).DirtyRegion);
         }
 
-        // A disc's ShapeGeometry.TryBounds AABB: center +/- radius, padded by ShapeBoundsMargin.
-        static RectArea DiscBounds(float cx, float cz, float radius)
+        // The Sample() doc's dirty-region margin: ShapeBoundsMargin + its one scatter layer's default 1.6 jitter
+        // (SampleDoc never sets Jitter, so MapScatterLayer's 1.6 default applies).
+        static float SampleMargin => ShapeGeometry.ShapeBoundsMargin + 1.6f;
+
+        // A disc's ShapeGeometry.TryBounds AABB: center +/- radius, padded by the given margin.
+        static RectArea DiscBounds(float cx, float cz, float radius, float margin)
         {
-            float r = MathF.Abs(radius) + ShapeGeometry.ShapeBoundsMargin;
+            float r = MathF.Abs(radius) + margin;
             return new RectArea(cx - r, cz - r, cx + r, cz + r);
         }
 
@@ -1075,9 +1079,15 @@ namespace KhaozEngine.Tests.MapEditor
         [Fact]
         public void AddExclusionCommand_DirtyRegion_IsAddedShapeBounds()
         {
+            var doc = Sample();
             var exclusion = new MapExclusion { Shape = new DiscShapeDoc { CenterX = 4f, CenterZ = -6f, Radius = 3f } };
-            RectArea region = AssertRectArea(new AddExclusionCommand(exclusion).DirtyRegion);
-            RectArea expected = DiscBounds(4f, -6f, 3f);
+            var cmd = new AddExclusionCommand(exclusion);
+
+            Assert.Null(cmd.DirtyRegion);   // before Apply the doc's jitter margin is unknown, so no region yet
+            cmd.Apply(doc);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = DiscBounds(4f, -6f, 3f, SampleMargin);
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 
@@ -1092,20 +1102,72 @@ namespace KhaozEngine.Tests.MapEditor
             cmd.Apply(doc);
 
             RectArea region = AssertRectArea(cmd.DirtyRegion);
-            RectArea expected = DiscBounds(disc.CenterX, disc.CenterZ, disc.Radius);
+            RectArea expected = DiscBounds(disc.CenterX, disc.CenterZ, disc.Radius, SampleMargin);
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 
         [Fact]
         public void EditExclusionShapeCommand_DirtyRegion_UnionsOldAndNewShapeBounds()
         {
+            var doc = Sample();
             var oldShape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f };
             var newShape = new DiscShapeDoc { CenterX = 20f, CenterZ = 0f, Radius = 5f };   // dragged +20 x
             var cmd = new EditExclusionShapeCommand(0, newShape, oldShape);
 
+            Assert.Null(cmd.DirtyRegion);   // before Apply the doc's jitter margin is unknown, so no region yet
+            cmd.Apply(doc);
+
             RectArea region = AssertRectArea(cmd.DirtyRegion);
-            RectArea expected = FeatureGeometry.Union(DiscBounds(0f, 0f, 5f), DiscBounds(20f, 0f, 5f));
+            RectArea expected = FeatureGeometry.Union(
+                DiscBounds(0f, 0f, 5f, SampleMargin), DiscBounds(20f, 0f, 5f, SampleMargin));
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void EditExclusionShapeCommand_DirtyRegion_PadsByLargestScatterJitter()
+        {
+            // The margin floor is the doc's largest scatter jitter: PropScatter.Generate assigns a candidate to
+            // its chunk by the UN-jittered cell centre but tests exclusion membership at the JITTERED position,
+            // so a candidate up to Jitter outside the shape can flip while living in a chunk beyond the bare
+            // shape+constant rect. Authored jitter has no clamp, so a 5 m layer must widen the region.
+            var doc = Sample();
+            doc.ScatterLayers.Add(new MapScatterLayer { Name = "big-jitter", Jitter = 5f });
+            var oldShape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f };
+            var newShape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f };
+            var cmd = new EditExclusionShapeCommand(0, newShape, oldShape);
+
+            cmd.Apply(doc);
+
+            float margin = ShapeGeometry.ShapeBoundsMargin + 5f;
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = DiscBounds(0f, 0f, 10f, margin);   // the r10 endpoint's bounds contain the r5 one's
+            AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void ShapeCommand_DirtyRegion_CapturedMarginSurvivesUndoRedo()
+        {
+            // The margin is captured once at Apply and reused: Revert must not lose it (undo still reports a
+            // jitter-padded region into the pending accumulation), and redo re-captures the same value.
+            var doc = Sample();
+            doc.ScatterLayers[0].Jitter = 5f;
+            var ed = new EditorDocument(doc);
+            MapShapeDoc original = doc.Exclusions[0].Shape!;   // disc at (-32, 22) r30
+            var shrunk = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 12f };
+            ed.Execute(new EditExclusionShapeCommand(0, shrunk, original));
+            ed.AcknowledgeWorldRebuild();
+
+            float margin = ShapeGeometry.ShapeBoundsMargin + 5f;
+            RectArea expected = DiscBounds(-32f, 22f, 30f, margin);   // the r30 endpoint's bounds contain the r12 one's
+
+            Assert.True(ed.Undo());
+            RectArea undoRegion = AssertRectArea(ed.PendingRebuildRegion);
+            AssertBounds(undoRegion, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+
+            ed.AcknowledgeWorldRebuild();
+            Assert.True(ed.Redo());
+            RectArea redoRegion = AssertRectArea(ed.PendingRebuildRegion);
+            AssertBounds(redoRegion, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 
         [Fact]
@@ -1113,26 +1175,35 @@ namespace KhaozEngine.Tests.MapEditor
         {
             // TryMerge rewrites _newShape as a drag coalesces, and DirtyRegion is computed live, so it must cover
             // the LATEST new shape, not the one captured at construction (the EditFeatureCommand idiom).
+            var doc = Sample();
             var v0 = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f };
             var v1 = new DiscShapeDoc { CenterX = 10f, CenterZ = 0f, Radius = 5f };
             var v2 = new DiscShapeDoc { CenterX = 30f, CenterZ = 0f, Radius = 5f };
             var cmd = new EditExclusionShapeCommand(0, v1, v0);
+            cmd.Apply(doc);
 
             Assert.True(cmd.TryMerge(new EditExclusionShapeCommand(0, v2, v1)));
 
             RectArea region = AssertRectArea(cmd.DirtyRegion);
-            RectArea expected = FeatureGeometry.Union(DiscBounds(0f, 0f, 5f), DiscBounds(30f, 0f, 5f));   // v0 .. v2, not v1
+            RectArea expected = FeatureGeometry.Union(
+                DiscBounds(0f, 0f, 5f, SampleMargin), DiscBounds(30f, 0f, 5f, SampleMargin));   // v0 .. v2, not v1
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 
         [Fact]
         public void EditExclusionShapeCommand_DirtyRegion_NullWhenEitherEndpointIsUnbounded()
         {
+            var doc = Sample();
             var boundedShape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f };
             var emptyPolygon = new PolygonShapeDoc();   // no points: TryBounds fails
 
-            Assert.Null(new EditExclusionShapeCommand(0, emptyPolygon, boundedShape).DirtyRegion);
-            Assert.Null(new EditExclusionShapeCommand(0, boundedShape, emptyPolygon).DirtyRegion);
+            var toUnbounded = new EditExclusionShapeCommand(0, emptyPolygon, boundedShape);
+            toUnbounded.Apply(doc);
+            Assert.Null(toUnbounded.DirtyRegion);
+
+            var fromUnbounded = new EditExclusionShapeCommand(0, boundedShape, emptyPolygon);
+            fromUnbounded.Apply(doc);
+            Assert.Null(fromUnbounded.DirtyRegion);
         }
 
         [Fact]
@@ -1142,11 +1213,11 @@ namespace KhaozEngine.Tests.MapEditor
             var disc = Assert.IsType<DiscShapeDoc>(doc.Exclusions[0].Shape);
             var cmd = new EditExclusionLayersCommand(0, new List<string> { "trees" }, null);
 
-            Assert.Null(cmd.DirtyRegion);   // before Apply/Revert has captured the shape, no region yet
+            Assert.Null(cmd.DirtyRegion);   // before Apply/Revert has captured the shape and margin, no region yet
             cmd.Apply(doc);
 
             RectArea region = AssertRectArea(cmd.DirtyRegion);
-            RectArea expected = DiscBounds(disc.CenterX, disc.CenterZ, disc.Radius);
+            RectArea expected = DiscBounds(disc.CenterX, disc.CenterZ, disc.Radius, SampleMargin);
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 
@@ -1155,9 +1226,15 @@ namespace KhaozEngine.Tests.MapEditor
         [Fact]
         public void AddScatterOverrideCommand_DirtyRegion_IsAddedShapeBounds()
         {
+            var doc = Sample();
             var scatterOverride = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 5f } };
-            RectArea region = AssertRectArea(new AddScatterOverrideCommand(scatterOverride).DirtyRegion);
-            RectArea expected = DiscBounds(1f, 2f, 5f);
+            var cmd = new AddScatterOverrideCommand(scatterOverride);
+
+            Assert.Null(cmd.DirtyRegion);   // before Apply the doc's jitter margin is unknown, so no region yet
+            cmd.Apply(doc);
+
+            RectArea region = AssertRectArea(cmd.DirtyRegion);
+            RectArea expected = DiscBounds(1f, 2f, 5f, SampleMargin);
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 
@@ -1172,39 +1249,47 @@ namespace KhaozEngine.Tests.MapEditor
             cmd.Apply(doc);
 
             RectArea region = AssertRectArea(cmd.DirtyRegion);
-            float m = ShapeGeometry.ShapeBoundsMargin;
+            float m = SampleMargin;
             AssertBounds(region, rect.MinX - m, rect.MinZ - m, rect.MaxX + m, rect.MaxZ + m);
         }
 
         [Fact]
         public void EditScatterOverrideShapeCommand_DirtyRegion_UnionsOldAndNewShapeBounds_IncludingAfterMerge()
         {
+            var doc = Sample();
             var v0 = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 4f };
             var v1 = new DiscShapeDoc { CenterX = 8f, CenterZ = 0f, Radius = 4f };
             var v2 = new DiscShapeDoc { CenterX = 24f, CenterZ = 0f, Radius = 4f };
             var cmd = new EditScatterOverrideShapeCommand(0, v1, v0);
+            cmd.Apply(doc);
 
             RectArea firstRegion = AssertRectArea(cmd.DirtyRegion);
-            RectArea firstExpected = FeatureGeometry.Union(DiscBounds(0f, 0f, 4f), DiscBounds(8f, 0f, 4f));
+            RectArea firstExpected = FeatureGeometry.Union(
+                DiscBounds(0f, 0f, 4f, SampleMargin), DiscBounds(8f, 0f, 4f, SampleMargin));
             AssertBounds(firstRegion, firstExpected.MinX, firstExpected.MinZ, firstExpected.MaxX, firstExpected.MaxZ);
 
             // Live-computed, never cached: after a merge rewrites _newShape, the region covers v0..v2, not v0..v1.
             Assert.True(cmd.TryMerge(new EditScatterOverrideShapeCommand(0, v2, v1)));
             RectArea mergedRegion = AssertRectArea(cmd.DirtyRegion);
-            RectArea mergedExpected = FeatureGeometry.Union(DiscBounds(0f, 0f, 4f), DiscBounds(24f, 0f, 4f));
+            RectArea mergedExpected = FeatureGeometry.Union(
+                DiscBounds(0f, 0f, 4f, SampleMargin), DiscBounds(24f, 0f, 4f, SampleMargin));
             AssertBounds(mergedRegion, mergedExpected.MinX, mergedExpected.MinZ, mergedExpected.MaxX, mergedExpected.MaxZ);
         }
 
         [Fact]
         public void EditScatterOverrideValuesCommand_DirtyRegion_IsShapeBounds_UnaffectedByValueChange()
         {
+            var doc = Sample();
             var shape = new DiscShapeDoc { CenterX = 3f, CenterZ = -1f, Radius = 6f };
             var oldValue = new MapScatterOverrideDoc { Shape = shape, DensityMultiplier = 1f };
             var newValue = new MapScatterOverrideDoc { Shape = shape, DensityMultiplier = 0.25f };
             var cmd = new EditScatterOverrideValuesCommand(0, newValue, oldValue);
 
+            Assert.Null(cmd.DirtyRegion);   // before Apply the doc's jitter margin is unknown, so no region yet
+            cmd.Apply(doc);
+
             RectArea region = AssertRectArea(cmd.DirtyRegion);
-            RectArea expected = DiscBounds(3f, -1f, 6f);
+            RectArea expected = DiscBounds(3f, -1f, 6f, SampleMargin);
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 
@@ -1230,8 +1315,8 @@ namespace KhaozEngine.Tests.MapEditor
 
             RectArea region = AssertRectArea(cmd.DirtyRegion);
             RectArea expected = FeatureGeometry.Union(
-                FeatureGeometry.Union(DiscBounds(0f, 0f, 2f), DiscBounds(50f, 50f, 2f)),
-                DiscBounds(10f, 0f, 2f));
+                FeatureGeometry.Union(DiscBounds(0f, 0f, 2f, SampleMargin), DiscBounds(50f, 50f, 2f, SampleMargin)),
+                DiscBounds(10f, 0f, 2f, SampleMargin));
             AssertBounds(region, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
         }
 

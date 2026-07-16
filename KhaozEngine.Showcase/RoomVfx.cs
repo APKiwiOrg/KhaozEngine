@@ -14,9 +14,9 @@ namespace KhaozEngine.Showcase
     /// time, played through a <see cref="ParticleEffectPlayer"/> and drawn with Render3D's modern particle pass
     /// (soft-faded procedural sprites, trails, light links and screen-space distortion). Renders through the
     /// showcase's shared Scene3D (injected via Init, since a GameScene cannot reach the app's 3D surface). Bloom is
-    /// turned on for the intended authored look; OnExit restores Bloom and HDR to the engine defaults so the toggles
-    /// never bleed into the menu / other rooms. The stage is a flat neutral ground plane with an orbit camera; the
-    /// active effect auto-replays hands-off so a headless smoke and screenshots always show a live effect. Esc
+    /// turned on for the intended authored look. OnExit restores Bloom and HDR to the engine defaults so the toggles
+    /// never bleed into the menu / other rooms. The stage is a flat neutral ground plane with an orbit camera, and
+    /// the active effect auto-replays hands-off so a headless smoke and screenshots always show a live effect. Esc
     /// returns to the menu.</summary>
     public sealed class RoomVfx : GameScene, IGameScene3D, IShowcaseRoom
     {
@@ -143,7 +143,7 @@ namespace KhaozEngine.Showcase
             ParticleEffectPlayer active = _effects[_active].Player;
             active.Update(dt);
 
-            // Auto-replay: while the effect is alive keep the pause primed; once it fully drains, wait ReplayPause
+            // Auto-replay: while the effect is alive keep the pause primed. Once it fully drains, wait ReplayPause
             // then play it again, so bursts loop and the ambient presets run near-continuously with no input.
             if (active.AnyAlive)
             {
@@ -192,7 +192,7 @@ namespace KhaozEngine.Showcase
             if (!_built) return;
             _built = false;
 
-            // The players own no GPU resources (the sim is render-free); clear them so no instance keeps scheduling.
+            // The players own no GPU resources (the sim is render-free). Clear them so no instance keeps scheduling.
             foreach ((_, ParticleEffectPlayer player, _) in _effects) player.Clear();
 
             _scene.UnloadMesh(_ground);

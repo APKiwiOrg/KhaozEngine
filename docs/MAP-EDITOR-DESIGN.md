@@ -353,17 +353,19 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
   filter edits trigger a redundant rebuild. Concave polygon overlays self-overlap, the
   centroid fan. The overlay draw list allocates per frame. Selected-overlay brighten clamps
   channels, a slight hue shift. Feature-selection highlight lacks direct unit tests.
-  Custom `MapEditorScene` hosts must unsubscribe `DocumentChanged` themselves (documented). `BakeRegion`'s two-arg overload has a doc
+  Custom `MapEditorScene` hosts must unsubscribe `DocumentChanged` and the three command
+  events (`CommandApplied`/`CommandRedone`/`CommandUndone`) themselves (documented). `BakeRegion`'s two-arg overload has a doc
   nicety around its shadowed-discriminator caveat. Index-keyed hides (the feature and
-  exclusion `Visible` rows key on list index) now remap on a live feature or exclusion
-  reorder or delete, whether via Ctrl+Up/Ctrl+Down, an outline drag-and-drop, or Delete
-  (`EditorVisibility.RemapIndex`/`RemoveIndex`, wired to both reorder paths and the delete
-  path). The residual: undo and redo of a reorder or a delete do not re-follow the hide, so
-  a hidden flag can still end up on the wrong element after an undo/redo cycle even though
-  it now tracks correctly through ordinary live editing. Renaming a placement, spawn, or
-  region orphans its hide entry instead of following it: the `Visible` row polls the live
-  post-rename key, so the renamed element shows again by default while the old-key entry
-  lingers unreachable in `EditorVisibility`, a stale-key leak rather than a correctness bug.
+  exclusion `Visible` rows key on list index) remap on a live feature or exclusion
+  reorder or delete, whether via Ctrl+Up/Ctrl+Down, an outline drag-and-drop, or Delete, and
+  now survive undo and redo: the reorder/remove/rename commands carry an `IVisibilityEffect`
+  (`VisibilityOp`) the `EditorDocument` command events drive, so the forward remap runs on
+  execute/redo and its inverse on undo (`EditorVisibility.RemapIndex`/`RemoveIndex`/`InsertIndex`/
+  `RenameKey`), from a single source (the old inline call sites and the `OnIndexRemoved`
+  callback are gone). The one residual: a deleted element's OWN hide is dropped and not
+  restored on undo (it was never part of the reversible document). Renaming a placement, spawn,
+  player spawn, or region now moves its hide entry with the key across execute/undo/redo, so
+  there is no orphan under the abandoned key (the earlier stale-key leak is fixed).
   Scatter-layer rule editing and companion `HostKinds`/`Kinds` editing are
   deliberately v1-crude (a carve-out taken at design time): a rule is a Biome choice plus a
   Density scalar plus a comma-separated `"id:weight"` text row parsed with the same
@@ -380,10 +382,10 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
   used everywhere else in this program, and fine at the current few-rules-per-layer scale,
   but it does mean a rule add/remove undo step reverts the WHOLE layer value, not just the
   one rule, which would matter more if a layer ever grew a large rule list edited by
-  multiple hands. Player spawns have no `VisibilityGroup` of their own: they ride along
-  under no whole-class hide toggle (unlike Placements/Spawns/Water/Exclusions/Regions/
-  FeatureMarkers), so a project wanting to mass-hide every player spawn in the Layers panel
-  needs a new group added first. Player spawn (and NPC spawn) id-uniqueness is tested for the
+  multiple hands. Player spawns now have their own `VisibilityGroup.PlayerSpawns` (labeled
+  "Player spawns" in the Layers panel, gating both the `DrawPlayerSpawnMarkers` draw and the
+  pick, in lockstep with the per-element hide), so mass-hiding every player spawn works like
+  the other whole-class toggles. Player spawn (and NPC spawn) id-uniqueness is tested for the
   straightforward case but not for reusing a gap left by a removed id (add "a", "b", "c",
   remove "b", add a new "b") - worth its own test once the id-generation scheme is revisited.
   The polygon branch of the shape editor (`AddShapeRows`, read-only v1: kind + point count) is

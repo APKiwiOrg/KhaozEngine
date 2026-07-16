@@ -1244,6 +1244,76 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void CommandEvents_FireWithTheCommand_OnExecuteUndoRedo()
+        {
+            var ed = new EditorDocument(Sample());
+            IEditorCommand? applied = null, undone = null, redone = null;
+            ed.CommandApplied += c => applied = c;
+            ed.CommandUndone += c => undone = c;
+            ed.CommandRedone += c => redone = c;
+
+            var cmd = new AddPlacementCommand(P("x"));
+            ed.Execute(cmd);
+            Assert.Same(cmd, applied);
+            Assert.Null(undone);
+            Assert.Null(redone);
+
+            ed.Undo();
+            Assert.Same(cmd, undone);
+
+            ed.Redo();
+            Assert.Same(cmd, redone);
+        }
+
+        [Fact]
+        public void CommandApplied_FiresBeforeDocumentChanged()
+        {
+            var ed = new EditorDocument(Sample());
+            var order = new List<string>();
+            ed.CommandApplied += _ => order.Add("command");
+            ed.DocumentChanged += () => order.Add("document");
+
+            ed.Execute(new AddPlacementCommand(P("x")));
+
+            Assert.Equal(new[] { "command", "document" }, order);
+        }
+
+        [Fact]
+        public void CommandUndoneRedone_FireBeforeDocumentChanged()
+        {
+            var ed = new EditorDocument(Sample());
+            ed.Execute(new AddPlacementCommand(P("x")));
+
+            var order = new List<string>();
+            ed.CommandUndone += _ => order.Add("undone");
+            ed.CommandRedone += _ => order.Add("redone");
+            ed.DocumentChanged += () => order.Add("document");
+
+            ed.Undo();
+            ed.Redo();
+
+            Assert.Equal(new[] { "undone", "document", "redone", "document" }, order);
+        }
+
+        [Fact]
+        public void CommandApplied_FiresOnMergedExecute()
+        {
+            // A coalescing execute (same-gesture retype) still applied its mutation, so CommandApplied fires with the
+            // incoming command every time, even though History merged it into the current undo step.
+            var ed = new EditorDocument(Sample());
+            var applied = new List<IEditorCommand>();
+            ed.CommandApplied += applied.Add;
+
+            var first = new SetSpawnArchetypeCommand("wolf-1", "wo");
+            var merged = new SetSpawnArchetypeCommand("wolf-1", "worg");
+            ed.Execute(first);
+            ed.Execute(merged);   // merges into `first`, no new undo step
+
+            Assert.Equal(1, ed.History.UndoDepth);              // coalesced into one step
+            Assert.Equal(new IEditorCommand[] { first, merged }, applied);   // but both executes fired
+        }
+
+        [Fact]
         public void EditorDocument_SelectionStartsEmpty_AndRegistryDefaults()
         {
             var ed = new EditorDocument(Sample());

@@ -4068,9 +4068,12 @@ row under `HostKinds` whenever a non-empty value matches none of the current hos
 no kind in the host layer"), live-tracked through edits, host swaps, and undo/redo. See the
 `KhaozEngine.MapEditor` README's "Procedural setup editing" section for the full mechanics.
 
-**Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates seven
-`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers), named scatter layers,
-and individual elements, and toggling any of it never dirties the document or lands an undo step. With
+**Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates eight
+`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns), named scatter layers,
+and individual elements, and toggling any of it never dirties the document or lands an undo step. A per-element
+hide follows its element across reorder, delete, and rename (including undo and redo), driven by the
+reorder/remove/rename commands' `IVisibilityEffect` through `EditorDocument`'s
+`CommandApplied`/`CommandRedone`/`CommandUndone` events. With
 nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`): a `BoolRow` per
 group, then one per scatter layer in the open document (toggling a scatter layer also rebuilds the streamed
 world so its props actually drop out). Every element inspector also gets a per-element "Visible" `BoolRow`.

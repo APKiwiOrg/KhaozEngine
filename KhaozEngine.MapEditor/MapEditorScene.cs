@@ -343,7 +343,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         {
             HeightOf = KindHeight,
             IsVisible = _visibility.IsElementVisible,
-            OnIndexRemoved = _visibility.RemoveIndex,
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {
@@ -363,6 +362,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         _controller.PlaceFeatureType = DefaultFeatureType();
 
         _document.DocumentChanged += OnDocumentChanged;
+        _document.CommandApplied += OnCommandVisibilityForward;
+        _document.CommandRedone += OnCommandVisibilityForward;
+        _document.CommandUndone += OnCommandVisibilityInverse;
         _document.Selection.Changed += OnSelectionChanged;
 
         BuildWorld();
@@ -378,6 +380,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (!_built) return;
         _built = false;
         _document.DocumentChanged -= OnDocumentChanged;
+        _document.CommandApplied -= OnCommandVisibilityForward;
+        _document.CommandRedone -= OnCommandVisibilityForward;
+        _document.CommandUndone -= OnCommandVisibilityInverse;
         _document.Selection.Changed -= OnSelectionChanged;
         TeardownWorld();
     }
@@ -1122,8 +1127,10 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // The shared index-keyed reorder step behind the Ctrl+Up/Down chord: resolve the selected index, clamp both it
     // and its delta target against the live count (so a boundary press lands no command), execute the caller's
-    // reorder command, then follow the element with its hide (RemapIndex) and its selection (Set) to the new index.
-    // Kept generic over the selection kind so Feature and ScatterOverride share one body.
+    // reorder command, then follow the element's selection (Set) to the new index. A per-element hide follows the
+    // move too, but that is driven by the reorder command's IVisibilityEffect through the document events (see
+    // OnCommandVisibilityForward), not remapped here. Kept generic over the selection kind so Feature and
+    // ScatterOverride share one body.
     void ReorderIndexKeyed(EditorSelection selection, int delta, int count, Func<int, int, IEditorCommand> command)
     {
         int from = SelectedIndex(selection.Id);
@@ -1131,7 +1138,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         int to = from + delta;
         if (to < 0 || to >= count) return;   // clamp at the ends: nothing to move, so land no command
         _document.Execute(command(from, to));
-        _visibility.RemapIndex(selection.Kind, from, to);   // a hide follows the moved element, not the slot
         selection.Set(selection.Kind, to.ToString(CultureInfo.InvariantCulture));
     }
 
@@ -1265,6 +1271,21 @@ public class MapEditorScene : GameScene, IGameScene3D
         RebuildOutline();
     }
 
+    // The single source of per-element-hide maintenance: a command that carries an IVisibilityEffect runs its
+    // forward hide remap on execute / redo and its inverse on undo, so a hide stays glued to the element the command
+    // moved, removed, or renamed and survives undo / redo. The document fires these BEFORE DocumentChanged, so the
+    // outline rebuild the change triggers already reads the updated hide set. Commands with no visibility effect
+    // (every non-reorder / non-remove / non-rename command, and a merged EditFeatureCommand) are ignored.
+    void OnCommandVisibilityForward(IEditorCommand command)
+    {
+        if (command is IVisibilityEffect effect) effect.Effect.ApplyForward(_visibility);
+    }
+
+    void OnCommandVisibilityInverse(IEditorCommand command)
+    {
+        if (command is IVisibilityEffect effect) effect.Effect.ApplyInverse(_visibility);
+    }
+
     void OnSelectionChanged()
     {
         // A rename queues a pending re-select of the NEW key once the rename row loses focus (see UpdateChrome).
@@ -1370,8 +1391,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     // three categories accept a reorder: Features fold in list order (last wins overlaps), Scatter Overrides match
     // in list order (FIRST match wins, so their order really is significant), and Exclusions have order-free
     // semantics but still expose a reorder for a stable authored layout. All three map to their index-based command
-    // with the selection following the moved row and the hide remapped to the new index (the ReorderSelectedElement
-    // idiom). Every other category (Placements, Spawns, Regions, Terrain) has no reorder, so its drop is a no-op.
+    // with the selection following the moved row (the ReorderSelectedElement idiom). A per-element hide follows the
+    // moved element too, but that is now driven by the command's IVisibilityEffect through the document events (see
+    // OnCommandVisibilityForward), not remapped here. Every other category (Placements, Spawns, Regions, Terrain)
+    // has no reorder, so its drop is a no-op.
     void OnOutlineReordered(TreeNode node, int fromIndex, int toIndex)
     {
         if (node.Tag is not OutlineRef r) return;
@@ -1379,17 +1402,14 @@ public class MapEditorScene : GameScene, IGameScene3D
         {
             case SelectionKind.Feature:
                 _document.Execute(new ReorderFeatureCommand(fromIndex, toIndex));
-                _visibility.RemapIndex(SelectionKind.Feature, fromIndex, toIndex);   // a hide follows the moved feature
                 _document.Selection.Set(SelectionKind.Feature, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             case SelectionKind.Exclusion:
                 _document.Execute(new ReorderExclusionCommand(fromIndex, toIndex));
-                _visibility.RemapIndex(SelectionKind.Exclusion, fromIndex, toIndex);   // a hide follows the moved exclusion
                 _document.Selection.Set(SelectionKind.Exclusion, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             case SelectionKind.ScatterOverride:
                 _document.Execute(new ReorderScatterOverrideCommand(fromIndex, toIndex));
-                _visibility.RemapIndex(SelectionKind.ScatterOverride, fromIndex, toIndex);   // a hide follows the moved override
                 _document.Selection.Set(SelectionKind.ScatterOverride, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             default:
@@ -1781,6 +1801,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         VisibilityGroup.FeatureMarkers => "Feature markers",
         VisibilityGroup.ScatterOverrides => "Scatter overrides",
+        VisibilityGroup.PlayerSpawns => "Player spawns",
         _ => group.ToString(),
     };
 

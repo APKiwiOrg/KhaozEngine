@@ -734,12 +734,14 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void ScatterOverrideDelete_RemovesSelected_NotifiesIndexRemoved()
+        public void ScatterOverrideDelete_RemovesSelected_ExecutesEffectCarryingRemoveCommand()
         {
+            // The controller no longer notifies visibility directly (the OnIndexRemoved callback is gone). Instead the
+            // delete executes a RemoveScatterOverrideCommand that carries an IVisibilityEffect the document's command
+            // events run, so this asserts the effect-carrying command reaches Execute (which fires CommandApplied).
             var (doc, c) = Make();
-            SelectionKind removedKind = SelectionKind.None;
-            int removedIndex = -1;
-            c.OnIndexRemoved = (k, i) => { removedKind = k; removedIndex = i; };
+            IEditorCommand? applied = null;
+            doc.CommandApplied += cmd => applied = cmd;
             doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 6f } });
             doc.Selection.Set(SelectionKind.ScatterOverride, "0");
 
@@ -749,8 +751,15 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(doc.Selection.IsEmpty);
             Assert.True(doc.WorldRebuildPending);
             Assert.Equal(1, doc.History.UndoDepth);
-            Assert.Equal(SelectionKind.ScatterOverride, removedKind);   // the index-remap notification fired
-            Assert.Equal(0, removedIndex);
+
+            var remove = Assert.IsType<RemoveScatterOverrideCommand>(applied);   // the delete executed the remove command
+            var effect = Assert.IsAssignableFrom<IVisibilityEffect>(remove);     // which carries the visibility maintenance
+            var v = new EditorVisibility();
+            v.SetElementHidden(SelectionKind.ScatterOverride, "0", true);   // the deleted element's own hide
+            v.SetElementHidden(SelectionKind.ScatterOverride, "1", true);   // a later hide
+            effect.Effect.ApplyForward(v);
+            Assert.False(v.IsElementHidden(SelectionKind.ScatterOverride, "1"));   // was 1, shifted down to 0
+            Assert.True(v.IsElementHidden(SelectionKind.ScatterOverride, "0"));    // the old 1, now 0; the deleted 0's hide dropped
 
             Assert.True(doc.Undo());
             Assert.Single(doc.Doc.ScatterOverrides);      // the removed override is restored

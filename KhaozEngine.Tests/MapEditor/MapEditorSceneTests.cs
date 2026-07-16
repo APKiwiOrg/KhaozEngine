@@ -2326,7 +2326,7 @@ namespace KhaozEngine.Tests.MapEditor
             List<BoolRow> bools = scene.Inspector.Rows.OfType<BoolRow>().ToList();
             List<string> labels = bools.Select(b => b.Label.Resolve()).ToList();
 
-            Assert.Equal(7 + 1 + 2, bools.Count);   // seven groups + Textured props + two scatter layers
+            Assert.Equal(8 + 1 + 2, bools.Count);   // eight groups + Textured props + two scatter layers
             Assert.Contains("Placements", labels);
             Assert.Contains("Spawns", labels);
             Assert.Contains("Water", labels);
@@ -2334,6 +2334,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Contains("Scatter overrides", labels);
             Assert.Contains("Regions", labels);
             Assert.Contains("Feature markers", labels);
+            Assert.Contains("Player spawns", labels);
             Assert.Contains("Textured props", labels);
             Assert.Contains("trees", labels);
             Assert.Contains("rocks", labels);
@@ -4014,6 +4015,133 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(2, scene.Document.Doc.ScatterOverrides.Count);   // the earlier override was removed
             Assert.True(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "1"));    // the hidden one shifted down to index 1
             Assert.False(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "2"));   // nothing hidden at the old tail slot
+        }
+
+        // ---- event-driven hide maintenance across undo / redo / rename --------------------------------------
+
+        [Fact]
+        public void HiddenExclusion_ReorderThenUndoRedo_HideFollowsExactlyOnce()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 1f } });   // 0
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 2f } });   // 1
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 3f } });   // 2: hidden
+                return doc;
+            });
+            scene.Visibility.SetElementHidden(SelectionKind.Exclusion, "2", true);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);
+            TreeNode e2 = CategoryChild(outline, "Exclusions", 2);
+            TreeNode e0 = CategoryChild(outline, "Exclusions", 0);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, e2), RowOf(outline, e0), afterTarget: false);   // 2 -> before 0
+
+            // Single remap through the event path: 2 -> 0 exactly once. If the old inline RemapIndex call site still
+            // ran alongside the event, the hide would double-shift to index 1, so asserting 0 (and NOT 1) is the
+            // single-remap regression guard.
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "1"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "2"));
+
+            // Undo the reorder: the inverse remap on CommandUndone walks the hide back to index 2.
+            Assert.True(scene.Document.Undo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "2"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+
+            // Redo repeats the forward remap.
+            Assert.True(scene.Document.Redo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "2"));
+        }
+
+        [Fact]
+        public void HiddenExclusion_DeleteThenUndo_HideShiftsDownAndBack()
+        {
+            // Delete runs through EditorToolController.Update (gated on a built Field), so this needs FieldDocScene.
+            var scene = new FieldDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 1f } });   // 0: deleted
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 2f } });   // 1: hidden
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Visibility.SetElementHidden(SelectionKind.Exclusion, "1", true);
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");   // delete the earlier index
+
+            m.Input = KeyFrame(shiftDown: false, Key.Delete);
+            m.Update(0.016f);
+
+            Assert.Single(scene.Document.Doc.Exclusions);
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));    // hide shifted down 1 -> 0
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "1"));
+
+            // Undo the delete: InsertIndex (the inverse) shifts the surviving hide back up to its original index 1.
+            Assert.True(scene.Document.Undo());
+            Assert.Equal(2, scene.Document.Doc.Exclusions.Count);
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "1"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+        }
+
+        [Fact]
+        public void HiddenPlacement_RenameThenUndoRedo_HideFollowsKey_NoOrphan()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "a", Kind = "prop", X = 1f, Z = 2f });
+                return doc;
+            });
+            scene.Visibility.SetElementHidden(SelectionKind.Placement, "a", true);
+
+            scene.Document.Execute(new RenamePlacementCommand("a", "b"));
+
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Placement, "b"));    // the hide followed the rename
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "a"));   // no orphan under the old key
+
+            Assert.True(scene.Document.Undo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Placement, "a"));    // back under the old key
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "b"));   // no orphan under the new key
+
+            Assert.True(scene.Document.Redo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Placement, "b"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "a"));
+        }
+
+        [Fact]
+        public void HiddenRegion_MergedRenameChain_HideFollowsFinalName_ThenUndo()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Regions.Add(new MapRegion { Name = "a", Shape = new DiscShapeDoc { Radius = 3f } });
+                return doc;
+            });
+            scene.Visibility.SetElementHidden(SelectionKind.Region, "a", true);
+
+            // A per-keystroke region rename a -> b -> c coalesces into ONE merged command (RenameRegionCommand.TryMerge)
+            // whose live _newName is "c". CommandApplied fires on each execute, so the hide walks a -> b -> c.
+            scene.Document.Execute(new RenameRegionCommand("a", "b"));
+            scene.Document.Execute(new RenameRegionCommand("b", "c"));
+
+            Assert.Equal(1, scene.Document.History.UndoDepth);   // merged into one undo step
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Region, "c"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "a"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "b"));
+
+            // Undo the merged rename: the command's live effect is Rename(a, c), so the inverse walks c -> a in one hop
+            // (no orphan left under b or c).
+            Assert.True(scene.Document.Undo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Region, "a"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "b"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "c"));
         }
     }
 }

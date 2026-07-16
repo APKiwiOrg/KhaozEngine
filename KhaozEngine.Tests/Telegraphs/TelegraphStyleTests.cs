@@ -99,5 +99,28 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(TelegraphBlend.Additive, TelegraphStyle.Arcane.Blend);
             Assert.Equal(TelegraphBlend.Alpha, TelegraphStyle.Frost.Blend);
         }
+    [Fact]
+    public void Interior_dim_defaults_to_legacy_zero_and_presets_set_it()
+    {
+        Assert.Equal(0f, default(TelegraphStyle).InteriorDim);
+        Assert.True(TelegraphStyle.Generic.InteriorDim > 0f);
+        Assert.True(TelegraphStyle.Fire.InteriorDim > 0f);
+        Assert.True(TelegraphStyle.Poison.InteriorDim > 0f);
+        Assert.True(TelegraphStyle.Steel.InteriorDim > 0f);
+        Assert.True(TelegraphStyle.Frost.InteriorDim > 0f);
+        Assert.True(TelegraphStyle.Nature.InteriorDim > 0f);
+        Assert.True(TelegraphStyle.Arcane.InteriorDim > 0f);
+    }
+
+    [Fact]
+    public void Outline_runner_flag_is_on_steel_and_arcane_only()
+    {
+        Assert.True(TelegraphStyle.Steel.Animation.HasFlag(TelegraphAnim.OutlineRunner));
+        Assert.True(TelegraphStyle.Arcane.Animation.HasFlag(TelegraphAnim.OutlineRunner));
+        Assert.False(TelegraphStyle.Generic.Animation.HasFlag(TelegraphAnim.OutlineRunner));
+        Assert.False(TelegraphStyle.Fire.Animation.HasFlag(TelegraphAnim.OutlineRunner));
+        Assert.False(TelegraphStyle.Frost.Animation.HasFlag(TelegraphAnim.OutlineRunner));
+    }
+
     }
 }

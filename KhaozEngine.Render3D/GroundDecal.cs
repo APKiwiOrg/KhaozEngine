@@ -82,5 +82,11 @@ namespace KhaozEngine.Render3D
         /// <summary>Edge sparkle energy: brief twinkles along the shape boundary (dropped under
         /// <see cref="GroundDecalQuality.Reduced"/>). 0 (default) = inert.</summary>
         public float Sparkle;
+        /// <summary>How much the deep fill interior dims relative to the boundary and sweep front
+        /// (0 = legacy uniform fill, 1 = fully hollow). Concentrates energy at the rim. 0 (default) = inert.</summary>
+        public float InteriorDim;
+        /// <summary>Rotating outline dash-runner energy: dash segments orbiting the outline band.
+        /// 0 (default) = inert.</summary>
+        public float Runner;
     }
 }

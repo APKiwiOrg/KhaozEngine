@@ -43,8 +43,8 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Outline;
             public Vector4 Params;        // x=edge, y=fillFraction, z=flashAdd, w=shapeIndex
             public Vector4 Gate;          // x=groundY, y=yTol, z=maxStep, w=featherWidth
-            public Vector4 PatternP;      // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=0
-            public Vector4 Energy;        // x=rimGlow, y=sweepGlow, z=sparkle, w=0
+            public Vector4 PatternP;      // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
+            public Vector4 Energy;        // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
         }
 
         /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). ONE uniform buffer
@@ -188,8 +188,8 @@ namespace KhaozEngine.Render3D.Rendering
             Outline = d.OutlineColor,
             Params = new Vector4(d.EdgeThickness, d.FillFraction, d.FlashAdd, (int)d.Shape),
             Gate = new Vector4(d.Center.Y, d.YTolerance, d.MaxStep, d.FeatherWidth),
-            PatternP = new Vector4((int)d.Pattern, d.PatternSpeed, d.PatternScale, 0f),
-            Energy = new Vector4(d.RimGlow, d.SweepGlow, d.Sparkle, 0f),
+            PatternP = new Vector4((int)d.Pattern, d.PatternSpeed, d.PatternScale, d.InteriorDim),
+            Energy = new Vector4(d.RimGlow, d.SweepGlow, d.Sparkle, d.Runner),
         };
 
         /// <summary>World-space bounding radius of a decal's painted shape about its <see cref="GroundDecal.Center"/>

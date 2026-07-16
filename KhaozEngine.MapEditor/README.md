@@ -529,6 +529,15 @@ undo never re-merges into the command that was just reverted. Call `SealGesture(
 custom multi-frame gesture you drive through `EditorDocument.Execute` directly, or a drag-like edit will
 keep coalescing into later, unrelated edits of the same object.
 
+Every `FloatRow` the inspector builds goes through a single `AddFloatRow` helper that wires
+`FloatRow.GestureEnded` (a pass-through of `NumberField.GestureEnded`, firing once a scrub that moved the
+field's value releases, or a typed edit commits) to `SealGesture`. So the SAME field's scrub still coalesces
+into one undo step (unchanged, `EditTerrainCommand.TryMerge` merges ANY two terrain edits within one
+gesture), but scrubbing one field then a DIFFERENT one back to back - e.g. `WaterLevel` then `BiomeBlend` -
+now seals between them and lands as two separate undo steps instead of silently merging into one just
+because no explicit tool-level boundary (a mode switch, a pointer release elsewhere) happened to fall
+between the two drags.
+
 ## Rebuild semantics
 
 `EditorCommand.AffectsWorld` (internal) classifies each command: terrain features (add, edit, remove, and

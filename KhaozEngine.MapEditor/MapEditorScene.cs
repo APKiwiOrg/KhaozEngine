@@ -1829,6 +1829,25 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <see cref="RebuildWorldForVisibility"/>).</summary>
     protected virtual void InvalidateViewportKitMeshes() => _viewport.InvalidateKitMeshes();
 
+    // The single spot every FloatRow the inspector builds funnels through, directly or via a domain wrapper
+    // (AddFeatureRow, AddBandFloatRow, AddScatterFloatRow, AddCompanionFloatRow, AddShapeRow): wires
+    // FloatRow.GestureEnded to SealGesture so a scrub or edit commit on this row seals the undo gesture the
+    // moment it ends. Without this, scrubbing two different fields back to back (e.g. WaterLevel then
+    // BiomeBlend) can coalesce into ONE undo step through the underlying command's same-gesture TryMerge
+    // (EditTerrainCommand merges ANY two terrain edits, by design, within one gesture) - sealing here draws the
+    // gesture boundary at the widget level so each field's scrub becomes its own undo step. Same signature as
+    // the FloatRow constructor, so every existing call site converts by dropping "_inspector.Rows.Add(new
+    // FloatRow(" down to "AddFloatRow(".
+    FloatRow AddFloatRow(LocalizedText label, Func<float> get, Action<float> set,
+        float min = float.MinValue, float max = float.MaxValue, float dragScale = 0.01f, int decimals = 2,
+        LocalizedText? description = null)
+    {
+        var row = new FloatRow(label, get, set, min, max, dragScale, decimals, description);
+        row.GestureEnded += _document.SealGesture;
+        _inspector.Rows.Add(row);
+        return row;
+    }
+
     // The terrain root inspector: every terrain scalar as an editable row (each routed through the widened
     // EditTerrainCommand so scrubs coalesce and the scatter-honouring world rebuild fires), plus a read-only
     // biome-count summary. Each setter captures the LIVE field value as the command's old value before Execute
@@ -1837,16 +1856,16 @@ public class MapEditorScene : GameScene, IGameScene3D
     void BuildTerrainInspector()
     {
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Water")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("WaterLevel"),
+        AddFloatRow(LocalizedText.Raw("WaterLevel"),
             () => _document.Doc.Terrain.WaterLevel,
             v => _document.Execute(new EditTerrainCommand(newWaterLevel: v, oldWaterLevel: _document.Doc.Terrain.WaterLevel)),
             description: LocalizedText.Raw(
                 "World-space height, in world units, of the flat water plane. Terrain below this height reads as " +
                 "submerged. Also feeds scatter placement, so raising or lowering it can drown or reveal existing " +
-                "prop placements on the next world rebuild.")));
+                "prop placements on the next world rebuild."));
 
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("World")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Seed"),
+        AddFloatRow(LocalizedText.Raw("Seed"),
             () => _document.Doc.Terrain.Seed,
             v => _document.Execute(new EditTerrainCommand(
                 newSeed: (int)MathF.Round(v), oldSeed: _document.Doc.Terrain.Seed)),
@@ -1854,15 +1873,15 @@ public class MapEditorScene : GameScene, IGameScene3D
             description: LocalizedText.Raw(
                 "Random seed driving the terrain noise and scatter placement. Two documents with the same seed " +
                 "and the same parameters below generate identical terrain. Change it to get a different variation " +
-                "of the same settings.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("BiomeBlend"),
+                "of the same settings."));
+        AddFloatRow(LocalizedText.Raw("BiomeBlend"),
             () => _document.Doc.Terrain.BiomeBlend,
             v => _document.Execute(new EditTerrainCommand(newBiomeBlend: v, oldBiomeBlend: _document.Doc.Terrain.BiomeBlend)),
             min: 0f,
             description: LocalizedText.Raw(
                 "Blend distance, in world units, across a biome band boundary. Higher values soften the " +
                 "transition between two adjacent biomes' height and scatter rules, lower values make the " +
-                "boundary sharper.")));
+                "boundary sharper."));
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Biomes"),
             () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture),
             description: LocalizedText.Raw(
@@ -1870,35 +1889,35 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "via the Biomes category in the outline, not here.")));
 
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Noise")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleFrequency"),
+        AddFloatRow(LocalizedText.Raw("GentleFrequency"),
             () => _document.Doc.Terrain.GentleFrequency,
             v => _document.Execute(new EditTerrainCommand(newGentleFrequency: v, oldGentleFrequency: _document.Doc.Terrain.GentleFrequency)),
             min: 0f, dragScale: 0.001f, decimals: 3,
             description: LocalizedText.Raw(
                 "Feature size, in inverse world units, of the broad rolling hills layer. Lower values stretch the " +
-                "hills wider and smoother, higher values pack them closer together.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleAmplitude"),
+                "hills wider and smoother, higher values pack them closer together."));
+        AddFloatRow(LocalizedText.Raw("GentleAmplitude"),
             () => _document.Doc.Terrain.GentleAmplitude,
             v => _document.Execute(new EditTerrainCommand(newGentleAmplitude: v, oldGentleAmplitude: _document.Doc.Terrain.GentleAmplitude)),
             min: 0f,
             description: LocalizedText.Raw(
                 "Height swing, in world units, of the broad rolling hills layer. Higher values make the gentle " +
-                "hills taller, zero flattens them out entirely.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailFrequency"),
+                "hills taller, zero flattens them out entirely."));
+        AddFloatRow(LocalizedText.Raw("DetailFrequency"),
             () => _document.Doc.Terrain.DetailFrequency,
             v => _document.Execute(new EditTerrainCommand(newDetailFrequency: v, oldDetailFrequency: _document.Doc.Terrain.DetailFrequency)),
             min: 0f, dragScale: 0.001f, decimals: 3,
             description: LocalizedText.Raw(
                 "Feature size, in inverse world units, of the fine detail noise layered on top of the gentle " +
-                "hills. Higher values pack the small bumps closer together for a rougher surface.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailOctaves"),
+                "hills. Higher values pack the small bumps closer together for a rougher surface."));
+        AddFloatRow(LocalizedText.Raw("DetailOctaves"),
             () => _document.Doc.Terrain.DetailOctaves,
             v => _document.Execute(new EditTerrainCommand(
                 newDetailOctaves: (int)MathF.Round(v), oldDetailOctaves: _document.Doc.Terrain.DetailOctaves)),
             min: 1f, dragScale: 1f, decimals: 0,
             description: LocalizedText.Raw(
                 "Number of detail noise layers summed together. More octaves add finer, more varied bumps to the " +
-                "terrain surface but cost more to generate.")));
+                "terrain surface but cost more to generate."));
     }
 
     // The inline-rename Name row shared by the region, placement, and spawn inspectors. A closure tracks the
@@ -1979,22 +1998,22 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "Unique id for this placement. Renaming it updates the outline node and the current selection to " +
                 "follow the new id. Must be non-empty and not collide with another placement's id."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+        AddFloatRow(LocalizedText.Raw("X"),
             () => Placement(cur())?.X ?? 0f, v => MovePlacement(cur(), x: v),
-            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            description: LocalizedText.Raw("World-space X coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Z"),
             () => Placement(cur())?.Z ?? 0f, v => MovePlacement(cur(), z: v),
-            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
+            description: LocalizedText.Raw("World-space Z coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Yaw"),
             () => Placement(cur())?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(cur(), v)),
             description: LocalizedText.Raw(
-                "Facing rotation around the vertical (Y) axis, in radians.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Scale"),
+                "Facing rotation around the vertical (Y) axis, in radians."));
+        AddFloatRow(LocalizedText.Raw("Scale"),
             () => Placement(cur())?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(cur(), v)),
             min: 0.01f,
             description: LocalizedText.Raw(
                 "Uniform scale multiplier applied to the placed kit's mesh. 1 is the kit's authored size, below " +
-                "1 shrinks it, above 1 grows it.")));
+                "1 shrinks it, above 1 grows it."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         AddVisibleRow(SelectionKind.Placement, cur);
     }
@@ -2016,12 +2035,12 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "spawn-tool palette below lists the ids the current game offers). The editor accepts any text " +
                 "here, so a typo only surfaces once the game fails to resolve it.")));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+        AddFloatRow(LocalizedText.Raw("X"),
             () => Spawn(cur())?.X ?? 0f, v => MoveSpawn(cur(), x: v),
-            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            description: LocalizedText.Raw("World-space X coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Z"),
             () => Spawn(cur())?.Z ?? 0f, v => MoveSpawn(cur(), z: v),
-            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
+            description: LocalizedText.Raw("World-space Z coordinate, in world units."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
             () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v)),
@@ -2049,17 +2068,17 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "no archetype, that choice is game code's concern), so renaming it changes what the game must " +
                 "reference. Must be non-empty and not collide with another player spawn's id."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+        AddFloatRow(LocalizedText.Raw("X"),
             () => PlayerSpawn(cur())?.X ?? 0f, v => MovePlayerSpawn(cur(), x: v),
-            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            description: LocalizedText.Raw("World-space X coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Z"),
             () => PlayerSpawn(cur())?.Z ?? 0f, v => MovePlayerSpawn(cur(), z: v),
-            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
+            description: LocalizedText.Raw("World-space Z coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Yaw"),
             () => PlayerSpawn(cur())?.Yaw ?? 0f, v => _document.Execute(new SetPlayerSpawnYawCommand(cur(), v)),
             description: LocalizedText.Raw(
                 "Facing rotation around the vertical (Y) axis, in radians, the direction the player faces on " +
-                "spawn.")));
+                "spawn."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
             () => PlayerSpawn(cur())?.Enabled ?? false, v => _document.Execute(new SetPlayerSpawnEnabledCommand(cur(), v)),
@@ -2171,7 +2190,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     // EditFeatureCommand, whose same-index merge makes a scrub coalesce into one undo step.
     void AddFeatureRow<T>(int index, string label, string description, Func<T, float> get, Action<T, float> assign) where T : MapFeature
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => FeatureAt(index) is T f ? get(f) : 0f,
             v =>
             {
@@ -2179,7 +2198,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 var clone = (T)FeatureGeometry.Clone(current);
                 assign(clone, v);
                 _document.Execute(new EditFeatureCommand(index, clone, current));
-            }, description: LocalizedText.Raw(description)));
+            }, description: LocalizedText.Raw(description));
     }
 
     MapFeature? FeatureAt(int index)
@@ -2331,13 +2350,13 @@ public class MapEditorScene : GameScene, IGameScene3D
         AddShapeRows(() => index < _document.Doc.ScatterOverrides.Count ? _document.Doc.ScatterOverrides[index].Shape : null,
             (newShape, oldShape) => _document.Execute(new EditScatterOverrideShapeCommand(index, newShape, oldShape)));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Scatter")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DensityMultiplier"),
+        AddFloatRow(LocalizedText.Raw("DensityMultiplier"),
             () => ScatterOverrideAt(index)?.DensityMultiplier ?? 1f,
             v => EditScatterOverrideValues(index, o => o.DensityMultiplier = v), min: 0f,
             description: LocalizedText.Raw(
                 "Multiplier applied to every targeted scatter layer's placement density inside this override's " +
                 "shape. 1 leaves density unchanged, 0 places nothing, above 1 packs it denser. Relative to each " +
-                "layer's own density, not an absolute instance count.")));
+                "layer's own density, not an absolute instance count."));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Kinds"),
             () => ScatterOverrideAt(index)?.Kinds is { } kinds ? FormatKinds(kinds) : "",
             v => { if (TryParseKinds(v, out List<MapPropKind> parsed)) EditScatterOverrideValues(index, o => o.Kinds = parsed.Count == 0 ? null : parsed); },
@@ -2528,9 +2547,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     void AddBandFloatRow(int index, string label, string description, Func<MapBiomeBand, float> get,
         Action<MapBiomeBand, float> assign, float min = float.MinValue)
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => BandAt(index) is { } b ? get(b) : 0f,
-            v => EditBand(index, b => assign(b, v)), min: min, description: LocalizedText.Raw(description)));
+            v => EditBand(index, b => assign(b, v)), min: min, description: LocalizedText.Raw(description));
     }
 
     // The "<edge> open" toggle for a nullable band edge: on == the edge is open (the field is null). `read` reads
@@ -2612,12 +2631,12 @@ public class MapEditorScene : GameScene, IGameScene3D
                 description: LocalizedText.Raw(
                     "Biome this rule applies within. A candidate position only uses this rule's density and " +
                     "kinds where the terrain's live biome at that point matches.")));
-            _inspector.Rows.Add(new FloatRow(LocalizedText.Raw($"Rule {ri} density"),
+            AddFloatRow(LocalizedText.Raw($"Rule {ri} density"),
                 () => RuleAt(cur(), ri)?.Density ?? 0f,
                 v => EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Density = v; }), min: 0f,
                 description: LocalizedText.Raw(
                     "Chance, from 0 (never) to 1 (always), a candidate position in this rule's biome becomes an " +
-                    "instance from its Kinds below.")));
+                    "instance from its Kinds below."));
             _inspector.Rows.Add(new TextRow(LocalizedText.Raw($"Rule {ri} kinds"),
                 () => RuleAt(cur(), ri) is { } rule ? FormatKinds(rule.Kinds) : "",
                 v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Kinds = kinds; }); },
@@ -2762,19 +2781,19 @@ public class MapEditorScene : GameScene, IGameScene3D
     void AddScatterFloatRow(Func<string> name, string label, string description, Func<MapScatterLayer, float> get,
         Action<MapScatterLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => ScatterLayerByName(name()) is { } l ? get(l) : 0f,
             v => EditScatterLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals,
-            description: LocalizedText.Raw(description)));
+            description: LocalizedText.Raw(description));
     }
 
     void AddCompanionFloatRow(Func<string> name, string label, string description, Func<MapCompanionLayer, float> get,
         Action<MapCompanionLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => CompanionLayerByName(name()) is { } l ? get(l) : 0f,
             v => EditCompanionLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals,
-            description: LocalizedText.Raw(description)));
+            description: LocalizedText.Raw(description));
     }
 
     // A "button" row: no PropertyGrid button widget exists, so a BoolRow whose value is always read as off doubles
@@ -3067,7 +3086,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     void AddShapeRow<T>(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute, string label,
         string description, Func<T, float> get, Action<T, float> assign) where T : MapShapeDoc
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => shape() is T s ? get(s) : 0f,
             v =>
             {
@@ -3075,7 +3094,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 var clone = (T)CloneShape(current);
                 assign(clone, v);
                 execute(clone, current);
-            }, description: LocalizedText.Raw(description)));
+            }, description: LocalizedText.Raw(description));
     }
 
     // Copies a disc / rect shape DTO so an edit replaces the instance (the shape commands hold old + new by

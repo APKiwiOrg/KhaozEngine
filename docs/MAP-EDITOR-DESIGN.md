@@ -276,6 +276,26 @@ silently drops out of the copy (worse if the new parameter is optional-with-defa
 compiles). Not fixed this round since `AssetEntry` is stable today - flagged so a future `AssetEntry` field
 addition checks this call site.
 
+**Resolved this round (editor-round8)**: the three inspector widgets' known gaps are closed. `NumberField`'s
+numeric filter now validates against the buffer `TextEntry.Apply` is accumulating THIS call (not the stale
+pre-frame field), so a multi-key frame or a paste admits at most one dot. Public `Value` is now a property
+whose setter always clamps to `[Min, Max]`, so an out-of-range external value (e.g. a `FloatRow` polling a
+document value) displays clamped instead of raw. Disabling a field mid-edit now cancels (buffer discarded,
+value unchanged) rather than silently committing, and a sub-3px drag that scrubbed a real change no longer
+falls through into typing mode on release. `TreeView` no longer freezes drop geometry while the wheel scrolls
+mid-drag (`RowAt`/`RowBounds` resolve against the live `ScrollOffset`, recomputed the same frame right after
+the wheel updates it), and the caret-zone-at-depth, `RowBounds`, and `VisibleRows` shared-list gaps are now
+covered by tests (no behavior change). `PropertyGrid` clamps a partially-visible row's editor cell to `Bounds`
+before running its `Update`, so a sliver already hidden by the Draw-time scissor can no longer claim a tap or
+drag beyond it. `FloatRow.GestureEnded` (wired to `EditorDocument.SealGesture` through the new
+`AddFloatRow` inspector helper) seals the undo gesture when a scrub or edit commit finishes, so scrubbing one
+terrain field then a different one lands as two undo steps instead of coalescing through
+`EditTerrainCommand.TryMerge`'s any-two-fields union (that command-level merge is unchanged and still correct
+WITHIN one gesture). `TreeView`/`PropertyGrid` wheel scrolling is also now continuous
+(`ScrollDelta * WheelSpeed`, the `ScrollablePanel` idiom) instead of rounding to an integer notch count, with
+both exposing a `WheelSpeed` property for the same idiom. `ChoiceRow`'s overlay-clipping host contract was
+reviewed and left as documented behavior, no code change.
+
 **Resolved this round (editor-round7)**: Shift+Escape used to pop the scene with no way back (a head that
 pushed the editor as its only scene was left with a blank screen once the stack emptied), now goes through
 `MapEditorOptions.RequestQuit` (invoked only when the editor is the bottom scene, otherwise the scene just
@@ -323,26 +343,18 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
   those consumers to document reads in the editor era. Clearing-disc boundary semantics
   differ at exactly the radius, strict vs inclusive, a measure-zero case.
 - **Gui widgets**:
-  - `NumberField`: the numeric filter is frame-granular, so a multi-key frame or a paste
-    can admit a second dot. Public `Value` bypasses the clamp, the same gap as `Slider`.
-    Disable-mid-edit is untested. A sub-3px scrub also opens typing.
-  - `TreeView`: the caret zone at depth above 0 is untested. `VisibleRows` returns the
-    shared rebuilt list rather than a copy. `RowBounds` is never directly asserted.
-    Wheel-scrolling the tree while a drag-and-drop reorder is armed is not supported: the
-    drop geometry freezes at the scroll position the drag started at, so a long list needs
-    the target row already on screen before the drag begins. Every `TreeView` (outline, kit
-    palette, spawn list, feature list) now draws its selection fill through `GuiDraw.FillStyled`
-    against `GuiStyle.Modern`, so every one of them picked up a rounded selection border. This
-    is a visual-only change with no pixel-exact test coverage, verify by eyeball in a manual
-    playtest rather than trusting the test suite alone.
-  - `PropertyGrid`: a partial row's `BlockRegion` slivers past the clip. Out-of-range
-    external values display unclamped. Wheel feel diverges from the rest of the
-    `ScrollablePanel` family. `FloatRow` needs a scrub-end gesture seal:
-    cross-parameter scrubs currently coalesce into one undo step. `ChoiceRow`'s open
-    option list now draws in the grid's late overlay pass (above the rows below the
-    selector, no longer overpainted), but still inside the grid's own scissor, so a long
-    list clips at the grid bounds. A host needing the list to spill past the grid has to
-    call `Dropdown.DrawOverlay` itself after the grid's `Draw`. `PropertyGrid.EditorStyle`
+  - `NumberField`: fixed this round (editor-round8, see below). `Slider.Value` still bypasses its own
+    clamp (a bare public field), unaffected by this round.
+  - `TreeView`: the wheel-during-drag and caret/RowBounds/VisibleRows gaps are fixed this round
+    (editor-round8, see below). Every `TreeView` (outline, kit palette, spawn list, feature list) still
+    draws its selection fill through `GuiDraw.FillStyled` against `GuiStyle.Modern`, so every one of them
+    picked up a rounded selection border. This is a visual-only change with no pixel-exact test coverage,
+    verify by eyeball in a manual playtest rather than trusting the test suite alone.
+  - `PropertyGrid`: the partial-row input sliver, wheel feel, and cross-parameter scrub-merge gaps are
+    fixed this round (editor-round8, see below). `ChoiceRow`'s open option list still draws in the grid's
+    late overlay pass (above the rows below the selector, no longer overpainted), but still inside the
+    grid's own scissor, so a long list clips at the grid bounds. A host needing the list to spill past the
+    grid has to call `Dropdown.DrawOverlay` itself after the grid's `Draw`. `PropertyGrid.EditorStyle`
     pushes into every row's inner widget on every `Update`, so a single row cannot carry a
     style different from the grid's own: this is unreachable through the grid by design, not
     a bug, and a future per-row style override would need its own opt-out flag.

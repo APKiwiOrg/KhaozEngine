@@ -86,7 +86,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Filter_rejects_disallowed_characters()
         {
-            bool DigitsOnly(char c) => char.IsDigit(c);
+            bool DigitsOnly(string buffer, char c) => char.IsDigit(c);
             Assert.Equal("12", TextEntry.Apply("12", Frame(new[] { Key.A }), filter: DigitsOnly));
             Assert.Equal("123", TextEntry.Apply("12", Frame(new[] { Key.D3 }), filter: DigitsOnly));
         }
@@ -187,7 +187,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Repeat_respects_filter()
         {
-            bool DigitsOnly(char c) => char.IsDigit(c);
+            bool DigitsOnly(string buffer, char c) => char.IsDigit(c);
             Assert.Equal("12", TextEntry.Apply("12", Repeat(new[] { Key.A }), filter: DigitsOnly));   // rejected
             Assert.Equal("123", TextEntry.Apply("12", Repeat(new[] { Key.D3 }), filter: DigitsOnly)); // allowed
         }
@@ -258,7 +258,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Paste_runs_clipboard_text_through_the_filter()
         {
-            bool DigitsOnly(char c) => char.IsDigit(c);
+            bool DigitsOnly(string buffer, char c) => char.IsDigit(c);
             using var _ = new FakeClipboard("a1b2c3");
             Assert.Equal("123", TextEntry.Apply("", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), filter: DigitsOnly));
         }

@@ -510,7 +510,10 @@ for the player to accept "any connected controller".
 and Ctrl/Cmd+V clipboard paste - without reaching for the raw window input. There is an `InputManager` overload of
 `Apply` that reads `State` for you, so the call is one line; pass `allowPaste: false` to suppress paste. Paste
 appends `Clipboard.TryGetClipboardText()` through the same `filter` + `maxLength` path as typed chars (so a digits
-filter strips letters out of pasted text too), firing on the V press edge only.
+filter strips letters out of pasted text too), firing on the V press edge only. `filter` is a
+`Func<string, char, bool>` receiving the buffer as it accumulates THIS call (not a pre-call snapshot) alongside the
+candidate char, so a stateful filter (e.g. `NumberField`'s "at most one dot") sees every char already admitted
+earlier in the same multi-key frame or paste.
 
 ### Action maps + rebinding (`KhaozEngine.Windowing.Actions`)
 

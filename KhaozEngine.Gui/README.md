@@ -96,16 +96,23 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     non-interactive (no `Update`); `Opacity` fades the whole bar.
   - `NumberField` - numeric field for editor inspectors, driven by `InputManager` (needs the keyboard). A drag
     started inside scrubs `Value` by `DragScale` value units per pixel (grab-gated, so it keeps tracking off the
-    widget). A tap under 3 draw units of travel opens typing mode (`TextEntry` with a digits/one-minus/one-dot
-    filter). Enter commits (parsed, clamped to [`Min`, `Max`], rounded to `Decimals`), Escape cancels, and a tap
-    outside commits like Enter. `WasChanged` mirrors the `Update` return. `Opacity` fades the field for a host
-    transition. `IsScrubbing` mirrors the grab-gate (true from the inside press to the release, even once the
+    widget). A tap under 3 draw units of travel, with no real value change already scrubbed this gesture, opens
+    typing mode (`TextEntry` with a digits/one-minus/one-dot filter validated against the buffer TextEntry is
+    accumulating THIS call, so a multi-key frame or a paste admits at most one dot, not the stale pre-frame
+    buffer). Enter commits (parsed, clamped to [`Min`, `Max`], rounded to `Decimals`), Escape cancels, and a tap
+    outside commits like Enter. Disabling the field while it is editing also cancels (buffer discarded, `Value`
+    unchanged), never commits. `Value`'s setter clamps to [`Min`, `Max`] on every assignment, not only through
+    `SetValue` - a direct write (e.g. a host polling in an external value) now always displays clamped without
+    raising `WasChanged`/`OnChanged`. `WasChanged` mirrors the `Update` return. `Opacity` fades the field for a
+    host transition. `IsScrubbing` mirrors the grab-gate (true from the inside press to the release, even once the
     cursor strays off the widget) and pairs with `IsEditing`, so a host like `PropertyGrid`'s `FloatRow` can skip
-    its external-value poll while either is true instead of stomping a live gesture. `CancelEdit()` exits typing
-    mode without committing, leaving `Value` at its pre-edit value (the same path Escape takes, made directly
-    callable), the hook a host uses to close an in-progress edit it is tearing down. Typing accepts numpad
-    (keypad) keys the same as the top-row keys - digits, dot, minus - and the FIRST keypad keystroke ends the
-    select-all seed exactly like a top-row one (replace the seeded value, not append to it).
+    its external-value poll while either is true instead of stomping a live gesture. `GestureEnded` fires once a
+    scrub that moved `Value` releases, or a typed edit commits (never on a cancel), so a host can seal an undo
+    gesture at the same boundary. `CancelEdit()` exits typing mode without committing, leaving `Value` at its
+    pre-edit value (the same path Escape takes, made directly callable), the hook a host uses to close an
+    in-progress edit it is tearing down. Typing accepts numpad (keypad) keys the same as the top-row keys - digits,
+    dot, minus - and the FIRST keypad keystroke ends the select-all seed exactly like a top-row one (replace the
+    seeded value, not append to it).
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition.
@@ -169,16 +176,20 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     glides). Always snaps on the first update and whenever the panel is fully hidden (`TransitionAlpha <= 0`), and
     never fights an active drag-resize.
   - `TreeView` - scrollable outline over `TreeNode` roots (a `LocalizedText` label, children, an `Expanded`
-    flag, a caller-owned `Tag`). `VisibleRows()` is the depth-first walk skipping collapsed subtrees. A tap in a
-    row's caret zone (the `Indent`-wide band at its depth) toggles expansion for a node with children, a tap
-    elsewhere in the row selects it (`Selected`, `OnSelected`). The wheel scrolls clamped to the content,
-    `WheelRowsPerNotch` rows per notch (default 3), and rows are scissor-clipped to `Bounds`. A held press that
-    clears `DragThreshold` (default 6 pixels) becomes a same-parent drag-and-drop row reorder instead of a tap:
-    a valid drop fires `OnReordered(node, oldIndex, newIndex)` and `WasReordered` goes true, an insertion line
-    marks the live target, Escape aborts with no drop, and a cross-parent or off-tree release is rejected. The
-    widget only reports the move, never mutating `Roots`/`Children` itself, so the host applies it and rebuilds
-    the tree. Wheel-scrolling while a drag is armed is not supported (the drop geometry freezes at the current
-    scroll position). `ScrollTo(TreeNode)` brings a node into view: expands every collapsed ancestor so it
+    flag, a caller-owned `Tag`). `VisibleRows()` is the depth-first walk skipping collapsed subtrees, rebuilt into
+    a shared cached list on every call - materialize the result (`ToArray`/`ToList`) before the next call if you
+    need to keep it. A tap in a row's caret zone (the `Indent`-wide band at its depth) toggles expansion for a
+    node with children, a tap elsewhere in the row selects it (`Selected`, `OnSelected`). The wheel scrolls
+    clamped to the content, continuous (`ScrollDelta * WheelSpeed` pixels, no per-notch rounding, the
+    `ScrollablePanel.WheelSpeed` idiom) - `WheelSpeed` is `RowHeight * WheelRowsPerNotch` (default 3 rows per
+    wheel unit) - and rows are scissor-clipped to `Bounds`. A held press that clears `DragThreshold` (default 6
+    pixels) becomes a same-parent drag-and-drop row reorder instead of a tap: a valid drop fires
+    `OnReordered(node, oldIndex, newIndex)` and `WasReordered` goes true, an insertion line marks the live target,
+    Escape aborts with no drop, and a cross-parent or off-tree release is rejected. The widget only reports the
+    move, never mutating `Roots`/`Children` itself, so the host applies it and rebuilds the tree. The wheel scrolls
+    even while a drag is armed: the drop geometry (`RowAt`/`RowBounds`) reads the live `ScrollOffset`, recomputed
+    the same frame right after the wheel updates it, so a long list can scroll mid-reorder instead of freezing.
+    `ScrollTo(TreeNode)` brings a node into view: expands every collapsed ancestor so it
     rejoins the visible walk, then scrolls the minimal amount needed so its row sits fully inside `Bounds`
     (clamped to `[0, maxScroll]`, the same clamp idiom as `ScrollablePanel.ScrollTo(float)`), a no-op when
     the node is unreachable from `Roots`. `FindByTag(Func<object?, bool>)` walks `Roots` depth-first
@@ -209,12 +220,22 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis` (the longest
     prefix that fits plus three ASCII dots, never the single-glyph ellipsis, which may not be baked into a font
     atlas) instead of running under the neighbouring cell or getting hard-cut by the scissor mid-glyph. A row
-    fully scrolled out of view is skipped entirely, so it neither hit-tests nor reserves off-view input. Wheel
-    scrolling moves `WheelRowsPerNotch` rows per notch (default 3, matching `TreeView`'s knob for the same
-    side-by-side feel). A row that ran last frame but is culled this frame (scrolled out of view) is
+    fully scrolled out of view is skipped entirely, so it neither hit-tests nor reserves off-view input. A row
+    only PARTIALLY visible (its cell straddles `Bounds`' top or bottom edge) still runs, but the cell handed to
+    its `Update` is clamped to `Bounds` first, so a sliver a Draw-time scissor already clips cannot still claim a
+    tap or drag beyond it. `Draw` is unaffected, it re-sets the row's widget bounds from the full (unclamped)
+    `RowEditorBounds` right before drawing. Wheel scrolling is continuous (`ScrollDelta * WheelSpeed` pixels, no
+    per-notch rounding, the `ScrollablePanel.WheelSpeed` idiom) - `WheelSpeed` is `(average row height) *
+    WheelRowsPerNotch` (default 3 rows per wheel unit, matching `TreeView`'s knob for the same side-by-side feel).
+    A row that ran last frame but is culled this frame (scrolled out of view) is
     `Deactivate()`d exactly once as it leaves: the base `PropertyRow.Deactivate()` is a no-op, but `FloatRow`
     cancels its `NumberField` edit, `TextRow` unfocuses its `TextInput`, and `ChoiceRow` closes its `Dropdown`,
     so a focused, mid-edit, or open-list row cannot keep consuming input the grid no longer routes to it.
+    `FloatRow.GestureEnded` (a direct pass-through of `NumberField.GestureEnded`) fires once a scrub or typed-edit
+    commit on its field finishes, so a host can seal an undo gesture at that boundary - `MapEditorScene` wires
+    every terrain/transform/scatter `FloatRow` it builds to `EditorDocument.SealGesture` through this hook, so
+    scrubbing one field then another produces two undo steps instead of coalescing into one through the underlying
+    command's same-gesture merge.
     Each `PropertyRow` carries an optional `Description` (`LocalizedText?`, null means no tooltip), and
     `PropertyGrid` tracks the row under the pointer during `Update` as `HoveredRow` (`PropertyRow?`, null
     when the pointer is over no row or in the gap between rows) plus a public `RowLabelBounds(int)` (was
@@ -304,7 +325,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   keys type their digit/dot/operator characters shift-independently (a keypad has no symbol row) via the
   `Keypad0`..`Keypad9`/`KeypadDecimal`/`KeypadAdd`/`KeypadSubtract`/`KeypadMultiply`/`KeypadDivide`/`KeypadEqual`
   members on `KhaozEngine.Windowing.Key`. A physical keypad Enter is folded into the regular `Enter` by
-  `AppWindow`, so it commits/confirms identically everywhere, with no separate `KeypadEnter` member.
+  `AppWindow`, so it commits/confirms identically everywhere, with no separate `KeypadEnter` member. The optional
+  `filter` is a `Func<string, char, bool>` (buffer accumulated so far THIS call, candidate char) rather than a bare
+  `Func<char, bool>`, so a stateful filter (e.g. `NumberField`'s "at most one dot") is validated against every char
+  this same call already admitted - a multi-key frame or a paste - instead of a stale pre-call buffer.
 - `OverlayLegend` (+ `LegendEntry`, `OverlayLegendTheme`) - a domain-agnostic color-swatch + label panel for
   debug overlays: `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty
   when no entries), and two `Draw` overloads - `Draw(SpriteBatch, SpriteFont, Texture2D, Rect viewport)`

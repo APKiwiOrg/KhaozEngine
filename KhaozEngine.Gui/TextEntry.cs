@@ -17,6 +17,10 @@ namespace KhaozEngine.Gui
     /// retained custom widget via the <see cref="InputManager"/> overload.
     /// Hold-to-repeat works because it acts on <see cref="InputState.WasTyped"/> (press edge OR an OS auto-repeat
     /// tick), so a held Backspace or character key deletes / types at the OS repeat rate.
+    /// A <c>filter</c> is validated against the buffer as it accumulates THIS call, not a snapshot taken before the
+    /// call started: a multi-key frame (several keys typed the same tick) and a paste both feed the filter each
+    /// already-admitted char first, so a stateful filter (e.g. <see cref="NumberField"/>'s "at most one dot") sees
+    /// every earlier admission within the same call, not a stale pre-call buffer.
     /// Limitations vs a real IME: no locale layouts, dead keys, or composition.
     /// </summary>
     public static class TextEntry
@@ -28,8 +32,11 @@ namespace KhaozEngine.Gui
         /// When <paramref name="allowPaste"/> is set (the default), a Ctrl+V / Cmd+V chord appends the system
         /// clipboard text (<see cref="Clipboard.TryGetClipboardText"/>) through the same <paramref name="filter"/>
         /// and <paramref name="maxLength"/> path as typed characters; pass <c>false</c> to suppress paste.
+        /// <paramref name="filter"/> receives the buffer accumulated so far THIS call (not the pre-call
+        /// <paramref name="current"/>) alongside the candidate char, so it can reject e.g. a second dot admitted
+        /// earlier in the same multi-key frame or paste.
         /// </summary>
-        public static string Apply(string current, InputState input, int maxLength = int.MaxValue, Func<char, bool>? filter = null, bool allowPaste = true)
+        public static string Apply(string current, InputState input, int maxLength = int.MaxValue, Func<string, char, bool>? filter = null, bool allowPaste = true)
         {
             if (input.WasTyped(Key.Backspace) && current.Length > 0)
                 current = current[..^1];
@@ -57,7 +64,9 @@ namespace KhaozEngine.Gui
                 if (!input.WasTyped(k)) continue;
                 if (!TryMapChar(k, shift, out char c)) continue;
                 if (current.Length >= maxLength) continue;
-                if (filter != null && !filter(c)) continue;
+                // `current` is the buffer as accumulated by this same loop so far this call (not a pre-call
+                // snapshot), so a filter sees every char this call already admitted ahead of this one.
+                if (filter != null && !filter(current, c)) continue;
                 current += c;
             }
             return current;
@@ -68,12 +77,15 @@ namespace KhaozEngine.Gui
         /// For a retained, custom-rendered widget that holds an <see cref="InputManager"/> rather than the immediate
         /// <c>GuiSurface</c>. Identical behaviour to the <see cref="InputState"/> overload.
         /// </summary>
-        public static string Apply(string current, InputManager input, int maxLength = int.MaxValue, Func<char, bool>? filter = null, bool allowPaste = true)
+        public static string Apply(string current, InputManager input, int maxLength = int.MaxValue, Func<string, char, bool>? filter = null, bool allowPaste = true)
             => Apply(current, input.State, maxLength, filter, allowPaste);
 
         // Appends the system clipboard text to the buffer, each char gated by the same filter + maxLength as typed
-        // input. Empty/unavailable clipboard is a no-op. StringBuilder so a large paste isn't O(n^2) on the string.
-        static string AppendClipboard(string current, int maxLength, Func<char, bool>? filter)
+        // input, against the buffer as accumulated so far in this paste (not a pre-paste snapshot), so a second dot
+        // later in the same clipboard text is rejected the same way a second dot in one typed frame is. StringBuilder
+        // keeps the append itself from being O(n^2) on the string. maxLength bounds the buffer, so re-stringifying
+        // it once per admitted char stays cheap in every real caller (single-line fields with a small maxLength).
+        static string AppendClipboard(string current, int maxLength, Func<string, char, bool>? filter)
         {
             string clip = Clipboard.TryGetClipboardText();
             if (string.IsNullOrEmpty(clip)) return current;
@@ -82,7 +94,7 @@ namespace KhaozEngine.Gui
             foreach (char c in clip)
             {
                 if (sb.Length >= maxLength) break;
-                if (filter != null && !filter(c)) continue;
+                if (filter != null && !filter(sb.ToString(), c)) continue;
                 sb.Append(c);
             }
             return sb.ToString();

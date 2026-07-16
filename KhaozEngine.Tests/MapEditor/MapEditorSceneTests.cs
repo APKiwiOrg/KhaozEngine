@@ -1522,6 +1522,61 @@ namespace KhaozEngine.Tests.MapEditor
             Near(-1f, scene.Document.Doc.Terrain.WaterLevel);  // undo restores the pre-scrub level
         }
 
+        // Every terrain FloatRow's GestureEnded is wired (via AddFloatRow) to Document.SealGesture, so scrubbing
+        // WaterLevel then BiomeBlend seals a barrier between them: EditTerrainCommand.TryMerge would otherwise
+        // coalesce ANY two terrain edits into one undo step (that command-level merge is still correct WITHIN one
+        // gesture - see EditorCommandsTests.EditTerrain_Merge_UnionOfDifferentFields_EachOldFromFirstSetter), but
+        // two DIFFERENT inspector gestures back to back must land as two separate undo steps.
+        [Fact]
+        public void TerrainNode_ScrubTwoFields_SealsTwoSeparateUndoSteps()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.WaterLevel = 0f;
+                doc.Terrain.BiomeBlend = 5f;
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            FloatRow water = FloatRowByLabel(scene.Inspector, "WaterLevel");
+            FloatRow blend = FloatRowByLabel(scene.Inspector, "BiomeBlend");
+            var cell = new Rect(0f, 0f, 200f, 28f);
+
+            // Scrub WaterLevel: press, drag (a real change lands the first undo step), release (seals the gesture).
+            var uiWater = new InputManager();
+            uiWater.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            water.Update(cell, uiWater, 0.016f);
+            uiWater.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));
+            water.Update(cell, uiWater, 0.016f);
+            uiWater.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));
+            water.Update(cell, uiWater, 0.016f);
+            uiWater.Update(MouseFrame(new Vector2(200f, 10f), leftDown: false));
+            water.Update(cell, uiWater, 0.016f);   // release: GestureEnded fires, seals the barrier
+
+            Assert.Equal(1, scene.Document.History.UndoDepth);
+
+            // Scrub BiomeBlend next: without the seal this would coalesce into the water step via
+            // EditTerrainCommand.TryMerge (any two terrain edits merge within one gesture). The seal makes it a
+            // second, separate step instead.
+            var uiBlend = new InputManager();
+            uiBlend.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            blend.Update(cell, uiBlend, 0.016f);
+            uiBlend.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));
+            blend.Update(cell, uiBlend, 0.016f);
+            uiBlend.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));
+            blend.Update(cell, uiBlend, 0.016f);
+
+            Assert.Equal(2, scene.Document.History.UndoDepth);
+
+            // Both edits are independently undoable: undoing twice restores both fields to their pre-scrub values.
+            Assert.True(scene.Document.Undo());
+            Near(5f, scene.Document.Doc.Terrain.BiomeBlend);
+            Assert.True(scene.Document.Undo());
+            Near(0f, scene.Document.Doc.Terrain.WaterLevel);
+            Assert.False(scene.Document.History.CanUndo);
+        }
+
         [Fact]
         public void TerrainNode_InspectorShowsEveryScalar_AndBiomeCount()
         {

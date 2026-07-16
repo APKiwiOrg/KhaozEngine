@@ -1641,8 +1641,20 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Sky.HaloFalloff` (halo width). **The sun direction defaults to the key light** (`Post.LightDirection`): the disc
     sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
     axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
-    point it elsewhere. The sun is drawn only when it is above the view horizon (behind/under the camera it is
-    suppressed), so a downward-looking iso view shows it near the top of the sky.
+    point it elsewhere.
+  - **Where the disc is placed** (`Sky.Anchor`, a `SunAnchor`, default `SunAnchor.World`):
+    - `SunAnchor.World` (default) anchors the disc to the WORLD-space sun direction with a true point-at-infinity
+      projection (rotate the world sun direction into view space, project through the camera projection,
+      perspective-divide). Orbiting the camera keeps the disc fixed over the world direction the sun really lies in
+      (it stays put over the mountains/features the light agrees with), and a pure camera translation never moves it.
+      The disc is drawn only when the sun is in FRONT of the camera. This is the physically-correct placement for the
+      perspective `FollowCamera3D`/`FlyCamera3D`. Under the orthographic `IsoCamera3D` a directional sun is a point at
+      infinity with no finite screen position (parallel view rays), so `World` suppresses the disc there - use
+      `StylizedBackdrop` for the iso look.
+    - `SunAnchor.StylizedBackdrop` is the legacy camera-relative placement: the sun's view-space right/up read
+      directly as screen NDC, visible whenever the sun is above the view horizon. Not a physical projection, but it
+      places the disc under BOTH the ortho iso camera and the perspective camera, which is what a decorative backdrop
+      wants. Pick it for a stylized sky, or for the orthographic iso camera where `World` degenerates.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur LDR bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to

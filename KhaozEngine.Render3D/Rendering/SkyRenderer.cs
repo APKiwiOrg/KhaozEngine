@@ -82,15 +82,17 @@ namespace KhaozEngine.Render3D.Rendering
             });
 
         /// <summary>Pure: pack the sky settings + the CPU-projected sun screen position into the UBO. The sun (a
-        /// DIRECTIONAL light) is placed at a screen NDC point from its direction rotated into view space via
-        /// <paramref name="view"/> (see <see cref="SkyMath.ProjectSunToNdc"/>), so it lands consistently for both the
-        /// ortho iso camera and the perspective follow camera. The render size derives the aspect (keeps the disc
-        /// round) and the 1/size the shader uses to rebuild NDC from gl_FragCoord.</summary>
-        public static SkyUbo PackUbo(SkySettings sky, Matrix4x4 view, Vector3 lightDirection,
+        /// DIRECTIONAL light) is placed at a screen NDC point per <see cref="SkySettings.Anchor"/> (see
+        /// <see cref="SkyMath.ProjectSunToNdc"/>): the world-anchored point-at-infinity projection (default, needs
+        /// <paramref name="projection"/>) or the legacy stylized backdrop. The projection is done ENTIRELY on the CPU
+        /// and the result rides in the existing <see cref="SkyUbo.SunNdc"/> slot, so the GPU UBO layout and the GLSL
+        /// <c>SkyFrag</c> are unchanged (one uniform buffer per pipeline, no shader edit). The render size derives the
+        /// aspect (keeps the disc round) and the 1/size the shader uses to rebuild NDC from gl_FragCoord.</summary>
+        public static SkyUbo PackUbo(SkySettings sky, Matrix4x4 view, Matrix4x4 projection, Vector3 lightDirection,
             int renderWidth, int renderHeight)
         {
             Vector3 sun = sky.ResolveSunDirection(lightDirection);
-            bool visible = SkyMath.ProjectSunToNdc(view, sun, out Vector2 sunNdc);
+            bool visible = SkyMath.ProjectSunToNdc(sky.Anchor, view, projection, sun, out Vector2 sunNdc);
             float aspect = renderHeight > 0 ? (float)renderWidth / renderHeight : 1f;
             float invW = renderWidth > 0 ? 1f / renderWidth : 0f;
             float invH = renderHeight > 0 ? 1f / renderHeight : 0f;
@@ -109,12 +111,13 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Draw the sky into ColorDepthFB (lit colour + read-only scene depth). Caller guarantees the model
-        /// pass is complete (depth written) and the framebuffer is free to rebind. The sun screen position comes from
-        /// the RAW view matrix (the fragment rebuilds NDC from gl_FragCoord, the backend-independent decal
+        /// pass is complete (depth written) and the framebuffer is free to rebind. The sun screen position is
+        /// CPU-projected from the RAW <paramref name="view"/> + <paramref name="projection"/> per
+        /// <see cref="SkySettings.Anchor"/> (the fragment rebuilds NDC from gl_FragCoord, the backend-independent decal
         /// convention), so the disc lands consistently across backends.</summary>
-        public void Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 view, Vector3 lightDirection, SkySettings sky)
+        public void Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 view, Matrix4x4 projection, Vector3 lightDirection, SkySettings sky)
         {
-            var u = PackUbo(sky, view, lightDirection, res.Width, res.Height);
+            var u = PackUbo(sky, view, projection, lightDirection, res.Width, res.Height);
             cl.UpdateBuffer(_ubo, 0, in u);
             cl.SetFramebuffer(res.ColorDepthFB);
             cl.SetPipeline(_pipe);

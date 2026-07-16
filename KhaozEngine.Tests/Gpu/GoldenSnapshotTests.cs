@@ -4,6 +4,7 @@ using Xunit;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Telegraphs;
 
 namespace KhaozEngine.Tests.Gpu
@@ -322,6 +323,11 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Outline = true;
                     // Sky ON: gradient + sun disc. The sun direction defaults to the key light below.
                     scene.Post.Sky.Enabled = true;
+                    // Ortho iso camera: pin the STYLIZED backdrop anchor (the world point-at-infinity projection
+                    // degenerates under parallel view rays). This keeps the disc placed by view-space azimuth, so the
+                    // golden stays byte-identical to the pre-SunAnchor behaviour. The world anchor is exercised by the
+                    // perspective Golden3D_SkyWorldSun instead.
+                    scene.Post.Sky.Anchor = SunAnchor.StylizedBackdrop;
                     scene.Post.Sky.HorizonColor = new Color(0.66f, 0.72f, 0.80f, 1f);
                     scene.Post.Sky.ZenithColor = new Color(0.20f, 0.40f, 0.72f, 1f);
                     scene.Post.Sky.SunColor = new Color(1f, 0.95f, 0.82f, 1f);
@@ -377,6 +383,97 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene3d_sky", rgba, W, H);
         }
 
+        // World-anchored sun disc (SunAnchor.World, the default) under a PERSPECTIVE follow camera - the case the
+        // world projection is correct for (a directional sun is a point at infinity, finite on-screen only under
+        // perspective). The disc is placed by projecting the world sun direction through the camera, so it sits over
+        // the world direction the light really comes from and would stay fixed there as the camera orbits (unlike the
+        // stylized backdrop, which slides with the view). The guard ties the rendered disc to the CPU projection: the
+        // brightest warm pixel must land where SkyMath.ProjectSunWorldToNdc says the sun is, so a wrong projection (or
+        // a silent regression back to the camera-relative placement) trips before the golden compare.
+        [GpuFact]
+        public void Golden3D_SkyWorldSun()
+        {
+            MeshHandle floor = default, box = default, pillar = default;
+            // Off-axis perspective fly camera looking slightly UP (a follow camera pitches down at its target, so a
+            // world sun high in the sky lands off the top of frame). Yawed off -Z so a world-anchored disc lands
+            // off-centre - proof it tracks the world, not the screen. AspectRatio matches the render so the projection
+            // places x correctly.
+            var fly = new FlyCamera3D
+            {
+                Position = new Vector3(0f, 0.8f, 9f),
+                Yaw = MathF.PI + 0.35f,   // look toward -Z, rotated ~20 deg so the disc sits off-centre
+                Pitch = 0.12f,            // tilt up so the sky (and the sun) fill the upper frame
+                AspectRatio = (float)W / H,
+            };
+            // Sun up and toward the camera front (dot with forward > 0): lands high in the sky, off to one side.
+            var light = new Vector3(0.15f, -0.45f, 0.85f);   // travel dir; sun = -normalize(light), up + in front
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(14f, 0.1f));
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.1f));
+                    pillar = scene.LoadMesh(MeshPrimitives.Box(1.0f));
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = true;
+                    scene.CameraOverride = fly;
+                    // Sky ON, World anchor (the default, set explicit so the golden pins the behaviour under test).
+                    scene.Post.Sky.Enabled = true;
+                    scene.Post.Sky.Anchor = SunAnchor.World;
+                    scene.Post.Sky.HorizonColor = new Color(0.66f, 0.72f, 0.80f, 1f);
+                    scene.Post.Sky.ZenithColor = new Color(0.20f, 0.40f, 0.72f, 1f);
+                    scene.Post.Sky.SunColor = new Color(1f, 0.95f, 0.82f, 1f);
+                    scene.Post.Sky.SunRadius = 0.08f;
+                    scene.Post.Sky.HaloStrength = 0.6f;
+                    scene.Post.Sky.HaloFalloff = 0.22f;
+                    scene.Post.LightDirection = light;
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f));
+                    scene.Draw(box, Matrix4x4.CreateTranslation(-1.4f, 0.55f, 0.3f), new Color(0.2f, 0.55f, 0.85f, 1f));
+                    scene.Draw(pillar, Matrix4x4.CreateTranslation(1.5f, 0.5f, -0.8f), new Color(0.85f, 0.35f, 0.2f, 1f));
+                },
+                frames: 2);
+
+            // World-anchoring lock: the disc must render where the CPU point-at-infinity projection places it. Project
+            // the same world sun direction the sky used, convert NDC (y up) -> top-origin pixel, and require the local
+            // image there to be bright + warm (the sun disc / SunColor), while a control patch of open sky elsewhere is
+            // NOT sun-bright. A regression to camera-relative placement moves the disc off this predicted spot.
+            var sun = SkyMath.SunDirectionFromLight(light);
+            Assert.True(SkyMath.ProjectSunWorldToNdc(fly.View, fly.Projection, sun, out Vector2 sunNdc),
+                "the world sun is up and in front, so it must project on-screen for this golden");
+            Assert.True(MathF.Abs(sunNdc.X) < 0.95f && MathF.Abs(sunNdc.Y) < 0.95f,
+                $"sun should be comfortably on-screen for a stable golden, got {sunNdc}");
+            int sunPx = (int)((sunNdc.X * 0.5f + 0.5f) * W);
+            int sunPy = (int)((0.5f - sunNdc.Y * 0.5f) * H);   // top-origin: ndc.y up -> pixel y down
+            (float r, float g, float b) discAvg = AveragePatch(rgba, W, H, sunPx, sunPy, 6);
+            Assert.True(discAvg.r > 0.75f && discAvg.g > 0.7f && discAvg.r >= discAvg.b,
+                $"world-projected sun pixel ({sunPx},{sunPy}) should be a bright warm disc, got rgb({discAvg.r:0.##},{discAvg.g:0.##},{discAvg.b:0.##})");
+            // Control: a patch on the FAR horizontal side of the sky (upper region, well away from the disc + halo) is
+            // plain blue-dominant gradient, not another sun. Pick the edge opposite the disc so the halo can't reach it.
+            int ctlPx = sunPx > W / 2 ? W / 10 : W - W / 10;
+            (float r, float g, float b) ctlAvg = AveragePatch(rgba, W, H, ctlPx, sunPy, 6);
+            Assert.True(ctlAvg.b >= ctlAvg.r,
+                $"control sky patch ({ctlPx},{sunPy}) should be blue-dominant gradient, not a second sun, got rgb({ctlAvg.r:0.##},{ctlAvg.g:0.##},{ctlAvg.b:0.##})");
+
+            GoldenCompare.AssertOrUpdate("scene3d_sky_world_sun", rgba, W, H);
+        }
+
+        /// <summary>Average RGB (0..1) over a (2*half+1) square patch of the RGBA8 buffer centred at (cx,cy), clamped
+        /// to the image. Used by the world-sun golden to sample the projected disc vs a control sky patch.</summary>
+        static (float r, float g, float b) AveragePatch(byte[] rgba, int w, int h, int cx, int cy, int half)
+        {
+            double r = 0, g = 0, b = 0; int n = 0;
+            for (int y = Math.Max(0, cy - half); y <= Math.Min(h - 1, cy + half); y++)
+                for (int x = Math.Max(0, cx - half); x <= Math.Min(w - 1, cx + half); x++)
+                {
+                    int i = (y * w + x) * 4;
+                    r += rgba[i]; g += rgba[i + 1]; b += rgba[i + 2]; n++;
+                }
+            return n == 0 ? (0f, 0f, 0f) : ((float)(r / n / 255.0), (float)(g / n / 255.0), (float)(b / n / 255.0));
+        }
+
         // Rendering gap #5: the animated water surface (normal perturbation, sky-derived fresnel tint, key-light sun
         // glint, depth-sampled shore fade). A deep lakebed tile sits well below the water surface (so the open-water
         // region is fully opaque - depth-below-surface far past ShoreFadeDistance) while a shallow shelf ramps up
@@ -404,6 +501,9 @@ namespace KhaozEngine.Tests.Gpu
                     // asks for (water borrows the sky's palette by default; harmonized in WaterSettings' own
                     // defaults too, so this also exercises an explicit override agreeing with a custom sky).
                     scene.Post.Sky.Enabled = true;
+                    // Ortho iso camera: pin the stylized backdrop anchor (the world projection degenerates under
+                    // parallel view rays) so this golden stays byte-identical to the pre-SunAnchor behaviour.
+                    scene.Post.Sky.Anchor = SunAnchor.StylizedBackdrop;
                     scene.Post.Sky.HorizonColor = new Color(0.66f, 0.72f, 0.80f, 1f);
                     scene.Post.Sky.ZenithColor = new Color(0.20f, 0.40f, 0.72f, 1f);
                     scene.Post.Sky.SunRadius = 0.09f;

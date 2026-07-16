@@ -5,6 +5,42 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.127.1
+
+Showcase cleanup: a tile-menu hub, one consolidated tabbed 2D & GUI room, and shared room chrome
+(title band, controls hints, status line, toggle toasts) across every room. No package API changed,
+this release is the `KhaozEngine.Showcase` app plus its docs.
+
+- **Consolidated 2D & GUI room (`KhaozEngine.Showcase`).** The old "2D sprites + text", "GUI +
+  widgets", and "Input + audio" rooms folded into one `Room2DGui` hosting a `TabBar` of five pages:
+  Widgets (relaid into three labelled columns - form, HUD, skinned chrome - and gaining a
+  `NumberField` demo), Sprites & text (scale / tint / alpha sprite series plus a TTF type specimen,
+  in framed cards), Input & audio (the gesture playground clamped inside a panel beside a labelled
+  status card), Immediate mode (plus a disabled-button preset), and Screens & dialogs (launchers
+  for the modal Settings dialog, the pause overlay - now shown over the real tab host, the
+  placeholder green host screen is gone - patch notes, and the 10.127.0 toast stack demo, re-seated
+  here from the old GUI menu). Per-screen Back buttons are dropped: Esc backs out one level and
+  Tab/Shift+Tab switch tabs. `Room2D.cs`, `RoomGui.cs`, and `RoomInput.cs` are deleted.
+- **Tile-menu hub.** The menu is a centred 2-column tile grid, each tile a room title over a
+  one-line blurb, with spatial arrow/WASD navigation (clamped grid moves on the headless
+  `ShowcaseMenu`, covered by new tests), a subtitle, a hint line, and an engine-version footer read
+  from the `KhaozEngine.Game` assembly's informational version.
+- **Shared room chrome.** New `IShowcaseRoom` + `ShowcaseHud`: every room (map editor excepted, it
+  carries its own chrome) wears a consistent title band top-left, a controls-hint band above the
+  display readout, and an optional live status line (RoomNet's connection/RTT/loss/entities,
+  Room3D's skinning A/B readout). The 3D rooms' render toggles (outline, cel, retro, palette,
+  starfield, collision overlay, GPU skinning) now toast on-screen instead of writing to the
+  console, so a windowed run finally shows what a toggle did.
+- **Mini-game layout.** Catcher lays out from the live design bounds instead of a hardcoded
+  960x540, so the field fills the window, and its copy moved into the localization catalog.
+- **Localization.** All static showcase copy (room titles and blurbs, controls hints, tab labels,
+  section headers, captions, mini-game strings) resolves through `ShowcaseStrings.resx` (~60 new
+  entries), keeping the showcase the worked example of the catalog-first rule. Dynamic diagnostics
+  stay raw under `[LocalizationExempt]`.
+- **Room registry.** `ShowcaseApp.Rooms` entries are now `ShowcaseRoomEntry(StringId Title,
+  StringId Blurb, Func<GameScene> Factory)`, and KE_SHOWCASE_ROOM matches a case-insensitive
+  prefix of the resolved title.
+
 ## 10.127.0
 
 New KhaozEngine.Gui toast notification stack, ported from the Nullwake reference implementation: a

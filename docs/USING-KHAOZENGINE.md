@@ -776,7 +776,7 @@ quality.Update(im, focused: nav.Focused == 2);   // Enter opens the dropdown; Up
 // Pointer still works on every row regardless of focus (each overload runs the pointer path first).
 ```
 
-`KhaozEngine.Showcase`'s Settings screen (`RoomGui.cs`) is the runnable reference: pick the "Gui" room, open Settings, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
+`KhaozEngine.Showcase`'s Settings dialog (`Room2DGui.cs`) is the runnable reference: enter the "2D & GUI" room, open the "Screens & dialogs" tab, launch the Settings dialog, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
 
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
@@ -913,8 +913,8 @@ modal, and `PassUpdateThrough = true` paired with a dismissal-only `Update` retu
 consumption honest and keeps the pattern portable to screens that don't set `AlwaysReceivesInput`. The
 `ToastStack` model is NOT owned by that
 screen: the room/game ticks it with its own raw frame dt, because a `ScreenStack`'s dt can be sim-scaled while
-toasts must keep counting down at real speed regardless. `KhaozEngine.Showcase`'s `RoomGui.ToastOverlayScreen`
-is the reference implementation. Read it before copying this pattern into a game:
+toasts must keep counting down at real speed regardless. `KhaozEngine.Showcase`'s `ToastOverlayScreen`
+(`Room2DGui.cs`) is the reference implementation. Read it before copying this pattern into a game:
 
 ```csharp
 sealed class ToastOverlayScreen : Screen

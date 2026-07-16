@@ -48,7 +48,10 @@ automatically, so this is transparent to every other package.
   place: `Simple` short suffixes (1.23K, 45.6M ... up to 1e33 `Dc`, then scientific), `Scientific`, and
   `Engineering` (exponent a multiple of 3). A settable process-wide `Notation` default a game binds to its
   setting once, plus per-call notation overloads; `Format` / `FormatInt`. NaN -> "0", infinity -> "Inf",
-  culture-invariant output. A non-localizable value token: format here, compose into a localized string.
+  culture-invariant output. Magnitudes below 1 automatically gain enough decimal places to stay truthful
+  (0.05 -> "0.05", never rounds up to "0.1") unless the call explicitly asks for zero small-value decimals
+  (`FormatInt`'s integer-count contract is unaffected). A non-localizable value token: format here, compose
+  into a localized string.
 - `TimeFormatter` / `DurationStyle` - duration formatting in two shapes: `Clock` (the ticking colon clock
   `1:02:34`, rounds up to the next whole second) and `Coarse` (the two-unit summary `2h 15m`, with a
   `coarseUnits` knob). Non-finite -> "---", non-positive -> "0s", culture-invariant.

@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.118.0
+
+`NumberFormatter` fix: sub-1 magnitudes now keep truthful precision instead of rounding to a misleading digit
+(0.05 used to render "0.1", twice the real value). Patch, `KhaozEngine.Primitives` only.
+
+- Values below 1 (`abs > 0 && abs < 1`) now format with enough decimal places to show at least one truthful
+  significant digit, floored at `max(decimalsSmall, decimalsLarge)` so common sub-1 values (0.25, 0.5) simply
+  gain the same 2-decimal precision large-value mantissas already use, and extended further for smaller
+  magnitudes (0.005, 0.0005, ...) so they never silently round away to "0.00". The exponent is derived from
+  the BCL's "E0" formatter rather than `Math.Log10`, so a value that rounds up across a power-of-ten boundary
+  (0.9996 -> "1.00") reports the same exponent it will actually display, sidestepping floating-point noise at
+  exact powers of ten.
+- Unaffected: whole numbers, values at or above 1, and any call that explicitly passes `decimalsSmall: 0`
+  (notably `FormatInt`, whose zero-decimals integer-count contract is unchanged) - all keep byte-identical
+  output to before this release.
+- **Tests.** `NumberFormatterTests` +12 (0.05/0.1/0.15/0.25/0.5 truthful precision, smaller magnitudes
+  extending past the 2-decimal floor, Scientific/Engineering share the same fix, negative small values,
+  the sub-1/at-1 threshold boundary, explicit `decimalsSmall`/`decimalsLarge` as floors, the `decimalsSmall: 0`
+  opt-out incl. `FormatInt`, zero and >=1 regression pins).
+- **Consumer note (games).** Re-pin to adopt. Nullwake is the motivating consumer (precise-mode upgrade
+  deltas rendering half their real value); no other game code changes required.
+
 ## 10.117.0
 
 In-session update recheck (opt-in `RecheckInterval` + `UpdateService.Tick`) and a post-update relaunch marker

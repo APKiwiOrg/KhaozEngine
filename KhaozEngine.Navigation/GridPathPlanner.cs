@@ -135,12 +135,14 @@ public sealed class GridPathPlanner : IPathPlanner
     /// nominal one-cell cost (the source layer's <see cref="NavGrid.CellSize"/>), skipped when the
     /// link's far endpoint is not passable for the agent radius on its own layer. The heuristic is the
     /// octile distance to the goal cell while the node is on the goal's layer, and zero otherwise
-    /// (an admissible lower bound across a link, degrading the off-layer search to Dijkstra), so a
-    /// popped node is final for the ascend-to-goal case the links model. The search stops when the goal
-    /// is popped (<see cref="NavPathStatus.Complete"/>), the open set empties, or
-    /// <paramref name="budget"/>'s <see cref="PathQueryBudget.MaxExpandedNodes"/> expansions are spent.
-    /// On a non-goal stop it reconstructs to the closest-approach node (least heuristic among popped
-    /// nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
+    /// (an admissible lower bound across a link, degrading the off-layer search to Dijkstra). Off the
+    /// goal layer, the zero heuristic pins the start as the closest-approach minimum, so a cross-layer
+    /// query that reaches the goal's layer but cannot reach the goal returns Unreachable rather than
+    /// Partial (single-layer Partial behavior is unaffected). A popped node is final for the ascend-to-goal
+    /// case the links model. The search stops when the goal is popped (<see cref="NavPathStatus.Complete"/>),
+    /// the open set empties, or <paramref name="budget"/>'s <see cref="PathQueryBudget.MaxExpandedNodes"/>
+    /// expansions are spent. On a non-goal stop it reconstructs to the closest-approach node (least
+    /// heuristic among popped nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
     /// <see cref="NavPath.Unreachable"/> when that closest node is still the start.
     /// </summary>
     NavPath RunAStar(
@@ -384,7 +386,9 @@ public sealed class GridPathPlanner : IPathPlanner
 
     /// <summary>True when the step from <paramref name="a"/> to <paramref name="b"/> is an in-layer
     /// 8-neighbor move (same layer, Chebyshev distance exactly one). Anything else in a reconstructed
-    /// chain is a link crossing, since within a layer A* only ever steps to an adjacent cell.</summary>
+    /// chain is a link crossing, since within a layer A* only ever steps to an adjacent cell. Same-layer
+    /// links joining Chebyshev-adjacent cells are indistinguishable from grid steps and get smoothed like
+    /// one, which is benign because such cells are LOS-clear by construction.</summary>
     static bool IsGridStep((int Layer, int Cx, int Cz) a, (int Layer, int Cx, int Cz) b)
     {
         if (a.Layer != b.Layer)
@@ -411,9 +415,13 @@ public sealed class GridPathPlanner : IPathPlanner
     }
 
     /// <summary>Octile distance to the goal cell while the node is on the goal's layer, zero otherwise.
-    /// Zero off the goal layer is an admissible lower bound across a link (no octile estimate spans two
-    /// coordinate frames), which keeps the popped-node-is-final guarantee for a search that ascends into
-    /// the goal's layer and never leaves it, at the cost of a Dijkstra-like sweep before the crossing.</summary>
+    /// On the goal layer this heuristic is admissible only when all links move at most one cell in XZ
+    /// (as in DungeonNav stair links). A link that jumps far in XZ for its flat one-cell cost, or an
+    /// optimal path that leaves and re-enters the goal layer through such links, can cause the heuristic
+    /// to overestimate, making A* return a valid but suboptimal Complete path. Zero off the goal layer is
+    /// an admissible lower bound across a link (no octile estimate spans two coordinate frames), which
+    /// keeps the popped-node-is-final guarantee for a search that ascends into the goal's layer and never
+    /// leaves it, at the cost of a Dijkstra-like sweep before the crossing.</summary>
     static float Heuristic(int layer, int cx, int cz, int goalLayer, int goalX, int goalZ, float goalCellSize)
         => layer == goalLayer ? Octile(cx, cz, goalX, goalZ, goalCellSize) : 0f;
 

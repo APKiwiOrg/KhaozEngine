@@ -122,6 +122,9 @@ namespace KhaozEngine.Render3D
         // correctly), then drawn as a single instanced call after the water pass. Cleared each Begin().
         readonly List<ParticleSprite> _particleSprites = new();
         readonly List<ParticleSprite> _particleSorted = new();
+        // Cached delegate mapping a TextureHandle list index to its GPU texture, handed to the particle renderer's
+        // per-atlas run batching (flipbook sprites). Cached so the per-frame draw allocates no closure.
+        Func<int, IGpuTexture?>? _particleTexResolver;
         // Glowing beams (lasers/thrusters/tethers): queued in submission order, flushed as one additive draw
         // into the model FB alongside the textured billboards (depth-interleaved, so geometry occludes them).
         readonly List<BeamItem> _beamItems = new();
@@ -780,7 +783,15 @@ namespace KhaozEngine.Render3D
             _textures[i]?.Dispose();
             _textures[i] = null;
             if (i < _texBillboardSets.Count) { _texBillboardSets[i]?.Dispose(); _texBillboardSets[i] = null; }
+            // The particle renderer caches per-atlas resource sets keyed by this list index, so drop them too. A
+            // later load reusing this freed slot would otherwise bind the stale (disposed) texture.
+            _particleRenderer.InvalidateTextureSets();
         }
+
+        // Map a TextureHandle list index to its GPU texture for the particle renderer's flipbook run batching. Out
+        // of range or unloaded slots return null, so the renderer falls back to its dummy textures.
+        IGpuTexture? ResolveTextureByListIndex(int listIndex) =>
+            listIndex >= 0 && listIndex < _textures.Count ? _textures[listIndex] : null;
 
         /// <summary>Number of texture slots still holding a live GPU texture (loaded and not yet unloaded). For tests.</summary>
         internal int LiveTextureCount
@@ -2132,9 +2143,10 @@ namespace KhaozEngine.Render3D
             {
                 BuildSortedParticles();
                 BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 pRight, out Vector3 pUp);
+                _particleTexResolver ??= ResolveTextureByListIndex;
                 _frameStats.DrawCalls += _particleRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, eye, pRight, pUp,
                     EffectTimeSeconds, ParticleSoftFade, ParticleQuality, Post.BackgroundColor.R,
-                    CollectionsMarshal.AsSpan(_particleSorted));
+                    CollectionsMarshal.AsSpan(_particleSorted), _particleTexResolver);
                 _frameStats.Instances += _particleSorted.Count;
             }
 

@@ -55,11 +55,25 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _instances;
         int _capacity;
         ParticleInstance[] _packed = Array.Empty<ParticleInstance>();
-        IGpuResourceSet? _set;
+        ParticleRun[] _runs = Array.Empty<ParticleRun>();
+        // 1x1 stand-ins bound for runs with no real texture: white atlas + neutral motion (0.5, 0.5 => zero
+        // displacement). Procedural runs sample them then discard the taps (packed grid 0), so the same pipeline
+        // serves procedural and flipbook sprites with byte-identical procedural output.
+        readonly IGpuTexture _dummyAtlas;
+        readonly IGpuTexture _dummyMv;
+        // Per-atlas-pair resource sets, keyed by (atlas list index, motion list index) with -1 for the dummy. Each
+        // set also references res.DepthColorTex, so the whole cache is dropped when the render target is rebound
+        // (generation bump) or a referenced texture is unloaded.
+        readonly Dictionary<(int atlas, int mv), IGpuResourceSet> _sets = new();
         RenderResources? _bound;
         int _boundGen;
 
         static readonly uint InstanceStride = (uint)Unsafe.SizeOf<ParticleInstance>();
+
+        /// <summary>A contiguous slice of the sorted sprite stream sharing one atlas pair, drawn as one instanced
+        /// call. <see cref="AtlasIndex"/> / <see cref="MotionIndex"/> are TextureHandle list indices, or -1 for the
+        /// dummy (procedural) texture.</summary>
+        public readonly record struct ParticleRun(int AtlasIndex, int MotionIndex, int Start, int Count);
 
         /// <summary>Premultiplied-alpha compositing: out = src + dst * (1 - src.a). The fragment emits
         /// premultiplied rgb and (for additive sprites) alpha 0, so this one state serves both blend modes.</summary>
@@ -73,12 +87,28 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.ParticleVert, ShaderSources.ParticleFrag);
+            // Binding order matches the fragment shader exactly: Frame(0), DepthTex(1), Samp(2), MotionTex(3),
+            // AtlasTex(4), AtlasSamp(5). Motion precedes atlas so the Metal static-sample order (binding order) lets
+            // the two-tap warp read the motion vectors before offsetting the atlas taps.
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("MotionTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("AtlasTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("AtlasSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
             _frameUbo = f.CreateBuffer(new GpuBufferDescription(192, GpuBufferUsage.UniformBuffer));
+            _dummyAtlas = MakeSolid1x1(f, gd, 255, 255, 255, 255);
+            _dummyMv = MakeSolid1x1(f, gd, 128, 128, 0, 255);
             _pipeline = Pipe(f, colorOutput);
+        }
+
+        // 1x1 RGBA8 texture of a single colour, no mip chain. Backs the dummy atlas + neutral motion sheet.
+        static IGpuTexture MakeSolid1x1(IGpuResourceFactory f, IGpuDevice gd, byte r, byte g, byte b, byte a)
+        {
+            IGpuTexture tex = f.CreateTexture(new GpuTextureDescription(1u, 1u, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled, 1u));
+            gd.UpdateTexture(tex, new byte[] { r, g, b, a }, 0, 0, 1, 1);
+            return tex;
         }
 
         /// <summary>Rebuild the pipeline for a new color-target output description (e.g. the target became
@@ -101,7 +131,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _shaders,
-                // One instance-rate vertex stream carrying the five per-sprite vec4 attributes (locations 0..4,
+                // One instance-rate vertex stream carrying the six per-sprite vec4 attributes (locations 0..5,
                 // no holes, every attribute consumed by the vertex stage: the D3D11 contiguous-input contract).
                 VertexLayouts = new List<GpuVertexLayoutDescription>
                 {
@@ -115,19 +145,73 @@ namespace KhaozEngine.Render3D.Rendering
                             new GpuVertexElement("IColor", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IShape", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IExtra", GpuVertexElementFormat.Float4),
+                            new GpuVertexElement("IFlip", GpuVertexElementFormat.Float4),
                         }),
                 },
                 Outputs = outputs,
             });
 
-        void BindTargets(RenderResources res)
+        // Drop the per-atlas set cache when the render target rebinds. Generation-based guard (not dimensions): a
+        // same-size recreate (MSAA/bloom/HDR toggle) also invalidates DepthColorTex, see RenderResources.Generation.
+        void EnsureBound(RenderResources res)
         {
-            // Generation-based guard (not dimensions): a same-size recreate (MSAA/bloom/HDR toggle) also
-            // invalidates DepthColorTex, see RenderResources.Generation.
-            if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
-            _set?.Dispose();
-            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _frameUbo, res.DepthColorTex, _gd.PointSampler));
+            if (ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
+            ClearSets();
             _bound = res; _boundGen = res.Generation;
+        }
+
+        void ClearSets()
+        {
+            foreach (var kv in _sets) kv.Value.Dispose();
+            _sets.Clear();
+        }
+
+        /// <summary>Drop every cached per-atlas resource set. Scene3D calls it when a texture the sets may reference
+        /// is unloaded, so a later load reusing the freed slot index cannot bind a stale texture.</summary>
+        public void InvalidateTextureSets() => ClearSets();
+
+        // Get (creating + caching on first use) the resource set for one atlas pair. -1 indices (or a resolver that
+        // returns null for a since-unloaded slot) fall back to the dummy textures. Binding order matches _layout.
+        IGpuResourceSet SetFor(RenderResources res, int atlasIdx, int mvIdx, Func<int, IGpuTexture?> resolveTexture)
+        {
+            var key = (atlasIdx, mvIdx);
+            if (_sets.TryGetValue(key, out IGpuResourceSet? set)) return set;
+            IGpuTexture atlas = (atlasIdx < 0 ? null : resolveTexture(atlasIdx)) ?? _dummyAtlas;
+            IGpuTexture mv = (mvIdx < 0 ? null : resolveTexture(mvIdx)) ?? _dummyMv;
+            set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
+                _layout, _frameUbo, res.DepthColorTex, _gd.PointSampler, mv, atlas, _gd.LinearSampler));
+            _sets[key] = set;
+            return set;
+        }
+
+        static (int atlas, int mv) KeyOf(in ParticleSprite s)
+        {
+            if (!s.Flipbook.IsActive) return (-1, -1);
+            int mv = s.Flipbook.MotionTexture.IsValid ? s.Flipbook.MotionTexture.ListIndex : -1;
+            return (s.Flipbook.Texture.ListIndex, mv);
+        }
+
+        /// <summary>Split the already back-to-front sorted stream into contiguous runs sharing one atlas pair,
+        /// WITHOUT reordering (the global sort must survive). Procedural sprites carry the dummy pair (-1, -1) and
+        /// merge with adjacent procedural sprites, so an all-procedural frame yields exactly one run. Writes runs
+        /// into <paramref name="runs"/> (size it to at least the sprite count) and returns the run count.</summary>
+        public static int BuildRuns(ReadOnlySpan<ParticleSprite> sorted, Span<ParticleRun> runs)
+        {
+            int count = 0;
+            int i = 0;
+            while (i < sorted.Length)
+            {
+                (int atlas, int mv) = KeyOf(sorted[i]);
+                int start = i++;
+                while (i < sorted.Length)
+                {
+                    (int a, int m) = KeyOf(sorted[i]);
+                    if (a != atlas || m != mv) break;
+                    i++;
+                }
+                runs[count++] = new ParticleRun(atlas, mv, start, i - start);
+            }
+            return count;
         }
 
         void EnsureCapacity(int spriteCount)
@@ -197,15 +281,19 @@ namespace KhaozEngine.Render3D.Rendering
             return (a, a + 1, clamped - a);
         }
 
-        /// <summary>Draw the (already back-to-front sorted) sprites as one instanced call into ColorDepthFB.
-        /// Returns the number of GPU draw calls issued (0 or 1). Caller guarantees the scene depth is resolved
+        /// <summary>Draw the (already back-to-front sorted) sprites into ColorDepthFB. The stream is split into
+        /// contiguous runs by atlas pair and each run is one instanced call into the shared packed buffer (base
+        /// instance = run start), so an all-procedural frame is still a single draw with the dummy set. Returns the
+        /// number of GPU draw calls issued (one per run). <paramref name="resolveTexture"/> maps a TextureHandle list
+        /// index to its GPU texture (null for a since-unloaded slot). Caller guarantees the scene depth is resolved
         /// (the fragment samples <see cref="RenderResources.DepthColorTex"/> for the soft fade).</summary>
         public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, Vector3 eye, Vector3 right, Vector3 up,
-            float timeSeconds, float softFade, ParticleQuality quality, float backgroundDepthMarker, ReadOnlySpan<ParticleSprite> sorted)
+            float timeSeconds, float softFade, ParticleQuality quality, float backgroundDepthMarker,
+            ReadOnlySpan<ParticleSprite> sorted, Func<int, IGpuTexture?> resolveTexture)
         {
             if (sorted.Length == 0) return 0;
             EnsureCapacity(sorted.Length);
-            BindTargets(res);
+            EnsureBound(res);
 
             Matrix4x4.Invert(viewProj, out var inv);
             var frame = new FrameUniforms
@@ -222,17 +310,26 @@ namespace KhaozEngine.Render3D.Rendering
             for (int i = 0; i < sorted.Length; i++) _packed[i] = PackInstance(sorted[i]);
             cl.UpdateBuffer(_instances!, 0, ((ReadOnlySpan<ParticleInstance>)_packed).Slice(0, sorted.Length));
 
+            if (_runs.Length < sorted.Length) _runs = new ParticleRun[sorted.Length];
+            int runCount = BuildRuns(sorted, _runs);
+
             cl.SetFramebuffer(res.ColorDepthFB);
             cl.SetPipeline(_pipeline);
-            cl.SetGraphicsResourceSet(0, _set!);
             cl.SetVertexBuffer(0, _instances!);
-            cl.Draw(6, (uint)sorted.Length, 0, 0);
-            return 1;
+            for (int r = 0; r < runCount; r++)
+            {
+                ParticleRun run = _runs[r];
+                cl.SetGraphicsResourceSet(0, SetFor(res, run.AtlasIndex, run.MotionIndex, resolveTexture));
+                cl.Draw(6, (uint)run.Count, 0, (uint)run.Start);
+            }
+            return runCount;
         }
 
         public void Dispose()
         {
-            _set?.Dispose();
+            ClearSets();
+            _dummyAtlas.Dispose();
+            _dummyMv.Dispose();
             _pipeline.Dispose();
             _layout.Dispose(); _shaders.Dispose();
             _frameUbo.Dispose();

@@ -182,5 +182,69 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(blend, p.Flip.Z, 5);
             Assert.Equal(ParticleRenderer.PackFlipGrid(4, 4, 1f), p.Flip.W);
         }
+
+        // A procedural (no-flipbook) sprite carries the dummy atlas pair (-1, -1).
+        static ParticleSprite Procedural() => Sprite();
+
+        // A flipbook sprite on the atlas at the given list index (no motion sheet unless mvIndex >= 0).
+        static ParticleSprite Flip(int atlasIndex, int mvIndex = -1)
+        {
+            ParticleSprite s = Sprite();
+            Scene3D.TextureHandle mv = mvIndex >= 0 ? new Scene3D.TextureHandle(mvIndex) : default;
+            s.Flipbook = new ParticleFlipbook(new Scene3D.TextureHandle(atlasIndex), 4, 4, mv);
+            return s;
+        }
+
+        static ParticleRenderer.ParticleRun[] Runs(params ParticleSprite[] sorted)
+        {
+            var buf = new ParticleRenderer.ParticleRun[sorted.Length];
+            int n = ParticleRenderer.BuildRuns(sorted, buf);
+            return buf[..n];
+        }
+
+        [Fact]
+        public void BuildRuns_AllProcedural_IsOneDummyRun()
+        {
+            ParticleRenderer.ParticleRun[] runs = Runs(Procedural(), Procedural(), Procedural());
+            Assert.Single(runs);
+            Assert.Equal(new ParticleRenderer.ParticleRun(-1, -1, 0, 3), runs[0]);
+        }
+
+        [Fact]
+        public void BuildRuns_Empty_IsNoRuns()
+        {
+            Assert.Empty(Runs());
+        }
+
+        [Fact]
+        public void BuildRuns_InterleavedAtlasProcAtlas_SplitsThreePreservingOrder()
+        {
+            // A / proc / A must NOT merge the two A runs: reordering across the procedural run would break the
+            // global back-to-front sort.
+            ParticleRenderer.ParticleRun[] runs = Runs(Flip(5), Procedural(), Flip(5));
+            Assert.Equal(3, runs.Length);
+            Assert.Equal(new ParticleRenderer.ParticleRun(5, -1, 0, 1), runs[0]);
+            Assert.Equal(new ParticleRenderer.ParticleRun(-1, -1, 1, 1), runs[1]);
+            Assert.Equal(new ParticleRenderer.ParticleRun(5, -1, 2, 1), runs[2]);
+        }
+
+        [Fact]
+        public void BuildRuns_AdjacentSameAtlas_Merge()
+        {
+            ParticleRenderer.ParticleRun[] runs = Runs(Flip(5), Flip(5), Flip(2), Flip(2), Flip(2));
+            Assert.Equal(2, runs.Length);
+            Assert.Equal(new ParticleRenderer.ParticleRun(5, -1, 0, 2), runs[0]);
+            Assert.Equal(new ParticleRenderer.ParticleRun(2, -1, 2, 3), runs[1]);
+        }
+
+        [Fact]
+        public void BuildRuns_DifferentMotionSheet_SameAtlas_Splits()
+        {
+            // Same atlas but different motion pairing is a different key, so the runs split.
+            ParticleRenderer.ParticleRun[] runs = Runs(Flip(5, mvIndex: 1), Flip(5, mvIndex: 3));
+            Assert.Equal(2, runs.Length);
+            Assert.Equal(new ParticleRenderer.ParticleRun(5, 1, 0, 1), runs[0]);
+            Assert.Equal(new ParticleRenderer.ParticleRun(5, 3, 1, 1), runs[1]);
+        }
     }
 }

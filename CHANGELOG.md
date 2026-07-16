@@ -5,6 +5,60 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.126.0
+
+Ground-up particle/VFX modernization: shaped procedural sprites with soft depth fade and velocity
+stretch in a new Render3D particle pass, curve-driven emission-shaped sim in KhaozEngine.Particles,
+an authored-effect scheduling layer, and a new KhaozEngine.Particles.Render3D adapter package with
+eight VFX presets, all fully backward compatible. Design record: `docs/PARTICLES-VFX-DESIGN-2026-07-16.md`.
+
+- **KhaozEngine.Particles (additive).** `EmitterConfig` gains curve-driven life (`ParticleCurve`
+  with Linear/EaseIn/EaseOut/EaseInOut/Flash/FadeInOut/Pulse kinds remapping the existing
+  start-to-end lerp), emission shapes (`EmissionShape` Point/Sphere/Hemisphere/Disc with
+  `ShapeRadius` + `ShapeShell`, a ring is Disc at shell 1), `ParticleVelocityMode.Radial` (outward
+  from the origin for explosions and novas), per-particle `SizeVariance`, random-between-two
+  gradients (`VaryColor` + `StartColorB`/`EndColorB`), a 3-stop gradient (`UseMidColor` +
+  `MidColor`), spin (`SpinMin`/`SpinMax`, `RandomStartRotation`), and deterministic curl-noise
+  turbulence (`TurbulenceStrength`/`TurbulenceFrequency` over the new hash-based
+  `ParticleNoise.Curl`). `Particle` gains `Rotation` and `Seed` (hashed from a monotonic emit
+  counter, no rng draw). Every new field zero-defaults to the exact legacy behavior, and a test
+  pins the historical per-particle RNG draw sequence for legacy configs.
+- **Trails and authored effects (Particles).** `ParticleSystem` grows an opt-in per-particle
+  motion-history ring (`trailSamples` ctor parameter, `TrailSampleInterval`, `GetTrail`,
+  `ParticleTrailPoint`) that survives swap-remove recycling. A new scheduling layer plays authored
+  multi-phase effects headlessly: `ParticleEffectPhase` (config, delay, duration, rate, burst,
+  pool capacity, trail depth, and a direction-rotated `OriginOffset`), `ParticleEffect`, and
+  `ParticleEffectPlayer` (bounded concurrent instances, one deterministic pool per phase, `Play`
+  rotates each phase's emitter axis from +Y onto the played direction).
+- **KhaozEngine.Render3D (additive): modern particle pass.** New `Scene3D.DrawParticle`/
+  `DrawParticles` queue `ParticleSprite`s (position, velocity, size, rotation, color,
+  `ParticleShape`, shape param, life norm, seed, stretch, blend, `ParticleOrientation`, per-sprite
+  `SoftFadeScale`) drawn as ONE premultiplied instanced draw after the water pass and before the
+  post chain, back-to-front sorted so alpha smoke and additive glow interleave correctly, additive
+  energy feeds bloom, and the depth test (no write) occludes sprites against geometry. Six
+  procedural SDF/noise shapes (SoftGlow, Ember, Spark, Wisp with life-driven noise erosion, Ring,
+  Star), velocity-aligned stretch in the vertex stage, camera-facing or flat-ground orientation
+  (shockwave rings lie on the floor), and soft particles via the decal pass's depth-reconstruction
+  recipe with a background-clear marker so sprites never fade against empty sky. Host knobs:
+  `Scene3D.ParticleQuality` (Full/Reduced, decal-knob pattern) and `Scene3D.ParticleSoftFade`.
+  One uniform buffer per pipeline and contiguous always-consumed instanced attributes per the
+  cross-backend contracts. The untextured `DrawBillboard` overlay is untouched and documented as
+  the legacy path (crisp, unoccluded, post-post).
+- **KhaozEngine.Particles.Render3D (NEW adapter package).** Turn-key glue in the `Game3D`
+  umbrella: `ParticleLook` (shape, param, blend, stretch, orientation, soft-fade scale, trail
+  forwarding to `DrawTrail`, budgeted light links via `AddLight`), `Scene3D.DrawParticles(system,
+  look)` and `DrawEffect(player, looks)` extensions (one shared light budget across phases), and
+  `VfxPresets` with eight authored effects: FireBurst, FrostShatter, HealMotes, EmberDrift,
+  SparkShower, Shockwave, SmokePlume, ArcaneSparkle.
+- **Tests and goldens.** 90+ new headless tests (curves, shapes, variance, turbulence
+  determinism, trail ring integrity under swap-remove, effect scheduling, legacy RNG pin, pack
+  lanes, presets), the `ParticleVert`/`ParticleFrag` pair in the device-free
+  `ShaderSourceValidationTests`, human-reviewed `ParticleShowcaseGpuTests` PNG dumps, and
+  `Golden3D_ParticlesModern` baked and verified green on metal, direct3d11, and vulkan.
+- **Compatibility.** Purely additive across all three packages. Existing consumers compile and
+  render identically (all pre-existing goldens pass unchanged). Cross-version RNG stream identity
+  for the sim was never promised and is not preserved (the in-build determinism contract is).
+
 ## 10.125.0
 
 A full editing surface for scatter overrides (`MapScatterOverrideDoc`) in both `KhaozEngine.MapEditor`

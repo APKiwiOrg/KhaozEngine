@@ -44,7 +44,9 @@ configured base host), and caps both the manifest and each downloaded file at a 
 - **`UpdateService`** - the check -> download -> apply state machine with resumable staging. Process
   control (shim launch, exit) is injectable, so the whole thing is headless-testable. The individual
   `CheckForUpdateAsync` / `StartDownloadAsync` / `ApplyUpdate` steps are for a fire-and-forget overlay;
-  for a startup gate see `EnsureUpToDateAsync` below.
+  for a startup gate see `EnsureUpToDateAsync` below. Opt into periodic in-session re-checking with
+  `RecheckInterval` + `Tick(dt)` ("In-session recheck" below), and read `PostUpdateRelaunch` to detect a
+  boot that follows an auto-applied update ("Detecting a post-update relaunch" below).
 - **`EnsureUpToDateAsync`** - the composed startup gate. One awaitable call, run ONCE before connecting,
   that self-heals an out-of-date client: if a newer signed build exists it downloads + verifies + applies +
   relaunches (the process exits into the new version); otherwise it returns an `UpdateGateResult` to branch
@@ -257,6 +259,57 @@ a test with a non-exiting `ExitProcess` hook is the only place you observe it. `
 non-fatal by design: a startup gate must never block forever on a bad feed, so it falls through and lets the game
 continue on the current build. Pair it with the `KhaozEngine.NetWorld` connect-time version handshake as the
 backstop for the skew it could not prevent.
+
+## In-session recheck (long-running games)
+
+A launch-time check misses a release that lands while the game is still open, which matters for a session
+that stays up for hours. Opt in by setting `UpdateServiceOptions.RecheckInterval` (a `TimeSpan?`, default
+null = off) and driving the clock with `UpdateService.Tick(dtSeconds)` once per frame from the game loop,
+next to the existing `UpdateOverlayActions.AutoAdvanceRequired` call:
+
+```csharp
+using var updates = new UpdateService(new UpdateServiceOptions
+{
+    // ...the usual Source / CurrentVersion / AppDataDir / TrustedPublicKeys...
+    RecheckInterval = TimeSpan.FromMinutes(30),   // opt-in. null (default) keeps periodic re-checking off
+});
+
+// once per frame, on the game-loop thread:
+updates.Tick(dt);
+UpdateOverlayActions.AutoAdvanceRequired(updates);
+```
+
+`Tick` accrues time only while the service is `Idle`. Any other state (an in-flight, offered, downloading,
+ready, applying, or failed update) zeroes the clock, so a full interval of quiet Idle time is required
+before a recheck fires rather than an instant re-probe. On reaching the interval it starts one
+fire-and-forget `CheckForUpdateAsync` with the usual offline-safe semantics (a down feed just rests back at
+Idle). A manual `CheckForUpdateAsync` also resets the clock, so a gate-driven or player-driven check is not
+double-fired a moment later. Call `Tick` and `CheckForUpdateAsync` from the same game-loop thread: the
+clock is owned by that thread and is allocation-free while accumulating. A negative or NaN `dtSeconds`
+counts as zero. Leaving `RecheckInterval` null (or non-positive) makes `Tick` a no-op, so existing
+behaviour is unchanged.
+
+## Detecting a post-update relaunch
+
+After a successful apply the shim writes an `update-applied.json` marker (the applied `Version` and the UTC
+`AppliedAtUtc`) into the game's app-data dir, just before it relaunches. The `UpdateService` constructor
+reads that marker once and deletes it, exposing it as the nullable `PostUpdateRelaunch`
+(`PostUpdateRelaunchInfo`). It is non-null only on the boot that immediately follows an auto-applied
+update, and null on an ordinary launch (and on any later launch, since the marker is already gone). The
+marker is written only after the update commits (new binaries verified, manifest installed), never on a
+rollback or a deferred apply, and the write is best-effort so a marker-write failure never fails or rolls
+back the committed update.
+
+Use it to suppress a boot-time interruption when the version gap is small, e.g. skip a "welcome back" or
+"what's new" prompt right after the game restarted itself:
+
+```csharp
+if (updates.PostUpdateRelaunch is { } applied)
+{
+    // this boot is an auto-relaunch into applied.Version (completed at applied.AppliedAtUtc)
+    SuppressWelcomeBackPrompt();
+}
+```
 
 ## The updater shim
 

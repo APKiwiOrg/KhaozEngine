@@ -387,6 +387,23 @@ screen shows it with retry / quit affordances). The server-status min-version ga
 `DrawBackground` hook). All player-facing copy lives in `BootStrings` (`boot.*` keys) with a built-in English
 fallback, so add those keys to your catalog to localize.
 
+### In-session update recheck + post-update relaunch (`UpdateService`)
+
+Two opt-in `UpdateService` conveniences for a long-running game, both driven from the game loop. Full
+mechanics live in [UPDATER.md](UPDATER.md).
+
+- **Periodic recheck.** A launch-time check misses a release that lands mid-session. Set
+  `UpdateServiceOptions.RecheckInterval` (a `TimeSpan?`, null by default = off) and call
+  `updates.Tick(dt)` once per frame next to `UpdateOverlayActions.AutoAdvanceRequired(updates)`. `Tick`
+  accrues time only while the service is `Idle` (any active flow zeroes it), fires one offline-safe
+  `CheckForUpdateAsync` on reaching the interval, and no-ops when the interval is null. Call `Tick` and
+  `CheckForUpdateAsync` from the same thread (a manual check resets the clock).
+- **Post-update relaunch marker.** After the shim applies an update and relaunches, the boot's
+  `UpdateService` exposes a non-null `PostUpdateRelaunch` (`PostUpdateRelaunchInfo`, with `Version` and
+  `AppliedAtUtc`), read once from an `update-applied.json` marker and then deleted, so it is null on every
+  ordinary launch. Check it at startup to suppress a "welcome back" / "what's new" prompt on a boot the
+  game restarted itself into.
+
 ### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam

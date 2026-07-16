@@ -77,7 +77,10 @@ standable props become walkable without leaving a single `NavGrid` layer.
 `TerrainSurfaceProvider` is the shipped default: analytic terrain height raised to any `WorldSurfaces`
 prop top covering the point, so a creature stands on the prop instead of routing around it. A prop top
 also rescues ground the slope gate would otherwise block, since the agent stands on the prop, not the
-hillside. `DelegateSurfaceProvider` wraps a plain delegate for a game that wants to supply its own source,
+hillside. Note that `TerrainSurfaceProvider` always reports open-sky headroom
+(`float.PositiveInfinity`), so with the default provider the `agentHeight` half of the rule never blocks
+a cell. Real vertical clearance takes effect only with a game-supplied provider that reports actual
+headroom. `DelegateSurfaceProvider` wraps a plain delegate for a game that wants to supply its own source,
 for example a downward physics raycast, without declaring a named class. That physics-probe source is a
 game-implemented provider over the game's own `IPhysicsWorld`: `KhaozEngine.Navigation` reads it only
 through the `INavSurfaceProvider` interface and takes no dependency on `KhaozEngine.Physics`.

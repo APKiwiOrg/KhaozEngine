@@ -17,7 +17,6 @@ across bridges, overhangs, and roofed interiors where two walkable surfaces coex
 Auto-extract layered walkable surfaces plus inter-layer links from the physics world. `NavSpace`
 layers, links, and cross-layer planning already shipped and are proven by the dungeon adapter, so the
 remaining work is the layered-surface extraction bake and link generation at climbable transitions.
-Gets its own design spec + plan when scheduled.
 
 ### 2. Physics: ragdolls and vehicles (pull-gated)
 

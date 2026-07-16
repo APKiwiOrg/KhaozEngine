@@ -3002,7 +3002,9 @@ NavGrid grid = NavGridBaker.BakeOverworldSteps(
 
 `TerrainSurfaceProvider` is the shipped `INavSurfaceProvider`: analytic terrain height raised to any
 `WorldSurfaces` prop top covering the point, so a creature stands on the prop instead of routing around
-it. A game that wants a different surface source (a downward physics raycast against its own
+it. It always reports open-sky headroom, so with the default provider `agentHeight` never blocks a cell.
+Real vertical clearance takes effect only with a game-supplied provider that reports actual headroom.
+A game that wants a different surface source (a downward physics raycast against its own
 `IPhysicsWorld`, for example) implements `INavSurfaceProvider` itself, or wraps a delegate in
 `DelegateSurfaceProvider`. Either way `KhaozEngine.Navigation` reads the surface only through the
 interface and never takes a dependency on `KhaozEngine.Physics`. The planner and follower below are

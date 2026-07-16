@@ -9,7 +9,7 @@ metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the p
 
 Step-aware overworld navigation bake: `KhaozEngine.Navigation` gets a per-cell surface height field and
 a rise-within-StepHeight walkability rule, so ramps, staircases, and low standable props are walkable
-without leaving the flat single-layer grid. Closes the standable-top-props non-goal. Design record:
+without leaving a single `NavGrid` layer. Closes the standable-top-props non-goal. Design record:
 `docs/NAV-STEP-SURFACES-DESIGN.md`.
 
 - **KhaozEngine.Navigation (additive).** `INavSurfaceProvider` (`TrySample(x, z, out height, out
@@ -17,7 +17,9 @@ without leaving the flat single-layer grid. Closes the standable-top-props non-g
   terrain, plus `DelegateSurfaceProvider` for a game that wants to supply one without a named class. The
   default implementation, `TerrainSurfaceProvider`, is analytic terrain raised to any `WorldSurfaces` prop
   top covering the point, so a creature stands on a low rock, ramp, or platform instead of routing around
-  it. `NavGrid.FromSurfaces` bakes a grid from a per-cell `NavSurfaceSample` (standable, height, headroom),
+  it. `TerrainSurfaceProvider` always reports open-sky headroom, so the `agentHeight` half of the rule
+  only takes effect with a game-supplied provider that reports real headroom.
+  `NavGrid.FromSurfaces` bakes a grid from a per-cell `NavSurfaceSample` (standable, height, headroom),
   folding the rise-within-StepHeight-plus-headroom rule into the blocked mask, and records the per-cell
   surface height (`NavGrid.SurfaceHeightAt`, `NavGrid.HasSurfaceHeights`). `NavGridBaker.BakeOverworldSteps`
   wires it end to end: hand it an `INavSurfaceProvider`, a step height, and an agent height, and it bakes

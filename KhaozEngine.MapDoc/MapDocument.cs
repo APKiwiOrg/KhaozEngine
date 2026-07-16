@@ -132,6 +132,12 @@ public sealed class MapExclusion
 /// applies to every scatter layer. First matching override wins (document order).</summary>
 public sealed class MapScatterOverrideDoc
 {
+    /// <summary>Optional display name, unique among scatter overrides when set (validator-enforced). Null or
+    /// empty means unnamed, and the editor falls back to an index-based label ("scatterOverride[i]"). Serialized
+    /// only when set: the document's global WhenWritingNull option omits a null Name, so an unnamed override
+    /// does not bloat every document with an empty name key. A named override fails schema validation on
+    /// pre-this-version engines, since the schema item is closed (additionalProperties: false).</summary>
+    public string? Name { get; set; }
     public MapShapeDoc? Shape { get; set; }
     public float DensityMultiplier { get; set; } = 1f;
     public List<MapPropKind>? Kinds { get; set; }

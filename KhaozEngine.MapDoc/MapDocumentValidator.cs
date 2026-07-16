@@ -52,11 +52,14 @@ public static class MapDocumentValidator
             CheckLayerRefs(e.Layers, layerNames, $"exclusions[{i}]", errors);
         }
 
+        var scatterOverrideNames = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < doc.ScatterOverrides.Count; i++)
         {
             MapScatterOverrideDoc o = doc.ScatterOverrides[i];
             if (o.Shape is null) errors.Add($"scatterOverrides[{i}]: shape is required.");
             if (o.DensityMultiplier < 0f) errors.Add($"scatterOverrides[{i}]: densityMultiplier must be >= 0.");
+            if (!string.IsNullOrEmpty(o.Name) && !scatterOverrideNames.Add(o.Name))
+                errors.Add($"duplicate scatter override name '{o.Name}'.");
             CheckLayerRefs(o.Layers, layerNames, $"scatterOverrides[{i}]", errors);
         }
 

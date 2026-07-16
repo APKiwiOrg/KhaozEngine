@@ -99,5 +99,55 @@ namespace KhaozEngine.Tests.MapDoc
 
             Assert.Empty(MapDocumentValidator.Validate(doc, registry));
         }
+
+        [Fact]
+        public void ScatterOverrideName_RoundTripsAndPassesSchema()
+        {
+            var doc = MapDocumentFileTests.SampleDoc();
+            doc.ScatterOverrides[0].Name = "low-density-band";
+
+            string json = MapDocumentFile.SaveText(doc);
+            var back = MapDocumentFile.LoadText(json);
+            Assert.Equal("low-density-band", back.ScatterOverrides[0].Name);
+
+            ValidationReport report = JsonSchemaValidator.Validate(json, MapDocumentSchema.GetJson());
+            Assert.True(report.IsValid, string.Join("\n", report.Errors));
+        }
+
+        [Fact]
+        public void UnnamedScatterOverride_OmitsNameFromJson()
+        {
+            var doc = MapDocumentFileTests.SampleDoc();
+            string json = MapDocumentFile.SaveText(doc);
+
+            JsonNode node = JsonNode.Parse(json)!;
+            foreach (JsonNode? scatterOverride in node["scatterOverrides"]!.AsArray())
+                Assert.False(scatterOverride!.AsObject().ContainsKey("name"), "unnamed scatter override must omit the name key");
+        }
+
+        [Fact]
+        public void DuplicateScatterOverrideNames_FailValidation()
+        {
+            var registry = MapDocRegistry.CreateDefault();
+            var doc = MapDocumentFileTests.SampleDoc();
+            doc.ScatterOverrides[0].Name = "wetland";
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc
+            {
+                Shape = new DiscShapeDoc { CenterX = 5f, CenterZ = 5f, Radius = 3f },
+                Name = "wetland",
+            });
+
+            Assert.Contains(MapDocumentValidator.Validate(doc, registry), e => e.Contains("wetland"));
+        }
+
+        [Fact]
+        public void EmptyScatterOverrideNames_DoNotCollide()
+        {
+            var registry = MapDocRegistry.CreateDefault();
+            var doc = MapDocumentFileTests.SampleDoc();
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 5f, CenterZ = 5f, Radius = 3f } });
+
+            Assert.Empty(MapDocumentValidator.Validate(doc, registry));
+        }
     }
 }

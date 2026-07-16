@@ -7,11 +7,11 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
 
-/// <summary>The active editing tool. <see cref="Select"/> drives gizmo gestures on the selection; the place
-/// modes ground-snap a click into an Add command; the draw modes rubber-band a disc (click-drag) or rect
-/// (shift-drag) into an exclusion or a region; <see cref="BakeRegion"/> drags a rect on the ground to freeze
-/// a scatter layer into placements; <see cref="EditFeature"/> click-places a default-parameterized terrain
-/// feature of the selected type at the ground hit.</summary>
+/// <summary>The active editing tool. <see cref="Select"/> drives gizmo gestures on the selection. The place
+/// modes ground-snap a click into an Add command. The draw modes rubber-band a disc (click-drag) or rect
+/// (shift-drag) into an exclusion, a region, or a scatter override. <see cref="BakeRegion"/> drags a rect on the
+/// ground to freeze a scatter layer into placements. <see cref="EditFeature"/> click-places a default-parameterized
+/// terrain feature of the selected type at the ground hit.</summary>
 public enum EditorToolMode
 {
     /// <summary>Pick + transform-gizmo drag on the current selection.</summary>
@@ -31,6 +31,10 @@ public enum EditorToolMode
     /// <summary>Drag a rect on the ground to freeze <see cref="EditorToolController.BakeLayer"/>'s scatter
     /// into placements. One shot: a completed bake returns to <see cref="Select"/>.</summary>
     BakeRegion,
+    /// <summary>Rubber-band a scatter override shape (disc on drag, rect on shift-drag), then select the new
+    /// override. Appended last so the index-based toolbar cast (<c>(EditorToolMode)ActiveIndex</c>) keeps every
+    /// prior mode's index.</summary>
+    DrawScatterOverride,
 }
 
 /// <summary>Per-frame editor input, GPU-free and immutable: the pick ray (origin plus a caller-normalized
@@ -110,9 +114,10 @@ internal enum GizmoAffordance
 /// <summary>The GPU-free per-frame editing policy: it reads the pick ray + pointer/keyboard edges from an
 /// <see cref="EditorFrameInput"/> and the <see cref="Field"/> and emits reversible commands through the
 /// <see cref="EditorDocument"/> choke point. Select mode picks the document (or grabs a transform-gizmo handle and
-/// coalesces the drag into one undo step, sealed on release); the place modes ground-snap a click into an Add
-/// command; the draw modes rubber-band a disc or rect into an exclusion or a region. Escape cancels any gesture and
-/// returns to Select; Delete removes the selection. Holds no GPU state, so the whole surface is headless-testable.
+/// coalesces the drag into one undo step, sealed on release). The place modes ground-snap a click into an Add
+/// command. The draw modes rubber-band a disc or rect into an exclusion, a region, or a scatter override. Escape
+/// cancels any gesture and returns to Select, Delete removes the selection. Holds no GPU state, so the whole
+/// surface is headless-testable.
 /// </summary>
 public sealed class EditorToolController
 {
@@ -230,9 +235,9 @@ public sealed class EditorToolController
     /// Defaults to everything pickable, and the scene points it at its <see cref="EditorVisibility.IsElementVisible"/>.</summary>
     public Func<SelectionKind, string, bool> IsVisible { get; set; } = static (_, _) => true;
 
-    /// <summary>Invoked with (kind, index) right after a Feature or Exclusion delete shrinks its list, so a
-    /// caller (the scene, wired to <see cref="EditorVisibility.RemoveIndex"/>) can drop that index's hide entry
-    /// and shift every later hidden index down by one, keeping a hide glued to the surviving elements'
+    /// <summary>Invoked with (kind, index) right after a Feature, Exclusion, or ScatterOverride delete shrinks its
+    /// list, so a caller (the scene, wired to <see cref="EditorVisibility.RemoveIndex"/>) can drop that index's hide
+    /// entry and shift every later hidden index down by one, keeping a hide glued to the surviving elements'
     /// identities. Never invoked for the id/name-keyed kinds (Placement/Spawn/Region), whose hide keys need no
     /// index remap on delete. Optional (null default), so a headless controller test that never wires this just
     /// skips the notification.</summary>
@@ -245,7 +250,8 @@ public sealed class EditorToolController
     public bool IsDrawing => _drawing;
 
     /// <summary>A one-line, mode-specific hint for the active tool, folding in <see cref="PlaceKind"/> and
-    /// <see cref="SpawnArchetype"/> where they apply. The one-shot draw tools (exclusion, region, bake) say so.
+    /// <see cref="SpawnArchetype"/> where they apply. The one-shot draw tools (exclusion, region, scatter override,
+    /// bake) say so.
     /// The scene renders this alongside the mode name in the status strip. Developer-tool text, so it is a raw
     /// string (the editor is not player-facing) and carries no em / en dashes or semicolons.</summary>
     public string ModeHint => _mode switch
@@ -259,6 +265,7 @@ public sealed class EditorToolController
         EditorToolMode.DrawRegion => "Draw region. Drag out a named gameplay region. One shot.",
         EditorToolMode.EditFeature => "Place feature. Click terrain to add a " + PlaceFeatureType + ". One shot.",
         EditorToolMode.BakeRegion => "Bake region. Drag a rect to freeze scatter into placements. One shot.",
+        EditorToolMode.DrawScatterOverride => "Draw scatter override. Drag a disc, shift-drag a rect, tweaks its density and kinds. One shot.",
         _ => _mode.ToString(),
     };
 
@@ -284,11 +291,24 @@ public sealed class EditorToolController
             case EditorToolMode.Select: UpdateSelect(input); break;
             case EditorToolMode.PlacePlacement: UpdatePlacePlacement(input); break;
             case EditorToolMode.PlaceSpawn: UpdatePlaceSpawn(input); break;
-            case EditorToolMode.DrawExclusion: UpdateDraw(input, region: false); break;
-            case EditorToolMode.DrawRegion: UpdateDraw(input, region: true); break;
+            case EditorToolMode.DrawExclusion: UpdateDraw(input, DrawTarget.Exclusion); break;
+            case EditorToolMode.DrawRegion: UpdateDraw(input, DrawTarget.Region); break;
             case EditorToolMode.EditFeature: UpdateEditFeature(input); break;
             case EditorToolMode.BakeRegion: UpdateBake(input); break;
+            case EditorToolMode.DrawScatterOverride: UpdateDraw(input, DrawTarget.ScatterOverride); break;
         }
+    }
+
+    /// <summary>Which document collection a <see cref="UpdateDraw"/> rubber-band commits into, the shared disc /
+    /// rect draw path's third dimension beyond exclusion and region.</summary>
+    enum DrawTarget
+    {
+        /// <summary>A scatter exclusion shape.</summary>
+        Exclusion,
+        /// <summary>A named gameplay region.</summary>
+        Region,
+        /// <summary>A scatter override shape.</summary>
+        ScatterOverride,
     }
 
     // ---- Select ------------------------------------------------------------------------------------------
@@ -358,7 +378,7 @@ public sealed class EditorToolController
         _dragKind = kind;
         _dragId = id;
         _dragStartY = startY;
-        _dragStartShape = kind is SelectionKind.Exclusion or SelectionKind.Region
+        _dragStartShape = kind is SelectionKind.Exclusion or SelectionKind.Region or SelectionKind.ScatterOverride
             ? SelectedShapeOf(kind, id) : null;
         _dragStartFeature = kind == SelectionKind.Feature && FeatureAt(id) is { } f
             ? FeatureGeometry.Clone(f) : null;
@@ -375,6 +395,7 @@ public sealed class EditorToolController
         SelectionKind.PlayerSpawn => FindPlayerSpawn(_dragId) is not null,
         SelectionKind.Feature => FeatureAt(_dragId) is not null,
         SelectionKind.Exclusion => ExclusionShape(_dragId) is not null,
+        SelectionKind.ScatterOverride => ScatterOverrideShape(_dragId) is not null,
         SelectionKind.Region => RegionByName(_dragId) is not null,
         _ => false,
     };
@@ -399,7 +420,7 @@ public sealed class EditorToolController
                 _dragId = id;
                 _dragStartY = startY;
                 // Snapshot the grab-time shape / feature so the drag rewrites it from a fixed start each frame.
-                _dragStartShape = kind is SelectionKind.Exclusion or SelectionKind.Region
+                _dragStartShape = kind is SelectionKind.Exclusion or SelectionKind.Region or SelectionKind.ScatterOverride
                     ? SelectedShapeOf(kind, id) : null;
                 _dragStartFeature = kind == SelectionKind.Feature && FeatureAt(id) is { } f
                     ? FeatureGeometry.Clone(f) : null;
@@ -440,11 +461,11 @@ public sealed class EditorToolController
     }
 
     // Which gizmo handle a selection kind honours: a placement takes every handle, an NPC or player spawn only the
-    // ground-plane translate (no yaw / scale gizmo in either spawn's marker), an exclusion / region only translate +
-    // scale (their XZ center moves and their primary radius resizes, with no yaw concept). A feature also takes
-    // translate + scale, plus the yaw ring ONLY when it is rotatable (a ridge or rim). The rotatable fact is threaded
-    // in from TryGizmoTarget, the same source the affordance decision reads, so the drawn ring and this pickable
-    // handle can never disagree.
+    // ground-plane translate (no yaw / scale gizmo in either spawn's marker), an exclusion / region / scatter
+    // override only translate + scale (their XZ center moves and their primary radius resizes, with no yaw concept).
+    // A feature also takes translate + scale, plus the yaw ring ONLY when it is rotatable (a ridge or rim). The
+    // rotatable fact is threaded in from TryGizmoTarget, the same source the affordance decision reads, so the drawn
+    // ring and this pickable handle can never disagree.
     static GizmoDrag.GizmoHandle RestrictHandle(SelectionKind kind, bool featureRotatable, GizmoDrag.GizmoHandle handle) => kind switch
     {
         SelectionKind.Spawn or SelectionKind.PlayerSpawn => handle == GizmoDrag.GizmoHandle.TranslateXZ ? handle : GizmoDrag.GizmoHandle.None,
@@ -452,7 +473,7 @@ public sealed class EditorToolController
             handle is GizmoDrag.GizmoHandle.TranslateXZ or GizmoDrag.GizmoHandle.Scale
                 || (featureRotatable && handle == GizmoDrag.GizmoHandle.YawRing)
                 ? handle : GizmoDrag.GizmoHandle.None,
-        SelectionKind.Exclusion or SelectionKind.Region =>
+        SelectionKind.Exclusion or SelectionKind.Region or SelectionKind.ScatterOverride =>
             handle is GizmoDrag.GizmoHandle.TranslateXZ or GizmoDrag.GizmoHandle.Scale
                 ? handle : GizmoDrag.GizmoHandle.None,
         _ => handle,
@@ -496,6 +517,11 @@ public sealed class EditorToolController
                 pos = new Vector3(ecx, Field!.SampleHeight(ecx, ecz), ecz);
                 kind = SelectionKind.Exclusion; id = sel.Id;
                 return true;
+            case SelectionKind.ScatterOverride when ScatterOverrideShape(sel.Id) is { } so
+                    && ShapeGeometry.IsGizmoEditable(so) && ShapeGeometry.TryCenter(so, out float ocx, out float ocz):
+                pos = new Vector3(ocx, Field!.SampleHeight(ocx, ocz), ocz);
+                kind = SelectionKind.ScatterOverride; id = sel.Id;
+                return true;
             case SelectionKind.Region when RegionByName(sel.Id) is { Shape: { } rs }
                     && ShapeGeometry.IsGizmoEditable(rs) && ShapeGeometry.TryCenter(rs, out float rcx, out float rcz):
                 pos = new Vector3(rcx, Field!.SampleHeight(rcx, rcz), rcz);
@@ -522,6 +548,9 @@ public sealed class EditorToolController
             // A rotatable feature (ridge / rim) adds the yaw ring, drawn from the same rotatable fact RestrictHandle
             // gates the pickable ring on. A symmetric feature or a disc / rect shape stays translate + scale.
             SelectionKind.Feature => rotatable ? GizmoAffordance.MoveScaleRotate : GizmoAffordance.MoveScale,
+            // Exclusion / region / scatter-override shapes: translate + uniform scale, no yaw (RestrictHandle above
+            // gates their pickable handles to exactly this set). The trailing arm keeps the same value defensively.
+            SelectionKind.Exclusion or SelectionKind.Region or SelectionKind.ScatterOverride => GizmoAffordance.MoveScale,
             _ => GizmoAffordance.MoveScale,
         };
     }
@@ -565,6 +594,7 @@ public sealed class EditorToolController
                         ExecuteFeatureEdit(FeatureGeometry.Translated(_dragStartFeature!, delta.X, delta.Z));
                         break;
                     case SelectionKind.Exclusion:
+                    case SelectionKind.ScatterOverride:
                     case SelectionKind.Region:
                         ExecuteShapeEdit(ShapeGeometry.Translated(_dragStartShape!, delta.X, delta.Z));
                         break;
@@ -611,6 +641,7 @@ public sealed class EditorToolController
                         ExecuteFeatureEdit(FeatureGeometry.Scaled(_dragStartFeature!, factor));
                         break;
                     case SelectionKind.Exclusion:
+                    case SelectionKind.ScatterOverride:
                     case SelectionKind.Region:
                         ExecuteShapeEdit(ShapeGeometry.Scaled(_dragStartShape!, factor));
                         break;
@@ -629,20 +660,28 @@ public sealed class EditorToolController
         _document.Execute(new EditFeatureCommand(index, newFeature, current));
     }
 
-    // Route a dragged exclusion / region's new shape through the matching Edit*ShapeCommand (same-key merge
-    // coalesces the drag), keeping the live shape as the command's old value. A null new shape no-ops.
+    // Route a dragged exclusion / scatter override / region's new shape through the matching Edit*ShapeCommand
+    // (same-key merge coalesces the drag), keeping the live shape as the command's old value. A null new shape, or
+    // a target that has vanished since the grab, no-ops.
     void ExecuteShapeEdit(MapShapeDoc? newShape)
     {
         if (newShape is null) return;
-        if (_dragKind == SelectionKind.Exclusion)
+        switch (_dragKind)
         {
-            if (!TryExclusionIndex(_dragId, out int index) || _document.Doc.Exclusions[index].Shape is not { } current)
-                return;
-            _document.Execute(new EditExclusionShapeCommand(index, newShape, current));
-        }
-        else if (RegionByName(_dragId) is { Shape: { } current })
-        {
-            _document.Execute(new EditRegionShapeCommand(_dragId, newShape, current));
+            case SelectionKind.Exclusion:
+                if (!TryExclusionIndex(_dragId, out int ei) || _document.Doc.Exclusions[ei].Shape is not { } exCurrent)
+                    return;
+                _document.Execute(new EditExclusionShapeCommand(ei, newShape, exCurrent));
+                break;
+            case SelectionKind.ScatterOverride:
+                if (!TryScatterOverrideIndex(_dragId, out int oi) || _document.Doc.ScatterOverrides[oi].Shape is not { } soCurrent)
+                    return;
+                _document.Execute(new EditScatterOverrideShapeCommand(oi, newShape, soCurrent));
+                break;
+            case SelectionKind.Region:
+                if (RegionByName(_dragId) is { Shape: { } rgCurrent })
+                    _document.Execute(new EditRegionShapeCommand(_dragId, newShape, rgCurrent));
+                break;
         }
     }
 
@@ -733,7 +772,7 @@ public sealed class EditorToolController
 
     // ---- draw (exclusion / region) ------------------------------------------------------------------------
 
-    void UpdateDraw(in EditorFrameInput input, bool region)
+    void UpdateDraw(in EditorFrameInput input, DrawTarget target)
     {
         if (Field is null) return;
 
@@ -754,19 +793,35 @@ public sealed class EditorToolController
         MapShapeDoc? shape = BuildShape(_drawStart, end, _drawRect);
         if (shape is null) return;
 
-        if (region)
+        switch (target)
         {
-            string name = UniqueName("region", RegionExists);
-            _document.Execute(new AddRegionCommand(new MapRegion { Name = name, Shape = shape }));
-            _document.SealGesture();
-            _document.Selection.Set(SelectionKind.Region, name);
-        }
-        else
-        {
-            _document.Execute(new AddExclusionCommand(new MapExclusion { Shape = shape }));
-            _document.SealGesture();
-            int idx = _document.Doc.Exclusions.Count - 1;
-            _document.Selection.Set(SelectionKind.Exclusion, idx.ToString(CultureInfo.InvariantCulture));
+            case DrawTarget.Region:
+            {
+                string name = UniqueName("region", RegionExists);
+                _document.Execute(new AddRegionCommand(new MapRegion { Name = name, Shape = shape }));
+                _document.SealGesture();
+                _document.Selection.Set(SelectionKind.Region, name);
+                break;
+            }
+            case DrawTarget.ScatterOverride:
+            {
+                // A fresh override starts as a pure shape (unit density, no kind mix, all layers): the inspector
+                // fills in the density multiplier and kind substitutions afterward.
+                _document.Execute(new AddScatterOverrideCommand(new MapScatterOverrideDoc { Shape = shape }));
+                _document.SealGesture();
+                int idx = _document.Doc.ScatterOverrides.Count - 1;
+                _document.Selection.Set(SelectionKind.ScatterOverride, idx.ToString(CultureInfo.InvariantCulture));
+                break;
+            }
+            case DrawTarget.Exclusion:
+            default:
+            {
+                _document.Execute(new AddExclusionCommand(new MapExclusion { Shape = shape }));
+                _document.SealGesture();
+                int idx = _document.Doc.Exclusions.Count - 1;
+                _document.Selection.Set(SelectionKind.Exclusion, idx.ToString(CultureInfo.InvariantCulture));
+                break;
+            }
         }
 
         // One shot: a completed draw commits exactly one shape, then falls back to Select so the next click picks
@@ -858,6 +913,11 @@ public sealed class EditorToolController
                 _document.Execute(new RemoveExclusionCommand(ei));
                 OnIndexRemoved?.Invoke(SelectionKind.Exclusion, ei);
                 break;
+            case SelectionKind.ScatterOverride:
+                if (!TryScatterOverrideIndex(sel.Id, out int oi)) return;
+                _document.Execute(new RemoveScatterOverrideCommand(oi));
+                OnIndexRemoved?.Invoke(SelectionKind.ScatterOverride, oi);
+                break;
             case SelectionKind.Region:
                 if (!RegionExists(sel.Id)) return;
                 _document.Execute(new RemoveRegionCommand(sel.Id));
@@ -894,7 +954,7 @@ public sealed class EditorToolController
     /// after Execute matters: several Add commands absorb a same-id Move that immediately follows
     /// (place-and-adjust), and a duplicate is not a place gesture, so without the seal a later drag of the fresh
     /// duplicate could silently fold into its Add instead of landing its own undo step. Mirrors the
-    /// <see cref="DeleteSelection"/> dispatcher shape, covering the same nine kinds plus the two Delete does not
+    /// <see cref="DeleteSelection"/> dispatcher shape, covering every kind Delete removes plus the two it does not
     /// handle (scatter and companion layers, which have no viewport geometry to delete but are still document
     /// elements a user wants to clone). Returns a <see cref="DuplicateResult"/> naming what got created, or null
     /// when nothing was duplicated: an empty selection, Terrain (the singleton root), or a custom feature type
@@ -991,6 +1051,34 @@ public sealed class EditorToolController
                 string key = idx.ToString(CultureInfo.InvariantCulture);
                 _document.Selection.Set(SelectionKind.Exclusion, key);
                 return new DuplicateResult(SelectionKind.Exclusion, key);
+            }
+            case SelectionKind.ScatterOverride:
+            {
+                if (!TryScatterOverrideIndex(sel.Id, out int oi)) return null;
+                MapScatterOverrideDoc source = _document.Doc.ScatterOverrides[oi];
+                var clone = new MapScatterOverrideDoc
+                {
+                    Name = source.Name,
+                    Shape = source.Shape is { } shape ? CloneShapeOffset(shape, DuplicateOffset, DuplicateOffset) : null,
+                    DensityMultiplier = source.DensityMultiplier,
+                    // Fresh lists AND fresh MapPropKind elements. EditScatterOverrideValuesCommand's own Clone copies
+                    // the Kinds list but shares its elements by reference, so a straight reuse of that discipline
+                    // here would leave the clone's kinds aliasing the source's. Rebuild each element (CloneKinds) so
+                    // a later scrub of the duplicate's kind mix can never mutate the original's.
+                    Kinds = source.Kinds is { } kinds ? CloneKinds(kinds) : null,
+                    Layers = source.Layers is { } layers ? new List<string>(layers) : null,
+                };
+                // Same round-5 name-collision dodge as Feature / Exclusion: AddScatterOverrideCommand has no add-time
+                // name guard (only RenameScatterOverrideCommand does), so a named clone uniquifies itself here. An
+                // unnamed override's null Name carries no key to collide on and needs no change.
+                if (!string.IsNullOrEmpty(clone.Name))
+                    clone.Name = UniqueName(clone.Name + "-copy", ScatterOverrideNameExists);
+                _document.Execute(new AddScatterOverrideCommand(clone));
+                _document.SealGesture();
+                int idx = _document.Doc.ScatterOverrides.Count - 1;
+                string key = idx.ToString(CultureInfo.InvariantCulture);
+                _document.Selection.Set(SelectionKind.ScatterOverride, key);
+                return new DuplicateResult(SelectionKind.ScatterOverride, key);
             }
             case SelectionKind.Region:
             {
@@ -1116,6 +1204,15 @@ public sealed class EditorToolController
     bool TryExclusionIndex(string id, out int index) =>
         TryListIndex(id, _document.Doc.Exclusions.Count, out index);
 
+    // The shape of the scatter override at the index a ScatterOverride-selection id encodes, or null when out of
+    // range. Index-keyed exactly like ExclusionShape above.
+    MapShapeDoc? ScatterOverrideShape(string id) =>
+        TryScatterOverrideIndex(id, out int i) ? _document.Doc.ScatterOverrides[i].Shape : null;
+
+    // Parses a ScatterOverride id to a valid in-range scatter override index.
+    bool TryScatterOverrideIndex(string id, out int index) =>
+        TryListIndex(id, _document.Doc.ScatterOverrides.Count, out index);
+
     // Whether any CURRENT terrain feature carries `name` (ordinal): AddFeatureCommand has no add-time name
     // guard (only RenameFeatureCommand does), so DuplicateSelection uses this to uniquify a named clone itself.
     bool FeatureNameExists(string name)
@@ -1130,6 +1227,15 @@ public sealed class EditorToolController
     {
         foreach (MapExclusion e in _document.Doc.Exclusions)
             if (string.Equals(e.Name, name, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    // Whether any CURRENT scatter override carries `name` (ordinal): same add-time gap as ExclusionNameExists, so
+    // DuplicateSelection uniquifies a named clone itself.
+    bool ScatterOverrideNameExists(string name)
+    {
+        foreach (MapScatterOverrideDoc o in _document.Doc.ScatterOverrides)
+            if (string.Equals(o.Name, name, StringComparison.Ordinal)) return true;
         return false;
     }
 
@@ -1186,10 +1292,21 @@ public sealed class EditorToolController
         }
     }
 
-    // The live shape of the current exclusion / region selection, or null for any other kind.
+    // Deep-clones a scatter override's Kinds list, rebuilding each MapPropKind so the copy shares no element with
+    // the source. Needed because EditScatterOverrideValuesCommand's own Clone copies the list container but shares
+    // its elements by reference, so a duplicate that relied on that discipline would alias the source's kinds.
+    static List<MapPropKind> CloneKinds(List<MapPropKind> kinds)
+    {
+        var copy = new List<MapPropKind>(kinds.Count);
+        foreach (MapPropKind k in kinds) copy.Add(new MapPropKind { Id = k.Id, Weight = k.Weight });
+        return copy;
+    }
+
+    // The live shape of the current exclusion / scatter override / region selection, or null for any other kind.
     MapShapeDoc? SelectedShapeOf(SelectionKind kind, string id) => kind switch
     {
         SelectionKind.Exclusion => ExclusionShape(id),
+        SelectionKind.ScatterOverride => ScatterOverrideShape(id),
         SelectionKind.Region => RegionByName(id)?.Shape,
         _ => null,
     };

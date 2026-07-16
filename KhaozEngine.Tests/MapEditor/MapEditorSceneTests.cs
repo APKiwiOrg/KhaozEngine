@@ -2326,11 +2326,12 @@ namespace KhaozEngine.Tests.MapEditor
             List<BoolRow> bools = scene.Inspector.Rows.OfType<BoolRow>().ToList();
             List<string> labels = bools.Select(b => b.Label.Resolve()).ToList();
 
-            Assert.Equal(6 + 1 + 2, bools.Count);   // six groups + Textured props + two scatter layers
+            Assert.Equal(7 + 1 + 2, bools.Count);   // seven groups + Textured props + two scatter layers
             Assert.Contains("Placements", labels);
             Assert.Contains("Spawns", labels);
             Assert.Contains("Water", labels);
             Assert.Contains("Exclusions", labels);
+            Assert.Contains("Scatter overrides", labels);
             Assert.Contains("Regions", labels);
             Assert.Contains("Feature markers", labels);
             Assert.Contains("Textured props", labels);

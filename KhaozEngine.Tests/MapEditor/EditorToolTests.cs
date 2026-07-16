@@ -442,6 +442,69 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(doc.History.CanUndo);
         }
 
+        [Fact]
+        public void DrawScatterOverride_DiscDrag_EmitsOverride_WithCenterAndRadius()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.DrawScatterOverride;
+
+            c.Update(Press(new Vector3(3f, 100f, 4f)));    // center at ground (3, 4)
+            c.Update(Release(new Vector3(3f, 100f, 8f)));  // radius = |(3,4) -> (3,8)| = 4
+
+            Assert.Single(doc.Doc.ScatterOverrides);
+            var disc = Assert.IsType<DiscShapeDoc>(doc.Doc.ScatterOverrides[0].Shape);
+            Near(3f, disc.CenterX);
+            Near(4f, disc.CenterZ);
+            Near(4f, disc.Radius);
+            Near(1f, doc.Doc.ScatterOverrides[0].DensityMultiplier);   // fresh override keeps the default multiplier
+            Assert.True(doc.WorldRebuildPending);           // scatter inputs changed
+            Assert.Equal(1, doc.History.UndoDepth);
+            Assert.Equal(SelectionKind.ScatterOverride, doc.Selection.Kind);
+            Assert.Equal("0", doc.Selection.Id);
+        }
+
+        [Fact]
+        public void DrawScatterOverride_ShiftDrag_EmitsRect()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.DrawScatterOverride;
+
+            c.Update(Press(new Vector3(-2f, 100f, -1f), shift: true));   // shift latched -> rect
+            c.Update(Release(new Vector3(6f, 100f, 5f)));
+
+            var rect = Assert.IsType<RectShapeDoc>(doc.Doc.ScatterOverrides[0].Shape);
+            Near(-2f, rect.MinX);
+            Near(-1f, rect.MinZ);
+            Near(6f, rect.MaxX);
+            Near(5f, rect.MaxZ);
+        }
+
+        [Fact]
+        public void DrawScatterOverride_DegenerateClick_EmitsNothing()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.DrawScatterOverride;
+
+            c.Update(Press(new Vector3(4f, 100f, 4f)));
+            c.Update(Release(new Vector3(4f, 100f, 4f)));   // zero radius -> no shape
+
+            Assert.Empty(doc.Doc.ScatterOverrides);
+            Assert.False(doc.History.CanUndo);
+        }
+
+        [Fact]
+        public void DrawScatterOverride_CompletedGesture_ReturnsToSelect()
+        {
+            var (doc, c) = Make();
+            c.Mode = EditorToolMode.DrawScatterOverride;
+
+            c.Update(Press(new Vector3(3f, 100f, 4f)));
+            c.Update(Release(new Vector3(3f, 100f, 8f)));   // radius 4 -> a real override commits
+
+            Assert.Single(doc.Doc.ScatterOverrides);
+            Assert.Equal(EditorToolMode.Select, c.Mode);    // one shot: the commit disarms the tool
+        }
+
         // ---- one-shot draw tools -------------------------------------------------------------------------
 
         [Fact]
@@ -615,6 +678,82 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(doc.Undo());
             disc = Assert.IsType<DiscShapeDoc>(doc.Doc.Regions[0].Shape);
             Near(5f, disc.Radius);
+        }
+
+        [Fact]
+        public void ScatterOverrideDrag_MovesCenterThroughCommand_OneUndoStep()
+        {
+            var (doc, c) = Make();
+            doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+            doc.Selection.Set(SelectionKind.ScatterOverride, "0");
+
+            // The override shape sits its gizmo at the shape center too -> MoveScale, no yaw ring.
+            Assert.Equal(GizmoAffordance.MoveScale, c.TryGizmo(out _));
+
+            // Grab the +X translate arrow, drag the ground hit out +2 on X across two held frames, release.
+            c.Update(Press(new Vector3(0.6f, 100f, 0f)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(2.6f, 100f, 0f)));
+            c.Update(Release(new Vector3(2.6f, 100f, 0f)));
+
+            Assert.False(c.IsDragging);
+            var disc = Assert.IsType<DiscShapeDoc>(doc.Doc.ScatterOverrides[0].Shape);
+            Near(2f, disc.CenterX);
+            Near(0f, disc.CenterZ);
+            Near(5f, disc.Radius);                      // a translate leaves the radius alone
+            Assert.True(doc.WorldRebuildPending);        // override shape edits rebuild the streamed world
+            Assert.Equal(1, doc.History.UndoDepth);      // the whole drag coalesces into one undo step
+
+            Assert.True(doc.Undo());
+            disc = Assert.IsType<DiscShapeDoc>(doc.Doc.ScatterOverrides[0].Shape);
+            Near(0f, disc.CenterX);                      // undo restores the pre-drag center
+        }
+
+        [Fact]
+        public void ScatterOverrideScale_ResizesRadius_OneUndoStep()
+        {
+            var (doc, c) = Make();
+            doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+            doc.Selection.Set(SelectionKind.ScatterOverride, "0");
+
+            // Grab the corner scale cube (at (0.85, 0, 0.85) at gizmo scale 1) and drag out to double the radius.
+            c.Update(Press(new Vector3(0.85f, 100f, 0.85f)));
+            Assert.True(c.IsDragging);
+            c.Update(Drag(new Vector3(1.7f, 100f, 1.7f)));
+            c.Update(Release(new Vector3(1.7f, 100f, 1.7f)));
+
+            var disc = Assert.IsType<DiscShapeDoc>(doc.Doc.ScatterOverrides[0].Shape);
+            Near(10f, disc.Radius);                      // 5 * 2
+            Near(0f, disc.CenterX);                      // the center is preserved under a scale
+            Assert.True(doc.WorldRebuildPending);
+            Assert.Equal(1, doc.History.UndoDepth);
+
+            Assert.True(doc.Undo());
+            disc = Assert.IsType<DiscShapeDoc>(doc.Doc.ScatterOverrides[0].Shape);
+            Near(5f, disc.Radius);
+        }
+
+        [Fact]
+        public void ScatterOverrideDelete_RemovesSelected_NotifiesIndexRemoved()
+        {
+            var (doc, c) = Make();
+            SelectionKind removedKind = SelectionKind.None;
+            int removedIndex = -1;
+            c.OnIndexRemoved = (k, i) => { removedKind = k; removedIndex = i; };
+            doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 6f } });
+            doc.Selection.Set(SelectionKind.ScatterOverride, "0");
+
+            c.Update(new EditorFrameInput(default, default, deletePressed: true));
+
+            Assert.Empty(doc.Doc.ScatterOverrides);
+            Assert.True(doc.Selection.IsEmpty);
+            Assert.True(doc.WorldRebuildPending);
+            Assert.Equal(1, doc.History.UndoDepth);
+            Assert.Equal(SelectionKind.ScatterOverride, removedKind);   // the index-remap notification fired
+            Assert.Equal(0, removedIndex);
+
+            Assert.True(doc.Undo());
+            Assert.Single(doc.Doc.ScatterOverrides);      // the removed override is restored
         }
 
         // ---- feature placement / delete ---------------------------------------------------------------------
@@ -1118,6 +1257,8 @@ namespace KhaozEngine.Tests.MapEditor
             new object[] { "featureUnnamed" },
             new object[] { "exclusionNamed" },
             new object[] { "exclusionUnnamed" },
+            new object[] { "scatterOverrideNamed" },
+            new object[] { "scatterOverrideUnnamed" },
             new object[] { "region" },
             new object[] { "biomeBand" },
             new object[] { "scatterLayer" },
@@ -1311,6 +1452,71 @@ namespace KhaozEngine.Tests.MapEditor
 
                     Assert.True(doc.Undo());
                     Assert.Single(doc.Doc.Exclusions);
+                    Assert.Equal(before, Json(doc));
+                    break;
+                }
+                case "scatterOverrideNamed":
+                {
+                    doc.Doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });   // the Layers filter below must resolve
+                    doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc
+                    {
+                        Name = "Grove",
+                        Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 3f },
+                        DensityMultiplier = 2.5f,
+                        Kinds = new List<MapPropKind> { new MapPropKind { Id = "pine", Weight = 2f } },
+                        Layers = new List<string> { "trees" },
+                    });
+                    doc.Selection.Set(SelectionKind.ScatterOverride, "0");
+                    string before = Json(doc);
+
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+
+                    Assert.Equal(1, doc.History.UndoDepth);
+                    Assert.Equal(2, doc.Doc.ScatterOverrides.Count);
+                    Assert.Equal(SelectionKind.ScatterOverride, doc.Selection.Kind);
+                    Assert.Equal("1", doc.Selection.Id);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterOverride, "1"), result);
+                    MapScatterOverrideDoc dup = doc.Doc.ScatterOverrides[1];
+                    Assert.Equal("Grove-copy-1", dup.Name);
+                    var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
+                    Near(3f, dupShape.CenterX); Near(4f, dupShape.CenterZ); Near(3f, dupShape.Radius);
+                    Near(2.5f, dup.DensityMultiplier);
+                    Assert.Single(dup.Kinds!);
+                    Assert.Equal("pine", dup.Kinds![0].Id);
+                    Near(2f, dup.Kinds[0].Weight);
+                    Assert.Equal(new List<string> { "trees" }, dup.Layers!);
+                    // Fresh containers AND fresh MapPropKind elements: the Values command copies the Kinds list but
+                    // not its elements, so Duplicate must rebuild each MapPropKind or a scrub of the clone's kind
+                    // would mutate the source's.
+                    Assert.NotSame(doc.Doc.ScatterOverrides[0].Kinds, dup.Kinds);
+                    Assert.NotSame(doc.Doc.ScatterOverrides[0].Kinds![0], dup.Kinds[0]);
+                    Assert.NotSame(doc.Doc.ScatterOverrides[0].Layers, dup.Layers);
+                    Assert.Equal("Grove", doc.Doc.ScatterOverrides[0].Name);   // source untouched
+
+                    Assert.True(doc.Undo());
+                    Assert.Single(doc.Doc.ScatterOverrides);
+                    Assert.Equal(before, Json(doc));
+                    break;
+                }
+                case "scatterOverrideUnnamed":
+                {
+                    doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new RectShapeDoc { MinX = 0f, MinZ = 0f, MaxX = 2f, MaxZ = 2f } });
+                    doc.Selection.Set(SelectionKind.ScatterOverride, "0");
+                    string before = Json(doc);
+
+                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+
+                    Assert.Equal(1, doc.History.UndoDepth);
+                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterOverride, "1"), result);
+                    MapScatterOverrideDoc dup = doc.Doc.ScatterOverrides[1];
+                    Assert.Null(dup.Name);   // unnamed stays unnamed: nothing to uniquify
+                    Assert.Null(dup.Kinds);  // absent lists stay absent (not empty)
+                    Assert.Null(dup.Layers);
+                    var dupShape = Assert.IsType<RectShapeDoc>(dup.Shape);
+                    Near(2f, dupShape.MinX); Near(2f, dupShape.MinZ); Near(4f, dupShape.MaxX); Near(4f, dupShape.MaxZ);
+
+                    Assert.True(doc.Undo());
+                    Assert.Single(doc.Doc.ScatterOverrides);
                     Assert.Equal(before, Json(doc));
                     break;
                 }

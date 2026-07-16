@@ -41,6 +41,31 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void Pick_Priority_ScatterOverrideBetweenExclusionAndRegion()
+        {
+            MapDocument doc = Doc();
+            // Three concentric discs: a big region, a medium scatter override, a small exclusion, no feature.
+            doc.Regions.Add(new MapRegion { Name = "town", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 30f } });
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 20f } });
+            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f } });
+
+            // Inside all three: the exclusion outranks the scatter override and the region.
+            Assert.True(OverlayPicking.Pick(doc, 5f, 0f, out OverlayPicking.OverlayPickResult a));
+            Assert.Equal(SelectionKind.Exclusion, a.Kind);
+            Assert.Equal("0", a.Id);
+
+            // Inside the override and region, clear of the exclusion: the scatter override wins over the region.
+            Assert.True(OverlayPicking.Pick(doc, 15f, 0f, out OverlayPicking.OverlayPickResult b));
+            Assert.Equal(SelectionKind.ScatterOverride, b.Kind);
+            Assert.Equal("0", b.Id);
+
+            // Inside the region only: the region wins.
+            Assert.True(OverlayPicking.Pick(doc, 25f, 0f, out OverlayPicking.OverlayPickResult c));
+            Assert.Equal(SelectionKind.Region, c.Kind);
+            Assert.Equal("town", c.Id);
+        }
+
+        [Fact]
         public void Pick_PriorityIsPrimaryOverDistance()
         {
             MapDocument doc = Doc();

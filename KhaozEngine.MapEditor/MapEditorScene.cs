@@ -120,9 +120,12 @@ public class MapEditorScene : GameScene, IGameScene3D
     static readonly float PanelCornerRadius = GuiStyle.Modern.CornerRadius;
     static readonly Color SelectionHighlight = new(1.35f, 1.2f, 0.7f, 1f);
 
-    // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish) and region (blue-ish), and
-    // a small marker disc at each terrain-feature center (amber). The selected element's fill brightens (see Tint).
+    // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish), scatter override (orange),
+    // and region (blue-ish), and a small marker disc at each terrain-feature center (amber). The selected element's
+    // fill brightens (see Tint). The scatter override orange sits between the exclusion red and the feature amber but
+    // stays clearly distinct from both (a lower green than the amber marker, a warmer hue than the red exclusion).
     static readonly Color ExclusionOverlayColor = new(0.9f, 0.22f, 0.16f, 0.26f);
+    static readonly Color ScatterOverrideOverlayColor = new(0.98f, 0.52f, 0.1f, 0.28f);
     static readonly Color RegionOverlayColor = new(0.2f, 0.5f, 0.95f, 0.26f);
     static readonly Color FeatureOverlayColor = new(0.96f, 0.76f, 0.22f, 0.55f);
     /// <summary>World-space lift (m) added above the sampled ground height when seating an overlay fill. Overlays
@@ -135,11 +138,13 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>Alpha multiplier applied to a selected overlay's fill (clamped to 1) so it also firms up.</summary>
     const float OverlaySelectAlphaBoost = 1.7f;
 
+    // Order-locked to the EditorToolMode enum: the toolbar reads back through (EditorToolMode)ActiveIndex, so a new
+    // label appends LAST alongside the enum's own last member, never inserts.
     static readonly LocalizedText[] ToolLabels =
     {
         LocalizedText.Raw("Select"), LocalizedText.Raw("Prop"), LocalizedText.Raw("Spawn"),
         LocalizedText.Raw("Exclude"), LocalizedText.Raw("Region"), LocalizedText.Raw("Feature"),
-        LocalizedText.Raw("Bake"),
+        LocalizedText.Raw("Bake"), LocalizedText.Raw("Override"),
     };
 
     // Pre-built gizmo mesh sets returned by ComputeGizmoMeshes, avoiding per-frame allocations.
@@ -598,9 +603,10 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    /// <summary>Turns the document's exclusions, regions, and terrain features into a flat list of ground-plane
-    /// overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish, regions
-    /// blue-ish) and each terrain feature a small amber marker disc at its center, all lifted a small epsilon above
+    /// <summary>Turns the document's exclusions, scatter overrides, regions, and terrain features into a flat list of
+    /// ground-plane overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish,
+    /// scatter overrides orange, regions blue-ish) and each terrain feature a small amber marker disc at its center,
+    /// all lifted a small epsilon above
     /// the sampled ground so they clear the terrain. The overlay whose element matches <paramref name="selection"/>
     /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
     /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
@@ -621,6 +627,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (!showOverlays) return list;
 
         int selectedExclusion = selection.Kind == SelectionKind.Exclusion ? SelectedIndex(selection.Id) : -1;
+        int selectedScatterOverride = selection.Kind == SelectionKind.ScatterOverride ? SelectedIndex(selection.Id) : -1;
         int selectedFeature = selection.Kind == SelectionKind.Feature ? SelectedIndex(selection.Id) : -1;
 
         for (int i = 0; i < doc.Exclusions.Count; i++)
@@ -628,6 +635,13 @@ public class MapEditorScene : GameScene, IGameScene3D
             if (!visibility.IsElementVisible(SelectionKind.Exclusion, Index(i))) continue;   // hidden: no overlay
             AddShapeOverlay(list, doc.Exclusions[i].Shape, OverlayCategory.Exclusion, ExclusionOverlayColor,
                 selected: i == selectedExclusion, sampleHeight);
+        }
+
+        for (int i = 0; i < doc.ScatterOverrides.Count; i++)
+        {
+            if (!visibility.IsElementVisible(SelectionKind.ScatterOverride, Index(i))) continue;   // hidden: no overlay
+            AddShapeOverlay(list, doc.ScatterOverrides[i].Shape, OverlayCategory.ScatterOverride, ScatterOverrideOverlayColor,
+                selected: i == selectedScatterOverride, sampleHeight);
         }
 
         foreach (MapRegion region in doc.Regions)
@@ -1713,11 +1727,13 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    // The raw dev-tool label for a visibility group (FeatureMarkers reads "Feature markers"; the rest are their
-    // enum name). No em / en dashes or semicolons (the editor label convention).
+    // The raw dev-tool label for a visibility group (FeatureMarkers reads "Feature markers", ScatterOverrides reads
+    // "Scatter overrides", the rest are their enum name). No em / en dashes or semicolons (the editor label
+    // convention).
     static string GroupLabel(VisibilityGroup group) => group switch
     {
         VisibilityGroup.FeatureMarkers => "Feature markers",
+        VisibilityGroup.ScatterOverrides => "Scatter overrides",
         _ => group.ToString(),
     };
 
@@ -3244,11 +3260,13 @@ internal enum GizmoMesh
 }
 
 /// <summary>Which document collection a viewport <see cref="OverlayDraw"/> came from. Drives its base fill color
-/// (exclusions red-ish, regions blue-ish, features amber).</summary>
+/// (exclusions red-ish, scatter overrides orange, regions blue-ish, features amber).</summary>
 internal enum OverlayCategory
 {
     /// <summary>A scatter exclusion shape.</summary>
     Exclusion,
+    /// <summary>A scatter override shape (a region-scoped density / kind tweak).</summary>
+    ScatterOverride,
     /// <summary>A named, game-interpreted region shape.</summary>
     Region,
     /// <summary>A terrain feature's center marker.</summary>

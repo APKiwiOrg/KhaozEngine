@@ -101,6 +101,59 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void OverlayDrawList_CoversScatterOverrides_RespectsGroupAndElementHides()
+        {
+            MapDocument doc = ValidDoc("overrides");
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 2f, CenterZ = 3f, Radius = 6f } });
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new RectShapeDoc { MinX = -4f, MinZ = -2f, MaxX = 8f, MaxZ = 6f } });
+            // An exclusion too, so the override color can be checked distinct from the exclusion color.
+            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 20f, CenterZ = 20f, Radius = 4f } });
+
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+
+            // Both overrides draw: a disc and a rect, tagged with the scatter-override category.
+            List<OverlayDraw> overrides = list.Where(o => o.Category == OverlayCategory.ScatterOverride).ToList();
+            Assert.Equal(2, overrides.Count);
+            OverlayDraw disc = overrides.First(o => o.Shape == OverlayShape.Disc);
+            Near(2f, disc.Center.X);
+            Near(3f, disc.Center.Z);
+            Assert.True(disc.Center.Y > Ground && disc.Center.Y < Ground + 1f, "center lifted a small epsilon above ground");
+            Near(6f, disc.Radius);
+            OverlayDraw rect = overrides.First(o => o.Shape == OverlayShape.Rect);
+            Near(2f, rect.Center.X);        // (-4 + 8) / 2
+            Near(2f, rect.Center.Z);        // (-2 + 6) / 2
+            Near(6f, rect.HalfExtents.X);
+            Near(4f, rect.HalfExtents.Y);
+
+            // Orange fill (R > G > B), distinct from the exclusion's red.
+            OverlayDraw exclusion = list.First(o => o.Category == OverlayCategory.Exclusion);
+            Assert.True(disc.Color.R > disc.Color.G && disc.Color.G > disc.Color.B, "scatter override fill is orange");
+            Assert.NotEqual(exclusion.Color, disc.Color);
+
+            // Group toggle: hiding the whole ScatterOverrides group drops every override overlay, others stay.
+            var groupOff = new EditorVisibility();
+            groupOff.SetGroup(VisibilityGroup.ScatterOverrides, false);
+            List<OverlayDraw> withGroupOff = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: groupOff);
+            Assert.DoesNotContain(withGroupOff, o => o.Category == OverlayCategory.ScatterOverride);
+            Assert.Single(withGroupOff, o => o.Category == OverlayCategory.Exclusion);
+
+            // Per-element hide: hiding index 0 drops only the first override, leaving index 1 (the rect).
+            var elementHidden = new EditorVisibility();
+            elementHidden.SetElementHidden(SelectionKind.ScatterOverride, "0", true);
+            List<OverlayDraw> withElementHidden = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: elementHidden);
+            List<OverlayDraw> remaining = withElementHidden.Where(o => o.Category == OverlayCategory.ScatterOverride).ToList();
+            Assert.Single(remaining);
+            Assert.Equal(OverlayShape.Rect, remaining[0].Shape);   // the surviving index-1 rect
+
+            // Selection highlight is index-keyed: selecting override 1 brightens only that overlay.
+            List<OverlayDraw> withSel = MapEditorScene.ComputeOverlayDrawList(
+                doc, Select(SelectionKind.ScatterOverride, "1"), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+            List<OverlayDraw> selOverrides = withSel.Where(o => o.Category == OverlayCategory.ScatterOverride).ToList();
+            Assert.False(selOverrides.First(o => o.Shape == OverlayShape.Disc).Selected);   // index 0
+            Assert.True(selOverrides.First(o => o.Shape == OverlayShape.Rect).Selected);    // index 1, selected
+        }
+
+        [Fact]
         public void OverlayDrawList_HighlightsSelection()
         {
             MapDocument doc = ValidDoc("selection");

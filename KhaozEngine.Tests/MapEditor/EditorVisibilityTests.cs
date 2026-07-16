@@ -56,6 +56,29 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void ScatterOverrides_GroupGatesElement()
+        {
+            var v = new EditorVisibility();
+
+            // The scatter-override kind maps to its own group, defaulting visible.
+            Assert.True(EditorVisibility.TryGroupFor(SelectionKind.ScatterOverride, out VisibilityGroup group));
+            Assert.Equal(VisibilityGroup.ScatterOverrides, group);
+            Assert.True(v.GetGroup(VisibilityGroup.ScatterOverrides));
+            Assert.True(v.IsElementVisible(SelectionKind.ScatterOverride, "0"));
+
+            // Turning the group off hides every override, and it does not leak into the exclusion group.
+            v.SetGroup(VisibilityGroup.ScatterOverrides, false);
+            Assert.False(v.IsElementVisible(SelectionKind.ScatterOverride, "0"));
+            Assert.True(v.IsElementVisible(SelectionKind.Exclusion, "0"));
+
+            // A per-element hide is independent of the group and keyed by (kind, id).
+            v.SetGroup(VisibilityGroup.ScatterOverrides, true);
+            v.SetElementHidden(SelectionKind.ScatterOverride, "1", true);
+            Assert.False(v.IsElementVisible(SelectionKind.ScatterOverride, "1"));
+            Assert.True(v.IsElementVisible(SelectionKind.ScatterOverride, "0"));
+        }
+
+        [Fact]
         public void RemapIndex_ShiftsHideAcrossReorder_BothDirections()
         {
             // Moving LATER (from < to): list [A,B,C,D], Move(0, 2) -> [B,C,A,D]. A follows to slot 2, B and C

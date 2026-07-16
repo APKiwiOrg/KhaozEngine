@@ -6,6 +6,7 @@ using KhaozEngine.App;
 using KhaozEngine.Audio;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
+using KhaozEngine.Particles;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -169,10 +170,18 @@ namespace KhaozEngine.Showcase
         // The paddle rides a fixed clearance above the bottom edge, so it tracks the live design height.
         static float PaddleY(Rect db) => db.Height - 88f;
 
+        // Trauma-based game-feel shake (KhaozEngine.Particles.ScreenShake, the old Effects lib): a missed block
+        // adds trauma and the world drawing (items + paddle, never the HUD text) rides the decaying noise offset.
+        // MaxOffset is tuned down from the 30-unit default so a single miss reads as a kick, not an earthquake.
+        readonly ScreenShake _shake = new() { MaxOffset = 12f };
+
         public MiniGamePlayScreen(MiniGameCtx c, IDesignViewport vp) { _c = c; _vp = vp; PassUpdateThrough = false; BackgroundColor = GuiTheme.Default.Background; }
 
         public override bool Update(float dt, bool receivesInput)
         {
+            // The shake decays every frame, even frozen under the game-over modal, so the frozen backdrop settles
+            // instead of holding a mid-shake tilt.
+            _shake.Update(dt);
             if (!receivesInput) return true;   // frozen under the game-over modal
             Rect db = _vp.DesignBounds;
             float w = db.Width, h = db.Height, paddleY = PaddleY(db);
@@ -201,11 +210,15 @@ namespace KhaozEngine.Showcase
                 bool caught = it.Pos.Y + ItemSize >= paddleY && it.Pos.Y <= paddleY + PaddleH
                               && it.Pos.X + ItemSize >= _paddleX && it.Pos.X <= _paddleX + PaddleW;
                 if (caught) { _score++; _items.RemoveAt(i); }
-                else if (it.Pos.Y > h) { _lives--; _items.RemoveAt(i); }
+                else if (it.Pos.Y > h) { _lives--; _items.RemoveAt(i); _shake.Add(0.4f); }
                 else _items[i] = it;
             }
 
-            if (_lives <= 0) Manager.Add(new MiniGameGameOverScreen(_c, _vp, this, _score));
+            if (_lives <= 0)
+            {
+                _shake.Add(0.6f);   // a bigger kick under the game-over dialog's frozen backdrop
+                Manager.Add(new MiniGameGameOverScreen(_c, _vp, this, _score));
+            }
             return true;
         }
 
@@ -214,8 +227,9 @@ namespace KhaozEngine.Showcase
             DrawBackground(b, _c.White, _vp);
             Rect db = _vp.DesignBounds;
             float paddleY = PaddleY(db);
-            foreach (var it in _items) _c.Rect(b, it.Pos.X, it.Pos.Y, ItemSize, ItemSize, it.Color);
-            _c.Rect(b, _paddleX, paddleY, PaddleW, PaddleH, new Vector4(0.5f, 0.85f, 0.95f, 1f));
+            Vector2 sh = _shake.Offset;   // world content rides the shake, the HUD text stays put
+            foreach (var it in _items) _c.Rect(b, it.Pos.X + sh.X, it.Pos.Y + sh.Y, ItemSize, ItemSize, it.Color);
+            _c.Rect(b, _paddleX + sh.X, paddleY + sh.Y, PaddleW, PaddleH, new Vector4(0.5f, 0.85f, 0.95f, 1f));
 
             string score = LocalizedText.Of(ShowcaseStrings.MiniGameScore, _score).Resolve();
             b.DrawString(_c.Small, score, new Vector2(20, 16), (Color)GuiTheme.Default.Text);

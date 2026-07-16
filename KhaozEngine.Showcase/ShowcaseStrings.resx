@@ -82,7 +82,7 @@
   <data name="Controls.MiniGame" xml:space="preserve"><value>A/D or arrow keys move  Esc menu</value></data>
   <data name="Controls.Boot" xml:space="preserve"><value>Enter replay  F toggle a failing step  Esc menu</value></data>
   <data name="Controls.World1" xml:space="preserve"><value>WASD move  Shift run  Space jump  Right-drag orbit  Scroll zoom</value></data>
-  <data name="Controls.World2" xml:space="preserve"><value>O outline  C cel  R retro  P palette  A starfield  F2 collision  F skinning  M scale  L/K H/G thresholds</value></data>
+  <data name="Controls.World2" xml:space="preserve"><value>O outline  C cel  R retro  P palette  N starfield  F2 collision  F skinning  M scale  L/K H/G thresholds</value></data>
   <data name="Controls.Vfx" xml:space="preserve"><value>Left/Right switch effect  Space replay  B bloom  H HDR  Right-drag orbit  Scroll zoom</value></data>
   <data name="Controls.Net" xml:space="preserve"><value>WASD move  Shift run  Space jump  Right-drag orbit  F1 diagnostics</value></data>
   <data name="Controls.Dungeon" xml:space="preserve"><value>WASD move  Space jump  Right-drag orbit  O outline</value></data>

@@ -1490,6 +1490,52 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void PaletteFilter_UnfocusesOnModeSwapAwayFromPlaceMode()
+        {
+            // Before this fix, a filter focused in the mode that shows it kept IsFocused stuck true forever once
+            // the mode swapped away and its panel hid: TextInput.Unfocus only ever ran inside the filter's own
+            // (mode-gated) Update call, which UpdateWidgets stops driving the instant KitPaletteVisible goes
+            // false. AnyEditorFocused's own mode gate papered over the symptom (a hidden filter's stale focus no
+            // longer blocked shortcuts in a DIFFERENT mode) without clearing the stuck bit itself.
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager { Input = InputState.Empty };
+            m.Push(scene);
+
+            scene.Controller.Mode = EditorToolMode.PlacePlacement;   // the mode that shows the kit palette filter
+            m.Update(0.016f);   // establishes PlacePlacement as the chrome step's last-seen mode
+
+            scene.PaletteFilter.Focus();
+            Assert.True(scene.PaletteFilter.IsFocused);   // precondition: the filter owns focus
+
+            scene.Controller.Mode = EditorToolMode.Select;   // swap away: the kit palette (and its filter) hides
+            m.Update(0.016f);
+
+            Assert.False(scene.PaletteFilter.IsFocused);
+        }
+
+        [Fact]
+        public void SpawnFilter_UnfocusesOnModeSwapAwayFromSpawnMode()
+        {
+            // Same stuck-focus bug as PaletteFilter_UnfocusesOnModeSwapAwayFromPlaceMode, for the spawn filter.
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager { Input = InputState.Empty };
+            m.Push(scene);
+
+            scene.Controller.Mode = EditorToolMode.PlaceSpawn;   // the mode that shows the spawn filter
+            m.Update(0.016f);   // establishes PlaceSpawn as the chrome step's last-seen mode
+
+            scene.SpawnFilter.Focus();
+            Assert.True(scene.SpawnFilter.IsFocused);   // precondition: the filter owns focus
+
+            scene.Controller.Mode = EditorToolMode.Select;   // swap away: the spawn list (and its filter) hides
+            m.Update(0.016f);
+
+            Assert.False(scene.SpawnFilter.IsFocused);
+        }
+
+        [Fact]
         public void TerrainNode_InspectorEditsWaterLevel_TriggersRebuild()
         {
             var scene = PushDocScene(() =>
@@ -1520,6 +1566,61 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.True(scene.Document.Undo());
             Near(-1f, scene.Document.Doc.Terrain.WaterLevel);  // undo restores the pre-scrub level
+        }
+
+        // Every terrain FloatRow's GestureEnded is wired (via AddFloatRow) to Document.SealGesture, so scrubbing
+        // WaterLevel then BiomeBlend seals a barrier between them: EditTerrainCommand.TryMerge would otherwise
+        // coalesce ANY two terrain edits into one undo step (that command-level merge is still correct WITHIN one
+        // gesture - see EditorCommandsTests.EditTerrain_Merge_UnionOfDifferentFields_EachOldFromFirstSetter), but
+        // two DIFFERENT inspector gestures back to back must land as two separate undo steps.
+        [Fact]
+        public void TerrainNode_ScrubTwoFields_SealsTwoSeparateUndoSteps()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.WaterLevel = 0f;
+                doc.Terrain.BiomeBlend = 5f;
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Terrain, "");
+            FloatRow water = FloatRowByLabel(scene.Inspector, "WaterLevel");
+            FloatRow blend = FloatRowByLabel(scene.Inspector, "BiomeBlend");
+            var cell = new Rect(0f, 0f, 200f, 28f);
+
+            // Scrub WaterLevel: press, drag (a real change lands the first undo step), release (seals the gesture).
+            var uiWater = new InputManager();
+            uiWater.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            water.Update(cell, uiWater, 0.016f);
+            uiWater.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));
+            water.Update(cell, uiWater, 0.016f);
+            uiWater.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));
+            water.Update(cell, uiWater, 0.016f);
+            uiWater.Update(MouseFrame(new Vector2(200f, 10f), leftDown: false));
+            water.Update(cell, uiWater, 0.016f);   // release: GestureEnded fires, seals the barrier
+
+            Assert.Equal(1, scene.Document.History.UndoDepth);
+
+            // Scrub BiomeBlend next: without the seal this would coalesce into the water step via
+            // EditTerrainCommand.TryMerge (any two terrain edits merge within one gesture). The seal makes it a
+            // second, separate step instead.
+            var uiBlend = new InputManager();
+            uiBlend.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false));
+            blend.Update(cell, uiBlend, 0.016f);
+            uiBlend.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true));
+            blend.Update(cell, uiBlend, 0.016f);
+            uiBlend.Update(MouseFrame(new Vector2(200f, 10f), leftDown: true));
+            blend.Update(cell, uiBlend, 0.016f);
+
+            Assert.Equal(2, scene.Document.History.UndoDepth);
+
+            // Both edits are independently undoable: undoing twice restores both fields to their pre-scrub values.
+            Assert.True(scene.Document.Undo());
+            Near(5f, scene.Document.Doc.Terrain.BiomeBlend);
+            Assert.True(scene.Document.Undo());
+            Near(0f, scene.Document.Doc.Terrain.WaterLevel);
+            Assert.False(scene.Document.History.CanUndo);
         }
 
         [Fact]
@@ -2326,7 +2427,7 @@ namespace KhaozEngine.Tests.MapEditor
             List<BoolRow> bools = scene.Inspector.Rows.OfType<BoolRow>().ToList();
             List<string> labels = bools.Select(b => b.Label.Resolve()).ToList();
 
-            Assert.Equal(7 + 1 + 2, bools.Count);   // seven groups + Textured props + two scatter layers
+            Assert.Equal(8 + 1 + 2, bools.Count);   // eight groups + Textured props + two scatter layers
             Assert.Contains("Placements", labels);
             Assert.Contains("Spawns", labels);
             Assert.Contains("Water", labels);
@@ -2334,6 +2435,7 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Contains("Scatter overrides", labels);
             Assert.Contains("Regions", labels);
             Assert.Contains("Feature markers", labels);
+            Assert.Contains("Player spawns", labels);
             Assert.Contains("Textured props", labels);
             Assert.Contains("trees", labels);
             Assert.Contains("rocks", labels);
@@ -2483,6 +2585,24 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void Palette_WhitespaceOnlyFilterEdit_DoesNotRebuild()
+        {
+            var scene = PushPaletteScene(KitCategories());
+
+            scene.PaletteFilter.SetText("oak");
+            scene.RefreshPalettes();
+            TreeNode nodeBefore = scene.PaletteTree.Roots[0];   // RebuildPaletteTree always mints fresh TreeNodes
+
+            // Trims to the same "oak" the tree was already built for: RefreshPalettes must compare trimmed text
+            // against the last-applied TRIMMED value, not the raw text, or a bare-space edit re-triggers
+            // RebuildPaletteTree for no visible change.
+            scene.PaletteFilter.SetText("oak ");
+            scene.RefreshPalettes();
+
+            Assert.Same(nodeBefore, scene.PaletteTree.Roots[0]);   // same instance: no rebuild ran
+        }
+
+        [Fact]
         public void Palette_LeafSelection_SetsPlaceKind()
         {
             var scene = PushPaletteScene(KitCategories());
@@ -2515,6 +2635,23 @@ namespace KhaozEngine.Tests.MapEditor
             scene.SpawnFilter.SetText("");
             scene.RefreshPalettes();
             Assert.Equal(4, scene.SpawnList.Roots.Count);                 // clearing restores the pin plus all three
+        }
+
+        [Fact]
+        public void SpawnList_WhitespaceOnlyFilterEdit_DoesNotRebuild()
+        {
+            var scene = PushPaletteScene(new Dictionary<string, string>(StringComparer.Ordinal), "wolf", "bear", "wolfpup");
+
+            scene.SpawnFilter.SetText("wolf");
+            scene.RefreshPalettes();
+            TreeNode nodeBefore = scene.SpawnList.Roots[0];   // RebuildSpawnList always mints a fresh pinned root
+
+            // Same underlying bug as the palette filter: a whitespace-only edit trims to the same "wolf" match, so
+            // it must not re-trigger RebuildSpawnList.
+            scene.SpawnFilter.SetText(" wolf");
+            scene.RefreshPalettes();
+
+            Assert.Same(nodeBefore, scene.SpawnList.Roots[0]);   // same instance: no rebuild ran
         }
 
         // ---- palette visibility ----------------------------------------------------------------------------
@@ -2607,6 +2744,41 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.StartsWith("PlacePlacement", line);
             Assert.Contains(hint, line);
             Assert.True(line.IndexOf(hint, StringComparison.Ordinal) < line.IndexOf("undo:", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void TruncateStatusLine_FitsWithinStrip_ReturnsUnchanged()
+        {
+            // A deterministic 10-units-per-char measure keeps the math exact and font-free (the GridCellText
+            // idiom from PropertyGridTests, applied to the status strip's own truncation helper).
+            static float Width(string s) => s.Length * 10f;
+
+            Assert.Equal("Select   undo: -", MapEditorScene.TruncateStatusLine("Select   undo: -", 1000f, Width));
+        }
+
+        [Fact]
+        public void TruncateStatusLine_TooWideForStrip_TruncatesWithEllipsis()
+        {
+            static float Width(string s) => s.Length * 10f;
+            string longLine = new string('x', 40);
+
+            string truncated = MapEditorScene.TruncateStatusLine(longLine, 100f, Width);
+
+            // Fits inside the strip's own width (the truncation target is narrower still, once the left/right
+            // insets are reserved), ends in the trailing ellipsis, and is strictly shorter than the source.
+            Assert.True(Width(truncated) <= 100f);
+            Assert.EndsWith("...", truncated);
+            Assert.True(truncated.Length < longLine.Length);
+        }
+
+        [Fact]
+        public void TruncateStatusLine_StripNarrowerThanInsets_ReturnsEllipsisOnly()
+        {
+            static float Width(string s) => s.Length * 10f;
+
+            // A strip width at or below the reserved insets clamps the fit target to zero: not even one prefix
+            // char plus the dots fits, so TruncateWithEllipsis's own floor case returns the bare ellipsis.
+            Assert.Equal("...", MapEditorScene.TruncateStatusLine(new string('x', 40), 0f, Width));
         }
 
         // ---- toolbar mode sync ---------------------------------------------------------------------------
@@ -3380,6 +3552,31 @@ namespace KhaozEngine.Tests.MapEditor
             AssertEveryRowDescribed(noScatterScene.Inspector, "CompanionLayer (no scatter layers)");
         }
 
+        // A dedicated document for the PolygonShapeDoc branch of AddShapeRows: EveryKindDoc deliberately keeps its
+        // exclusion/region/scatter-override shapes disc/rect (other tests depend on that exact fixture), so the
+        // polygon branch (the read-only "Kind" + "Points" rows) has never been walked by EveryRow_HasDescription.
+        [Fact]
+        public void PolygonShapeRows_HaveDescriptions()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion
+                {
+                    Shape = new PolygonShapeDoc { Points = { new[] { 0f, 0f }, new[] { 10f, 0f }, new[] { 5f, 8f } } },
+                });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+
+            ReadOnlyRow kind = ReadOnlyRowByLabel(scene.Inspector, "Kind");
+            kind.Update(new Rect(0f, 0f, 200f, 28f), new InputManager(), 0f);   // polls the display getter
+            Assert.Equal("polygon", kind.Display);
+
+            AssertEveryRowDescribed(scene.Inspector, "Exclusion (polygon)");
+        }
+
         // Asserts the CURRENT inspector carries at least the given group HeaderRow labels (order-independent,
         // extra headers allowed), the loose pin the plan calls for so a wording tweak does not break the test.
         static void AssertGrouped(PropertyGrid grid, string context, params string[] expectedHeaders)
@@ -4014,6 +4211,133 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(2, scene.Document.Doc.ScatterOverrides.Count);   // the earlier override was removed
             Assert.True(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "1"));    // the hidden one shifted down to index 1
             Assert.False(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "2"));   // nothing hidden at the old tail slot
+        }
+
+        // ---- event-driven hide maintenance across undo / redo / rename --------------------------------------
+
+        [Fact]
+        public void HiddenExclusion_ReorderThenUndoRedo_HideFollowsExactlyOnce()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 1f } });   // 0
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 2f } });   // 1
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 3f } });   // 2: hidden
+                return doc;
+            });
+            scene.Visibility.SetElementHidden(SelectionKind.Exclusion, "2", true);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);
+            TreeNode e2 = CategoryChild(outline, "Exclusions", 2);
+            TreeNode e0 = CategoryChild(outline, "Exclusions", 0);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, e2), RowOf(outline, e0), afterTarget: false);   // 2 -> before 0
+
+            // Single remap through the event path: 2 -> 0 exactly once. If the old inline RemapIndex call site still
+            // ran alongside the event, the hide would double-shift to index 1, so asserting 0 (and NOT 1) is the
+            // single-remap regression guard.
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "1"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "2"));
+
+            // Undo the reorder: the inverse remap on CommandUndone walks the hide back to index 2.
+            Assert.True(scene.Document.Undo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "2"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+
+            // Redo repeats the forward remap.
+            Assert.True(scene.Document.Redo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "2"));
+        }
+
+        [Fact]
+        public void HiddenExclusion_DeleteThenUndo_HideShiftsDownAndBack()
+        {
+            // Delete runs through EditorToolController.Update (gated on a built Field), so this needs FieldDocScene.
+            var scene = new FieldDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 1f } });   // 0: deleted
+                doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 2f } });   // 1: hidden
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Visibility.SetElementHidden(SelectionKind.Exclusion, "1", true);
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");   // delete the earlier index
+
+            m.Input = KeyFrame(shiftDown: false, Key.Delete);
+            m.Update(0.016f);
+
+            Assert.Single(scene.Document.Doc.Exclusions);
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));    // hide shifted down 1 -> 0
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "1"));
+
+            // Undo the delete: InsertIndex (the inverse) shifts the surviving hide back up to its original index 1.
+            Assert.True(scene.Document.Undo());
+            Assert.Equal(2, scene.Document.Doc.Exclusions.Count);
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "1"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Exclusion, "0"));
+        }
+
+        [Fact]
+        public void HiddenPlacement_RenameThenUndoRedo_HideFollowsKey_NoOrphan()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Placements.Add(new MapPlacement { Id = "a", Kind = "prop", X = 1f, Z = 2f });
+                return doc;
+            });
+            scene.Visibility.SetElementHidden(SelectionKind.Placement, "a", true);
+
+            scene.Document.Execute(new RenamePlacementCommand("a", "b"));
+
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Placement, "b"));    // the hide followed the rename
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "a"));   // no orphan under the old key
+
+            Assert.True(scene.Document.Undo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Placement, "a"));    // back under the old key
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "b"));   // no orphan under the new key
+
+            Assert.True(scene.Document.Redo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Placement, "b"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Placement, "a"));
+        }
+
+        [Fact]
+        public void HiddenRegion_MergedRenameChain_HideFollowsFinalName_ThenUndo()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Regions.Add(new MapRegion { Name = "a", Shape = new DiscShapeDoc { Radius = 3f } });
+                return doc;
+            });
+            scene.Visibility.SetElementHidden(SelectionKind.Region, "a", true);
+
+            // A per-keystroke region rename a -> b -> c coalesces into ONE merged command (RenameRegionCommand.TryMerge)
+            // whose live _newName is "c". CommandApplied fires on each execute, so the hide walks a -> b -> c.
+            scene.Document.Execute(new RenameRegionCommand("a", "b"));
+            scene.Document.Execute(new RenameRegionCommand("b", "c"));
+
+            Assert.Equal(1, scene.Document.History.UndoDepth);   // merged into one undo step
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Region, "c"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "a"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "b"));
+
+            // Undo the merged rename: the command's live effect is Rename(a, c), so the inverse walks c -> a in one hop
+            // (no orphan left under b or c).
+            Assert.True(scene.Document.Undo());
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.Region, "a"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "b"));
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.Region, "c"));
         }
     }
 }

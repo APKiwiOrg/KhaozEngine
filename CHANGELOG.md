@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 10.131.0
+## 11.1.0
 
 A game-registered admin action seam on `ServerAdmin`, served by the existing `KhaozEngine.Server.Admin`
 token/TLS endpoint under three new routes: named handlers a game registers at startup, dispatched over the
@@ -38,6 +38,82 @@ same authenticated pipeline as the built-in admin commands.
 - **No dependency edges changed.** The registry lives on the existing `KhaozEngine.NetWorld` seam
   (`ServerAdmin`). `KhaozEngine.Server.Admin` still only references `NetWorld`, `WorldStore`, and
   `Microsoft.AspNetCore.App`.
+
+## 11.0.0
+
+Map editor polish round 8: event-driven visibility maintenance that survives undo/redo and renames, two new
+MCP read-back verbs, and a widget-correctness sweep, shipped as a MAJOR release because three public APIs
+break at compile or behavior level (`EditorToolController.OnIndexRemoved` removed, `NumberField.Value` field
+to clamping property, the `TextEntry.Apply`/`TextInput.CharFilter` filter delegate changes shape).
+
+**BREAKING** (these hit consumers at compile time or silently change behavior):
+
+- **`EditorToolController.OnIndexRemoved` REMOVED.** Visibility maintenance is no longer a controller
+  callback: it is event-driven through the new `EditorDocument` command events (below). A consumer that
+  assigned or invoked `OnIndexRemoved` no longer compiles. Migration: drop the wiring entirely, the
+  reorder/remove/rename commands now carry the maintenance themselves.
+- **`NumberField.Value` is now a property whose setter clamps to `[Min, Max]`** (was a bare public field).
+  By-ref uses (`ref`/`out` against the field) no longer compile. An external write now displays clamped
+  without raising `WasChanged`/`OnChanged` (was stored raw).
+- **`TextEntry.Apply`'s `filter` parameter and `TextInput.CharFilter` change shape** from `Func<char, bool>`
+  to `Func<string, char, bool>`: the filter now receives the buffer as accumulated THIS call alongside the
+  candidate char, so a stateful filter (e.g. "at most one dot") validates against chars already admitted in
+  the same multi-key frame or paste instead of a stale pre-call snapshot. Existing single-arg filter lambdas
+  need the extra parameter added.
+
+Added:
+
+- **`EditorDocument.CommandApplied` / `CommandUndone` / `CommandRedone` events** (`Action<IEditorCommand>`),
+  raised after a command executes, undoes, or redoes. The editor's per-element hide maintenance rides them:
+  reorder/remove/rename commands carry an internal `IVisibilityEffect` whose forward op runs on
+  execute/redo and its inverse on undo.
+- **`EditorVisibility.InsertIndex` + `RenameKey`** beside the existing `RemapIndex`/`RemoveIndex`, the
+  inverse-remap and key-follow primitives the event path drives.
+- **`VisibilityGroup.PlayerSpawns`**: player spawns get their own whole-class hide (Layers panel group count
+  7 to 8, labeled "Player spawns"), gating both the marker draw and the pick, in lockstep with the
+  per-element hide.
+- **`Color.ScaleRgbClamped(float factor)`** (KhaozEngine.Primitives): `ScaleRgb`, but each scaled channel
+  clamped to 0..1, alpha preserved. For brighten tints that can overshoot a saturated channel.
+- **`GuiDraw` is now public with `TruncateWithEllipsis(text, maxWidth, measureWidth)` as its ONLY public
+  member**: binary-search fit-to-width with a trailing three-dot ellipsis against a caller-supplied measure
+  function, pure and headless-testable. Everything else on `GuiDraw` stays internal.
+- **`NumberField.GestureEnded`** fires once a scrub that moved `Value` releases or a typed edit commits
+  (never on a cancel), the boundary a host seals an undo gesture at. **`FloatRow.GestureEnded`** is a direct
+  pass-through, and **`PropertyGrid.WheelSpeed` + `TreeView.WheelSpeed`** expose the continuous wheel-scroll
+  knob (`ScrollablePanel` idiom).
+- **`QueryService.ExclusionsInfo` / `ScatterOverridesInfo`** (KhaozEngine.MapEdit.Tool) plus the four result
+  records (`ExclusionInfo`/`ExclusionsInfo`/`ScatterOverrideInfo`/`ScatterOverridesInfo`), surfaced as the
+  MCP read verbs **`exclusions_info` and `scatter_overrides_info`** (verb surface 66 to 68): every element
+  in document order with index, name, shape kind + one-line summary, layer targeting, and (overrides) the
+  density multiplier and `Kinds` in the round-trippable `"id"`/`"id:weight"` convention.
+
+Behavior:
+
+- Per-element hides survive undo and redo of a reorder or delete, and follow a placement, spawn, player
+  spawn, or region rename across execute/undo/redo (the old stale-key orphan is gone). Single source: the
+  old inline remap call sites are removed along with `OnIndexRemoved`. A deleted element's OWN hide is still
+  dropped and not restored on undo (never part of the reversible document).
+- Cross-parameter inspector scrubs now land as TWO undo steps (a scrub-end gesture seal via
+  `GestureEnded` -> `EditorDocument.SealGesture`), while command-level merge WITHIN one gesture is unchanged.
+- `TreeView`/`PropertyGrid` wheel scrolling is continuous (`ScrollDelta * WheelSpeed`, no per-notch
+  rounding), and `TreeView` scrolls mid-drag: drop geometry resolves against the live `ScrollOffset` instead
+  of freezing at the drag's start position.
+- `RayMath.IntersectAabb`: a NaN origin/direction component now always misses (was an always-pass slab), and
+  the zero-length-ray edge is pinned (hits at `tNear` 0 only when the origin starts inside).
+- `TerrainRaycast.Raycast`: a NaN `step` or `maxDistance` throws `ArgumentOutOfRangeException` (was a silent
+  NaN-poisoned miss).
+- `Scene3D.UnloadTexture` is a safe no-op on a stale handle after `Dispose()` (was
+  `ArgumentOutOfRangeException`), matching `UnloadSplatMaterial`.
+- `RemoveExclusionCommand`/`RemoveScatterOverrideCommand`/`RemoveFeatureCommand` throw a precise
+  `ArgumentOutOfRangeException` naming the command, index, and live count on a bad index (was whatever the
+  raw list indexing surfaced).
+- The map editor status line truncates with an ellipsis instead of overflowing the strip, a mode swap
+  unfocuses the now-hidden palette/spawn filter, whitespace-only filter edits no longer trigger a rebuild,
+  the overlay draw list is a caller-owned reused buffer (no per-frame allocation), the selected-overlay
+  brighten clamps channels via `ScaleRgbClamped` (a slight visual change only where a saturated channel used
+  to overshoot 1.0), and a sub-3px micro-scrub that changed the value no longer opens typing mode on release
+  (a 1px drag no longer counts as a tap). `NumberField` disabled mid-edit cancels instead of committing, and
+  its numeric filter admits at most one dot per multi-key frame or paste.
 
 ## 10.130.0
 

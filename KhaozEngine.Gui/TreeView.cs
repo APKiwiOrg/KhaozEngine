@@ -78,11 +78,20 @@ namespace KhaozEngine.Gui
         public float Indent { get; set; } = 16f;
 
         /// <summary>
-        /// Rows advanced per wheel notch. The wheel step is <c>notches * RowHeight * WheelRowsPerNotch</c>, so one
-        /// notch moves this many rows. Default 3 matches <see cref="PropertyGrid.WheelRowsPerNotch"/> for the same
-        /// side-by-side feel.
+        /// Rows advanced per one full wheel unit. The wheel step is continuous (see <see cref="WheelSpeed"/>), not
+        /// rounded to an integer notch count: a <c>ScrollDelta</c> of magnitude 1 (one physical wheel click) moves
+        /// this many rows, and a fractional trackpad delta moves the matching fraction. Default 3 matches
+        /// <see cref="PropertyGrid.WheelRowsPerNotch"/> for the same side-by-side feel.
         /// </summary>
         public float WheelRowsPerNotch { get; set; } = 3f;
+
+        /// <summary>
+        /// Pixels scrolled per one unit of wheel <c>ScrollDelta</c>: <c>RowHeight * WheelRowsPerNotch</c>. Exposed
+        /// under the same name and used the same way as <see cref="ScrollablePanel.WheelSpeed"/>
+        /// (<c>ScrollOffset -= input.ScrollDelta * WheelSpeed</c>, continuous, no per-notch rounding) so every
+        /// scrollable widget in the package shares the idiom.
+        /// </summary>
+        public float WheelSpeed => RowHeight * WheelRowsPerNotch;
 
         /// <summary>Vertical scroll in pixels. Wheel scrolling clamps this to the content, but a direct set is honoured as-is.</summary>
         public float ScrollOffset { get; set; }
@@ -238,10 +247,13 @@ namespace KhaozEngine.Gui
         /// drag path is fully inert and every held press is a plain tap candidate. When a handler is wired, a held
         /// press whose origin is in the tree becomes a row drag once the pointer clears <see cref="DragThreshold"/>
         /// (grabbing the press-origin row, unless that press landed in a parent's caret zone, which stays reserved
-        /// for the expand toggle). A valid same-parent release fires <see cref="OnReordered"/>, Escape or an
-        /// off-tree release cancels. Otherwise a caret-zone tap toggles expansion and any other in-bounds tap
-        /// selects the row. Returns true if the selection, an expansion, or a reorder changed. Ignores everything
-        /// after the region reservation when disabled.
+        /// for the expand toggle). The wheel scrolls whenever the pointer is over the tree, including while a drag
+        /// is armed: the drop geometry below (<see cref="RowAt"/>/<see cref="RowBounds"/>) reads the live
+        /// <see cref="ScrollOffset"/>, so a reorder drag can scroll a long list mid-gesture instead of freezing.
+        /// A valid same-parent release fires <see cref="OnReordered"/>, Escape or an off-tree release cancels.
+        /// Otherwise a caret-zone tap toggles expansion and any other in-bounds tap selects the row. Returns true
+        /// if the selection, an expansion, or a reorder changed. Ignores everything after the region reservation
+        /// when disabled.
         /// </summary>
         public bool Update(InputManager input)
         {
@@ -258,15 +270,14 @@ namespace KhaozEngine.Gui
             // Escape aborts an in-flight drag outright (no drop) and latches so the release cannot tap-select.
             if (_dragNode is not null && input.IsKeyDown(Key.Escape)) { AbandonDrag(); _dragCancelled = true; return false; }
 
-            // Wheel scrolls only when idle. While dragging the geometry is frozen (wheel-during-drag is deferred).
-            if (_dragNode is null)
+            // Wheel scrolls whenever the pointer is over the tree, continuous (no per-notch rounding) like
+            // ScrollablePanel - including mid-drag, so a long list can scroll while reordering. This runs BEFORE
+            // TrackDrag/ComputeDrop below, so the same frame's drop geometry resolves against the just-updated
+            // ScrollOffset rather than a stale one.
+            if (input.IsPointerIn(Bounds) && input.ScrollDelta != 0f)
             {
-                int notches = input.GetScrollIn(Bounds);
-                if (notches != 0)
-                {
-                    float max = MathF.Max(0f, rows.Count * RowHeight - Bounds.Height);
-                    ScrollOffset = Math.Clamp(ScrollOffset - notches * RowHeight * WheelRowsPerNotch, 0f, max);
-                }
+                float max = MathF.Max(0f, rows.Count * RowHeight - Bounds.Height);
+                ScrollOffset = Math.Clamp(ScrollOffset - input.ScrollDelta * WheelSpeed, 0f, max);
             }
 
             // A held press whose origin is in the tree is a (potential) drag, never a tap: arm and track it here,

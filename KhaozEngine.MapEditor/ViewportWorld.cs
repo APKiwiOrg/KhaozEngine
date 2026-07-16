@@ -231,7 +231,7 @@ public sealed class ViewportWorld : IDisposable
     /// off. The placement whose stable id is <paramref name="selectedPlacementId"/> re-draws once with
     /// <paramref name="highlightTint"/> when it is still visible. NPC spawn markers draw as ground-height billboards
     /// under the <see cref="VisibilityGroup.Spawns"/> group and per-element hide. Player start markers draw the same
-    /// way (green when enabled) gated by per-element hide only (they have no group). The water plane draws only when
+    /// way (green when enabled) under the <see cref="VisibilityGroup.PlayerSpawns"/> group and per-element hide. The water plane draws only when
     /// the <see cref="VisibilityGroup.Water"/> group is on. Throws <see cref="ObjectDisposedException"/> after
     /// <see cref="Dispose"/> and <see cref="InvalidOperationException"/> before <see cref="Build"/>.</summary>
     public void Draw(Vector3 viewPos, string? selectedPlacementId, Color highlightTint, EditorVisibility visibility)
@@ -506,11 +506,12 @@ public sealed class ViewportWorld : IDisposable
     }
 
     // Player start markers, drawn exactly like the NPC spawn markers (ground-height billboards, same size and lift)
-    // but GREEN when enabled and the shared grey when disabled. Player spawns have no visibility GROUP of their own,
-    // so only the per-element hide gates them (matching EditorVisibility.IsElementVisible, which finds no group for
-    // SelectionKind.PlayerSpawn), keeping draw and pick in lockstep.
+    // but GREEN when enabled and the shared grey when disabled. Gated by the PlayerSpawns group first (mirroring
+    // DrawSpawnMarkers) then the per-element hide, matching EditorVisibility.IsElementVisible (which maps
+    // SelectionKind.PlayerSpawn to VisibilityGroup.PlayerSpawns), so draw and pick stay in lockstep.
     void DrawPlayerSpawnMarkers(EditorVisibility visibility)
     {
+        if (!visibility.GetGroup(VisibilityGroup.PlayerSpawns)) return;   // whole group hidden: no markers
         foreach (MapPlayerSpawn spawn in _doc!.PlayerSpawns)
         {
             if (visibility.IsElementHidden(SelectionKind.PlayerSpawn, spawn.Id)) continue;   // this one individually hidden

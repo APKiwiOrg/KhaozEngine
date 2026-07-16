@@ -4,11 +4,11 @@ using ModelContextProtocol.Server;
 namespace KhaozEngine.MapEdit.Tools;
 
 /// <summary>Read-only world queries over the open document: ground sampling, walkability, rect scans over
-/// placements, NPC spawns, and player spawns, a scatter layer preview, a brute-force flat-area search, and the
-/// full procedural setup (terrain scalars, biome bands, scatter layers, companion layers). Every method is a
-/// thin wrapper that delegates to <see cref="QueryService"/> through <see cref="ToolGuard.Guard{T}"/>. Coordinates
-/// are the engine's world frame: X and Z span the ground plane and Y is up, all lengths in meters, angles in
-/// degrees.</summary>
+/// placements, NPC spawns, and player spawns, a scatter layer preview, a brute-force flat-area search, the full
+/// procedural setup (terrain scalars, biome bands, scatter layers, companion layers), and the exclusion and
+/// scatter-override list reads. Every method is a thin wrapper that delegates to <see cref="QueryService"/>
+/// through <see cref="ToolGuard.Guard{T}"/>. Coordinates are the engine's world frame: X and Z span the ground
+/// plane and Y is up, all lengths in meters, angles in degrees.</summary>
 [McpServerToolType]
 public sealed class QueryTools(QueryService query)
 {
@@ -59,4 +59,12 @@ public sealed class QueryTools(QueryService query)
     [McpServerTool(Name = "procedural_info"), Description("Reads the full procedural setup of the open document: terrain scalars, biome bands, scatter layers (with their rules and kinds), and companion layers, at full field fidelity. The read counterpart to terrain_edit, the biome band triad, and the scatter/companion layer triads.")]
     public ProceduralInfo ProceduralInfo()
         => ToolGuard.Guard(query.ProceduralInfo);
+
+    [McpServerTool(Name = "exclusions_info"), Description("Reads the scatter exclusions of the live session document, in document order. The read counterpart to exclusion_add/exclusion_edit/exclusion_remove/exclusion_rename/exclusion_set_layers.")]
+    public ExclusionsInfo ExclusionsInfo()
+        => ToolGuard.Guard(query.ExclusionsInfo);
+
+    [McpServerTool(Name = "scatter_overrides_info"), Description("Reads the scatter overrides of the live session document, in document order. That order is first-match-wins significant: an earlier override shadows a later one whose shape also covers the same point. The read counterpart to scatter_override_add/scatter_override_edit/scatter_override_remove/scatter_override_rename/scatter_override_reorder.")]
+    public ScatterOverridesInfo ScatterOverridesInfo()
+        => ToolGuard.Guard(query.ScatterOverridesInfo);
 }

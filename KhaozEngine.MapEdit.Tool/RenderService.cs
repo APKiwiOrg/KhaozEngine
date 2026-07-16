@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Imaging;
@@ -178,8 +179,11 @@ public sealed class RenderService(MapEditSession session)
     // live viewport.
     static void DrawOverlays(Scene3D scene, MapDocument doc, TerrainField field, EditorVisibility visibility)
     {
+        // A local result buffer per render: this is a one-shot offline capture, not a per-frame loop, so the
+        // caller-owned-buffer seam needs no long-lived field here.
         foreach (OverlayDraw o in MapEditorScene.ComputeOverlayDrawList(
-                     doc, new EditorSelection(), field.SampleHeight, showOverlays: true, visibility))
+                     doc, new EditorSelection(), field.SampleHeight, showOverlays: true, visibility,
+                     new List<OverlayDraw>()))
         {
             switch (o.Shape)
             {

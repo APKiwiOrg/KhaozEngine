@@ -194,6 +194,31 @@ namespace KhaozEngine.Tests.MapEditTool
         }
 
         [Fact]
+        public void SpawnAdd_ReusesFreedIdGapAfterRemoval()
+        {
+            // GenerateId always searches from N=1 up, so removing a middle id frees a gap the NEXT auto-id add
+            // reuses instead of always appending past the highest N seen so far.
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                MutationResult a = mutation.SpawnAdd("bandit", 0f, 0f);
+                MutationResult b = mutation.SpawnAdd("bandit", 1f, 1f);
+                MutationResult c = mutation.SpawnAdd("bandit", 2f, 2f);
+                Assert.Equal("s-bandit-1", a.Id);
+                Assert.Equal("s-bandit-2", b.Id);
+                Assert.Equal("s-bandit-3", c.Id);
+
+                mutation.SpawnRemove("s-bandit-2");
+
+                MutationResult d = mutation.SpawnAdd("bandit", 3f, 3f);
+                Assert.Equal("s-bandit-2", d.Id);   // the freed slot, not "s-bandit-4"
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
         public void PlayerSpawnAdd_AutoId_DocumentGainsPlayerSpawn()
         {
             string dir = NewTempDir();
@@ -217,6 +242,30 @@ namespace KhaozEngine.Tests.MapEditTool
                 // A second auto-id add skips the taken "player-1" and lands on "player-2".
                 MutationResult second = mutation.PlayerSpawnAdd(0f, 0f);
                 Assert.Equal("player-2", second.Id);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public void PlayerSpawnAdd_ReusesFreedIdGapAfterRemoval()
+        {
+            // Same GenerateId gap-reuse contract as SpawnAdd_ReusesFreedIdGapAfterRemoval, for player spawns.
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                MutationResult a = mutation.PlayerSpawnAdd(0f, 0f);
+                MutationResult b = mutation.PlayerSpawnAdd(1f, 1f);
+                MutationResult c = mutation.PlayerSpawnAdd(2f, 2f);
+                Assert.Equal("player-1", a.Id);
+                Assert.Equal("player-2", b.Id);
+                Assert.Equal("player-3", c.Id);
+
+                mutation.PlayerSpawnRemove("player-2");
+
+                MutationResult d = mutation.PlayerSpawnAdd(3f, 3f);
+                Assert.Equal("player-2", d.Id);   // the freed slot, not "player-4"
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

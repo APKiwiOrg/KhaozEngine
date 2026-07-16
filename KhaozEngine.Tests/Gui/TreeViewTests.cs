@@ -73,6 +73,24 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(new[] { 0, 1, 1, 2, 0 }, rows.Select(r => r.Depth).ToArray());
         }
 
+        // VisibleRows is documented as a shared cached list rebuilt on every call: the SAME instance is handed back
+        // each time (no per-call allocation), so a caller that wants to keep a result across a later call must
+        // materialize it (ToArray/ToList) first, or the earlier reference's content changes out from under it.
+        [Fact]
+        public void VisibleRows_IsASharedListThatMustBeMaterializedBeforeTheNextCall()
+        {
+            var tree = NewTree();   // A collapsed (children A1/A2 hidden), B
+            IReadOnlyList<(TreeNode Node, int Depth)> first = tree.VisibleRows();
+            Assert.Equal(2, first.Count);   // A, B
+
+            tree.Roots[0].Expanded = true;
+            IReadOnlyList<(TreeNode Node, int Depth)> second = tree.VisibleRows();
+
+            Assert.Same(first, second);     // the exact same list instance, not a fresh allocation
+            Assert.Equal(4, first.Count);   // and `first`'s content changed out from under the earlier reference
+            Assert.Equal(4, second.Count);
+        }
+
         [Fact]
         public void TapOnRowBody_Selects()
         {
@@ -122,6 +140,26 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(tree.WasExpansionChanged);
         }
 
+        // The caret-zone band is offset by `depth * Indent`, not fixed to the depth-0 column: a tap that would land
+        // OUTSIDE the depth-0 caret zone but inside a deeper row's own caret column must still toggle that row,
+        // not fall through to a body-tap selection.
+        [Fact]
+        public void TapOnCaretZone_AtDepthGreaterThanZero_TogglesCorrectNode()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0], a2 = a.Children[1];
+            a.Expanded = true;   // rows: A(0, depth0), A1(1, depth1), A2(2, depth1), B(3, depth0)
+
+            var input = new InputManager();
+            // Row 2 (A2) spans Y 48..72 at RowHeight 24, and its depth-1 caret column is X [Indent, 2*Indent) = [16,32).
+            // X=8 (the depth-0 caret column) would miss this row's caret zone entirely if depth were ignored.
+            Tap(tree, input, new Vector2(24, 60));
+
+            Assert.True(a2.Expanded);
+            Assert.True(tree.WasExpansionChanged);
+            Assert.False(tree.WasSelectionChanged);
+        }
+
         [Fact]
         public void Wheel_ScrollsAndClamps()
         {
@@ -141,6 +179,47 @@ namespace KhaozEngine.Tests.Gui
             input.Update(Frame(new Vector2(100, 60), false, 100f));
             tree.Update(input);
             Assert.Equal(0f, tree.ScrollOffset, 3);
+        }
+
+        // The wheel step is continuous (ScrollDelta * WheelSpeed), not rounded to an integer notch count: a
+        // fractional delta moves the matching fraction of a whole notch's distance.
+        [Fact]
+        public void Wheel_ScrollsContinuously_NoNotchRounding()
+        {
+            var tree = new TreeView(Area);
+            for (int i = 0; i < 20; i++) tree.Roots.Add(new TreeNode(LocalizedText.Raw("R" + i)));
+
+            var input = new InputManager();
+            input.Update(Frame(new Vector2(100, 60), false, -0.5f));   // half a wheel unit down
+            tree.Update(input);
+            Assert.Equal(3f * tree.RowHeight * 0.5f, tree.ScrollOffset, 3);   // half of the whole-unit 72, not 0 or 72
+
+            input.Update(Frame(new Vector2(100, 60), false, -0.25f));  // another quarter unit
+            tree.Update(input);
+            Assert.Equal(3f * tree.RowHeight * 0.75f, tree.ScrollOffset, 3);
+        }
+
+        // WheelSpeed is exposed under the same name/idiom as ScrollablePanel.WheelSpeed, computed from
+        // RowHeight * WheelRowsPerNotch.
+        [Fact]
+        public void WheelSpeed_MatchesRowHeightTimesWheelRowsPerNotch()
+        {
+            var tree = new TreeView(Area) { RowHeight = 20f, WheelRowsPerNotch = 4f };
+            Assert.Equal(80f, tree.WheelSpeed, 3);
+        }
+
+        // RowBounds is pure arithmetic from Bounds, RowHeight, and ScrollOffset - pinned directly rather than only
+        // observed indirectly through hit-testing or Draw.
+        [Fact]
+        public void RowBounds_IsPureArithmeticFromBoundsRowHeightAndScrollOffset()
+        {
+            var tree = new TreeView(new Rect(10, 20, 200, 120)) { RowHeight = 24f };
+            Assert.Equal(new Rect(10, 20, 200, 24), tree.RowBounds(0));
+            Assert.Equal(new Rect(10, 44, 200, 24), tree.RowBounds(1));
+
+            tree.ScrollOffset = 30f;
+            Assert.Equal(new Rect(10, -10, 200, 24), tree.RowBounds(0));   // scrolled above the top: may lie outside Bounds
+            Assert.Equal(new Rect(10, 14, 200, 24), tree.RowBounds(1));
         }
 
         [Fact]
@@ -238,6 +317,44 @@ namespace KhaozEngine.Tests.Gui
             Assert.Same(a1, dragged);
             Assert.Equal(0, from);                   // A1's index within A's children
             Assert.Equal(1, to);                     // moved to A2's slot (RemoveAt(0) then Insert(1))
+            Assert.True(tree.WasReordered);
+        }
+
+        // Wheel scrolling is no longer frozen while a drag is armed: the wheel updates ScrollOffset mid-gesture,
+        // and the SAME frame's drop geometry (TrackDrag/ComputeDrop, run right after the wheel block) resolves
+        // against the just-updated offset - so a release at an unmoved screen position lands on whichever row the
+        // scroll brought under the pointer, not the row that was there before scrolling.
+        [Fact]
+        public void Wheel_DuringArmedDrag_ScrollsAndDropResolvesAgainstNewPositions()
+        {
+            var tree = new TreeView(Area);   // Area (0,0,200,120), RowHeight 24 -> 5 rows visible, 20 flat roots
+            for (int i = 0; i < 20; i++) tree.Roots.Add(new TreeNode(LocalizedText.Raw("R" + i)));
+
+            TreeNode? dragged = null;
+            int from = -1, to = -1, fired = 0;
+            tree.OnReordered = (n, f, t) => { dragged = n; from = f; to = t; fired++; };
+
+            var input = new InputManager();
+            Vector2 origin = RowLabel(tree, 1);            // row 1's label, well past the caret zone
+            var dragPos = new Vector2(origin.X, 80f);      // clears DragThreshold (6), arms the drag on row 1
+
+            input.Update(Frame(origin, false)); tree.Update(input);    // idle: establishes position
+            input.Update(Frame(origin, true)); tree.Update(input);     // press: origin pinned on row 1
+            input.Update(Frame(dragPos, true)); tree.Update(input);    // held past threshold: arms, drags row 1
+
+            // Wheel down one unit while the drag is held, pointer left exactly where it is.
+            input.Update(Frame(dragPos, true, -1f)); tree.Update(input);
+            Assert.Equal(3f * tree.RowHeight, tree.ScrollOffset, 3);   // one wheel unit = WheelRowsPerNotch (3) rows
+
+            // Release at the SAME screen position: before this fix the geometry would still be frozen at the
+            // pre-scroll offset, landing back on row 1 itself (a same-row no-op that fires nothing). With scroll-
+            // aware geometry it resolves against the row the scroll brought under the pointer instead.
+            input.Update(Frame(dragPos, false)); tree.Update(input);
+
+            Assert.Equal(1, fired);
+            Assert.Same(tree.Roots[1], dragged);
+            Assert.Equal(1, from);
+            Assert.Equal(5, to);
             Assert.True(tree.WasReordered);
         }
 

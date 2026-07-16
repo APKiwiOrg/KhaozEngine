@@ -48,6 +48,23 @@ public sealed class EditorDocument
     /// <see cref="Redo"/>).</summary>
     public event Action? DocumentChanged;
 
+    /// <summary>Fired after a command applies through <see cref="Execute"/>, carrying that command (BEFORE
+    /// <see cref="DocumentChanged"/>). Fires on EVERY execute, including one that coalesced into the current undo
+    /// step (a merged command still applied its mutation). The editor subscribes to run a command's view-only
+    /// visibility maintenance (<see cref="IVisibilityEffect"/>) so a per-element hide follows the element the
+    /// command moved, removed, or renamed.</summary>
+    public event Action<IEditorCommand>? CommandApplied;
+
+    /// <summary>Fired after <see cref="Undo"/> reverts a command, carrying the reverted command (BEFORE
+    /// <see cref="DocumentChanged"/>). Its subscriber applies the INVERSE of the command's visibility maintenance,
+    /// so a hide follows the element back to its pre-command identity.</summary>
+    public event Action<IEditorCommand>? CommandUndone;
+
+    /// <summary>Fired after <see cref="Redo"/> re-applies a command, carrying that command (BEFORE
+    /// <see cref="DocumentChanged"/>). Its subscriber re-applies the FORWARD visibility maintenance, matching
+    /// <see cref="CommandApplied"/>.</summary>
+    public event Action<IEditorCommand>? CommandRedone;
+
     /// <summary>True after any un-undone command since the last <see cref="MarkSaved"/>. Tracked by history
     /// position: undoing back to the saved point clears it. If a fresh edit discards the history branch that
     /// held the saved point, the saved state becomes unreachable and this stays true until the next save.</summary>
@@ -85,6 +102,7 @@ public sealed class EditorDocument
         if (_savedMarker != Unreachable && _savedMarker > depthBefore)
             _savedMarker = Unreachable;
         MarkWorldRebuild(command);
+        CommandApplied?.Invoke(command);
         DocumentChanged?.Invoke();
     }
 
@@ -93,7 +111,11 @@ public sealed class EditorDocument
     {
         IEditorCommand? command = History.PeekUndo();
         if (!History.Undo(Doc)) return false;
-        if (command is not null) MarkWorldRebuild(command);
+        if (command is not null)
+        {
+            MarkWorldRebuild(command);
+            CommandUndone?.Invoke(command);
+        }
         DocumentChanged?.Invoke();
         return true;
     }
@@ -103,7 +125,11 @@ public sealed class EditorDocument
     {
         IEditorCommand? command = History.PeekRedo();
         if (!History.Redo(Doc)) return false;
-        if (command is not null) MarkWorldRebuild(command);
+        if (command is not null)
+        {
+            MarkWorldRebuild(command);
+            CommandRedone?.Invoke(command);
+        }
         DocumentChanged?.Invoke();
         return true;
     }

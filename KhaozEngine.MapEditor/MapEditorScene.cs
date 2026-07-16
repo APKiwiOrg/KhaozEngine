@@ -107,6 +107,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     const float StatusHeight = 26f;
     /// <summary>Height in points of the filter box slotted at the top of the palette / spawn-list region.</summary>
     const float PaletteFilterHeight = 26f;
+    /// <summary>Left inset in points between the status strip's edge and the status text (see <see cref="TruncateStatusLine"/>,
+    /// which reserves this on both sides when fitting the line to the strip).</summary>
+    const float StatusTextInset = 8f;
     /// <summary>Falls back to this world-space box height for a kit id absent from the manifests.</summary>
     const float FallbackKindHeight = 2f;
 
@@ -201,8 +204,13 @@ public class MapEditorScene : GameScene, IGameScene3D
     // rebuilding. Per-category expansion is remembered across rebuilds so clearing a filter restores the tree.
     readonly List<PaletteCategory> _paletteSource = new();
     readonly Dictionary<string, bool> _paletteExpansion = new(StringComparer.Ordinal);
-    string _paletteTreeFilter = "";   // the filter text the live palette tree was last built for
-    string _spawnTreeFilter = "";     // the filter text the live spawn list was last built for
+    string _paletteTreeFilter = "";   // the TRIMMED filter text the live palette tree was last built for
+    string _spawnTreeFilter = "";     // the TRIMMED filter text the live spawn list was last built for
+
+    // The controller mode UpdateChrome last saw, so it can detect a swap and drop a now-hidden filter's stale
+    // focus (see the UpdateChrome block that compares this every frame). Defaults to Select, matching the
+    // controller's own default Mode, so the very first chrome step never misfires an unfocus.
+    EditorToolMode _lastChromeMode;
 
     bool _built;
     string _statusText = "";
@@ -343,7 +351,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         {
             HeightOf = KindHeight,
             IsVisible = _visibility.IsElementVisible,
-            OnIndexRemoved = _visibility.RemoveIndex,
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {
@@ -363,6 +370,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         _controller.PlaceFeatureType = DefaultFeatureType();
 
         _document.DocumentChanged += OnDocumentChanged;
+        _document.CommandApplied += OnCommandVisibilityForward;
+        _document.CommandRedone += OnCommandVisibilityForward;
+        _document.CommandUndone += OnCommandVisibilityInverse;
         _document.Selection.Changed += OnSelectionChanged;
 
         BuildWorld();
@@ -378,6 +388,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (!_built) return;
         _built = false;
         _document.DocumentChanged -= OnDocumentChanged;
+        _document.CommandApplied -= OnCommandVisibilityForward;
+        _document.CommandRedone -= OnCommandVisibilityForward;
+        _document.CommandUndone -= OnCommandVisibilityInverse;
         _document.Selection.Changed -= OnSelectionChanged;
         TeardownWorld();
     }
@@ -538,6 +551,20 @@ public class MapEditorScene : GameScene, IGameScene3D
         // never raises a change event, so this cannot loop back into a mode switch.
         _toolbar.ActiveIndex = (int)_controller.Mode;
 
+        // Drop a filter's focus the moment the mode swap that just happened hides its panel: TextInput.Unfocus
+        // normally only runs inside the filter's own Update call in UpdateWidgets, which only runs for the
+        // mode's CURRENTLY visible filter (see AnyEditorFocused), so a filter focused while its panel was up
+        // would otherwise keep IsFocused stuck true forever once the panel hides - not just a toolbar tap (the
+        // controller can also change mode on its own, same as the ActiveIndex sync above). Compared every frame
+        // outside UpdateWidgets' UiViewport guard so this fixes the stale bit even headless. AnyEditorFocused's
+        // own mode gate stays in place too, as defense in depth.
+        if (_controller.Mode != _lastChromeMode)
+        {
+            if (!KitPaletteVisible) _paletteFilter.Unfocus();
+            if (!SpawnMode) _spawnFilter.Unfocus();
+            _lastChromeMode = _controller.Mode;
+        }
+
         // Keep the toolbar Save button's label tracking the dirty flag, also outside the UiViewport guard so a
         // headless test sees "Save" / "Save*" flip without a live viewport (decision 4).
         _saveButton.Content = LocalizedText.Raw(_document.IsDirty ? "Save*" : "Save");
@@ -577,6 +604,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         DrawGizmo(scene);
     }
 
+    // This scene's overlay draw buffer, cleared and refilled by ComputeOverlayDrawList once per DrawOverlays
+    // call (the TreeView.VisibleRows per-instance precedent): a per-call List<T> would litter Gen0 with a
+    // per-frame allocation for a value nobody keeps past that same frame's GPU submission.
+    readonly List<OverlayDraw> _overlayDrawList = new();
+
     /// <summary>Submits the exclusion / region / feature overlay fills to the Scene3D debug-fill pass. The
     /// doc-to-draw-list step is the pure, headless-tested <see cref="ComputeOverlayDrawList"/>; only the per-entry
     /// GPU submission (a debug disc / quad / fan) lives here. No-op until the field exists (world built).</summary>
@@ -584,7 +616,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (_controller.Field is not { } field) return;
         foreach (OverlayDraw o in ComputeOverlayDrawList(
-                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays, _visibility))
+                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays, _visibility,
+                     _overlayDrawList))
         {
             switch (o.Shape)
             {
@@ -611,19 +644,25 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
     /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
     /// unknown custom type) is skipped, and so is any element <paramref name="visibility"/> hides (its group is off
-    /// or it is individually hidden), so a hidden overlay is not drawn. Returns an empty list when
-    /// <paramref name="showOverlays"/> is false. Pure (no GPU, no scene state), so the whole computation is
-    /// headless-testable. <see cref="DrawOverlays"/> submits the result untested.</summary>
+    /// or it is individually hidden), so a hidden overlay is not drawn. Leaves the buffer empty when
+    /// <paramref name="showOverlays"/> is false. Pure over its inputs (no GPU, no scene state), so the whole
+    /// computation is headless-testable. <see cref="DrawOverlays"/> submits the result untested.
+    /// <para><paramref name="into"/> is the caller-owned result buffer (the <see cref="TreeView.VisibleRows"/>
+    /// reuse pattern, with the buffer at the call site instead of behind the API): it is cleared at entry,
+    /// filled, and returned, so a per-frame caller passes one long-lived list and pays no per-call allocation,
+    /// while a caller that wants independent results simply passes a fresh list per call.</para></summary>
     internal static List<OverlayDraw> ComputeOverlayDrawList(
         MapDocument doc, EditorSelection selection, Func<float, float, float> sampleHeight, bool showOverlays,
-        EditorVisibility visibility)
+        EditorVisibility visibility, List<OverlayDraw> into)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(selection);
         ArgumentNullException.ThrowIfNull(sampleHeight);
         ArgumentNullException.ThrowIfNull(visibility);
+        ArgumentNullException.ThrowIfNull(into);
 
-        var list = new List<OverlayDraw>();
+        List<OverlayDraw> list = into;
+        list.Clear();
         if (!showOverlays) return list;
 
         int selectedExclusion = selection.Kind == SelectionKind.Exclusion ? SelectedIndex(selection.Id) : -1;
@@ -712,10 +751,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    // A selected overlay reads brighter: scale RGB up (ScaleRgb preserves the base alpha) then firm up that alpha,
-    // so the highlighted shape stands out against its unselected neighbours. Unselected returns the base color.
+    // A selected overlay reads brighter: scale RGB up (clamped at 1.0, alpha preserved) then firm up that alpha,
+    // so the highlighted shape stands out against its unselected neighbours without an unclamped channel
+    // overshooting past white. Unselected returns the base color.
     static Color Tint(Color baseColor, bool selected) => selected
-        ? baseColor.ScaleRgb(OverlaySelectBrighten).WithAlpha(MathF.Min(1f, baseColor.A * OverlaySelectAlphaBoost))
+        ? baseColor.ScaleRgbClamped(OverlaySelectBrighten).WithAlpha(MathF.Min(1f, baseColor.A * OverlaySelectAlphaBoost))
         : baseColor;
 
     // The list index a feature / exclusion selection id encodes, or -1 when it is not a valid non-negative index.
@@ -752,8 +792,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Draw(batch, _white, font);
 
         DrawPalette(batch, font, L.Palette);
-        batch.DrawString(font, StatusLine(),
-            new Vector2(MathF.Floor(L.Status.X + 8f), MathF.Floor(L.Status.Y + (StatusHeight - font.LineHeight) * 0.5f)),
+        string statusLine = TruncateStatusLine(StatusLine(), L.Status.Width, s => font.Measure(s).X);
+        batch.DrawString(font, statusLine,
+            new Vector2(MathF.Floor(L.Status.X + StatusTextInset), MathF.Floor(L.Status.Y + (StatusHeight - font.LineHeight) * 0.5f)),
             new Color(0.85f, 0.87f, 0.92f, 1f));
 
         // Drawn LAST, after every other chrome element (including the inspector, whose own Draw already clears its
@@ -1122,8 +1163,10 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // The shared index-keyed reorder step behind the Ctrl+Up/Down chord: resolve the selected index, clamp both it
     // and its delta target against the live count (so a boundary press lands no command), execute the caller's
-    // reorder command, then follow the element with its hide (RemapIndex) and its selection (Set) to the new index.
-    // Kept generic over the selection kind so Feature and ScatterOverride share one body.
+    // reorder command, then follow the element's selection (Set) to the new index. A per-element hide follows the
+    // move too, but that is driven by the reorder command's IVisibilityEffect through the document events (see
+    // OnCommandVisibilityForward), not remapped here. Kept generic over the selection kind so Feature and
+    // ScatterOverride share one body.
     void ReorderIndexKeyed(EditorSelection selection, int delta, int count, Func<int, int, IEditorCommand> command)
     {
         int from = SelectedIndex(selection.Id);
@@ -1131,7 +1174,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         int to = from + delta;
         if (to < 0 || to >= count) return;   // clamp at the ends: nothing to move, so land no command
         _document.Execute(command(from, to));
-        _visibility.RemapIndex(selection.Kind, from, to);   // a hide follows the moved element, not the slot
         selection.Set(selection.Kind, to.ToString(CultureInfo.InvariantCulture));
     }
 
@@ -1265,6 +1307,21 @@ public class MapEditorScene : GameScene, IGameScene3D
         RebuildOutline();
     }
 
+    // The single source of per-element-hide maintenance: a command that carries an IVisibilityEffect runs its
+    // forward hide remap on execute / redo and its inverse on undo, so a hide stays glued to the element the command
+    // moved, removed, or renamed and survives undo / redo. The document fires these BEFORE DocumentChanged, so the
+    // outline rebuild the change triggers already reads the updated hide set. Commands with no visibility effect
+    // (every non-reorder / non-remove / non-rename command, and a merged EditFeatureCommand) are ignored.
+    void OnCommandVisibilityForward(IEditorCommand command)
+    {
+        if (command is IVisibilityEffect effect) effect.Effect.ApplyForward(_visibility);
+    }
+
+    void OnCommandVisibilityInverse(IEditorCommand command)
+    {
+        if (command is IVisibilityEffect effect) effect.Effect.ApplyInverse(_visibility);
+    }
+
     void OnSelectionChanged()
     {
         // A rename queues a pending re-select of the NEW key once the rename row loses focus (see UpdateChrome).
@@ -1370,8 +1427,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     // three categories accept a reorder: Features fold in list order (last wins overlaps), Scatter Overrides match
     // in list order (FIRST match wins, so their order really is significant), and Exclusions have order-free
     // semantics but still expose a reorder for a stable authored layout. All three map to their index-based command
-    // with the selection following the moved row and the hide remapped to the new index (the ReorderSelectedElement
-    // idiom). Every other category (Placements, Spawns, Regions, Terrain) has no reorder, so its drop is a no-op.
+    // with the selection following the moved row (the ReorderSelectedElement idiom). A per-element hide follows the
+    // moved element too, but that is now driven by the command's IVisibilityEffect through the document events (see
+    // OnCommandVisibilityForward), not remapped here. Every other category (Placements, Spawns, Regions, Terrain)
+    // has no reorder, so its drop is a no-op.
     void OnOutlineReordered(TreeNode node, int fromIndex, int toIndex)
     {
         if (node.Tag is not OutlineRef r) return;
@@ -1379,17 +1438,14 @@ public class MapEditorScene : GameScene, IGameScene3D
         {
             case SelectionKind.Feature:
                 _document.Execute(new ReorderFeatureCommand(fromIndex, toIndex));
-                _visibility.RemapIndex(SelectionKind.Feature, fromIndex, toIndex);   // a hide follows the moved feature
                 _document.Selection.Set(SelectionKind.Feature, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             case SelectionKind.Exclusion:
                 _document.Execute(new ReorderExclusionCommand(fromIndex, toIndex));
-                _visibility.RemapIndex(SelectionKind.Exclusion, fromIndex, toIndex);   // a hide follows the moved exclusion
                 _document.Selection.Set(SelectionKind.Exclusion, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             case SelectionKind.ScatterOverride:
                 _document.Execute(new ReorderScatterOverrideCommand(fromIndex, toIndex));
-                _visibility.RemapIndex(SelectionKind.ScatterOverride, fromIndex, toIndex);   // a hide follows the moved override
                 _document.Selection.Set(SelectionKind.ScatterOverride, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             default:
@@ -1438,7 +1494,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         // forced-open categories never overwrite the user's real collapse choices and clearing the filter
         // restores exactly what they left. A category the filter hides keeps its remembered value in the
         // persistent map (it is absent from Roots to snapshot, but was captured the last time it was shown).
-        if (_paletteTreeFilter.Trim().Length == 0)
+        // _paletteTreeFilter is always already trimmed (see the assignment below), so no re-Trim here.
+        if (_paletteTreeFilter.Length == 0)
             foreach (TreeNode root in _paletteTree.Roots)
                 if (root.Tag is string label) _paletteExpansion[label] = root.Expanded;
 
@@ -1458,7 +1515,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 || !_paletteExpansion.TryGetValue(category.Label, out bool wasExpanded) || wasExpanded;
             _paletteTree.Roots.Add(node);
         }
-        _paletteTreeFilter = filter;
+        _paletteTreeFilter = needle;   // trimmed, so RefreshPalettes' trimmed compare matches what was actually built
     }
 
     // Rebuild the flat spawn-archetype list for a filter substring, preserving the game-authored order (no
@@ -1476,18 +1533,21 @@ public class MapEditorScene : GameScene, IGameScene3D
             if (needle.Length > 0 && archetype.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
             _spawnList.Roots.Add(new TreeNode(LocalizedText.Raw(archetype), new PaletteLeaf(archetype)));
         }
-        _spawnTreeFilter = filter;
+        _spawnTreeFilter = needle;   // trimmed, so RefreshPalettes' trimmed compare matches what was actually built
     }
 
-    /// <summary>Rebuilds the palette tree and / or the spawn list when its filter box text no longer matches what
-    /// the live view was built for. Called once per widget step after the filter boxes are driven, so a rebuild
-    /// happens only on a filter change, not every frame. Internal so a headless test can trigger it after a
+    /// <summary>Rebuilds the palette tree and / or the spawn list when its filter box text, trimmed, no longer
+    /// matches what the live view was last built for (trimmed too, since that is what <see cref="RebuildPaletteTree"/>
+    /// / <see cref="RebuildSpawnList"/> actually match against). Comparing trimmed text on both sides means an
+    /// edit that only adds or removes leading/trailing whitespace - the matched leaves are unchanged either way -
+    /// does not trigger a rebuild. Called once per widget step after the filter boxes are driven, so a rebuild
+    /// happens only on a real filter change, not every frame. Internal so a headless test can trigger it after a
     /// <see cref="TextInput.SetText"/> without a full UI frame.</summary>
     internal void RefreshPalettes()
     {
-        if (!string.Equals(_paletteFilter.Text, _paletteTreeFilter, StringComparison.Ordinal))
+        if (!string.Equals(_paletteFilter.Text.Trim(), _paletteTreeFilter, StringComparison.Ordinal))
             RebuildPaletteTree(_paletteFilter.Text);
-        if (!string.Equals(_spawnFilter.Text, _spawnTreeFilter, StringComparison.Ordinal))
+        if (!string.Equals(_spawnFilter.Text.Trim(), _spawnTreeFilter, StringComparison.Ordinal))
             RebuildSpawnList(_spawnFilter.Text);
     }
 
@@ -1781,6 +1841,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         VisibilityGroup.FeatureMarkers => "Feature markers",
         VisibilityGroup.ScatterOverrides => "Scatter overrides",
+        VisibilityGroup.PlayerSpawns => "Player spawns",
         _ => group.ToString(),
     };
 
@@ -1808,6 +1869,25 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <see cref="RebuildWorldForVisibility"/>).</summary>
     protected virtual void InvalidateViewportKitMeshes() => _viewport.InvalidateKitMeshes();
 
+    // The single spot every FloatRow the inspector builds funnels through, directly or via a domain wrapper
+    // (AddFeatureRow, AddBandFloatRow, AddScatterFloatRow, AddCompanionFloatRow, AddShapeRow): wires
+    // FloatRow.GestureEnded to SealGesture so a scrub or edit commit on this row seals the undo gesture the
+    // moment it ends. Without this, scrubbing two different fields back to back (e.g. WaterLevel then
+    // BiomeBlend) can coalesce into ONE undo step through the underlying command's same-gesture TryMerge
+    // (EditTerrainCommand merges ANY two terrain edits, by design, within one gesture) - sealing here draws the
+    // gesture boundary at the widget level so each field's scrub becomes its own undo step. Same signature as
+    // the FloatRow constructor, so every existing call site converts by dropping "_inspector.Rows.Add(new
+    // FloatRow(" down to "AddFloatRow(".
+    FloatRow AddFloatRow(LocalizedText label, Func<float> get, Action<float> set,
+        float min = float.MinValue, float max = float.MaxValue, float dragScale = 0.01f, int decimals = 2,
+        LocalizedText? description = null)
+    {
+        var row = new FloatRow(label, get, set, min, max, dragScale, decimals, description);
+        row.GestureEnded += _document.SealGesture;
+        _inspector.Rows.Add(row);
+        return row;
+    }
+
     // The terrain root inspector: every terrain scalar as an editable row (each routed through the widened
     // EditTerrainCommand so scrubs coalesce and the scatter-honouring world rebuild fires), plus a read-only
     // biome-count summary. Each setter captures the LIVE field value as the command's old value before Execute
@@ -1816,16 +1896,16 @@ public class MapEditorScene : GameScene, IGameScene3D
     void BuildTerrainInspector()
     {
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Water")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("WaterLevel"),
+        AddFloatRow(LocalizedText.Raw("WaterLevel"),
             () => _document.Doc.Terrain.WaterLevel,
             v => _document.Execute(new EditTerrainCommand(newWaterLevel: v, oldWaterLevel: _document.Doc.Terrain.WaterLevel)),
             description: LocalizedText.Raw(
                 "World-space height, in world units, of the flat water plane. Terrain below this height reads as " +
                 "submerged. Also feeds scatter placement, so raising or lowering it can drown or reveal existing " +
-                "prop placements on the next world rebuild.")));
+                "prop placements on the next world rebuild."));
 
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("World")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Seed"),
+        AddFloatRow(LocalizedText.Raw("Seed"),
             () => _document.Doc.Terrain.Seed,
             v => _document.Execute(new EditTerrainCommand(
                 newSeed: (int)MathF.Round(v), oldSeed: _document.Doc.Terrain.Seed)),
@@ -1833,15 +1913,15 @@ public class MapEditorScene : GameScene, IGameScene3D
             description: LocalizedText.Raw(
                 "Random seed driving the terrain noise and scatter placement. Two documents with the same seed " +
                 "and the same parameters below generate identical terrain. Change it to get a different variation " +
-                "of the same settings.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("BiomeBlend"),
+                "of the same settings."));
+        AddFloatRow(LocalizedText.Raw("BiomeBlend"),
             () => _document.Doc.Terrain.BiomeBlend,
             v => _document.Execute(new EditTerrainCommand(newBiomeBlend: v, oldBiomeBlend: _document.Doc.Terrain.BiomeBlend)),
             min: 0f,
             description: LocalizedText.Raw(
                 "Blend distance, in world units, across a biome band boundary. Higher values soften the " +
                 "transition between two adjacent biomes' height and scatter rules, lower values make the " +
-                "boundary sharper.")));
+                "boundary sharper."));
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Biomes"),
             () => _document.Doc.Terrain.Biomes.Count.ToString(CultureInfo.InvariantCulture),
             description: LocalizedText.Raw(
@@ -1849,35 +1929,35 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "via the Biomes category in the outline, not here.")));
 
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Noise")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleFrequency"),
+        AddFloatRow(LocalizedText.Raw("GentleFrequency"),
             () => _document.Doc.Terrain.GentleFrequency,
             v => _document.Execute(new EditTerrainCommand(newGentleFrequency: v, oldGentleFrequency: _document.Doc.Terrain.GentleFrequency)),
             min: 0f, dragScale: 0.001f, decimals: 3,
             description: LocalizedText.Raw(
                 "Feature size, in inverse world units, of the broad rolling hills layer. Lower values stretch the " +
-                "hills wider and smoother, higher values pack them closer together.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("GentleAmplitude"),
+                "hills wider and smoother, higher values pack them closer together."));
+        AddFloatRow(LocalizedText.Raw("GentleAmplitude"),
             () => _document.Doc.Terrain.GentleAmplitude,
             v => _document.Execute(new EditTerrainCommand(newGentleAmplitude: v, oldGentleAmplitude: _document.Doc.Terrain.GentleAmplitude)),
             min: 0f,
             description: LocalizedText.Raw(
                 "Height swing, in world units, of the broad rolling hills layer. Higher values make the gentle " +
-                "hills taller, zero flattens them out entirely.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailFrequency"),
+                "hills taller, zero flattens them out entirely."));
+        AddFloatRow(LocalizedText.Raw("DetailFrequency"),
             () => _document.Doc.Terrain.DetailFrequency,
             v => _document.Execute(new EditTerrainCommand(newDetailFrequency: v, oldDetailFrequency: _document.Doc.Terrain.DetailFrequency)),
             min: 0f, dragScale: 0.001f, decimals: 3,
             description: LocalizedText.Raw(
                 "Feature size, in inverse world units, of the fine detail noise layered on top of the gentle " +
-                "hills. Higher values pack the small bumps closer together for a rougher surface.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DetailOctaves"),
+                "hills. Higher values pack the small bumps closer together for a rougher surface."));
+        AddFloatRow(LocalizedText.Raw("DetailOctaves"),
             () => _document.Doc.Terrain.DetailOctaves,
             v => _document.Execute(new EditTerrainCommand(
                 newDetailOctaves: (int)MathF.Round(v), oldDetailOctaves: _document.Doc.Terrain.DetailOctaves)),
             min: 1f, dragScale: 1f, decimals: 0,
             description: LocalizedText.Raw(
                 "Number of detail noise layers summed together. More octaves add finer, more varied bumps to the " +
-                "terrain surface but cost more to generate.")));
+                "terrain surface but cost more to generate."));
     }
 
     // The inline-rename Name row shared by the region, placement, and spawn inspectors. A closure tracks the
@@ -1910,8 +1990,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     // The inline Name row for INDEX-pinned selections (feature, exclusion): the selection key is the list
-    // index, which a rename never moves (only reorder/delete do, both remapped separately through
-    // EditorVisibility.RemapIndex/RemoveIndex), so unlike AddNameRow there is no pending re-select to queue and
+    // index, which a rename never moves (only reorder/delete do, both remapped through the command's
+    // IVisibilityEffect via the EditorDocument event path, event-driven rather than called from here), so
+    // unlike AddNameRow there is no pending re-select to queue and
     // no `_nameRow` chord-gating hook to wire (the grid's own HasActiveEditor aggregate already covers a
     // focused TextRow). Name is optional (MapFeature.Name / MapExclusion.Name: empty means unnamed, falling
     // back to the index label), so clearing to blank is a legal target, not a guard-reject. Only an UNCHANGED
@@ -1958,22 +2039,22 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "Unique id for this placement. Renaming it updates the outline node and the current selection to " +
                 "follow the new id. Must be non-empty and not collide with another placement's id."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+        AddFloatRow(LocalizedText.Raw("X"),
             () => Placement(cur())?.X ?? 0f, v => MovePlacement(cur(), x: v),
-            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            description: LocalizedText.Raw("World-space X coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Z"),
             () => Placement(cur())?.Z ?? 0f, v => MovePlacement(cur(), z: v),
-            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
+            description: LocalizedText.Raw("World-space Z coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Yaw"),
             () => Placement(cur())?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(cur(), v)),
             description: LocalizedText.Raw(
-                "Facing rotation around the vertical (Y) axis, in radians.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Scale"),
+                "Facing rotation around the vertical (Y) axis, in radians."));
+        AddFloatRow(LocalizedText.Raw("Scale"),
             () => Placement(cur())?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(cur(), v)),
             min: 0.01f,
             description: LocalizedText.Raw(
                 "Uniform scale multiplier applied to the placed kit's mesh. 1 is the kit's authored size, below " +
-                "1 shrinks it, above 1 grows it.")));
+                "1 shrinks it, above 1 grows it."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         AddVisibleRow(SelectionKind.Placement, cur);
     }
@@ -1995,12 +2076,12 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "spawn-tool palette below lists the ids the current game offers). The editor accepts any text " +
                 "here, so a typo only surfaces once the game fails to resolve it.")));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+        AddFloatRow(LocalizedText.Raw("X"),
             () => Spawn(cur())?.X ?? 0f, v => MoveSpawn(cur(), x: v),
-            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            description: LocalizedText.Raw("World-space X coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Z"),
             () => Spawn(cur())?.Z ?? 0f, v => MoveSpawn(cur(), z: v),
-            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
+            description: LocalizedText.Raw("World-space Z coordinate, in world units."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
             () => Spawn(cur())?.Enabled ?? false, v => _document.Execute(new SetSpawnEnabledCommand(cur(), v)),
@@ -2028,17 +2109,17 @@ public class MapEditorScene : GameScene, IGameScene3D
                 "no archetype, that choice is game code's concern), so renaming it changes what the game must " +
                 "reference. Must be non-empty and not collide with another player spawn's id."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("X"),
+        AddFloatRow(LocalizedText.Raw("X"),
             () => PlayerSpawn(cur())?.X ?? 0f, v => MovePlayerSpawn(cur(), x: v),
-            description: LocalizedText.Raw("World-space X coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Z"),
+            description: LocalizedText.Raw("World-space X coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Z"),
             () => PlayerSpawn(cur())?.Z ?? 0f, v => MovePlayerSpawn(cur(), z: v),
-            description: LocalizedText.Raw("World-space Z coordinate, in world units.")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("Yaw"),
+            description: LocalizedText.Raw("World-space Z coordinate, in world units."));
+        AddFloatRow(LocalizedText.Raw("Yaw"),
             () => PlayerSpawn(cur())?.Yaw ?? 0f, v => _document.Execute(new SetPlayerSpawnYawCommand(cur(), v)),
             description: LocalizedText.Raw(
                 "Facing rotation around the vertical (Y) axis, in radians, the direction the player faces on " +
-                "spawn.")));
+                "spawn."));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Enabled"),
             () => PlayerSpawn(cur())?.Enabled ?? false, v => _document.Execute(new SetPlayerSpawnEnabledCommand(cur(), v)),
@@ -2150,7 +2231,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     // EditFeatureCommand, whose same-index merge makes a scrub coalesce into one undo step.
     void AddFeatureRow<T>(int index, string label, string description, Func<T, float> get, Action<T, float> assign) where T : MapFeature
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => FeatureAt(index) is T f ? get(f) : 0f,
             v =>
             {
@@ -2158,7 +2239,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 var clone = (T)FeatureGeometry.Clone(current);
                 assign(clone, v);
                 _document.Execute(new EditFeatureCommand(index, clone, current));
-            }, description: LocalizedText.Raw(description)));
+            }, description: LocalizedText.Raw(description));
     }
 
     MapFeature? FeatureAt(int index)
@@ -2310,13 +2391,13 @@ public class MapEditorScene : GameScene, IGameScene3D
         AddShapeRows(() => index < _document.Doc.ScatterOverrides.Count ? _document.Doc.ScatterOverrides[index].Shape : null,
             (newShape, oldShape) => _document.Execute(new EditScatterOverrideShapeCommand(index, newShape, oldShape)));
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Scatter")));
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DensityMultiplier"),
+        AddFloatRow(LocalizedText.Raw("DensityMultiplier"),
             () => ScatterOverrideAt(index)?.DensityMultiplier ?? 1f,
             v => EditScatterOverrideValues(index, o => o.DensityMultiplier = v), min: 0f,
             description: LocalizedText.Raw(
                 "Multiplier applied to every targeted scatter layer's placement density inside this override's " +
                 "shape. 1 leaves density unchanged, 0 places nothing, above 1 packs it denser. Relative to each " +
-                "layer's own density, not an absolute instance count.")));
+                "layer's own density, not an absolute instance count."));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Kinds"),
             () => ScatterOverrideAt(index)?.Kinds is { } kinds ? FormatKinds(kinds) : "",
             v => { if (TryParseKinds(v, out List<MapPropKind> parsed)) EditScatterOverrideValues(index, o => o.Kinds = parsed.Count == 0 ? null : parsed); },
@@ -2507,9 +2588,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     void AddBandFloatRow(int index, string label, string description, Func<MapBiomeBand, float> get,
         Action<MapBiomeBand, float> assign, float min = float.MinValue)
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => BandAt(index) is { } b ? get(b) : 0f,
-            v => EditBand(index, b => assign(b, v)), min: min, description: LocalizedText.Raw(description)));
+            v => EditBand(index, b => assign(b, v)), min: min, description: LocalizedText.Raw(description));
     }
 
     // The "<edge> open" toggle for a nullable band edge: on == the edge is open (the field is null). `read` reads
@@ -2591,12 +2672,12 @@ public class MapEditorScene : GameScene, IGameScene3D
                 description: LocalizedText.Raw(
                     "Biome this rule applies within. A candidate position only uses this rule's density and " +
                     "kinds where the terrain's live biome at that point matches.")));
-            _inspector.Rows.Add(new FloatRow(LocalizedText.Raw($"Rule {ri} density"),
+            AddFloatRow(LocalizedText.Raw($"Rule {ri} density"),
                 () => RuleAt(cur(), ri)?.Density ?? 0f,
                 v => EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Density = v; }), min: 0f,
                 description: LocalizedText.Raw(
                     "Chance, from 0 (never) to 1 (always), a candidate position in this rule's biome becomes an " +
-                    "instance from its Kinds below.")));
+                    "instance from its Kinds below."));
             _inspector.Rows.Add(new TextRow(LocalizedText.Raw($"Rule {ri} kinds"),
                 () => RuleAt(cur(), ri) is { } rule ? FormatKinds(rule.Kinds) : "",
                 v => { if (TryParseKinds(v, out List<MapPropKind> kinds)) EditScatterLayer(cur(), l => { if (ri < l.Rules.Count) l.Rules[ri].Kinds = kinds; }); },
@@ -2741,19 +2822,19 @@ public class MapEditorScene : GameScene, IGameScene3D
     void AddScatterFloatRow(Func<string> name, string label, string description, Func<MapScatterLayer, float> get,
         Action<MapScatterLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => ScatterLayerByName(name()) is { } l ? get(l) : 0f,
             v => EditScatterLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals,
-            description: LocalizedText.Raw(description)));
+            description: LocalizedText.Raw(description));
     }
 
     void AddCompanionFloatRow(Func<string> name, string label, string description, Func<MapCompanionLayer, float> get,
         Action<MapCompanionLayer, float> assign, float min = float.MinValue, float dragScale = 0.01f, int decimals = 2)
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => CompanionLayerByName(name()) is { } l ? get(l) : 0f,
             v => EditCompanionLayer(name(), l => assign(l, v)), min: min, dragScale: dragScale, decimals: decimals,
-            description: LocalizedText.Raw(description)));
+            description: LocalizedText.Raw(description));
     }
 
     // A "button" row: no PropertyGrid button widget exists, so a BoolRow whose value is always read as off doubles
@@ -3046,7 +3127,7 @@ public class MapEditorScene : GameScene, IGameScene3D
     void AddShapeRow<T>(Func<MapShapeDoc?> shape, Action<MapShapeDoc, MapShapeDoc> execute, string label,
         string description, Func<T, float> get, Action<T, float> assign) where T : MapShapeDoc
     {
-        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw(label),
+        AddFloatRow(LocalizedText.Raw(label),
             () => shape() is T s ? get(s) : 0f,
             v =>
             {
@@ -3054,7 +3135,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 var clone = (T)CloneShape(current);
                 assign(clone, v);
                 execute(clone, current);
-            }, description: LocalizedText.Raw(description)));
+            }, description: LocalizedText.Raw(description));
     }
 
     // Copies a disc / rect shape DTO so an edit replaces the instance (the shape commands hold old + new by
@@ -3319,7 +3400,8 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     /// <summary>Composes the status-strip text. The active mode name and its <see cref="EditorToolController.ModeHint"/>
     /// lead the line (the operator's most useful cue), followed by the undo/redo labels, the exit chord, and any
-    /// transient message (save result, discard warning). Internal so a headless test can assert the ordering.</summary>
+    /// transient message (a save result or a bookmark action). Internal so a headless test can assert the
+    /// ordering.</summary>
     internal string StatusLine()
     {
         string dirty = _document.IsDirty ? "*" : "";
@@ -3330,6 +3412,16 @@ public class MapEditorScene : GameScene, IGameScene3D
         return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}   " +
             $"R: snap to ground   Ctrl+Up/Down: reorder feature   Shift+Esc: exit{tail}";
     }
+
+    /// <summary>Fits <paramref name="text"/> to the status strip's available width (its full width minus
+    /// <see cref="StatusTextInset"/> on both sides), truncating with a trailing ellipsis via
+    /// <see cref="GuiDraw.TruncateWithEllipsis"/> when it does not fit. <c>SpriteBatch.DrawString</c> has no
+    /// width or clip parameter of its own, so an unbounded status line (a long save-failure message, a
+    /// compressed strip width) would otherwise run past the strip's edge with nothing to catch it.
+    /// <paramref name="measureWidth"/> is the caller's width function (e.g. <c>s =&gt; font.Measure(s).X</c>),
+    /// so the helper is pure and headless-testable without a live <c>SpriteFont</c>.</summary>
+    internal static string TruncateStatusLine(string text, float stripWidth, Func<string, float> measureWidth) =>
+        GuiDraw.TruncateWithEllipsis(text, MathF.Max(0f, stripWidth - StatusTextInset * 2f), measureWidth);
 
     void Fill(SpriteBatch batch, Rect r, Color color) =>
         batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height), color);

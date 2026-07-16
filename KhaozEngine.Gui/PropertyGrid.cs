@@ -101,6 +101,21 @@ namespace KhaozEngine.Gui
         /// <summary>The numeric editor, exposed for style/inspection. Its bounds are driven by the grid each frame.</summary>
         public NumberField Field { get; }
 
+        /// <summary>
+        /// Fired once a scrub or typed-edit commit on <see cref="Field"/> finishes (a direct pass-through of
+        /// <see cref="NumberField.GestureEnded"/>), so a host can seal an undo gesture at the same boundary a
+        /// value actually stopped changing. <c>MapEditorScene</c> wires every terrain/transform/scatter
+        /// <see cref="FloatRow"/> it builds to <c>EditorDocument.SealGesture</c> through this hook, so scrubbing
+        /// one field then another produces two undo steps instead of coalescing into one through the underlying
+        /// command's same-gesture merge (e.g. <c>EditTerrainCommand.TryMerge</c>, which is correct WITHIN one
+        /// gesture, but has no way to see a gesture boundary on its own).
+        /// </summary>
+        public Action? GestureEnded
+        {
+            get => Field.GestureEnded;
+            set => Field.GestureEnded = value;
+        }
+
         /// <summary>Build a float row. <paramref name="min"/>/<paramref name="max"/>/<paramref name="dragScale"/>/
         /// <paramref name="decimals"/> configure the <see cref="Field"/>. <paramref name="description"/> is an
         /// optional tooltip.</summary>
@@ -474,11 +489,23 @@ namespace KhaozEngine.Gui
         public float RowSpacing { get; set; } = 4f;
 
         /// <summary>
-        /// Rows advanced per wheel notch. The wheel step is <c>notches * (average row height) * WheelRowsPerNotch</c>,
-        /// so one notch moves this many rows. Default 3 matches <see cref="TreeView.WheelRowsPerNotch"/> for the same
-        /// side-by-side feel (a <see cref="TreeView"/> notch moves 3 of its rows too).
+        /// Rows advanced per one full wheel unit. The wheel step is continuous (see <see cref="WheelSpeed"/>), not
+        /// rounded to an integer notch count: a <c>ScrollDelta</c> of magnitude 1 (one physical wheel click) moves
+        /// this many rows, and a fractional trackpad delta moves the matching fraction. Default 3 matches
+        /// <see cref="TreeView.WheelRowsPerNotch"/> for the same side-by-side feel (a <see cref="TreeView"/> notch
+        /// moves 3 of its rows too).
         /// </summary>
         public float WheelRowsPerNotch { get; set; } = 3f;
+
+        /// <summary>
+        /// Pixels scrolled per one unit of wheel <c>ScrollDelta</c>: <c>(average row height) * WheelRowsPerNotch</c>.
+        /// Exposed under the same name and used the same way as <see cref="ScrollablePanel.WheelSpeed"/>
+        /// (<c>ScrollOffset -= input.ScrollDelta * WheelSpeed</c>, continuous, no per-notch rounding) so every
+        /// scrollable widget in the package shares the idiom - it is computed here rather than an independently
+        /// settable pixel value so a <see cref="PropertyGrid"/> and a <see cref="TreeView"/> with different row
+        /// heights still feel aligned (each wheel unit moves the same NUMBER of rows, not the same pixel distance).
+        /// </summary>
+        public float WheelSpeed => AverageRowHeight() * WheelRowsPerNotch;
 
         /// <summary>Vertical scroll in pixels. Wheel scrolling clamps this to the content, and every <see cref="Update"/> re-clamps it.</summary>
         public float ScrollOffset { get; set; }
@@ -608,10 +635,10 @@ namespace KhaozEngine.Gui
             input.BlockInputRegion(Bounds);
             if (!Enabled) { HoveredRow = null; return false; }
 
-            // Wheel scroll while the pointer is over the grid, clamped to the content. One notch moves
-            // WheelRowsPerNotch rows (via the average row height), matching the TreeView feel side by side.
-            int notches = input.GetScrollIn(Bounds);
-            if (notches != 0) ScrollOffset -= notches * AverageRowHeight() * WheelRowsPerNotch;
+            // Wheel scroll while the pointer is over the grid, continuous (no per-notch rounding) like
+            // ScrollablePanel, clamped to the content. One wheel unit moves WheelRowsPerNotch rows (via
+            // WheelSpeed), matching the TreeView feel side by side.
+            if (input.IsPointerIn(Bounds) && input.ScrollDelta != 0f) ScrollOffset -= input.ScrollDelta * WheelSpeed;
             ScrollOffset = Math.Clamp(ScrollOffset, 0f, MaxScroll);
 
             // The row under the pointer this frame, tracked across a row's FULL band (label column + editor cell
@@ -644,7 +671,12 @@ namespace KhaozEngine.Gui
                     if (_ranLastFrame.Contains(row)) row.Deactivate();
                     continue;
                 }
-                if (row.Update(cell, input, dt)) WasChanged = true;
+                // A PARTIALLY visible row (its cell straddles Bounds' top or bottom edge) still runs, but only
+                // over the slice actually inside Bounds: the visual clip is the Draw-time scissor, so the input
+                // reach must match it, or a row half scrolled off the bottom could still claim a tap in the
+                // sliver below Bounds that the scissor already hid. Draw is unaffected - it re-sets each row's
+                // widget Bounds from the full (unclamped) RowEditorBounds right before drawing.
+                if (row.Update(Intersect(cell, Bounds), input, dt)) WasChanged = true;
                 _ranThisFrame.Add(row);
             }
             HoveredRow = hovered;
@@ -661,6 +693,16 @@ namespace KhaozEngine.Gui
             float total = 0f;
             foreach (PropertyRow row in Rows) total += row.Height;
             return total / Rows.Count;
+        }
+
+        // The overlap of two rects (empty, zero width/height, when they don't overlap on an axis). Used to clamp a
+        // partially-visible row's editor cell to the grid's Bounds before handing it to the row's Update, matching
+        // ProgressBar's same-named helper.
+        static Rect Intersect(Rect a, Rect b)
+        {
+            float x0 = MathF.Max(a.X, b.X), y0 = MathF.Max(a.Y, b.Y);
+            float x1 = MathF.Min(a.Right, b.Right), y1 = MathF.Min(a.Bottom, b.Bottom);
+            return new Rect(x0, y0, MathF.Max(0f, x1 - x0), MathF.Max(0f, y1 - y0));
         }
 
         /// <summary>Which pass of <see cref="Draw"/> a <see cref="DrawPlan"/> entry belongs to.</summary>

@@ -789,10 +789,14 @@ namespace KhaozEngine.Render3D
         /// texture can be shared by several meshes/materials, the scene can't know who else references it - any mesh
         /// still bound to this texture must be unloaded first or simply not drawn afterwards (mirrors
         /// <see cref="UnloadSplatMaterial"/>). Without this, textures only free at <see cref="Dispose"/>, so a
-        /// long-lived scene that streams or reloads textured assets leaks one native texture per load.</summary>
+        /// long-lived scene that streams or reloads textured assets leaks one native texture per load. Also a no-op
+        /// once <see cref="Dispose"/> has run: Dispose already freed every texture and cleared the backing list, so
+        /// a caller that still holds a handle (e.g. a world disposed after its owning scene) would otherwise index
+        /// past the end of the now-empty list and get an <see cref="ArgumentOutOfRangeException"/> instead of a
+        /// silent no-op (mirrors <see cref="UnloadSplatMaterial"/>'s guard).</summary>
         public void UnloadTexture(TextureHandle h)
         {
-            if (!h.IsValid) return;
+            if (!h.IsValid || h.ListIndex >= _textures.Count) return;
             int i = h.ListIndex;
             _textures[i]?.Dispose();
             _textures[i] = null;

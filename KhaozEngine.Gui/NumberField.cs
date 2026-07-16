@@ -12,24 +12,37 @@ namespace KhaozEngine.Gui
     /// takes the manager rather than a bare <see cref="Pointer"/>). A horizontal drag whose press began inside
     /// <see cref="Bounds"/> scrubs <see cref="Value"/> by <see cref="DragScale"/> value units per pixel of pointer
     /// movement (the slider grab-gate, so the scrub keeps tracking after the cursor strays off). A tap - press and
-    /// release inside with under 3 draw units of travel - enters typing mode: this frame's typed keys edit a buffer
-    /// through <see cref="TextEntry"/> with a numeric filter (digits, one leading minus, one dot), Enter commits,
-    /// Escape cancels, and a tap outside <see cref="Bounds"/> commits like Enter. Commit parses with
+    /// release inside with under 3 draw units of travel, and with no real value change already scrubbed this
+    /// gesture - enters typing mode: this frame's typed keys edit a buffer through <see cref="TextEntry"/> with a
+    /// numeric filter (digits, one leading minus, one dot) validated against the buffer TextEntry is accumulating
+    /// THIS call, so a multi-key frame or a paste admits at most one dot, Enter commits, Escape cancels, and a tap
+    /// outside <see cref="Bounds"/> commits like Enter. Disabling the field while it is editing cancels the edit
+    /// (buffer discarded, <see cref="Value"/> unchanged) exactly like Escape, never commits. Commit parses with
     /// <see cref="CultureInfo.InvariantCulture"/>, clamps to [<see cref="Min"/>, <see cref="Max"/>] and rounds to
     /// <see cref="Decimals"/>; unparseable text reverts to the value that was showing when editing began.
-    /// <see cref="Value"/> is always clamped on a real mutation. Follows the <see cref="Toggle"/>/<see cref="Slider"/>
-    /// anatomy: reserve the region first (even when disabled), <see cref="Pointer"/> bounds helpers only,
-    /// <see cref="GuiTheme"/> colours captured at construction, and the <see cref="GuiStyle"/> affordance knobs.
+    /// <see cref="Value"/>'s setter always clamps, on every assignment (not only through <see cref="SetValue"/>).
+    /// <see cref="GestureEnded"/> fires once a scrub that moved <see cref="Value"/> releases, or a typed edit
+    /// commits, so a host can seal an undo gesture at the same boundary. Follows the <see cref="Toggle"/>/
+    /// <see cref="Slider"/> anatomy: reserve the region first (even when disabled), <see cref="Pointer"/> bounds
+    /// helpers only, <see cref="GuiTheme"/> colours captured at construction, and the <see cref="GuiStyle"/>
+    /// affordance knobs.
     /// </summary>
     public sealed class NumberField
     {
         /// <summary>The interactive rectangle: the scrub surface and the typing box.</summary>
         public Rect Bounds;
 
-        /// <summary>Current value, clamped to [<see cref="Min"/>, <see cref="Max"/>] on every mutation through
-        /// <see cref="SetValue"/> (the field is public for direct reads and initialiser assignment, like
-        /// <see cref="Slider.Value"/>).</summary>
-        public float Value;
+        /// <summary>Current value. The setter clamps to [<see cref="Min"/>, <see cref="Max"/>] on every
+        /// assignment, not only through <see cref="SetValue"/>: a direct write (e.g. <see cref="PropertyGrid"/>'s
+        /// <see cref="FloatRow"/> polling in an external value) now always displays clamped, without raising
+        /// <see cref="WasChanged"/> or firing <see cref="OnChanged"/> (a plain assignment is a display sync, not
+        /// the "real" mutation <see cref="SetValue"/> represents - the document keeps its own unclamped value,
+        /// undo unaffected). Public for direct reads and initialiser assignment, like <see cref="Slider.Value"/>.</summary>
+        public float Value
+        {
+            get => _value;
+            set => _value = Math.Clamp(value, Min, Max);
+        }
 
         /// <summary>Lower clamp bound. Default <see cref="float.MinValue"/>.</summary>
         public float Min { get; set; } = float.MinValue;
@@ -72,6 +85,16 @@ namespace KhaozEngine.Gui
         /// <summary>Fired on a real change to <see cref="Value"/> (scrub step or commit), with the new value.</summary>
         public Action<float>? OnChanged;
 
+        /// <summary>
+        /// Fired once a gesture that actually changed the document finishes: on release of a scrub that moved
+        /// <see cref="Value"/> at least once, and on a typed-edit commit (Enter or a tap outside). Never fires on
+        /// a cancelled edit (Escape, or the disable-mid-edit cancel) - a cancel never wrote anything, so there is
+        /// nothing to seal. A host (e.g. <see cref="PropertyGrid"/>'s <see cref="FloatRow"/>) wires this to its
+        /// undo history's gesture-seal hook so scrubbing two different fields back to back produces two undo
+        /// steps instead of coalescing through the underlying command's same-gesture merge.
+        /// </summary>
+        public Action? GestureEnded;
+
         public Vector4 BackgroundColor = GuiTheme.Default.Surface;
         public Vector4 BorderColor = GuiTheme.Default.Border;
         public Vector4 BorderEditingColor = GuiTheme.Default.AccentBright;
@@ -87,10 +110,12 @@ namespace KhaozEngine.Gui
         const float BlinkRate = 0.5f;
         const float PadX = 6f;
 
-        readonly Func<char, bool> _numericFilter;   // cached so Update allocates no delegate per frame
+        readonly Func<string, char, bool> _numericFilter;   // cached so Update allocates no delegate per frame
+        float _value;
         string _editBuffer = "";
         float _preEditValue;
         bool _selectAll;   // the seeded value is "selected", so the first keystroke replaces it
+        bool _scrubbedThisGesture;   // any real value change during the held press, reset on the next press
         float _blink;
         bool _caretVisible = true;
 
@@ -99,7 +124,7 @@ namespace KhaozEngine.Gui
             Bounds = bounds;
             OnChanged = onChanged;
             _numericFilter = NumericFilter;
-            Value = Math.Clamp(value, Min, Max);
+            Value = value;   // the property setter clamps to [Min, Max]
         }
 
         /// <summary>
@@ -113,15 +138,18 @@ namespace KhaozEngine.Gui
             WasChanged = false;
             input.BlockInputRegion(Bounds);   // reserve the region even when disabled
 
+            Pointer pointer = input.Pointer;
+            if (pointer.IsJustPressed) _scrubbedThisGesture = false;   // a fresh press clears the scrub-then-tap guard
+
             if (!Enabled)
             {
-                IsEditing = false;
+                // Disabling mid-edit cancels rather than commits: the buffer is discarded and Value is left at
+                // whatever it was before the edit, exactly like Escape. A caller that disables a field to close it
+                // (e.g. a deselect) must never have that silently commit unvalidated in-progress text.
+                if (IsEditing) CancelEdit();
                 IsScrubbing = false;
-                _selectAll = false;
                 return false;
             }
-
-            Pointer pointer = input.Pointer;
 
             if (IsEditing)
             {
@@ -148,18 +176,24 @@ namespace KhaozEngine.Gui
 
             // Scrub: a drag whose press began inside keeps tracking (the grab-gate), moving Value by the pointer's
             // horizontal delta scaled by DragScale, clamped. IsScrubbing mirrors the grab-gate so it holds even once
-            // the cursor strays off the field, and clears the moment the button releases.
+            // the cursor strays off the field, and clears the moment the button releases. A real value change marks
+            // _scrubbedThisGesture (used below to suppress tap-to-edit on a tiny drag, and here to fire
+            // GestureEnded only when the release actually ends a gesture that moved Value).
+            bool wasScrubbing = IsScrubbing;
             if (pointer.IsDragStartIn(Bounds))
             {
                 IsScrubbing = true;
                 float dx = pointer.Delta.X;
-                if (dx != 0f) SetValue(Value + dx * DragScale);
+                if (dx != 0f && SetValue(Value + dx * DragScale)) _scrubbedThisGesture = true;
             }
             else IsScrubbing = false;
+            if (wasScrubbing && !IsScrubbing && _scrubbedThisGesture) GestureEnded?.Invoke();
 
             // Tap-to-edit: a press+release inside with negligible travel (distinguishes a tap from a scrub) opens
-            // typing mode, seeding the buffer with the current value.
-            if (pointer.IsTapIn(Bounds))
+            // typing mode, seeding the buffer with the current value. Suppressed when this gesture already scrubbed
+            // a real change, even under the travel threshold - a tiny drag that nudged Value must release as a
+            // scrub, not fall through into typing mode on top of it.
+            if (pointer.IsTapIn(Bounds) && !_scrubbedThisGesture)
             {
                 Vector2 travel = pointer.Position - pointer.PressOrigin;
                 if (travel.LengthSquared() < TapThreshold * TapThreshold) BeginEdit();
@@ -201,6 +235,7 @@ namespace KhaozEngine.Gui
 
             IsEditing = false;
             _selectAll = false;
+            GestureEnded?.Invoke();   // a commit, unlike Escape/CancelEdit, always ends the gesture
         }
 
         /// <summary>
@@ -225,13 +260,15 @@ namespace KhaozEngine.Gui
             return value.ToString(spec, CultureInfo.InvariantCulture);
         }
 
-        // The numeric filter: accept digits, a single leading minus, and a single dot. The candidate char is
-        // validated against the current buffer (single-key frames, so the field reflects the pre-char state).
-        bool NumericFilter(char c)
+        // The numeric filter: accept digits, a single leading minus, and a single dot. `buffer` is the
+        // ACCUMULATING candidate text TextEntry.Apply is building this call (not the stale _editBuffer field), so
+        // it reflects every char already admitted earlier in the same multi-key frame or paste - a second dot (or
+        // minus) later in the same Apply call is correctly rejected instead of racing the stale field.
+        bool NumericFilter(string buffer, char c)
         {
             if (c >= '0' && c <= '9') return true;
-            if (c == '-') return _editBuffer.Length == 0;          // minus only as the first char (so only one)
-            if (c == '.') return !_editBuffer.Contains('.');       // one dot
+            if (c == '-') return buffer.Length == 0;          // minus only as the first char (so only one)
+            if (c == '.') return !buffer.Contains('.');       // one dot
             return false;
         }
 

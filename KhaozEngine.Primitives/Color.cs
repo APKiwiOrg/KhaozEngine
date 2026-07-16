@@ -37,6 +37,15 @@ namespace KhaozEngine.Primitives
         /// draw renders invisible.</summary>
         public Color ScaleRgb(float factor) => new(R * factor, G * factor, B * factor, A);
 
+        /// <summary>The same as <see cref="ScaleRgb(float)"/> (R/G/B scaled by <paramref name="factor"/>, alpha
+        /// preserved) but each scaled channel is clamped to 0..1. Prefer this over <see cref="ScaleRgb(float)"/>
+        /// whenever <paramref name="factor"/> can push a channel out of range, e.g. a UI "selected" brighten tint
+        /// on an already-bright base color: an unclamped overshoot past 1.0 reads back through downstream
+        /// unclamped math (a further blend, a GPU write) as an out-of-range channel instead of simply saturating
+        /// white the way a human eye expects "brighter" to cap out.</summary>
+        public Color ScaleRgbClamped(float factor) => new(
+            Math.Clamp(R * factor, 0f, 1f), Math.Clamp(G * factor, 0f, 1f), Math.Clamp(B * factor, 0f, 1f), A);
+
         /// <summary>Scale all four channels (including alpha) by <paramref name="s"/>. Unclamped; matches
         /// <see cref="Vector4"/> <c>* float</c> and legacy MonoGame <c>Color * float</c>. To dim the visible
         /// color without changing opacity under straight-alpha blending, use <see cref="ScaleRgb(float)"/>.</summary>

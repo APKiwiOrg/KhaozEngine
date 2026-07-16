@@ -20,7 +20,11 @@ namespace KhaozEngine.Gui
         public string Text = "";
         public bool IsFocused;
         public int MaxLength = 32;
-        public Func<char, bool>? CharFilter;
+        /// <summary>Optional per-char admission filter passed through to <see cref="TextEntry"/>, receiving the
+        /// buffer accumulated so far this call alongside the candidate char (not a pre-call snapshot), so a
+        /// stateful filter (e.g. "at most one dot") sees every char already admitted earlier in the same
+        /// multi-key frame or paste.</summary>
+        public Func<string, char, bool>? CharFilter;
         public SpriteFont? Font;
 
         /// <summary>The (lazily resolved) placeholder text drawn when the field is empty. Defaults to empty.</summary>

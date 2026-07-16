@@ -135,5 +135,71 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(v.IsElementHidden(SelectionKind.Exclusion, "3"));    // nothing hidden at the old tail slot
             Assert.True(v.IsElementHidden(SelectionKind.Feature, "1"));       // untouched: a different kind's key
         }
+
+        [Fact]
+        public void InsertIndex_ShiftsLaterHidesUp_TheInverseOfRemoveIndex()
+        {
+            // Inverse of RemoveIndex(kind, index): make room at `index` by shifting every hidden index >= index up
+            // by one. The re-inserted element's own hide is NOT restored (it was dropped by the forward remove).
+            var v = new EditorVisibility();
+            v.SetElementHidden(SelectionKind.Exclusion, "0", true);   // below the insert point: untouched
+            v.SetElementHidden(SelectionKind.Exclusion, "1", true);   // at the insert point: shifts up to 2
+            v.SetElementHidden(SelectionKind.Feature, "1", true);     // a different kind: must not be touched
+
+            v.InsertIndex(SelectionKind.Exclusion, 1);
+
+            Assert.True(v.IsElementHidden(SelectionKind.Exclusion, "0"));     // below the insert point, untouched
+            Assert.False(v.IsElementHidden(SelectionKind.Exclusion, "1"));    // vacated: nothing hidden was re-inserted here
+            Assert.True(v.IsElementHidden(SelectionKind.Exclusion, "2"));     // was 1, shifted up by one
+            Assert.True(v.IsElementHidden(SelectionKind.Feature, "1"));       // untouched: a different kind's key
+
+            // RemoveIndex then InsertIndex at the same slot round-trips a SURVIVING later hide back to its origin.
+            var round = new EditorVisibility();
+            round.SetElementHidden(SelectionKind.Exclusion, "2", true);   // a later hide
+            round.RemoveIndex(SelectionKind.Exclusion, 0);               // 2 -> 1
+            Assert.True(round.IsElementHidden(SelectionKind.Exclusion, "1"));
+            round.InsertIndex(SelectionKind.Exclusion, 0);               // 1 -> 2, back to origin
+            Assert.True(round.IsElementHidden(SelectionKind.Exclusion, "2"));
+            Assert.False(round.IsElementHidden(SelectionKind.Exclusion, "1"));
+        }
+
+        [Fact]
+        public void RenameKey_MovesHideToNewKey_NoOpWhenAbsentOrEqual()
+        {
+            var v = new EditorVisibility();
+            v.SetElementHidden(SelectionKind.Placement, "a", true);
+            v.SetElementHidden(SelectionKind.Region, "a", true);   // same id, different kind: must not move
+
+            // A hidden element's key moves, leaving no orphan under the old key.
+            v.RenameKey(SelectionKind.Placement, "a", "b");
+            Assert.False(v.IsElementHidden(SelectionKind.Placement, "a"));   // no orphan under the abandoned key
+            Assert.True(v.IsElementHidden(SelectionKind.Placement, "b"));
+            Assert.True(v.IsElementHidden(SelectionKind.Region, "a"));       // untouched: a different kind's key
+
+            // Absent old key: nothing hidden under it, so nothing is created under the new key.
+            v.RenameKey(SelectionKind.Placement, "ghost", "c");
+            Assert.False(v.IsElementHidden(SelectionKind.Placement, "c"));
+
+            // Equal keys: documented no-op, the hide stays.
+            v.RenameKey(SelectionKind.Placement, "b", "b");
+            Assert.True(v.IsElementHidden(SelectionKind.Placement, "b"));
+        }
+
+        [Fact]
+        public void PlayerSpawns_GroupGatesElement()
+        {
+            var v = new EditorVisibility();
+
+            // The player-spawn kind maps to its own group, defaulting visible.
+            Assert.True(EditorVisibility.TryGroupFor(SelectionKind.PlayerSpawn, out VisibilityGroup group));
+            Assert.Equal(VisibilityGroup.PlayerSpawns, group);
+            Assert.True(v.GetGroup(VisibilityGroup.PlayerSpawns));
+            Assert.True(v.IsElementVisible(SelectionKind.PlayerSpawn, "player-1"));
+
+            // Turning the group off hides every player spawn, and it does not leak into the NPC spawn group.
+            v.SetGroup(VisibilityGroup.PlayerSpawns, false);
+            Assert.False(v.IsElementVisible(SelectionKind.PlayerSpawn, "player-1"));
+            Assert.True(v.IsElementVisible(SelectionKind.Spawn, "wolf"));
+        }
     }
 }

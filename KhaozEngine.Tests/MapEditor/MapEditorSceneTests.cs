@@ -9,6 +9,7 @@ using KhaozEngine.Gui;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Primitives;
+using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -79,6 +80,25 @@ namespace KhaozEngine.Tests.MapEditor
             protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
             protected override void RebuildWorldForVisibility() { Rebuilds++; Log.Add("rebuild"); }
             protected override void InvalidateViewportKitMeshes() { KitMeshInvalidations++; Log.Add("invalidate"); }
+        }
+
+        // Records which rebuild seam CheckWorldRebuild dispatches to (a bounded region -> partial, a null region ->
+        // full) without touching a device: BuildWorld stays a no-op (so the viewport is never built), and both
+        // rebuild seams are overridden to log + return a scripted result. RunRebuildCheck exposes the protected step
+        // so a test can drive the routing directly on a document it has set up.
+        sealed class RebuildDispatchScene : MapEditorScene
+        {
+            readonly Func<MapDocument> _factory;
+            public bool PartialSucceeds = true;
+            public readonly List<string> Log = new();
+            public RectArea? LastDirty;
+            public RebuildDispatchScene(Func<MapDocument> factory) => _factory = factory;
+            protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+            protected override void BuildWorld() { }
+            protected override void TeardownWorld() { }
+            protected override bool PartialRebuildWorld(RectArea dirty) { Log.Add("partial"); LastDirty = dirty; return PartialSucceeds; }
+            protected override bool RebuildWorld() { Log.Add("full"); return true; }
+            public void RunRebuildCheck() => CheckWorldRebuild();
         }
 
         // Injects a caller-supplied document AND a pure flat field on the controller (no GPU), so a viewport pick
@@ -356,6 +376,75 @@ namespace KhaozEngine.Tests.MapEditor
             m.Update(0.016f);
 
             Assert.Equal(new[] { "camera", "tools", "rebuild" }, scene.Log);
+        }
+
+        // ---- CheckWorldRebuild dispatch: partial vs full -----------------------------------------------
+
+        static MapDocument SampleWithFeatures() => KhaozEngine.Tests.MapDoc.MapDocumentFileTests.SampleDoc();
+
+        // A depth-only clone of a sample lake, so its footprint matches the original's (a bounded dirty region).
+        static LakeFeatureDoc LakeDepth(LakeFeatureDoc src, float depth) =>
+            new() { CenterX = src.CenterX, CenterZ = src.CenterZ, Radius = src.Radius, Depth = depth,
+                InnerFraction = src.InnerFraction, OuterFraction = src.OuterFraction };
+
+        static RebuildDispatchScene PushDispatchScene(bool partialSucceeds = true)
+        {
+            var scene = new RebuildDispatchScene(SampleWithFeatures) { PartialSucceeds = partialSucceeds };
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+            scene.Document.AcknowledgeWorldRebuild();   // ignore any pending state from the initial load
+            scene.Log.Clear();
+            return scene;
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_NothingPending_CallsNeitherSeam()
+        {
+            RebuildDispatchScene scene = PushDispatchScene();
+            scene.RunRebuildCheck();
+            Assert.Empty(scene.Log);
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_RectRegion_RoutesToPartialAndAcknowledges()
+        {
+            RebuildDispatchScene scene = PushDispatchScene();
+            var lake = (LakeFeatureDoc)scene.Document.Doc.Terrain.Features[0];
+            scene.Document.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+            Assert.True(scene.Document.WorldRebuildPending);
+
+            scene.RunRebuildCheck();
+
+            Assert.Equal(new[] { "partial" }, scene.Log);   // a bounded region takes the partial path only
+            Assert.NotNull(scene.LastDirty);
+            Assert.False(scene.Document.WorldRebuildPending);   // acknowledged after the partial rebuild
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_NullRegion_RoutesToFullAndAcknowledges()
+        {
+            RebuildDispatchScene scene = PushDispatchScene();
+            scene.Document.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f));   // whole-world edit
+            Assert.True(scene.Document.WorldRebuildPending);
+            Assert.Null(scene.Document.PendingRebuildRegion);
+
+            scene.RunRebuildCheck();
+
+            Assert.Equal(new[] { "full" }, scene.Log);   // a null region takes the full rebuild
+            Assert.False(scene.Document.WorldRebuildPending);
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_PartialReportsNotBuilt_FallsBackToFull()
+        {
+            RebuildDispatchScene scene = PushDispatchScene(partialSucceeds: false);
+            var lake = (LakeFeatureDoc)scene.Document.Doc.Terrain.Features[0];
+            scene.Document.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+
+            scene.RunRebuildCheck();
+
+            Assert.Equal(new[] { "partial", "full" }, scene.Log);   // partial declined, full picked it up
+            Assert.False(scene.Document.WorldRebuildPending);   // acknowledged after the fallback full rebuild
         }
 
         [Fact]

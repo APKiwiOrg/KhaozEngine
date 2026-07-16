@@ -174,6 +174,33 @@ public sealed class ViewportWorld : IDisposable
         BuildCore(doc, registry);
     }
 
+    /// <summary>Rebuilds ONLY the loaded chunks overlapping <paramref name="dirty"/> after a localized terrain edit,
+    /// instead of the whole streamed world: it swaps in the new field, tells the sink to sample from it, and asks the
+    /// streamer to re-mesh just the chunks the dirty rect touches (Task 1's <see cref="TerrainStreamer.Invalidate(RectArea)"/>).
+    /// Nothing is torn down (not the sink, streamer, ring, kit meshes, nor the splat material), so this is far cheaper
+    /// than <see cref="Rebuild"/>. The placement cache is invalidated so authored placements re-ground-snap to the new
+    /// field. The water plane needs nothing here: <see cref="Draw"/> derives it live from the document each frame.
+    /// <para>Returns false (a no-op) when the world is not built, so the caller can fall back to a full
+    /// <see cref="Rebuild"/> or skip. Throws <see cref="ObjectDisposedException"/> after <see cref="Dispose"/>, like
+    /// its siblings.</para>
+    /// <para>This path does NOT rebuild the prop LAYERS (the scatter/companion configs are constructed once per
+    /// <see cref="Build"/> / <see cref="Rebuild"/>), so it is valid ONLY for an edit that cannot change any
+    /// scatter-layer or companion config or any exclusion. That holds this round because only the feature commands
+    /// report a bounded <see cref="EditorCommand.DirtyRegion"/>, and a feature edit changes terrain height alone (the
+    /// re-meshed chunks re-scatter off the new field automatically). An exclusion or scatter-layer edit reports a null
+    /// region and so takes the full rebuild.</para></summary>
+    public bool PartialRebuild(MapDocument doc, MapDocRegistry registry, RectArea dirty)
+    {
+        ThrowIfDisposed();
+        if (!_built) return false;
+        _field = MapRuntime.BuildField(doc, registry);   // null-checks doc + registry before any state is swapped
+        _doc = doc;
+        _sink!.UpdateField(_field);        // future chunk builds sample the new field
+        _streamer!.Invalidate(dirty);      // re-mesh the loaded chunks the dirty rect overlaps, in place
+        _placements.Invalidate();          // authored placements re-ground-snap to the new field on the next Draw
+        return true;
+    }
+
     /// <summary>Frees every retained kit mesh (and the cached splat material, if loaded), so the next
     /// <see cref="Build"/> / <see cref="Rebuild"/> reloads them from disk instead of serving the stale cached
     /// form. Needed because <see cref="LoadKitMeshes"/> keys its cache on the manifest entry id alone: it does not

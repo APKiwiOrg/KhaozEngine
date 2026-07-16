@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
 
@@ -23,6 +24,61 @@ internal static class FeatureGeometry
             default: x = 0f; z = 0f; return false;
         }
     }
+
+    /// <summary>Margin (world units) padded around a feature's height-change reach so the footprint also covers
+    /// every terrain vertex whose NORMAL shifts, not just those whose height moves. A chunk vertex reads its normal
+    /// from a central finite difference in <see cref="Terrain.TerrainField.SampleNormal"/> at eps = 1 m, so a vertex
+    /// up to 1 m outside the reach still re-normals, and the coarsest chunk LOD samples at
+    /// <c>ChunkSize (60) / 16 = 3.75 m</c> spacing. That puts the floor at 1 + 3.75 = 4.75 m, rounded up to 8 m for
+    /// headroom so a chunk merely straddling the footprint edge is still caught. Deliberately generous: an over-wide
+    /// footprint only rebuilds a couple of extra loaded chunks, while an under-wide one leaves stale terrain, so the
+    /// asymmetry favours padding. A hardcoded constant (not a reference to the Terrain.Render3D chunk/LOD sizes)
+    /// keeps this GPU-free geometry helper free of a render dependency.</summary>
+    internal const float FootprintMargin = 8f;
+
+    /// <summary>A conservative world-space AABB covering everywhere a built-in feature can change terrain height,
+    /// padded by <see cref="FootprintMargin"/>. This is the dirty region a feature edit invalidates instead of
+    /// rebuilding the whole streamed world. Returns false (and a default area) for the ridge and any unknown custom
+    /// type, the same no-guessing rule <see cref="TryCenter"/> follows: only a feature whose reach is a known
+    /// bounded disc yields a footprint. Per built-in, reach derived from each runtime feature's <c>Apply</c>:
+    /// <list type="bullet">
+    /// <item>Lake: a disc of <c>Radius * OuterFraction</c>. <see cref="Terrain.LakeFeature.Apply"/> fades the carve
+    /// to zero at <c>radius * outerFraction</c> (outerFraction defaults to 1.30 and is author-settable), so the
+    /// true reach is <c>radius * outerFraction</c>, NOT radius.</item>
+    /// <item>Flatten: a disc of <c>Radius</c>. <see cref="Terrain.FlattenFeature.Apply"/> fades to no effect by
+    /// <c>radius</c> (Blend only moves the inner full-effect edge in, never out), so radius is the exact outer
+    /// reach.</item>
+    /// <item>Rim: a disc of <c>OuterRadius</c>. <see cref="Terrain.RimFeature.Apply"/> ramps the wall up by
+    /// <c>OuterRadius</c>. Ruggedness scales wall HEIGHT, not horizontal reach, so it adds no excursion beyond
+    /// OuterRadius. The wall holds a plateau beyond OuterRadius, but the rim is the world-edge wall (its OuterRadius
+    /// sits at or beyond the streamed extent), so OuterRadius bounds the change the editor can see.</item>
+    /// <item>Ridge: false. A ridge is an unbounded half-plane band along its direction (no finite AABB).</item>
+    /// </list></summary>
+    internal static bool TryFootprint(MapFeature feature, out RectArea area)
+    {
+        switch (feature)
+        {
+            case LakeFeatureDoc l: area = DiscFootprint(l.CenterX, l.CenterZ, l.Radius * l.OuterFraction); return true;
+            case FlattenFeatureDoc f: area = DiscFootprint(f.CenterX, f.CenterZ, f.Radius); return true;
+            case RimFeatureDoc r: area = DiscFootprint(r.CenterX, r.CenterZ, r.OuterRadius); return true;
+            default: area = default; return false;   // ridge (unbounded band) and every unknown custom type
+        }
+    }
+
+    // The AABB of a disc of |reach| around (cx, cz), padded by FootprintMargin. The abs guards a degenerate
+    // negative reach (e.g. a bad scale factor) from producing an inverted (min > max) area.
+    static RectArea DiscFootprint(float cx, float cz, float reach)
+    {
+        float r = MathF.Abs(reach) + FootprintMargin;
+        return new RectArea(cx - r, cz - r, cx + r, cz + r);
+    }
+
+    /// <summary>The smallest axis-aligned rect covering both <paramref name="a"/> and <paramref name="b"/> (min of
+    /// the mins, max of the maxes). Used to union two feature footprints (an edit's old + new endpoints) and to
+    /// accumulate a pending dirty region across several edits.</summary>
+    internal static RectArea Union(RectArea a, RectArea b) => new(
+        MathF.Min(a.MinX, b.MinX), MathF.Min(a.MinZ, b.MinZ),
+        MathF.Max(a.MaxX, b.MaxX), MathF.Max(a.MaxZ, b.MaxZ));
 
     /// <summary>Deep-copies one of the four built-in feature DTOs so an edit replaces the instance
     /// (<see cref="EditFeatureCommand"/> holds old + new by reference). Throws for a type it cannot clone: only the

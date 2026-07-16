@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
 
@@ -34,6 +35,14 @@ public abstract class EditorCommand : IEditorCommand
     /// <summary>True when applying or reverting this command changes terrain shape or scatter inputs, so the
     /// viewport must rebuild its streamed world. Placement/spawn/region edits are false.</summary>
     internal abstract bool AffectsWorld { get; }
+
+    /// <summary>The world-space region this command's edit can change, or null when the edit's reach is not a
+    /// bounded rect (so the viewport must rebuild the WHOLE streamed world). The base returns null: only the feature
+    /// commands, whose reach is a single feature's <see cref="FeatureGeometry.TryFootprint"/> disc, narrow it. Read
+    /// by the document's pending-rebuild-region accumulation (<see cref="EditorDocument"/>) and only meaningful while
+    /// <see cref="AffectsWorld"/> is true. Every other <see cref="AffectsWorld"/> command (terrain scalars,
+    /// exclusions, scatter layers, companions) keeps the null default: whole-zone by design this round.</summary>
+    internal virtual RectArea? DirtyRegion => null;
 
     /// <inheritdoc/>
     public abstract void Apply(MapDocument doc);
@@ -1844,6 +1853,12 @@ public sealed class AddFeatureCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
+    /// <remarks>The added feature's footprint, or null when it has no bounded footprint (a ridge or a custom type,
+    /// which force a full rebuild).</remarks>
+    internal override RectArea? DirtyRegion =>
+        FeatureGeometry.TryFootprint(_feature, out RectArea area) ? area : null;
+
+    /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.Terrain.Features.Add(_feature);
 
     /// <inheritdoc/>
@@ -1863,6 +1878,14 @@ public sealed class RemoveFeatureCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Remove terrain feature";
     internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    /// <remarks>The removed feature's footprint, or null before <see cref="Apply"/> has captured it (the removed
+    /// value is not known until then) or when it has no bounded footprint (a ridge or custom type). The editor
+    /// reads <see cref="EditorCommand.DirtyRegion"/> only after the command has applied, so the captured value is
+    /// available for both the initial execute and any later undo/redo.</remarks>
+    internal override RectArea? DirtyRegion =>
+        _removed is not null && FeatureGeometry.TryFootprint(_removed, out RectArea area) ? area : null;
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -1900,6 +1923,22 @@ public sealed class EditFeatureCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Edit terrain feature";
     internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    /// <remarks>The union of the old and new feature footprints (both endpoints of a scrub or drag change terrain),
+    /// or null when EITHER endpoint has no bounded footprint (a ridge or custom type on either side forces a full
+    /// rebuild). Computed live from the CURRENT <see cref="_oldValue"/> / <see cref="_newValue"/> every read, never
+    /// cached: <see cref="TryMerge"/> rewrites <see cref="_newValue"/> as a drag coalesces, so a cached region would
+    /// stop covering the latest endpoint mid-drag.</remarks>
+    internal override RectArea? DirtyRegion
+    {
+        get
+        {
+            if (!FeatureGeometry.TryFootprint(_oldValue, out RectArea oldArea)) return null;
+            if (!FeatureGeometry.TryFootprint(_newValue, out RectArea newArea)) return null;
+            return FeatureGeometry.Union(oldArea, newArea);
+        }
+    }
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.Terrain.Features[_index] = _newValue;

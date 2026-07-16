@@ -443,13 +443,45 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     /// <summary>Consumes a pending world rebuild after the tool step, so an edit this frame lands in the streamed
-    /// world before the next frame's pick. Overridable for headless order tests. No-ops until the world is built.</summary>
+    /// world before the next frame's pick. A pending edit that reported a bounded region
+    /// (<see cref="EditorDocument.PendingRebuildRegion"/>) rebuilds ONLY the chunks that region overlaps via
+    /// <see cref="PartialRebuildWorld"/>. A null region (a whole-world edit, or the partial path declining because
+    /// the world is not built) falls through to the full <see cref="RebuildWorld"/>. Either way the rebuild is
+    /// acknowledged so it fires once. Overridable for headless order tests, and it dispatches through the two rebuild
+    /// seams so a headless test can observe the routing without a device.</summary>
     protected virtual void CheckWorldRebuild()
     {
-        if (!_viewport.IsBuilt || !_document.WorldRebuildPending) return;
-        _viewport.Rebuild(_document.Doc, _document.Registry);
-        _document.AcknowledgeWorldRebuild();
+        if (!_document.WorldRebuildPending) return;
+        if (_document.PendingRebuildRegion is RectArea dirty && PartialRebuildWorld(dirty))
+        {
+            _document.AcknowledgeWorldRebuild();
+            return;
+        }
+        if (RebuildWorld())
+            _document.AcknowledgeWorldRebuild();
+    }
+
+    /// <summary>Partial-rebuild seam: re-mesh only the loaded chunks overlapping <paramref name="dirty"/> and
+    /// re-point the tool controller at the swapped field. Returns false when the viewport is not built (the
+    /// <see cref="ViewportWorld.PartialRebuild"/> not-built contract), so <see cref="CheckWorldRebuild"/> falls back
+    /// to a full rebuild. Overridable so a headless test can observe the dispatch without a device.</summary>
+    protected virtual bool PartialRebuildWorld(RectArea dirty)
+    {
+        if (!_viewport.PartialRebuild(_document.Doc, _document.Registry, dirty)) return false;
         _controller.Field = _viewport.Field;
+        return true;
+    }
+
+    /// <summary>Full-rebuild seam for a pending edit with no bounded region: rebuild the whole streamed world and
+    /// re-point the tool controller at the fresh field. Returns false (a no-op) when the viewport is not built, so
+    /// <see cref="CheckWorldRebuild"/> leaves the rebuild pending rather than throwing. Overridable so a headless
+    /// test can observe the dispatch without a device. (Task 4 wraps its throttle around this full path only.)</summary>
+    protected virtual bool RebuildWorld()
+    {
+        if (!_viewport.IsBuilt) return false;
+        _viewport.Rebuild(_document.Doc, _document.Registry);
+        _controller.Field = _viewport.Field;
+        return true;
     }
 
     /// <summary>Hotkeys + Gui-chrome input step. Overridable for headless order tests.</summary>

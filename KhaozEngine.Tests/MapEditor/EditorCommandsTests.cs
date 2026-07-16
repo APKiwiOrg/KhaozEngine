@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
+using KhaozEngine.Terrain;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapEditor
@@ -922,6 +923,219 @@ namespace KhaozEngine.Tests.MapEditor
             ed.AcknowledgeWorldRebuild();
             ed.Redo();
             Assert.True(ed.WorldRebuildPending);
+        }
+
+        // ---- DirtyRegion: the per-command dirty footprint ----------------------------------------------
+
+        static void AssertBounds(RectArea area, float minX, float minZ, float maxX, float maxZ)
+        {
+            Assert.Equal(minX, area.MinX, 3);
+            Assert.Equal(minZ, area.MinZ, 3);
+            Assert.Equal(maxX, area.MaxX, 3);
+            Assert.Equal(maxZ, area.MaxZ, 3);
+        }
+
+        static RectArea LakeDisc(float cx, float cz, float radius, float outerFraction = 1.30f)
+        {
+            float r = MathF.Abs(radius * outerFraction) + FeatureGeometry.FootprintMargin;
+            return new RectArea(cx - r, cz - r, cx + r, cz + r);
+        }
+
+        [Fact]
+        public void EditFeatureCommand_DirtyRegion_UnionsOldAndNewFootprints()
+        {
+            var oldLake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var newLake = new LakeFeatureDoc { CenterX = 30f, CenterZ = 0f, Radius = 5f, Depth = 2f };   // dragged +30 x
+            var cmd = new EditFeatureCommand(0, newLake, oldLake);
+
+            RectArea? region = cmd.DirtyRegion;
+            Assert.NotNull(region);
+            RectArea expected = FeatureGeometry.Union(LakeDisc(0f, 0f, 5f), LakeDisc(30f, 0f, 5f));
+            AssertBounds(region.Value, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void AddFeatureCommand_DirtyRegion_IsAddedFeatureFootprint()
+        {
+            var lake = new LakeFeatureDoc { CenterX = 12f, CenterZ = -7f, Radius = 8f, Depth = 3f };
+            var cmd = new AddFeatureCommand(lake);
+
+            RectArea? region = cmd.DirtyRegion;
+            Assert.NotNull(region);
+            AssertBounds(region.Value, LakeDisc(12f, -7f, 8f).MinX, LakeDisc(12f, -7f, 8f).MinZ,
+                LakeDisc(12f, -7f, 8f).MaxX, LakeDisc(12f, -7f, 8f).MaxZ);
+        }
+
+        [Fact]
+        public void RemoveFeatureCommand_DirtyRegion_IsRemovedFeatureFootprint_AfterApply()
+        {
+            var doc = Sample();   // feature[0] is a lake at (34, -14) r22
+            var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
+            var cmd = new RemoveFeatureCommand(0);
+
+            Assert.Null(cmd.DirtyRegion);   // before Apply the removed value is unknown, so no region yet
+            cmd.Apply(doc);
+
+            RectArea? region = cmd.DirtyRegion;
+            Assert.NotNull(region);
+            AssertBounds(region.Value, LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MinX,
+                LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MinZ,
+                LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MaxX,
+                LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MaxZ);
+        }
+
+        [Fact]
+        public void EditFeatureCommand_DirtyRegion_NullWhenEitherEndpointIsUnbounded()
+        {
+            // A ridge has no bounded footprint, so an edit touching one on either side forces a full rebuild.
+            var oldRidge = new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, Height = 5f, Width = 10f };
+            var newRidge = new RidgeFeatureDoc { PointX = 5f, PointZ = 0f, Height = 5f, Width = 10f };
+            Assert.Null(new EditFeatureCommand(0, newRidge, oldRidge).DirtyRegion);
+        }
+
+        [Fact]
+        public void NonFeatureAffectsWorldCommand_DirtyRegion_IsNull()
+        {
+            // A terrain-scalar edit (here the water level) changes the whole world, so it reports no bounded region.
+            Assert.Null(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f).DirtyRegion);
+            // An exclusion add is whole-zone by design this round too.
+            Assert.Null(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }).DirtyRegion);
+        }
+
+        [Fact]
+        public void EditFeatureCommand_DirtyRegion_TracksLatestNewValueAfterMerge()
+        {
+            // TryMerge rewrites _newValue as a drag coalesces, and DirtyRegion is computed live, so it must cover the
+            // LATEST new value, not the one captured at construction.
+            var v0 = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var v1 = new LakeFeatureDoc { CenterX = 10f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var v2 = new LakeFeatureDoc { CenterX = 30f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var cmd = new EditFeatureCommand(0, v1, v0);
+
+            Assert.True(cmd.TryMerge(new EditFeatureCommand(0, v2, v1)));
+
+            RectArea? region = cmd.DirtyRegion;
+            Assert.NotNull(region);
+            RectArea expected = FeatureGeometry.Union(LakeDisc(0f, 0f, 5f), LakeDisc(30f, 0f, 5f));   // v0 .. v2, not v1
+            AssertBounds(region.Value, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        // ---- PendingRebuildRegion: the document's accumulated dirty region -----------------------------
+
+        static RectArea FlattenDisc(float cx, float cz, float radius)
+        {
+            float r = MathF.Abs(radius) + FeatureGeometry.FootprintMargin;
+            return new RectArea(cx - r, cz - r, cx + r, cz + r);
+        }
+
+        // A depth-only clone of the sample lake (feature 0), so its footprint matches the original's exactly.
+        static LakeFeatureDoc LakeDepth(LakeFeatureDoc src, float depth) =>
+            new() { CenterX = src.CenterX, CenterZ = src.CenterZ, Radius = src.Radius, Depth = depth,
+                InnerFraction = src.InnerFraction, OuterFraction = src.OuterFraction };
+
+        [Fact]
+        public void PendingRebuildRegion_NullWhenNothingPending()
+        {
+            var ed = new EditorDocument(Sample());
+            Assert.False(ed.WorldRebuildPending);
+            Assert.Null(ed.PendingRebuildRegion);
+        }
+
+        [Fact]
+        public void PendingRebuildRegion_UnionsAcrossFeatureEdits()
+        {
+            var doc = Sample();   // feature[0] lake @ (34,-14) r22, feature[1] flatten @ (-32,22) r34
+            var ed = new EditorDocument(doc);
+            var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
+            var flatten = (FlattenFeatureDoc)doc.Terrain.Features[1];
+
+            ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+            var flattenNew = new FlattenFeatureDoc { CenterX = flatten.CenterX, CenterZ = flatten.CenterZ,
+                Radius = flatten.Radius, TargetHeight = 7f, Blend = flatten.Blend };
+            ed.Execute(new EditFeatureCommand(1, flattenNew, flatten));
+
+            Assert.True(ed.WorldRebuildPending);
+            RectArea? region = ed.PendingRebuildRegion;
+            Assert.NotNull(region);
+            RectArea expected = FeatureGeometry.Union(
+                LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius),
+                FlattenDisc(flatten.CenterX, flatten.CenterZ, flatten.Radius));
+            AssertBounds(region.Value, expected.MinX, expected.MinZ, expected.MaxX, expected.MaxZ);
+        }
+
+        [Fact]
+        public void PendingRebuildRegion_StickyFull_RectThenNull()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
+
+            ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));   // a bounded rect
+            Assert.NotNull(ed.PendingRebuildRegion);
+            ed.Execute(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }));
+
+            Assert.True(ed.WorldRebuildPending);
+            Assert.Null(ed.PendingRebuildRegion);   // a null-region command turns the pending region full-sticky
+        }
+
+        [Fact]
+        public void PendingRebuildRegion_StickyFull_NullThenRect()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
+
+            ed.Execute(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }));
+            Assert.Null(ed.PendingRebuildRegion);   // full from the outset
+            ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));   // a later bounded rect cannot un-stick it
+
+            Assert.True(ed.WorldRebuildPending);
+            Assert.Null(ed.PendingRebuildRegion);
+        }
+
+        [Fact]
+        public void PendingRebuildRegion_ResetOnAcknowledge()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
+
+            ed.Execute(new AddExclusionCommand(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 2f } }));
+            ed.AcknowledgeWorldRebuild();
+            Assert.False(ed.WorldRebuildPending);
+            Assert.Null(ed.PendingRebuildRegion);
+
+            // A fresh feature edit after the acknowledge starts a clean rect region (no lingering full-stickiness).
+            ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+            RectArea? region = ed.PendingRebuildRegion;
+            Assert.NotNull(region);
+            AssertBounds(region.Value, LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MinX,
+                LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MinZ,
+                LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MaxX,
+                LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius).MaxZ);
+        }
+
+        [Fact]
+        public void PendingRebuildRegion_UndoAndRedoContributeRegions()
+        {
+            var doc = Sample();
+            var ed = new EditorDocument(doc);
+            var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
+            RectArea disc = LakeDisc(lake.CenterX, lake.CenterZ, lake.Radius);   // same-footprint depth-only edit
+
+            ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+            ed.AcknowledgeWorldRebuild();
+
+            Assert.True(ed.Undo());
+            Assert.True(ed.WorldRebuildPending);
+            Assert.NotNull(ed.PendingRebuildRegion);
+            AssertBounds(ed.PendingRebuildRegion!.Value, disc.MinX, disc.MinZ, disc.MaxX, disc.MaxZ);
+
+            ed.AcknowledgeWorldRebuild();
+            Assert.True(ed.Redo());
+            Assert.True(ed.WorldRebuildPending);
+            Assert.NotNull(ed.PendingRebuildRegion);
+            AssertBounds(ed.PendingRebuildRegion!.Value, disc.MinX, disc.MinZ, disc.MaxX, disc.MaxZ);
         }
 
         // ---- saved-point dirty tracking ----------------------------------------------------------------

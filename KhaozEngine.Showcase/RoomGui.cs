@@ -18,11 +18,20 @@ namespace KhaozEngine.Showcase
     /// (Input/Pointer/Viewport) exactly as <c>ShowcaseApp</c> feeds <c>SceneManager</c>. A <see cref="GameScene"/>
     /// cannot reach <c>Surface2D</c> itself, so <see cref="ShowcaseApp"/> creates the texture/fonts and hands them
     /// in via <see cref="Init"/> right after construction, keeping the constructor parameterless for the room
-    /// registry's <c>Func&lt;GameScene&gt;</c>.</summary>
+    /// registry's <c>Func&lt;GameScene&gt;</c>. The room also owns a <see cref="ToastStack"/>/<see cref="ToastView"/>
+    /// pair (see the "Toasts" menu button, which pushes a <c>ToastsScreen</c> demo), driven the same way beside
+    /// <see cref="_stack"/> rather than from within a screen, so toasts outlive any single screen and draw on top
+    /// of the whole stack.</summary>
     public sealed class RoomGui : GameScene
     {
         GuiAssets _assets = null!;
         ScreenStack _stack = null!;
+
+        // Toasts are hosted at the room level, not inside a screen, so they persist across every screen
+        // push/pop on _stack and always draw on top of whichever screen is active. This is the pattern a game
+        // copies: own a ToastStack + ToastView beside the ScreenStack and drive both from the room.
+        ToastStack _toasts = null!;
+        ToastView _toastView = null!;
 
         /// <summary>Wire in the textures/fonts created on the app's Surface2D. Call once, right after
         /// construction and before the room is pushed. <paramref name="skin"/> is the nine-slice frame skin used by
@@ -64,13 +73,27 @@ namespace KhaozEngine.Showcase
 
         public override void OnEnter()
         {
+            _toasts = new ToastStack();
+            _toastView = new ToastView(_toasts, _assets.Small) { Bounds = Manager!.Viewport!.DesignBounds };
+
             _stack = new ScreenStack();
-            _stack.Add(new GuiMenuScreen(_assets, Manager!.Viewport!));
+            _stack.Add(new GuiMenuScreen(_assets, Manager!.Viewport!, _toasts));
         }
 
         public override void OnUpdate(float dt)
         {
             var m = Manager!;
+
+            // A real game feeds ToastStack.Update a RAW, unscaled frame dt (Frame.Dt / GameClock.RealDeltaSeconds),
+            // never a scaled simulation dt, so toasts keep counting down at real speed while the game is paused or
+            // slowed. The showcase has no time scaling of its own, so dt here already is that raw value.
+            _toasts.Update(dt);
+            // Toasts see the pointer and reserve their own rects before the screen stack updates, so a tap that
+            // lands on a toast dismisses it instead of also reaching whatever the active screen draws under it.
+            // m.Pointer is already refreshed for this frame (the app updates it before calling OnUpdate), unlike
+            // _stack.Pointer, which is only current once _stack.Update runs below.
+            _toastView.Update(m.Pointer!);
+
             // Esc backs out exactly one level. With a modal sub-screen open (Settings/Widgets/Immediate/Overlay),
             // Esc exits the topmost screen (which plays its off-transition) and returns to the root menu. Only
             // once the stack is back down to just the root menu screen does Esc leave the room via Manager.Pop().
@@ -84,7 +107,11 @@ namespace KhaozEngine.Showcase
             _stack.Update(dt, m.Input, m.Viewport);
         }
 
-        public override void OnDraw2D(SpriteBatch batch) => _stack.Draw(batch);
+        public override void OnDraw2D(SpriteBatch batch)
+        {
+            _stack.Draw(batch);
+            _toastView.Draw(batch, _assets.White, _assets.Small);   // after the stack, so toasts sit on top
+        }
     }
 
     /// <summary>Shared white texture + two font sizes + the demo nine-slice skin, mirroring <c>GuiSample</c>'s
@@ -117,18 +144,19 @@ namespace KhaozEngine.Showcase
     }
 
     /// <summary>Root screen: buttons push the modal Settings / heavy Widgets / immediate-mode screens, the
-    /// overlay demo, or the Patch Notes panel. No Quit button (leaving the room is Esc, handled by
-    /// <see cref="RoomGui"/> itself).</summary>
+    /// overlay demo, the Toasts demo, or the Patch Notes panel. No Quit button (leaving the room is Esc, handled
+    /// by <see cref="RoomGui"/> itself).</summary>
     sealed class GuiMenuScreen : Screen
     {
         readonly GuiAssets _a;
         readonly IDesignViewport _vp;
+        readonly ToastStack _toasts;
         Label _title = null!, _footer = null!;
-        Button _settings = null!, _widgets = null!, _immediate = null!, _overlay = null!, _patchNotes = null!;
+        Button _settings = null!, _widgets = null!, _immediate = null!, _overlay = null!, _patchNotes = null!, _toastsButton = null!;
 
-        public GuiMenuScreen(GuiAssets a, IDesignViewport vp)
+        public GuiMenuScreen(GuiAssets a, IDesignViewport vp, ToastStack toasts)
         {
-            _a = a; _vp = vp;
+            _a = a; _vp = vp; _toasts = toasts;
             PassUpdateThrough = false;
             BackgroundColor = GuiTheme.Default.Background;   // opaque full screen
         }
@@ -146,6 +174,7 @@ namespace KhaozEngine.Showcase
             _overlay = new Button(mid with { Y = mid.Y + 64 }, ShowcaseStrings.MenuOverlayDemo, _a.Small, () => Manager.Add(new OverlayHostScreen(_a, _vp)));
             _patchNotes = new Button(mid with { Y = mid.Y + 128 }, ShowcaseStrings.MenuPatchNotes, _a.Small,
                 () => Manager.Add(new PatchNotesScreen(PatchNotesLoader.Load(typeof(RoomGui).Assembly), _a.Small, _a.White, _vp)));
+            _toastsButton = new Button(mid with { Y = mid.Y + 192 }, ShowcaseStrings.MenuToasts, _a.Small, () => Manager.Add(new ToastsScreen(_a, _vp, _toasts)));
 
             _footer = new Label(Layout.Resolve(db, Anchor.Bottom, db.Width, 24, marginY: 36),
                 ShowcaseStrings.MenuFooter, _a.Small)
@@ -160,6 +189,7 @@ namespace KhaozEngine.Showcase
             _immediate.Update(Manager.Pointer);
             _overlay.Update(Manager.Pointer);
             _patchNotes.Update(Manager.Pointer);
+            _toastsButton.Update(Manager.Pointer);
             return true;
         }
 
@@ -172,6 +202,7 @@ namespace KhaozEngine.Showcase
             _immediate.Draw(batch, _a.White);
             _overlay.Draw(batch, _a.White);
             _patchNotes.Draw(batch, _a.White);
+            _toastsButton.Draw(batch, _a.White);
             _footer.Draw(batch);
         }
     }
@@ -667,6 +698,80 @@ namespace KhaozEngine.Showcase
             batch.Draw(_a.White, new Vector4(db.X, db.Y, db.Width, db.Height), new Color(0f, 0f, 0f, 0.5f * TransitionAlpha));   // scrim
             _label.Draw(batch);
             _resume.Draw(batch, _a.White);
+        }
+    }
+
+    /// <summary>Demo screen for the toast stack: a button per <see cref="ToastKind"/>, a sticky toast that only
+    /// dismisses on tap, a keyed toast that replaces itself in place (with an incrementing counter baked into
+    /// the message) on every click, and clearing that key. The <see cref="ToastStack"/> itself belongs to
+    /// <see cref="RoomGui"/>, not this screen (see <see cref="RoomGui.OnUpdate"/>/<see cref="RoomGui.OnDraw2D"/>),
+    /// so toasts fired here keep counting down and stay visible even after Back returns to the root menu.</summary>
+    sealed class ToastsScreen : Screen
+    {
+        /// <summary>The replacement key shared by the Update-keyed and Clear-keyed buttons below.</summary>
+        const string DemoKey = "demo";
+
+        readonly GuiAssets _a;
+        readonly IDesignViewport _vp;
+        readonly ToastStack _toasts;
+        Label _title = null!;
+        Button _standard = null!, _warning = null!, _danger = null!, _sticky = null!, _update = null!, _clear = null!, _back = null!;
+        int _counter;
+
+        public ToastsScreen(GuiAssets a, IDesignViewport vp, ToastStack toasts)
+        {
+            _a = a; _vp = vp; _toasts = toasts;
+            PassUpdateThrough = false;
+            BackgroundColor = GuiTheme.Default.Background;   // opaque full screen
+        }
+
+        public override void LoadContent()
+        {
+            Rect db = _vp.DesignBounds;
+            _title = new Label(Layout.Resolve(db, Anchor.Top, db.Width, 40, marginY: 28), ShowcaseStrings.ToastsTitle, _a.Big) { Align = TextAlign.Center };
+
+            // Centered vertical button column, same convention as GuiMenuScreen.
+            Rect mid = Layout.Resolve(db, Anchor.Center, 240, 52);
+            _standard = new Button(mid with { Y = mid.Y - 192 }, ShowcaseStrings.ToastsStandard, _a.Small,
+                () => _toasts.Show(ShowcaseStrings.ToastsStandardMessage, ToastKind.Standard));
+            _warning = new Button(mid with { Y = mid.Y - 128 }, ShowcaseStrings.ToastsWarning, _a.Small,
+                () => _toasts.Show(ShowcaseStrings.ToastsWarningMessage, ToastKind.Warning));
+            _danger = new Button(mid with { Y = mid.Y - 64 }, ShowcaseStrings.ToastsDanger, _a.Small,
+                () => _toasts.Show(ShowcaseStrings.ToastsDangerMessage, ToastKind.Danger));
+            _sticky = new Button(mid with { Y = mid.Y }, ShowcaseStrings.ToastsSticky, _a.Small,
+                () => _toasts.ShowSticky(ShowcaseStrings.ToastsStickyMessage));
+            _update = new Button(mid with { Y = mid.Y + 64 }, ShowcaseStrings.ToastsUpdate, _a.Small,
+                () => _toasts.Show(LocalizedText.Of(ShowcaseStrings.ToastsCounterMessage, ++_counter), key: DemoKey));
+            _clear = new Button(mid with { Y = mid.Y + 128 }, ShowcaseStrings.ToastsClear, _a.Small,
+                () => _toasts.Clear(DemoKey));
+            _back = new Button(mid with { Y = mid.Y + 192 }, ShowcaseStrings.CommonBack, _a.Small, ExitScreen);
+        }
+
+        public override bool Update(float dt, bool receivesInput)
+        {
+            if (!receivesInput) return false;
+            var p = Manager.Pointer;
+            _standard.Update(p);
+            _warning.Update(p);
+            _danger.Update(p);
+            _sticky.Update(p);
+            _update.Update(p);
+            _clear.Update(p);
+            _back.Update(p);
+            return true;
+        }
+
+        public override void Draw(SpriteBatch batch)
+        {
+            DrawBackground(batch, _a.White, _vp);
+            _title.Draw(batch);
+            _standard.Draw(batch, _a.White);
+            _warning.Draw(batch, _a.White);
+            _danger.Draw(batch, _a.White);
+            _sticky.Draw(batch, _a.White);
+            _update.Draw(batch, _a.White);
+            _clear.Draw(batch, _a.White);
+            _back.Draw(batch, _a.White);
         }
     }
 }

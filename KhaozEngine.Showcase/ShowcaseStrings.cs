@@ -17,6 +17,7 @@ namespace KhaozEngine.Showcase
         public static readonly StringId MenuImmediate = new("Menu.Immediate");
         public static readonly StringId MenuOverlayDemo = new("Menu.OverlayDemo");
         public static readonly StringId MenuPatchNotes = new("Menu.PatchNotes");
+        public static readonly StringId MenuToasts = new("Menu.Toasts");
         public static readonly StringId MenuFooter = new("Menu.Footer");
 
         // Settings
@@ -48,6 +49,20 @@ namespace KhaozEngine.Showcase
         public static readonly StringId OverlayPush = new("Overlay.Push");
         public static readonly StringId OverlayPaused = new("Overlay.Paused");
         public static readonly StringId OverlayResume = new("Overlay.Resume");
+
+        // Toasts demo
+        public static readonly StringId ToastsTitle = new("Toasts.Title");
+        public static readonly StringId ToastsStandard = new("Toasts.Standard");
+        public static readonly StringId ToastsWarning = new("Toasts.Warning");
+        public static readonly StringId ToastsDanger = new("Toasts.Danger");
+        public static readonly StringId ToastsSticky = new("Toasts.Sticky");
+        public static readonly StringId ToastsUpdate = new("Toasts.Update");
+        public static readonly StringId ToastsClear = new("Toasts.Clear");
+        public static readonly StringId ToastsStandardMessage = new("Toasts.StandardMessage");
+        public static readonly StringId ToastsWarningMessage = new("Toasts.WarningMessage");
+        public static readonly StringId ToastsDangerMessage = new("Toasts.DangerMessage");
+        public static readonly StringId ToastsStickyMessage = new("Toasts.StickyMessage");
+        public static readonly StringId ToastsCounterMessage = new("Toasts.CounterMessage");
 
         // Mini-game
         public static readonly StringId MiniGamePlay = new("MiniGame.Play");

@@ -64,6 +64,7 @@
   <data name="Menu.Immediate" xml:space="preserve"><value>Immediate</value></data>
   <data name="Menu.OverlayDemo" xml:space="preserve"><value>Overlay demo</value></data>
   <data name="Menu.PatchNotes" xml:space="preserve"><value>Patch Notes</value></data>
+  <data name="Menu.Toasts" xml:space="preserve"><value>Toasts</value></data>
   <data name="Menu.Footer" xml:space="preserve"><value>Settings = core widgets    Widgets = heavy widgets    Immediate = GuiSurface    Overlay demo = push/pop    Patch Notes = changelog    Esc for menu</value></data>
   <data name="Settings.Title" xml:space="preserve"><value>Settings</value></data>
   <data name="Settings.Volume" xml:space="preserve"><value>Volume</value></data>
@@ -89,6 +90,18 @@
   <data name="Overlay.Push" xml:space="preserve"><value>Push overlay</value></data>
   <data name="Overlay.Paused" xml:space="preserve"><value>PAUSED - Esc to resume</value></data>
   <data name="Overlay.Resume" xml:space="preserve"><value>Resume</value></data>
+  <data name="Toasts.Title" xml:space="preserve"><value>Toast Stack</value></data>
+  <data name="Toasts.Standard" xml:space="preserve"><value>Standard toast</value></data>
+  <data name="Toasts.Warning" xml:space="preserve"><value>Warning toast</value></data>
+  <data name="Toasts.Danger" xml:space="preserve"><value>Danger toast</value></data>
+  <data name="Toasts.Sticky" xml:space="preserve"><value>Sticky toast</value></data>
+  <data name="Toasts.Update" xml:space="preserve"><value>Update keyed</value></data>
+  <data name="Toasts.Clear" xml:space="preserve"><value>Clear keyed</value></data>
+  <data name="Toasts.StandardMessage" xml:space="preserve"><value>Just a heads up, nothing is wrong.</value></data>
+  <data name="Toasts.WarningMessage" xml:space="preserve"><value>Something looks off, might be worth a look.</value></data>
+  <data name="Toasts.DangerMessage" xml:space="preserve"><value>That failed.</value></data>
+  <data name="Toasts.StickyMessage" xml:space="preserve"><value>This one sticks around until you tap it.</value></data>
+  <data name="Toasts.CounterMessage" xml:space="preserve"><value>Updated {0} times</value></data>
   <data name="MiniGame.Play" xml:space="preserve"><value>Play</value></data>
   <data name="MiniGame.BackToMenu" xml:space="preserve"><value>Back to menu</value></data>
   <data name="MiniGame.Retry" xml:space="preserve"><value>Retry</value></data>

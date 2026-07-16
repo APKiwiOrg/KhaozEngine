@@ -5,7 +5,7 @@ namespace KhaozEngine.Showcase
     /// <summary>GPU-free menu navigation model: the room-name list plus a selected index and the grid column
     /// count the tile menu is arranged in. The <see cref="MenuScene"/> is its view. This holds the logic so it
     /// stays headless-testable. <see cref="MoveNext"/>/<see cref="MovePrev"/> wrap through the flat order (the
-    /// legacy linear feel); the grid moves (<see cref="MoveLeft"/>/<see cref="MoveRight"/>/<see cref="MoveUp"/>/
+    /// legacy linear feel). The grid moves (<see cref="MoveLeft"/>/<see cref="MoveRight"/>/<see cref="MoveUp"/>/
     /// <see cref="MoveDown"/>) clamp against the grid edges so arrow keys read as spatial motion over the tiles,
     /// never wrapping across a row or off the odd short last row.</summary>
     public sealed class ShowcaseMenu
@@ -47,7 +47,7 @@ namespace KhaozEngine.Showcase
             if (Selected - _columns >= 0) Selected -= _columns;
         }
 
-        // Down moves a full row where one exists; from the second-to-last row into a short last row it clamps onto
+        // Down moves a full row where one exists. From the second-to-last row into a short last row it clamps onto
         // the last populated tile rather than overshooting into an empty cell.
         public void MoveDown()
         {

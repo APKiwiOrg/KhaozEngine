@@ -34,7 +34,7 @@ namespace KhaozEngine.Showcase
     public sealed class ShowcaseHud
     {
         const float ToastSeconds = 2.5f;
-        // The toast sits just under the title band; the controls band steps at 20 points per hint line.
+        // The toast sits just under the title band. The controls band steps at 20 points per hint line.
         const float ToastY = 52f;
         const float TitlePillHeight = 34f;
         const float HintLineStep = 20f;

@@ -16,7 +16,7 @@ namespace KhaozEngine.Showcase
     /// (<see cref="GameScene.OnDrawUi"/>) so its text is baked at the live DPI scale (crisp on HiDPI) and the tiles
     /// wear uniform device-pixel-snapped borders. Each tile is a retained <see cref="Button"/> for chrome +
     /// click, wearing the accent <see cref="GuiStyle.Active"/> preset when selected and the muted
-    /// <see cref="GuiStyle.Secondary"/> otherwise; the title + blurb are drawn on top. Arrows / WASD move the
+    /// <see cref="GuiStyle.Secondary"/> otherwise, and the title + blurb are drawn on top. Arrows / WASD move the
     /// selection spatially over the grid (via <see cref="ShowcaseMenu"/>'s clamped grid moves), Enter/Space or a
     /// click enters a room. The whole layout reflows around the centre on resize rather than magnifying. An empty
     /// registry shows the title chrome with no tiles to enter.</summary>
@@ -60,7 +60,7 @@ namespace KhaozEngine.Showcase
         }
 
         // Tiles are laid out and hit-tested in POINT space, so a resized window reflows the grid around the centre
-        // without blurring it. The grid is 2 columns wide, centred horizontally; the last row may hold one tile.
+        // without blurring it. The grid is 2 columns wide, centred horizontally, and the last row may hold one tile.
         static Rect TileRect(int index, float boundsW)
         {
             float gridW = Columns * TileW + (Columns - 1) * Gap;
@@ -105,7 +105,7 @@ namespace KhaozEngine.Showcase
             m.Push(_rooms[_menu.Selected].Factory());
         }
 
-        // The hub chrome resolves title/subtitle/hint/footer + every tile title/blurb through the catalog; only
+        // The hub chrome resolves title/subtitle/hint/footer + every tile title/blurb through the catalog. Only
         // the version substituted into the footer format string is a raw token, so no bare copy literal is drawn.
         [LocalizationExempt]
         public override void OnDrawUi(SpriteBatch batch)
@@ -165,7 +165,7 @@ namespace KhaozEngine.Showcase
             batch.DrawString(smallFont, footer, new Vector2(boundsW - fs.X - 16f, fy), (Color)theme.TextMuted);
         }
 
-        // The engine's informational version (the showcase assembly is unversioned; the engine assembly carries
+        // The engine's informational version (the showcase assembly is unversioned, the engine assembly carries
         // <KhaozEngineVersion>), with any '+buildmeta' suffix stripped so the footer reads "KhaozEngine X.Y.Z".
         static string ResolveEngineVersion()
         {

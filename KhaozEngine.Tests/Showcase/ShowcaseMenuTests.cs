@@ -90,7 +90,7 @@ namespace KhaozEngine.Tests.Showcase
         public void MoveDown_From5_ClampsIntoShortLastRow()
         {
             var m = Grid();
-            m.SelectAt(5);          // right cell of row 2; row 3 has no right cell
+            m.SelectAt(5);          // right cell of row 2, and row 3 has no right cell
             m.MoveDown();
             Assert.Equal(6, m.Selected);
         }

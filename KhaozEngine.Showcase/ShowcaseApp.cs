@@ -14,14 +14,14 @@ namespace KhaozEngine.Showcase
 {
     /// <summary>One entry in the showcase room registry: the localized tile <paramref name="Title"/> and one-line
     /// <paramref name="Blurb"/> the hub menu shows, plus the <paramref name="Factory"/> that builds the room scene
-    /// when it is entered. The title also drives the KE_SHOWCASE_ROOM auto-enter (a case-insensitive prefix match
-    /// against the resolved title).</summary>
+    /// when it is entered. The title also drives the KE_SHOWCASE_ROOM auto-enter, a case-insensitive prefix match
+    /// against the resolved title.</summary>
     public sealed record ShowcaseRoomEntry(StringId Title, StringId Blurb, Func<GameScene> Factory);
 
     /// <summary>The showcase host: a GameApp3D holding a SceneManager, the room registry, and the shared
     /// <see cref="ShowcaseHud"/> that draws each room's chrome (title / controls hint / status / toasts). Each
-    /// registry entry pairs a localized title + blurb with a scene factory; <see cref="MenuScene"/> lays them out
-    /// as a tile grid and pushes the chosen one. Honors KE_MAX_FRAMES via the AppWindow loop (headless smoke
+    /// registry entry pairs a localized title + blurb with a scene factory, and <see cref="MenuScene"/> lays them
+    /// out as a tile grid and pushes the chosen one. Honors KE_MAX_FRAMES via the AppWindow loop (headless smoke
     /// renders N frames then exits 0) and KE_SHOWCASE_ROOM to auto-enter a room by title prefix.</summary>
     public sealed class ShowcaseApp : GameApp3D
     {
@@ -108,7 +108,7 @@ namespace KhaozEngine.Showcase
                 () => new RoomBoot().Init(_white, bootFont)));
 
             // Room3D is the walkable streamed 3D overworld. It renders through the app's shared Scene3D (injected
-            // here, since a GameScene cannot reach Surface3D itself); its overlays draw crisp through the UI pass,
+            // here, since a GameScene cannot reach Surface3D itself). Its overlays draw crisp through the UI pass,
             // and its render/skinning toggles toast through the shared hud.
             Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomWorldTitle, ShowcaseStrings.RoomWorldBlurb,
                 () => new Room3D().Init(Scene, _white, dpi22, _hud)));

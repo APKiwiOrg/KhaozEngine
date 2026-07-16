@@ -33,7 +33,7 @@ namespace KhaozEngine.Showcase
         public IReadOnlyList<StringId> ControlsHints => Hints;
 
         /// <summary>Wire in the textures/fonts created on the app's Surface2D. Call once, right after construction
-        /// and before the room is pushed. <paramref name="checker"/> feeds the sprites page; <paramref name="skin"/>
+        /// and before the room is pushed. <paramref name="checker"/> feeds the sprites page, and <paramref name="skin"/>
         /// is the nine-slice frame skin the skinned-chrome widgets use (baked via <see cref="BakeFramePixels"/>).</summary>
         public Room2DGui Init(Texture2D white, Texture2D checker, SpriteFont big, SpriteFont small, GuiSkin skin)
         {
@@ -154,8 +154,8 @@ namespace KhaozEngine.Showcase
     }
 
     /// <summary>The room's single root screen: an opaque backdrop, a <see cref="TabBar"/> at the top, and one of
-    /// five <see cref="ToolkitPage"/>s below it. Tab / Shift+Tab (or a click on the bar) switches pages; the modal
-    /// demos push real screens on top of this one.</summary>
+    /// five <see cref="ToolkitPage"/>s below it. Tab / Shift+Tab (or a click on the bar) switches pages, and the
+    /// modal demos push real screens on top of this one.</summary>
     sealed class ToolkitHostScreen : Screen
     {
         readonly GuiAssets _a;
@@ -459,7 +459,7 @@ namespace KhaozEngine.Showcase
         public override void Update(float dt) { }   // no interactive widgets
 
         // The four text-specimen lines are runtime TTF type specimens (not player copy), so the raw DrawString
-        // literals are the intentional escape hatch; the section headers and sprite captions resolve through
+        // literals are the intentional escape hatch. The section headers and sprite captions resolve through
         // StringIds in the same method.
         [LocalizationExempt]
         public override void Draw(SpriteBatch batch)
@@ -596,7 +596,7 @@ namespace KhaozEngine.Showcase
             }
             _padInfo = pad.IsConnected ? $"stick {pad.LeftStick.X:0.0},{pad.LeftStick.Y:0.0}" : "none";
 
-            // Gestures: a drag that starts inside the panel grabs the box; long-press resets it; taps inside the
+            // Gestures: a drag that starts inside the panel grabs the box, long-press resets it, and taps inside the
             // panel leave fading marks. The box centre is clamped so nothing leaves the playground.
             var boxRect = new Rect(_box.X - 45, _box.Y - 45, 90, 90);
             if (_gestures.DragStarted && _playground.Contains(_gestures.DragStart) && boxRect.Contains(_gestures.DragStart))
@@ -617,7 +617,7 @@ namespace KhaozEngine.Showcase
             }
         }
 
-        // The "drag me" box label is demo chrome (a raw literal, the intentional escape hatch); the status labels
+        // The "drag me" box label is demo chrome (a raw literal, the intentional escape hatch). The status labels
         // and keys caption in the same method resolve through StringIds, and the diagnostic values are raw by design.
         [LocalizationExempt]
         public override void Draw(SpriteBatch batch)
@@ -669,7 +669,7 @@ namespace KhaozEngine.Showcase
     }
 
     /// <summary>Page 4: the immediate-mode GuiSurface demo - every widget issued inside Draw with no retained
-    /// instances. Aligned to the shared 920 grid; labels are dynamic/diagnostic so they stay raw.</summary>
+    /// instances. Aligned to the shared 920 grid, with dynamic/diagnostic labels so they stay raw.</summary>
     // A low-level GuiSurface demonstration whose labels are alignment names, toggle state, and a PointerCaptured
     // readout, so it uses LocalizedText.Raw throughout and is marked exempt from the analyzer.
     [LocalizationExempt]
@@ -838,7 +838,7 @@ namespace KhaozEngine.Showcase
                 _nav.Update(im);                                    // Up/Down (or D-pad / stick) moves focus
                 _volume.Update(im, focused: _nav.Focused == 0);     // focused row also takes Left/Right
                 _fullscreen.Update(im, focused: _nav.Focused == 1); // and Enter to flip
-                _back.Update(Manager.Pointer);                      // Back stays pointer; Esc backs out (Room2DGui)
+                _back.Update(Manager.Pointer);                      // Back stays pointer, Esc backs out (Room2DGui)
                 _readout.Content = LocalizedText.Raw($"{(int)(_volume.Value * 100)}%");
             }
             return true;
@@ -890,7 +890,7 @@ namespace KhaozEngine.Showcase
             TransitionOnDuration = 0.15f; TransitionOffDuration = 0.15f;
         }
 
-        // The popup's chrome (title, buttons, headers, static note) is real copy resolved through StringId; only
+        // The popup's chrome (title, buttons, headers, static note) is real copy resolved through StringId. Only
         // the user-entered name/difficulty VALUES are raw (a typed name is not a localizable key), so the method is
         // exempt from KELOC002 for those LocalizedText.Raw calls.
         [LocalizationExempt]

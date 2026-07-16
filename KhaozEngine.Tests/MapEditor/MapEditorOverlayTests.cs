@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.MapEditor
             doc.Terrain.Features.Add(new RidgeFeatureDoc { PointX = -3f, PointZ = 7f, Height = 3f });
             doc.Terrain.Features.Add(new UnknownFeatureDoc());   // no derivable center: must be skipped
 
-            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
 
             // Two exclusions + one region + two known features = five overlays; the unknown feature is skipped.
             Assert.Equal(5, list.Count);
@@ -109,11 +109,9 @@ namespace KhaozEngine.Tests.MapEditor
             // An exclusion too, so the override color can be checked distinct from the exclusion color.
             doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 20f, CenterZ = 20f, Radius = 4f } });
 
-            // ComputeOverlayDrawList hands back a shared cached list (rebuilt, not reallocated, on every call - see
-            // its doc comment), so every result below that must survive past a LATER call in this test is
-            // materialized with ToList() right where it is captured, the same discipline TreeView.VisibleRows'
-            // own callers use.
-            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility()).ToList();
+            // ComputeOverlayDrawList fills the caller-owned buffer it is handed (see its doc comment), so every
+            // call in this test passes its own fresh list and each captured result stays independent of the rest.
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
 
             // Both overrides draw: a disc and a rect, tagged with the scatter-override category.
             List<OverlayDraw> overrides = list.Where(o => o.Category == OverlayCategory.ScatterOverride).ToList();
@@ -137,21 +135,21 @@ namespace KhaozEngine.Tests.MapEditor
             // Group toggle: hiding the whole ScatterOverrides group drops every override overlay, others stay.
             var groupOff = new EditorVisibility();
             groupOff.SetGroup(VisibilityGroup.ScatterOverrides, false);
-            List<OverlayDraw> withGroupOff = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: groupOff).ToList();
+            List<OverlayDraw> withGroupOff = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: groupOff, into: new List<OverlayDraw>());
             Assert.DoesNotContain(withGroupOff, o => o.Category == OverlayCategory.ScatterOverride);
             Assert.Single(withGroupOff, o => o.Category == OverlayCategory.Exclusion);
 
             // Per-element hide: hiding index 0 drops only the first override, leaving index 1 (the rect).
             var elementHidden = new EditorVisibility();
             elementHidden.SetElementHidden(SelectionKind.ScatterOverride, "0", true);
-            List<OverlayDraw> withElementHidden = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: elementHidden).ToList();
+            List<OverlayDraw> withElementHidden = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: elementHidden, into: new List<OverlayDraw>());
             List<OverlayDraw> remaining = withElementHidden.Where(o => o.Category == OverlayCategory.ScatterOverride).ToList();
             Assert.Single(remaining);
             Assert.Equal(OverlayShape.Rect, remaining[0].Shape);   // the surviving index-1 rect
 
             // Selection highlight is index-keyed: selecting override 1 brightens only that overlay.
             List<OverlayDraw> withSel = MapEditorScene.ComputeOverlayDrawList(
-                doc, Select(SelectionKind.ScatterOverride, "1"), FlatGround, showOverlays: true, visibility: new EditorVisibility()).ToList();
+                doc, Select(SelectionKind.ScatterOverride, "1"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
             List<OverlayDraw> selOverrides = withSel.Where(o => o.Category == OverlayCategory.ScatterOverride).ToList();
             Assert.False(selOverrides.First(o => o.Shape == OverlayShape.Disc).Selected);   // index 0
             Assert.True(selOverrides.First(o => o.Shape == OverlayShape.Rect).Selected);    // index 1, selected
@@ -166,10 +164,9 @@ namespace KhaozEngine.Tests.MapEditor
             doc.Regions.Add(new MapRegion { Name = "zone", Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 9f, Radius = 3f } });
             doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 5f, CenterZ = 5f, Radius = 3f, Depth = 1f });
 
-            // Nothing selected: no overlay is flagged, and both exclusions share the same base color. Every value
-            // kept past a later ComputeOverlayDrawList call below is extracted here (struct copies, or a Color
-            // field), never the shared list reference itself - see the method's doc comment on the reuse contract.
-            List<OverlayDraw> baseline = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+            // Nothing selected: no overlay is flagged, and both exclusions share the same base color. Each call
+            // below passes its own fresh caller-owned buffer, so every captured result stays independent.
+            List<OverlayDraw> baseline = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
             Assert.All(baseline, o => Assert.False(o.Selected));
             Color baseColor = baseline[0].Color;
             Assert.Equal(baseColor, baseline[1].Color);
@@ -177,7 +174,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             // Selecting exclusion index 1 brightens only that overlay; its unselected sibling is untouched.
             List<OverlayDraw> withSel = MapEditorScene.ComputeOverlayDrawList(
-                doc, Select(SelectionKind.Exclusion, "1"), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+                doc, Select(SelectionKind.Exclusion, "1"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
             Assert.False(withSel[0].Selected);
             Assert.True(withSel[1].Selected);
             Assert.Equal(baseColor, withSel[0].Color);
@@ -186,7 +183,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             // Region selection is keyed by name and highlights only the region overlay.
             List<OverlayDraw> regionSel = MapEditorScene.ComputeOverlayDrawList(
-                doc, Select(SelectionKind.Region, "zone"), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+                doc, Select(SelectionKind.Region, "zone"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
             OverlayDraw region = regionSel.First(o => o.Category == OverlayCategory.Region);
             Assert.True(region.Selected);
             Assert.All(regionSel.Where(o => o.Category == OverlayCategory.Exclusion), o => Assert.False(o.Selected));
@@ -194,33 +191,40 @@ namespace KhaozEngine.Tests.MapEditor
             // Feature selection is index-keyed like exclusions, and its marker goes through the same Tint helper:
             // the selected feature marker brightens while an unselected one would not (only one feature here).
             List<OverlayDraw> featureSel = MapEditorScene.ComputeOverlayDrawList(
-                doc, Select(SelectionKind.Feature, "0"), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+                doc, Select(SelectionKind.Feature, "0"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
             OverlayDraw feature = featureSel.First(o => o.Category == OverlayCategory.Feature);
             Assert.True(feature.Selected);
             Assert.True(feature.Color.R > featureBaseColor.R, "selected feature marker reads brighter");
             Assert.True(feature.Color.G >= featureBaseColor.G && feature.Color.B >= featureBaseColor.B);
         }
 
-        // ComputeOverlayDrawList hands back a shared cached list, rebuilt (not reallocated) on every call: the
-        // SAME instance is returned each time (no per-call allocation), so a caller that wants to keep a result
-        // across a LATER call must materialize it (ToList/ToArray) first, or the earlier reference's content
-        // changes out from under it - the TreeView.VisibleRows precedent (see
-        // VisibleRows_IsASharedListThatMustBeMaterializedBeforeTheNextCall in TreeViewTests).
+        // ComputeOverlayDrawList fills a CALLER-OWNED buffer: the `into` list is cleared at entry, refilled, and
+        // returned (the same instance), so a per-frame caller passes one long-lived buffer and pays no per-call
+        // allocation, while independent results just need independent buffers. The reuse lives at the call site
+        // instead of behind the API (contrast TreeView.VisibleRows, which owns its buffer internally).
         [Fact]
-        public void ComputeOverlayDrawList_IsASharedListThatMustBeMaterializedBeforeTheNextCall()
+        public void ComputeOverlayDrawList_FillsAndReturnsTheCallerOwnedBuffer()
         {
             MapDocument doc = ValidDoc("reuse");
             doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 4f } });
 
-            List<OverlayDraw> first = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility());
+            var buffer = new List<OverlayDraw>();
+            List<OverlayDraw> first = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: buffer);
+            Assert.Same(buffer, first);   // the caller's buffer comes back, not a fresh allocation
             Assert.Single(first);
 
+            // Reusing the SAME buffer for the next call clears and refills it: no stale entries accumulate, and
+            // the earlier `first` reference (the same instance) observes the new content.
             doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f } });
-            List<OverlayDraw> second = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility());
-
-            Assert.Same(first, second);       // the exact same list instance, not a fresh allocation
-            Assert.Equal(2, first.Count);      // and `first`'s content changed out from under the earlier reference
+            List<OverlayDraw> second = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: buffer);
+            Assert.Same(buffer, second);
             Assert.Equal(2, second.Count);
+            Assert.Equal(2, first.Count);
+
+            // showOverlays false still clears the handed-in buffer rather than leaving stale entries behind.
+            List<OverlayDraw> hidden = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: false, visibility: new EditorVisibility(), into: buffer);
+            Assert.Same(buffer, hidden);
+            Assert.Empty(hidden);
         }
 
         [Fact]
@@ -231,7 +235,7 @@ namespace KhaozEngine.Tests.MapEditor
             doc.Regions.Add(new MapRegion { Name = "zone", Shape = new DiscShapeDoc { Radius = 3f } });
             doc.Terrain.Features.Add(new LakeFeatureDoc { Radius = 5f });
 
-            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: false, visibility: new EditorVisibility());
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: false, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
 
             Assert.Empty(list);
         }

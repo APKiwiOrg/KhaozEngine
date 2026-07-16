@@ -10,16 +10,18 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// Small rectangle-drawing helpers shared by the widgets, drawn with a 1x1 white texture through the
     /// <see cref="SpriteBatch"/> (Render2D has no primitive renderer; this fills that gap for Gui).
+    /// The type is public solely to carry <see cref="TruncateWithEllipsis"/>, the one member consumers
+    /// outside this assembly are meant to call. Every other member is internal widget plumbing.
     /// </summary>
-    internal static class GuiDraw
+    public static class GuiDraw
     {
         /// <summary>Fill <paramref name="r"/> with a solid color.</summary>
-        public static void Fill(SpriteBatch batch, Texture2D white, Rect r, Vector4 color) =>
+        internal static void Fill(SpriteBatch batch, Texture2D white, Rect r, Vector4 color) =>
             batch.Draw(white, new Vector4(r.X, r.Y, r.Width, r.Height), (Color)color);
 
         /// <summary>Return <paramref name="color"/> with its alpha scaled by <paramref name="opacity"/> (RGB kept).
         /// The shared fade knob for the opt-in overlay chrome (sliding panels, fading dropdowns).</summary>
-        public static Vector4 WithOpacity(Vector4 color, float opacity) =>
+        internal static Vector4 WithOpacity(Vector4 color, float opacity) =>
             new(color.X, color.Y, color.Z, color.W * opacity);
 
         /// <summary>
@@ -27,7 +29,7 @@ namespace KhaozEngine.Gui
         /// apex down) by default, an upward "^" when <paramref name="pointingUp"/>. Pure geometry so the
         /// open/closed direction is headless-testable; <see cref="Caret"/> strokes it.
         /// </summary>
-        public static (Vector2 left, Vector2 mid, Vector2 right) CaretGeometry(
+        internal static (Vector2 left, Vector2 mid, Vector2 right) CaretGeometry(
             Vector2 center, float halfWidth, float halfHeight, bool pointingUp)
         {
             float armY = pointingUp ? center.Y + halfHeight : center.Y - halfHeight;
@@ -39,7 +41,7 @@ namespace KhaozEngine.Gui
 
         /// <summary>Draw a <paramref name="thickness"/>-wide line from <paramref name="a"/> to <paramref name="b"/>
         /// as a single rotated quad (the 1x1 white texture; Render2D has no line primitive).</summary>
-        public static void Line(SpriteBatch batch, Texture2D white, Vector2 a, Vector2 b, float thickness, Vector4 color)
+        internal static void Line(SpriteBatch batch, Texture2D white, Vector2 a, Vector2 b, float thickness, Vector4 color)
         {
             Vector2 d = b - a;
             float len = d.Length();
@@ -50,7 +52,7 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>Stroke a chevron caret (see <see cref="CaretGeometry"/>) as two lines meeting at the apex.</summary>
-        public static void Caret(SpriteBatch batch, Texture2D white, Vector2 center, float halfWidth, float halfHeight,
+        internal static void Caret(SpriteBatch batch, Texture2D white, Vector2 center, float halfWidth, float halfHeight,
             bool pointingUp, float thickness, Vector4 color)
         {
             var (left, mid, right) = CaretGeometry(center, halfWidth, halfHeight, pointingUp);
@@ -67,7 +69,7 @@ namespace KhaozEngine.Gui
         /// no-gap / last-edge-on-Right contract). The interior edges (<c>edges[1..count-1]</c>) are the divider
         /// positions. Pure geometry: no GPU, headless-testable.
         /// </summary>
-        public static (Rect frame, float[] edges) TabStripDrawGeometry(Rect bounds, int count)
+        internal static (Rect frame, float[] edges) TabStripDrawGeometry(Rect bounds, int count)
         {
             float[] edges = new float[count + 1];
             for (int i = 0; i <= count; i++)
@@ -80,7 +82,7 @@ namespace KhaozEngine.Gui
         /// <summary>Draw a <paramref name="thickness"/>-px outline just inside <paramref name="r"/>. In a point-space
         /// UI pass the rect and thickness snap to whole device pixels so the outline is uniform (no fractional-phase
         /// asymmetry); the snap is a no-op in any other pass, so screen/design/world output is unchanged.</summary>
-        public static void Border(SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
+        internal static void Border(SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
         {
             if (thickness <= 0f) return;
             r = batch.SnapRect(r);
@@ -101,7 +103,7 @@ namespace KhaozEngine.Gui
         /// border share one snapped rect, so their edges stay aligned) for crisp uniform chrome; a no-op snap
         /// elsewhere leaves screen/design output unchanged.
         /// </summary>
-        public static void FillStyled(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style,
+        internal static void FillStyled(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style,
             Vector4 bodyColor, Vector4 borderColor)
         {
             r = batch.SnapRect(r);
@@ -147,14 +149,14 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>One nine-slice patch: a destination rect and the source UV sub-rect (u0,v0,u1,v1) to sample.</summary>
-        public readonly record struct NineSlicePatch(Rect Dest, Vector4 Source);
+        internal readonly record struct NineSlicePatch(Rect Dest, Vector4 Source);
 
         /// <summary>
         /// Number of native-size tiles needed to cover <paramref name="destExtent"/> with a tile of
         /// <paramref name="tilePx"/> draw units (the last tile is partial). <c>ceil(destExtent / tilePx)</c>, at least
         /// 1; a non-positive tile size (a degenerate skin with no centre) collapses to a single span. Pure.
         /// </summary>
-        public static int TileCount(float destExtent, float tilePx)
+        internal static int TileCount(float destExtent, float tilePx)
         {
             if (tilePx <= 0f || destExtent <= 0f) return 1;
             return (int)MathF.Ceiling(destExtent / tilePx - 1e-4f);
@@ -168,7 +170,7 @@ namespace KhaozEngine.Gui
         /// opposing corners the destination insets scale down proportionally so the corners meet (the source stays
         /// fixed). Zero-area cells are dropped. Pure geometry (no GPU / no texture sampling), headless-testable.
         /// </summary>
-        public static System.Collections.Generic.List<NineSlicePatch> NineSlicePatches(Rect dest, GuiSkin skin)
+        internal static System.Collections.Generic.List<NineSlicePatch> NineSlicePatches(Rect dest, GuiSkin skin)
         {
             float l = MathF.Max(0f, skin.InsetLeft), t = MathF.Max(0f, skin.InsetTop);
             float rIn = MathF.Max(0f, skin.InsetRight), b = MathF.Max(0f, skin.InsetBottom);
@@ -222,7 +224,7 @@ namespace KhaozEngine.Gui
         /// <see cref="P0"/> for every slice, and a slice's fourth corner repeats <see cref="P2"/>, so each quad is
         /// degenerate (renders as a single triangle) - the shape <see cref="SpriteBatch.DrawQuad"/> is built to allow.
         /// </summary>
-        public readonly record struct CooldownQuad(Vector2 P0, Vector2 P1, Vector2 P2, Vector2 P3);
+        internal readonly record struct CooldownQuad(Vector2 P0, Vector2 P1, Vector2 P2, Vector2 P3);
 
         /// <summary>
         /// The "remaining cooldown" pie over <paramref name="rect"/> as a fan of quads (each a triangle from the rect
@@ -234,7 +236,7 @@ namespace KhaozEngine.Gui
         /// corners that falls inside the swept arc is inserted as a fan vertex so every slice's outer edge lies
         /// exactly on an edge of the rect. Pure geometry (no GPU), headless-testable, mirrors <see cref="NineSlicePatches"/>.
         /// </summary>
-        public static System.Collections.Generic.List<CooldownQuad> CooldownSweepQuads(Rect rect, float fraction)
+        internal static System.Collections.Generic.List<CooldownQuad> CooldownSweepQuads(Rect rect, float fraction)
         {
             var quads = new System.Collections.Generic.List<CooldownQuad>();
             float f = fraction < 0f ? 0f : fraction > 1f ? 1f : fraction;
@@ -289,7 +291,7 @@ namespace KhaozEngine.Gui
         /// <see cref="SpriteBatch.DrawQuad"/>. No-op when <paramref name="fraction"/> is 0 or less. Shared by
         /// <see cref="GuiSurface"/>.<c>CooldownOverlay</c> and <see cref="SlotGrid"/> so both draw the sweep identically.
         /// </summary>
-        public static void CooldownSweep(SpriteBatch batch, Texture2D white, Rect rect, float fraction, Vector4 tint)
+        internal static void CooldownSweep(SpriteBatch batch, Texture2D white, Rect rect, float fraction, Vector4 tint)
         {
             var uv = new Vector4(0f, 0f, 1f, 1f);
             var col = (Color)tint;
@@ -340,7 +342,7 @@ namespace KhaozEngine.Gui
         /// that peaks at the body edge and fades smoothly to zero <c>GlowSize</c> draw units out; the caller draws
         /// the body on top, hiding the steep inner half so only the outer halo reads. Call this BEFORE the body.
         /// </summary>
-        public static void HoverGlow(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style)
+        internal static void HoverGlow(SpriteBatch batch, Texture2D white, Rect r, in GuiStyle style)
         {
             if (style.GlowSize <= 0f || style.GlowColor.W <= 0f) return;
             var prev = batch.BlendMode;
@@ -394,7 +396,7 @@ namespace KhaozEngine.Gui
         /// input-mapping in <see cref="GuiSurface"/>.<c>Slider</c> and <see cref="DrawSlider"/> so both agree on
         /// where value <c>v</c> sits.
         /// </summary>
-        public static (float half, float usable) SliderGeometry(Rect rect)
+        internal static (float half, float usable) SliderGeometry(Rect rect)
         {
             float handleW = System.MathF.Min(rect.Height, rect.Width);
             float half = handleW * 0.5f;
@@ -409,7 +411,7 @@ namespace KhaozEngine.Gui
         /// <paramref name="hover"/>, else <c>style.Fill</c>; <c>DisabledFill</c> when disabled). Geometry matches
         /// <see cref="SliderGeometry"/>.
         /// </summary>
-        public static void DrawSlider(SpriteBatch batch, Texture2D white, Rect rect, float value01,
+        internal static void DrawSlider(SpriteBatch batch, Texture2D white, Rect rect, float value01,
             in GuiStyle style, bool enabled, bool hover, bool dragging)
         {
             float v = value01 < 0f ? 0f : value01 > 1f ? 1f : value01;
@@ -442,7 +444,7 @@ namespace KhaozEngine.Gui
         /// else Fill), the border (selected→SelectedBorder else Border, <c>style.BorderThickness</c>), and the
         /// centred <paramref name="label"/> (enabled→Text else DisabledText).
         /// </summary>
-        public static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, LocalizedText label,
+        internal static void DrawButton(SpriteBatch batch, Texture2D white, SpriteFont font, Rect rect, LocalizedText label,
             in GuiStyle style, bool enabled, bool selected, bool hover, bool press, float scale = 1f)
         {
             Vector4 fill = !enabled ? style.DisabledFill
@@ -473,7 +475,7 @@ namespace KhaozEngine.Gui
         /// <paramref name="scale"/> so a caller that draws the text at <paramref name="scale"/> stays aligned
         /// (<c>scale = 1</c> reproduces the unscaled layout exactly). Pure math: no GPU, headless-testable.
         /// </summary>
-        public static Vector2 AlignedTextPos(Rect rect, Vector2 measured, float lineHeight, GuiAlign align, float scale = 1f, float pad = 0f)
+        internal static Vector2 AlignedTextPos(Rect rect, Vector2 measured, float lineHeight, GuiAlign align, float scale = 1f, float pad = 0f)
         {
             float w = measured.X * scale;
             float x = align switch
@@ -493,7 +495,9 @@ namespace KhaozEngine.Gui
         /// <paramref name="measureWidth"/> is the caller's width function (e.g. <c>s =&gt; font.Measure(s).X</c>),
         /// so the helper is pure and headless-testable. When not even the dots fit, "..." is still returned (the
         /// caller's scissor clips the residue - dots beat drawing nothing). Width is assumed monotonic in prefix
-        /// length, so the fitting prefix is found by binary search.
+        /// length, so the fitting prefix is found by binary search. Public API: <see cref="PropertyGrid"/> cell
+        /// and label text draws through this, and any host fitting a single text line to a fixed width (e.g. a
+        /// status strip) can call it with its own font's measure function.
         /// </summary>
         public static string TruncateWithEllipsis(string text, float maxWidth, Func<string, float> measureWidth)
         {

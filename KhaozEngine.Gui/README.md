@@ -329,6 +329,12 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   `filter` is a `Func<string, char, bool>` (buffer accumulated so far THIS call, candidate char) rather than a bare
   `Func<char, bool>`, so a stateful filter (e.g. `NumberField`'s "at most one dot") is validated against every char
   this same call already admitted - a multi-key frame or a paste - instead of a stale pre-call buffer.
+- `GuiDraw.TruncateWithEllipsis(text, maxWidth, measureWidth)` - fit a single line of text to a width: returns
+  the text unchanged when it fits, otherwise the longest prefix that fits with a trailing `"..."` appended
+  (three ASCII dots, binary-searched against the caller-supplied measure function, e.g.
+  `s => font.Measure(s).X`, so it is pure and headless-testable). When not even the dots fit, `"..."` is still
+  returned. `PropertyGrid` cell/label text and the map editor's status strip draw through it. The only public
+  member of `GuiDraw` (the rest is internal widget plumbing).
 - `OverlayLegend` (+ `LegendEntry`, `OverlayLegendTheme`) - a domain-agnostic color-swatch + label panel for
   debug overlays: `SetEntries(IReadOnlyList<LegendEntry>)`, `EntryCount`, `Measure(SpriteFont)` -> `Rect` (empty
   when no entries), and two `Draw` overloads - `Draw(SpriteBatch, SpriteFont, Texture2D, Rect viewport)`

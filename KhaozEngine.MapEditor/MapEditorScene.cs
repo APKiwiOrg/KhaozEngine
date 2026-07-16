@@ -604,6 +604,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         DrawGizmo(scene);
     }
 
+    // This scene's overlay draw buffer, cleared and refilled by ComputeOverlayDrawList once per DrawOverlays
+    // call (the TreeView.VisibleRows per-instance precedent): a per-call List<T> would litter Gen0 with a
+    // per-frame allocation for a value nobody keeps past that same frame's GPU submission.
+    readonly List<OverlayDraw> _overlayDrawList = new();
+
     /// <summary>Submits the exclusion / region / feature overlay fills to the Scene3D debug-fill pass. The
     /// doc-to-draw-list step is the pure, headless-tested <see cref="ComputeOverlayDrawList"/>; only the per-entry
     /// GPU submission (a debug disc / quad / fan) lives here. No-op until the field exists (world built).</summary>
@@ -611,7 +616,8 @@ public class MapEditorScene : GameScene, IGameScene3D
     {
         if (_controller.Field is not { } field) return;
         foreach (OverlayDraw o in ComputeOverlayDrawList(
-                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays, _visibility))
+                     _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays, _visibility,
+                     _overlayDrawList))
         {
             switch (o.Shape)
             {
@@ -630,13 +636,6 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    // Reused across calls instead of allocated fresh each time (the TreeView.VisibleRows pattern): DrawOverlays
-    // runs ComputeOverlayDrawList every frame, so a per-call List<T> would litter Gen0 with a small allocation
-    // for a value nobody keeps past that same frame's GPU submission. Shared across every caller (both the live
-    // scene's per-frame draw and KhaozEngine.MapEdit.Tool's offline renderer, which is why this is static rather
-    // than an instance field), so it assumes single-threaded, non-reentrant use - true of both callers today.
-    static readonly List<OverlayDraw> _overlayDrawList = new();
-
     /// <summary>Turns the document's exclusions, scatter overrides, regions, and terrain features into a flat list of
     /// ground-plane overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish,
     /// scatter overrides orange, regions blue-ish) and each terrain feature a small amber marker disc at its center,
@@ -645,22 +644,24 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
     /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
     /// unknown custom type) is skipped, and so is any element <paramref name="visibility"/> hides (its group is off
-    /// or it is individually hidden), so a hidden overlay is not drawn. Returns an empty list when
-    /// <paramref name="showOverlays"/> is false. Pure aside from the reuse below (no GPU, no scene state), so the
-    /// whole computation is headless-testable. <see cref="DrawOverlays"/> submits the result untested.
-    /// <para>Rebuilt on every call into a shared cached list (see <see cref="TreeView.VisibleRows"/> for the
-    /// same pattern), so a caller that needs to keep one call's result across a LATER call must materialize it
-    /// (<c>ToList</c>/<c>ToArray</c>) first, or the earlier reference's content changes out from under it.</para></summary>
+    /// or it is individually hidden), so a hidden overlay is not drawn. Leaves the buffer empty when
+    /// <paramref name="showOverlays"/> is false. Pure over its inputs (no GPU, no scene state), so the whole
+    /// computation is headless-testable. <see cref="DrawOverlays"/> submits the result untested.
+    /// <para><paramref name="into"/> is the caller-owned result buffer (the <see cref="TreeView.VisibleRows"/>
+    /// reuse pattern, with the buffer at the call site instead of behind the API): it is cleared at entry,
+    /// filled, and returned, so a per-frame caller passes one long-lived list and pays no per-call allocation,
+    /// while a caller that wants independent results simply passes a fresh list per call.</para></summary>
     internal static List<OverlayDraw> ComputeOverlayDrawList(
         MapDocument doc, EditorSelection selection, Func<float, float, float> sampleHeight, bool showOverlays,
-        EditorVisibility visibility)
+        EditorVisibility visibility, List<OverlayDraw> into)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(selection);
         ArgumentNullException.ThrowIfNull(sampleHeight);
         ArgumentNullException.ThrowIfNull(visibility);
+        ArgumentNullException.ThrowIfNull(into);
 
-        List<OverlayDraw> list = _overlayDrawList;
+        List<OverlayDraw> list = into;
         list.Clear();
         if (!showOverlays) return list;
 

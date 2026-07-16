@@ -148,10 +148,13 @@ public sealed class RenderService(MapEditSession session)
     //
     // The ViewportWorld built inside setup is deliberately NOT disposed by the caller: Render3DSnapshot.Capture
     // owns the Scene3D and disposes it before returning, and that Scene3D.Dispose already frees every GPU resource
-    // the world allocated (its kit meshes, the streamed terrain-chunk meshes, and the splat material). Disposing the
-    // world afterwards would run its teardown through the already-disposed scene, whose splat-material list Dispose
-    // has cleared, and throw. Nothing the world holds outlives the scene, so leaving teardown to the scene is
-    // leak-free. (An engine-side guard on Scene3D.UnloadSplatMaterial would let the world be disposed explicitly.)
+    // the world allocated (its kit meshes, the streamed terrain-chunk meshes, and the splat material). Nothing the
+    // world holds outlives the scene, so leaving teardown to the scene is leak-free and this flow stays scene-owned.
+    // Historically, disposing the world afterwards would also have run its teardown through the already-disposed
+    // scene, whose splat-material list Dispose had cleared, and thrown ArgumentOutOfRangeException from
+    // UnloadSplatMaterial. Scene3D.UnloadSplatMaterial now guards on that cleared state (a no-op past the end of the
+    // list), so an explicit world dispose after the scene, here or anywhere else a ViewportWorld outlives its scene
+    // reference, is safe too - this comment's "would throw" is historical, not a live constraint on this flow.
     static byte[] CaptureToPng(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame)
     {
         byte[] rgba;

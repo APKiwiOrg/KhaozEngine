@@ -1853,8 +1853,8 @@ public sealed class AddFeatureCommand : EditorCommand
     internal override bool AffectsWorld => true;
 
     /// <inheritdoc/>
-    /// <remarks>The added feature's footprint, or null when it has no bounded footprint (a ridge or a custom type,
-    /// which force a full rebuild).</remarks>
+    /// <remarks>The added feature's footprint, or null when it has no bounded footprint (a rim, a ridge, or a
+    /// custom type, which force a full rebuild).</remarks>
     internal override RectArea? DirtyRegion =>
         FeatureGeometry.TryFootprint(_feature, out RectArea area) ? area : null;
 
@@ -1881,7 +1881,7 @@ public sealed class RemoveFeatureCommand : EditorCommand
 
     /// <inheritdoc/>
     /// <remarks>The removed feature's footprint, or null before <see cref="Apply"/> has captured it (the removed
-    /// value is not known until then) or when it has no bounded footprint (a ridge or custom type). The editor
+    /// value is not known until then) or when it has no bounded footprint (a rim, ridge, or custom type). The editor
     /// reads <see cref="EditorCommand.DirtyRegion"/> only after the command has applied, so the captured value is
     /// available for both the initial execute and any later undo/redo.</remarks>
     internal override RectArea? DirtyRegion =>
@@ -1926,9 +1926,9 @@ public sealed class EditFeatureCommand : EditorCommand
 
     /// <inheritdoc/>
     /// <remarks>The union of the old and new feature footprints (both endpoints of a scrub or drag change terrain),
-    /// or null when EITHER endpoint has no bounded footprint (a ridge or custom type on either side forces a full
-    /// rebuild). Computed live from the CURRENT <see cref="_oldValue"/> / <see cref="_newValue"/> every read, never
-    /// cached: <see cref="TryMerge"/> rewrites <see cref="_newValue"/> as a drag coalesces, so a cached region would
+    /// or null when EITHER endpoint has no bounded footprint (a rim, ridge, or custom type on either side forces a
+    /// full rebuild). Computed live from the CURRENT <see cref="_oldValue"/> / <see cref="_newValue"/> every read,
+    /// never cached: <see cref="TryMerge"/> rewrites <see cref="_newValue"/> as a drag coalesces, so a cached region would
     /// stop covering the latest endpoint mid-drag.</remarks>
     internal override RectArea? DirtyRegion
     {

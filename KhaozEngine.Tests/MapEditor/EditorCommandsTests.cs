@@ -991,6 +991,12 @@ namespace KhaozEngine.Tests.MapEditor
             var oldRidge = new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, Height = 5f, Width = 10f };
             var newRidge = new RidgeFeatureDoc { PointX = 5f, PointZ = 0f, Height = 5f, Width = 10f };
             Assert.Null(new EditFeatureCommand(0, newRidge, oldRidge).DirtyRegion);
+
+            // A rim's wall plateau holds unboundedly beyond OuterRadius, so rim edits force a full rebuild too.
+            var oldRim = new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 40f, OuterRadius = 60f, WallHeight = 8f };
+            var newRim = new RimFeatureDoc { CenterX = 0f, CenterZ = 0f, InnerRadius = 40f, OuterRadius = 60f, WallHeight = 10f };
+            Assert.Null(new EditFeatureCommand(0, newRim, oldRim).DirtyRegion);
+            Assert.Null(new AddFeatureCommand(newRim).DirtyRegion);
         }
 
         [Fact]

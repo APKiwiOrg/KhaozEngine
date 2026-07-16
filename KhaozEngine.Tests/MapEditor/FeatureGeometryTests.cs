@@ -158,16 +158,15 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void TryFootprint_Rim_CoversOuterRadiusPlusMargin()
+        public void TryFootprint_Rim_ReturnsFalse()
         {
-            // RimFeature.Apply ramps the wall up by OuterRadius, and Ruggedness scales wall HEIGHT, not horizontal reach,
-            // so OuterRadius (padded) bounds the change (the rim is the world-edge wall, so its beyond-outer plateau
-            // sits off the streamed extent).
+            // RimFeature.Apply holds its smoothstep at 1 for every distance at or beyond OuterRadius, so the wall
+            // plateau raises terrain unboundedly past OuterRadius (it never fades back to zero). No finite disc
+            // covers that, so a rim edit must take the full rebuild.
             var rim = new RimFeatureDoc { CenterX = 5f, CenterZ = -5f, InnerRadius = 40f, OuterRadius = 60f, WallHeight = 8f, Ruggedness = 0.5f };
-            float reach = 60f + FeatureGeometry.FootprintMargin;
 
-            Assert.True(FeatureGeometry.TryFootprint(rim, out RectArea area));
-            AssertBounds(area, 5f - reach, -5f - reach, 5f + reach, -5f + reach);
+            Assert.False(FeatureGeometry.TryFootprint(rim, out RectArea area));
+            Assert.Equal(default, area);
         }
 
         [Fact]

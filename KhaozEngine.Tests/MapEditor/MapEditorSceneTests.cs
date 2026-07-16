@@ -3280,6 +3280,15 @@ namespace KhaozEngine.Tests.MapEditor
                 } },
             });
             doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 5f }, Layers = new List<string> { "trees" } });
+            // A rect-shaped override with an explicit layer list, so the walk covers the density / kinds rows plus
+            // the per-layer targeting rows (an all-layers override would hide them), and both AddShapeRows branches.
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc
+            {
+                Shape = new RectShapeDoc { MinX = -3f, MinZ = -3f, MaxX = 3f, MaxZ = 3f },
+                DensityMultiplier = 0.5f,
+                Kinds = new List<MapPropKind> { new MapPropKind { Id = "oak", Weight = 1f } },
+                Layers = new List<string> { "trees" },
+            });
             doc.Regions.Add(new MapRegion
             {
                 Name = "region-1",
@@ -3345,6 +3354,9 @@ namespace KhaozEngine.Tests.MapEditor
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
             AssertEveryRowDescribed(scene.Inspector, "Exclusion");
 
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+            AssertEveryRowDescribed(scene.Inspector, "ScatterOverride");
+
             scene.Document.Selection.Set(SelectionKind.Region, "region-1");
             AssertEveryRowDescribed(scene.Inspector, "Region");
 
@@ -3405,6 +3417,9 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
             AssertGrouped(scene.Inspector, "Exclusion", "Identity", "Shape", "Targeting");
+
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+            AssertGrouped(scene.Inspector, "ScatterOverride", "Identity", "State", "Shape", "Scatter", "Layers");
 
             scene.Document.Selection.Set(SelectionKind.Region, "region-1");
             AssertGrouped(scene.Inspector, "Region", "Identity", "Shape");
@@ -3726,6 +3741,279 @@ namespace KhaozEngine.Tests.MapEditor
             ui.Update(KeyFrame(shiftDown: false, Key.D3));
             name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
             Assert.Equal("3", name.Input.Text);
+        }
+
+        // ---- Task 4: scatter override scene surface (outline, reorder, inspector, selection sync) ---------
+
+        // Seeds a document with one "trees" scatter layer and however many scatter overrides the caller adds, so the
+        // override outline / inspector / reorder tests share one setup shape (mirrors the exclusion test docs).
+        static MapDocument OverrideDoc(params MapScatterOverrideDoc[] overrides)
+        {
+            MapDocument doc = ValidDoc();
+            doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+            doc.ScatterLayers.Add(new MapScatterLayer { Name = "rocks" });
+            foreach (MapScatterOverrideDoc o in overrides) doc.ScatterOverrides.Add(o);
+            return doc;
+        }
+
+        static MapScatterOverrideDoc DiscOverride(float radius) =>
+            new MapScatterOverrideDoc { Shape = new DiscShapeDoc { Radius = radius } };
+
+        [Fact]
+        public void SelectScatterOverride_InspectorShowsShapeDensityKindsLayerRows()
+        {
+            var scene = PushDocScene(() => OverrideDoc(new MapScatterOverrideDoc
+            {
+                Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 5f },
+                DensityMultiplier = 0.5f,
+                Kinds = new List<MapPropKind> { new MapPropKind { Id = "oak", Weight = 2f } },
+                Layers = new List<string> { "trees" },
+            }));
+
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+
+            // Identity + State + Shape + Scatter + Layers, mirroring the exclusion inspector plus the density / kinds pair.
+            Assert.NotNull(TextRowByLabel(scene.Inspector, "Name"));
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "Visible"));
+            Assert.NotNull(ChoiceRowByLabel(scene.Inspector, "Kind"));        // the disc shape surface
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "CenterX"));
+            Assert.NotNull(FloatRowByLabel(scene.Inspector, "Radius"));
+            Assert.Equal(0.5f, FloatRowByLabel(scene.Inspector, "DensityMultiplier").Field.Value);
+            Assert.NotNull(TextRowByLabel(scene.Inspector, "Kinds"));
+            // An explicit Layers list is in effect, so the per-layer targeting rows sit below the "All layers" toggle.
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "All layers"));
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "trees"));
+            Assert.NotNull(BoolRowByLabel(scene.Inspector, "rocks"));
+        }
+
+        [Fact]
+        public void ScatterOverrideInspector_EditsDensityAndKinds_NullOnEmpty()
+        {
+            var scene = PushDocScene(() => OverrideDoc(new MapScatterOverrideDoc
+            {
+                Shape = new DiscShapeDoc { Radius = 5f },
+                DensityMultiplier = 1f,
+                Kinds = new List<MapPropKind> { new MapPropKind { Id = "oak", Weight = 1f } },
+            }));
+
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+
+            // Density scrub routes through EditScatterOverrideValuesCommand (the whole-value path), affecting the world.
+            FloatRow density = FloatRowByLabel(scene.Inspector, "DensityMultiplier");
+            var cell = new Rect(0f, 0f, 200f, 28f);
+            var ui = new InputManager();
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: false)); density.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(100f, 10f), leftDown: true)); density.Update(cell, ui, 0.016f);
+            ui.Update(MouseFrame(new Vector2(150f, 10f), leftDown: true));   // +50 px at DragScale 0.01 = +0.5
+            Assert.True(density.Update(cell, ui, 0.016f));
+            Near(1.5f, scene.Document.Doc.ScatterOverrides[0].DensityMultiplier);
+            Assert.True(scene.Document.WorldRebuildPending);
+
+            // Kinds edits parse into a FRESH MapPropKind list (the same "id:weight" convention as the scatter rule row).
+            DriveTextRow(scene, "Kinds", "pine:3, oak");
+            List<MapPropKind>? kinds = scene.Document.Doc.ScatterOverrides[0].Kinds;
+            Assert.NotNull(kinds);
+            Assert.Equal(new[] { "pine", "oak" }, kinds!.Select(k => k.Id));
+            Assert.Equal(3f, kinds[0].Weight);
+
+            // Empty text means NULL kinds (keep each layer's own kinds, density-only override), not an empty list.
+            DriveTextRow(scene, "Kinds", "");
+            Assert.Null(scene.Document.Doc.ScatterOverrides[0].Kinds);
+        }
+
+        [Fact]
+        public void ScatterOverrideRenameRow_ExecutesRenameCommand_SelectionStaysOnIndex()
+        {
+            var scene = PushDocScene(() => OverrideDoc(DiscOverride(5f), new MapScatterOverrideDoc
+            {
+                Name = "taken", Shape = new DiscShapeDoc { Radius = 3f },
+            }));
+
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+            TextRow name = TextRowByLabel(scene.Inspector, "Name");
+
+            var ui = new InputManager();
+            ui.Update(InputState.Empty);
+            name.Input.IsFocused = true;
+            name.Input.SetText("dense-zone");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+
+            // Scatter overrides are index-addressed like exclusions: a rename never moves the selection off its index.
+            Assert.Equal("dense-zone", scene.Document.Doc.ScatterOverrides[0].Name);
+            Assert.Equal(SelectionKind.ScatterOverride, scene.Document.Selection.Kind);
+            Assert.Equal("0", scene.Document.Selection.Id);
+            Assert.True(scene.Document.History.CanUndo);
+
+            // A collision with another override's live name is rejected before the command's own guard would throw.
+            name.Input.SetText("taken");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Equal("dense-zone", scene.Document.Doc.ScatterOverrides[0].Name);
+
+            // Clearing to blank is a legal target (Name is optional): the override falls back to its index label.
+            name.Input.SetText("");
+            name.Update(new Rect(0f, 0f, 200f, 28f), ui, 0.016f);
+            Assert.Null(scene.Document.Doc.ScatterOverrides[0].Name);
+        }
+
+        [Fact]
+        public void ScatterOverrideNode_ShowsTargetingHint()
+        {
+            var scene = PushDocScene(() => OverrideDoc(
+                new MapScatterOverrideDoc { Shape = new DiscShapeDoc { Radius = 5f }, Layers = null },
+                new MapScatterOverrideDoc
+                {
+                    Name = "denser-trees",
+                    Shape = new DiscShapeDoc { Radius = 3f },
+                    Layers = new List<string> { "trees", "rocks" },
+                }));
+
+            TreeNode all = CategoryChild(scene.Outline, "Scatter Overrides", 0);
+            TreeNode named = CategoryChild(scene.Outline, "Scatter Overrides", 1);
+
+            // Unnamed falls back to the index label. Named or not, every override carries the targeting hint.
+            Assert.Equal("override[0] (all)", all.Label.Resolve());
+            Assert.Equal("denser-trees (trees, rocks)", named.Label.Resolve());
+        }
+
+        [Fact]
+        public void ScatterOverrideLayerRows_AllToggle_NullSemantics()
+        {
+            var scene = PushDocScene(() => OverrideDoc(
+                new MapScatterOverrideDoc { Shape = new DiscShapeDoc { Radius = 5f }, Layers = null }));
+
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+
+            // All-on (Layers null): only the All toggle shows, the per-layer membership rows are hidden.
+            Assert.Null(scene.Document.Doc.ScatterOverrides[0].Layers);
+            Assert.DoesNotContain(scene.Inspector.Rows.OfType<BoolRow>(), b => b.Label.Resolve() == "trees");
+
+            BoolRow all = BoolRowByLabel(scene.Inspector, "All layers");
+            Assert.True(TapBool(all));   // flips All off
+            Assert.Equal(new[] { "trees", "rocks" }, scene.Document.Doc.ScatterOverrides[0].Layers);   // materializes the full list
+            Assert.True(scene.Document.WorldRebuildPending);
+
+            // The per-layer rows reflow into view the next chrome step (the shape-kind-conversion reflow idiom).
+            scene.OnUpdate(0.016f);
+            BoolRow trees = BoolRowByLabel(scene.Inspector, "trees");
+
+            Assert.True(TapBool(trees));   // uncheck trees: stays an explicit list, minus "trees"
+            Assert.Equal(new[] { "rocks" }, scene.Document.Doc.ScatterOverrides[0].Layers);
+
+            // Manually re-checking every layer stays an explicit list: only the All toggle itself produces null.
+            Assert.True(TapBool(trees));
+            Assert.NotNull(scene.Document.Doc.ScatterOverrides[0].Layers);
+            Assert.Equal(new[] { "rocks", "trees" }, scene.Document.Doc.ScatterOverrides[0].Layers);
+        }
+
+        [Fact]
+        public void ScatterOverrideLayerRow_TogglesMembership_WorldRebuildPending()
+        {
+            var scene = PushDocScene(() => OverrideDoc(new MapScatterOverrideDoc
+            {
+                Shape = new DiscShapeDoc { Radius = 5f },
+                Layers = new List<string> { "trees", "rocks" },
+            }));
+
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+            Assert.False(scene.Document.WorldRebuildPending);
+
+            BoolRow trees = BoolRowByLabel(scene.Inspector, "trees");
+            Assert.True(TapBool(trees));
+
+            Assert.Equal(new[] { "rocks" }, scene.Document.Doc.ScatterOverrides[0].Layers);
+            Assert.True(scene.Document.WorldRebuildPending);   // override targeting changes the streamed scatter
+            Assert.True(scene.Document.History.CanUndo);
+
+            Assert.True(scene.Document.Undo());
+            Assert.Equal(new[] { "trees", "rocks" }, scene.Document.Doc.ScatterOverrides[0].Layers);
+        }
+
+        [Fact]
+        public void OutlineDrop_ReordersScatterOverride_SelectionFollows_HideRemaps_WorldRebuilds()
+        {
+            var scene = PushDocScene(() => OverrideDoc(DiscOverride(1f), DiscOverride(2f), DiscOverride(3f)));
+
+            // Hide the override about to be moved, so the drop must carry its hide to the new index (not the slot).
+            scene.Visibility.SetElementHidden(SelectionKind.ScatterOverride, "0", true);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 400f);   // tall enough for every outline row
+            TreeNode o0 = CategoryChild(outline, "Scatter Overrides", 0);
+            TreeNode o1 = CategoryChild(outline, "Scatter Overrides", 1);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, o0), RowOf(outline, o1), afterTarget: true);   // 0 -> after 1
+
+            // Order is significant for overrides (first match wins), so the reorder command lands and rebuilds the world.
+            Assert.Equal(2f, ((DiscShapeDoc)scene.Document.Doc.ScatterOverrides[0].Shape!).Radius);   // index 0 is now the old o1 (radius 2)
+            Assert.Equal(1f, ((DiscShapeDoc)scene.Document.Doc.ScatterOverrides[1].Shape!).Radius);   // the moved override
+            Assert.Equal(3f, ((DiscShapeDoc)scene.Document.Doc.ScatterOverrides[2].Shape!).Radius);
+            Assert.Equal(SelectionKind.ScatterOverride, scene.Document.Selection.Kind);
+            Assert.Equal("1", scene.Document.Selection.Id);                                 // selection follows the moved override
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "1"));   // the hide followed it
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "0"));  // the vacated slot is not hidden
+            Assert.True(scene.Document.WorldRebuildPending);
+            Assert.True(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void CtrlDown_MovesSelectedScatterOverride_SelectionAndHideFollow()
+        {
+            var scene = PushDocScene(() => OverrideDoc(DiscOverride(1f), DiscOverride(2f)));
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Visibility.SetElementHidden(SelectionKind.ScatterOverride, "0", true);
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+
+            m.Input = CtrlKeyFrame(Key.Down);
+            m.Update(0.016f);   // Ctrl+Down: the override moves 0 -> 1 (ReorderSelectedElement, not the outline drop)
+
+            Assert.Equal(2f, ((DiscShapeDoc)scene.Document.Doc.ScatterOverrides[0].Shape!).Radius);   // old o1 now first
+            Assert.Equal(1f, ((DiscShapeDoc)scene.Document.Doc.ScatterOverrides[1].Shape!).Radius);   // the moved override
+            Assert.Equal("1", scene.Document.Selection.Id);                                 // selection followed it
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "1"));    // the hide followed it
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "0"));   // the vacated slot is not hidden
+            Assert.True(scene.Document.WorldRebuildPending);
+        }
+
+        [Fact]
+        public void CtrlUp_AtStart_ScatterOverrideIsNoOp()
+        {
+            var scene = PushDocScene(() => OverrideDoc(DiscOverride(1f), DiscOverride(2f)));
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");   // the first override: cannot move earlier
+
+            m.Input = CtrlKeyFrame(Key.Up);
+            m.Update(0.016f);
+
+            // Clamped at the start: no reorder command lands and the order is untouched.
+            Assert.Equal(1f, ((DiscShapeDoc)scene.Document.Doc.ScatterOverrides[0].Shape!).Radius);
+            Assert.Equal(2f, ((DiscShapeDoc)scene.Document.Doc.ScatterOverrides[1].Shape!).Radius);
+            Assert.False(scene.Document.History.CanUndo);
+        }
+
+        [Fact]
+        public void HiddenScatterOverride_SurvivesDeleteOfEarlierIndex()
+        {
+            // Delete runs through EditorToolController.Update, which UpdateTools gates on a built Field, so this
+            // needs FieldDocScene (not the plain DocScene the inspector tests use), mirroring the exclusion delete test.
+            var scene = new FieldDocScene(() => OverrideDoc(DiscOverride(1f), DiscOverride(2f), DiscOverride(3f)));
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager();
+            m.Push(scene);
+
+            scene.Visibility.SetElementHidden(SelectionKind.ScatterOverride, "2", true);
+            scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");   // select the one about to be deleted
+
+            m.Input = KeyFrame(shiftDown: false, Key.Delete);
+            m.Update(0.016f);
+
+            Assert.Equal(2, scene.Document.Doc.ScatterOverrides.Count);   // the earlier override was removed
+            Assert.True(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "1"));    // the hidden one shifted down to index 1
+            Assert.False(scene.Visibility.IsElementHidden(SelectionKind.ScatterOverride, "2"));   // nothing hidden at the old tail slot
         }
     }
 }

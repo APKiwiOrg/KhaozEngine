@@ -133,7 +133,7 @@ public sealed class MapExclusion
 public sealed class MapScatterOverrideDoc
 {
     /// <summary>Optional display name, unique among scatter overrides when set (validator-enforced). Null or
-    /// empty means unnamed, and the editor falls back to an index-based label ("scatterOverride[i]"). Serialized
+    /// empty means unnamed, and the editor falls back to an index-based label ("override[i]"). Serialized
     /// only when set: the document's global WhenWritingNull option omits a null Name, so an unnamed override
     /// does not bloat every document with an empty name key. A named override fails schema validation on
     /// pre-this-version engines, since the schema item is closed (additionalProperties: false).</summary>

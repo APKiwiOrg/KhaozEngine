@@ -269,9 +269,12 @@ chrome pass, escaping the grid's own scissor, anchored to `PropertyGrid.RowLabel
 Every inspector is broken into named `HeaderRow` groups instead of one flat row list: Terrain gets Water /
 Noise / World, a biome band gets Range / Shape, a scatter layer gets Identity / Placement / Scale / Rules, a
 companion layer gets Identity / Host / Output / Shape, an exclusion or region gets Identity / Shape (plus
-Targeting for exclusions), and a placement / spawn / player spawn gets Identity / Transform / State. The
+Targeting for exclusions), a scatter override gets Identity / State / Shape / Scatter (a DensityMultiplier
+scalar and a Kinds substitution list, the same "id:weight" text convention as the scatter-layer rule rows,
+empty Kinds meaning null) / Layers (the same All-layers + per-layer targeting rows the exclusion uses),
+and a placement / spawn / player spawn gets Identity / Transform / State. The
 empty-selection Layers panel groups its own rows the same way (Groups, then Scatter Layers). The shape editor
-(`AddShapeRows`, shared by exclusions, regions, and terrain features) sits under a "Shape" group header but
+(`AddShapeRows`, shared by exclusions, scatter overrides, regions, and terrain features) sits under a "Shape" group header but
 its own disc/rect selector row is labeled "Kind", not "Shape" - the group name and the row label are
 deliberately distinct so neither reads as a duplicate of the other.
 
@@ -351,7 +354,7 @@ the click but places nothing. `Delete` on a selected feature routes through `Rem
 Terrain features fold in list order: `MapRuntime.BuildField` runs each feature's height modifier on the
 height the prior feature produced, so where two features cover the same ground the LAST one in the list
 wins the overlap (a lake and a flatten over the same clearing, say). Reordering is how the author picks the
-winner between overlapping features. Ctrl+Up and Ctrl+Down (`MapEditorScene.ReorderSelectedFeature`) move
+winner between overlapping features. Ctrl+Up and Ctrl+Down (`MapEditorScene.ReorderSelectedElement`) move
 the selected feature one step earlier or later through `ReorderFeatureCommand`, clamped at the list ends (a
 press at a boundary lands no command). The move is its own inverse (`Revert` is `Apply` with the endpoints
 swapped) and it never coalesces, so each reorder is its own undo step. The feature inspector's read-only
@@ -371,7 +374,13 @@ through `MapEditorScene.OnOutlineReordered` and re-selects the dropped index, ex
 path. Exclusion rows are also drag-reorderable in the outline, through `ReorderExclusionCommand`, but
 exclusions combine as a pure set union (see `KhaozEngine.MapDoc`), so their list order never changes what
 scatter is masked. It is `AffectsWorld` false, unlike the feature reorder, so dragging an exclusion row
-never triggers a streamed-world rebuild. Every other outline category (Placements, Spawns, Regions,
+never triggers a streamed-world rebuild. Scatter override rows reorder on both paths as well, but their
+order genuinely matters: the FIRST matching override wins a patch of ground, so `ReorderSelectedElement`
+dispatches a selected override to `ReorderScatterOverrideCommand` (Ctrl+Up/Ctrl+Down), the outline drag
+fires the same command through `OnOutlineReordered`, and both are `AffectsWorld` true (a reorder rebuilds
+the streamed world). Exclusions are deliberately left off the Ctrl+Up/Ctrl+Down chord for that reason:
+their order is meaningless, so only the drag exposes it (for a stable authored layout). Every other outline
+category (Placements, Spawns, Regions,
 Terrain) has no list-order semantics, so a drag attempted there is rejected as a no-op. Wheel-scrolling the
 outline while a drag is armed is not yet supported: the drop geometry freezes at the scroll position the
 drag started at.
@@ -406,8 +415,8 @@ form instead of serving the stale cached one. The panel rebuilds on every select
 tracks the document's live scatter-layer set. `Water` has no matching selection kind or per-element hide:
 its toggle turns the single water-plane draw on or off outright.
 
-**Per-element hide.** Every placement, spawn, feature, exclusion, and region inspector ends with a
-"Visible" `BoolRow` (`MapEditorScene.AddVisibleRow`) bound to that one element's hidden flag, independent
+**Per-element hide.** Every placement, spawn, feature, exclusion, scatter override, and region inspector
+carries a "Visible" `BoolRow` (`MapEditorScene.AddVisibleRow`) bound to that one element's hidden flag, independent
 of its group. A renamable element's row is polled through the same live-key closure the Name row uses
 (`AddNameRow`'s returned getter), so it keeps toggling the right key across a rename.
 

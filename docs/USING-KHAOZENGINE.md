@@ -3878,14 +3878,17 @@ together, a ridge's `Width`) through the same commands, coalescing the same way.
 
 **Feature apply order.** Terrain features fold in list order (`MapRuntime.BuildField` runs each feature's
 height modifier on the height the prior feature produced), so where two features cover the same ground the
-LAST one in the list wins the overlap. Ctrl+Up / Ctrl+Down (`MapEditorScene.ReorderSelectedFeature`) move
+LAST one in the list wins the overlap. Ctrl+Up / Ctrl+Down (`MapEditorScene.ReorderSelectedElement`) move
 the selected feature through `ReorderFeatureCommand`, clamped at the list ends, and it triggers the same
 streamed-world rebuild as any other terrain-feature edit (`AffectsWorld` true). Dragging a feature row in
 the outline tree does the same move: the `TreeView` drag-and-drop gesture fires `ReorderFeatureCommand`
 through the scene's `OnReordered` handler and the selection follows the dropped row, same as the keyboard
 path. Exclusion rows in the outline are also drag-reorderable, through `ReorderExclusionCommand`, though
 exclusion order is cosmetic only (exclusions combine as a set union, so it never changes what scatter is
-masked). The feature inspector's read-only "Apply order N of M (last wins overlap)" row tracks the
+masked). Scatter override rows reorder on both paths too (Ctrl+Up / Ctrl+Down through
+`ReorderSelectedElement` and outline drag through `ReorderScatterOverrideCommand`), and unlike exclusions
+their order IS significant: the FIRST matching override wins a patch of ground, so a reorder is
+`AffectsWorld` and rebuilds the streamed world. The feature inspector's read-only "Apply order N of M (last wins overlap)" row tracks the
 feature's live fold position. See the `KhaozEngine.MapEditor` README's "Feature apply order" section for
 the undo/redo selection-following caveat.
 

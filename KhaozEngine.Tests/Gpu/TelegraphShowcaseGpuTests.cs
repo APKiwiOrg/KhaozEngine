@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Gpu
     /// so the noise/pattern animation is visible across the pair. Modeled on
     /// <see cref="GroundDecalBatchGpuTests"/> (scene setup / readback / PNG dump) and
     /// <see cref="GoldenSnapshotTests.Golden3D_GroundDecals"/> (ground-decal camera framing). This test does not
-    /// itself lock pixels - it is a human-reviewed showcase; <see cref="GoldenSnapshotTests.Golden3D_GroundDecals"/>
+    /// itself lock pixels - it is a human-reviewed showcase. <see cref="GoldenSnapshotTests.Golden3D_GroundDecals"/>
     /// is the byte-exact net and is expected to stay green (the modern styling is zero-neutral by design). Gated
     /// on KE_GPU_TESTS.
     /// </summary>
@@ -43,7 +43,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuDevice gd = ctx.GpuDevice;
             using var preview = new Render3DPreview(gd, W, H);
             preview.Scene.Post.Outline = true;
-            // Grid spans x in [-11.5, 11.5], z in [-5.5, 5.5] (4 cols / 2 rows, spacing 6, radius 2.5); frame a
+            // Grid spans x in [-11.5, 11.5], z in [-5.5, 5.5] (4 cols / 2 rows, spacing 6, radius 2.5). Frame a
             // generously padded bounds around it so all eight telegraphs fill the viewport.
             preview.Scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(26f, 1f, 14f));
             MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(28f, 0.1f));
@@ -82,11 +82,20 @@ namespace KhaozEngine.Tests.Gpu
             string png1 = Path.Combine(dir, "telegraph_showcase_t1.png");
             PngWriter.Save(png1, t1, W, H);
             Assert.True(new FileInfo(png1).Length > 0, $"expected a PNG dump at {png1}");
+
+            // The per-frame alpha smoke check passes on the opaque floor alone, so it cannot tell a decal no-op
+            // from a working render. The time-animated noise fills guarantee the two effect times paint different
+            // pixels, which only the decals can cause on this otherwise static scene.
+            long changedPixels = 0;
+            for (int i = 0; i + 3 < t0.Length; i += 4)
+                if (t0[i] != t1[i] || t0[i + 1] != t1[i + 1] || t0[i + 2] != t1[i + 2] || t0[i + 3] != t1[i + 3])
+                    changedPixels++;
+            Assert.True(changedPixels > 0, "expected the t0 and t1 frames to differ (animated telegraph fills)");
         }
 
         // Smoke assertion only: the preview composites with a transparent background, so any covered pixel
-        // (the ground tile plus every decal) has nonzero alpha. This just proves something actually rendered;
-        // the PNGs dumped above are the real, human-reviewed check.
+        // (the ground tile plus every decal) has nonzero alpha. This just proves something actually rendered.
+        // The PNGs dumped above are the real, human-reviewed check.
         static void AssertNonBackgroundPixels(byte[] rgba, string label)
         {
             long nonBackground = 0;

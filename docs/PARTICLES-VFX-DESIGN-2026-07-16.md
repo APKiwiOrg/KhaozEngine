@@ -84,9 +84,10 @@ billboard genuinely cannot express soft particles.
 
 New `EmitterConfig` fields (all zero-default = exactly today's behavior):
 
-- `EmissionShape Shape` (`Point=0, Sphere, Hemisphere, Cone, Disc, Ring`), `float ShapeRadius`,
-  `float ShapeShell` (0 = volume, 1 = surface/edge). Disc and Ring orient perpendicular to
-  `Direction` (or +Y when Direction is ~zero). Cone emission fills the cone volume base.
+- `EmissionShape Shape` (`Point=0, Sphere, Hemisphere, Disc`), `float ShapeRadius`,
+  `float ShapeShell` (0 = volume, 1 = surface/edge). Disc orients perpendicular to `Direction`
+  (or +Y when Direction is ~zero). A ring is Disc with ShapeShell 1, and a cone emitter is Disc
+  position plus the existing velocity spread cone, so neither needs its own enum value.
 - `ParticleVelocityMode VelocityMode` (`Cone=0` = today's spread cone, `Radial` = outward from
   origin through the spawn point: explosions and shockwaves).
 - `float SizeVariance` (0..1, per-particle multiplier jitter on both start and end size).

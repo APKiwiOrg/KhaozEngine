@@ -53,6 +53,36 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>
+    /// Authored-atlas playback spec for a <see cref="ParticleSprite"/>: a flipbook sheet (a grid of
+    /// <see cref="Columns"/> x <see cref="Rows"/> frames packed into one texture) sampled per frame in the particle
+    /// fragment shader, with optional motion-vector frame interpolation. The default (an invalid <see cref="Texture"/>
+    /// handle) leaves the sprite on the procedural <see cref="ParticleShape"/> path, so a sprite that never sets this
+    /// renders byte-identically to before flipbooks existed. Load the atlas (and the optional motion sheet) with
+    /// <see cref="Scene3D.LoadTexture(byte[],int,int)"/>.
+    /// </summary>
+    /// <param name="Texture">The atlas sheet, a grid of frame cells. An invalid handle keeps the sprite procedural.</param>
+    /// <param name="Columns">Atlas columns (frames per row). Must be positive for the spec to be active.</param>
+    /// <param name="Rows">Atlas rows. Must be positive for the spec to be active.</param>
+    /// <param name="MotionTexture">Optional motion-vector sheet on the same grid, driving the two-tap frame warp. An
+    /// absent or neutral sheet degrades to a plain cross-fade, so no flag is needed to opt out of the warp.</param>
+    /// <param name="MotionStrength">Scales the motion-vector displacement, clamped to [0,4] and quantized to 1/64. 1 is
+    /// the authored strength, 0 disables the warp (plain cross-fade).</param>
+    /// <param name="Loop">When true the frame past the last wraps back to the first (looping fire/smoke). When false
+    /// playback clamps on the last frame (one-shot explosion sheets).</param>
+    public readonly record struct ParticleFlipbook(
+        Scene3D.TextureHandle Texture,
+        int Columns,
+        int Rows,
+        Scene3D.TextureHandle MotionTexture = default,
+        float MotionStrength = 1f,
+        bool Loop = false)
+    {
+        /// <summary>True when this spec names a real atlas with a positive grid, so the renderer routes the sprite
+        /// through the flipbook path instead of the procedural shapes.</summary>
+        public bool IsActive => Texture.IsValid && Columns > 0 && Rows > 0;
+    }
+
+    /// <summary>
     /// One particle as the renderer sees it: a camera-facing procedural sprite. Queue with
     /// <see cref="Scene3D.DrawParticle(in ParticleSprite)"/> / <see cref="Scene3D.DrawParticles(System.ReadOnlySpan{ParticleSprite})"/>.
     /// The whole queue renders as ONE premultiplied-alpha instanced draw, sorted back-to-front, depth-tested
@@ -94,5 +124,15 @@ namespace KhaozEngine.Render3D
         /// Flat-on-ground sprites want a small value (around 0.1) so the floor just behind them does not fade
         /// them out, and dense smoke can raise it for a longer, softer approach.</summary>
         public float SoftFadeScale;
+        /// <summary>Optional authored-atlas playback. The default (an invalid <see cref="ParticleFlipbook.Texture"/>)
+        /// keeps the sprite on the procedural <see cref="Shape"/> path. When active, the atlas frame selected by
+        /// <see cref="FlipbookFrame"/> supplies the sprite's coverage and colour in place of the procedural shape.</summary>
+        public ParticleFlipbook Flipbook;
+        /// <summary>Continuous flipbook frame position, used only when <see cref="Flipbook"/> is active. The integer
+        /// part is the current cell. The fractional part is the blend toward the next cell (motion-vector warped when
+        /// a motion sheet is bound, otherwise a straight cross-fade). The frame past the last wraps to the first when
+        /// <see cref="ParticleFlipbook.Loop"/> is set, otherwise it clamps on the last frame. Ignored on the
+        /// procedural path.</summary>
+        public float FlipbookFrame;
     }
 }

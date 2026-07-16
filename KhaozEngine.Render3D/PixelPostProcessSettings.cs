@@ -64,6 +64,13 @@ namespace KhaozEngine.Render3D
         /// <see cref="WaterSettings"/> for the knobs and the no-reflections caveat.</summary>
         public WaterSettings Water = new();
 
+        /// <summary>HDR float colour chain + filmic tonemap. Default ENABLED (unlike the other post bags): the
+        /// internal colour targets render at <c>R16G16B16A16Float</c>, over-range highlights bloom before tonemapping,
+        /// and an ACES filmic curve maps the scene back to LDR before the swapchain blit. Set <c>Hdr.Enabled = false</c>
+        /// to restore the exact legacy UNorm chain and pass order (byte-identical to the pre-HDR output). See
+        /// <see cref="HdrSettings"/> for exposure, the operator choices, and the unclamped-Color authoring note.</summary>
+        public HdrSettings Hdr = new();
+
         /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
         /// <see cref="Render3D.RenderScale.FixedInternal"/>). High = smooth; small + Pixelated = chunky retro pixels.</summary>
         public int RenderWidth = 1600;

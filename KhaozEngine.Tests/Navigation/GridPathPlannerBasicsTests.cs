@@ -1,0 +1,97 @@
+using System.Numerics;
+using KhaozEngine.Navigation;
+using Xunit;
+
+namespace KhaozEngine.Tests.Navigation;
+
+public class GridPathPlannerBasicsTests
+{
+    const float CellSize = 0.5f;
+    const float AgentRadius = 0.2f;
+
+    static NavGrid OpenGrid()
+        => NavGrid.FromWalkable(20, 20, CellSize, 0f, 0f, (_, _) => true);
+
+    [Fact]
+    public void FindPath_OpenGridClearLine_ReturnsCompleteWithGoalWaypoint()
+    {
+        var planner = new GridPathPlanner(NavSpace.Single(OpenGrid()));
+
+        NavPath path = planner.FindPath(new Vector3(1f, 0f, 1f), new Vector3(8f, 0f, 8f), AgentRadius, PathQueryBudget.Default);
+
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        NavWaypoint waypoint = Assert.Single(path.Waypoints);
+        Assert.Equal(new Vector2(8f, 8f), waypoint.Position);
+        Assert.Equal(0, waypoint.Layer);
+    }
+
+    [Fact]
+    public void FindPath_GoalInBlockedPocket_SnapsToNearbyPassableCenter()
+    {
+        // Blocks only the single cell the goal query point falls in. Every other cell stays open.
+        NavGrid grid = NavGrid.FromWalkable(20, 20, CellSize, 0f, 0f, (x, z) => !(x == 16 && z == 16));
+        var planner = new GridPathPlanner(NavSpace.Single(grid));
+
+        NavPath path = planner.FindPath(new Vector3(1f, 0f, 1f), new Vector3(8f, 0f, 8f), AgentRadius, PathQueryBudget.Default);
+
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        NavWaypoint waypoint = Assert.Single(path.Waypoints);
+        // Not the exact goal (8, 8): its own cell (16, 16) is blocked, so the waypoint is the nearest
+        // ring-1 passable cell center. (15, 15), (16, 15) and (15, 16) tie on squared distance, and the
+        // documented scan order (z low to high, then x low to high) picks (15, 15) first.
+        Assert.Equal(new Vector2(7.75f, 7.75f), waypoint.Position);
+    }
+
+    [Fact]
+    public void FindPath_GoalDeepInBigBlockedRegion_ReturnsUnreachable()
+    {
+        // Only a 2x2 patch at the low corner is passable. The goal's cell is far outside SnapRadius of it.
+        NavGrid grid = NavGrid.FromWalkable(20, 20, CellSize, 0f, 0f, (x, z) => x <= 1 && z <= 1);
+        var planner = new GridPathPlanner(NavSpace.Single(grid));
+
+        NavPath path = planner.FindPath(new Vector3(0.25f, 0f, 0.25f), new Vector3(8f, 0f, 8f), AgentRadius, PathQueryBudget.Default);
+
+        Assert.Same(NavPath.Unreachable, path);
+    }
+
+    [Fact]
+    public void FindPath_StartOffGrid_SnapsIn()
+    {
+        var planner = new GridPathPlanner(NavSpace.Single(OpenGrid()));
+
+        NavPath path = planner.FindPath(new Vector3(-1f, 0f, 5f), new Vector3(5f, 0f, 5f), AgentRadius, PathQueryBudget.Default);
+
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        NavWaypoint waypoint = Assert.Single(path.Waypoints);
+        Assert.Equal(new Vector2(5f, 5f), waypoint.Position);
+    }
+
+    [Fact]
+    public void FindPath_LineOfSightBlocked_ReturnsUnreachable_AStarNotYetImplemented()
+    {
+        // A solid wall column spans every row between the start and goal columns. Both endpoints snap
+        // fine, but no straight line clears the wall. A* (Task 7) will route around it, but this task
+        // must fall back to Unreachable instead.
+        NavGrid grid = NavGrid.FromWalkable(20, 20, CellSize, 0f, 0f, (x, _) => x != 5);
+        var planner = new GridPathPlanner(NavSpace.Single(grid));
+
+        NavPath path = planner.FindPath(new Vector3(1f, 0f, 5f), new Vector3(8f, 0f, 5f), AgentRadius, PathQueryBudget.Default);
+
+        Assert.Same(NavPath.Unreachable, path);
+    }
+
+    [Fact]
+    public void Default_MatchesDocumentedBudget()
+    {
+        Assert.Equal(4096, PathQueryBudget.Default.MaxExpandedNodes);
+        Assert.Equal(3f, PathQueryBudget.Default.SnapRadius);
+    }
+
+    [Fact]
+    public void Unreachable_IsCachedAndEmpty()
+    {
+        Assert.Same(NavPath.Unreachable, NavPath.Unreachable);
+        Assert.Equal(NavPathStatus.Unreachable, NavPath.Unreachable.Status);
+        Assert.Empty(NavPath.Unreachable.Waypoints);
+    }
+}

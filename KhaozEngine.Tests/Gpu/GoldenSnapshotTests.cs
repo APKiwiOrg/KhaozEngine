@@ -4,6 +4,7 @@ using Xunit;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
+using KhaozEngine.Telegraphs;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -152,6 +153,55 @@ namespace KhaozEngine.Tests.Gpu
                 frames: 2);
 
             GoldenCompare.AssertOrUpdate("telegraph_ground", rgba, W, H);
+        }
+
+        // Pins the modern telegraph rendering path (feathered edges, noise fills, edge energy, element presets)
+        // added on top of the legacy GroundDecal pass that Golden3D_GroundDecals already locks. Uses the
+        // GroundTelegraphs builders (TelegraphStyle presets resolved at a fixed progress) instead of raw
+        // GroundDecal literals, so a preset/resolve regression shows up here even when it is zero-neutral for the
+        // legacy decal path above.
+        [GpuFact]
+        public void Golden3D_TelegraphModern()
+        {
+            MeshHandle floor = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(20f, 0.1f));
+                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    scene.Post.Outline = true;
+                    // Wider framing than Golden3D_GroundDecals: three telegraphs spread across x=-4/0/+4 (frost
+                    // ring outer radius 3, arcane cone range 4) need a much larger AABB than that sibling's tight
+                    // decal cluster. Frame() fits any AABB exactly (it transforms the real corners through the
+                    // view matrix), so passing the true scene extent keeps the same asymmetric-focus idiom while
+                    // still showing all three telegraphs in frame.
+                    scene.Camera.Frame(new Vector3(0.4f, 0.4f, -0.2f), new Vector3(16f, 4f, 8f));
+                    // Frozen time, same as every other golden here: determinism across bakes and backends.
+                    scene.EffectTimeSeconds = 0f;
+                },
+                drawFrame: scene =>
+                {
+                    // Fire and Arcane are additive-blend presets (TelegraphStyle.Fire / .Arcane). Golden3D_
+                    // GroundDecals draws its floor with the default (white) tint; adding colour on top of white
+                    // clips straight back to white, so the additive fills would be invisible here. Use a dark
+                    // neutral floor instead, same fix as TelegraphShowcaseGpuTests.
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.12f, 0.12f, 0.15f, 1f));
+
+                    // Frost ring: inner 1.5, outer 3, at x = -4.
+                    scene.DrawGroundDecal(GroundTelegraphs.BuildRing(
+                        new Vector3(-4f, 0f, 0f), 1.5f, 3f, 0.6f, TelegraphStyle.Frost));
+                    // Fire circle: radius 2.5, at x = 0.
+                    scene.DrawGroundDecal(GroundTelegraphs.BuildCircle(
+                        new Vector3(0f, 0f, 0f), 2.5f, 0.6f, TelegraphStyle.Fire));
+                    // Arcane cone: range 4, half angle 0.5, at x = +4, facing +X (outward, away from the other
+                    // two telegraphs so it doesn't overlap the fire circle).
+                    scene.DrawGroundDecal(GroundTelegraphs.BuildCone(
+                        new Vector3(4f, 0f, 0f), new Vector2(1f, 0f), 0.5f, 4f, 0.6f, TelegraphStyle.Arcane));
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("telegraph_modern", rgba, W, H);
         }
 
         // Shadows gap #1, blob tier: three meshes at different heights over a tile floor with ShadowMode.Blob on.

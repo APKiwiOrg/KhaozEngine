@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Telegraphs;
 using Xunit;
@@ -30,6 +31,67 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(5f, d.Size.X, 3);                 // range
             Assert.Equal(0.6f, d.Size.Y, 3);               // halfAngle
             Assert.Equal(MathF.PI / 2f, d.Rotation, 3);
+        }
+
+        [Fact]
+        public void Modern_style_fields_map_to_world_space_decal_fields()
+        {
+            var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, TelegraphStyle.Frost);
+            var r = TelegraphResolve.Resolve(0.5f, TelegraphStyle.Frost);
+
+            // Feather: fraction of characteristic size (circle radius), so 4 * 0.18.
+            Assert.Equal(4f * TelegraphStyle.Frost.FeatherWidth, d.FeatherWidth, 4);
+            Assert.Equal(DecalFillPattern.RadialNoise, d.Pattern);
+            Assert.Equal(TelegraphStyle.Frost.PatternSpeed, d.PatternSpeed, 4);
+            // PatternScale: cells across the shape become cells per world unit.
+            Assert.Equal(TelegraphStyle.Frost.PatternScale / 4f, d.PatternScale, 4);
+            Assert.Equal(r.RimGlow, d.RimGlow, 4);
+            Assert.Equal(r.SweepGlow, d.SweepGlow, 4);
+            Assert.Equal(r.Sparkle, d.Sparkle, 4);
+        }
+
+        [Fact]
+        public void Legacy_style_maps_to_zero_modern_decal_fields()
+        {
+            var red = new Color(1f, 0f, 0f, 1f);
+            var legacy = new TelegraphStyle
+            {
+                FillColor = red, OutlineColor = Color.White, DangerColor = red,
+                EdgeThickness = 2f, Opacity = 1f, FillMode = FillMode.OutlineAndFill,
+                Animation = TelegraphAnim.FillSweep, Blend = TelegraphBlend.Alpha,
+            };
+            var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, legacy);
+            Assert.Equal(0f, d.FeatherWidth);
+            Assert.Equal(DecalFillPattern.Solid, d.Pattern);
+            Assert.Equal(0f, d.PatternScale);
+            Assert.Equal(0f, d.RimGlow);
+            Assert.Equal(0f, d.SweepGlow);
+            Assert.Equal(0f, d.Sparkle);
+        }
+
+        [Fact]
+        public void Residue_fades_and_expands_with_age()
+        {
+            var young = GroundTelegraphs.BuildResidueCircle(Vector3.Zero, 3f, 0.1f, TelegraphStyle.Fire);
+            var old = GroundTelegraphs.BuildResidueCircle(Vector3.Zero, 3f, 0.9f, TelegraphStyle.Fire);
+            Assert.Equal(DecalShape.Circle, young.Shape);
+            Assert.True(old.FillColor.A < young.FillColor.A);
+            Assert.True(old.Size.X > young.Size.X);
+            Assert.Equal(1f, young.FillFraction);
+            Assert.Equal(0f, young.RimGlow);
+            Assert.Equal(0f, young.SweepGlow);
+            // Residue is quiet: no outline band.
+            Assert.Equal(0f, young.OutlineColor.A);
+        }
+
+        [Fact]
+        public void Residue_is_pure_and_clamps_age()
+        {
+            var a = GroundTelegraphs.BuildResidueCircle(new Vector3(1f, 0f, 1f), 2f, 0.5f, TelegraphStyle.Frost);
+            var b = GroundTelegraphs.BuildResidueCircle(new Vector3(1f, 0f, 1f), 2f, 0.5f, TelegraphStyle.Frost);
+            Assert.Equal((Vector4)a.FillColor, (Vector4)b.FillColor);
+            var over = GroundTelegraphs.BuildResidueCircle(Vector3.Zero, 2f, 1.5f, TelegraphStyle.Frost);
+            Assert.Equal(0f, over.FillColor.A, 3);
         }
     }
 }

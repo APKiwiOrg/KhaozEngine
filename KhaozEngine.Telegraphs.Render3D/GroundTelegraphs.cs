@@ -33,35 +33,51 @@ namespace KhaozEngine.Telegraphs
         // own world-space edge as a small fraction of the decal's characteristic size (auto-scaling: a big AoE
         // gets a proportionally bigger rim). ResolvedTelegraph.EdgeThickness (the pixel value) is intentionally
         // not used here; it is for TelegraphRenderer2D.
-        static float WorldEdge(DecalShape shape, Vector4 size)
+        // The per-shape characteristic size used both for the world-space edge width (WorldEdge) and for scaling
+        // the modern style knobs (feather fraction, pattern cell density) from shape-relative to world units.
+        static float CharSize(DecalShape shape, Vector4 size) => shape switch
         {
-            float charSize = shape switch
-            {
-                DecalShape.Circle => size.X,        // radius
-                DecalShape.Ring => size.Y,          // outer radius
-                DecalShape.Beam => size.Y * 2f,     // width
-                DecalShape.Cone => size.X,          // range
-                DecalShape.Arc => size.X,           // radius
-                _ => size.X,
-            };
-            return Math.Clamp(charSize * EdgeFraction, MinEdgeWorld, MaxEdgeWorld);
-        }
-
-        static GroundDecal Base(DecalShape shape, Vector3 center, float rotation, Vector4 size, in ResolvedTelegraph r) => new()
-        {
-            Shape = shape,
-            Center = center,
-            Rotation = rotation,
-            Size = size,
-            FillColor = r.FillColor,
-            OutlineColor = r.OutlineColor,
-            EdgeThickness = WorldEdge(shape, size),
-            FillFraction = r.FillFraction,
-            FlashAdd = r.FlashAdd,
-            Blend = Blend(r.Blend),
-            YTolerance = DefaultYTolerance,
-            MaxStep = DefaultMaxStep,
+            DecalShape.Circle => size.X,        // radius
+            DecalShape.Ring => size.Y,          // outer radius
+            DecalShape.Beam => size.Y * 2f,     // width
+            DecalShape.Cone => size.X,          // range
+            DecalShape.Arc => size.X,           // radius
+            _ => size.X,
         };
+
+        static float WorldEdge(DecalShape shape, Vector4 size) =>
+            Math.Clamp(CharSize(shape, size) * EdgeFraction, MinEdgeWorld, MaxEdgeWorld);
+
+        static GroundDecal Base(DecalShape shape, Vector3 center, float rotation, Vector4 size, in ResolvedTelegraph r)
+        {
+            float charSize = CharSize(shape, size);
+            return new GroundDecal
+            {
+                Shape = shape,
+                Center = center,
+                Rotation = rotation,
+                Size = size,
+                FillColor = r.FillColor,
+                OutlineColor = r.OutlineColor,
+                EdgeThickness = WorldEdge(shape, size),
+                FillFraction = r.FillFraction,
+                FlashAdd = r.FlashAdd,
+                Blend = Blend(r.Blend),
+                YTolerance = DefaultYTolerance,
+                MaxStep = DefaultMaxStep,
+                FeatherWidth = Math.Clamp(r.FeatherFraction, 0f, 0.5f) * charSize,
+                Pattern = (DecalFillPattern)r.Pattern,
+                PatternSpeed = r.PatternSpeed,
+                // Cells-across-the-shape become cells-per-world-unit. Gated on Solid so a fully legacy style
+                // (Pattern == Solid, PatternScale == 0) maps to a fully zero decal (the zero-neutral contract).
+                PatternScale = r.Pattern != TelegraphFillPattern.Solid && charSize > 1e-4f
+                    ? (r.PatternScale > 0f ? r.PatternScale : 6f) / charSize
+                    : 0f,
+                RimGlow = r.RimGlow,
+                SweepGlow = r.SweepGlow,
+                Sparkle = r.Sparkle,
+            };
+        }
 
         static float RotFromXZ(Vector2 dirXZ) =>
             dirXZ.LengthSquared() > 1e-6f ? MathF.Atan2(dirXZ.Y, dirXZ.X) : 0f;
@@ -88,6 +104,40 @@ namespace KhaozEngine.Telegraphs
         public static GroundDecal BuildArc(Vector3 center, float radius, float bandWidth, float startAngle, float sweepAngle, float progress, in TelegraphStyle style) =>
             Base(DecalShape.Arc, center, 0f, new Vector4(radius, bandWidth * 0.5f, startAngle, sweepAngle), TelegraphResolve.Resolve(progress, style));
 
+        /// <summary>One-shot impact residue: a fading, slightly expanding scorch/frost mark for the
+        /// moment after a telegraph resolves. The CONSUMER tracks age01 (0 = just resolved,
+        /// 1 = gone), the builder stays pure and immediate-mode like every other telegraph.</summary>
+        public static GroundDecal BuildResidueCircle(Vector3 center, float radius, float age01, in TelegraphStyle style)
+        {
+            float age = Math.Clamp(age01, 0f, 1f);
+            float fade = (1f - age) * (1f - age);
+            float r = radius * (1f + 0.08f * age);
+            var fill = new Color(style.DangerColor.R * 0.45f, style.DangerColor.G * 0.45f,
+                style.DangerColor.B * 0.45f, style.DangerColor.A * fade * style.Opacity);
+            var size = new Vector4(r, 0f, 0f, 0f);
+            float charSize = CharSize(DecalShape.Circle, size);
+            return new GroundDecal
+            {
+                Shape = DecalShape.Circle,
+                Center = center,
+                Rotation = 0f,
+                Size = size,
+                FillColor = fill,
+                OutlineColor = new Color(0f, 0f, 0f, 0f),
+                EdgeThickness = WorldEdge(DecalShape.Circle, size),
+                FillFraction = 1f,
+                FlashAdd = 0f,
+                Blend = DecalBlend.Alpha,
+                YTolerance = DefaultYTolerance,
+                MaxStep = DefaultMaxStep,
+                FeatherWidth = 0.35f * charSize,
+                Pattern = style.Pattern == TelegraphFillPattern.Solid
+                    ? DecalFillPattern.ScrollingNoise : (DecalFillPattern)style.Pattern,
+                PatternSpeed = 0.1f,
+                PatternScale = (style.PatternScale > 0f ? style.PatternScale : 6f) / charSize,
+            };
+        }
+
         // ---- Thin Scene3D extension wrappers ----
         public static void GroundCircle(this Scene3D scene, Vector3 center, float radius, float progress, in TelegraphStyle style) =>
             scene.DrawGroundDecal(BuildCircle(center, radius, progress, style));
@@ -103,5 +153,9 @@ namespace KhaozEngine.Telegraphs
 
         public static void GroundArc(this Scene3D scene, Vector3 center, float radius, float bandWidth, float startAngle, float sweepAngle, float progress, in TelegraphStyle style) =>
             scene.DrawGroundDecal(BuildArc(center, radius, bandWidth, startAngle, sweepAngle, progress, style));
+
+        public static void GroundResidueCircle(this Scene3D scene, Vector3 center, float radius,
+            float age01, in TelegraphStyle style)
+            => scene.DrawGroundDecal(BuildResidueCircle(center, radius, age01, style));
     }
 }

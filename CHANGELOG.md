@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## TODO-VERSION
+## 11.2.0
 
 Step-aware overworld navigation bake: `KhaozEngine.Navigation` gets a per-cell surface height field and
 a rise-within-StepHeight walkability rule, so ramps, staircases, and low standable props are walkable

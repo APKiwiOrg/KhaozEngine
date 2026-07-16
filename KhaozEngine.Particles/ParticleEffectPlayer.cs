@@ -161,7 +161,7 @@ public sealed class ParticleEffectPlayer
 
             if (age > _maxPhaseEnd)
             {
-                // Done scheduling; the pools keep draining their live particles on their own.
+                // Done scheduling. The pools keep draining their live particles on their own.
                 _instActive[i] = false;
             }
         }
@@ -211,7 +211,7 @@ public sealed class ParticleEffectPlayer
         }
         if (d <= -0.99999f)
         {
-            // Opposite: any axis perpendicular to +Y works; use +X for a stable 180 degree flip.
+            // Opposite: any axis perpendicular to +Y works. Use +X for a stable 180 degree flip.
             return Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI);
         }
 

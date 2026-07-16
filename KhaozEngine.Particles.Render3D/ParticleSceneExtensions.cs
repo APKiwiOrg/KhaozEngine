@@ -8,7 +8,7 @@ namespace KhaozEngine.Particles
 {
     /// <summary>
     /// Turn-key glue between the render-free particle sim and Render3D's modern particle pass. Each live particle
-    /// maps to one <see cref="ParticleSprite"/>; optional per-particle trails forward to <see cref="Scene3D.DrawTrail"/>;
+    /// maps to one <see cref="ParticleSprite"/>, optional per-particle trails forward to <see cref="Scene3D.DrawTrail"/>,
     /// and, when the <see cref="ParticleLook"/> asks for it, the brightest particles link as budgeted point lights.
     /// Immediate-mode: call once per frame inside the 3D pass. Presentation only, mutates no sim state.
     /// </summary>

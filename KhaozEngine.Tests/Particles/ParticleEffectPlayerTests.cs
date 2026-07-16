@@ -203,7 +203,7 @@ public class ParticleEffectPlayerTests
     [Fact]
     public void PlayDirection_RotatesTheEmitterAxis()
     {
-        // The phase emits along +Y in config space; playing toward +X must rotate the burst onto +X.
+        // The phase emits along +Y in config space. Playing toward +X must rotate the burst onto +X.
         var effect = new ParticleEffect(new ParticleEffectPhase
         {
             Config = Emitter(Vector3.UnitY, speed: 5f),

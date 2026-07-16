@@ -1350,7 +1350,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void DrawParticle(in ParticleSprite sprite) => _particleSprites.Add(sprite);
 
-        /// <summary>Queue a batch of modern particle sprites; see <see cref="DrawParticle(in ParticleSprite)"/>.</summary>
+        /// <summary>Queue a batch of modern particle sprites, see <see cref="DrawParticle(in ParticleSprite)"/>.</summary>
         public void DrawParticles(ReadOnlySpan<ParticleSprite> sprites)
         {
             for (int i = 0; i < sprites.Length; i++) _particleSprites.Add(sprites[i]);

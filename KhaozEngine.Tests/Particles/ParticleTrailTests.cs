@@ -116,7 +116,7 @@ public class ParticleTrailTests
     public void SwapRemove_KeepsSurvivorTrailIntact()
     {
         // A short particle (index 0, moving +X) and a long one (index 1, moving +Y). When the short one dies
-        // the long one swaps into slot 0; its trail block must travel with it undamaged.
+        // the long one swaps into slot 0, and its trail block must travel with it undamaged.
         var sys = new ParticleSystem(16, seed: 1, trailSamples: 16) { TrailSampleInterval = 0.05f };
         sys.Emit(StraightCfg(Vector3.UnitX, 10f, 0.2f), Vector3.Zero, 1);  // short, +X
         sys.Emit(StraightCfg(Vector3.UnitY, 10f, 100f), Vector3.Zero, 1);  // long, +Y

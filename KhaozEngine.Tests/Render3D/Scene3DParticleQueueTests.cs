@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Render3D
 {
     // DrawParticle/DrawParticles queue onto a live Scene3D (its ctor needs a GPU device), so these run gated
     // behind KE_GPU_TESTS=1, mirroring Scene3DTrailQueueTests. They assert queue accounting + the host-owned
-    // knobs only; instance packing is covered headlessly by ParticleRendererPackTests and the on-screen look
+    // knobs only. Instance packing is covered headlessly by ParticleRendererPackTests and the on-screen look
     // by the particle showcase dumps + golden.
     public sealed class Scene3DParticleQueueTests
     {

@@ -31,7 +31,7 @@ public sealed class ParticleSystem
     private readonly float[] _turbStrength;
     private readonly float[] _turbFreq;
 
-    // Optional per-particle motion-history ring (opt-in via the ctor; default 0 keeps the legacy footprint).
+    // Optional per-particle motion-history ring (opt-in via the ctor, default 0 keeps the legacy footprint).
     // _trailPos/_trailAge are one contiguous block per particle slot (capacity x _trailSamples), swap-removed
     // with the particle. Head is the next write slot, count the valid samples, since the sub-interval carry.
     private readonly int _trailSamples;
@@ -132,7 +132,7 @@ public sealed class ParticleSystem
             // unmodernised burst consumes exactly the historical sequence.
             float life = _rng.Range(cfg.LifetimeMin, cfg.LifetimeMax);
 
-            // Direction is drawn up-front only in Cone mode; Radial derives it from the spawn offset below.
+            // Direction is drawn up-front only in Cone mode. Radial derives it from the spawn offset below.
             Vector3 coneDir = default;
             if (cfg.VelocityMode == ParticleVelocityMode.Cone)
             {
@@ -280,7 +280,7 @@ public sealed class ParticleSystem
             {
                 p.Size = MathUtil.Lerp(_startSize[i], _endSize[i], sizeCurve.Evaluate(n));
 
-                // Colour rgb tracks the raw norm; alpha tracks the alpha curve. Both walk the same 2- or 3-stop
+                // Colour rgb tracks the raw norm and alpha tracks the alpha curve. Both walk the same 2- or 3-stop
                 // gradient, so a mid stop applies to both channels.
                 float an = alphaCurve.Evaluate(n);
                 Color rgb = GradientAt(n, _hasMid[i], _startColor[i], _midColor[i], _endColor[i]);
@@ -382,7 +382,7 @@ public sealed class ParticleSystem
         int head = _trailHead[particleIndex];
         int copy = Math.Min(count, destination.Length);
 
-        // Oldest valid sample sits count slots behind the head; skip the excess oldest when the span is short.
+        // Oldest valid sample sits count slots behind the head. Skip the excess oldest when the span is short.
         int oldest = ((head - count) % n + n) % n;
         int skip = count - copy;
         for (int j = 0; j < copy; j++)

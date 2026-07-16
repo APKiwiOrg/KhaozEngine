@@ -210,7 +210,7 @@ public class ParticleSystemModernTests
     [Fact]
     public void Turbulence_PerturbsMotion_ComparedToNone()
     {
-        // Same seed => identical emitted particles; only the turbulence force in Update differs.
+        // Same seed => identical emitted particles. Only the turbulence force in Update differs.
         var withTurb = new ParticleSystem(64, seed: 3);
         var noTurb = new ParticleSystem(64, seed: 3);
 

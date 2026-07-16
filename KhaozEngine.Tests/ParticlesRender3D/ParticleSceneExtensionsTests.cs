@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.ParticlesRender3D
 {
     // The adapter extensions queue onto a live Scene3D (its ctor needs a GPU device), so these run gated behind
     // KE_GPU_TESTS=1, mirroring Scene3DParticleQueueTests' WithScene helper. They assert the queue accounting the
-    // adapter drives (sprites, trails, lights); the preset content and determinism are covered headlessly by
+    // adapter drives (sprites, trails, lights). The preset content and determinism are covered headlessly by
     // VfxPresetsTests.
     public sealed class ParticleSceneExtensionsTests
     {

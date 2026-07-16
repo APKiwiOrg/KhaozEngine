@@ -59,6 +59,16 @@ public sealed class MapEditorOptions
     /// only, read at load time via <see cref="ViewportWorld.TexturedPropsEnabled"/>, so flipping it rebuilds the
     /// streamed world (see the Layers-panel "Textured props" row).</summary>
     public bool TexturedProps = true;
+
+    /// <summary>Minimum seconds between FULL viewport rebuilds while a drag or draw gesture is live
+    /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>), so a fast
+    /// mid-gesture edit stream (dragging a lake's radius, say) does not re-mesh the whole streamed world every
+    /// frame. The default 0.25 keeps the viewport visibly live during a drag without paying for a rebuild on
+    /// every frame. 0 disables the throttle (rebuilds every frame, the pre-throttle behaviour). Only the FULL
+    /// rebuild path is throttled: a bounded-region <see cref="MapEditorScene.PartialRebuildWorld"/> is cheap by
+    /// construction and always runs immediately, and once the gesture ends the very next check performs the
+    /// final full rebuild regardless of this interval.</summary>
+    public float GestureRebuildInterval = 0.25f;
 }
 
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
@@ -191,6 +201,12 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     bool _built;
     string _statusText = "";
+
+    // Seconds accumulated toward the next throttled full rebuild while a drag or draw gesture is live (see
+    // CheckWorldRebuild). Reset to 0 on every full rebuild that actually runs, gesture or not, so a gesture always
+    // starts its throttling window fresh from whenever the last full rebuild landed. Never touched by the partial
+    // path, so a run of partial rebuilds mid-gesture cannot starve the eventual full one.
+    float _gestureRebuildAccumulator;
 
     // The modal exit dialog (decision 3), non-null only while it is open. Shift+Escape builds a fresh one keyed to
     // the current dirty state. Its footer-button callbacks save / quit / dismiss. While non-null it is drawn last
@@ -415,8 +431,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (_exitDialog is not null) { UpdateExitDialog(dt); return; }
         UpdateCamera(dt);
         UpdateTools(dt);
-        CheckWorldRebuild();
         UpdateChrome(dt);
+        CheckWorldRebuild(dt);
         UpdateStreaming(dt);
     }
 
@@ -442,14 +458,65 @@ public class MapEditorScene : GameScene, IGameScene3D
         _controller.Update(BuildFrameInput(dt));
     }
 
-    /// <summary>Consumes a pending world rebuild after the tool step, so an edit this frame lands in the streamed
-    /// world before the next frame's pick. Overridable for headless order tests. No-ops until the world is built.</summary>
-    protected virtual void CheckWorldRebuild()
+    /// <summary>Consumes a pending world rebuild after every edit source this frame (tools, then chrome, which
+    /// covers the property-grid inspector), so an edit from either one lands in the streamed world before the
+    /// next frame's pick. A pending edit that reported a bounded region
+    /// (<see cref="EditorDocument.PendingRebuildRegion"/>) rebuilds ONLY the chunks that region overlaps via
+    /// <see cref="PartialRebuildWorld"/>, never throttled (it is cheap by construction). A null region (a
+    /// whole-world edit, or the partial path declining because the world is not built) falls through to the full
+    /// <see cref="RebuildWorld"/>, which IS throttled while a drag or draw gesture is live
+    /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>): a full
+    /// rebuild only runs once <see cref="MapEditorOptions.GestureRebuildInterval"/> seconds have accumulated since
+    /// the last one, so a fast mid-gesture edit stream does not re-mesh the whole world every frame. The pending
+    /// flag is left untouched on a throttled-skip frame (not acknowledged), so the very next check after the
+    /// gesture ends falls straight through to the unthrottled branch and performs the final full rebuild with no
+    /// extra plumbing. Either way a rebuild that actually ran is acknowledged so it fires once. Overridable for
+    /// headless order tests, and it dispatches through the two rebuild seams so a headless test can observe the
+    /// routing without a device.</summary>
+    protected virtual void CheckWorldRebuild(float dt)
     {
-        if (!_viewport.IsBuilt || !_document.WorldRebuildPending) return;
-        _viewport.Rebuild(_document.Doc, _document.Registry);
-        _document.AcknowledgeWorldRebuild();
+        if (!_document.WorldRebuildPending) return;
+        if (_document.PendingRebuildRegion is RectArea dirty && PartialRebuildWorld(dirty))
+        {
+            _document.AcknowledgeWorldRebuild();
+            return;
+        }
+
+        if (_controller.IsDragging || _controller.IsDrawing)
+        {
+            _gestureRebuildAccumulator += dt;
+            if (_gestureRebuildAccumulator < _options.GestureRebuildInterval) return;   // throttled: stays pending
+        }
+
+        if (RebuildWorld())
+        {
+            _document.AcknowledgeWorldRebuild();
+            _gestureRebuildAccumulator = 0f;
+        }
+    }
+
+    /// <summary>Partial-rebuild seam: re-mesh only the loaded chunks overlapping <paramref name="dirty"/> and
+    /// re-point the tool controller at the swapped field. Returns false when the viewport is not built (the
+    /// <see cref="ViewportWorld.PartialRebuild"/> not-built contract), so <see cref="CheckWorldRebuild"/> falls back
+    /// to a full rebuild. Overridable so a headless test can observe the dispatch without a device.</summary>
+    protected virtual bool PartialRebuildWorld(RectArea dirty)
+    {
+        if (!_viewport.PartialRebuild(_document.Doc, _document.Registry, dirty)) return false;
         _controller.Field = _viewport.Field;
+        return true;
+    }
+
+    /// <summary>Full-rebuild seam for a pending edit with no bounded region: rebuild the whole streamed world and
+    /// re-point the tool controller at the fresh field. Returns false (a no-op) when the viewport is not built, so
+    /// <see cref="CheckWorldRebuild"/> leaves the rebuild pending rather than throwing. Overridable so a headless
+    /// test can observe the dispatch without a device. <see cref="CheckWorldRebuild"/> wraps its gesture throttle
+    /// around this full path only, never around <see cref="PartialRebuildWorld"/>.</summary>
+    protected virtual bool RebuildWorld()
+    {
+        if (!_viewport.IsBuilt) return false;
+        _viewport.Rebuild(_document.Doc, _document.Registry);
+        _controller.Field = _viewport.Field;
+        return true;
     }
 
     /// <summary>Hotkeys + Gui-chrome input step. Overridable for headless order tests.</summary>
@@ -1625,7 +1692,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             "game loads.")));
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Textured props"),
             () => _options.TexturedProps,
-            v => { _options.TexturedProps = v; RebuildWorldForVisibility(); },
+            v => { _options.TexturedProps = v; InvalidateViewportKitMeshes(); RebuildWorldForVisibility(); },
             LocalizedText.Raw("When on (the default, matching gameplay) a kit prop flagged textured shows its " +
                 "baked materials in the viewport. Turn off to render every prop in its flattened average colour " +
                 "instead, which can be easier to read while placing a dense textured forest. Editor view only, " +
@@ -1658,13 +1725,25 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// (hidden layers drop out of the fresh prop layers). Called directly from the Layers-panel scatter toggle,
     /// NOT through <see cref="EditorDocument.WorldRebuildPending"/> (visibility is not a document change). No-op
     /// until the world is built, and overridden headless in tests. Re-points the controller field at the rebuilt
-    /// world, matching <see cref="CheckWorldRebuild"/>.</summary>
+    /// world, matching <see cref="CheckWorldRebuild"/>. <see cref="ViewportWorld.Rebuild"/> retains the viewport's
+    /// kit meshes and splat material across this call, so a scatter-layer toggle (which never changes which mesh
+    /// form a kit id loads) does not need <see cref="InvalidateViewportKitMeshes"/> first, unlike the Textured
+    /// props toggle.</summary>
     protected virtual void RebuildWorldForVisibility()
     {
         if (!_viewport.IsBuilt) return;
         _viewport.Rebuild(_document.Doc, _document.Registry);
         _controller.Field = _viewport.Field;
     }
+
+    /// <summary>GPU seam: invalidates the viewport's retained kit-mesh cache (and its cached splat material) so the
+    /// next <see cref="RebuildWorldForVisibility"/> reloads every kit id from disk instead of serving a stale
+    /// cached form. The Textured props Layers-panel toggle calls this immediately before
+    /// <see cref="RebuildWorldForVisibility"/>, because <see cref="ViewportWorld.LoadKitMeshes"/> keys its cache on
+    /// the entry id alone and does not encode which form (textured parts vs. flattened) was loaded, so a retained
+    /// cache would otherwise serve the pre-toggle form. Overridden headless in tests (mirrors
+    /// <see cref="RebuildWorldForVisibility"/>).</summary>
+    protected virtual void InvalidateViewportKitMeshes() => _viewport.InvalidateKitMeshes();
 
     // The terrain root inspector: every terrain scalar as an editable row (each routed through the widened
     // EditTerrainCommand so scrubs coalesce and the scatter-honouring world rebuild fires), plus a read-only

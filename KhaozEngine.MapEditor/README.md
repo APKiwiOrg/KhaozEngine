@@ -48,6 +48,9 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
 - `StatusBottomOffset` (default 0) reserves that many points of clearance at the window bottom for a host
   that draws its own bottom chrome (the Showcase's F7-F10 display readout line), shifting the status strip
   and editor body up so the editor never stacks on the host's pixels.
+- `GestureRebuildInterval` (default 0.25 seconds) throttles the expensive FULL viewport rebuild while a drag
+  or draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the whole streamed world every
+  frame. 0 disables the throttle (rebuilds every frame). See Rebuild semantics below.
 - `RequestQuit` (default null) is how the editor leaves when it is the bottom scene on the stack (nothing to
   pop back to): the head wires it to its own quit path (a `GameApp3D` subclass calling the protected
   `GameApp.Quit()`), since a scene never touches window APIs directly. Leave it null when the head always
@@ -396,9 +399,12 @@ no rebuild. The "Textured props" toggle and a scatter-layer toggle both also cal
 (`RebuildWorldForVisibility`), since both are read at prop-mesh load time rather than live: flipping
 "Textured props" reloads every manifest entry's mesh through `PropLoader.LoadPropAuto` under the new
 setting, and a hidden scatter layer's props actually drop out of the streamed world, taking its companion
-layers with it (their host is gone). The panel rebuilds on every selection change, so it always tracks the
-document's live scatter-layer set. `Water` has no matching selection kind or per-element hide: its toggle
-turns the single water-plane draw on or off outright.
+layers with it (their host is gone). Because `Rebuild` now retains the cached kit meshes and splat material
+by default (see Rebuild semantics below), the "Textured props" toggle calls `ViewportWorld.InvalidateKitMeshes`
+first (`MapEditorScene.InvalidateViewportKitMeshes`) so the follow-up rebuild reloads every mesh in its new
+form instead of serving the stale cached one. The panel rebuilds on every selection change, so it always
+tracks the document's live scatter-layer set. `Water` has no matching selection kind or per-element hide:
+its toggle turns the single water-plane draw on or off outright.
 
 **Per-element hide.** Every placement, spawn, feature, exclusion, and region inspector ends with a
 "Visible" `BoolRow` (`MapEditorScene.AddVisibleRow`) bound to that one element's hidden flag, independent
@@ -525,25 +531,27 @@ DetailOctaves, with Seed and DetailOctaves scrubbed as whole steps and rounded t
 count. Biome bands themselves are edited via the Biomes outline category, not the terrain inspector, see
 Procedural setup editing below.
 
-`MapEditorScene.OnUpdate` runs, in order, `UpdateCamera` -> `UpdateTools` -> `CheckWorldRebuild` ->
-`UpdateChrome` -> `UpdateStreaming`. `CheckWorldRebuild` is what actually calls `ViewportWorld.Rebuild`
-(tear down the sink + streamer + kit meshes, then rebuild wholesale from the document, since the engine has
-no partial chunk invalidation) and `EditorDocument.AcknowledgeWorldRebuild()`.
+`MapEditorScene.OnUpdate` runs, in order, `UpdateCamera` -> `UpdateTools` -> `UpdateChrome` ->
+`CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to either a bounded
+`ViewportWorld.PartialRebuild` (re-meshes only the loaded chunks the edit's accumulated dirty region overlaps)
+or, when the region is unbounded, the full `ViewportWorld.Rebuild` (tear down the sink + streamer, then
+rebuild wholesale from the document, keeping the cached kit meshes and the splat material so a full rebuild
+does not re-decode every prop glTF from disk), then calls `EditorDocument.AcknowledgeWorldRebuild()`. The
+full path is throttled while a drag or draw gesture is live (`EditorToolController.IsDragging` / `IsDrawing`):
+it runs at most once per `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the
+throttle), with `WorldRebuildPending` left untouched on a throttled frame so the very next check after the
+gesture ends always performs the final full rebuild. The partial path is never throttled (it is cheap by
+construction).
 
-**The one-frame `EditFeature` lag.** A terrain-feature parameter scrub lands through the `PropertyGrid`
-inspector, which is polled inside `UpdateChrome` (after `CheckWorldRebuild` in the same frame's order). So
-when the inspector's `FloatRow` setter calls `EditorDocument.Execute(new EditFeatureCommand(...))`,
-`WorldRebuildPending` flips to true too late for that frame's `CheckWorldRebuild` call. The viewport
-rebuild only happens on the FOLLOWING frame's `CheckWorldRebuild`. This is a one-frame visual lag, not a
-correctness bug (the document itself is updated immediately, and a scrub coalesces every intermediate value
-into one undo step regardless), but it means an automated test asserting "the streamed world reflects the
-just-scrubbed radius" needs to step the scene one extra frame. Gizmo-driven edits (`UpdateTools`, which
-runs BEFORE `CheckWorldRebuild`) do not have this lag: a feature or exclusion drag rewrites the document in
-the same frame `CheckWorldRebuild` reads `AffectsWorld` from, so dragging a lake's radius (or an exclusion's)
-rebuilds the streamed world that same frame, with no one-frame lag. Placement/spawn drags never trigger a
-rebuild either way (`AffectsWorld` is always false, since they draw outside the streamed sink), and neither
-do region drags (game-interpreted, also `AffectsWorld` false) - only the inspector-driven scrub path above
-has the lag, and only for the `AffectsWorld`-true kinds (terrain features, exclusions, terrain globals).
+**Same-frame inspector rebuild.** A terrain-feature parameter scrub lands through the `PropertyGrid`
+inspector, which is polled inside `UpdateChrome`, now BEFORE `CheckWorldRebuild` in the per-frame order (moved
+there to fix a one-frame lag the editor used to have: chrome used to run after the rebuild check, so an
+inspector edit's `WorldRebuildPending` flip landed one frame too late for that frame's rebuild). So when the
+inspector's `FloatRow` setter calls `EditorDocument.Execute(new EditFeatureCommand(...))`, the streamed world
+rebuilds (or partial-rebuilds) the SAME frame, same as a gizmo-driven drag (`UpdateTools`, which runs even
+earlier still). Placement/spawn drags never trigger a rebuild either way (`AffectsWorld` is always false,
+since they draw outside the streamed sink), and neither do region drags (game-interpreted, also `AffectsWorld`
+false).
 
 ## Bake-region
 
@@ -667,8 +675,8 @@ inspector's own rule rows use the analogous `_inspectorRuleCount` check so a rul
 a mid-iteration rebuild.
 
 The add, edit, and remove commands above are `AffectsWorld` true (they change terrain shape or scatter inputs), triggering the same
-streamed-world rebuild path described in Rebuild semantics above, including the one-frame inspector-scrub lag
-that section documents. The two rename commands (for scatter layers and companions) are deliberately `AffectsWorld` false,
+streamed-world rebuild path described in Rebuild semantics above (same-frame, gesture-throttled while a drag
+or draw is live). The two rename commands (for scatter layers and companions) are deliberately `AffectsWorld` false,
 since a rename is byte-identical to streamed output and requires no rebuild.
 
 ## `DocumentChanged` unsubscribe note for custom hosts

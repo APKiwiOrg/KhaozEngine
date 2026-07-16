@@ -4012,9 +4012,21 @@ status-strip panels draw through `SpriteBatch.DrawRounded` against a lifted dark
 column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWidth` (340, up from the old
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
+**Viewport rebuild performance.** A bounded terrain-feature edit (a lake or flatten drag, for example)
+reports a `DirtyRegion`, so `CheckWorldRebuild` re-meshes only the loaded chunks the edit's accumulated
+region overlaps (`ViewportWorld.PartialRebuild`) instead of tearing down and rebuilding the whole streamed
+world. A ridge or rim edit has unbounded reach and, like a scatter, exclusion, or terrain-scalar edit, still
+takes the full `ViewportWorld.Rebuild` path, throttled to at most once per
+`MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or
+draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the world every frame. Kit meshes
+and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF
+from disk; a toggle that changes their cached form (the "Textured props" toggle) calls
+`ViewportWorld.InvalidateKitMeshes` first.
+
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
-semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
-mechanics, the procedural setup editing mechanics, and the bake-region and rename mechanics in full.
+semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the
+feature apply-order and visibility mechanics, the procedural setup editing mechanics, and the bake-region and
+rename mechanics in full.
 
 ---
 

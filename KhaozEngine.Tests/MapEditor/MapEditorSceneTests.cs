@@ -9,6 +9,7 @@ using KhaozEngine.Gui;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Primitives;
+using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -30,7 +31,7 @@ namespace KhaozEngine.Tests.MapEditor
             protected override void TeardownWorld() => Teardowns++;
         }
 
-        // Records the per-frame step order; the chrome / streaming steps are neutralized so nothing touches a device.
+        // Records the per-frame step order: every step just logs its name instead of touching a device.
         sealed class OrderScene : MapEditorScene
         {
             public readonly List<string> Log = new();
@@ -38,9 +39,9 @@ namespace KhaozEngine.Tests.MapEditor
             protected override void TeardownWorld() { }
             protected override void UpdateCamera(float dt) => Log.Add("camera");
             protected override void UpdateTools(float dt) => Log.Add("tools");
-            protected override void CheckWorldRebuild() => Log.Add("rebuild");
-            protected override void UpdateChrome(float dt) { }
-            protected override void UpdateStreaming(float dt) { }
+            protected override void UpdateChrome(float dt) => Log.Add("chrome");
+            protected override void CheckWorldRebuild(float dt) => Log.Add("rebuild");
+            protected override void UpdateStreaming(float dt) => Log.Add("streaming");
         }
 
         // Injects an invalid document (default bounds fail MaxX > MinX), so a save validates-and-throws internally.
@@ -64,17 +65,85 @@ namespace KhaozEngine.Tests.MapEditor
         // The DocScene idiom plus a RebuildWorldForVisibility spy: BuildWorld/TeardownWorld stay no-ops (so the
         // viewport is never actually built, matching DocScene), but the protected rebuild seam a Layers-panel
         // scatter-layer or Textured-props toggle calls is counted instead of running (which would no-op anyway
-        // since _viewport.IsBuilt is false headless). Lets a toggle test assert the rebuild call fired without a
-        // Scene3D device.
+        // since _viewport.IsBuilt is false headless). Also spies the InvalidateViewportKitMeshes seam the
+        // Textured-props toggle calls before the rebuild (the scatter-layer toggle does not call it), recording
+        // both into one ordered Log so a test can assert the textured toggle invalidates BEFORE it rebuilds.
         sealed class RebuildSpyDocScene : MapEditorScene
         {
             readonly Func<MapDocument> _factory;
             public int Rebuilds;
+            public int KitMeshInvalidations;
+            public readonly List<string> Log = new();
             public RebuildSpyDocScene(Func<MapDocument> factory) => _factory = factory;
             protected override void BuildWorld() { }
             protected override void TeardownWorld() { }
             protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
-            protected override void RebuildWorldForVisibility() => Rebuilds++;
+            protected override void RebuildWorldForVisibility() { Rebuilds++; Log.Add("rebuild"); }
+            protected override void InvalidateViewportKitMeshes() { KitMeshInvalidations++; Log.Add("invalidate"); }
+        }
+
+        // Records which rebuild seam CheckWorldRebuild dispatches to (a bounded region -> partial, a null region ->
+        // full) without touching a device: BuildWorld stays a no-op (so the viewport is never built), and both
+        // rebuild seams are overridden to log + return a scripted result. RunRebuildCheck exposes the protected step
+        // so a test can drive the routing directly on a document it has set up.
+        sealed class RebuildDispatchScene : MapEditorScene
+        {
+            readonly Func<MapDocument> _factory;
+            public bool PartialSucceeds = true;
+            public readonly List<string> Log = new();
+            public RectArea? LastDirty;
+            public RebuildDispatchScene(Func<MapDocument> factory) => _factory = factory;
+            protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+            protected override void BuildWorld() { }
+            protected override void TeardownWorld() { }
+            protected override bool PartialRebuildWorld(RectArea dirty) { Log.Add("partial"); LastDirty = dirty; return PartialSucceeds; }
+            protected override bool RebuildWorld() { Log.Add("full"); return true; }
+            public void RunRebuildCheck(float dt = 0f) => CheckWorldRebuild(dt);
+        }
+
+        // The RebuildDispatchScene spy idiom PLUS a flat Controller.Field (the FieldDocScene idiom), so a test can
+        // both observe which rebuild seam fires AND arm IsDragging / IsDrawing on the real EditorToolController via
+        // ordinary EditorFrameInput frames (a press in a draw mode, or a gizmo drag), exercising CheckWorldRebuild's
+        // gesture throttle end to end. RunRebuildCheck exposes the protected step with its dt parameter.
+        sealed class ThrottleScene : MapEditorScene
+        {
+            readonly Func<MapDocument> _factory;
+            public bool PartialSucceeds = true;
+            public readonly List<string> Log = new();
+            public ThrottleScene(Func<MapDocument> factory) => _factory = factory;
+            protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+            protected override void BuildWorld() => Controller.Field =
+                new KhaozEngine.Terrain.TerrainField(new KhaozEngine.Terrain.TerrainConfig { GentleAmplitude = 0f });
+            protected override void TeardownWorld() { }
+            protected override bool PartialRebuildWorld(RectArea dirty) { Log.Add("partial"); return PartialSucceeds; }
+            protected override bool RebuildWorld() { Log.Add("full"); return true; }
+            public void RunRebuildCheck(float dt) => CheckWorldRebuild(dt);
+        }
+
+        // A world-affecting command executes DURING the chrome step, standing in for the PropertyGrid inspector's
+        // row setter (UpdateChrome -> UpdateWidgets -> the live UiViewport-driven _inspector.Update, which this
+        // headless suite cannot drive without a device, see the UiViewport guard in UpdateWidgets) calling
+        // EditorDocument.Execute mid-chrome. Proves the OnUpdate reorder: CheckWorldRebuild now runs AFTER chrome,
+        // so this edit's rebuild fires the SAME frame instead of lagging one frame behind.
+        sealed class InspectorSameFrameScene : MapEditorScene
+        {
+            readonly Func<MapDocument> _factory;
+            public readonly List<string> Log = new();
+            public int FullRebuilds;
+            public InspectorSameFrameScene(Func<MapDocument> factory) => _factory = factory;
+            protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
+            protected override void BuildWorld() { }
+            protected override void TeardownWorld() { }
+            protected override void UpdateCamera(float dt) { }
+            protected override void UpdateTools(float dt) { }
+            protected override void UpdateChrome(float dt)
+            {
+                Log.Add("chrome");
+                Document.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f));
+            }
+            protected override void CheckWorldRebuild(float dt) { Log.Add("rebuild"); base.CheckWorldRebuild(dt); }
+            protected override bool RebuildWorld() { FullRebuilds++; return true; }
+            protected override void UpdateStreaming(float dt) { }
         }
 
         // Injects a caller-supplied document AND a pure flat field on the controller (no GPU), so a viewport pick
@@ -341,7 +410,7 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void Update_StepOrder_CameraThenToolsThenRebuild()
+        public void Update_StepOrder_CameraThenToolsThenChromeThenRebuildThenStreaming()
         {
             var scene = new OrderScene();
             scene.Init(null!, null!, null!, new MapEditorOptions());
@@ -351,7 +420,229 @@ namespace KhaozEngine.Tests.MapEditor
 
             m.Update(0.016f);
 
-            Assert.Equal(new[] { "camera", "tools", "rebuild" }, scene.Log);
+            // Rebuild now runs AFTER chrome (not right after tools), so an inspector-row edit executed inside
+            // UpdateChrome (the PropertyGrid poll) rebuilds the same frame instead of lagging one frame behind.
+            Assert.Equal(new[] { "camera", "tools", "chrome", "rebuild", "streaming" }, scene.Log);
+        }
+
+        // ---- CheckWorldRebuild dispatch: partial vs full -----------------------------------------------
+
+        static MapDocument SampleWithFeatures() => KhaozEngine.Tests.MapDoc.MapDocumentFileTests.SampleDoc();
+
+        // A depth-only clone of a sample lake, so its footprint matches the original's (a bounded dirty region).
+        static LakeFeatureDoc LakeDepth(LakeFeatureDoc src, float depth) =>
+            new() { CenterX = src.CenterX, CenterZ = src.CenterZ, Radius = src.Radius, Depth = depth,
+                InnerFraction = src.InnerFraction, OuterFraction = src.OuterFraction };
+
+        static RebuildDispatchScene PushDispatchScene(bool partialSucceeds = true)
+        {
+            var scene = new RebuildDispatchScene(SampleWithFeatures) { PartialSucceeds = partialSucceeds };
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+            scene.Document.AcknowledgeWorldRebuild();   // ignore any pending state from the initial load
+            scene.Log.Clear();
+            return scene;
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_NothingPending_CallsNeitherSeam()
+        {
+            RebuildDispatchScene scene = PushDispatchScene();
+            scene.RunRebuildCheck();
+            Assert.Empty(scene.Log);
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_RectRegion_RoutesToPartialAndAcknowledges()
+        {
+            RebuildDispatchScene scene = PushDispatchScene();
+            var lake = (LakeFeatureDoc)scene.Document.Doc.Terrain.Features[0];
+            scene.Document.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+            Assert.True(scene.Document.WorldRebuildPending);
+
+            scene.RunRebuildCheck();
+
+            Assert.Equal(new[] { "partial" }, scene.Log);   // a bounded region takes the partial path only
+            Assert.NotNull(scene.LastDirty);
+            Assert.False(scene.Document.WorldRebuildPending);   // acknowledged after the partial rebuild
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_NullRegion_RoutesToFullAndAcknowledges()
+        {
+            RebuildDispatchScene scene = PushDispatchScene();
+            scene.Document.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f));   // whole-world edit
+            Assert.True(scene.Document.WorldRebuildPending);
+            Assert.Null(scene.Document.PendingRebuildRegion);
+
+            scene.RunRebuildCheck();
+
+            Assert.Equal(new[] { "full" }, scene.Log);   // a null region takes the full rebuild
+            Assert.False(scene.Document.WorldRebuildPending);
+        }
+
+        [Fact]
+        public void CheckWorldRebuild_PartialReportsNotBuilt_FallsBackToFull()
+        {
+            RebuildDispatchScene scene = PushDispatchScene(partialSucceeds: false);
+            var lake = (LakeFeatureDoc)scene.Document.Doc.Terrain.Features[0];
+            scene.Document.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+
+            scene.RunRebuildCheck();
+
+            Assert.Equal(new[] { "partial", "full" }, scene.Log);   // partial declined, full picked it up
+            Assert.False(scene.Document.WorldRebuildPending);   // acknowledged after the fallback full rebuild
+        }
+
+        // ---- gesture-aware full-rebuild throttle -------------------------------------------------------
+
+        static readonly Vector3 ThrottleDown = new(0f, -1f, 0f);
+
+        static ThrottleScene PushThrottleScene(float gestureRebuildInterval, bool partialSucceeds = true)
+        {
+            var scene = new ThrottleScene(SampleWithFeatures) { PartialSucceeds = partialSucceeds };
+            scene.Init(null!, null!, null!, new MapEditorOptions { GestureRebuildInterval = gestureRebuildInterval });
+            new SceneManager().Push(scene);
+            scene.Document.AcknowledgeWorldRebuild();   // ignore any pending state from the initial load
+            scene.Log.Clear();
+            return scene;
+        }
+
+        // Presses in DrawExclusion mode over the flat field, which arms EditorToolController.IsDrawing without
+        // needing a placement to grab a gizmo handle on. The gesture stays live until EndDrawGesture releases it.
+        static void ArmDrawGesture(ThrottleScene scene)
+        {
+            scene.Controller.Mode = EditorToolMode.DrawExclusion;
+            scene.Controller.Update(new EditorFrameInput(new Vector3(0f, 100f, 0f), ThrottleDown,
+                pointerPressed: true, pointerDown: true, dt: 0.016f));
+            Assert.True(scene.Controller.IsDrawing);
+        }
+
+        // Releases over the SAME point as the press, a degenerate (zero-extent) gesture that commits nothing, so
+        // ending the gesture never itself perturbs WorldRebuildPending / PendingRebuildRegion.
+        static void EndDrawGesture(ThrottleScene scene)
+        {
+            scene.Controller.Update(new EditorFrameInput(new Vector3(0f, 100f, 0f), ThrottleDown,
+                pointerReleased: true, dt: 0.016f));
+            Assert.False(scene.Controller.IsDrawing);
+        }
+
+        // A whole-world edit (AffectsWorld true, DirtyRegion null): marks WorldRebuildPending with a null (full)
+        // region, exactly what an inspector-driven terrain scrub does.
+        static void DirtyFull(ThrottleScene scene) =>
+            scene.Document.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f));
+
+        // A bounded-region edit (the sample doc's lake at feature index 0): marks WorldRebuildPending with a rect.
+        static void DirtyPartial(ThrottleScene scene)
+        {
+            var lake = (LakeFeatureDoc)scene.Document.Doc.Terrain.Features[0];
+            scene.Document.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+        }
+
+        [Fact]
+        public void Throttle_MidGesture_FullRebuildsAtMostOncePerInterval()
+        {
+            ThrottleScene scene = PushThrottleScene(gestureRebuildInterval: 0.25f);
+            ArmDrawGesture(scene);
+
+            // 6 frames of 0.1s (0.6s total) mid-gesture, with a fresh full-dirtying edit each frame (the continuous
+            // edit stream a live drag produces). At 0.25s/rebuild that is 2 rebuilds (fired at the 0.3s and 0.6s
+            // marks), not 6.
+            int fullCount = 0;
+            for (int i = 0; i < 6; i++)
+            {
+                DirtyFull(scene);
+                scene.RunRebuildCheck(0.1f);
+                fullCount = scene.Log.Count(s => s == "full");
+            }
+
+            Assert.Equal(2, fullCount);
+        }
+
+        [Fact]
+        public void Throttle_SkippedFrame_LeavesWorldRebuildPendingTrue()
+        {
+            ThrottleScene scene = PushThrottleScene(gestureRebuildInterval: 0.25f);
+            ArmDrawGesture(scene);
+            DirtyFull(scene);
+
+            scene.RunRebuildCheck(0.1f);   // 0.1s < 0.25s interval: throttled, skipped
+
+            Assert.Empty(scene.Log);
+            Assert.True(scene.Document.WorldRebuildPending);   // NOT acknowledged on a skipped frame
+        }
+
+        [Fact]
+        public void Throttle_FirstCheckAfterGestureEnds_RebuildsImmediately()
+        {
+            ThrottleScene scene = PushThrottleScene(gestureRebuildInterval: 0.25f);
+            ArmDrawGesture(scene);
+            DirtyFull(scene);
+            scene.RunRebuildCheck(0.1f);   // throttled, skipped (0.1s < 0.25s)
+            Assert.Empty(scene.Log);
+
+            EndDrawGesture(scene);
+            scene.RunRebuildCheck(0.01f);   // gesture over: the throttle no longer applies at all
+
+            Assert.Equal(new[] { "full" }, scene.Log);
+            Assert.False(scene.Document.WorldRebuildPending);
+        }
+
+        [Fact]
+        public void Throttle_PartialRebuilds_BypassThrottle_AndDoNotFeedFullAccumulator()
+        {
+            ThrottleScene scene = PushThrottleScene(gestureRebuildInterval: 0.25f);
+            ArmDrawGesture(scene);
+
+            // Every one of these 5 frames carries enough dt (0.2s each) that, if a partial check wrongly fed the
+            // full-rebuild accumulator, the very next full check below would fire immediately instead of needing
+            // its own 0.25s of accumulation.
+            for (int i = 0; i < 5; i++)
+            {
+                DirtyPartial(scene);
+                scene.RunRebuildCheck(0.2f);
+            }
+            Assert.Equal(5, scene.Log.Count(s => s == "partial"));
+            Assert.DoesNotContain("full", scene.Log);
+
+            DirtyFull(scene);
+            scene.RunRebuildCheck(0.1f);   // 0.1s < 0.25s: still throttled, proving the partial frames above never
+                                            // advanced the full-rebuild timer.
+            Assert.DoesNotContain("full", scene.Log);
+        }
+
+        [Fact]
+        public void Throttle_IntervalZero_RebuildsEveryFrame()
+        {
+            ThrottleScene scene = PushThrottleScene(gestureRebuildInterval: 0f);
+            ArmDrawGesture(scene);
+
+            for (int i = 0; i < 4; i++)
+            {
+                DirtyFull(scene);
+                scene.RunRebuildCheck(0f);
+            }
+
+            Assert.Equal(4, scene.Log.Count(s => s == "full"));
+        }
+
+        // ---- same-frame inspector rebuild regression ---------------------------------------------------
+
+        [Fact]
+        public void Update_WorldAffectingChromeEdit_RebuildsSameFrame()
+        {
+            var scene = new InspectorSameFrameScene(SampleWithFeatures);
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager { Input = InputState.Empty };
+            m.Push(scene);
+            scene.Document.AcknowledgeWorldRebuild();   // ignore any pending state from the initial load
+            scene.Log.Clear();
+
+            m.Update(0.016f);
+
+            Assert.Equal(new[] { "chrome", "rebuild" }, scene.Log);
+            Assert.Equal(1, scene.FullRebuilds);                 // the rebuild seam actually ran
+            Assert.False(scene.Document.WorldRebuildPending);    // acknowledged the SAME frame, no one-frame lag
         }
 
         [Fact]
@@ -2115,6 +2406,46 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(TapBool(textured));
             Assert.True(options.TexturedProps);
             Assert.Equal(2, scene.Rebuilds);
+        }
+
+        [Fact]
+        public void TexturedToggle_Flip_InvalidatesKitMeshes_ThenRebuilds()
+        {
+            // The textured/flattened form a kit id loads is keyed on the toggle at load time (ViewportWorld's mesh
+            // cache is keyed on entry id alone, not on which form was loaded), so the toggle must invalidate the
+            // retained cache BEFORE it rebuilds, or the rebuild would serve the stale cached form.
+            var options = new MapEditorOptions();
+            var scene = PushRebuildSpyDocScene(ValidDoc, options);
+            scene.Document.Selection.Clear();
+
+            BoolRow textured = BoolRowByLabel(scene.Inspector, "Textured props");
+            Assert.True(TapBool(textured));
+
+            Assert.Equal(1, scene.KitMeshInvalidations);
+            Assert.Equal(1, scene.Rebuilds);
+            Assert.Equal(new[] { "invalidate", "rebuild" }, scene.Log);
+        }
+
+        [Fact]
+        public void ScatterLayerVisibility_Flip_RebuildsWithoutInvalidatingKitMeshes()
+        {
+            // A scatter-layer visibility toggle only changes WHICH layers stream, never which mesh form an id
+            // loads, so it must rebuild without touching the retained kit-mesh cache.
+            var options = new MapEditorOptions();
+            var scene = PushRebuildSpyDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+                return doc;
+            }, options);
+            scene.Document.Selection.Clear();
+
+            BoolRow layerRow = BoolRowByLabel(scene.Inspector, "trees");
+            Assert.True(TapBool(layerRow));
+
+            Assert.Equal(0, scene.KitMeshInvalidations);
+            Assert.Equal(1, scene.Rebuilds);
+            Assert.Equal(new[] { "rebuild" }, scene.Log);
         }
 
         // ---- categorized palette + filters ---------------------------------------------------------------

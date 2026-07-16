@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
+using KhaozEngine.Terrain;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapEditor
@@ -109,6 +110,86 @@ namespace KhaozEngine.Tests.MapEditor
             // contribution at the click point is the full crest height.
             float contribution = withRidge.SampleHeight(10f, 20f) - baseline.SampleHeight(10f, 20f);
             Assert.Equal(ridgeDoc.Height, contribution, 2);
+        }
+
+        // ---- TryFootprint: the conservative dirty-region AABB per built-in ------------------------------
+
+        static void AssertBounds(RectArea area, float minX, float minZ, float maxX, float maxZ)
+        {
+            Near(minX, area.MinX);
+            Near(minZ, area.MinZ);
+            Near(maxX, area.MaxX);
+            Near(maxZ, area.MaxZ);
+        }
+
+        [Fact]
+        public void TryFootprint_Lake_CoversCarveReachTimesOuterFractionPlusMargin()
+        {
+            // LakeFeature.Apply fades its carve to zero at radius*outerFraction (default 1.30, author-settable), so
+            // the true reach is radius*outerFraction, NOT radius. The footprint is that disc padded by the margin.
+            var lake = new LakeFeatureDoc { CenterX = 34f, CenterZ = -14f, Radius = 22f, Depth = 6f };
+            float reach = 22f * 1.30f + FeatureGeometry.FootprintMargin;
+
+            Assert.True(FeatureGeometry.TryFootprint(lake, out RectArea area));
+            AssertBounds(area, 34f - reach, -14f - reach, 34f + reach, -14f + reach);
+        }
+
+        [Fact]
+        public void TryFootprint_Lake_HonoursAuthoredOuterFraction()
+        {
+            // A wider outer fraction reaches further, and the footprint follows it (not the raw radius).
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 10f, Depth = 4f, OuterFraction = 2f };
+            float reach = 10f * 2f + FeatureGeometry.FootprintMargin;
+
+            Assert.True(FeatureGeometry.TryFootprint(lake, out RectArea area));
+            AssertBounds(area, -reach, -reach, reach, reach);
+        }
+
+        [Fact]
+        public void TryFootprint_Flatten_CoversRadiusPlusMargin()
+        {
+            // FlattenFeature.Apply fades to no effect by radius (Blend only moves the inner full-effect edge), so
+            // radius is the exact outer reach.
+            var flatten = new FlattenFeatureDoc { CenterX = -32f, CenterZ = 22f, Radius = 34f, TargetHeight = 2f, Blend = 0.25f };
+            float reach = 34f + FeatureGeometry.FootprintMargin;
+
+            Assert.True(FeatureGeometry.TryFootprint(flatten, out RectArea area));
+            AssertBounds(area, -32f - reach, 22f - reach, -32f + reach, 22f + reach);
+        }
+
+        [Fact]
+        public void TryFootprint_Rim_ReturnsFalse()
+        {
+            // RimFeature.Apply holds its smoothstep at 1 for every distance at or beyond OuterRadius, so the wall
+            // plateau raises terrain unboundedly past OuterRadius (it never fades back to zero). No finite disc
+            // covers that, so a rim edit must take the full rebuild.
+            var rim = new RimFeatureDoc { CenterX = 5f, CenterZ = -5f, InnerRadius = 40f, OuterRadius = 60f, WallHeight = 8f, Ruggedness = 0.5f };
+
+            Assert.False(FeatureGeometry.TryFootprint(rim, out RectArea area));
+            Assert.Equal(default, area);
+        }
+
+        [Fact]
+        public void TryFootprint_Ridge_ReturnsFalse()
+        {
+            // A ridge is an unbounded half-plane band along its direction, so it has no finite footprint.
+            var ridge = new RidgeFeatureDoc { PointX = 0f, PointZ = 0f, DirectionX = 1f, Height = 5f, Width = 10f };
+
+            Assert.False(FeatureGeometry.TryFootprint(ridge, out RectArea area));
+            Assert.Equal(default, area);
+        }
+
+        [Fact]
+        public void TryFootprint_UnknownCustomType_ReturnsFalse()
+        {
+            // No-guessing rule (mirrors TryCenter): a game's custom feature type has no known reach.
+            Assert.False(FeatureGeometry.TryFootprint(new CustomFeatureDoc(), out RectArea area));
+            Assert.Equal(default, area);
+        }
+
+        sealed class CustomFeatureDoc : MapFeature
+        {
+            public override string Type => "custom";
         }
     }
 }

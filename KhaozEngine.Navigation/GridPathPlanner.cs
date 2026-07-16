@@ -8,16 +8,20 @@ namespace KhaozEngine.Navigation;
 /// <summary>
 /// Grid A* implementation of <see cref="IPathPlanner"/> over a <see cref="NavSpace"/>. A query snaps
 /// both endpoints onto a passable cell, then takes a line-of-sight fast path when the goal is directly
-/// visible on the start's layer, otherwise runs an 8-connected A* search across that layer. The search
-/// prevents diagonal corner-cutting (a diagonal step needs both orthogonal companions passable), caps
-/// its work at <see cref="PathQueryBudget.MaxExpandedNodes"/> expansions, and on an unreachable goal
-/// returns a <see cref="NavPathStatus.Partial"/> route to the closest node it reached (or
-/// <see cref="NavPath.Unreachable"/> when it never got past the start). Waypoints are raw cell centers
-/// (string-pulling arrives later), with the final waypoint following the exact-goal rule from snapping.
-/// Node addressing already spans every layer (see <see cref="RunAStar"/>), so cross-layer routing over
-/// <see cref="NavSpace.Links"/> can be added without restructuring. Until then a query whose start and
-/// goal resolve to different layers returns <see cref="NavPath.Unreachable"/>. Deterministic: fixed
-/// neighbor order and a monotone insertion counter break every tie the same way.
+/// visible on the start's layer, otherwise runs an 8-connected A* search. The search prevents diagonal
+/// corner-cutting (a diagonal step needs both orthogonal companions passable), crosses layers over
+/// <see cref="NavSpace.Links"/> (each link is a graph edge of nominal one-cell cost, its far endpoint
+/// re-checked for the agent radius), caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
+/// expansions, and on an unreachable goal returns a <see cref="NavPathStatus.Partial"/> route to the
+/// closest node it reached (or <see cref="NavPath.Unreachable"/> when it never got past the start).
+/// The raw cell chain is then string-pulled: within each same-layer run it greedily keeps only the
+/// farthest cell still in clear line of sight from the current anchor, collapsing collinear or
+/// diagonally-clear runs to a few turn waypoints. Both endpoints of every link crossing are always
+/// emitted (paths never smooth across a layer change), and a completed path's final waypoint follows
+/// the exact-goal rule from snapping. Node addressing spans every layer
+/// (<c>layerOffset[layer] + z * width + x</c>), so the search, the closed set, and the link map share
+/// one flat index space. Deterministic: fixed neighbor order and a monotone insertion counter break
+/// every tie the same way.
 /// </summary>
 public sealed class GridPathPlanner : IPathPlanner
 {
@@ -34,10 +38,45 @@ public sealed class GridPathPlanner : IPathPlanner
 
     readonly NavSpace _space;
 
+    /// <summary>Running sum of each earlier layer's cell count, so node id
+    /// <c>layerOffset[layer] + z * layer.Width + x</c> is unique across the whole space.</summary>
+    readonly int[] _layerOffset;
+
+    /// <summary>Total node count across every layer, the length of the search's per-node arrays.</summary>
+    readonly int _totalNodes;
+
+    /// <summary>Link edges as an adjacency list: source node id to the node ids its links reach.
+    /// Built once from <see cref="NavSpace.Links"/> (directed, so a two-way stair contributes two
+    /// entries). The far endpoint's own passability is still checked at expansion time.</summary>
+    readonly Dictionary<int, List<int>> _linkEdges;
+
     /// <summary>Builds a planner that searches <paramref name="space"/>.</summary>
     public GridPathPlanner(NavSpace space)
     {
         _space = space ?? throw new ArgumentNullException(nameof(space));
+
+        IReadOnlyList<NavGrid> layers = _space.Layers;
+        _layerOffset = new int[layers.Count];
+        int total = 0;
+        for (int i = 0; i < layers.Count; i++)
+        {
+            _layerOffset[i] = total;
+            total += layers[i].Width * layers[i].Height;
+        }
+        _totalNodes = total;
+
+        _linkEdges = new Dictionary<int, List<int>>();
+        foreach (NavLink link in _space.Links)
+        {
+            int fromId = _layerOffset[link.FromLayer] + link.FromZ * layers[link.FromLayer].Width + link.FromX;
+            int toId = _layerOffset[link.ToLayer] + link.ToZ * layers[link.ToLayer].Width + link.ToX;
+            if (!_linkEdges.TryGetValue(fromId, out List<int>? targets))
+            {
+                targets = new List<int>();
+                _linkEdges[fromId] = targets;
+            }
+            targets.Add(toId);
+        }
     }
 
     /// <summary>
@@ -45,8 +84,8 @@ public sealed class GridPathPlanner : IPathPlanner
     /// <paramref name="agentRadius"/>, within <paramref name="budget"/>. Resolves each endpoint's
     /// layer from its world Y via <see cref="NavSpace.LayerOf"/>, snaps both onto a passable cell
     /// within <see cref="PathQueryBudget.SnapRadius"/> (failing that, returns
-    /// <see cref="NavPath.Unreachable"/>), then tries the line-of-sight fast path described on
-    /// <see cref="GridPathPlanner"/>.
+    /// <see cref="NavPath.Unreachable"/>), then tries the same-layer line-of-sight fast path before
+    /// falling through to the A* search, which routes within and across layers.
     /// </summary>
     public NavPath FindPath(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
     {
@@ -75,65 +114,51 @@ public sealed class GridPathPlanner : IPathPlanner
         // won the snap outright. Otherwise the nearest passable cell center stands in for it.
         Vector2 goalPoint = goalSnappedOwnCell ? goalXz : goalSnap.Value;
 
-        if (startLayer == goalLayer)
+        // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
+        // the A* search, which also carries cross-layer routing over the link edges.
+        if (startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
-            if (HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
-            {
-                return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });
-            }
-
-            return RunAStar(startGrid, startLayer, startPoint.Value, goalPoint, agentRadius, budget);
+            return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });
         }
 
-        // Cross-layer routing rides the NavSpace links, which the search does not yet follow, so a query
-        // whose endpoints land on different layers is unreachable for now. The node addressing below is
-        // already sized across every layer so those link edges can be added without restructuring.
-        return NavPath.Unreachable;
+        return RunAStar(startLayer, startPoint.Value, goalLayer, goalPoint, agentRadius, budget);
     }
 
     /// <summary>
-    /// Runs 8-connected A* across a single layer from the snapped start cell to the goal cell, both
-    /// resolved from world XZ via <see cref="NavGrid.CellOf"/>. Node ids span every layer of the space
-    /// (<c>layerOffset[layer] + z * grid.Width + x</c>, where <c>layerOffset</c> is the running sum of
-    /// each earlier layer's cell count), so the <c>gScore</c>/<c>cameFrom</c> arrays and the open queue
-    /// are already laid out for the cross-layer edges a later task adds. Costs are in meters:
+    /// Runs 8-connected A* from the snapped start cell to the goal cell, both resolved from world XZ via
+    /// <see cref="NavGrid.CellOf"/> on their own layers. Node ids span every layer of the space
+    /// (<c>layerOffset[layer] + z * layer.Width + x</c>), so the <c>gScore</c>/<c>cameFrom</c> arrays,
+    /// the closed set, and the link adjacency all index one flat space. Grid step costs are in meters:
     /// an orthogonal step is <see cref="NavGrid.CellSize"/>, a diagonal <see cref="NavGrid.CellSize"/> *
-    /// sqrt(2), and the heuristic is octile distance to the goal cell (admissible and consistent for
-    /// this cost model, so a popped node is final). A diagonal step is taken only when both orthogonal
-    /// companions are passable, blocking corner cuts. The search stops when the goal is popped
-    /// (<see cref="NavPathStatus.Complete"/>), the open set empties, or
+    /// sqrt(2). A diagonal step is taken only when both orthogonal companions are passable, blocking
+    /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at a
+    /// nominal one-cell cost (the source layer's <see cref="NavGrid.CellSize"/>), skipped when the
+    /// link's far endpoint is not passable for the agent radius on its own layer. The heuristic is the
+    /// octile distance to the goal cell while the node is on the goal's layer, and zero otherwise
+    /// (an admissible lower bound across a link, degrading the off-layer search to Dijkstra), so a
+    /// popped node is final for the ascend-to-goal case the links model. The search stops when the goal
+    /// is popped (<see cref="NavPathStatus.Complete"/>), the open set empties, or
     /// <paramref name="budget"/>'s <see cref="PathQueryBudget.MaxExpandedNodes"/> expansions are spent.
     /// On a non-goal stop it reconstructs to the closest-approach node (least heuristic among popped
     /// nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
-    /// <see cref="NavPath.Unreachable"/> when that closest node is still the start. The final waypoint of
-    /// a completed path uses <paramref name="goalPoint"/> directly, which already carries the exact-goal
-    /// rule from snapping.
+    /// <see cref="NavPath.Unreachable"/> when that closest node is still the start.
     /// </summary>
     NavPath RunAStar(
-        NavGrid grid, int layer, Vector2 startPoint, Vector2 goalPoint,
+        int startLayer, Vector2 startPoint, int goalLayer, Vector2 goalPoint,
         float agentRadius, PathQueryBudget budget)
     {
-        IReadOnlyList<NavGrid> layers = _space.Layers;
-        var layerOffset = new int[layers.Count];
-        int totalNodes = 0;
-        for (int i = 0; i < layers.Count; i++)
-        {
-            layerOffset[i] = totalNodes;
-            totalNodes += layers[i].Width * layers[i].Height;
-        }
+        NavGrid startGrid = _space.Layers[startLayer];
+        NavGrid goalGrid = _space.Layers[goalLayer];
 
-        int width = grid.Width;
-        int baseOffset = layerOffset[layer];
+        (int startX, int startZ) = startGrid.CellOf(startPoint.X, startPoint.Y);
+        (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
 
-        (int startX, int startZ) = grid.CellOf(startPoint.X, startPoint.Y);
-        (int goalX, int goalZ) = grid.CellOf(goalPoint.X, goalPoint.Y);
+        int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
 
-        int startId = baseOffset + startZ * width + startX;
-
-        var gScore = new float[totalNodes];
-        var cameFrom = new int[totalNodes];
-        var closed = new bool[totalNodes];
-        for (int i = 0; i < totalNodes; i++)
+        var gScore = new float[_totalNodes];
+        var cameFrom = new int[_totalNodes];
+        var closed = new bool[_totalNodes];
+        for (int i = 0; i < _totalNodes; i++)
         {
             gScore[i] = float.PositiveInfinity;
             cameFrom[i] = -1;
@@ -143,7 +168,7 @@ public sealed class GridPathPlanner : IPathPlanner
         int seq = 0;
 
         gScore[startId] = 0f;
-        float startHeuristic = Octile(startX, startZ, goalX, goalZ, grid.CellSize);
+        float startHeuristic = Heuristic(startLayer, startX, startZ, goalLayer, goalX, goalZ, goalGrid.CellSize);
         open.Enqueue(startId, (startHeuristic, seq++));
 
         int closestNode = startId;
@@ -167,20 +192,25 @@ public sealed class GridPathPlanner : IPathPlanner
             closed[current] = true;
             expanded++;
 
-            int local = current - baseOffset;
-            int cx = local % width;
-            int cz = local / width;
+            (int layer, int cx, int cz) = Decode(current);
+            NavGrid grid = _space.Layers[layer];
+            int width = grid.Width;
+            int baseOffset = _layerOffset[layer];
 
-            float heuristic = Octile(cx, cz, goalX, goalZ, grid.CellSize);
+            float heuristic = Heuristic(layer, cx, cz, goalLayer, goalX, goalZ, goalGrid.CellSize);
             if (heuristic < closestHeuristic)
             {
                 closestHeuristic = heuristic;
                 closestNode = current;
             }
 
-            if (cx == goalX && cz == goalZ)
+            if (layer == goalLayer && cx == goalX && cz == goalZ)
             {
+                // Reconstruct from the goal itself. Its zero heuristic makes it the closest node in the
+                // single-layer case, but off the goal layer the start also scores zero, so the strict
+                // less-than never lets the goal displace it. Pin it here so the target is unambiguous.
                 reachedGoal = true;
+                closestNode = current;
                 break;
             }
 
@@ -212,8 +242,38 @@ public sealed class GridPathPlanner : IPathPlanner
                 {
                     gScore[neighborId] = tentative;
                     cameFrom[neighborId] = current;
-                    float f = tentative + Octile(nx, nz, goalX, goalZ, grid.CellSize);
+                    float f = tentative + Heuristic(layer, nx, nz, goalLayer, goalX, goalZ, goalGrid.CellSize);
                     open.Enqueue(neighborId, (f, seq++));
+                }
+            }
+
+            // Cross-layer edges: each link out of this cell costs a nominal one cell of the source
+            // layer. The source endpoint is passable by construction (it is a reached search node). The
+            // far endpoint must still fit the agent on its own layer, else the link is not traversable.
+            if (_linkEdges.TryGetValue(current, out List<int>? links))
+            {
+                foreach (int targetId in links)
+                {
+                    if (closed[targetId])
+                    {
+                        continue;
+                    }
+
+                    (int tLayer, int tx, int tz) = Decode(targetId);
+                    NavGrid targetGrid = _space.Layers[tLayer];
+                    if (Blocks(targetGrid, agentRadius, tx, tz))
+                    {
+                        continue;
+                    }
+
+                    float tentative = gCurrent + grid.CellSize;
+                    if (tentative < gScore[targetId])
+                    {
+                        gScore[targetId] = tentative;
+                        cameFrom[targetId] = current;
+                        float f = tentative + Heuristic(tLayer, tx, tz, goalLayer, goalX, goalZ, goalGrid.CellSize);
+                        open.Enqueue(targetId, (f, seq++));
+                    }
                 }
             }
         }
@@ -224,18 +284,24 @@ public sealed class GridPathPlanner : IPathPlanner
             return NavPath.Unreachable;
         }
 
-        return Reconstruct(grid, layer, baseOffset, width, cameFrom, closestNode, reachedGoal, goalPoint);
+        return Reconstruct(cameFrom, closestNode, reachedGoal, goalPoint, agentRadius);
     }
 
     /// <summary>
-    /// Walks <paramref name="cameFrom"/> back from <paramref name="target"/> to the start, then emits the
-    /// chain (start excluded, matching the line-of-sight fast path) as world-space waypoints. Every
-    /// intermediate node is its <see cref="NavGrid.CellCenter"/>. On a completed path the final waypoint
-    /// is replaced with <paramref name="goalPoint"/> to honor the exact-goal rule.
+    /// Walks <paramref name="cameFrom"/> back from <paramref name="target"/> to the start, then
+    /// string-pulls the chain into world-space waypoints. The chain is split into same-layer runs at
+    /// every link crossing (any edge that is not an in-layer 8-neighbor step). Within a run the pull is
+    /// greedy: the anchor starts at the run's first cell, and each step keeps the farthest later cell
+    /// still in clear <see cref="HasLineOfSight"/> from the anchor, emits it, and re-anchors there. A
+    /// run's first cell is never emitted by the pull itself, so the start cell is dropped (matching the
+    /// line-of-sight fast path). Both link endpoints are always emitted: a run's last cell falls out of
+    /// the pull, and the next run's first cell (the link's far endpoint) is emitted explicitly before
+    /// its pull begins, keeping the pair adjacent and un-smoothed. On a completed path the final
+    /// waypoint is replaced with <paramref name="goalPoint"/> to honor the exact-goal rule. A
+    /// single-cell chain that reached the goal returns exactly that one exact-goal waypoint rather than
+    /// indexing an empty list.
     /// </summary>
-    static NavPath Reconstruct(
-        NavGrid grid, int layer, int baseOffset, int width, int[] cameFrom, int target, bool reachedGoal,
-        Vector2 goalPoint)
+    NavPath Reconstruct(int[] cameFrom, int target, bool reachedGoal, Vector2 goalPoint, float agentRadius)
     {
         var chain = new List<int>();
         for (int node = target; node != -1; node = cameFrom[node])
@@ -244,22 +310,112 @@ public sealed class GridPathPlanner : IPathPlanner
         }
         chain.Reverse();
 
-        var waypoints = new NavWaypoint[chain.Count - 1];
-        for (int i = 1; i < chain.Count; i++)
+        int count = chain.Count;
+        var cells = new (int Layer, int Cx, int Cz)[count];
+        for (int i = 0; i < count; i++)
         {
-            int local = chain[i] - baseOffset;
-            int cx = local % width;
-            int cz = local / width;
-            waypoints[i - 1] = new NavWaypoint(grid.CellCenter(cx, cz), layer);
+            cells[i] = Decode(chain[i]);
+        }
+
+        var waypoints = new List<NavWaypoint>();
+        bool firstRun = true;
+        int runStart = 0;
+        while (runStart < count)
+        {
+            // A run is the maximal same-layer span of 8-neighbor steps starting at runStart. It ends
+            // where the next edge is a link crossing (a different layer, or a same-layer jump wider
+            // than one cell, which only a link can produce).
+            int runEnd = runStart;
+            while (runEnd + 1 < count && IsGridStep(cells[runEnd], cells[runEnd + 1]))
+            {
+                runEnd++;
+            }
+
+            int layer = cells[runStart].Layer;
+            NavGrid grid = _space.Layers[layer];
+
+            // A run after a link crossing opens with its first cell: the link's far endpoint, always a
+            // waypoint so the crossing is never smoothed over.
+            if (!firstRun)
+            {
+                waypoints.Add(new NavWaypoint(grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz), layer));
+            }
+
+            int anchor = runStart;
+            while (anchor < runEnd)
+            {
+                Vector2 anchorCenter = grid.CellCenter(cells[anchor].Cx, cells[anchor].Cz);
+                int best = anchor + 1;
+                for (int candidate = runEnd; candidate > anchor; candidate--)
+                {
+                    Vector2 candidateCenter = grid.CellCenter(cells[candidate].Cx, cells[candidate].Cz);
+                    if (HasLineOfSight(grid, anchorCenter, candidateCenter, agentRadius))
+                    {
+                        best = candidate;
+                        break;
+                    }
+                }
+
+                waypoints.Add(new NavWaypoint(grid.CellCenter(cells[best].Cx, cells[best].Cz), layer));
+                anchor = best;
+            }
+
+            firstRun = false;
+            runStart = runEnd + 1;
         }
 
         if (reachedGoal)
         {
-            waypoints[^1] = new NavWaypoint(goalPoint, layer);
+            if (waypoints.Count > 0)
+            {
+                waypoints[^1] = new NavWaypoint(goalPoint, waypoints[^1].Layer);
+            }
+            else
+            {
+                // Single-cell chain (start cell == goal cell): the pull emitted nothing, so the exact
+                // goal is the whole path. Reachable only defensively today, the same-layer fast path
+                // already returns a one-waypoint result for a zero-length query.
+                waypoints.Add(new NavWaypoint(goalPoint, cells[^1].Layer));
+            }
         }
 
         return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints);
     }
+
+    /// <summary>True when the step from <paramref name="a"/> to <paramref name="b"/> is an in-layer
+    /// 8-neighbor move (same layer, Chebyshev distance exactly one). Anything else in a reconstructed
+    /// chain is a link crossing, since within a layer A* only ever steps to an adjacent cell.</summary>
+    static bool IsGridStep((int Layer, int Cx, int Cz) a, (int Layer, int Cx, int Cz) b)
+    {
+        if (a.Layer != b.Layer)
+        {
+            return false;
+        }
+        int dx = Math.Abs(a.Cx - b.Cx);
+        int dz = Math.Abs(a.Cz - b.Cz);
+        return dx <= 1 && dz <= 1 && (dx != 0 || dz != 0);
+    }
+
+    /// <summary>Decodes a flat node id into its layer index and grid cell (cx, cz), inverting the
+    /// <c>layerOffset[layer] + z * width + x</c> addressing.</summary>
+    (int Layer, int Cx, int Cz) Decode(int id)
+    {
+        int layer = _layerOffset.Length - 1;
+        while (layer > 0 && id < _layerOffset[layer])
+        {
+            layer--;
+        }
+        int local = id - _layerOffset[layer];
+        int width = _space.Layers[layer].Width;
+        return (layer, local % width, local / width);
+    }
+
+    /// <summary>Octile distance to the goal cell while the node is on the goal's layer, zero otherwise.
+    /// Zero off the goal layer is an admissible lower bound across a link (no octile estimate spans two
+    /// coordinate frames), which keeps the popped-node-is-final guarantee for a search that ascends into
+    /// the goal's layer and never leaves it, at the cost of a Dijkstra-like sweep before the crossing.</summary>
+    static float Heuristic(int layer, int cx, int cz, int goalLayer, int goalX, int goalZ, float goalCellSize)
+        => layer == goalLayer ? Octile(cx, cz, goalX, goalZ, goalCellSize) : 0f;
 
     /// <summary>Octile distance in meters from cell (<paramref name="x"/>, <paramref name="z"/>) to the
     /// goal cell (<paramref name="goalX"/>, <paramref name="goalZ"/>):
@@ -361,7 +517,7 @@ public sealed class GridPathPlanner : IPathPlanner
 
     /// <summary>True when an agent of <paramref name="agentRadius"/> does not fit at
     /// (<paramref name="cx"/>, <paramref name="cz"/>) in <paramref name="grid"/>. The shared blocked
-    /// predicate for snapping, the line-of-sight fast path, and (from the next task) A* neighbor
-    /// expansion.</summary>
+    /// predicate for snapping, the line-of-sight fast path, A* neighbor and link expansion, and the
+    /// string pull.</summary>
     static bool Blocks(NavGrid grid, float agentRadius, int cx, int cz) => !grid.IsPassable(cx, cz, agentRadius);
 }

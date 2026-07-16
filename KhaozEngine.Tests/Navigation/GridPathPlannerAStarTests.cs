@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Collision;
 using KhaozEngine.Navigation;
 using Xunit;
 
@@ -57,12 +58,15 @@ public class GridPathPlannerAStarTests
     }
 
     [Fact]
-    public void FindPath_NearOpenGrid_PathCostEqualsOctileDistance()
+    public void FindPath_NearOpenGrid_PulledCostBetweenStraightLineAndOctile()
     {
-        // A single blocked cell on the straight line forces the A* search to run (otherwise the
-        // line-of-sight fast path returns a trivial one-waypoint straight line with no cell-center
-        // chain to sum). The cell is placed so an octile-optimal, corner-cut-legal detour still
-        // exists, so the shortest route costs exactly the octile distance between the two cells.
+        // A single blocked cell (6, 4) sits exactly on the straight start -> goal line, so the A* search
+        // must run and the string pull cannot collapse the route to one straight segment: it bends
+        // around the block. Before string-pulling, the returned chain summed to the octile grid distance
+        // (raw cell centers). The pull now emits Euclidean shortcuts, so the length lands strictly
+        // between two derivable bounds: it can never beat the straight-line distance, and never exceed
+        // the octile grid cost of the optimal underlying A* path. Re-derived from the old exact-octile
+        // assertion because smoothing legitimately changes the waypoint chain (and its summed length).
         NavGrid grid = NavGrid.FromWalkable(20, 20, CellSize, 0f, 0f, (x, z) => !(x == 6 && z == 4));
         var planner = new GridPathPlanner(NavSpace.Single(grid));
 
@@ -74,18 +78,26 @@ public class GridPathPlannerAStarTests
             AgentRadius, PathQueryBudget.Default);
 
         Assert.Equal(NavPathStatus.Complete, path.Status);
-        Assert.True(path.Waypoints.Count > 1, "expected a multi-cell chain, not the fast-path single waypoint");
+        Assert.True(path.Waypoints.Count > 1, "expected the pull to bend around the block, not a single straight segment");
 
         float cost = ChainLength(startCenter, path.Waypoints);
-        Assert.Equal(Octile(10 - 2, 6 - 2), cost, 3);
+        float straight = Vector2.Distance(startCenter, goalCenter);
+        float octile = Octile(10 - 2, 6 - 2);
+        Assert.True(cost >= straight - 1e-4f, $"pulled cost {cost} beat the straight-line lower bound {straight}");
+        Assert.True(cost <= octile + 1e-4f, $"pulled cost {cost} exceeded the octile grid cost {octile}");
+        Assert.True(cost < octile, $"expected the pull to shorten the octile grid path, cost {cost} vs octile {octile}");
     }
 
     [Fact]
     public void FindPath_CornerObstacle_NeverCutsCorners()
     {
         // Two blocked cells (6, 5) and (5, 6) share only the corner at the (5, 5) -> (6, 6) diagonal,
-        // straddling the straight line between start and goal. The path must not squeeze diagonally
-        // between them: every diagonal step it takes must have both orthogonal companions passable.
+        // straddling the straight line between start and goal. Before string-pulling this checked each
+        // raw diagonal step's orthogonal companions. The pull now emits sparse waypoints that are no
+        // longer adjacent cells, so the pinned corner-safety guarantee becomes the line-of-sight
+        // invariant: every emitted segment (start prepended) must clear both blocked cells. GridRay
+        // threads the edge-adjacent cell on an exact corner crossing, so a segment grazing the
+        // (5, 5) -> (6, 6) diagonal between the two blocks reads as blocked and is never emitted.
         NavGrid grid = NavGrid.FromWalkable(
             20, 20, CellSize, 0f, 0f,
             (x, z) => !((x == 6 && z == 5) || (x == 5 && z == 6)));
@@ -100,29 +112,24 @@ public class GridPathPlannerAStarTests
 
         Assert.Equal(NavPathStatus.Complete, path.Status);
 
-        // Walk the cell chain (start prepended) and check every diagonal step's companions.
-        var cells = new List<(int X, int Z)> { grid.CellOf(startCenter.X, startCenter.Y) };
+        var points = new List<Vector2> { startCenter };
         foreach (NavWaypoint w in path.Waypoints)
         {
-            cells.Add(grid.CellOf(w.Position.X, w.Position.Y));
+            // No waypoint may land on either blocked cell.
+            (int cx, int cz) = grid.CellOf(w.Position.X, w.Position.Y);
+            Assert.True(grid.IsPassable(cx, cz, AgentRadius), $"waypoint cell ({cx}, {cz}) is not passable");
+            points.Add(w.Position);
         }
 
-        int diagonalSteps = 0;
-        for (int i = 1; i < cells.Count; i++)
+        // The grid is baked at origin (0, 0), so world coordinates are already grid-local for GridRay.
+        for (int i = 1; i < points.Count; i++)
         {
-            int dx = cells[i].X - cells[i - 1].X;
-            int dz = cells[i].Z - cells[i - 1].Z;
-            if (Math.Abs(dx) == 1 && Math.Abs(dz) == 1)
-            {
-                diagonalSteps++;
-                Assert.True(grid.IsPassable(cells[i - 1].X + dx, cells[i - 1].Z, AgentRadius),
-                    $"diagonal step {i} cut the corner at companion ({cells[i - 1].X + dx}, {cells[i - 1].Z})");
-                Assert.True(grid.IsPassable(cells[i - 1].X, cells[i - 1].Z + dz, AgentRadius),
-                    $"diagonal step {i} cut the corner at companion ({cells[i - 1].X}, {cells[i - 1].Z + dz})");
-            }
+            bool clear = GridRay.IsClear(
+                points[i - 1], points[i], CellSize,
+                (x, z) => !grid.IsPassable(x, z, AgentRadius),
+                includeEndpointCells: false);
+            Assert.True(clear, $"segment {i - 1} -> {i} cut the corner between the two blocked cells");
         }
-
-        Assert.True(diagonalSteps > 0, "expected the route to contain diagonal steps");
     }
 
     static NavGrid SealedBoxGrid()

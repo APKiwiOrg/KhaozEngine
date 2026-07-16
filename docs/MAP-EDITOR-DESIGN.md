@@ -403,12 +403,18 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
   as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
   miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders
   compute normals the unlit pass never uses. `RemoveExclusionCommand`'s raw indexing throws
-  the wrong exception type for a bad index. No partial chunk invalidation, wholesale
-  viewport rebuild is the perf ceiling for large zones. Inspector-driven terrain edits lag
-  the streamed world by one frame. `Scene3D.UnloadSplatMaterial` needs a guard against a cleared
-  `_splatMaterials` list, so a `ViewportWorld` disposed after its owning `Scene3D` no longer throws
-  `ArgumentOutOfRangeException`. Found by ke-mapedit's `RenderService`, which documents the workaround
-  today: let the `Capture`-scoped scene own teardown instead of disposing the world explicitly.
+  the wrong exception type for a bad index.
+
+**Deferred out of this round (mapedit-perf)**: `Scene3D.UnloadTexture` has the identical latent
+post-dispose bug the splat-material guard just fixed, left alone deliberately this round. Coverage
+breadth deferred: an async flush-interleave test for `TerrainStreamer.Invalidate`, a device-gated
+kit-mesh/splat retention test that exercises a real `Rebuild`, a direct rim-remove null-`DirtyRegion`
+test, a GPU-built `PartialRebuild` body test, and interleaved sticky-full-vs-throttle plus
+interval-change-mid-gesture tests. Also: exclusion, scatter-layer, companion, and terrain-scalar edits
+still take the full-rebuild path by design this round (the dirty-region seam exists so a later round
+can narrow them), and ridge and rim features always fall back to full rebuild since their reach is
+unbounded.
+
 - **Program phases**: Sculpting via the reserved `terrainOverrides` delta layer. Live
   server editing and hot reload. Multi-user editing. Polygon click-path authoring gesture
   for exclusions and regions.

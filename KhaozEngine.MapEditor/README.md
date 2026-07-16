@@ -399,9 +399,12 @@ no rebuild. The "Textured props" toggle and a scatter-layer toggle both also cal
 (`RebuildWorldForVisibility`), since both are read at prop-mesh load time rather than live: flipping
 "Textured props" reloads every manifest entry's mesh through `PropLoader.LoadPropAuto` under the new
 setting, and a hidden scatter layer's props actually drop out of the streamed world, taking its companion
-layers with it (their host is gone). The panel rebuilds on every selection change, so it always tracks the
-document's live scatter-layer set. `Water` has no matching selection kind or per-element hide: its toggle
-turns the single water-plane draw on or off outright.
+layers with it (their host is gone). Because `Rebuild` now retains the cached kit meshes and splat material
+by default (see Rebuild semantics below), the "Textured props" toggle calls `ViewportWorld.InvalidateKitMeshes`
+first (`MapEditorScene.InvalidateViewportKitMeshes`) so the follow-up rebuild reloads every mesh in its new
+form instead of serving the stale cached one. The panel rebuilds on every selection change, so it always
+tracks the document's live scatter-layer set. `Water` has no matching selection kind or per-element hide:
+its toggle turns the single water-plane draw on or off outright.
 
 **Per-element hide.** Every placement, spawn, feature, exclusion, and region inspector ends with a
 "Visible" `BoolRow` (`MapEditorScene.AddVisibleRow`) bound to that one element's hidden flag, independent
@@ -531,8 +534,9 @@ Procedural setup editing below.
 `MapEditorScene.OnUpdate` runs, in order, `UpdateCamera` -> `UpdateTools` -> `UpdateChrome` ->
 `CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to either a bounded
 `ViewportWorld.PartialRebuild` (re-meshes only the loaded chunks the edit's accumulated dirty region overlaps)
-or, when the region is unbounded, the full `ViewportWorld.Rebuild` (tear down the sink + streamer + kit
-meshes, then rebuild wholesale from the document), then calls `EditorDocument.AcknowledgeWorldRebuild()`. The
+or, when the region is unbounded, the full `ViewportWorld.Rebuild` (tear down the sink + streamer, then
+rebuild wholesale from the document, keeping the cached kit meshes and the splat material so a full rebuild
+does not re-decode every prop glTF from disk), then calls `EditorDocument.AcknowledgeWorldRebuild()`. The
 full path is throttled while a drag or draw gesture is live (`EditorToolController.IsDragging` / `IsDrawing`):
 it runs at most once per `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the
 throttle), with `WorldRebuildPending` left untouched on a throttled frame so the very next check after the

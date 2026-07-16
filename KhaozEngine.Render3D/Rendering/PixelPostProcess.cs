@@ -287,6 +287,21 @@ namespace KhaozEngine.Render3D.Rendering
             pal[colourFloats] = count; pal[colourFloats + 1] = s.Dither ? 1f : 0f; // Info.x = count, Info.y = ditherOn
             cl.UpdateBuffer<float>(_palBuf, 0, pal);
 
+            bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
+
+            // MRT-flip parity for the edge pass: every fullscreen chain pass flips the image vertically, but the
+            // NormalTex/DepthColorTex the edge pass ALSO reads are raw MRT attachments that never pass through the
+            // chain. When an ODD number of chain passes precede the outline pass (mirrors Run's per-mode order:
+            // bloom + tonemap + quantize in HDR, quantize alone in legacy), the chain content arrives vertically
+            // flipped relative to those raw textures, so the edge pass must flip its normal/depth sampling to match
+            // (Fade.z, consumed by EdgeFrag). The historical golden-covered configs (legacy, quantize off) compute 0
+            // here and stay byte-identical. This also fixes the latent legacy quantize+outline mirror, where the
+            // edge field rendered upside down relative to the palette-quantized image.
+            int passesBeforeOutline = s.Hdr.Enabled
+                ? (bloomRuns ? 1 : 0) + 1 + (s.Quantize ? 1 : 0)
+                : (s.Quantize ? 1 : 0);
+            float mrtFlip = (passesBeforeOutline & 1) == 1 ? 1f : 0f;
+
             var edge = new EdgeUbo
             {
                 OutlineColor = s.OutlineColor,
@@ -296,8 +311,8 @@ namespace KhaozEngine.Render3D.Rendering
                                     (cam.IsPerspective && s.OutlineDistanceFade) ? 1f : 0f),
                 // Thresh.x = depth threshold; .y = normal threshold; .z = near; .w = far.
                 Thresh = new Vector4(s.OutlineDepthThreshold, s.OutlineNormalThreshold, cam.Near, cam.Far),
-                // Fade.x = fade start (view depth); .y = fade end.
-                Fade = new Vector4(s.OutlineFadeStart, s.OutlineFadeEnd, 0f, 0f),
+                // Fade.x = fade start (view depth), .y = fade end, .z = MRT-flip parity (see above).
+                Fade = new Vector4(s.OutlineFadeStart, s.OutlineFadeEnd, mrtFlip, 0f),
             };
             cl.UpdateBuffer(_edgeBuf, 0, in edge);
 
@@ -305,7 +320,6 @@ namespace KhaozEngine.Render3D.Rendering
             var rcp = new Vector4(1f / res.Width, 1f / res.Height, 0f, 0f);
             cl.UpdateBuffer(_fxaaBuf, 0, in rcp);
 
-            bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
             if (bloomRuns)
             {
                 float knee = MathF.Max(0f, s.Bloom.Knee);

@@ -1329,30 +1329,35 @@ layout(set=0, binding=1) uniform texture2D NormalTex;
 layout(set=0, binding=2) uniform texture2D DepthTex;
 layout(set=0, binding=3) uniform sampler Samp;
 layout(set=0, binding=4) uniform Edge { vec4 OutlineColor; vec4 Texel; vec4 Thresh; vec4 Fade; };
-// Texel.xy=1/size, .z=isPerspective, .w=distanceFadeOn; Thresh.x=depth, .y=normal, .z=near, .w=far; Fade.xy=start/end
+// Texel.xy=1/size, .z=isPerspective, .w=distanceFadeOn; Thresh.x=depth, .y=normal, .z=near, .w=far;
+// Fade.x=start, .y=end, .z=MRT-flip parity: the chain source (ColorTex or a ping) flips vertically once per
+// preceding fullscreen pass, while NormalTex/DepthTex are raw MRT attachments that never do. When an odd
+// number of chain passes ran before this one (Fade.z=1, computed CPU-side per mode), sample normal/depth at
+// the V-flipped coordinate so the edge field stays aligned with the image it outlines.
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 float linearizeDepth(float d, float near, float far) { return (near * far) / (far - d * (far - near)); }
 void main() {
+    vec2 nuv = (Fade.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
     // Up-front, in binding order (Color, Normal, Depth) - see Bug B note above.
     vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);
     vec3 base = baseSrc.rgb;
-    vec3 n0 = texture(sampler2D(NormalTex, Samp), vUv).rgb * 2.0 - 1.0;
-    float d0 = texture(sampler2D(DepthTex, Samp), vUv).r;
+    vec3 n0 = texture(sampler2D(NormalTex, Samp), nuv).rgb * 2.0 - 1.0;
+    float d0 = texture(sampler2D(DepthTex, Samp), nuv).r;
 
     bool persp = Texel.z > 0.5;
     float near = Thresh.z, far = Thresh.w;
     vec2 ex = vec2(Texel.x, 0.0), ey = vec2(0.0, Texel.y);
 
     // Four-neighbour samples (binding order preserved: Normal first, then Depth).
-    vec3 nL = texture(sampler2D(NormalTex, Samp), vUv - ex).rgb * 2.0 - 1.0;
-    vec3 nR = texture(sampler2D(NormalTex, Samp), vUv + ex).rgb * 2.0 - 1.0;
-    vec3 nU = texture(sampler2D(NormalTex, Samp), vUv + ey).rgb * 2.0 - 1.0;
-    vec3 nD = texture(sampler2D(NormalTex, Samp), vUv - ey).rgb * 2.0 - 1.0;
-    float dL = texture(sampler2D(DepthTex, Samp), vUv - ex).r;
-    float dR = texture(sampler2D(DepthTex, Samp), vUv + ex).r;
-    float dU = texture(sampler2D(DepthTex, Samp), vUv + ey).r;
-    float dD = texture(sampler2D(DepthTex, Samp), vUv - ey).r;
+    vec3 nL = texture(sampler2D(NormalTex, Samp), nuv - ex).rgb * 2.0 - 1.0;
+    vec3 nR = texture(sampler2D(NormalTex, Samp), nuv + ex).rgb * 2.0 - 1.0;
+    vec3 nU = texture(sampler2D(NormalTex, Samp), nuv + ey).rgb * 2.0 - 1.0;
+    vec3 nD = texture(sampler2D(NormalTex, Samp), nuv - ey).rgb * 2.0 - 1.0;
+    float dL = texture(sampler2D(DepthTex, Samp), nuv - ex).r;
+    float dR = texture(sampler2D(DepthTex, Samp), nuv + ex).r;
+    float dU = texture(sampler2D(DepthTex, Samp), nuv + ey).r;
+    float dD = texture(sampler2D(DepthTex, Samp), nuv - ey).r;
 
     float edge = 0.0;
     // Normal-crease edge: fire if ANY neighbour's geometric normal turns by more than the threshold. Flat

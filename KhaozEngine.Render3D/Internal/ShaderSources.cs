@@ -1192,6 +1192,151 @@ void main() {
     oColor = vec4(rgb, a * (1.0 - vExtra.y));
 }";
 
+        // ---- Screen-space distortion: instanced quads write signed UV offsets into the half/quarter-res
+        //      R16G16Float offset field (DistortionRenderer), accumulated additively and re-sampled by the post
+        //      apply pass. Reuses the particle pass's proven recipes (gl_VertexIndex quad expansion, camera vs
+        //      flat-ground orientation basis, texelFetch depth occlusion with the background-marker skip) but emits
+        //      offsets, not colour, and never writes depth (the target has no depth attachment). ----
+        public const string DistortionVert = @"#version 450
+layout(set=0, binding=0) uniform Frame {
+    mat4 ViewProj;      // GpuClip-corrected world->clip
+    mat4 InvViewProj;   // RAW inverse, matching Camera.ScreenToRay (depth occlusion reconstruction only)
+    vec4 CamRight;      // xyz camera right
+    vec4 CamUp;         // xyz camera up
+    vec4 CamPosTime;    // xyz eye position, w effect time seconds
+    vec4 Params;        // x soft-fade distance (0 = off), y quality (1 full / 0 reduced), z background depth marker, w half-res->full-res texel ratio
+};
+layout(location=0) in vec4 ICenterSize;   // xyz world center, w half-size
+layout(location=1) in vec4 IShapeLife;    // x shape id, y shape param, z life norm, w seed
+layout(location=2) in vec4 IExtra;        // x strength, y rotation (radians), z orientation (0 camera / 1 flat ground), w soft-fade scale
+layout(location=0) out vec2 vLocal;
+layout(location=1) out vec4 vShape;       // x shape id, y shape param, z life norm, w seed
+layout(location=2) out vec4 vExtra;       // x strength, y rotation, z orientation, w soft-fade scale
+layout(location=3) out vec3 vWorld;
+void main() {
+    // Two-triangle quad from gl_VertexIndex (0..5), the same instanced-quad path the particle pass uses.
+    float u = (gl_VertexIndex == 1 || gl_VertexIndex == 3 || gl_VertexIndex == 4) ? 1.0 : 0.0;
+    float v = (gl_VertexIndex == 2 || gl_VertexIndex == 4 || gl_VertexIndex == 5) ? 1.0 : 0.0;
+    vec2 corner = vec2(u, v) * 2.0 - 1.0;
+
+    float size = max(ICenterSize.w, 1e-5);
+    // Camera-facing (right/up) by default, or flat on the ground plane (XZ) for ground ripples/shockwaves.
+    vec3 planeX = CamRight.xyz;
+    vec3 planeY = CamUp.xyz;
+    if (IExtra.z > 0.5) {
+        planeX = vec3(1.0, 0.0, 0.0);
+        planeY = vec3(0.0, 0.0, 1.0);
+    }
+    float cr = cos(IExtra.y);
+    float sr = sin(IExtra.y);
+    vec2 ax = vec2(cr, sr);
+    vec2 ay = vec2(-ax.y, ax.x);
+    vec3 axisX = planeX * ax.x + planeY * ax.y;
+    vec3 axisY = planeX * ay.x + planeY * ay.y;
+    vec3 world = ICenterSize.xyz + axisX * (corner.x * size) + axisY * (corner.y * size);
+    gl_Position = ViewProj * vec4(world, 1.0);
+    vLocal = corner;
+    vShape = IShapeLife;
+    vExtra = IExtra;
+    vWorld = world;
+}";
+
+        public const string DistortionFrag = @"#version 450
+layout(set=0, binding=0) uniform Frame {
+    mat4 ViewProj;
+    mat4 InvViewProj;
+    vec4 CamRight;
+    vec4 CamUp;
+    vec4 CamPosTime;
+    vec4 Params;
+};
+layout(set=0, binding=1) uniform texture2D DepthTex;   // .r = scene NDC depth (single-channel R32F, resolved, full-res)
+layout(set=0, binding=2) uniform sampler Samp;
+layout(location=0) in vec2 vLocal;    // quad-local coords in [-1,1]
+layout(location=1) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
+layout(location=2) in vec4 vExtra;    // x strength, y rotation, z orientation, w soft-fade scale
+layout(location=3) in vec3 vWorld;    // fragment world position
+layout(location=0) out vec4 oOffset;  // .rg = signed screen-space UV offset (accumulated additively), .ba unused
+
+// Texture-free value noise, the exact polynomial-hash idiom the particle/decal passes ship cross-backend goldens
+// with (sin-based hashes diverge between GPU compilers, this one does not).
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+float vnoise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void main() {
+    int shape = int(vShape.x + 0.5);
+    float param = clamp(vShape.y, 0.0, 1.0);
+    float seed = vShape.w;
+    float strength = vExtra.x;
+    float t = CamPosTime.w;
+    float quality = Params.y;
+    float ratio = Params.w;               // half/quarter-res gl_FragCoord -> full-res texel scale
+    float d = length(vLocal);
+
+    // Scene depth for the occlusion fade. The offset target is half/quarter res, so gl_FragCoord is in the small
+    // target's pixel space: scale it up by ratio to index the full-res depth texel (and to normalize below). Sampled
+    // unconditionally up front (Metal's static-sample rule).
+    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
+    float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy * ratio), 0).r;
+
+    vec2 offset;
+    if (shape == 0) {
+        // Ripple: outward radial offset in a soft ring band around d = 0.7, band width from param.
+        float th = mix(0.05, 0.22, param);
+        float band = exp(-pow((d - 0.7) / th, 2.0));
+        vec2 dir = d > 1e-4 ? vLocal / d : vec2(0.0);
+        offset = dir * band;
+    } else if (shape == 1) {
+        // Heat: upward-scrolling value-noise wobble over the footprint, param scales the frequency. The second
+        // octave is Full-quality only (a uniform branch, not a pipeline variant), matching the particle pass.
+        float freq = mix(3.0, 9.0, param);
+        vec2 p = vLocal * freq + vec2(seed * 41.0, seed * 17.0);
+        vec2 up = vec2(0.0, -t * 0.6);    // scroll the noise field over the footprint via effect time
+        float nx = vnoise(p + up) - 0.5;
+        float ny = vnoise(p + vec2(19.7, 4.3) + up) - 0.5;
+        if (quality > 0.5) {
+            nx += (vnoise(p * 2.3 + up * 1.7) - 0.5) * 0.5;
+            ny += (vnoise(p * 2.3 + vec2(11.1, 7.9) + up * 1.7) - 0.5) * 0.5;
+        }
+        offset = vec2(nx, ny) * 2.0;
+    } else {
+        // Lens: smooth radial bulge toward the center. A positive strength magnifies (pull inward), a negative one
+        // pinches (push outward); the sign rides on strength below. Param softens the falloff shoulder.
+        float falloff = 1.0 - smoothstep(0.0, mix(0.5, 1.0, param), d);
+        offset = -vLocal * falloff;
+    }
+
+    // Footprint fade so the quad never hard-edges, then the soft depth occlusion (skipping the background marker,
+    // the same recipe the particle pass uses), then the authored strength. Fade the offset toward zero (never
+    // discard) so edges stay soft.
+    float footprint = 1.0 - smoothstep(0.85, 1.0, d);
+    float fade = 1.0;
+    float fadeDist = Params.x * vExtra.w;
+    if (fadeDist > 0.0) {
+        if (abs(depth - Params.z) > 1e-6) {
+            vec2 fullUv = gl_FragCoord.xy * ratio / vec2(sz);
+            vec4 ndc = vec4(fullUv.x * 2.0 - 1.0, 1.0 - fullUv.y * 2.0, depth, 1.0);
+            vec4 wp = InvViewProj * ndc;
+            vec3 sceneWorld = wp.xyz / wp.w;
+            float sceneDist = distance(sceneWorld, CamPosTime.xyz);
+            float fragDist = distance(vWorld, CamPosTime.xyz);
+            fade = clamp((sceneDist - fragDist) / fadeDist, 0.0, 1.0);
+        }
+    }
+
+    oOffset = vec4(offset * strength * footprint * fade, 0.0, 0.0);
+}";
+
         // ---- Additive glowing beam (lasers/thrusters/tethers). Drawn INTO the model MRT alongside the meshes
         //      with the depth test on (no write), so geometry occludes it (like the textured billboard). A
         //      camera-facing strip carries (across,along) UV; the core+halo profile is computed in the fragment

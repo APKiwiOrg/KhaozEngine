@@ -23,6 +23,17 @@ namespace KhaozEngine.Render3D
         Lens = 2,
     }
 
+    /// <summary>Quality tier for the screen-space distortion pass, mirroring <see cref="ParticleQuality"/>. Reduced
+    /// drops the second noise octave in <see cref="DistortionShape.Heat"/> (a uniform shader branch) and renders the
+    /// offset field at quarter resolution instead of half.</summary>
+    public enum DistortionQuality
+    {
+        /// <summary>Both heat noise octaves, half-res offset field.</summary>
+        Full = 0,
+        /// <summary>Single heat noise octave, quarter-res offset field. For weak GPUs.</summary>
+        Reduced = 1,
+    }
+
     /// <summary>
     /// One screen-space distortion sprite as the renderer sees it. Queue with the <see cref="Scene3D"/>
     /// DrawDistortion method. The whole queue accumulates into a lazily

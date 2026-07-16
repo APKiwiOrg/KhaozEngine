@@ -59,6 +59,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.ParticleVert, ShaderSources.ParticleFrag, "Particle");
 
         [Fact]
+        public void Distortion()
+            => ShaderValidation.ValidatePair(ShaderSources.DistortionVert, ShaderSources.DistortionFrag, "Distortion");
+
+        [Fact]
         public void Beam()
             => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamFrag, "Beam");
 

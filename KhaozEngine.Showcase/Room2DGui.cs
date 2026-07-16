@@ -195,6 +195,9 @@ namespace KhaozEngine.Showcase
 
         public override void LoadContent()
         {
+            // The bar starts at y 56 so the room's point-space title pill (34 points tall, top-left, drawn by the
+            // shared chrome) clears it at every window scale: the design-to-point scale only shrinks below 1 on a
+            // window smaller than the design size, where 56 design units still land below the pill's 40 points.
             Rect db = _a.Vp.DesignBounds;
             float barW = MathF.Min(920f, db.Width - 80f);
             _tabs = new TabBar(
@@ -203,9 +206,9 @@ namespace KhaozEngine.Showcase
                     ShowcaseStrings.TabWidgets, ShowcaseStrings.TabSprites, ShowcaseStrings.TabInput,
                     ShowcaseStrings.TabImmediate, ShowcaseStrings.TabScreens,
                 },
-                _a.Small, new Rect((db.Width - barW) * 0.5f, 20f, barW, 40f));
+                _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f));
 
-            _content = new Rect((db.Width - 920f) * 0.5f, 76f, 920f, db.Height - 76f - 16f);
+            _content = new Rect((db.Width - 920f) * 0.5f, 112f, 920f, db.Height - 112f - 16f);
             _pages = new ToolkitPage[]
             {
                 new WidgetsPage(), new SpritesTextPage(), new InputAudioPage(), new ImmediatePage(), new ScreensPage(),

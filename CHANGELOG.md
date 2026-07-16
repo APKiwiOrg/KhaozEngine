@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.113.0
+
+Modern telegraph rendering: soft feathered edges, animated noise fills, rim/sweep/sparkle edge energy, and
+four element presets, all additive on the existing telegraph contract so legacy styles and decals render
+byte-identically. Minor bump: additive public API only.
+
+- `TelegraphStyle` gains `FeatherWidth` (soft distance-field edge falloff), `Pattern` (new
+  `TelegraphFillPattern` enum: `Solid`, `ScrollingNoise`, `RadialNoise`), `PatternSpeed`, `PatternScale`, and
+  `EdgeEnergy` (rim/sweep/sparkle strength, 0 meaning full strength 1 so an unset style keeps the classic
+  look). New `TelegraphAnim` flags `RimGlow`, `SweepGlow` (requires `FillSweep`), and `EdgeSparkle`.
+- Four new presets: `Steel`, `Frost`, `Nature`, `Arcane`. `Generic`, `Fire`, and `Poison` are modernized with
+  the new fields while preserving their legacy visual identity.
+- `ResolvedTelegraph` gains `FeatherFraction`, `Pattern`, `PatternSpeed`, `PatternScale`, `RimGlow`,
+  `SweepGlow`, and `Sparkle`, with a full constructor. The prior 7-argument constructor is retained.
+- `GroundDecal` gains `FeatherWidth`, `Pattern` (`DecalFillPattern`), `PatternSpeed`, `PatternScale` (cells
+  per world unit), `RimGlow`, `SweepGlow`, and `Sparkle`. New `GroundDecalQuality` enum.
+- The ground-decal shader now does distance-field feathered edges, time-animated value-noise fills, and
+  rim/sweep/sparkle edge energy, with the output alpha clamped. The single per-frame decal UBO grows from 64
+  to 80 bytes (adds `InvViewProj` plus a packed time/quality field). The new fields are zero-neutral for
+  legacy decals, so existing `telegraph_ground` goldens are unchanged (verified on Metal, D3D11, Vulkan).
+- `Scene3D.DecalQuality` (`Full`/`Reduced`, where `Reduced` drops the second noise octave and sparkle).
+  `Scene3D.EffectTimeSeconds` now feeds the decal pass so animated fills advance.
+- `GroundTelegraphs` maps the modern style knobs into world space, and adds `BuildResidueCircle` plus
+  `GroundResidueCircle`, a one-shot fading impact residue driven by a consumer-tracked `age01` (no engine sim
+  state).
+- The 2D `TelegraphRenderer2D` path is unchanged and ignores the new knobs.
+- New cross-backend golden `telegraph_modern` (Metal, D3D11, Vulkan) plus a showcase GpuFact PNG-dump test.
+
 ## 10.112.0
 
 Added `ViewportMath.CoverAnchored`, an anchored cover-fit rect helper for camera-tracked backgrounds. Minor

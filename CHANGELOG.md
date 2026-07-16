@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.117.0
+
+In-session update recheck (opt-in `RecheckInterval` + `UpdateService.Tick`) and a post-update relaunch marker
+(`PostUpdateRelaunch`) land in `KhaozEngine.Updates`. Both additive and opt-in, existing behaviour unchanged:
+minor bump.
+
+- New `UpdateServiceOptions.RecheckInterval` (`TimeSpan?`, null by default = off) plus
+  `UpdateService.Tick(float dtSeconds)`: a long-running game re-checks the feed for a newer build on that
+  interval by calling `Tick(dt)` once per frame next to `UpdateOverlayActions.AutoAdvanceRequired`. The clock
+  accrues only while the service is `Idle` (any offered/downloading/ready/applying/failed flow zeroes it),
+  fires one offline-safe fire-and-forget `CheckForUpdateAsync` on reaching the interval, and no-ops when the
+  interval is null or non-positive. A manual `CheckForUpdateAsync` resets the accumulator. `Tick` and
+  `CheckForUpdateAsync` are owned by the game-loop thread, the accumulate path is allocation-free, and a
+  negative or NaN `dt` counts as zero.
+- `UpdateService.SetState` now swallows and logs a throwing `StateChanged` subscriber (the state field is
+  written first), so a broken handler can no longer wedge the state machine (e.g. stuck in Checking with every
+  recheck suppressed) or fault a Tick-driven fire-and-forget check.
+- New `PostUpdateRelaunchInfo` and the nullable `UpdateService.PostUpdateRelaunch`: after a committed apply the
+  shim writes an `update-applied.json` marker (applied `Version` + UTC `AppliedAtUtc`) into the game's app-data
+  dir just before relaunch, and the `UpdateService` constructor reads it once and deletes it. It is non-null
+  only on the boot that immediately follows an auto-applied update (null on an ordinary launch and on any later
+  launch), so a consumer can suppress a boot-time "welcome back" prompt when the version gap is small. Written
+  only on a committed apply (never on a rollback or a deferred game-still-running apply), best-effort so a write
+  failure never fails or rolls back the update, and a corrupt marker is tolerated as null and still deleted.
+- New default interface member `IUpdaterEnvironment.UtcNow` (returns `DateTimeOffset.UtcNow`) so the marker's
+  completion time is deterministic in headless tests, and `PostUpdateRelaunchInfo` is registered in the
+  source-generated `UpdatesJsonContext` (trim/AOT-safe).
+
 ## 10.116.0
 
 ShadowMap contact fix: the cast shadow now connects at the caster's feet instead of peter-panning (detaching)

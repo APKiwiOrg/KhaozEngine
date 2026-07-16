@@ -191,6 +191,53 @@ namespace KhaozEngine.Tests.MapEditTool
         }
 
         [Fact]
+        public void ElementDuplicate_ScatterOverride_UnnamedStaysUnnamed_ThenNamedGetsCopySuffix()
+        {
+            string dir = NewTempDir();
+            try
+            {
+                (MapEditSession session, MutationService mutation) = OpenSample(dir);
+
+                // SampleDoc's one scatter override (index 0) is unnamed: its clone must stay unnamed too, and its
+                // shape/values are offset-cloned like the exclusion case above.
+                MutationResult unnamedDup = mutation.ElementDuplicate("scatter_override", index: 0);
+                Assert.Equal("element_duplicate", unnamedDup.Verb);
+                Assert.True(unnamedDup.WorldChanged);
+                Assert.Equal(1, unnamedDup.Index);
+
+                MapScatterOverrideDoc unnamedClone = session.WithDocument((doc, _) => doc.ScatterOverrides[1]);
+                Assert.Null(unnamedClone.Name);
+                var rect = Assert.IsType<RectShapeDoc>(unnamedClone.Shape);
+                Assert.Equal(2f, rect.MinX);
+                Assert.Equal(2f, rect.MinZ);
+                Assert.Equal(0.5f, unnamedClone.DensityMultiplier);
+                Assert.Equal(new[] { "trees" }, unnamedClone.Layers);
+
+                // Name a new override, then duplicate it: the clone gets a uniquified "<name>-copy-1", and its
+                // Kinds list is a fresh copy (each MapPropKind element rebuilt, not shared) rather than aliasing
+                // the source.
+                mutation.ScatterOverrideAdd("{\"type\":\"disc\",\"centerX\":0,\"centerZ\":0,\"radius\":5}",
+                    kinds: new[] { "rock_a:2" });
+                mutation.ScatterOverrideRename(2, "no-scatter-camp");
+                MutationResult namedDup = mutation.ElementDuplicate("scatter_override", index: 2);
+                Assert.Equal(3, namedDup.Index);
+
+                MapScatterOverrideDoc namedClone = session.WithDocument((doc, _) => doc.ScatterOverrides[3]);
+                Assert.Equal("no-scatter-camp-copy-1", namedClone.Name);
+                MapPropKind cloneKind = Assert.Single(namedClone.Kinds!);
+                Assert.Equal("rock_a", cloneKind.Id);
+                Assert.Equal(2f, cloneKind.Weight);
+
+                MapScatterOverrideDoc namedSource = session.WithDocument((doc, _) => doc.ScatterOverrides[2]);
+                Assert.NotSame(namedSource.Kinds, namedClone.Kinds);
+                Assert.NotSame(namedSource.Kinds![0], namedClone.Kinds![0]);
+
+                Assert.Empty(session.Validate().StructuralErrors);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
         public void ElementDuplicate_BiomeBand_VerbatimClone()
         {
             string dir = NewTempDir();

@@ -120,9 +120,12 @@ public class MapEditorScene : GameScene, IGameScene3D
     static readonly float PanelCornerRadius = GuiStyle.Modern.CornerRadius;
     static readonly Color SelectionHighlight = new(1.35f, 1.2f, 0.7f, 1f);
 
-    // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish) and region (blue-ish), and
-    // a small marker disc at each terrain-feature center (amber). The selected element's fill brightens (see Tint).
+    // Viewport overlay fills: a translucent ground disc/rect/fan per exclusion (red-ish), scatter override (orange),
+    // and region (blue-ish), and a small marker disc at each terrain-feature center (amber). The selected element's
+    // fill brightens (see Tint). The scatter override orange sits between the exclusion red and the feature amber but
+    // stays clearly distinct from both (a lower green than the amber marker, a warmer hue than the red exclusion).
     static readonly Color ExclusionOverlayColor = new(0.9f, 0.22f, 0.16f, 0.26f);
+    static readonly Color ScatterOverrideOverlayColor = new(0.98f, 0.52f, 0.1f, 0.28f);
     static readonly Color RegionOverlayColor = new(0.2f, 0.5f, 0.95f, 0.26f);
     static readonly Color FeatureOverlayColor = new(0.96f, 0.76f, 0.22f, 0.55f);
     /// <summary>World-space lift (m) added above the sampled ground height when seating an overlay fill. Overlays
@@ -135,11 +138,13 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>Alpha multiplier applied to a selected overlay's fill (clamped to 1) so it also firms up.</summary>
     const float OverlaySelectAlphaBoost = 1.7f;
 
+    // Order-locked to the EditorToolMode enum: the toolbar reads back through (EditorToolMode)ActiveIndex, so a new
+    // label appends LAST alongside the enum's own last member, never inserts.
     static readonly LocalizedText[] ToolLabels =
     {
         LocalizedText.Raw("Select"), LocalizedText.Raw("Prop"), LocalizedText.Raw("Spawn"),
         LocalizedText.Raw("Exclude"), LocalizedText.Raw("Region"), LocalizedText.Raw("Feature"),
-        LocalizedText.Raw("Bake"),
+        LocalizedText.Raw("Bake"), LocalizedText.Raw("Override"),
     };
 
     // Pre-built gizmo mesh sets returned by ComputeGizmoMeshes, avoiding per-frame allocations.
@@ -598,9 +603,10 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    /// <summary>Turns the document's exclusions, regions, and terrain features into a flat list of ground-plane
-    /// overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish, regions
-    /// blue-ish) and each terrain feature a small amber marker disc at its center, all lifted a small epsilon above
+    /// <summary>Turns the document's exclusions, scatter overrides, regions, and terrain features into a flat list of
+    /// ground-plane overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish,
+    /// scatter overrides orange, regions blue-ish) and each terrain feature a small amber marker disc at its center,
+    /// all lifted a small epsilon above
     /// the sampled ground so they clear the terrain. The overlay whose element matches <paramref name="selection"/>
     /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
     /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
@@ -621,6 +627,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (!showOverlays) return list;
 
         int selectedExclusion = selection.Kind == SelectionKind.Exclusion ? SelectedIndex(selection.Id) : -1;
+        int selectedScatterOverride = selection.Kind == SelectionKind.ScatterOverride ? SelectedIndex(selection.Id) : -1;
         int selectedFeature = selection.Kind == SelectionKind.Feature ? SelectedIndex(selection.Id) : -1;
 
         for (int i = 0; i < doc.Exclusions.Count; i++)
@@ -628,6 +635,13 @@ public class MapEditorScene : GameScene, IGameScene3D
             if (!visibility.IsElementVisible(SelectionKind.Exclusion, Index(i))) continue;   // hidden: no overlay
             AddShapeOverlay(list, doc.Exclusions[i].Shape, OverlayCategory.Exclusion, ExclusionOverlayColor,
                 selected: i == selectedExclusion, sampleHeight);
+        }
+
+        for (int i = 0; i < doc.ScatterOverrides.Count; i++)
+        {
+            if (!visibility.IsElementVisible(SelectionKind.ScatterOverride, Index(i))) continue;   // hidden: no overlay
+            AddShapeOverlay(list, doc.ScatterOverrides[i].Shape, OverlayCategory.ScatterOverride, ScatterOverrideOverlayColor,
+                selected: i == selectedScatterOverride, sampleHeight);
         }
 
         foreach (MapRegion region in doc.Regions)
@@ -1011,8 +1025,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         else if (s.WasPressed(Key.Y)) _document.Redo();
         else if (s.WasPressed(Key.S)) SaveDocument();
         else if (s.WasPressed(Key.D)) DuplicateSelectionChord();       // Cmd+D (decision 8)
-        else if (s.WasPressed(Key.Up)) ReorderSelectedFeature(-1);     // earlier in the fold order
-        else if (s.WasPressed(Key.Down)) ReorderSelectedFeature(+1);   // later in the fold order (toward winning)
+        else if (s.WasPressed(Key.Up)) ReorderSelectedElement(-1);     // earlier in the fold / match order
+        else if (s.WasPressed(Key.Down)) ReorderSelectedElement(+1);   // later in the fold / match order (toward winning)
     }
 
     // Cmd+D: duplicate the current selection (decision 8). Terrain (the singleton root) has nothing to
@@ -1078,25 +1092,47 @@ public class MapEditorScene : GameScene, IGameScene3D
         _statusText = "Bookmark " + slot.ToString(CultureInfo.InvariantCulture) + " recalled";
     }
 
-    // Ctrl+Up / Ctrl+Down: move the selected terrain feature one step earlier (delta -1) or later (delta +1) in
-    // the fold order. Features fold in list order and the LAST feature over an overlap wins, so Ctrl+Down promotes
-    // the selected feature toward dominating its overlaps. Clamped at the ends (no no-op command is executed at a
-    // boundary), and the index-string selection is remapped to the feature's new index so it stays selected. Undo
-    // / redo of a reorder does NOT re-follow the feature (v1): the selection is a bare index string, so after an
-    // undo it stays on the same index, which may then address a different feature. The direct Ctrl+Up/Down action
-    // is what keeps the selection glued to the moved feature.
-    void ReorderSelectedFeature(int delta)
+    // Ctrl+Up / Ctrl+Down: move the selected reorderable element one step earlier (delta -1) or later (delta +1) in
+    // its list. Dispatches on the selection kind: a Feature reorders in fold order (the LAST feature over an overlap
+    // wins, so Ctrl+Down promotes it toward dominating), and a ScatterOverride reorders in match order (the FIRST
+    // matching override wins, so its order is genuinely significant too). Both take the same index-based path (the
+    // shared ReorderIndexKeyed helper): clamp at the ends, execute the reorder command, remap the element's hide to
+    // its new index, and reselect it there. Exclusions are DELIBERATELY not reorderable through this chord: their
+    // masks combine as a set union, so list order never changes which ground ends up excluded (it is meaningless),
+    // and a chord that implied an ordering would only mislead. Undo / redo does NOT re-follow the moved element
+    // (v1): the selection is a bare index string, so after an undo it stays on the same index, which may then
+    // address a different element. The direct Ctrl+Up/Down action is what keeps the selection glued to the move.
+    void ReorderSelectedElement(int delta)
     {
         EditorSelection selection = _document.Selection;
-        if (selection.Kind != SelectionKind.Feature) return;
+        switch (selection.Kind)
+        {
+            case SelectionKind.Feature:
+                ReorderIndexKeyed(selection, delta, _document.Doc.Terrain.Features.Count,
+                    (from, to) => new ReorderFeatureCommand(from, to));
+                break;
+            case SelectionKind.ScatterOverride:
+                ReorderIndexKeyed(selection, delta, _document.Doc.ScatterOverrides.Count,
+                    (from, to) => new ReorderScatterOverrideCommand(from, to));
+                break;
+            default:
+                break;   // no other selection kind reorders through the chord (exclusions are order-free)
+        }
+    }
+
+    // The shared index-keyed reorder step behind the Ctrl+Up/Down chord: resolve the selected index, clamp both it
+    // and its delta target against the live count (so a boundary press lands no command), execute the caller's
+    // reorder command, then follow the element with its hide (RemapIndex) and its selection (Set) to the new index.
+    // Kept generic over the selection kind so Feature and ScatterOverride share one body.
+    void ReorderIndexKeyed(EditorSelection selection, int delta, int count, Func<int, int, IEditorCommand> command)
+    {
         int from = SelectedIndex(selection.Id);
-        int count = _document.Doc.Terrain.Features.Count;
         if (from < 0 || from >= count) return;
         int to = from + delta;
         if (to < 0 || to >= count) return;   // clamp at the ends: nothing to move, so land no command
-        _document.Execute(new ReorderFeatureCommand(from, to));
-        _visibility.RemapIndex(SelectionKind.Feature, from, to);   // a hide follows the moved feature, not the slot
-        selection.Set(SelectionKind.Feature, to.ToString(CultureInfo.InvariantCulture));
+        _document.Execute(command(from, to));
+        _visibility.RemapIndex(selection.Kind, from, to);   // a hide follows the moved element, not the slot
+        selection.Set(selection.Kind, to.ToString(CultureInfo.InvariantCulture));
     }
 
     // R: snap the selected placement back onto the ground by re-issuing its move with a null Y (the runtime
@@ -1331,10 +1367,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     // A drag-and-drop reorder inside the outline. Same-parent drops are the only ones the TreeView reports, and
-    // only two categories carry list-order semantics: Features fold in list order (last wins overlaps) and
-    // Exclusions have order-free semantics but still expose a reorder for a stable authored layout. Both map to
-    // their index-based command with the selection following the moved row (the ReorderSelectedFeature idiom).
-    // Every other category (Placements, Spawns, Regions, Terrain) has no reorder, so its drop is a no-op.
+    // three categories accept a reorder: Features fold in list order (last wins overlaps), Scatter Overrides match
+    // in list order (FIRST match wins, so their order really is significant), and Exclusions have order-free
+    // semantics but still expose a reorder for a stable authored layout. All three map to their index-based command
+    // with the selection following the moved row and the hide remapped to the new index (the ReorderSelectedElement
+    // idiom). Every other category (Placements, Spawns, Regions, Terrain) has no reorder, so its drop is a no-op.
     void OnOutlineReordered(TreeNode node, int fromIndex, int toIndex)
     {
         if (node.Tag is not OutlineRef r) return;
@@ -1349,6 +1386,11 @@ public class MapEditorScene : GameScene, IGameScene3D
                 _document.Execute(new ReorderExclusionCommand(fromIndex, toIndex));
                 _visibility.RemapIndex(SelectionKind.Exclusion, fromIndex, toIndex);   // a hide follows the moved exclusion
                 _document.Selection.Set(SelectionKind.Exclusion, toIndex.ToString(CultureInfo.InvariantCulture));
+                break;
+            case SelectionKind.ScatterOverride:
+                _document.Execute(new ReorderScatterOverrideCommand(fromIndex, toIndex));
+                _visibility.RemapIndex(SelectionKind.ScatterOverride, fromIndex, toIndex);   // a hide follows the moved override
+                _document.Selection.Set(SelectionKind.ScatterOverride, toIndex.ToString(CultureInfo.InvariantCulture));
                 break;
             default:
                 break;   // no list-order semantics for this category: drop rejected
@@ -1513,6 +1555,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _outline.Roots.Add(Category("Player Spawns", PlayerSpawnNodes()));
         _outline.Roots.Add(Category("Features", FeatureNodes()));
         _outline.Roots.Add(Category("Exclusions", ExclusionNodes()));
+        _outline.Roots.Add(Category("Scatter Overrides", ScatterOverrideNodes()));
         _outline.Roots.Add(Category("Scatter Layers", ScatterLayerNodes()));
         _outline.Roots.Add(Category("Companion Layers", CompanionLayerNodes()));
         _outline.Roots.Add(Category("Regions", RegionNodes()));
@@ -1593,6 +1636,23 @@ public class MapEditorScene : GameScene, IGameScene3D
     // list order (an empty explicit list, legal per the model, reads as an empty hint).
     static string TargetingHint(List<string>? layers) => layers is null ? "all" : string.Join(", ", layers);
 
+    // A scatter-override node shows its Name when set, else the index fallback ("override[i]"), ALWAYS suffixed
+    // with the same targeting hint an exclusion node carries (see TargetingHint), so the outline surfaces which
+    // scatter layers this override retunes without opening the inspector. Order is significant here (first matching
+    // override wins), so the outline lists overrides in document order and a reorder is a real edit, unlike the
+    // order-free exclusions above.
+    IEnumerable<TreeNode> ScatterOverrideNodes()
+    {
+        List<MapScatterOverrideDoc> overrides = _document.Doc.ScatterOverrides;
+        for (int i = 0; i < overrides.Count; i++)
+        {
+            MapScatterOverrideDoc o = overrides[i];
+            string baseLabel = string.IsNullOrEmpty(o.Name) ? $"override[{i}]" : o.Name!;
+            yield return new TreeNode(LocalizedText.Raw($"{baseLabel} ({TargetingHint(o.Layers)})"),
+                new OutlineRef(SelectionKind.ScatterOverride, i.ToString(CultureInfo.InvariantCulture)));
+        }
+    }
+
     IEnumerable<TreeNode> RegionNodes()
     {
         foreach (MapRegion r in _document.Doc.Regions)
@@ -1660,6 +1720,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             case SelectionKind.PlayerSpawn: BuildPlayerSpawnInspector(sel.Id); break;
             case SelectionKind.Feature: BuildFeatureInspector(sel.Id); break;
             case SelectionKind.Exclusion: BuildExclusionInspector(sel.Id); break;
+            case SelectionKind.ScatterOverride: BuildScatterOverrideInspector(sel.Id); break;
             case SelectionKind.Region: BuildRegionInspector(sel.Id); break;
             case SelectionKind.BiomeBand: BuildBiomeBandInspector(sel.Id); break;
             case SelectionKind.ScatterLayer: BuildScatterLayerInspector(sel.Id); break;
@@ -1713,11 +1774,13 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    // The raw dev-tool label for a visibility group (FeatureMarkers reads "Feature markers"; the rest are their
-    // enum name). No em / en dashes or semicolons (the editor label convention).
+    // The raw dev-tool label for a visibility group (FeatureMarkers reads "Feature markers", ScatterOverrides reads
+    // "Scatter overrides", the rest are their enum name). No em / en dashes or semicolons (the editor label
+    // convention).
     static string GroupLabel(VisibilityGroup group) => group switch
     {
         VisibilityGroup.FeatureMarkers => "Feature markers",
+        VisibilityGroup.ScatterOverrides => "Scatter overrides",
         _ => group.ToString(),
     };
 
@@ -2165,49 +2228,183 @@ public class MapEditorScene : GameScene, IGameScene3D
         return false;
     }
 
-    // The exclusion's layer-targeting rows (locked decision 4): an "All layers" BoolRow bound to Layers == null
-    // (masks scatter on every layer, including future ones, see MapExclusion.Layers), plus one BoolRow per
-    // document scatter layer while an explicit list is in effect. Checking All ON collapses the explicit list
-    // to null. Checking it OFF materializes the FULL explicit layer list (every current layer named). The
-    // per-layer rows are HIDDEN (not merely disabled: PropertyGrid rows have no live per-row enabled hook, only
-    // a build-time row set) while All is on, reflowing into view the next chrome step once All goes off, via
-    // the same SyncShapeInspector idiom that swaps disc/rect param rows on a shape-kind conversion. Manually
-    // re-checking every layer does NOT auto-collapse back to null: only the All toggle itself produces null (an
-    // unchecked last layer legally leaves an empty explicit list, "applies to nothing", per the model). Every
-    // change routes through EditExclusionLayersCommand so it undoes/merges like any other exclusion edit.
+    // The exclusion's layer-targeting rows (locked decision 4), built through the shared AddLayerTargetingRows
+    // helper: an "All layers" toggle bound to Layers == null (masks scatter on every layer, including future ones,
+    // see MapExclusion.Layers), plus one per-layer BoolRow while an explicit list is in effect. Every change routes
+    // through EditExclusionLayersCommand so it undoes/merges like any other exclusion edit.
     void AddExclusionLayerRows(int index)
+    {
+        AddLayerTargetingRows(
+            () => ExclusionAt(index)?.Layers,
+            (next, old) => _document.Execute(new EditExclusionLayersCommand(index, next, old)),
+            LocalizedText.Raw(
+                "On (the default) masks scatter placement from EVERY scatter layer inside this exclusion's shape, " +
+                "including any layer added later. Turn off to target only specific layers below, leaving the rest " +
+                "free to scatter through this shape."),
+            layerName => LocalizedText.Raw(
+                $"On masks scatter placement from the '{layerName}' scatter layer inside this exclusion's " +
+                "shape. Only shown while All layers is off, and only masks the layers checked here, every " +
+                "other layer still scatters through this shape freely."));
+    }
+
+    // The shared layer-targeting row set behind both the exclusion ("All layers" masks all scatter) and the scatter
+    // override ("All layers" retunes all scatter). An "All layers" BoolRow bound to Layers == null, plus one BoolRow
+    // per document scatter layer while an explicit list is in effect. Checking All ON collapses the explicit list to
+    // null. Checking it OFF materializes the FULL explicit layer list (every current layer named). The per-layer
+    // rows are HIDDEN (not merely disabled: PropertyGrid rows have no live per-row enabled hook, only a build-time
+    // row set) while All is on, reflowing into view the next chrome step once All goes off, via the same
+    // SyncShapeInspector idiom that swaps disc/rect param rows on a shape-kind conversion. Manually re-checking every
+    // layer does NOT auto-collapse back to null: only the All toggle itself produces null (an unchecked last layer
+    // legally leaves an empty explicit list, "applies to nothing", per the model). `layersOf` reads the LIVE Layers
+    // list (so a toggle re-reads it, never a stale capture) and `execute(next, old)` runs the caller's whole-value or
+    // targeting command with the new list and the pre-edit one. Descriptions differ per caller (mask vs retune), so
+    // they are threaded in rather than fixed here.
+    void AddLayerTargetingRows(Func<List<string>?> layersOf, Action<List<string>?, List<string>?> execute,
+        LocalizedText allDescription, Func<string, LocalizedText> layerDescription)
     {
         var layerNames = new List<string>();
         foreach (MapScatterLayer layer in _document.Doc.ScatterLayers) layerNames.Add(layer.Name);
 
         _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("All layers"),
-            () => ExclusionAt(index)?.Layers is null,
-            v => _document.Execute(new EditExclusionLayersCommand(index,
-                v ? null : new List<string>(layerNames), ExclusionAt(index)?.Layers)),
-            LocalizedText.Raw(
-                "On (the default) masks scatter placement from EVERY scatter layer inside this exclusion's shape, " +
-                "including any layer added later. Turn off to target only specific layers below, leaving the rest " +
-                "free to scatter through this shape.")));
+            () => layersOf() is null,
+            v => execute(v ? null : new List<string>(layerNames), layersOf()),
+            allDescription));
 
-        if (ExclusionAt(index)?.Layers is null) return;   // All is on: no explicit list to show membership rows for
+        if (layersOf() is null) return;   // All is on: no explicit list to show membership rows for
         foreach (string name in layerNames)
         {
             string layerName = name;   // capture per iteration for the closures
             _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(layerName),
-                () => ExclusionAt(index)?.Layers is { } layers && layers.Contains(layerName),
+                () => layersOf() is { } layers && layers.Contains(layerName),
                 v =>
                 {
-                    if (ExclusionAt(index)?.Layers is not { } live) return;   // All went on elsewhere: ignore a stray toggle
+                    if (layersOf() is not { } live) return;   // All went on elsewhere: ignore a stray toggle
                     var next = new List<string>(live);
                     if (v) { if (!next.Contains(layerName)) next.Add(layerName); }
                     else next.Remove(layerName);
-                    _document.Execute(new EditExclusionLayersCommand(index, next, live));
+                    execute(next, live);
                 },
-                LocalizedText.Raw(
-                    $"On masks scatter placement from the '{layerName}' scatter layer inside this exclusion's " +
-                    "shape. Only shown while All layers is off, and only masks the layers checked here, every " +
-                    "other layer still scatters through this shape freely.")));
+                layerDescription(layerName)));
         }
+    }
+
+    // The scatter-override inspector: an inline-rename Name row (index-keyed, like the exclusion's), a Visible
+    // toggle, the editable shape surface (AddShapeRows, driving EditScatterOverrideShapeCommand), then the two
+    // scatter tweaks (a DensityMultiplier scalar and a Kinds substitution list, both whole-value edits through
+    // EditScatterOverrideValuesCommand), and finally the layer-targeting rows shared with the exclusion inspector.
+    // The Kinds text is the same crude comma-separated "id:weight" convention the scatter-layer rule editor uses
+    // (empty means null kinds, a density-only override), a deliberate v1 carve-out rather than a dedicated editor.
+    void BuildScatterOverrideInspector(string id)
+    {
+        if (!int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)) return;
+        if (index < 0 || index >= _document.Doc.ScatterOverrides.Count) return;
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
+        AddIndexNameRow(index, i => ScatterOverrideAt(i)?.Name ?? "", ScatterOverrideNameExists,
+            (i, newName, oldName) => new RenameScatterOverrideCommand(i, newName, oldName),
+            LocalizedText.Raw(
+                "Optional display name shown in the outline instead of the index. Leave empty to fall back to " +
+                "the index label. Must not duplicate another scatter override's name."));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
+        AddVisibleRow(SelectionKind.ScatterOverride, () => id);
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Shape")));
+        AddShapeRows(() => index < _document.Doc.ScatterOverrides.Count ? _document.Doc.ScatterOverrides[index].Shape : null,
+            (newShape, oldShape) => _document.Execute(new EditScatterOverrideShapeCommand(index, newShape, oldShape)));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Scatter")));
+        _inspector.Rows.Add(new FloatRow(LocalizedText.Raw("DensityMultiplier"),
+            () => ScatterOverrideAt(index)?.DensityMultiplier ?? 1f,
+            v => EditScatterOverrideValues(index, o => o.DensityMultiplier = v), min: 0f,
+            description: LocalizedText.Raw(
+                "Multiplier applied to every targeted scatter layer's placement density inside this override's " +
+                "shape. 1 leaves density unchanged, 0 places nothing, above 1 packs it denser. Relative to each " +
+                "layer's own density, not an absolute instance count.")));
+        _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Kinds"),
+            () => ScatterOverrideAt(index)?.Kinds is { } kinds ? FormatKinds(kinds) : "",
+            v => { if (TryParseKinds(v, out List<MapPropKind> parsed)) EditScatterOverrideValues(index, o => o.Kinds = parsed.Count == 0 ? null : parsed); },
+            maxLength: 256,
+            description: LocalizedText.Raw(
+                "Comma-separated kit ids that REPLACE what the targeted scatter layers would place inside this " +
+                "override's shape, each optionally followed by :weight (for example 'oak:2, pine'). Leave empty to " +
+                "keep each layer's own kinds and only retune density. A crude v1 text convention shared with the " +
+                "scatter-layer rule editor's Kinds rows.")));
+        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Layers")));
+        AddScatterOverrideLayerRows(index);
+        _inspectorLayersAllOn = ScatterOverrideAt(index)?.Layers is null;
+        // Capture the live scatter-layer set the per-layer targeting rows were built from, so SyncShapeInspector
+        // rebuilds them when a scatter layer is added / removed / renamed while this override stays selected (the
+        // same stale-layer-set guard the exclusion / companion inspectors use).
+        _inspectorScatterNames = LiveScatterNames();
+    }
+
+    MapScatterOverrideDoc? ScatterOverrideAt(int index)
+    {
+        List<MapScatterOverrideDoc> overrides = _document.Doc.ScatterOverrides;
+        return index >= 0 && index < overrides.Count ? overrides[index] : null;
+    }
+
+    // Whether `name` (already caller-normalized non-empty) is already the live name of some OTHER scatter override,
+    // mirroring RenameScatterOverrideCommand's own GuardNoScatterOverrideName guard so the Name row rejects a
+    // collision before the command would throw.
+    bool ScatterOverrideNameExists(string name, int exceptIndex)
+    {
+        List<MapScatterOverrideDoc> overrides = _document.Doc.ScatterOverrides;
+        for (int i = 0; i < overrides.Count; i++)
+            if (i != exceptIndex && string.Equals(overrides[i].Name, name, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    // The override's layer-targeting rows, built through the shared AddLayerTargetingRows helper: an "All layers"
+    // toggle bound to Layers == null (retunes scatter on every layer, including future ones, see
+    // MapScatterOverrideDoc.Layers), plus one per-layer BoolRow while an explicit list is in effect. Every change
+    // routes through EditScatterOverrideValuesCommand (the whole-value path), so it undoes / merges with the density
+    // and kinds edits like any other override values edit.
+    void AddScatterOverrideLayerRows(int index)
+    {
+        AddLayerTargetingRows(
+            () => ScatterOverrideAt(index)?.Layers,
+            (next, _) => EditScatterOverrideValues(index, o => o.Layers = next),
+            LocalizedText.Raw(
+                "On (the default) applies this override's density and kinds to EVERY scatter layer inside its " +
+                "shape, including any layer added later. Turn off to retune only specific layers below, leaving the " +
+                "rest to scatter unchanged through this shape."),
+            layerName => LocalizedText.Raw(
+                $"On applies this override's density and kinds to the '{layerName}' scatter layer inside its " +
+                "shape. Only shown while All layers is off, and only retunes the layers checked here, every other " +
+                "layer scatters unchanged through this shape."));
+    }
+
+    // A whole-value scatter-override edit for its density / kinds / layers (NOT its shape or name, which route
+    // through EditScatterOverrideShapeCommand / RenameScatterOverrideCommand): deep-clone the live override, apply
+    // `mutate` to the clone (so a nested Kinds / Layers change never touches the live instance the command captures
+    // as its old value), then route (clone, live) through EditScatterOverrideValuesCommand (same-index merge
+    // coalesces a scrub). No-op when the override has vanished.
+    void EditScatterOverrideValues(int index, Action<MapScatterOverrideDoc> mutate)
+    {
+        if (ScatterOverrideAt(index) is not { } live) return;
+        MapScatterOverrideDoc clone = CloneScatterOverride(live);
+        mutate(clone);
+        _document.Execute(new EditScatterOverrideValuesCommand(index, clone, live));
+    }
+
+    // Deep clones a scatter override (the whole-value-edit copy discipline, matching CloneScatterLayer): fresh Kinds
+    // (fresh MapPropKind elements) and Layers lists so a clone edit never mutates the live instance the command keeps
+    // as its old value. Shape is shared by reference, the values command carries it through untouched (a shape move
+    // is EditScatterOverrideShapeCommand's job).
+    static MapScatterOverrideDoc CloneScatterOverride(MapScatterOverrideDoc v)
+    {
+        List<MapPropKind>? kinds = null;
+        if (v.Kinds is { } srcKinds)
+        {
+            kinds = new List<MapPropKind>(srcKinds.Count);
+            foreach (MapPropKind k in srcKinds) kinds.Add(CloneKind(k));
+        }
+        return new MapScatterOverrideDoc
+        {
+            Name = v.Name,
+            Shape = v.Shape,
+            DensityMultiplier = v.DensityMultiplier,
+            Kinds = kinds,
+            Layers = v.Layers is null ? null : new List<string>(v.Layers),
+        };
     }
 
     void BuildRegionInspector(string name)
@@ -2891,11 +3088,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <summary>Rebuilds the inspector when its structural row set no longer matches what the live selection
     /// needs: the selected shape's kind no longer matches the kind the current rows were built for (a
     /// kind-ChoiceRow conversion, or an undo / redo of one, so disc rows swap to rect rows and back), OR the
-    /// selected exclusion's "All layers" state no longer matches what the current layer rows were built for (an
-    /// All-toggle, or an undo / redo of one, so the per-layer membership rows reflow into or out of view).
-    /// Deferred to the chrome step so the rebuild never happens inside the grid's row iteration. No-op while the
-    /// inspector holds neither shape nor exclusion-layer rows. Internal so a headless test can fire the sync
-    /// directly.</summary>
+    /// selected exclusion's / scatter override's "All layers" state no longer matches what the current layer rows
+    /// were built for (an All-toggle, or an undo / redo of one, so the per-layer membership rows reflow into or out
+    /// of view). Deferred to the chrome step so the rebuild never happens inside the grid's row iteration. No-op
+    /// while the inspector holds neither shape nor layer-targeting rows. Internal so a headless test can fire the
+    /// sync directly.</summary>
     internal void SyncShapeInspector()
     {
         // A name-keyed layer selection whose layer was removed (its inspector remove button, or an undo) is now
@@ -2919,7 +3116,7 @@ public class MapEditorScene : GameScene, IGameScene3D
             RebuildInspector();
             return;
         }
-        if (_inspectorLayersAllOn is bool builtAllOn && SelectedExclusionAllOn() is bool liveAllOn &&
+        if (_inspectorLayersAllOn is bool builtAllOn && SelectedLayersAllOn() is bool liveAllOn &&
             liveAllOn != builtAllOn)
         {
             RebuildInspector();
@@ -2981,7 +3178,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         return ScatterLayerByName(sel.Id)?.Rules.Count;
     }
 
-    // The shape of the selected exclusion / region, or null (no shape-carrying selection, vanished element).
+    // The shape of the selected exclusion / scatter override / region, or null (no shape-carrying selection,
+    // vanished element). Feeds SyncShapeInspector's shape-kind-conversion reflow, so every shape-carrying kind the
+    // inspector edits must appear here.
     MapShapeDoc? SelectedShape()
     {
         EditorSelection sel = _document.Selection;
@@ -2989,19 +3188,26 @@ public class MapEditorScene : GameScene, IGameScene3D
         {
             SelectionKind.Exclusion when int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture,
                 out int i) && i >= 0 && i < _document.Doc.Exclusions.Count => _document.Doc.Exclusions[i].Shape,
+            SelectionKind.ScatterOverride when int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out int i) && i >= 0 && i < _document.Doc.ScatterOverrides.Count => _document.Doc.ScatterOverrides[i].Shape,
             SelectionKind.Region => RegionByName(sel.Id)?.Shape,
             _ => null,
         };
     }
 
-    // Whether the selected exclusion's Layers is currently null ("All layers" on), or null when the selection
-    // is not an exclusion (or has vanished). Compared against `_inspectorLayersAllOn` by SyncShapeInspector.
-    bool? SelectedExclusionAllOn()
+    // Whether the selected exclusion's or scatter override's Layers is currently null ("All layers" on), or null
+    // when the selection is neither (or has vanished). Both carry the same nullable Layers filter and the same
+    // All-toggle reflow, so one probe covers both. Compared against `_inspectorLayersAllOn` by SyncShapeInspector.
+    bool? SelectedLayersAllOn()
     {
         EditorSelection sel = _document.Selection;
-        if (sel.Kind != SelectionKind.Exclusion) return null;
         if (!int.TryParse(sel.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i)) return null;
-        return ExclusionAt(i)?.Layers is null;
+        return sel.Kind switch
+        {
+            SelectionKind.Exclusion => ExclusionAt(i)?.Layers is null,
+            SelectionKind.ScatterOverride => ScatterOverrideAt(i)?.Layers is null,
+            _ => null,
+        };
     }
 
     static string ShapeKind(MapShapeDoc? shape) => shape switch
@@ -3244,11 +3450,13 @@ internal enum GizmoMesh
 }
 
 /// <summary>Which document collection a viewport <see cref="OverlayDraw"/> came from. Drives its base fill color
-/// (exclusions red-ish, regions blue-ish, features amber).</summary>
+/// (exclusions red-ish, scatter overrides orange, regions blue-ish, features amber).</summary>
 internal enum OverlayCategory
 {
     /// <summary>A scatter exclusion shape.</summary>
     Exclusion,
+    /// <summary>A scatter override shape (a region-scoped density / kind tweak).</summary>
+    ScatterOverride,
     /// <summary>A named, game-interpreted region shape.</summary>
     Region,
     /// <summary>A terrain feature's center marker.</summary>

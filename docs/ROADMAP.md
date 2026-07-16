@@ -4,13 +4,33 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.123.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.125.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
 ## Near-term (next up)
 
-### 1. Physics: ragdolls and vehicles (pull-gated)
+### 1. NPC navigation: vertical worlds (step-budget surfaces, then multi-level overworld)
+
+Extend `KhaozEngine.Navigation` beyond the flat single-layer overworld bake so NPCs can path up
+stairs, onto standable props and platforms, and ultimately across bridges and overhangs. Scheduled
+as the follow-on to the 10.123.0 navigation release (first consumer: Ruinborne wolves chasing
+players onto rocks, platforms, and stairs). Two phases, each gets its own design spec + plan when
+scheduled:
+
+1. Step-budget surface bake (first): the overworld bake stores a per-cell walkable surface height
+   (from a downward physics probe or `WorldSurfaces` prop tops) instead of testing a flat band above
+   analytic terrain, and neighbor walkability becomes rise-within-StepHeight plus headroom-clear.
+   Still a single `NavGrid` layer, so the planner and follower need no changes. Makes ramps,
+   staircases, and low standable props walkable in the open world (closes the recorded
+   standable-top-props non-goal from [NPC-NAVIGATION-DESIGN.md](NPC-NAVIGATION-DESIGN.md)).
+2. Multi-level overworld (the destination): auto-extract layered walkable surfaces plus inter-layer
+   links from the physics world, so two surfaces can coexist at one XZ (bridges, overhangs, roofed
+   interiors). `NavSpace` layers, links, and cross-layer planning already shipped and are proven by
+   the dungeon adapter, the new work is the layered-surface extraction bake and link generation at
+   climbable transitions.
+
+### 2. Physics: ragdolls and vehicles (pull-gated)
 
 The joint foundation shipped in 10.30.0 (ball socket, hinge and slider with limits, distance, weld, plus
 hinge/slider motors and servos and the distance winch on the `IPhysicsWorld` seam), on top of 10.29.0's
@@ -49,7 +69,7 @@ StepHeight above terrain still fails the gate and dead-stalls. Pre-existing beha
 rather than regressed (the near-vertical band is unaffected), but the proper fix is to track the capsule's
 current support height including props and gate against that. Documented in the `StepUpEligible` doc comment.
 
-### 2. Map editor (design approved 2026-07-09, in flight)
+### 3. Map editor (design approved 2026-07-09, in flight)
 
 The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain config, authored
 placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine
@@ -105,10 +125,9 @@ Ordered gap list (2026-07-07 feature audit):
    tested against the frustum in one flat pass each frame, fine at current scene sizes but a candidate for a
    grid/quadtree broad-phase if a much larger streamed world pushes per-frame counts up.
 4. Sky follow-ups (the gradient + key-light-aligned sun disc shipped in 10.20.0, the world-anchored
-   point-at-infinity sun projection shipped in 10.114.0 as `SunAnchor.World`): a full cubemap/skybox when water
-   or a specific scene pulls for it, and a day/night cycle helper (a sun-elevation-driven sky tint + ambient
-   ramp that drives `Post.LightDirection` over time, building on the now world-anchored sun and the shadow map
-   already re-rendering when the light moves).
+   point-at-infinity sun projection shipped in 10.114.0 as `SunAnchor.World`, the day/night cycle mapping
+   shipped in 10.124.0 as `SunCycle`): a full cubemap/skybox when water or a specific scene pulls for it, and
+   an optional moon disc plus a secondary night key light when a consumer pulls for it.
 5. Water follow-ups (the animated water surface shipped in 10.28.0: `Scene3D.DrawWater` + `WaterSettings`,
    shore fade, sky-derived fresnel tint, sun glint, no reflections): shore foam, per-game wave tuning once
    Ruinborne adopts it, dropping the unused `Res` UBO field, and a water-footprint-scoped golden guard.

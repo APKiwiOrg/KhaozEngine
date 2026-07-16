@@ -41,7 +41,9 @@ public abstract class EditorCommand : IEditorCommand
     /// commands, whose reach is a single feature's <see cref="FeatureGeometry.TryFootprint"/> disc, narrow it. Read
     /// by the document's pending-rebuild-region accumulation (<see cref="EditorDocument"/>) and only meaningful while
     /// <see cref="AffectsWorld"/> is true. Every other <see cref="AffectsWorld"/> command (terrain scalars,
-    /// exclusions, scatter layers, companions) keeps the null default: whole-zone by design this round.</summary>
+    /// exclusions, scatter overrides, scatter layers, companions) keeps the null default: whole-zone by design
+    /// this round. Narrowing a scatter override's <see cref="DirtyRegion"/> to its shape's bounds, the same way a
+    /// future feature narrowing would, is a known later refinement, not this round's scope.</summary>
     internal virtual RectArea? DirtyRegion => null;
 
     /// <inheritdoc/>
@@ -154,11 +156,25 @@ public abstract class EditorCommand : IEditorCommand
                 throw new InvalidOperationException($"An exclusion named '{name}' already exists in the document.");
     }
 
-    /// <summary>Coerces an empty rename target to null: features and exclusions store an optional Name where
-    /// empty means unnamed (<see cref="MapDoc.MapFeature.Name"/>, <see cref="MapExclusion.Name"/>), and the
-    /// stored value must never be the empty string, only null or non-empty, so a clear-to-empty rename does not
-    /// persist as a bloating empty name key.</summary>
-    private protected static string? NormalizeName(string name) => string.IsNullOrEmpty(name) ? null : name;
+    /// <summary>Rejects a duplicate scatter override name before <see cref="RenameScatterOverrideCommand.Apply"/>
+    /// mutates anything. Scatter overrides are index-addressed (see <see cref="RenameScatterOverrideCommand"/>),
+    /// so the scan excludes the renaming override's own index (renaming to its current name, or the
+    /// empty-clearing case with another unnamed override already present, both stay legal). A null or empty name
+    /// never collides since an unnamed override carries no key to clash on.</summary>
+    private protected static void GuardNoScatterOverrideName(MapDocument doc, string? name, int exceptIndex)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        List<MapScatterOverrideDoc> overrides = doc.ScatterOverrides;
+        for (int i = 0; i < overrides.Count; i++)
+            if (i != exceptIndex && string.Equals(overrides[i].Name, name, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A scatter override named '{name}' already exists in the document.");
+    }
+
+    /// <summary>Coerces an empty rename target to null: features, exclusions, and scatter overrides store an
+    /// optional Name where empty means unnamed (<see cref="MapDoc.MapFeature.Name"/>, <see cref="MapExclusion.Name"/>,
+    /// <see cref="MapScatterOverrideDoc.Name"/>), and the stored value must never be the empty string, only null
+    /// or non-empty, so a clear-to-empty rename does not persist as a bloating empty name key.</summary>
+    private protected static string? NormalizeName(string? name) => string.IsNullOrEmpty(name) ? null : name;
 
     private protected static int IndexOfScatterLayer(MapDocument doc, string name)
     {
@@ -1131,6 +1147,259 @@ public sealed class EditExclusionLayersCommand : EditorCommand
             return true;
         }
         return false;
+    }
+}
+
+// ---- scatter overrides (terrain-scatter affecting) ---------------------------------------------------------
+
+/// <summary>Appends a scatter override (a region-scoped density multiplier / kind substitution tweak). Affects
+/// the streamed world (scatter inputs change).</summary>
+public sealed class AddScatterOverrideCommand : EditorCommand
+{
+    readonly MapScatterOverrideDoc _override;
+
+    /// <summary>Creates the command for the given scatter override (added on <see cref="Apply"/>).</summary>
+    public AddScatterOverrideCommand(MapScatterOverrideDoc value) =>
+        _override = value ?? throw new ArgumentNullException(nameof(value));
+
+    /// <inheritdoc/>
+    public override string Label => "Add scatter override";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.ScatterOverrides.Add(_override);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.ScatterOverrides.Remove(_override);
+}
+
+/// <summary>Removes the scatter override at the given index, restoring it at that index on revert. Affects the
+/// streamed world.</summary>
+public sealed class RemoveScatterOverrideCommand : EditorCommand
+{
+    readonly int _index;
+    MapScatterOverrideDoc? _removed;
+
+    /// <summary>Creates the command for the scatter override list index to remove.</summary>
+    public RemoveScatterOverrideCommand(int index) => _index = index;
+
+    /// <inheritdoc/>
+    public override string Label => "Remove scatter override";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        _removed = doc.ScatterOverrides[_index];
+        doc.ScatterOverrides.RemoveAt(_index);
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc)
+    {
+        if (_removed is null) throw new InvalidOperationException("Revert called before Apply.");
+        doc.ScatterOverrides.Insert(_index, _removed);
+    }
+}
+
+/// <summary>Replaces the shape of the scatter override at a given index with a new value (gizmo drag or parameter
+/// scrub). The caller supplies both the new and old shape, cloned with the changed field (the
+/// <see cref="EditExclusionShapeCommand"/> idiom). Successive edits of the same index coalesce (drag/scrub
+/// coalescing). Affects the streamed world (scatter inputs change).</summary>
+public sealed class EditScatterOverrideShapeCommand : EditorCommand
+{
+    readonly int _index;
+    MapShapeDoc _newShape;
+    readonly MapShapeDoc _oldShape;
+
+    /// <summary>Creates the command replacing scatter override <paramref name="index"/>'s shape with
+    /// <paramref name="newShape"/>, capturing <paramref name="oldShape"/> for revert.</summary>
+    public EditScatterOverrideShapeCommand(int index, MapShapeDoc newShape, MapShapeDoc oldShape)
+    {
+        _index = index;
+        _newShape = newShape ?? throw new ArgumentNullException(nameof(newShape));
+        _oldShape = oldShape ?? throw new ArgumentNullException(nameof(oldShape));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit scatter override shape";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.ScatterOverrides[_index].Shape = _newShape;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.ScatterOverrides[_index].Shape = _oldShape;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditScatterOverrideShapeCommand e && e._index == _index)
+        {
+            _newShape = e._newShape;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Replaces the density/kinds/layers of the scatter override at a given index with a new whole value
+/// (the <see cref="EditScatterLayerCommand"/> whole-value idiom, index-addressed the way
+/// <see cref="EditExclusionShapeCommand"/> is). Unlike that idiom's usual caller-clones-it-all trust, this
+/// constructor defensively deep-copies both values itself: it builds fresh <see cref="MapScatterOverrideDoc"/>
+/// instances with copied Kinds/Layers lists (the <see cref="EditExclusionLayersCommand"/> copy discipline
+/// extended to a whole value), so neither the command, the document, nor the caller's own instances can alias one
+/// another. Shape is carried through unchanged, by reference: this command must NOT be used for shape edits,
+/// because <see cref="Apply"/> replaces the WHOLE override including Shape, so a caller who wants to move or
+/// resize the shape must go through <see cref="EditScatterOverrideShapeCommand"/> instead, whose own coalescing
+/// lets a gizmo drag merge independently of any values edit in flight on the same override. Likewise Name is
+/// carried through unchanged: a rename goes through <see cref="RenameScatterOverrideCommand"/>. Successive edits
+/// of the same index coalesce (scrub coalescing). Affects the streamed world (scatter inputs change).</summary>
+public sealed class EditScatterOverrideValuesCommand : EditorCommand
+{
+    readonly int _index;
+    MapScatterOverrideDoc _newValue;
+    readonly MapScatterOverrideDoc _oldValue;
+
+    /// <summary>Creates the command replacing scatter override <paramref name="index"/>'s values with a deep copy
+    /// of <paramref name="newValue"/>, capturing a deep copy of <paramref name="oldValue"/> for revert.</summary>
+    public EditScatterOverrideValuesCommand(int index, MapScatterOverrideDoc newValue, MapScatterOverrideDoc oldValue)
+    {
+        _index = index;
+        _newValue = Clone(newValue ?? throw new ArgumentNullException(nameof(newValue)));
+        _oldValue = Clone(oldValue ?? throw new ArgumentNullException(nameof(oldValue)));
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Edit scatter override values";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => doc.ScatterOverrides[_index] = _newValue;
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.ScatterOverrides[_index] = _oldValue;
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is EditScatterOverrideValuesCommand e && e._index == _index)
+        {
+            _newValue = e._newValue;
+            return true;
+        }
+        return false;
+    }
+
+    // Deep-copies a scatter override's Kinds/Layers lists so the command's stored value never aliases the
+    // caller's own instance (nor the document's), the EditExclusionLayersCommand discipline extended to a whole
+    // value. Shape is shared by reference: this command never touches it (see the class doc comment).
+    static MapScatterOverrideDoc Clone(MapScatterOverrideDoc v) => new MapScatterOverrideDoc
+    {
+        Name = v.Name,
+        Shape = v.Shape,
+        DensityMultiplier = v.DensityMultiplier,
+        Kinds = v.Kinds?.ToList(),
+        Layers = v.Layers?.ToList(),
+    };
+}
+
+/// <summary>Renames the scatter override at a given index. Scatter overrides are index-addressed (no independent
+/// id, the same idiom as <see cref="RenameExclusionCommand"/>), so this targets the list position rather than an
+/// old-name lookup. Both names are nullable directly here, rather than the empty-string convention
+/// <see cref="RenameExclusionCommand"/> uses: null and empty both normalize to unnamed, so a cleared name never
+/// persists as a bloating empty name key. Successive renames of the same index coalesce into one undo step (a
+/// text field committed on every keystroke stays one undo). The target name must be unique among named scatter
+/// overrides: <see cref="Apply"/> throws (before it mutates) if
+/// another scatter override already carries the new name, so a rejected rename lands no undo step (the guard
+/// idiom). Renaming does not change the override's shape, density, kinds, or layer filter, so this does not
+/// affect the streamed world.</summary>
+public sealed class RenameScatterOverrideCommand : EditorCommand
+{
+    readonly int _index;
+    string? _newName;
+    readonly string? _oldName;
+
+    /// <summary>Creates the command renaming the scatter override at <paramref name="index"/> to
+    /// <paramref name="newName"/>, capturing <paramref name="oldName"/> for revert.</summary>
+    public RenameScatterOverrideCommand(int index, string? newName, string? oldName)
+    {
+        _index = index;
+        _newName = newName;
+        _oldName = oldName;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Rename scatter override";
+    internal override bool AffectsWorld => false;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc)
+    {
+        string? normalized = NormalizeName(_newName);
+        GuardNoScatterOverrideName(doc, normalized, _index);   // reject a duplicate target before touching the source
+        doc.ScatterOverrides[_index].Name = normalized;
+    }
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => doc.ScatterOverrides[_index].Name = NormalizeName(_oldName);
+
+    /// <inheritdoc/>
+    public override bool TryMerge(IEditorCommand next)
+    {
+        if (next is RenameScatterOverrideCommand r && r._index == _index)
+        {
+            _newName = r._newName;
+            return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Moves a scatter override from one list position to another. Unlike <see cref="ReorderExclusionCommand"/>,
+/// this DOES affect the streamed world: a scatter's override lookup resolves the FIRST matching override in list
+/// order (first-match-wins, see <c>PropScatter</c>'s internal OverrideFor helper), so which override governs a
+/// given patch of ground, and therefore the density multiplier and kind substitution the scatter applies there,
+/// depends on order. Exclusions, by contrast, combine as a pure set union where order never changes which ground
+/// ends up excluded, so that reasoning does not carry over here: <see cref="AffectsWorld"/> stays true and a
+/// reorder forces a full viewport world rebuild. Both indices are range-guarded (non-negative in the constructor,
+/// in-range against the live list at apply time, each with a precise <see cref="ArgumentOutOfRangeException"/>).
+/// <see cref="Revert"/> moves it back (self-inverse), and it never coalesces (no merge).</summary>
+public sealed class ReorderScatterOverrideCommand : EditorCommand
+{
+    readonly int _fromIndex;
+    readonly int _toIndex;
+
+    /// <summary>Creates the command moving the scatter override at <paramref name="fromIndex"/> to
+    /// <paramref name="toIndex"/> in the scatter override list. Both must be non-negative.</summary>
+    public ReorderScatterOverrideCommand(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0) throw new ArgumentOutOfRangeException(nameof(fromIndex), fromIndex, "Scatter override index must be non-negative.");
+        if (toIndex < 0) throw new ArgumentOutOfRangeException(nameof(toIndex), toIndex, "Scatter override index must be non-negative.");
+        _fromIndex = fromIndex;
+        _toIndex = toIndex;
+    }
+
+    /// <inheritdoc/>
+    public override string Label => "Reorder scatter override";
+    internal override bool AffectsWorld => true;
+
+    /// <inheritdoc/>
+    public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
+
+    /// <inheritdoc/>
+    public override void Revert(MapDocument doc) => Move(doc, _toIndex, _fromIndex);
+
+    // A list move (remove at `from`, re-insert at `to`), its own inverse. Range-guards both endpoints against the
+    // live list up front so a bad index is a precise ArgumentOutOfRangeException, not an opaque list throw.
+    static void Move(MapDocument doc, int from, int to)
+    {
+        int count = doc.ScatterOverrides.Count;
+        if (from >= count) throw new ArgumentOutOfRangeException(nameof(from), from, $"Scatter override index is out of range (count {count}).");
+        if (to >= count) throw new ArgumentOutOfRangeException(nameof(to), to, $"Scatter override index is out of range (count {count}).");
+        MapScatterOverrideDoc scatterOverride = doc.ScatterOverrides[from];
+        doc.ScatterOverrides.RemoveAt(from);
+        doc.ScatterOverrides.Insert(to, scatterOverride);
     }
 }
 

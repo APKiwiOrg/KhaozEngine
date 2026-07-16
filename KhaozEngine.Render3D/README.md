@@ -131,6 +131,23 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   camera-relative placement (view-space right/up read as screen NDC, visible above the view horizon), which works
   under both cameras and is the pick for the iso look. The pure math is `SkyMath` (gradient + sun falloff +
   `ProjectSunToNdc`, which dispatches on the anchor to `ProjectSunWorldToNdc` / `ProjectSunStylizedToNdc`).
+- `SunCycle` - a pure day/night mapping from a caller-supplied normalized time of day to the sky and lighting
+  above. `SunCycle.Evaluate(timeOfDay, SunCycleSettings)` walks a latitude/declination/heading sun arc and
+  returns a `SunCycleState` blended between `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette`
+  (three `SunCyclePalette` anchors) keyed on sun elevation, not time, so the same settings work at any
+  latitude or day length. `SunCycle.Apply(state, scene.Post)` writes it onto `Post.LightDirection`/
+  `LightColor`/`AmbientColor`/`FillLightColor` and `Post.Sky.HorizonColor`/`ZenithColor`/`SunColor`/
+  `SunEnabled`. Below the horizon the key light comes from a virtual moon placed opposite the sun, dipping to
+  zero across the crossing so the direction flip is invisible, and the night ambient floor stays above black
+  so scenes remain playable. The engine owns no clock: feed it your own game time (an MMO replicates it from
+  the server) each frame.
+
+  ```csharp
+  var cycle = new SunCycleSettings();
+  scene.Post.Sky.Enabled = true;
+  // each frame, timeOfDay in [0,1) comes from YOUR game clock:
+  SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
+  ```
 - Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in LDR threshold +
   separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
   bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,

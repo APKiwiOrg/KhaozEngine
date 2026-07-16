@@ -243,5 +243,22 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.Equal(0f, r.BaseFill);
     }
 
+        [Fact]
+        public void World_edge_overrides_carry_through_resolve_and_clamp_negatives()
+        {
+            var s = TelegraphStyle.Generic;
+            s.EdgeWidthWorld = 0.05f;
+            s.FeatherWidthWorld = 0.03f;
+            var r = TelegraphResolve.Resolve(0.5f, s);
+            Assert.Equal(0.05f, r.EdgeWidthWorld, 4);
+            Assert.Equal(0.03f, r.FeatherWidthWorld, 4);
+
+            s.EdgeWidthWorld = -1f;
+            s.FeatherWidthWorld = -1f;
+            r = TelegraphResolve.Resolve(0.5f, s);
+            Assert.Equal(0f, r.EdgeWidthWorld);
+            Assert.Equal(0f, r.FeatherWidthWorld);
+        }
+
     }
 }

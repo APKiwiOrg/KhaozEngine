@@ -103,6 +103,20 @@ namespace KhaozEngine.Telegraphs
         /// read immediately without any outline, the borderless look. Modern presets use 0.3.</summary>
         public float BaseFill;
 
+        /// <summary>Opt-in world-unit override for the 3D ground-decal outline / AA edge half-width.
+        /// 0 (default) keeps the derived auto-scaling edge (a small fraction of the shape's
+        /// characteristic size, clamped). Set a positive value to pin the stroke in world units at any
+        /// shape size, e.g. a thin crisp range ring at a large radius. The outline band's solid core
+        /// renders about twice this value across the boundary. The 2D <c>TelegraphRenderer2D</c>
+        /// ignores this field (it strokes in pixels via <see cref="EdgeThickness"/>).</summary>
+        public float EdgeWidthWorld;
+
+        /// <summary>Opt-in world-unit override for the 3D ground-decal feather band. 0 (default) keeps
+        /// the shape-relative <see cref="FeatherWidth"/> fraction behavior. Set a positive value to pin
+        /// the feather in world units regardless of shape size. The 2D <c>TelegraphRenderer2D</c>
+        /// ignores this field.</summary>
+        public float FeatherWidthWorld;
+
         /// <summary>Neutral red-orange danger zone: alpha-blended outline + fill, all animations on.</summary>
         public static TelegraphStyle Generic => new()
         {

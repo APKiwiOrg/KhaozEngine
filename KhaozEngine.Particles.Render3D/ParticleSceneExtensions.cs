@@ -65,6 +65,13 @@ namespace KhaozEngine.Particles
                 return 0;
             }
 
+            // Flipbook timing is look-level and loop-invariant, so resolve the per-look constants once. When the look
+            // has no atlas, flip stays false and every sprite keeps the procedural path.
+            bool flip = look.Flipbook.IsActive;
+            int frameCount = flip ? look.Flipbook.Columns * look.Flipbook.Rows : 0;
+            float fps = look.FlipbookFps > 0f ? look.FlipbookFps : 12f;
+            float effectTime = scene.EffectTimeSeconds;
+
             for (int i = 0; i < active.Length; i++)
             {
                 ref readonly Particle p = ref active[i];
@@ -84,6 +91,12 @@ namespace KhaozEngine.Particles
                     Orientation = look.Orientation,
                     SoftFadeScale = look.SoftFadeScale,
                 };
+                if (flip)
+                {
+                    sprite.Flipbook = look.Flipbook;
+                    sprite.FlipbookFrame = ResolveFlipbookFrame(
+                        look.FlipbookMode, p.Norm, p.Seed, effectTime, fps, frameCount, look.FlipbookRandomStart);
+                }
                 scene.DrawParticle(in sprite);
             }
 
@@ -98,6 +111,27 @@ namespace KhaozEngine.Particles
             }
 
             return 0;
+        }
+
+        // Resolve one particle's continuous flipbook frame from the look's timing mode. LifeOneShot sweeps the sheet
+        // across the particle's life. TimeLoop advances at fps and (optionally) staggers the starting frame per
+        // particle by seed. The render side (ParticleRenderer.ResolveFrames) turns this into the two integer frames
+        // plus a blend, wrapping or clamping per ParticleFlipbook.Loop, so timing here stays policy-only.
+        internal static float ResolveFlipbookFrame(ParticleFlipbookMode mode, float lifeNorm, float seed,
+            float timeSeconds, float fps, int frameCount, bool randomStart)
+        {
+            if (frameCount <= 0)
+            {
+                return 0f;
+            }
+            if (mode == ParticleFlipbookMode.TimeLoop)
+            {
+                float start = randomStart ? seed * frameCount : 0f;
+                return timeSeconds * fps + start;
+            }
+            // LifeOneShot: sweep 0..frameCount as the particle ages. The one-shot resolve clamps the final cell, so
+            // the last authored frame shows at full life instead of wrapping past the sheet.
+            return Math.Clamp(lifeNorm, 0f, 1f) * frameCount;
         }
 
         // Forward each particle's motion history to DrawTrail. One point buffer and one sample buffer are rented

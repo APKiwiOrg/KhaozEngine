@@ -5,6 +5,17 @@ using KhaozEngine.Render3D;
 // DrawParticles/DrawEffect extensions, and the VfxPresets in scope. Mirrors the Telegraphs.Render3D precedent.
 namespace KhaozEngine.Particles
 {
+    /// <summary>How the adapter advances a flipbook look's frame over a particle's life.</summary>
+    public enum ParticleFlipbookMode
+    {
+        /// <summary>Frame sweeps across the sheet once as the particle ages (frame = life fraction * frame count).
+        /// For one-shot sheets, e.g. an explosion or an impact burst. Playback clamps on the last frame.</summary>
+        LifeOneShot = 0,
+        /// <summary>Frame advances at <see cref="ParticleLook.FlipbookFps"/> and loops. For continuous sheets, e.g.
+        /// looping fire or smoke, optionally phase-staggered per particle by seed (<see cref="ParticleLook.FlipbookRandomStart"/>).</summary>
+        TimeLoop = 1,
+    }
+
     /// <summary>
     /// The per-emitter presentation recipe the adapter uses to turn one <see cref="ParticleSystem"/> (or one
     /// phase of a <see cref="ParticleEffectPlayer"/>) into <see cref="Scene3D"/> draws. The sim stays render-free:
@@ -52,5 +63,32 @@ namespace KhaozEngine.Particles
         /// <summary>Light-link base intensity. The per-particle intensity is scaled by the particle's alpha, so a
         /// fading particle dims its light. 0 disables the light link.</summary>
         public float LightIntensity;
+
+        /// <summary>Optional authored-atlas playback for this look. The default (an invalid
+        /// <see cref="ParticleFlipbook.Texture"/>) keeps the sprites on the procedural <see cref="Shape"/> path.
+        /// When active, each sprite's <see cref="ParticleSprite.FlipbookFrame"/> is resolved from this look's
+        /// <see cref="FlipbookMode"/> timing and the atlas frame replaces the procedural shape.</summary>
+        public ParticleFlipbook Flipbook;
+
+        /// <summary>How the flipbook frame advances (life-swept one-shot or fps-driven loop). Only read when
+        /// <see cref="Flipbook"/> is active.</summary>
+        public ParticleFlipbookMode FlipbookMode;
+
+        /// <summary>Playback rate for <see cref="ParticleFlipbookMode.TimeLoop"/>, in frames per second. 0 is
+        /// treated as 12. Ignored by <see cref="ParticleFlipbookMode.LifeOneShot"/>.</summary>
+        public float FlipbookFps;
+
+        // Stored inverted so the struct's zero-value default (a look created without touching this field) reads as
+        // "random start on", the desired default. The public property below re-inverts.
+        bool _flipbookNoRandomStart;
+
+        /// <summary>For <see cref="ParticleFlipbookMode.TimeLoop"/>, stagger each particle's starting frame by its
+        /// seed so a burst of identical looping sprites does not play in lockstep. Defaults to true (set false for a
+        /// synchronized loop). Ignored by <see cref="ParticleFlipbookMode.LifeOneShot"/>.</summary>
+        public bool FlipbookRandomStart
+        {
+            readonly get => !_flipbookNoRandomStart;
+            set => _flipbookNoRandomStart = !value;
+        }
     }
 }

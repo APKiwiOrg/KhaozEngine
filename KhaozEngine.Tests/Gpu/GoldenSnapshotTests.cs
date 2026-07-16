@@ -169,7 +169,7 @@ namespace KhaozEngine.Tests.Gpu
                 setup: scene =>
                 {
                     floor = scene.LoadMesh(MeshPrimitives.Tile(20f, 0.1f));
-                    // Baked with outline on; pinned explicit when the engine default flipped to off.
+                    // Baked with outline on, pinned explicit when the engine default flipped to off.
                     scene.Post.Outline = true;
                     // Wider framing than Golden3D_GroundDecals: three telegraphs spread across x=-4/0/+4 (frost
                     // ring outer radius 3, arcane cone range 4) need a much larger AABB than that sibling's tight
@@ -183,7 +183,7 @@ namespace KhaozEngine.Tests.Gpu
                 drawFrame: scene =>
                 {
                     // Fire and Arcane are additive-blend presets (TelegraphStyle.Fire / .Arcane). Golden3D_
-                    // GroundDecals draws its floor with the default (white) tint; adding colour on top of white
+                    // GroundDecals draws its floor with the default (white) tint. Adding colour on top of white
                     // clips straight back to white, so the additive fills would be invisible here. Use a dark
                     // neutral floor instead, same fix as TelegraphShowcaseGpuTests.
                     scene.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.12f, 0.12f, 0.15f, 1f));

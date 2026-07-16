@@ -284,6 +284,12 @@ namespace KhaozEngine.Render3D
         /// effects can share it.</summary>
         public float EffectTimeSeconds { get; set; }
 
+        /// <summary>Quality tier for the ground-decal pass (<see cref="GroundDecalQuality.Full"/> by default).
+        /// <see cref="GroundDecalQuality.Reduced"/> drops the second noise octave and the edge sparkle for weak GPUs.
+        /// The base fill, feathered edge, rim, and sweep energy are unchanged. Presentation only, host-owned
+        /// (NOT cleared by <see cref="Begin"/>), so set it once when picking a graphics tier.</summary>
+        public GroundDecalQuality DecalQuality { get; set; } = GroundDecalQuality.Full;
+
         /// <summary>
         /// The active screen-space teleport transition (<see cref="HardBlink"/> / <see cref="CameraDissolve"/>, or a
         /// custom <see cref="IScreenTransition"/>), drawn as a fullscreen pass over the final image each frame. The
@@ -1854,7 +1860,8 @@ namespace KhaozEngine.Render3D
                 {
                     _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_shadowDecals));
+                    // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, CollectionsMarshal.AsSpan(_shadowDecals));
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -1982,7 +1989,7 @@ namespace KhaozEngine.Render3D
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
                 // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_decals));
+                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, CollectionsMarshal.AsSpan(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepth call above the sky pass) for the shore fade. Depth test ON (so

@@ -1352,12 +1352,16 @@ layout(location=3) in vec4 IFill;
 layout(location=4) in vec4 IOutline;
 layout(location=5) in vec4 IParams;
 layout(location=6) in vec4 IGate;
+layout(location=7) in vec4 IPattern;   // x=pattern index, y=speed, z=cells per world unit, w=0
+layout(location=8) in vec4 IEnergy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=0
 layout(location=0) out vec4 vCenter;
 layout(location=1) out vec4 vSize;
 layout(location=2) out vec4 vFill;
 layout(location=3) out vec4 vOutline;
 layout(location=4) out vec4 vParams;
 layout(location=5) out vec4 vGate;
+layout(location=6) out vec4 vPattern;
+layout(location=7) out vec4 vEnergy;
 void main() {
     // Two-triangle quad (gl_VertexIndex 0..5) spanning the instance's NDC footprint rect. Each per-instance attribute
     // is identical across the quad's six vertices, so the smooth varyings deliver the exact per-instance value to the
@@ -1372,26 +1376,48 @@ void main() {
     vOutline = IOutline;
     vParams = IParams;
     vGate = IGate;
+    vPattern = IPattern;
+    vEnergy = IEnergy;
 }";
 
         public const string DecalFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = linear depth (single-channel R32F)
 layout(set=0, binding=1) uniform sampler Samp;
+// ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross mis-binds a second): the RAW inverse view-projection
+// and the time/quality value share this single Frame block, grown from 64 to 80 bytes.
 layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
+    vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), zw reserved
 };
 layout(location=0) in vec4 Center;    // xyz world center, w = rotation (radians about +Y)
 layout(location=1) in vec4 Size;      // per-shape params (see GroundDecal.Size)
 layout(location=2) in vec4 Fill;      // rgb, a = fill alpha (already opacity-scaled)
 layout(location=3) in vec4 Outline;   // rgb, a = outline alpha
 layout(location=4) in vec4 Params;    // x=edgeThickness, y=fillFraction, z=flashAdd, w=shapeIndex
-layout(location=5) in vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=unused
+layout(location=5) in vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=featherWidth (world units)
+layout(location=6) in vec4 PatternP;  // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=0
+layout(location=7) in vec4 Energy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=0
 layout(location=0) out vec4 oColor;
 
 // 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).
 float sdCircle(vec2 p, float r) { return length(p) - r; }
 float sdRing(vec2 p, float ri, float ro) { float d = length(p); return max(ri - d, d - ro); }
 float sdBox(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+
+// Texture-free value noise for the animated fill patterns + sparkle. hash21 hashes a cell corner to a [0,1) scalar.
+// vnoise smoothly interpolates the four corners of the unit cell containing p (Perlin-style smootherstep weights).
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+float vnoise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
 
 void main() {
     // Skip pixels with no scene geometry. The single-channel depth target carries no usable alpha marker
@@ -1455,17 +1481,78 @@ void main() {
         swept = max(band, abs(ang - sweptHalf) - sweptHalf);
     }
 
-    // Fill: inside the swept boundary, AA across one edge width.
-    float fillA = (1.0 - smoothstep(0.0, edge, swept)) * Fill.a;
+    // Feathered coverage. feather (Gate.w, world units) softens both boundaries. ZERO-NEUTRAL: with feather == 0,
+    // smoothstep(-0.0, edge, swept) == smoothstep(0.0, edge, swept) and (edge * 2.0 + 0.0) == edge * 2.0, so these are
+    // IEEE-identical to the legacy hard-edge lines - the committed telegraph_ground goldens depend on that.
+    float feather = max(Gate.w, 0.0);
+    // Fill: inside the swept boundary, AA across one edge width (widened by feather).
+    float fillA = (1.0 - smoothstep(-feather, edge + feather, swept)) * Fill.a;
     // Outline: a band straddling the FULL shape boundary.
-    float outlineA = (1.0 - smoothstep(edge, edge * 2.0, abs(sd))) * Outline.a;
+    float outlineA = (1.0 - smoothstep(edge, edge * 2.0 + feather, abs(sd))) * Outline.a;
+
+    // Animated noise fill. Gated on pattern index > 0 (Solid == 0 leaves fillA untouched, so zero-neutral) and a
+    // non-empty fill. Reduced quality (TimeQ.y <= 0.5) drops the second octave.
+    float patIdx = PatternP.x;
+    if (patIdx > 0.5 && fillA > 0.0)
+    {
+        float cells = PatternP.z > 0.0 ? PatternP.z : 1.0;
+        float t = TimeQ.x * PatternP.y;
+        float n;
+        if (patIdx < 1.5)
+        {
+            // ScrollingNoise: value noise drifting across the decal-local XZ plane.
+            n = vnoise(local * cells + vec2(t, t * 0.7));
+            if (TimeQ.y > 0.5)
+                n = 0.65 * n + 0.35 * vnoise(local * cells * 2.3 - vec2(t * 1.3, -t));
+        }
+        else
+        {
+            // RadialNoise: value noise in polar (radius, angle) space, scrolling radially outward.
+            float rr = length(local) * cells;
+            float aa = atan(local.y, local.x);
+            n = vnoise(vec2(rr - t * 2.0, aa * 3.0));
+            if (TimeQ.y > 0.5)
+                n = 0.7 * n + 0.3 * vnoise(vec2(rr * 2.0 - t * 3.0, aa * 6.0));
+        }
+        fillA *= clamp(0.55 + 0.65 * n, 0.0, 1.2);
+    }
 
     vec3 rgb = Fill.rgb;
     float a = fillA;
     // Composite the outline over the fill.
     rgb = mix(rgb, Outline.rgb, outlineA <= 0.0 ? 0.0 : outlineA / max(outlineA + fillA, 1e-4));
     a = max(a, outlineA);
-    // Impact flash: brighten toward white.
+
+    // Edge energy. Each term is gated by its own Energy lane, so a zero lane is arithmetically inert and the whole
+    // block is a no-op when Energy == 0 (the trailing clamp is an identity on an already-in-range rgb) - zero-neutral.
+    if (Energy.x > 0.0)
+    {
+        // Rim glow: a band straddling the full boundary, tinted toward the outline colour with a slow shimmer.
+        float rim = (1.0 - smoothstep(0.0, edge * 2.0 + feather, abs(sd))) * Energy.x;
+        float shimmer = 0.85 + 0.15 * sin(TimeQ.x * 6.0 + Center.x + Center.z);
+        rgb = mix(rgb, Outline.rgb, clamp(rim * 0.6, 0.0, 1.0));
+        a = max(a, rim * shimmer * Outline.a * 0.8);
+    }
+    if (Energy.y > 0.0)
+    {
+        // Sweep glow: a leading-edge glow tracking the animated (swept) fill boundary.
+        float lead = 1.0 - smoothstep(0.0, edge * 2.0 + feather * 2.0, abs(swept));
+        rgb += Outline.rgb * (lead * Energy.y * 0.7);
+        a = max(a, lead * Energy.y * 0.6 * Fill.a);
+    }
+    if (Energy.z > 0.0 && TimeQ.y > 0.5)
+    {
+        // Edge sparkle: brief per-cell twinkles along the boundary (Full quality only).
+        float bmask = 1.0 - smoothstep(0.0, edge * 3.0 + feather, abs(sd));
+        vec2 cell = floor(local * 7.0);
+        float ph = hash21(cell + floor(TimeQ.x * 8.0));
+        float tw = step(0.965, ph);
+        rgb += vec3(1.0) * (bmask * tw * Energy.z);
+        a = max(a, bmask * tw * Energy.z * 0.9);
+    }
+    rgb = clamp(rgb, 0.0, 1.0);
+
+    // Impact flash: brighten toward white. Kept exactly where the legacy shader had it.
     rgb = clamp(rgb + Params.z, 0.0, 1.0);
 
     if (a <= 0.001) discard;

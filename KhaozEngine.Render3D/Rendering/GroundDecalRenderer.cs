@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
@@ -31,7 +32,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class GroundDecalRenderer : IDisposable
     {
         /// <summary>Per-instance decal attributes, matching the <c>I*</c> inputs of <see cref="ShaderSources.DecalVert"/>
-        /// (7 x vec4 = 112 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
+        /// (9 x vec4 = 144 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
         /// instance vertex buffer each frame.</summary>
         public struct DecalInstance
         {
@@ -41,7 +42,19 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Fill;
             public Vector4 Outline;
             public Vector4 Params;        // x=edge, y=fillFraction, z=flashAdd, w=shapeIndex
-            public Vector4 Gate;          // x=groundY, y=yTol, z=maxStep, w=0
+            public Vector4 Gate;          // x=groundY, y=yTol, z=maxStep, w=featherWidth
+            public Vector4 PatternP;      // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=0
+            public Vector4 Energy;        // x=rimGlow, y=sweepGlow, z=sparkle, w=0
+        }
+
+        /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). ONE uniform buffer
+        /// per pipeline - Metal (via Veldrid/SPIRV-Cross) mis-binds a second UBO, so the RAW inverse view-projection and
+        /// the time/quality value share this one block. Mirrors <see cref="BeamRenderer"/>'s FrameUniforms. 80 bytes.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        struct FrameUniforms
+        {
+            public Matrix4x4 InvViewProj;   // RAW (un-clip-corrected), matching Camera.ScreenToRay picking
+            public Vector4 TimeQ;           // x = effect time seconds, y = quality (1 full / 0 reduced), zw reserved
         }
 
         /// <summary>A maximal run of consecutive queued decals sharing one blend, drawn as one instanced call.</summary>
@@ -66,7 +79,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _alphaPipe, _additivePipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         readonly List<IDisposable> _retired = new();
-        readonly IGpuBuffer _frameUbo;            // 64 bytes: the RAW inverse view-projection, shared by every decal
+        readonly IGpuBuffer _frameUbo;            // 80 bytes: RAW inverse view-projection + time/quality, shared by every decal
         IGpuBuffer? _instances;                   // per-instance attribute stream, grown geometrically (old one retired)
         int _capacity;
         DecalInstance[] _packed = Array.Empty<DecalInstance>();   // reused CPU scratch, sized with the buffer
@@ -93,7 +106,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
-            _frameUbo = f.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer));
+            _frameUbo = f.CreateBuffer(new GpuBufferDescription(80, GpuBufferUsage.UniformBuffer));
             _alphaPipe = Pipe(f, colorOutput, GpuBlendAttachment.AlphaBlend);
             _additivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive);
         }
@@ -121,7 +134,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _shaders,
-                // One instance-rate vertex stream carrying the seven per-decal vec4 attributes (locations 0..6).
+                // One instance-rate vertex stream carrying the nine per-decal vec4 attributes (locations 0..8, no holes).
                 VertexLayouts = new List<GpuVertexLayoutDescription>
                 {
                     new GpuVertexLayoutDescription(
@@ -136,6 +149,8 @@ namespace KhaozEngine.Render3D.Rendering
                             new GpuVertexElement("IOutline", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IParams", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IGate", GpuVertexElementFormat.Float4),
+                            new GpuVertexElement("IPattern", GpuVertexElementFormat.Float4),
+                            new GpuVertexElement("IEnergy", GpuVertexElementFormat.Float4),
                         }),
                 },
                 Outputs = outputs,
@@ -172,7 +187,9 @@ namespace KhaozEngine.Render3D.Rendering
             Fill = d.FillColor,
             Outline = d.OutlineColor,
             Params = new Vector4(d.EdgeThickness, d.FillFraction, d.FlashAdd, (int)d.Shape),
-            Gate = new Vector4(d.Center.Y, d.YTolerance, d.MaxStep, 0f),
+            Gate = new Vector4(d.Center.Y, d.YTolerance, d.MaxStep, d.FeatherWidth),
+            PatternP = new Vector4((int)d.Pattern, d.PatternSpeed, d.PatternScale, 0f),
+            Energy = new Vector4(d.RimGlow, d.SweepGlow, d.Sparkle, 0f),
         };
 
         /// <summary>World-space bounding radius of a decal's painted shape about its <see cref="GroundDecal.Center"/>
@@ -247,10 +264,12 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Draw all queued decals into ColorDepthFB (lit color + read-only scene depth) as one instanced draw
-        /// per blend run. Caller guarantees the model pass is complete (depth written) and the framebuffer is free to
-        /// rebind. Returns the number of GPU draw calls issued (= blend-run count), so the caller keeps its frame
+        /// per blend run. <paramref name="timeSeconds"/> drives the animated noise + edge energy and
+        /// <paramref name="quality"/> folds into the Frame UBO's quality lane (Reduced drops the second noise octave and
+        /// the edge sparkle). Caller guarantees the model pass is complete (depth written) and the framebuffer is free
+        /// to rebind. Returns the number of GPU draw calls issued (= blend-run count), so the caller keeps its frame
         /// stats honest. No-op (returns 0) when empty.</summary>
-        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, ReadOnlySpan<GroundDecal> decals)
+        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, ReadOnlySpan<GroundDecal> decals)
         {
             if (decals.Length == 0) return 0;
             EnsureCapacity(decals.Length);
@@ -259,7 +278,12 @@ namespace KhaozEngine.Render3D.Rendering
             // screen->world like Camera.ScreenToRay picking, which is CPU/backend-independent. The clip-CORRECTED
             // matrix, by contrast, positions the footprint QUAD so it lands on the same pixels the geometry does.
             Matrix4x4.Invert(viewProj, out var inv);
-            cl.UpdateBuffer(_frameUbo, 0, in inv);
+            var frame = new FrameUniforms
+            {
+                InvViewProj = inv,
+                TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, 0f, 0f),
+            };
+            cl.UpdateBuffer(_frameUbo, 0, in frame);
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
 
             for (int i = 0; i < decals.Length; i++)

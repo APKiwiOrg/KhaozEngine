@@ -55,6 +55,40 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void PackInstance_carries_modern_fields()
+        {
+            var d = new GroundDecal
+            {
+                Shape = DecalShape.Circle,
+                Center = new Vector3(1f, 0f, 2f),
+                Size = new Vector4(3f, 0f, 0f, 0f),
+                FeatherWidth = 0.25f,
+                Pattern = DecalFillPattern.RadialNoise,
+                PatternSpeed = 0.7f,
+                PatternScale = 2.5f,
+                RimGlow = 0.8f,
+                SweepGlow = 0.6f,
+                Sparkle = 0.4f,
+            };
+            var i = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+            Assert.Equal(0.25f, i.Gate.W);
+            Assert.Equal(2f, i.PatternP.X);
+            Assert.Equal(0.7f, i.PatternP.Y);
+            Assert.Equal(2.5f, i.PatternP.Z);
+            Assert.Equal(new Vector4(0.8f, 0.6f, 0.4f, 0f), i.Energy);
+        }
+
+        [Fact]
+        public void PackInstance_legacy_decal_packs_all_zero_modern_lanes()
+        {
+            var d = new GroundDecal { Shape = DecalShape.Ring, Size = new Vector4(1f, 2f, 0f, 0f) };
+            var i = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+            Assert.Equal(0f, i.Gate.W);
+            Assert.Equal(Vector4.Zero, i.PatternP);
+            Assert.Equal(Vector4.Zero, i.Energy);
+        }
+
+        [Fact]
         public void BoundingRadius_is_the_max_radial_extent_per_shape()
         {
             Assert.Equal(1.4f, GroundDecalRenderer.BoundingRadius(Circle(0, 0, 1.4f)), 3);

@@ -46,26 +46,26 @@ public sealed class NavSpace
         for (int i = 0; i < links.Count; i++)
         {
             NavLink link = links[i];
-            ValidateEndpoint(layers, link.FromLayer, link.FromX, link.FromZ, i, isFrom: true);
-            ValidateEndpoint(layers, link.ToLayer, link.ToX, link.ToZ, i, isFrom: false);
+            ValidateEndpoint(layers, link.FromLayer, link.FromX, link.FromZ, i, isFrom: true, nameof(links));
+            ValidateEndpoint(layers, link.ToLayer, link.ToX, link.ToZ, i, isFrom: false, nameof(links));
         }
 
         Layers = layers;
         Links = links;
     }
 
-    static void ValidateEndpoint(IReadOnlyList<NavGrid> layers, int layer, int x, int z, int linkIndex, bool isFrom)
+    static void ValidateEndpoint(IReadOnlyList<NavGrid> layers, int layer, int x, int z, int linkIndex, bool isFrom, string paramName)
     {
         string endpoint = isFrom ? "From" : "To";
         if (layer < 0 || layer >= layers.Count)
             throw new ArgumentException(
                 $"Link {linkIndex}: {endpoint}Layer {layer} is out of range for {layers.Count} layer(s).",
-                "links");
+                paramName);
 
         if (!layers[layer].InBounds(x, z))
             throw new ArgumentException(
                 $"Link {linkIndex}: {endpoint} cell ({x}, {z}) is out of bounds for layer {layer}.",
-                "links");
+                paramName);
     }
 
     /// <summary>Builds a single-layer space wrapping <paramref name="grid"/>, with no links.</summary>

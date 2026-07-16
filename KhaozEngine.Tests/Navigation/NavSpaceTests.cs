@@ -55,13 +55,27 @@ public class NavSpaceTests
     }
 
     [Fact]
-    public void LayerOf_AllBandsInfinite_ReturnsZero()
+    public void LayerOf_AllBandsInfinite_ContainmentWins()
     {
         NavGrid a = MakeGrid();
         NavGrid b = MakeGrid();
         var space = new NavSpace(new[] { a, b });
 
         Assert.Equal(0, space.LayerOf(42f));
+    }
+
+    [Fact]
+    public void LayerOf_NoContainmentAndNoFiniteBand_FallsBackToZero()
+    {
+        NavGrid layer0 = MakeGrid(yMin: 5f, yMax: float.PositiveInfinity);
+        NavGrid layer1 = MakeGrid(yMin: float.NegativeInfinity, yMax: -5f);
+        var space = new NavSpace(new[] { layer0, layer1 });
+
+        // Query y=0f is not contained by either layer.
+        // Layer 0 has half-infinite band (yMin finite, yMax infinite), so skipped.
+        // Layer 1 has half-infinite band (yMin infinite, yMax finite), so skipped.
+        // No finite band exists, bestIndex stays -1, fallback returns 0.
+        Assert.Equal(0, space.LayerOf(0f));
     }
 
     [Fact]

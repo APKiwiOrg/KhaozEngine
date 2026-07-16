@@ -60,16 +60,23 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   repaints a character's legs). Radius follows the caster footprint; strength fades with height above ground
   (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
   - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast; terrain receives only) into
-  an ortho light-space depth map fitted around the camera focus (texel-snapped to kill shimmer), which the shared
-  lighting block PCF-samples (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models
-  and terrain. Every drawn mesh casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`:
-  `ShadowMapResolution` (default `2048`, a construction-time knob), `ShadowFocusRadius`/`ShadowGroundHeight`,
-  `ShadowStrength`, and the acne biases `ShadowConstantBias`/`ShadowSlopeBias`. On a device without depth-sample
-  support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The depth map persists across frames,
-  so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (the fitted light matrix, the
-  rigid caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior
-  map, so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
-  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
+  a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` concentric cascades (default 3) side by side in one
+  R32F texture, from the tight near cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance`, texel-snapped per cascade
+  to kill shimmer. The shared lighting block picks the tightest cascade per fragment and PCF-samples it (3x3 +
+  slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models and terrain, fading the term to lit at
+  the outermost cascade's border so the coverage limit is invisible (no hard box, no sliding coverage). Every drawn mesh
+  casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via
+  `ResolvedCascadeCount`) and `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it
+  `>= ShadowFocusRadius`); `ShadowMapResolution` (default `2048`, now the PER-CASCADE resolution - a construction-time
+  knob alongside `ShadowCascadeCount`, so the atlas is `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes);
+  `ShadowFocusRadius`/`ShadowGroundHeight`, `ShadowStrength`, and the acne biases `ShadowNormalOffset` (default `2.5`
+  texels, the extent-aware normal-offset bias, scaled PER CASCADE so far cascades do not acne and near ones do not
+  detach) plus the tiny residual depth biases `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a
+  device without depth-sample support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas
+  persists across frames, so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY
+  cascade's fitted matrix, the rigid caster set/transforms, the resolution, or any animated skinned caster present) and
+  otherwise reuses the prior atlas, so a mostly-static scene stops repainting it every frame. A skipped pass adds zero
+  shadow draw calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
@@ -113,10 +120,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only
   scene depth, so it fills only where no mesh drew, never touches the MRT normal/depth the outline pass reads, and
-  costs nothing when off (`Sky.Enabled == false`, existing scenes byte-stable). Screen-space, so it reads under both
-  the orthographic `IsoCamera3D` and the perspective `FollowCamera3D`. The sun direction **defaults to the key light**
-  (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows); override with
-  `Sky.SunDirectionOverride`. The pure math is `SkyMath` (gradient + sun falloff + `ProjectSunToNdc`).
+  costs nothing when off (`Sky.Enabled == false`, existing scenes byte-stable). The sun direction **defaults to the
+  key light** (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows). Override with
+  `Sky.SunDirectionOverride`. `Sky.Anchor` (a `SunAnchor`, default `SunAnchor.World`) chooses how the disc is placed:
+  `World` anchors it to the world-space sun direction via a true point-at-infinity projection through the camera (the
+  disc stays fixed over the world direction the sun lies in as the camera orbits, and is hidden when the sun is behind
+  the camera - correct for the perspective `FollowCamera3D`/`FlyCamera3D`. It degenerates under the orthographic
+  `IsoCamera3D`, where a directional sun has no finite screen position, so pick `StylizedBackdrop` there).
+  `StylizedBackdrop` keeps the legacy
+  camera-relative placement (view-space right/up read as screen NDC, visible above the view horizon), which works
+  under both cameras and is the pick for the iso look. The pure math is `SkyMath` (gradient + sun falloff +
+  `ProjectSunToNdc`, which dispatches on the anchor to `ProjectSunWorldToNdc` / `ProjectSunStylizedToNdc`).
 - Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in LDR threshold +
   separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
   bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,

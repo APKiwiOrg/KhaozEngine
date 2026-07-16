@@ -23,8 +23,26 @@ internal sealed class FakeUpdateSource : IUpdateSource
     public readonly Dictionary<string, int> Attempts = new(StringComparer.Ordinal);
     public int DownloadCalls;
 
-    public Task<LatestVersionInfo?> CheckLatestVersionAsync(string platform, CancellationToken cancellationToken = default)
-        => Task.FromResult(Latest);
+    /// <summary>Number of times the version check has been invoked (lets a test count Tick-driven re-checks).</summary>
+    public int CheckCalls;
+
+    /// <summary>
+    /// When set, <see cref="CheckLatestVersionAsync"/> parks on this gate before answering, so a test can
+    /// hold one check "in flight" (the service stays in <see cref="UpdateState.Checking"/>) and drive Tick
+    /// against it. Complete it to let the check finish.
+    /// </summary>
+    public TaskCompletionSource<bool>? CheckGate;
+
+    public async Task<LatestVersionInfo?> CheckLatestVersionAsync(string platform, CancellationToken cancellationToken = default)
+    {
+        CheckCalls++;
+        TaskCompletionSource<bool>? gate = CheckGate;
+        if (gate is not null)
+        {
+            await gate.Task.ConfigureAwait(false);
+        }
+        return Latest;
+    }
 
     /// <summary>Raw bytes keyed by URL: the manifest JSON and its ".sig" live here.</summary>
     public readonly Dictionary<string, byte[]> Bytes = new(StringComparer.Ordinal);

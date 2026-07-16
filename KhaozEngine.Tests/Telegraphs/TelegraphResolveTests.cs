@@ -151,5 +151,97 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(TelegraphFillPattern.Solid, r.Pattern);
             Assert.Equal(0f, r.FeatherFraction);
         }
+    [Fact]
+    public void Sweep_glow_ramps_in_after_the_early_cast_window()
+    {
+        // The glow band is wider than the tiny early swept region, so full-strength glow at low progress
+        // reads as a ball at the shape center. The resolver holds it at zero through the ramp-in window.
+        var s = TelegraphStyle.Nature;
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.05f, s).SweepGlow);
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.08f, s).SweepGlow);
+        Assert.True(TelegraphResolve.Resolve(0.15f, s).SweepGlow > 0f);
+        Assert.True(TelegraphResolve.Resolve(0.15f, s).SweepGlow < TelegraphResolve.Resolve(0.5f, s).SweepGlow);
+    }
+
+    [Fact]
+    public void Interior_dim_passes_through_clamped()
+    {
+        var s = TelegraphStyle.Frost;
+        Assert.Equal(s.InteriorDim, TelegraphResolve.Resolve(0.4f, s).InteriorDim);
+        s.InteriorDim = 3f;
+        Assert.Equal(1f, TelegraphResolve.Resolve(0.4f, s).InteriorDim);
+        s.InteriorDim = -1f;
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.4f, s).InteriorDim);
+    }
+
+    [Fact]
+    public void Runner_follows_the_outline_runner_flag_and_energy()
+    {
+        Assert.True(TelegraphResolve.Resolve(0.5f, TelegraphStyle.Arcane).Runner > 0f);
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.5f, TelegraphStyle.Frost).Runner);
+        var s = TelegraphStyle.Steel;
+        s.EdgeEnergy = 0.5f;
+        Assert.Equal(0.5f, TelegraphResolve.Resolve(0.5f, s).Runner, 4);
+    }
+
+    [Fact]
+    public void Prior_fourteen_arg_resolved_ctor_still_compiles_with_zero_new_fields()
+    {
+        var r = new ResolvedTelegraph(Color.White, Color.White, 1f, 0f, 2f,
+            FillMode.Fill, TelegraphBlend.Alpha,
+            0.1f, TelegraphFillPattern.ScrollingNoise, 1f, 6f, 1f, 1f, 1f);
+        Assert.Equal(0f, r.InteriorDim);
+        Assert.Equal(0f, r.Runner);
+    }
+
+    [Fact]
+    public void Fill_mode_silences_the_outline_and_its_band_effects()
+    {
+        var s = TelegraphStyle.Arcane;
+        s.FillMode = FillMode.Fill;
+        var r = TelegraphResolve.Resolve(0.5f, s);
+        Assert.Equal(0f, r.OutlineColor.A);
+        Assert.Equal(0f, r.RimGlow);
+        Assert.Equal(0f, r.Runner);
+        Assert.True(r.FillColor.A > 0f);
+        Assert.True(r.SweepGlow > 0f);
+    }
+
+    [Fact]
+    public void Outline_mode_silences_the_fill()
+    {
+        var s = TelegraphStyle.Generic;
+        s.FillMode = FillMode.Outline;
+        var r = TelegraphResolve.Resolve(0.5f, s);
+        Assert.Equal(0f, r.FillColor.A);
+        Assert.True(r.OutlineColor.A > 0f);
+    }
+
+    [Fact]
+    public void Outline_and_fill_mode_keeps_both_alphas()
+    {
+        var r = TelegraphResolve.Resolve(0.5f, TelegraphStyle.Generic);
+        Assert.True(r.FillColor.A > 0f);
+        Assert.True(r.OutlineColor.A > 0f);
+    }
+
+    [Fact]
+    public void Base_fill_passes_through_clamped()
+    {
+        var s = TelegraphStyle.Frost;
+        Assert.Equal(s.BaseFill, TelegraphResolve.Resolve(0.4f, s).BaseFill);
+        s.BaseFill = 2f;
+        Assert.Equal(1f, TelegraphResolve.Resolve(0.4f, s).BaseFill);
+    }
+
+    [Fact]
+    public void Prior_sixteen_arg_resolved_ctor_still_compiles_with_zero_base_fill()
+    {
+        var r = new ResolvedTelegraph(Color.White, Color.White, 1f, 0f, 2f,
+            FillMode.Fill, TelegraphBlend.Alpha,
+            0.1f, TelegraphFillPattern.ScrollingNoise, 1f, 6f, 1f, 1f, 1f, 0.5f, 1f);
+        Assert.Equal(0f, r.BaseFill);
+    }
+
     }
 }

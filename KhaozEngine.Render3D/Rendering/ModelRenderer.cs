@@ -17,20 +17,27 @@ namespace KhaozEngine.Render3D.Rendering
         /// <c>[16]</c> array size declared in the std140 UBO block in BOTH ModelVert and ModelFrag.</summary>
         internal const int MaxPointLights = 16;
 
+        /// <summary>Maximum cascaded shadow maps (matches <see cref="ShadowSettings.MaxCascades"/> and the
+        /// fixed-size <c>ShadowMat[4]</c> arrays in the frame-UBO shadow tail). The atlas holds up to this many
+        /// side-by-side cascade columns.</summary>
+        internal const int MaxCascades = 4;
+
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
-        // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the shadow tail (the
-        // key-light shadow-map matrix + params) = mat4 (64) + vec4 (16) = 80, so 688 + 80 = 768 bytes total.
+        // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the cascaded shadow tail
+        // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992 bytes.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
         internal const uint LightArraysBytes = 2 * LightArrayBytes;   // both point-light arrays = 512
-        // The shadow tail (mat4 LightViewProj + vec4 ShadowParams) rides in the SAME frame UBO after the light
-        // arrays (a SECOND UBO in the set mis-binds on Metal; see the splat-params note below), so both the model and
-        // splat passes read the shadow map from their one bound UBO. ShadowParams.x = 1/mapResolution (PCF texel
-        // step), .y = constant bias, .z = slope bias, .w = shadow strength (0 = shadow map inactive this frame).
-        internal const uint ShadowTailBytes = 64 + 16;               // mat4 + vec4 = 80
+        // The cascaded shadow tail (mat4 ShadowMat[4] + vec4 ShadowParams + vec4 ShadowParams2 + vec4 ShadowNormalOffsets)
+        // rides in the SAME frame UBO after the light arrays (a SECOND UBO in the set mis-binds on Metal, see the
+        // splat-params note below), so both the model and splat passes read the cascade atlas from their one bound UBO.
+        // ShadowParams = (cascadeCount, strength[0=inactive], constBias, slopeBias). ShadowParams2 = (texelStep =
+        // 1/perCascadeResolution, maxDistance, borderFrac, reserved), ShadowNormalOffsets = per-cascade normal-offset
+        // world size (texel-world-size_i x ShadowNormalOffset, CPU-baked so it is extent-aware per cascade).
+        internal const uint ShadowTailBytes = (uint)MaxCascades * 64 + 48;     // mat4[4] + 3*vec4 = 304
         internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
-        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 768
+        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 992
 
         // ---- GPU skinning (opt-in) combined-buffer geometry. The whole skinned pipeline reads ONE dynamic-offset
         // UBO at set 0 binding 0 (both stages) laid out as { mat4 Mvp; mat4 Model; mat4 P; <frame block>; mat4
@@ -55,15 +62,24 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 FillDir; public Vector4 FillColor; public Vector4 CameraPos;
         }
 
-        /// <summary>The shadow tail of the frame UBO (appended after the point-light arrays at
-        /// <see cref="ShadowTailOffset"/>): the world-&gt;light-clip matrix the receivers sample the shadow map with,
-        /// plus the PCF/bias/strength params. <see cref="Params"/> is (1/mapResolution, constantBias, slopeBias,
-        /// strength); strength 0 means the shadow map is inactive this frame, so the shader leaves the key light
-        /// unshadowed (byte-stable with ShadowMode.Off). 80 bytes = mat4 + vec4.</summary>
+        /// <summary>The cascaded shadow tail of the frame UBO (appended after the point-light arrays at
+        /// <see cref="ShadowTailOffset"/>) - the per-cascade world-&gt;light-clip matrices the receivers sample the
+        /// cascade atlas with, plus the PCF/bias/strength/fade params. <see cref="Cascade0"/>..<see cref="Cascade3"/>
+        /// are the up-to-<see cref="MaxCascades"/> RECEIVER matrices (only the first <c>cascadeCount</c> are read, and the
+        /// receiver breaks the loop past it). <see cref="Params"/> is (cascadeCount, strength, constantBias,
+        /// slopeBias). Strength 0 means the atlas is inactive this frame, so the shader leaves the key light unshadowed
+        /// (byte-stable with ShadowMode.Off). <see cref="Params2"/> is (texelStep = 1/perCascadeResolution,
+        /// maxDistance, borderFrac, reserved). <see cref="NormalOffsets"/> holds the per-cascade normal-offset world
+        /// size (x = cascade 0 .. w = cascade 3). 304 bytes = mat4[4] + 3*vec4.</summary>
         internal struct ShadowUbo
         {
-            public Matrix4x4 LightViewProj;   // 64
-            public Vector4 Params;            // 16: x = 1/res (PCF texel step), y = const bias, z = slope bias, w = strength
+            public Matrix4x4 Cascade0;        // 0
+            public Matrix4x4 Cascade1;        // 64
+            public Matrix4x4 Cascade2;        // 128
+            public Matrix4x4 Cascade3;        // 192
+            public Vector4 Params;            // 256: x = cascadeCount, y = strength, z = const bias, w = slope bias
+            public Vector4 Params2;           // 272: x = texelStep (1/perCascadeRes), y = maxDistance, z = borderFrac, w = reserved
+            public Vector4 NormalOffsets;     // 288: per-cascade normal-offset world size (x=c0..w=c3)
         }
 
         /// <summary>One dynamic point light, packed for the std140 UBO arrays: <see cref="PosRadius"/> is
@@ -152,15 +168,15 @@ namespace KhaozEngine.Render3D.Rendering
         // disposed only in Dispose. Bounded by geometric growth.
         readonly List<IDisposable> _retired = new();
 
-        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution)
+        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution, int shadowCascadeCount)
         {
             _gd = gd;
             var factory = gd.Factory;
 
-            // The shadow map is allocated up front at a fixed resolution so its texture handle stays stable and can be
-            // bound into every material set below; the shader gates on ShadowParams.w, so an inactive frame never taps
-            // it (byte-stable with ShadowMode.Off).
-            _shadowMap = new ShadowMapRenderer(gd, shadowMapResolution);
+            // The cascade atlas is allocated up front at a fixed per-cascade resolution x cascade count so its texture
+            // handle stays stable and can be bound into every material set below. The shader gates on ShadowParams.y
+            // (strength), so an inactive frame never taps it (byte-stable with ShadowMode.Off).
+            _shadowMap = new ShadowMapRenderer(gd, shadowMapResolution, shadowCascadeCount);
 
             _ubo = factory.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)); // header + 2 vec4[16] point-light arrays + shadow tail
 
@@ -421,17 +437,33 @@ namespace KhaozEngine.Render3D.Rendering
         // the frame UBO + every splat material UBO by WriteFrameUniformsTo, so both passes receive shadows.
         ShadowUbo _shadow;
 
-        /// <summary>Set this frame's shadow tail (light-space matrix + PCF/bias/strength). Call after
-        /// <see cref="SetFrameUniforms"/> when the shadow-map tier is active; leave unset (or pass a zero-strength
-        /// tail) for no shadows. The value is uploaded by <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the model UBO and
-        /// each splat material UBO. <paramref name="lightViewProj"/> is already GPU-clip-corrected by the caller.</summary>
-        public void SetShadowUniforms(Matrix4x4 lightViewProj, float invResolution, float constantBias, float slopeBias, float strength)
+        /// <summary>Set this frame's cascaded shadow tail (per-cascade RECEIVER matrices + PCF/bias/strength/fade
+        /// params). Call after <see cref="SetFrameUniforms"/> when the shadow-map tier is active. Leave unset (or pass
+        /// a zero-strength tail) for no shadows. The value is uploaded by
+        /// <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the model UBO and each splat material
+        /// UBO. <paramref name="receiverMats"/> are already GPU-clip-corrected by the caller (up to
+        /// <see cref="MaxCascades"/> entries, the first <paramref name="cascadeCount"/> are read).
+        /// <paramref name="normalOffsets"/> is the per-cascade normal-offset world size (index 0..cascadeCount-1).</summary>
+        public void SetShadowUniforms(ReadOnlySpan<Matrix4x4> receiverMats, int cascadeCount, float texelStep,
+            float constantBias, float slopeBias, float strength, float maxDistance, float borderFrac,
+            ReadOnlySpan<float> normalOffsets)
         {
-            _shadow = new ShadowUbo
+            var s = new ShadowUbo
             {
-                LightViewProj = lightViewProj,
-                Params = new Vector4(invResolution, constantBias, slopeBias, strength),
+                Params = new Vector4(cascadeCount, strength, constantBias, slopeBias),
+                Params2 = new Vector4(texelStep, maxDistance, borderFrac, 0f),
             };
+            // Fill up to MaxCascades matrices + normal offsets, leaving unread slots (past cascadeCount) at identity/zero.
+            Matrix4x4 m0 = Matrix4x4.Identity, m1 = Matrix4x4.Identity, m2 = Matrix4x4.Identity, m3 = Matrix4x4.Identity;
+            Vector4 no = Vector4.Zero;
+            int n = Math.Min(cascadeCount, MaxCascades);
+            if (n > 0) { m0 = receiverMats[0]; no.X = normalOffsets[0]; }
+            if (n > 1) { m1 = receiverMats[1]; no.Y = normalOffsets[1]; }
+            if (n > 2) { m2 = receiverMats[2]; no.Z = normalOffsets[2]; }
+            if (n > 3) { m3 = receiverMats[3]; no.W = normalOffsets[3]; }
+            s.Cascade0 = m0; s.Cascade1 = m1; s.Cascade2 = m2; s.Cascade3 = m3;
+            s.NormalOffsets = no;
+            _shadow = s;
         }
 
         /// <summary>Clear the shadow tail to inactive (strength 0), so the frame renders with no shadow map (the key
@@ -591,14 +623,23 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
         }
 
-        /// <summary>Begin the shadow depth pass (bind + clear the shadow map, upload the light matrix, bind the
-        /// depth pipeline). <paramref name="lightViewProj"/> is the GPU-clip-corrected world-&gt;light-clip matrix.
-        /// Call after <see cref="UploadInstances"/> (the depth pass reuses that instance buffer).</summary>
-        public void BeginShadowPass(IGpuCommandList cl, Matrix4x4 lightViewProj) =>
-            _shadowMap.BeginDepthPass(cl, lightViewProj);
+        /// <summary>Begin the cascaded shadow depth pass (bind + clear the whole atlas, upload every cascade's DEPTH
+        /// matrix into its dynamic slot, bind the rigid depth pipeline). <paramref name="depthMats"/> are the
+        /// GPU-clip-corrected AND column-transformed per-cascade matrices (first <paramref name="cascadeCount"/> read).
+        /// Follow with <see cref="BeginShadowCascadeRigid"/> per cascade, then <see cref="EndShadowPass"/>. Call after
+        /// <see cref="UploadInstances"/> (the depth pass reuses that instance buffer).</summary>
+        public void BeginShadowPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount) =>
+            _shadowMap.BeginDepthPass(cl, depthMats, cascadeCount);
 
-        /// <summary>Draw one rigid caster run into the shadow map, reusing the shared instance buffer the model pass
-        /// uploaded (no second upload). <see cref="BeginShadowPass"/> must be bound.</summary>
+        /// <summary>Bind cascade <paramref name="cascade"/> (scissor its atlas column + rebase the light matrix) for
+        /// the rigid + CPU-skinned caster draws that follow. <see cref="BeginShadowPass"/> must be bound.</summary>
+        public void BeginShadowCascadeRigid(IGpuCommandList cl, int cascade) => _shadowMap.BeginCascadeRigid(cl, cascade);
+
+        /// <summary>Reset the scissor to full after the cascaded depth pass. Call once after all cascades are drawn.</summary>
+        public void EndShadowPass(IGpuCommandList cl) => _shadowMap.EndDepthPass(cl);
+
+        /// <summary>Draw one rigid caster run into the CURRENTLY-BOUND cascade, reusing the shared instance buffer the
+        /// model pass uploaded (no second upload). <see cref="BeginShadowCascadeRigid"/> must be bound.</summary>
         public void DrawShadowCasterRun(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
             GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount) =>
             _shadowMap.DrawCasterRun(cl, vb, ib, indexCount, indexFormat, _instanceBuffer!, instanceStart, instanceCount);
@@ -728,18 +769,18 @@ namespace KhaozEngine.Render3D.Rendering
         /// + retires like the main one). Forwards to <see cref="ShadowMapRenderer"/>.</summary>
         public void EnsureSkinnedShadowCapacity(uint slotCount) => _shadowMap.EnsureSkinnedShadowCapacity(slotCount);
 
-        /// <summary>Pack one GPU-skinned caster's shadow-depth slot: <c>LightMvp = model * lightViewProj</c> folded per
-        /// draw + the composed bones. <paramref name="lightViewProj"/> is the GPU-clip-corrected world-&gt;light-clip
-        /// matrix <see cref="BeginShadowPass"/> was given. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
-        public void PackSkinnedShadowSlot(IGpuCommandList cl, uint slot, in Matrix4x4 model, in Matrix4x4 lightViewProj, ReadOnlySpan<Matrix4x4> bones) =>
-            _shadowMap.PackSkinnedShadowSlot(cl, slot, model, lightViewProj, bones);
+        /// <summary>Pack one GPU-skinned caster's shadow-depth slot for one cascade: <c>LightMvp = model *
+        /// cascadeDepthMat</c> folded per draw + the composed bones. <paramref name="cascadeDepthMat"/> is that
+        /// cascade's GPU-clip-corrected AND column-transformed matrix. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+        public void PackSkinnedShadowSlot(IGpuCommandList cl, uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat, ReadOnlySpan<Matrix4x4> bones) =>
+            _shadowMap.PackSkinnedShadowSlot(cl, slot, model, cascadeDepthMat, bones);
 
-        /// <summary>Switch the (already-begun) shadow depth pass to the GPU-skinning depth pipeline + bind its combined
-        /// window set. Call after the rigid caster runs, before the skinned casters. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
-        public void BindSkinnedShadowPass(IGpuCommandList cl) => _shadowMap.BindSkinnedDepthPass(cl);
+        /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-skinning depth draws: scissor its atlas column
+        /// and switch to the skinned depth pipeline. Call per cascade after the rigid runs. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+        public void BindShadowCascadeSkinned(IGpuCommandList cl, int cascade) => _shadowMap.BindCascadeSkinned(cl, cascade);
 
-        /// <summary>Draw one GPU-skinned caster into the shadow map (rest-pose vertex buffer + per-draw dynamic offset).
-        /// <see cref="BindSkinnedShadowPass"/> must be bound. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+        /// <summary>Draw one GPU-skinned caster into the CURRENTLY-BOUND cascade (rest-pose vertex buffer + per-draw
+        /// dynamic offset). <see cref="BindShadowCascadeSkinned"/> must be bound. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
         public void DrawGpuSkinnedShadowCaster(IGpuCommandList cl, IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, uint slot) =>
             _shadowMap.DrawGpuSkinnedCaster(cl, restVb, ib, indexCount, indexFormat, slot);
 

@@ -262,6 +262,39 @@ namespace KhaozEngine.Terrain
             ApplyBuilds(sched.TakeReady(_config.MaxLoadsPerFrame, NearestFirst(playerPos, cs)));
         }
 
+        /// <summary>Rebuild every currently loaded chunk intersecting <paramref name="area"/> in place, at its
+        /// CURRENT LOD tier (no tier change), by re-issuing the sink's re-LOD rebuild. This is the partial
+        /// invalidation seam for editors: an edit only pays for the loaded chunks it actually overlaps, not the
+        /// whole ring. The rect maps to an inclusive chunk-coord range via floor(min/chunkSize)..floor(max/chunkSize),
+        /// so a rect that merely touches a chunk's border still invalidates both neighbours. Chunks not currently
+        /// loaded are left untouched: they pick up the new state the next time they load naturally. In async mode
+        /// any in-flight builds are flushed first (<see cref="FlushPendingBuilds"/>) so a stale build cannot land
+        /// after the invalidation and overwrite it.</summary>
+        public void Invalidate(RectArea area)
+        {
+            FlushPendingBuilds();
+            float cs = _config.ChunkSize;
+            ChunkCoord min = ChunkGrid.CoordOf(area.MinX, area.MinZ, cs);
+            ChunkCoord max = ChunkGrid.CoordOf(area.MaxX, area.MaxZ, cs);
+            for (int z = min.Z; z <= max.Z; z++)
+            for (int x = min.X; x <= max.X; x++)
+                InvalidateLoaded(new ChunkCoord(x, z));
+        }
+
+        /// <summary>Single-chunk form of <see cref="Invalidate(RectArea)"/>: rebuild the chunk in place at its
+        /// current LOD if it is loaded, no-op otherwise.</summary>
+        public void Invalidate(ChunkCoord coord)
+        {
+            FlushPendingBuilds();
+            InvalidateLoaded(coord);
+        }
+
+        void InvalidateLoaded(ChunkCoord coord)
+        {
+            if (_loaded.TryGetValue(coord, out Entry? e))
+                _sink.ReLod(coord, e.Handle, e.Lod);
+        }
+
         void ApplyBuilds(IReadOnlyList<ChunkBuild<object>> builds)
         {
             for (int i = 0; i < builds.Count; i++)

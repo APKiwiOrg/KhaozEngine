@@ -13,9 +13,10 @@ namespace KhaozEngine.Telegraphs
     public enum TelegraphFillPattern
     {
         Solid = 0,
-        /// <summary>Value noise scrolling across the shape, tinted by the fill color.</summary>
+        /// <summary>Domain-warped value noise drifting across the shape into wispy filaments, tinted by
+        /// the fill color.</summary>
         ScrollingNoise = 1,
-        /// <summary>Value noise flowing radially outward from the shape center.</summary>
+        /// <summary>Cartesian vortex swirl, spiral arms orbiting the shape center over time.</summary>
         RadialNoise = 2,
     }
 
@@ -44,6 +45,8 @@ namespace KhaozEngine.Telegraphs
         SweepGlow = 1 << 5,
         /// <summary>Sparse animated sparkle cells along the shape boundary.</summary>
         EdgeSparkle = 1 << 6,
+        /// <summary>Rotating dash segments orbiting the outline band (a rune-ring feel).</summary>
+        OutlineRunner = 1 << 7,
     }
 
     /// <summary>
@@ -90,6 +93,16 @@ namespace KhaozEngine.Telegraphs
         /// 0 means the default full strength of 1. Explicit values scale the effects.</summary>
         public float EdgeEnergy;
 
+        /// <summary>How much the deep interior of the fill dims relative to the boundary and sweep front
+        /// (0 = legacy uniform fill, 1 = fully hollow). Concentrates the energy at the rim and the moving
+        /// sweep edge, the modern look. Modern presets use roughly 0.35 (dense) to 0.6 (hollow).</summary>
+        public float InteriorDim;
+
+        /// <summary>Fraction of the fill alpha painted across the ENTIRE shape from progress 0, before and
+        /// under the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets the full danger extent
+        /// read immediately without any outline, the borderless look. Modern presets use 0.3.</summary>
+        public float BaseFill;
+
         /// <summary>Neutral red-orange danger zone: alpha-blended outline + fill, all animations on.</summary>
         public static TelegraphStyle Generic => new()
         {
@@ -107,6 +120,8 @@ namespace KhaozEngine.Telegraphs
             Pattern = TelegraphFillPattern.ScrollingNoise,
             PatternSpeed = 0.35f,
             PatternScale = 6f,
+            InteriorDim = 0.45f,
+            BaseFill = 0.3f,
         };
 
         /// <summary>Fiery additive variant (warm ramp, glows over the scene).</summary>
@@ -126,6 +141,8 @@ namespace KhaozEngine.Telegraphs
             Pattern = TelegraphFillPattern.ScrollingNoise,
             PatternSpeed = 0.9f,
             PatternScale = 7f,
+            InteriorDim = 0.5f,
+            BaseFill = 0.3f,
         };
 
         /// <summary>Toxic green variant (alpha-blended, pulsing outline).</summary>
@@ -145,6 +162,8 @@ namespace KhaozEngine.Telegraphs
             Pattern = TelegraphFillPattern.ScrollingNoise,
             PatternSpeed = 0.45f,
             PatternScale = 5f,
+            InteriorDim = 0.5f,
+            BaseFill = 0.3f,
         };
 
         /// <summary>Physical/steel telegraph: cool grey, crisp edge, fine brushed grain.</summary>
@@ -157,13 +176,15 @@ namespace KhaozEngine.Telegraphs
             Opacity = 1f,
             FillMode = FillMode.OutlineAndFill,
             Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash
-                      | TelegraphAnim.SweepGlow,
+                      | TelegraphAnim.SweepGlow | TelegraphAnim.OutlineRunner,
             Blend = TelegraphBlend.Alpha,
             ZoneSense = ZoneSense.Danger,
             FeatherWidth = 0.06f,
             Pattern = TelegraphFillPattern.ScrollingNoise,
             PatternSpeed = 0.25f,
             PatternScale = 9f,
+            InteriorDim = 0.35f,
+            BaseFill = 0.3f,
         };
 
         /// <summary>Frost telegraph: pale ice blue, wide soft feather, slow crystalline flow.</summary>
@@ -183,6 +204,8 @@ namespace KhaozEngine.Telegraphs
             Pattern = TelegraphFillPattern.RadialNoise,
             PatternSpeed = 0.2f,
             PatternScale = 5f,
+            InteriorDim = 0.6f,
+            BaseFill = 0.3f,
         };
 
         /// <summary>Nature telegraph: verdant green, soft organic drift.</summary>
@@ -202,6 +225,8 @@ namespace KhaozEngine.Telegraphs
             Pattern = TelegraphFillPattern.ScrollingNoise,
             PatternSpeed = 0.3f,
             PatternScale = 4f,
+            InteriorDim = 0.5f,
+            BaseFill = 0.3f,
         };
 
         /// <summary>Arcane telegraph: violet additive energy, radial pulse, full edge energy.</summary>
@@ -215,13 +240,15 @@ namespace KhaozEngine.Telegraphs
             FillMode = FillMode.OutlineAndFill,
             Animation = TelegraphAnim.FillSweep | TelegraphAnim.ColorRamp | TelegraphAnim.ImpactFlash
                       | TelegraphAnim.OutlinePulse | TelegraphAnim.RimGlow | TelegraphAnim.SweepGlow
-                      | TelegraphAnim.EdgeSparkle,
+                      | TelegraphAnim.EdgeSparkle | TelegraphAnim.OutlineRunner,
             Blend = TelegraphBlend.Additive,
             ZoneSense = ZoneSense.Danger,
             FeatherWidth = 0.12f,
             Pattern = TelegraphFillPattern.RadialNoise,
             PatternSpeed = 0.6f,
             PatternScale = 6f,
+            InteriorDim = 0.6f,
+            BaseFill = 0.3f,
         };
     }
 }

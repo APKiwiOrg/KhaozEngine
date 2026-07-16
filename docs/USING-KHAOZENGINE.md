@@ -387,6 +387,23 @@ screen shows it with retry / quit affordances). The server-status min-version ga
 `DrawBackground` hook). All player-facing copy lives in `BootStrings` (`boot.*` keys) with a built-in English
 fallback, so add those keys to your catalog to localize.
 
+### In-session update recheck + post-update relaunch (`UpdateService`)
+
+Two opt-in `UpdateService` conveniences for a long-running game, both driven from the game loop. Full
+mechanics live in [UPDATER.md](UPDATER.md).
+
+- **Periodic recheck.** A launch-time check misses a release that lands mid-session. Set
+  `UpdateServiceOptions.RecheckInterval` (a `TimeSpan?`, null by default = off) and call
+  `updates.Tick(dt)` once per frame next to `UpdateOverlayActions.AutoAdvanceRequired(updates)`. `Tick`
+  accrues time only while the service is `Idle` (any active flow zeroes it), fires one offline-safe
+  `CheckForUpdateAsync` on reaching the interval, and no-ops when the interval is null. Call `Tick` and
+  `CheckForUpdateAsync` from the same thread (a manual check resets the clock).
+- **Post-update relaunch marker.** After the shim applies an update and relaunches, the boot's
+  `UpdateService` exposes a non-null `PostUpdateRelaunch` (`PostUpdateRelaunchInfo`, with `Version` and
+  `AppliedAtUtc`), read once from an `update-applied.json` marker and then deleted, so it is null on every
+  ordinary launch. Check it at startup to suppress a "welcome back" / "what's new" prompt on a boot the
+  game restarted itself into.
+
 ### 3D (`GameApp3D`, `IGameScene3D`, `SceneManager.Draw3D`)
 
 `GameApp3D : GameApp` adds a `Render3DSurface` (`Surface3D`) and a `Scene3D` (`Scene`), and a new seam
@@ -801,6 +818,22 @@ tip.Update(pointer);                               // auto-dismisses on tap-outs
 tip.Draw(batch, white);
 ```
 
+**`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
+panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
+every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the
+new overload to smooth it instead:
+
+```csharp
+panel.HeightGlideSeconds = 0.15f;               // exponential time constant in seconds
+panel.Bounds = panel.Bounds with { Height = ComputeNeededHeight() };  // may change frame to frame
+panel.Update(pointer, input, dt);               // dt-fed overload: EffectiveHeight eases toward the new height
+```
+
+The glide always snaps (no easing) on the first update and whenever the panel is fully hidden
+(`TransitionAlpha <= 0`), so a panel still OPENS directly at its needed height, and it never fights an active
+`Resizable` drag. The legacy `Update(pointer, input)` overload never feeds dt, so it never glides regardless of
+`HeightGlideSeconds`.
+
 **HUD widgets: `SlotGrid` + `ProgressBar` (10.78.0)** - two additive widgets for inventory / status HUDs. `SlotGrid`
 lays out `Count` uniform square slots wrapping at `Columns` (`Bounds`.X/Y is the origin; the footprint is `ContentSize`
 / `ContentBounds`, derived from `SlotSize` / `Spacing`). It hit-tests each slot through the press-origin invariant and
@@ -900,7 +933,12 @@ NumberFormatter.Notation = NumberNotation.Simple;   // once, from the user setti
 NumberFormatter.Format(1_500_000);       // "1.50M"
 NumberFormatter.FormatInt(1234);         // "1K"   (0 decimals below 1000)
 NumberFormatter.Format(1234, NumberNotation.Scientific);   // "1.23E+003" (explicit override)
+NumberFormatter.Format(0.05);            // "0.05" (sub-1 magnitudes stay truthful, never round up to "0.1")
 ```
+
+Magnitudes below 1 automatically get extra decimal places so a small value never rounds away to a misleading
+digit (0.05 would otherwise render "0.1" - twice the real value). This only applies when `decimalsSmall > 0`,
+so `FormatInt` (which always asks for 0 small-value decimals) is unaffected and stays a plain integer count.
 
 `TimeFormatter.Format(seconds, style)` renders a duration in two `DurationStyle` shapes: `Clock` (the ticking
 colon clock `1:02:34`, rounds up to the next whole second - for timers/countdowns) and `Coarse` (the two-unit
@@ -1562,32 +1600,51 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     slopes without also painting up a caster - no need to clamp it to hide leg-repaint. Which entities cast is the
     game's call - typically each character casts (submit its footprint each frame) and props opt in by size. With
     `Off` the queue is ignored, so submitting blobs unconditionally is safe.
-  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional shadow map with PCF (the "A"-tier target).
-    A depth-only pass renders the instanced casters into an orthographic light-space depth map fitted around the
-    camera focus (texel-snapped each frame to kill shimmer under camera pan), which the model AND terrain fragments
-    sample with 3x3 PCF + slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so
-    a shadow reads as shade, not blackness). Casters shadow the ground and each other. **Terrain receives but does
-    not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API
-    to opt in: every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device
-    reports `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample
-    the depth target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
+  - `ShadowMode.ShadowMap`: the semi-realistic key-light directional CASCADED shadow map with PCF (the "A"-tier
+    target). A depth-only pass renders the instanced casters into an orthographic light-space depth ATLAS -
+    `ShadowCascadeCount` concentric cascades (default 3) side by side in one R32F texture, fitted from the tight near
+    cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance` and texel-snapped per cascade to kill shimmer under camera
+    pan. The model AND terrain fragments pick the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF +
+    slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade,
+    not blackness), fading the shadow to fully lit toward the outermost cascade's border so the coverage limit is
+    invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does not cast**
+    (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API to opt in:
+    every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device reports
+    `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample the depth
+    target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
     `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
-    - Knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`; a **construction-time** knob - set it
-      before creating the `Scene3D`, since the map is bound into every material set - drop to 1024/512 on low-end);
-      `ShadowFocusRadius` (default `16`, world units the map covers per axis - smaller packs texels onto the near
-      action for crisper shadows at less coverage); `ShadowGroundHeight` (world Y the focus is fitted onto, default
-      `0`); `ShadowStrength` (0..1 shadow darkness, default `0.85`).
-    - **Bias tuning** (`ShadowConstantBias` default `0.004`, `ShadowSlopeBias` default `0.006`): the two biases
-      defeat self-shadow acne. Too small => **acne** (a lit surface stipples itself with shadow); too large =>
-      **peter-panning** (the shadow detaches from the caster's feet). The slope bias adds extra offset on
-      steeply-lit surfaces. If you see acne, raise the constant bias first, then the slope bias; if shadows float off
-      their casters, lower them. A tighter `ShadowFocusRadius` (bigger texels per world unit) tolerates less bias.
-    - **Depth-pass dirty-skip** (automatic, presentation-neutral): the 2048^2 depth map persists across frames, so the
-      depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - the fitted light
-      matrix (which folds in the light direction, focus, and camera), the rigid caster set + world transforms, the map
-      resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
-      forces a re-render). An unchanged static scene reuses the prior map and skips every caster draw, so a mostly-static
+    - **Cascade knobs** (on `ShadowSettings`): `ShadowCascadeCount` (default `3`, clamped `1..4` by `ResolvedCascadeCount`)
+      concentric cascades. Cascade 0 stays `ShadowFocusRadius` tight for crisp near shadows (so `ShadowCascadeCount == 1`
+      is the pre-cascade single map plus the edge fade); the rest grow to `ShadowMaxDistance` (default `130` world units,
+      the far reach, clamped `>= ShadowFocusRadius` by `ResolvedMaxDistance`) via a log/linear-blended split, so distant
+      shadows exist without softening the near ones. `ShadowMapResolution` is the **per-cascade** resolution, so the atlas
+      costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) - drop the count or the
+      resolution for a lower-end profile.
+    - Other knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`, per cascade; a **construction-time**
+      knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
+      material set - drop to 1024/512 on low-end); `ShadowFocusRadius` (default `16`, cascade-0 coverage half-extent -
+      smaller packs texels onto the near action); `ShadowGroundHeight` (world Y the focus is fitted onto, default `0`);
+      `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+    - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
+      default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
+      (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
+      surface along the geometric normal by that many shadow-map TEXELS (world-scaled by the texel size PER CASCADE, so
+      each cascade offsets by its own texel width - far cascades more, near ones less, so far cascades do not acne and
+      near ones do not detach), grazing-angle-weighted so it is largest where
+      acne is worst and zero facing the light. That lets the two DEPTH biases stay tiny, so the shadow keeps contact.
+      The depth biases act in light-clip NDC z over the light's full depth range (`4 * ShadowFocusRadius` world units),
+      so they were world-coupled to the radius - `ShadowConstantBias` dropped from `0.004` to `0.0004` (the old value
+      was ~0.25 world units of depth bias at the default radius, which peter-panned thin casters' contact shadows).
+      If you still see acne, raise `ShadowNormalOffset` first (say 3-4 texels), then the depth biases. If shadows float
+      off their casters, lower the depth biases (the normal offset does not cause peter-panning). Set
+      `ShadowNormalOffset = 0` to fall back to depth-bias-only.
+    - **Depth-pass dirty-skip** (automatic, presentation-neutral): the cascade atlas persists across frames, so the
+      depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - ANY of the fitted
+      cascade matrices (which fold in the light direction, focus, and camera, so a moving sun or a camera pan past a
+      texel re-renders), the rigid caster set + world transforms, the map resolution, or any animated skinned caster
+      present (a bone pose can change every frame, so any skinned caster forces a re-render). An unchanged static scene
+      reuses the prior atlas and skips every caster draw, so a mostly-static
       view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw calls to
       `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when the tier is
       not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is still applied
@@ -1641,8 +1698,20 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Sky.HaloFalloff` (halo width). **The sun direction defaults to the key light** (`Post.LightDirection`): the disc
     sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
     axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
-    point it elsewhere. The sun is drawn only when it is above the view horizon (behind/under the camera it is
-    suppressed), so a downward-looking iso view shows it near the top of the sky.
+    point it elsewhere.
+  - **Where the disc is placed** (`Sky.Anchor`, a `SunAnchor`, default `SunAnchor.World`):
+    - `SunAnchor.World` (default) anchors the disc to the WORLD-space sun direction with a true point-at-infinity
+      projection (rotate the world sun direction into view space, project through the camera projection,
+      perspective-divide). Orbiting the camera keeps the disc fixed over the world direction the sun really lies in
+      (it stays put over the mountains/features the light agrees with), and a pure camera translation never moves it.
+      The disc is drawn only when the sun is in FRONT of the camera. This is the physically-correct placement for the
+      perspective `FollowCamera3D`/`FlyCamera3D`. Under the orthographic `IsoCamera3D` a directional sun is a point at
+      infinity with no finite screen position (parallel view rays), so `World` suppresses the disc there - use
+      `StylizedBackdrop` for the iso look.
+    - `SunAnchor.StylizedBackdrop` is the legacy camera-relative placement: the sun's view-space right/up read
+      directly as screen NDC, visible whenever the sun is above the view horizon. Not a physical projection, but it
+      places the disc under BOTH the ortho iso camera and the perspective camera, which is what a decorative backdrop
+      wants. Pick it for a stylized sky, or for the orthographic iso camera where `World` degenerates.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur LDR bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
@@ -2271,6 +2340,13 @@ modern style knobs below). The 3D path paints onto the ground/terrain via the de
 occluded by meshes. (EdgeThickness is authored in 2D pixels: the 3D ground path derives its own
 world-space edge from the decal size.)
 
+`FillMode` (`Outline` / `Fill` / `OutlineAndFill`) is honored by both renderers: `TelegraphResolve`
+zeroes the unwanted alpha before either path draws, so `Fill` also silences the outline-band
+effects (`RimGlow`, `OutlineRunner`) and `Outline` silences the fill (which in turn silences the
+fill-driven pattern, base fill, and sweep glow). Behavior fix: the 3D ground-decal path used to
+draw the outline band unconditionally regardless of `FillMode`, only the 2D renderer honored it.
+Both paths now agree.
+
 **Modern style knobs** (fields on `TelegraphStyle`, resolved by `TelegraphResolve` and consumed by
 the 3D ground-decal path only, see below):
 
@@ -2278,21 +2354,38 @@ the 3D ground-decal path only, see below):
   for Circle/Arc, outer radius for Ring, width for Beam, range for Cone). 0 keeps the legacy hard
   anti-aliased edge. Presets use roughly 0.06 (crisp) to 0.18 (soft).
 - `Pattern` (`TelegraphFillPattern`) - interior fill texture. `Solid` (default) is the legacy flat
-  tint. `ScrollingNoise` drifts value noise across the shape. `RadialNoise` flows it radially
-  outward from the shape center.
+  tint. `ScrollingNoise` is domain-warped value noise drifting across the shape: the warp bends the
+  drift into wispy filaments instead of round scrolling blobs. `RadialNoise` is a Cartesian vortex
+  swirl, spiral arms orbiting the shape center over time (Cartesian sampling, so there is no polar
+  singularity mushing the center into a blob).
 - `PatternSpeed` - pattern animation rate, in cycles per second of `Scene3D.EffectTimeSeconds`.
 - `PatternScale` - noise cells across the shape's characteristic size. 0 falls back to 6.
 - `EdgeEnergy` - master strength multiplier for the RimGlow / SweepGlow / EdgeSparkle animations
   below. 0 means the default full strength of 1, so leaving it unset is not "off". Set an
   explicit value to scale the glow and sparkle up or down.
+- `InteriorDim` - how much the deep fill interior dims relative to the boundary and sweep front
+  (0 = legacy uniform fill, 1 = fully hollow). Concentrates the energy at the rim and the moving
+  sweep edge instead of pooling flat across the whole shape. Presets use roughly 0.35 (dense) to
+  0.6 (hollow). All seven set a nonzero value now, so every preset renders the hollow-rim look
+  unless you dial it back to 0 on a custom style.
+- `BaseFill` - fraction of the fill alpha painted across the ENTIRE shape from progress 0,
+  independent of the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets the full
+  danger extent read immediately, the sweep then brightens across it. Presets use 0.3.
 
-`TelegraphAnim` gained three flags alongside the original four (`OutlinePulse`, `FillSweep`,
+**Borderless telegraphs**: set `FillMode = FillMode.Fill` (silences the outline band and its rim/
+runner effects) and give the style a nonzero `BaseFill` (all seven presets already do) so the full
+shape extent still reads before the sweep gets there instead of only the swept fraction being
+visible.
+
+`TelegraphAnim` gained four flags alongside the original four (`OutlinePulse`, `FillSweep`,
 `ColorRamp`, `ImpactFlash`):
 
 - `RimGlow` - soft glow hugging the shape boundary, pulsing with cast progress.
 - `SweepGlow` - bright soft leading edge riding the `FillSweep` front. No-op without `FillSweep`
-  also set.
+  also set. Ramps in over the first fifth of the cast, so an early-cast sweep never engulfs the
+  whole (still tiny) swept region into a bright ball at the shape center.
 - `EdgeSparkle` - sparse animated sparkle cells along the shape boundary.
+- `OutlineRunner` - rotating dash segments orbiting the outline band, a rune-ring feel.
 
 **Presets** (`TelegraphStyle.Generic` / `.Fire` / `.Poison` / `.Steel` / `.Frost` / `.Nature` /
 `.Arcane`), each a distinct character to reach for by name instead of hand-tuning fields:
@@ -2301,11 +2394,12 @@ the 3D ground-decal path only, see below):
   flash, plus rim and sweep glow (no outline pulse).
 - `Fire` - additive warm glow, scrolling noise, edge sparkle.
 - `Poison` - toxic green, alpha-blended, pulsing outline, plus rim and sweep glow.
-- `Steel` - cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle.
-- `Frost` - pale ice blue, wide soft feather, slow radial noise flow, rim glow and edge sparkle,
-  no sweep glow.
+- `Steel` - cool grey, crisp edge, fine brushed-grain noise, outline dash runner, no rim glow or
+  sparkle.
+- `Frost` - pale ice blue, wide soft feather, slow vortex swirl, rim glow and edge sparkle, no
+  sweep glow.
 - `Nature` - verdant green, soft organic drift, rim glow and sweep glow, no pulse or flash.
-- `Arcane` - violet additive energy, radial noise, every animation flag on (full edge energy).
+- `Arcane` - violet additive energy, vortex swirl, every animation flag on (full edge energy).
 
 `Scene3D.DecalQuality` (`GroundDecalQuality.Full` by default) is a scene-wide, host-set tier for
 the ground-decal pass: `Reduced` drops the second noise octave and the edge sparkle for weak
@@ -2329,8 +2423,9 @@ The builder is pure and immediate-mode like every other telegraph call, so the C
         scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
-Pattern/PatternSpeed/PatternScale, EdgeEnergy, RimGlow, SweepGlow, EdgeSparkle, and residue) and
-always renders the flat legacy fill/outline/pulse/flash look. They are a 3D ground-decal feature.
+Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
+EdgeSparkle, OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash
+look, picking primitives by `FillMode` directly. They are a 3D ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same
@@ -4026,9 +4121,21 @@ status-strip panels draw through `SpriteBatch.DrawRounded` against a lifted dark
 column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWidth` (340, up from the old
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
+**Viewport rebuild performance.** A bounded terrain-feature edit (a lake or flatten drag, for example)
+reports a `DirtyRegion`, so `CheckWorldRebuild` re-meshes only the loaded chunks the edit's accumulated
+region overlaps (`ViewportWorld.PartialRebuild`) instead of tearing down and rebuilding the whole streamed
+world. A ridge or rim edit has unbounded reach and, like a scatter, exclusion, or terrain-scalar edit, still
+takes the full `ViewportWorld.Rebuild` path, throttled to at most once per
+`MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or
+draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the world every frame. Kit meshes
+and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF
+from disk; a toggle that changes their cached form (the "Textured props" toggle) calls
+`ViewportWorld.InvalidateKitMeshes` first.
+
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
-semantics (including the one-frame `EditFeature` inspector lag), the feature apply-order and visibility
-mechanics, the procedural setup editing mechanics, and the bake-region and rename mechanics in full.
+semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the
+feature apply-order and visibility mechanics, the procedural setup editing mechanics, and the bake-region and
+rename mechanics in full.
 
 ---
 

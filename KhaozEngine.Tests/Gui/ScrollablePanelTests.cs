@@ -259,5 +259,172 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(new Vector2(150, 50), false)); sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim
             Assert.True(sp.ScrimDismissed);
         }
+
+        // ---- opt-in height glide (10.121.0) ----------------------------------------------------------------
+
+        [Fact]
+        public void Height_glide_off_by_default_snaps_every_frame_exactly_as_before()
+        {
+            var sp = Make();   // HeightGlideSeconds defaults to 0
+            var p = new Pointer();
+            var pos = new Vector2(150, 200);
+
+            Assert.Equal(300f, sp.EffectiveHeight, 3);   // Box.Height
+
+            sp.Update(p, Frame(pos, false), 0.016f);
+            Assert.Equal(300f, sp.EffectiveHeight, 3);
+
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 500f);
+            sp.Update(p, Frame(pos, false), 0.016f);
+            Assert.Equal(500f, sp.EffectiveHeight, 3);   // jumped instantly, no glide state involved
+
+            // The legacy no-dt overload must behave identically.
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 220f);
+            sp.Update(p, Frame(pos, false));
+            Assert.Equal(220f, sp.EffectiveHeight, 3);
+        }
+
+        [Fact]
+        public void Legacy_update_overload_never_glides_even_when_the_knob_is_set()
+        {
+            var sp = Make();
+            sp.HeightGlideSeconds = 5f;   // opted in, but the caller below never feeds dt
+            var p = new Pointer();
+            var pos = new Vector2(150, 200);
+
+            sp.Update(p, Frame(pos, false));   // legacy overload: forwards dt = 0, never initializes the glide
+            Assert.Equal(300f, sp.EffectiveHeight, 3);
+
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 600f);
+            sp.Update(p, Frame(pos, false));
+            Assert.Equal(600f, sp.EffectiveHeight, 3);   // still tracks the target directly - no glide, no state
+        }
+
+        [Fact]
+        public void Height_glide_converges_toward_a_changed_target_over_dt_steps()
+        {
+            var sp = Make();
+            sp.HeightGlideSeconds = 0.25f;
+            var p = new Pointer();
+            var pos = new Vector2(150, 200);
+
+            sp.Update(p, Frame(pos, false), 0.016f);   // first update after construction: snaps to the initial target
+            Assert.Equal(300f, sp.EffectiveHeight, 3);
+
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 500f);   // target jumps to 500
+            sp.Update(p, Frame(pos, false), 0.05f);
+            Assert.True(sp.EffectiveHeight > 300f && sp.EffectiveHeight < 500f);   // moved partway, did not snap
+
+            for (int i = 0; i < 200; i++)
+                sp.Update(p, Frame(pos, false), 0.05f);
+            Assert.Equal(500f, sp.EffectiveHeight, 1);   // converged (within the 0.5px snap threshold)
+        }
+
+        [Fact]
+        public void Height_glide_is_frame_rate_independent_for_equal_total_time()
+        {
+            var pos = new Vector2(150, 200);
+
+            var sp1 = Make();
+            sp1.HeightGlideSeconds = 0.3f;
+            var p1 = new Pointer();
+            sp1.Update(p1, Frame(pos, false), 0.016f);          // establish the baseline at the initial target
+            sp1.Bounds = new Rect(Box.X, Box.Y, Box.Width, 600f);
+            for (int i = 0; i < 60; i++)
+                sp1.Update(p1, Frame(pos, false), 1f / 60f);    // 60 steps of 1/60s = 1s total
+
+            var sp2 = Make();
+            sp2.HeightGlideSeconds = 0.3f;
+            var p2 = new Pointer();
+            sp2.Update(p2, Frame(pos, false), 0.016f);
+            sp2.Bounds = new Rect(Box.X, Box.Y, Box.Width, 600f);
+            for (int i = 0; i < 12; i++)
+                sp2.Update(p2, Frame(pos, false), 1f / 12f);    // 12 steps of 1/12s = 1s total
+
+            Assert.Equal(sp1.EffectiveHeight, sp2.EffectiveHeight, 1);
+        }
+
+        [Fact]
+        public void Height_glide_snaps_once_within_half_a_pixel_of_target()
+        {
+            var sp = Make();
+            sp.HeightGlideSeconds = 10f;   // slow time constant: the easing step below barely moves on its own
+            var p = new Pointer();
+            var pos = new Vector2(150, 200);
+
+            sp.Update(p, Frame(pos, false), 0.016f);   // snap to the initial target (300)
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 300.4f);   // residual 0.4px, already under the 0.5px snap band
+
+            // One tiny step: the pure exponential move is 0.4 * (1 - exp(-0.001/10)) < 0.0001px, so ONLY the
+            // 0.5px snap branch can land this on the target in a single update. Pins the branch uniquely
+            // (a long-run convergence loop would reach the target through float underflow regardless).
+            sp.Update(p, Frame(pos, false), 0.001f);
+            Assert.Equal(300.4f, sp.EffectiveHeight, 3);
+        }
+
+        [Fact]
+        public void Height_glide_rearms_when_toggled_off_and_back_on()
+        {
+            var sp = Make();
+            sp.HeightGlideSeconds = 0.3f;
+            var p = new Pointer();
+            var pos = new Vector2(150, 200);
+
+            sp.Update(p, Frame(pos, false), 0.016f);   // snap to the initial target (300)
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 500f);
+            sp.Update(p, Frame(pos, false), 0.016f);   // glide partway toward 500
+            float partway = sp.EffectiveHeight;
+            Assert.True(partway > 300f && partway < 500f);
+
+            sp.HeightGlideSeconds = 0f;                // feature off: EffectiveHeight tracks the target directly
+            sp.Update(p, Frame(pos, false), 0.016f);   // this update re-arms the glide state
+            Assert.Equal(500f, sp.EffectiveHeight, 3);
+
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 250f);   // target changes while the glide is off
+            sp.HeightGlideSeconds = 0.3f;              // back on
+            sp.Update(p, Frame(pos, false), 0.016f);
+            // Snaps fresh to the NEW target: no glide from the stale partway value, no jump back toward 500.
+            Assert.Equal(250f, sp.EffectiveHeight, 3);
+        }
+
+        [Fact]
+        public void Height_glide_snaps_when_the_panel_becomes_fully_hidden()
+        {
+            var sp = Make();
+            sp.HeightGlideSeconds = 0.3f;
+            sp.SlideFromBottom = true;
+            var p = new Pointer();
+            var pos = new Vector2(150, 200);
+
+            sp.Update(p, Frame(pos, false), 0.016f);   // snap to the initial target (baseline)
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 600f);
+            sp.Update(p, Frame(pos, false), 0.016f);   // one short step toward 600 - should not have arrived
+            Assert.True(sp.EffectiveHeight < 600f);
+
+            sp.TransitionAlpha = 0f;                    // fully hidden
+            sp.Update(p, Frame(pos, false), 0.016f);
+            Assert.Equal(600f, sp.EffectiveHeight, 3);   // snapped immediately despite the short dt
+        }
+
+        [Fact]
+        public void Height_glide_does_not_fight_an_active_drag_resize_and_resumes_after_release()
+        {
+            var sp = Make();
+            sp.HeaderHeight = 30f;
+            sp.Resizable = true;
+            sp.MinHeight = 100f;
+            sp.MaxHeight = 400f;
+            sp.HeightGlideSeconds = 5f;   // a slow time constant: a lagging glide would fail this test
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false), 0.016f);
+            p.Update(Frame(new Vector2(150, 115), true));  sp.Update(p, Frame(new Vector2(150, 115), true), 0.016f);
+            p.Update(Frame(new Vector2(150, 65), true));   sp.Update(p, Frame(new Vector2(150, 65), true), 0.016f);
+            Assert.Equal(350f, sp.EffectiveHeight, 3);   // the drag applies directly, no glide lag
+
+            // Release: the glide resumes from wherever the drag left it (no jump back toward a stale target).
+            p.Update(Frame(new Vector2(150, 65), false)); sp.Update(p, Frame(new Vector2(150, 65), false), 0.016f);
+            Assert.Equal(350f, sp.EffectiveHeight, 3);
+        }
     }
 }

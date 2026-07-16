@@ -269,5 +269,90 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(1, sink.DisposeCount);
             Assert.Equal(loaded.Count, sink.Unloads.Count - unloadsBefore);   // no re-unload
         }
+
+        [Fact]
+        public void Invalidate_Rect_ReLodsOnlyLoadedChunksIntersecting()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 5, MaxLoadsPerFrame: 100, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, new Vector3(30f, 0f, 30f), frames: 2);   // fills the disk around chunk (0,0)
+
+            var target = new ChunkCoord(1, 1);
+            Assert.Contains(target, s.Loaded);
+            var loadedBefore = new HashSet<ChunkCoord>(s.Loaded);
+            int lodBefore = s.LodOf(target);
+
+            sink.ReLods.Clear();
+            // Rect strictly inside chunk (1,1)'s world bounds [60,120)x[60,120): no border touch, so exactly one chunk.
+            s.Invalidate(new RectArea(70f, 70f, 110f, 110f));
+
+            Assert.Single(sink.ReLods);
+            Assert.Equal(target, sink.ReLods[0].coord);
+            Assert.Equal(lodBefore, sink.ReLods[0].lod);
+            Assert.Equal(loadedBefore, new HashSet<ChunkCoord>(s.Loaded));   // ring untouched
+        }
+
+        [Fact]
+        public void Invalidate_Rect_OnChunkBorder_IncludesBothChunks()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 5, MaxLoadsPerFrame: 100, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, new Vector3(30f, 0f, 30f), frames: 2);   // fills the disk around chunk (0,0)
+
+            Assert.Contains(new ChunkCoord(0, 0), s.Loaded);
+            Assert.Contains(new ChunkCoord(1, 0), s.Loaded);
+
+            sink.ReLods.Clear();
+            // X spans exactly [0,60]: the seam between chunk 0 and chunk 1. Z stays inside chunk row 0.
+            s.Invalidate(new RectArea(0f, 10f, 60f, 20f));
+
+            var got = new HashSet<ChunkCoord>(sink.ReLods.Select(r => r.coord));
+            Assert.Equal(new HashSet<ChunkCoord> { new ChunkCoord(0, 0), new ChunkCoord(1, 0) }, got);
+        }
+
+        [Fact]
+        public void Invalidate_UnloadedChunk_IsNoOp()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 3, UnloadRadius: 5, MaxLoadsPerFrame: 100, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            Pump(s, sink, new Vector3(30f, 0f, 30f), frames: 2);
+
+            var farCoord = new ChunkCoord(500, 500);
+            Assert.DoesNotContain(farCoord, s.Loaded);
+
+            int reLodsBefore = sink.ReLods.Count;
+            int loadsBefore = sink.Loads.Count;
+            int unloadsBefore = sink.Unloads.Count;
+
+            s.Invalidate(farCoord);
+
+            Assert.Equal(reLodsBefore, sink.ReLods.Count);
+            Assert.Equal(loadsBefore, sink.Loads.Count);
+            Assert.Equal(unloadsBefore, sink.Unloads.Count);
+        }
+
+        [Fact]
+        public void Invalidate_PreservesLod()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 6, UnloadRadius: 8, MaxLoadsPerFrame: 1000, ChunkSize: 60f);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+
+            // Same setup as Approaching_a_far_chunk_triggers_a_ReLod_to_a_finer_tier: target loads at coarse LOD 2.
+            var target = new ChunkCoord(5, 0);
+            Pump(s, sink, new Vector3(-30f, 0f, 30f), 4);
+            Assert.Equal(2, s.LodOf(target));
+
+            sink.ReLods.Clear();
+            s.Invalidate(target);
+
+            Assert.Single(sink.ReLods);
+            Assert.Equal(target, sink.ReLods[0].coord);
+            Assert.Equal(2, sink.ReLods[0].lod);          // rebuilt at the current tier, not reset to lod 0
+            Assert.Equal(2, s.LodOf(target));              // tracked tier unchanged
+        }
     }
 }

@@ -111,6 +111,7 @@ public static class UpdateApplier
 
     private const string RollbackDirName = ".ke-update-rollback";
     private const string ProgressMarkerName = "apply-in-progress.json";
+    private const string AppliedMarkerName = "update-applied.json";
     private const string RelocateDirName = "updater-relocate";
     private const string RelocatedFlag = "--relocated";
     private const string ElevatedFlag = "--elevated";
@@ -670,6 +671,14 @@ public static class UpdateApplier
             catch (Exception ex) { environment.Log($"Cleanup: could not remove rollback dir {rollbackDir}: {ex.Message}"); }
             ClearMarker(environment, markerPath);
 
+            // Record for the relaunched game that this boot is a post-update auto-relaunch (applied version
+            // + completion time), so a consumer can suppress a boot-time "welcome back" prompt. The
+            // UpdateService constructor reads it once and deletes it. Written only here, after the update is
+            // committed (new binaries verified, manifest installed) and before the relaunch, so it never
+            // appears for a rolled-back or deferred apply. Best-effort: a write failure never fails or rolls
+            // back the committed update (it is swallowed and logged inside the helper).
+            WritePostUpdateMarker(environment, config);
+
             // Finishing phase: the new exe is in place, but on Windows the OS security scan may still hold it.
             // Wait for it to become launchable before relaunch, so we never start the game into a mid-scan
             // image (the STATUS_DLL_INIT_FAILED / STATUS_STACK_BUFFER_OVERRUN crash). No-op on non-Windows.
@@ -919,14 +928,48 @@ public static class UpdateApplier
         }
     }
 
-    private static string? MarkerPath(ApplyUpdateConfig config)
+    private static string? MarkerPath(ApplyUpdateConfig config) => MarkerPathFor(config, ProgressMarkerName);
+
+    /// <summary>
+    /// The full path of a per-apply marker <paramref name="fileName"/> in the app-data directory (the
+    /// directory holding the installed manifest, alongside <c>apply-in-progress.json</c>), or null when no
+    /// manifest dest is configured.
+    /// </summary>
+    private static string? MarkerPathFor(ApplyUpdateConfig config, string fileName)
     {
         if (string.IsNullOrEmpty(config.ManifestDestPath))
         {
             return null;
         }
         string? dir = Path.GetDirectoryName(config.ManifestDestPath);
-        return string.IsNullOrEmpty(dir) ? ProgressMarkerName : Path.Combine(dir, ProgressMarkerName);
+        return string.IsNullOrEmpty(dir) ? fileName : Path.Combine(dir, fileName);
+    }
+
+    /// <summary>
+    /// Writes the <c>update-applied.json</c> marker (applied version + UTC completion time) for the
+    /// relaunched game to read once. Best-effort: the update is already committed, so any failure here is
+    /// swallowed and logged rather than allowed to fail or roll back the update.
+    /// </summary>
+    private static void WritePostUpdateMarker(IUpdaterEnvironment environment, ApplyUpdateConfig config)
+    {
+        string? markerPath = MarkerPathFor(config, AppliedMarkerName);
+        if (markerPath is null)
+        {
+            return;
+        }
+        try
+        {
+            var marker = new PostUpdateRelaunchInfo
+            {
+                Version = config.TargetVersion,
+                AppliedAtUtc = environment.UtcNow
+            };
+            environment.WriteAllText(markerPath, JsonSerializer.Serialize(marker, UpdatesJsonContext.Default.PostUpdateRelaunchInfo));
+        }
+        catch (Exception ex)
+        {
+            environment.Log($"Could not write post-update marker {markerPath}: {ex.Message}");
+        }
     }
 
     private static void ClearMarker(IUpdaterEnvironment environment, string? markerPath)

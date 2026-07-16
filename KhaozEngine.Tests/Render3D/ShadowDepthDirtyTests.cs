@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
@@ -83,6 +84,45 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(Scene3D.ShadowCastersChanged(Runs((3, 1, 1)), Models(0f), Runs((3, 2, 1)), Models(0f)));
         }
 
+        // ---- Day/night readiness: a moving sun re-renders the shadow depth map --------------------------------------
+        // Scene3D computes shadowLightVp = ComputeShadowLightViewProj(eye) -> ShadowMapMath.BuildLightViewProj(
+        // normalize(Post.LightDirection), focus, ...) each frame, and dirties the depth pass when
+        // _lastShadowLightVp != shadowLightVp (lightMatrixChanged). So a per-frame LightDirection change (a day/night
+        // cycle) must produce a DIFFERENT light matrix and therefore re-render the depth map, not reuse the stale one.
+
+        [Fact]
+        public void A_changed_light_direction_produces_a_different_light_matrix()
+        {
+            // Same focus / radius / resolution, only the light direction moved (sun crossing the sky): the fitted
+            // world->light-clip matrix must change, otherwise the shadow would stay frozen against the old sun.
+            var focus = new Vector3(2f, 0f, -1f);
+            var noon = ShadowMapMath.BuildLightViewProj(new Vector3(-0.2f, -1f, -0.1f), focus, radius: 16f, resolution: 2048);
+            var evening = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, radius: 16f, resolution: 2048);
+            Assert.NotEqual(noon, evening);
+        }
+
+        [Fact]
+        public void A_moving_sun_dirties_the_shadow_depth_pass()
+        {
+            // Reproduce the exact Scene3D wiring: lightMatrixChanged = (_lastShadowLightVp != shadowLightVp). A sun
+            // that moved between frames flips that true, so ShadowDepthPassDirty returns true (re-render), even though
+            // nothing else changed (static casters, same resolution). This is the day/night dirty-tracking guarantee.
+            var focus = new Vector3(2f, 0f, -1f);
+            var last = ShadowMapMath.BuildLightViewProj(new Vector3(-0.2f, -1f, -0.1f), focus, 16f, 2048);
+            var now = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, 16f, 2048);
+            bool lightMatrixChanged = last != now;
+            Assert.True(lightMatrixChanged);
+            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                resolutionChanged: false, lightMatrixChanged: lightMatrixChanged, casterDataChanged: false));
+
+            // And when the sun HOLDS still (identical direction), the light matrix is unchanged, so a static scene
+            // correctly reuses the persistent depth map (not dirtied by the light).
+            var held = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, 16f, 2048);
+            Assert.Equal(now, held);
+            Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                resolutionChanged: false, lightMatrixChanged: now != held, casterDataChanged: false));
+        }
+
         [Fact]
         public void Caster_reorder_is_a_change()
         {
@@ -91,6 +131,64 @@ namespace KhaozEngine.Tests.Render3D
             var runsA = Runs((3, 1, 1), (5, 1, 1));
             var runsB = Runs((5, 1, 1), (3, 1, 1));
             Assert.True(Scene3D.ShadowCastersChanged(runsA, Models(0f, 1f), runsB, Models(1f, 0f)));
+        }
+
+        // ---- Cascade light-matrix dirty tracking (day/night across ALL cascades) --------------------------------
+
+        static Matrix4x4[] CascadeVps(Vector3 lightDir, Vector3 focus, params float[] radii)
+        {
+            var m = new Matrix4x4[radii.Length];
+            for (int i = 0; i < radii.Length; i++) m[i] = ShadowMapMath.BuildLightViewProj(lightDir, focus, radii[i], 2048);
+            return m;
+        }
+
+        [Fact]
+        public void Identical_cascade_fits_compare_equal()
+        {
+            var f = new Vector3(2f, 0f, -1f);
+            var a = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var b = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            Assert.False(Scene3D.ShadowCascadeVpsChanged(a, 3, b, 3));
+        }
+
+        [Fact]
+        public void A_moving_sun_dirties_across_all_cascades()
+        {
+            // A per-frame LightDirection change (day/night) re-fits EVERY cascade, so the cascade-set compare flips
+            // true and the depth pass re-renders. Reproduces the Scene3D wiring (ShadowCascadeVpsChanged feeds
+            // lightMatrixChanged into ShadowDepthPassDirty).
+            var f = new Vector3(2f, 0f, -1f);
+            var noon = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var evening = CascadeVps(new Vector3(-0.8f, -0.4f, -0.2f), f, 16f, 56f, 130f);
+            bool changed = Scene3D.ShadowCascadeVpsChanged(noon, 3, evening, 3);
+            Assert.True(changed);
+            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                resolutionChanged: false, lightMatrixChanged: changed, casterDataChanged: false));
+
+            // A held sun (identical direction) leaves every cascade unchanged, so a static scene reuses the atlas.
+            var held = CascadeVps(new Vector3(-0.8f, -0.4f, -0.2f), f, 16f, 56f, 130f);
+            Assert.False(Scene3D.ShadowCascadeVpsChanged(evening, 3, held, 3));
+        }
+
+        [Fact]
+        public void A_changed_cascade_count_is_a_change()
+        {
+            // Comparing a 3-cascade fit to a 2-cascade fit (a settings change) differs even if the shared cascades match.
+            var f = new Vector3(0f, 0f, 0f);
+            var three = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var two = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 130f);
+            Assert.True(Scene3D.ShadowCascadeVpsChanged(three, 3, two, 2));
+        }
+
+        [Fact]
+        public void One_moved_cascade_is_a_change()
+        {
+            // Only the far cascade's fit moved (e.g. the camera panned enough to snap the coarse cascade a texel):
+            // the set compare must still trip, so a stale far cascade never lingers.
+            var f = new Vector3(0f, 0f, 0f);
+            var a = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var b = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 131f);
+            Assert.True(Scene3D.ShadowCascadeVpsChanged(a, 3, b, 3));
         }
     }
 }

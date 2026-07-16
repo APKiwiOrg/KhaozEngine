@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
 
@@ -15,6 +16,13 @@ public sealed class EditorDocument
     const int Unreachable = -1;
 
     int _savedMarker;
+
+    // The dirty region accumulated across the commands that set WorldRebuildPending since the last acknowledge.
+    // Three states, distinguished cleanly: nothing pending (both null/false), pending-with-rect (_pendingRegion set,
+    // _pendingRegionIsFull false), pending-full (_pendingRegionIsFull true). Once any command with a null DirtyRegion
+    // lands, the region is full-sticky for the rest of the batch (a later bounded rect cannot narrow it back).
+    RectArea? _pendingRegion;
+    bool _pendingRegionIsFull;
 
     /// <summary>Creates an editor document over <paramref name="doc"/>, defaulting the feature registry to
     /// <see cref="MapDocRegistry.CreateDefault"/> when none is supplied.</summary>
@@ -50,8 +58,21 @@ public sealed class EditorDocument
     /// Placement/spawn/region edits leave it false. Cleared by <see cref="AcknowledgeWorldRebuild"/>.</summary>
     public bool WorldRebuildPending { get; private set; }
 
-    /// <summary>Clears the pending world-rebuild flag once the viewport has rebuilt.</summary>
-    public void AcknowledgeWorldRebuild() => WorldRebuildPending = false;
+    /// <summary>The accumulated world-space region the pending rebuild must cover, meaningful ONLY while
+    /// <see cref="WorldRebuildPending"/> is true. Null carries TWO meanings, so a caller MUST consult
+    /// <see cref="WorldRebuildPending"/> first to tell them apart: with a rebuild pending, null means a FULL rebuild
+    /// is required (some accumulated command had no bounded region), while a non-null rect means only the chunks it
+    /// overlaps need rebuilding. With no rebuild pending it is simply null (nothing accumulated). Reset by
+    /// <see cref="AcknowledgeWorldRebuild"/>.</summary>
+    public RectArea? PendingRebuildRegion => _pendingRegionIsFull ? null : _pendingRegion;
+
+    /// <summary>Clears the pending world-rebuild flag and its accumulated region once the viewport has rebuilt.</summary>
+    public void AcknowledgeWorldRebuild()
+    {
+        WorldRebuildPending = false;
+        _pendingRegion = null;
+        _pendingRegionIsFull = false;
+    }
 
     /// <summary>Applies a command through the history stack, then raises the change signals. This is the only
     /// mutation entry point the editor uses.</summary>
@@ -63,7 +84,7 @@ public sealed class EditorDocument
         // If this edit discarded a redo branch that held the saved point, the saved state is gone for good.
         if (_savedMarker != Unreachable && _savedMarker > depthBefore)
             _savedMarker = Unreachable;
-        if (AffectsWorld(command)) WorldRebuildPending = true;
+        MarkWorldRebuild(command);
         DocumentChanged?.Invoke();
     }
 
@@ -72,7 +93,7 @@ public sealed class EditorDocument
     {
         IEditorCommand? command = History.PeekUndo();
         if (!History.Undo(Doc)) return false;
-        if (command is not null && AffectsWorld(command)) WorldRebuildPending = true;
+        if (command is not null) MarkWorldRebuild(command);
         DocumentChanged?.Invoke();
         return true;
     }
@@ -82,7 +103,7 @@ public sealed class EditorDocument
     {
         IEditorCommand? command = History.PeekRedo();
         if (!History.Redo(Doc)) return false;
-        if (command is not null && AffectsWorld(command)) WorldRebuildPending = true;
+        if (command is not null) MarkWorldRebuild(command);
         DocumentChanged?.Invoke();
         return true;
     }
@@ -101,5 +122,19 @@ public sealed class EditorDocument
         _savedMarker = History.UndoDepth;
     }
 
-    static bool AffectsWorld(IEditorCommand command) => command is EditorCommand ec && ec.AffectsWorld;
+    // Sets WorldRebuildPending and folds the command's dirty region into the pending accumulation, when the command
+    // is an engine command that affects the world. A command with a null DirtyRegion (its reach is not a bounded
+    // rect) makes the pending region full-sticky for the rest of the batch. A bounded rect unions into the running
+    // region. For a merged drag, Undo/Redo pass the peeked (merged) command, whose endpoints-union region is correct
+    // (chunks the feature crossed mid-drag were already rebuilt when the footprint left them).
+    void MarkWorldRebuild(IEditorCommand command)
+    {
+        if (command is not EditorCommand ec || !ec.AffectsWorld) return;
+        WorldRebuildPending = true;
+        if (_pendingRegionIsFull) return;
+        if (ec.DirtyRegion is RectArea region)
+            _pendingRegion = _pendingRegion is RectArea acc ? FeatureGeometry.Union(acc, region) : region;
+        else
+            _pendingRegionIsFull = true;
+    }
 }

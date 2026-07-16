@@ -93,6 +93,56 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(changedPixels > 0, "expected the t0 and t1 frames to differ (animated telegraph fills)");
         }
 
+        /// <summary>
+        /// Progress sweep: four presets (Generic, Fire, Frost, Arcane) at cast progress 0.15 / 0.45 / 0.75, one
+        /// row per preset, dumped to telegraph_sweep.png. The early-progress column is the regression eyeball for
+        /// the "bright ball at the shape center" failure mode: at low progress the swept region is tiny and any
+        /// glow band wider than it floods the middle. Human-reviewed like the grid showcase above.
+        /// </summary>
+        [GpuFact]
+        public void Showcase_progress_sweep_dumps()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H);
+            preview.Scene.Post.Outline = true;
+            // 3 columns x 4 rows of radius-2.5 circles at spacing 6: x in [-6, 6], z in [-9, 9].
+            preview.Scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(17f, 1f, 21f));
+            MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(26f, 0.1f));
+
+            // Borderless variants (FillMode.Fill): the no-outline look consumers like Ruinborne ship. The base
+            // fill carries the extent, the sweep brightens across it, no outline band at all.
+            static TelegraphStyle Borderless(TelegraphStyle s)
+            {
+                s.FillMode = FillMode.Fill;
+                return s;
+            }
+            TelegraphStyle[] rows = { Borderless(TelegraphStyle.Generic), Borderless(TelegraphStyle.Fire),
+                Borderless(TelegraphStyle.Frost), Borderless(TelegraphStyle.Arcane) };
+            float[] cols = { 0.15f, 0.45f, 0.75f };
+
+            void DrawScene(Scene3D s)
+            {
+                s.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.12f, 0.12f, 0.15f, 1f));
+                for (int r = 0; r < rows.Length; r++)
+                    for (int c = 0; c < cols.Length; c++)
+                    {
+                        var at = new Vector3((c - 1f) * Spacing, 0f, (r - 1.5f) * Spacing);
+                        s.DrawGroundDecal(GroundTelegraphs.BuildCircle(at, Radius, cols[c], rows[r]));
+                    }
+            }
+
+            string dir = Environment.GetEnvironmentVariable("KE_PNG_DUMP_DIR") ?? Path.GetTempPath();
+            Directory.CreateDirectory(dir);
+
+            preview.Scene.EffectTimeSeconds = 1.3f;
+            byte[] px = Read(gd, preview.Capture(DrawScene));
+            AssertNonBackgroundPixels(px, "sweep");
+            string png = Path.Combine(dir, "telegraph_sweep.png");
+            PngWriter.Save(png, px, W, H);
+            Assert.True(new FileInfo(png).Length > 0, $"expected a PNG dump at {png}");
+        }
+
         // Smoke assertion only: the preview composites with a transparent background, so any covered pixel
         // (the ground tile plus every decal) has nonzero alpha. This just proves something actually rendered.
         // The PNGs dumped above are the real, human-reviewed check.

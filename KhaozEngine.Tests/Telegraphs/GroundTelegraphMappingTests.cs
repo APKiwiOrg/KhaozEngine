@@ -102,5 +102,42 @@ namespace KhaozEngine.Tests.Telegraphs
             var over = GroundTelegraphs.BuildResidueCircle(Vector3.Zero, 2f, 1.5f, TelegraphStyle.Frost);
             Assert.Equal(0f, over.FillColor.A, 3);
         }
+    [Fact]
+    public void Interior_dim_and_runner_map_through_to_the_decal()
+    {
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, TelegraphStyle.Arcane);
+        var r = TelegraphResolve.Resolve(0.5f, TelegraphStyle.Arcane);
+        Assert.Equal(r.InteriorDim, d.InteriorDim, 4);
+        Assert.True(d.InteriorDim > 0f);
+        Assert.Equal(r.Runner, d.Runner, 4);
+        Assert.True(d.Runner > 0f);
+    }
+
+    [Fact]
+    public void Legacy_style_keeps_interior_dim_and_runner_zero()
+    {
+        var legacy = new TelegraphStyle
+        {
+            FillColor = new Color(1f, 0f, 0f, 1f), OutlineColor = Color.White, DangerColor = new Color(1f, 0f, 0f, 1f),
+            EdgeThickness = 2f, Opacity = 1f, FillMode = FillMode.OutlineAndFill,
+            Animation = TelegraphAnim.FillSweep, Blend = TelegraphBlend.Alpha,
+        };
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, legacy);
+        Assert.Equal(0f, d.InteriorDim);
+        Assert.Equal(0f, d.Runner);
+    }
+
+    [Fact]
+    public void Base_fill_maps_through_and_fill_mode_zeroes_the_outline_on_the_decal()
+    {
+        var s = TelegraphStyle.Frost;
+        s.FillMode = FillMode.Fill;
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s);
+        Assert.Equal(TelegraphStyle.Frost.BaseFill, d.BaseFill, 4);
+        Assert.Equal(0f, d.OutlineColor.A);
+        Assert.Equal(0f, d.RimGlow);
+        Assert.Equal(0f, d.Runner);
+    }
+
     }
 }

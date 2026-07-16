@@ -165,6 +165,15 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Throws<InvalidOperationException>(() => vw.Rebuild(new MapDocument(), MapDocRegistry.CreateDefault()));
         }
 
+        [Fact]
+        public void PartialRebuild_BeforeBuild_ReturnsFalse()
+        {
+            // Unlike Rebuild (which throws), the partial path reports "not built" so the scene falls back to a full
+            // rebuild rather than crashing.
+            ViewportWorld vw = Construct(TwoPropManifest);
+            Assert.False(vw.PartialRebuild(new MapDocument(), MapDocRegistry.CreateDefault(), new RectArea(0f, 0f, 1f, 1f)));
+        }
+
         // ---- after dispose (never built) ---------------------------------------------------------------
 
         [Fact]
@@ -177,6 +186,7 @@ namespace KhaozEngine.Tests.MapEditor
             MapDocRegistry registry = MapDocRegistry.CreateDefault();
             Assert.Throws<ObjectDisposedException>(() => vw.Build(doc, registry));
             Assert.Throws<ObjectDisposedException>(() => vw.Rebuild(doc, registry));
+            Assert.Throws<ObjectDisposedException>(() => vw.PartialRebuild(doc, registry, new RectArea(0f, 0f, 1f, 1f)));
             Assert.Throws<ObjectDisposedException>(() => vw.Update(Vector3.Zero, 0.016f));
             Assert.Throws<ObjectDisposedException>(() => vw.Draw(Vector3.Zero, null, default, new EditorVisibility()));
         }
@@ -196,6 +206,23 @@ namespace KhaozEngine.Tests.MapEditor
             ViewportWorld vw = Construct(TwoPropManifest);
             vw.Dispose();
             vw.InvalidatePlacements();
+        }
+
+        [Fact]
+        public void InvalidateKitMeshes_BeforeBuild_DoesNotThrow()
+        {
+            // Callable any time except after Dispose, including before the first Build: the cache is empty and the
+            // splat material was never loaded, so this must not touch the (null) scene.
+            ViewportWorld vw = Construct(TwoPropManifest);
+            vw.InvalidateKitMeshes();
+        }
+
+        [Fact]
+        public void InvalidateKitMeshes_AfterDispose_Throws()
+        {
+            ViewportWorld vw = Construct(TwoPropManifest);
+            vw.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => vw.InvalidateKitMeshes());
         }
 
         // ---- selected/unselected partition -------------------------------------------------------------

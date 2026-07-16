@@ -16,9 +16,11 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>Flat fill, no procedural texture (legacy default).</summary>
         Solid = 0,
-        /// <summary>Value noise scrolled in decal-local XZ (drifting cloud look).</summary>
+        /// <summary>Domain-warped value noise drifting in decal-local XZ (wispy filament look, not round
+        /// scrolling blobs).</summary>
         ScrollingNoise = 1,
-        /// <summary>Value noise in polar (radius, angle) space, scrolling radially (radiating rings look).</summary>
+        /// <summary>Cartesian vortex swirl: spiral arms orbiting the decal center over time, no polar
+        /// singularity at the center.</summary>
         RadialNoise = 2,
     }
 
@@ -82,5 +84,15 @@ namespace KhaozEngine.Render3D
         /// <summary>Edge sparkle energy: brief twinkles along the shape boundary (dropped under
         /// <see cref="GroundDecalQuality.Reduced"/>). 0 (default) = inert.</summary>
         public float Sparkle;
+        /// <summary>How much the deep fill interior dims relative to the boundary and sweep front
+        /// (0 = legacy uniform fill, 1 = fully hollow). Concentrates energy at the rim. 0 (default) = inert.</summary>
+        public float InteriorDim;
+        /// <summary>Rotating outline dash-runner energy: dash segments orbiting the outline band.
+        /// 0 (default) = inert.</summary>
+        public float Runner;
+        /// <summary>Fraction of the fill alpha painted across the ENTIRE shape regardless of the sweep
+        /// (0 = legacy, fill shows only where the sweep has reached). Lets the full extent read without an
+        /// outline. 0 (default) = inert.</summary>
+        public float BaseFill;
     }
 }

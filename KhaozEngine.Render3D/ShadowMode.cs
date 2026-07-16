@@ -13,11 +13,14 @@ namespace KhaozEngine.Render3D
     /// <item><see cref="Blob"/> - a soft dark elliptical ground blob under each caster. Cheap grounding for low-end
     ///   hardware: one extra depth-reconstructed ground-decal draw per caster, no shadow map, no second geometry pass.
     ///   Grounds a character without a real shadow map.</item>
-    /// <item><see cref="ShadowMap"/> - a key-light directional shadow map with PCF (casters shadow the ground AND each
-    ///   other, the semi-realistic tier). Depth-only pass over instanced casters into an ortho light-space map fitted
-    ///   around the camera focus (texel-snapped to kill shimmer), sampled with 3x3 PCF + slope-scaled bias in the
-    ///   shared lighting so models and terrain receive identically. Falls back to <see cref="Blob"/> only on a device
-    ///   that cannot render+sample the depth target (see <see cref="ShadowSettings.ResolveFor"/>).</item>
+    /// <item><see cref="ShadowMap"/> - a key-light directional CASCADED shadow map with PCF (casters shadow the ground
+    ///   AND each other, the semi-realistic tier). Depth-only pass over instanced casters into an ortho light-space
+    ///   atlas of <see cref="ShadowSettings.ShadowCascadeCount"/> concentric cascades (texel-snapped per cascade to kill
+    ///   shimmer), fitted from the tight near cascade (<see cref="ShadowSettings.ShadowFocusRadius"/>) out to
+    ///   <see cref="ShadowSettings.ShadowMaxDistance"/>. Sampled by picking the tightest cascade containing the fragment,
+    ///   3x3 PCF + slope-scaled bias in the shared lighting so models and terrain receive identically, with an outer
+    ///   edge fade so the coverage limit is invisible. Falls back to <see cref="Blob"/> only on a device that cannot
+    ///   render+sample the depth target (see <see cref="ShadowSettings.ResolveFor"/>).</item>
     /// </list>
     /// Extend by adding tiers - unknown/not-yet-wired modes resolve to a safe fallback rather than throwing
     /// (see <see cref="ShadowSettings.ResolveFor"/>).
@@ -111,10 +114,30 @@ namespace KhaozEngine.Render3D
         /// minimum. Only used when <see cref="Mode"/> resolves to <see cref="ShadowMode.ShadowMap"/>.</summary>
         public int ShadowMapResolution = 2048;
 
-        /// <summary>Radius (world units) of the focus sphere the shadow map frames around the camera focus point.
-        /// The map covers <c>2 * ShadowFocusRadius</c> world units per axis, so a smaller radius packs more texels
-        /// onto the near action (sharper shadows) at the cost of coverage. Default <c>16</c>.</summary>
+        /// <summary>Radius (world units) of the focus sphere the FIRST (tightest) cascade frames around the camera
+        /// focus point. Cascade 0 covers <c>2 * ShadowFocusRadius</c> world units per axis at
+        /// <see cref="ShadowMapResolution"/> texels, so a smaller radius packs more texels onto the near action
+        /// (sharper contact shadows). The outer cascades grow geometrically out to <see cref="ShadowMaxDistance"/>
+        /// (see <see cref="ShadowCascadeCount"/>). Default <c>16</c>. With <c>ShadowCascadeCount == 1</c> this is the
+        /// only cascade, so the tier behaves like the pre-cascade single map plus the outer edge fade.</summary>
         public float ShadowFocusRadius = 16f;
+
+        /// <summary>Number of cascaded shadow maps (concentric on the camera focus, growing coverage). Default
+        /// <c>3</c>, clamped to <see cref="MinCascades"/>..<see cref="MaxCascades"/> by <see cref="ResolvedCascadeCount"/>.
+        /// Cascade 0 stays tight (<see cref="ShadowFocusRadius"/>) for crisp near shadows, and each further cascade covers
+        /// more world at the same per-cascade texel budget, so distant shadows exist without the near ones softening.
+        /// The cascades share ONE <see cref="ShadowMode.ShadowMap"/> R32F atlas texture (side-by-side columns), each
+        /// <see cref="ShadowMapResolution"/> square, so the memory is
+        /// <c>ShadowCascadeCount * ShadowMapResolution^2 * 4</c> bytes (3 x 2048 = ~48 MB). A low-end profile drops the
+        /// count or the resolution. <c>1</c> is the single-map path (plus the edge fade).</summary>
+        public int ShadowCascadeCount = 3;
+
+        /// <summary>Far reach (world units) of shadow coverage: the OUTERMOST cascade frames a focus sphere of this
+        /// radius, and beyond it the shadow term fades smoothly to fully lit (with the outermost cascade's UV border),
+        /// so the coverage limit is invisible in normal play instead of a hard box edge. An MMO-vista default of
+        /// <c>130</c>. Clamped to at least <see cref="ShadowFocusRadius"/> by <see cref="ResolvedMaxDistance"/>. Only
+        /// used when <see cref="ShadowCascadeCount"/> &gt; 1 (a single cascade fades at <see cref="ShadowFocusRadius"/>).</summary>
+        public float ShadowMaxDistance = 130f;
 
         /// <summary>Ground-plane height (world Y) the shadow map's focus is fitted onto: the view-forward ray is
         /// intersected with <c>y = ShadowGroundHeight</c> to centre the limited-radius map on the ground the camera
@@ -127,21 +150,49 @@ namespace KhaozEngine.Render3D
         /// Default <c>18</c>.</summary>
         public float ShadowFocusDistance = 18f;
 
-        /// <summary>Constant depth bias (in light-clip depth units) added when comparing a receiver's depth to the
-        /// shadow map, to defeat self-shadow acne on lit surfaces. Too small = acne (surface shadows itself), too
-        /// large = peter-panning (the shadow detaches from the caster's contact). Default <c>0.004</c>. See the
-        /// bias-tuning note in docs/USING-KHAOZENGINE.md.</summary>
-        public float ShadowConstantBias = 0.004f;
+        /// <summary>Constant depth bias (in light-clip depth units, ortho NDC z over the light's full near-far depth
+        /// range of <c>4 * ShadowFocusRadius</c> world units) added when comparing a receiver's depth to the shadow
+        /// map, to defeat self-shadow acne on lit surfaces. Too small = acne (surface shadows itself), too large =
+        /// peter-panning (the shadow detaches from the caster's contact). Since <see cref="ShadowNormalOffset"/> now
+        /// carries the acne defence, this stays tiny: default <c>0.0004</c> (was 0.004 - an order of magnitude smaller
+        /// once the normal offset landed. The old value put ~0.25 world units of depth bias at the default radius,
+        /// which peter-panned thin casters' contact shadows). See the bias-tuning note in docs/USING-KHAOZENGINE.md.</summary>
+        public float ShadowConstantBias = 0.0004f;
 
         /// <summary>Slope-scaled depth bias: extra bias proportional to the surface's grazing angle to the light
         /// (added on top of <see cref="ShadowConstantBias"/>), so steeply-lit polygons - which span many depth units
-        /// per texel - do not acne while flat-lit ones keep tight contact. Default <c>0.006</c>.</summary>
-        public float ShadowSlopeBias = 0.006f;
+        /// per texel - do not acne while flat-lit ones keep tight contact. With <see cref="ShadowNormalOffset"/>
+        /// handling the bulk of acne, this stays small: default <c>0.0015</c> (was 0.006).</summary>
+        public float ShadowSlopeBias = 0.0015f;
+
+        /// <summary>Normal-offset shadow bias, in shadow-map TEXELS: the receiver's sample position is pushed off its
+        /// surface along the geometric normal by this many texels (world-scaled by the shadow map's texel world size,
+        /// so it is automatically extent-aware as <see cref="ShadowFocusRadius"/> / <see cref="ShadowMapResolution"/>
+        /// change), then scaled by the grazing angle to the key light (maximal where self-shadow acne is worst, zero
+        /// when the surface faces the light head-on). This is the primary acne defence, which lets the depth biases
+        /// stay tiny so the shadow keeps contact with the caster's feet (no peter-panning). Default <c>2.5</c> (set
+        /// <c>0</c> to disable, falling back to depth-bias-only, which peter-pans unless the depth biases are raised).</summary>
+        public float ShadowNormalOffset = 2.5f;
 
         /// <summary>Shadow darkness (0 = shadows invisible, 1 = the key light's diffuse+spec fully removed in
         /// shadow). Multiplies ONLY the key light's contribution (fill + ambient are untouched), so a shadow reads
         /// as shade, not black. Default <c>0.85</c>.</summary>
         public float ShadowStrength = 0.85f;
+
+        /// <summary>Minimum cascade count (the single-map path). See <see cref="ShadowCascadeCount"/>.</summary>
+        public const int MinCascades = 1;
+        /// <summary>Maximum cascade count (matches the fixed-size cascade arrays in the frame UBO / shaders).</summary>
+        public const int MaxCascades = 4;
+
+        /// <summary><see cref="ShadowCascadeCount"/> clamped to the supported <see cref="MinCascades"/>..<see cref="MaxCascades"/>
+        /// range, so a menu value out of range degrades to the nearest valid count instead of over-running the
+        /// fixed-size cascade arrays. Pure. The renderer reads this, never the raw field.</summary>
+        public int ResolvedCascadeCount => Math.Clamp(ShadowCascadeCount, MinCascades, MaxCascades);
+
+        /// <summary><see cref="ShadowMaxDistance"/> clamped so the outermost cascade never fits tighter than the near
+        /// cascade (<see cref="ShadowFocusRadius"/>): a nonsensical max distance below the focus radius collapses to
+        /// the focus radius (equivalent to a single cascade). Pure.</summary>
+        public float ResolvedMaxDistance => MathF.Max(ShadowMaxDistance, ShadowFocusRadius);
 
         /// <summary>
         /// Resolve <see cref="Mode"/> against what <paramref name="caps"/> supports, so an unsupported request

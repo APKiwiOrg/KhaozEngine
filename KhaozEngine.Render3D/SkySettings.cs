@@ -26,6 +26,14 @@ namespace KhaozEngine.Render3D
         /// the gradient (and, if <see cref="SunEnabled"/>, the sun) behind the scene.</summary>
         public bool Enabled = false;
 
+        /// <summary>How the sun disc is placed on screen. Default <see cref="SunAnchor.World"/>: the disc is anchored
+        /// to the world-space sun direction with a true point-at-infinity projection, so orbiting the camera keeps it
+        /// fixed over the world features the light agrees with, and it vanishes when the sun is behind the camera. Set
+        /// <see cref="SunAnchor.StylizedBackdrop"/> for the legacy camera-relative placement (a decorative backdrop
+        /// that also works under the orthographic iso camera, where the world projection degenerates). See
+        /// <see cref="SunAnchor"/>.</summary>
+        public SunAnchor Anchor = SunAnchor.World;
+
         /// <summary>Gradient colour at the horizon (where the view ray is level). Default a warm pale band.</summary>
         public Color HorizonColor = new(0.62f, 0.70f, 0.80f, 1f);
 

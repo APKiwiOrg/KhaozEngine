@@ -16,7 +16,13 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     public readonly HashSet<string> Directories = new(StringComparer.Ordinal);
     public readonly HashSet<string> ThrowOnCopyFrom = new(StringComparer.Ordinal);
     public readonly HashSet<string> ThrowOnDeleteOf = new(StringComparer.Ordinal);
+    public readonly HashSet<string> ThrowOnWriteTo = new(StringComparer.Ordinal);
     public readonly List<string> Log_ = new();
+
+    // Clock for the post-update marker's AppliedAtUtc. Defaults to a fixed, obviously-synthetic instant so
+    // a test that does not set it still gets a stable timestamp. A marker-focused test overrides it to
+    // assert the exact value round-trips.
+    public DateTimeOffset UtcNow { get; set; } = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
     public string? RelaunchedExe;
     public int SleepCalls;
     public int ParentWaits;
@@ -59,7 +65,14 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     public string ReadAllText(string path)
         => Files.TryGetValue(path, out string? content) ? content : throw new FileNotFoundException(path);
 
-    public void WriteAllText(string path, string content) => Files[path] = content;
+    public void WriteAllText(string path, string content)
+    {
+        if (ThrowOnWriteTo.Contains(path))
+        {
+            throw new IOException($"simulated write failure: {path}");
+        }
+        Files[path] = content;
+    }
 
     public void CreateDirectory(string path) => Directories.Add(path);
 

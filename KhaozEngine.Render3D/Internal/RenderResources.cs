@@ -92,6 +92,23 @@ namespace KhaozEngine.Render3D.Internal
         /// argument passed to the last <see cref="Create"/>/<see cref="Resize"/> call).</summary>
         public bool BloomAllocated { get; private set; }
 
+        /// <summary>Half- or quarter-resolution offset field the distortion pass accumulates signed screen-space UV
+        /// offsets into (<c>R16G16Float</c>, no depth). Unlike the bloom pair it is allocated LAZILY per frame via
+        /// <see cref="EnsureDistortion"/> (from Scene3D.RenderInternal), because whether any distortion sprite is
+        /// queued is a per-frame decision, not a resize-time one. Null (the default, and any frame that queues no
+        /// distortion sprite) costs zero GPU memory - byte-identical to before distortion existed.</summary>
+        public IGpuTexture? DistortTex;
+        public IGpuFramebuffer? DistortFB;
+        public int DistortWidth { get; private set; }
+        public int DistortHeight { get; private set; }
+
+        /// <summary>Whether the distortion offset target is currently allocated (mirrors the last
+        /// <see cref="EnsureDistortion"/> request). The post apply pass builds its resource set only while set.</summary>
+        public bool DistortAllocated { get; private set; }
+
+        // The divisor (2 = Full, 4 = Reduced) the current DistortTex was built for, so a quality change reallocates.
+        int _distortDivisor;
+
         public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor)
         {
             _gd = gd;
@@ -195,8 +212,48 @@ namespace KhaozEngine.Render3D.Internal
             cl.ResolveTexture(MsNormal!, NormalTex);
         }
 
+        /// <summary>Lazily (re)allocate or free the distortion offset target (<c>R16G16Float</c>) to match
+        /// <paramref name="wanted"/> at <see cref="Width"/>/<see cref="Height"/> divided by <paramref name="divisor"/>
+        /// (2 = Full, 4 = Reduced). Called once per frame from Scene3D.RenderInternal BEFORE the post chain: a frame
+        /// that queues distortion sprites requests it, a frame that queues none (or a resize, via
+        /// <see cref="DisposeTargets"/>) frees it. A (re)allocate or free bumps <see cref="Generation"/> so the post
+        /// apply resource set rebinds over the new target. A no-op (early return, no Generation bump) when already
+        /// allocated at the requested size and divisor, so a steady stream of distortion frames does not thrash.</summary>
+        public void EnsureDistortion(bool wanted, int divisor)
+        {
+            if (divisor < 1) divisor = 1;
+            if (wanted)
+            {
+                int dw = Math.Max(1, Width / divisor), dh = Math.Max(1, Height / divisor);
+                if (DistortAllocated && dw == DistortWidth && dh == DistortHeight && divisor == _distortDivisor) return;
+                DisposeDistortion();
+                DistortWidth = dw; DistortHeight = dh; _distortDivisor = divisor;
+                DistortTex = Tex((uint)dw, (uint)dh, GpuPixelFormat.R16G16Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled);
+                DistortFB = _gd.Factory.CreateFramebuffer(null, DistortTex);
+                DistortAllocated = true;
+                Generation++;
+            }
+            else
+            {
+                if (!DistortAllocated) return;
+                DisposeDistortion();
+                Generation++;
+            }
+        }
+
+        // Free the distortion target and reset its bookkeeping. Called by EnsureDistortion (on a free / size or
+        // divisor change) and by DisposeTargets (a resize disposes it; the next frame's EnsureDistortion re-lazies).
+        void DisposeDistortion()
+        {
+            DistortFB?.Dispose(); DistortTex?.Dispose();
+            DistortFB = null; DistortTex = null;
+            DistortWidth = 0; DistortHeight = 0; _distortDivisor = 0;
+            DistortAllocated = false;
+        }
+
         void DisposeTargets()
         {
+            DisposeDistortion();
             ModelFB?.Dispose(); ColorDepthFB?.Dispose(); PingAFB?.Dispose(); PingBFB?.Dispose();
             ColorTex?.Dispose(); NormalTex?.Dispose(); DepthColorTex?.Dispose(); DepthStencil?.Dispose();
             MsColor?.Dispose(); MsNormal?.Dispose(); MsDepthColor?.Dispose();

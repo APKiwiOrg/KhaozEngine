@@ -94,4 +94,26 @@ public class GridPathPlannerBasicsTests
         Assert.Equal(NavPathStatus.Unreachable, NavPath.Unreachable.Status);
         Assert.Empty(NavPath.Unreachable.Waypoints);
     }
+
+    [Fact]
+    public void FindPath_FastPath_NonZeroOriginGrid_TranslatesToGridLocalForLineOfSight()
+    {
+        // Grid baked at world origin (100, -50), covering (100,-50)..(110,-40).
+        // Without the grid-local translation in HasLineOfSight, GridRay would walk
+        // cells at floor(world / cellSize) = floor((start / 0.5), (goal / 0.5)),
+        // which lands far outside the 20x20 grid and reads as blocked.
+        NavGrid grid = NavGrid.FromWalkable(20, 20, CellSize, 100f, -50f, (_, _) => true);
+        var planner = new GridPathPlanner(NavSpace.Single(grid));
+
+        NavPath path = planner.FindPath(
+            new Vector3(101f, 0f, -48f),
+            new Vector3(108f, 0f, -48f),
+            AgentRadius,
+            PathQueryBudget.Default);
+
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        NavWaypoint waypoint = Assert.Single(path.Waypoints);
+        Assert.Equal(new Vector2(108f, -48f), waypoint.Position);
+        Assert.Equal(0, waypoint.Layer);
+    }
 }

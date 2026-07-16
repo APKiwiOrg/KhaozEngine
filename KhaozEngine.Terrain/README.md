@@ -25,7 +25,9 @@ up regardless of load order. Plain `float` math throughout.
   length (t units, so pass a normalized direction to march in world units) until the ray
   crosses the analytic surface, then bisects 24 times for a converged hit point. Endpoint-inclusive (a crossing
   inside the final partial step is still found), a ray starting below the surface returns the origin, and
-  `step` must be positive. Deterministic: the same field, ray, and parameters always give the same hit.
+  `step` must be positive (`ArgumentOutOfRangeException` otherwise). A NaN `step` or `maxDistance` throws the
+  same exception rather than silently NaN-poisoning the march into a guaranteed miss.
+  Deterministic: the same field, ray, and parameters always give the same hit.
   `Vector3` in/out, so `Terrain` stays render-free (build the ray from a camera's `ScreenToRay` and pass its
   `Origin`/`Direction`).
 - **`TerrainPresets`** - `Clearing()` (meadow + mountains + lake) and `BoundedClearing()` (meadow

@@ -55,8 +55,8 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
    (content beneath bleeds through) or, at low factors, invisibility - use it only when you mean to fade.
-   `ScaleRgb` is unclamped, so a brighten factor over an already-bright color can overshoot 1.0 per channel;
-   use `color.ScaleRgbClamped(factor)` (same contract, each scaled channel clamped to 0..1) whenever the
+   `ScaleRgb` is unclamped, so a brighten factor over an already-bright color can overshoot 1.0 per channel.
+   Use `color.ScaleRgbClamped(factor)` (same contract, each scaled channel clamped to 0..1) whenever the
    factor can push a channel out of range, e.g. a UI "selected" highlight tint.
 7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
@@ -3801,7 +3801,10 @@ never stomped. The grid draws in two passes (every row's label+editor, then a la
 still draws inside the grid's own scissor, so it clips at the grid bounds (a host wanting it to spill past the
 grid calls `Dropdown.DrawOverlay` itself after the grid's `Draw`). A row's label and a `ReadOnlyRow`'s display string truncate to their column via `GuiDraw.TruncateWithEllipsis`
 (longest fitting prefix plus three ASCII dots) instead of running under the neighbouring cell or getting
-hard-cut by the scissor mid-glyph. `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
+hard-cut by the scissor mid-glyph. `TruncateWithEllipsis(text, maxWidth, measureWidth)` is public (the one
+public member of `GuiDraw`), so a host can fit its own single-line text the same way: pass your own measure
+function (e.g. `s => font.Measure(s).X`), and it binary-searches the longest fitting prefix, pure and
+headless-testable (the map editor's status strip draws through it). `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
 outline panel beside the inspector:
 
 ```csharp
@@ -4213,12 +4216,12 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (66 tools).**
+**Verb surface (68 tools).**
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
 | Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
@@ -4253,7 +4256,11 @@ terrain/band/layer setup back at full field fidelity, including rules however th
 matches every host, or when a populated `HostKinds` intersects the host layer's kit ids, false only for the
 silent no-op mismatch case). `companion_layer_add`/`companion_layer_edit` detect that same mismatch on the
 layer they just wrote and append ", host kinds match no kind in the host layer" to the result's detail when
-it applies, mirroring the GUI editor's read-only warning row.
+it applies, mirroring the GUI editor's read-only warning row. `exclusions_info` and
+`scatter_overrides_info` are the same read counterpart for the exclusion and scatter-override lists: every
+element in document order (first-match-wins order for overrides) with index, optional name, shape kind and
+a one-line shape summary, layer targeting, and (for overrides) the density multiplier and `Kinds` in the
+same `"id"`/`"id:weight"` convention, round-trippable into `scatter_override_add`/`edit`.
 
 `element_duplicate(kind, id?, index?)` duplicates one document element, mirroring the GUI's own Ctrl+D
 duplicate (see Duplicate above) exactly: same `+2/+2` world-unit offset, same `<name>-copy` uniquifying for

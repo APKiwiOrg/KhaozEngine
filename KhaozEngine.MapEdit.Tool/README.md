@@ -90,12 +90,12 @@ it into the throwaway `ViewportWorld` the render call builds (`ViewportWorld.Tex
 render call gets the same textured-vs-flat choice the GUI viewport does without a live editor session
 open. Additive parameter, no new verb.
 
-## Verb surface (66 tools)
+## Verb surface (68 tools)
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
 | Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
@@ -144,6 +144,13 @@ exclusion scoped to that layer, so a designer can hand-tune what was procedural.
 naming the framing so the client can map pixels back to world coordinates. `procedural_info` reads back
 the full terrain/biome-band/scatter-layer/companion-layer setup at full field fidelity, the read
 counterpart to `terrain_edit` and the biome band and scatter/companion layer verbs below.
+`exclusions_info` and `scatter_overrides_info` are the same read counterpart for the exclusion and
+scatter-override lists: each returns every element in document order (order matters for scatter
+overrides, whose lookup is first-match-wins) with its index, optional name, shape kind
+(disc/rect/polygon), a compact one-line shape summary (disc: `center (x, z), radius r`, rect:
+`min (x1, z1), max (x2, z2)`, polygon: `N points`), and its layer targeting, plus (for overrides)
+the density multiplier and the `Kinds` substitution in the same `"id"`/`"id:weight"` convention
+`procedural_info` uses, so a read value round-trips straight into `scatter_override_add`/`edit`.
 
 Biome bands and scatter/companion layers are closed-shape types (not open unions like features and
 shapes), so they cross the wire as typed flat parameters instead of json: `biome_band_add`/

@@ -759,7 +759,7 @@ namespace KhaozEngine.Tests.MapEditor
             v.SetElementHidden(SelectionKind.ScatterOverride, "1", true);   // a later hide
             effect.Effect.ApplyForward(v);
             Assert.False(v.IsElementHidden(SelectionKind.ScatterOverride, "1"));   // was 1, shifted down to 0
-            Assert.True(v.IsElementHidden(SelectionKind.ScatterOverride, "0"));    // the old 1, now 0; the deleted 0's hide dropped
+            Assert.True(v.IsElementHidden(SelectionKind.ScatterOverride, "0"));    // the old 1, now 0 - the deleted 0's hide dropped
 
             Assert.True(doc.Undo());
             Assert.Single(doc.Doc.ScatterOverrides);      // the removed override is restored

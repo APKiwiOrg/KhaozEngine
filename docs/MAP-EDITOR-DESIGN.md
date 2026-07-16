@@ -276,7 +276,33 @@ silently drops out of the copy (worse if the new parameter is optional-with-defa
 compiles). Not fixed this round since `AssetEntry` is stable today - flagged so a future `AssetEntry` field
 addition checks this call site.
 
-**Resolved this round (editor-round8)**: the three inspector widgets' known gaps are closed. `NumberField`'s
+**Resolved this round (editor-round8)**: per-element hide maintenance is now event-driven from a single
+source. The reorder/remove/rename commands carry an `IVisibilityEffect` (`VisibilityOp`) that the new
+`EditorDocument.CommandApplied`/`CommandUndone`/`CommandRedone` events drive, so the forward remap runs on
+execute/redo and its inverse on undo (`EditorVisibility.RemapIndex`/`RemoveIndex`/`InsertIndex`/`RenameKey`).
+Hides now survive undo and redo of a reorder or delete, and renaming a placement, spawn, player spawn, or
+region moves its hide entry with the key (the old stale-key orphan is gone). The old inline call sites and
+the `EditorToolController.OnIndexRemoved` callback are removed. One residual, by design: a deleted element's
+OWN hide is dropped and not restored on undo (it was never part of the reversible document). Player spawns
+gained their own `VisibilityGroup.PlayerSpawns` (labeled "Player spawns" in the Layers panel, gating both
+the `DrawPlayerSpawnMarkers` draw and the pick, in lockstep with the per-element hide), so mass-hiding every
+player spawn works like the other whole-class toggles. `ke-mapedit` gained the `exclusions_info` and
+`scatter_overrides_info` read verbs (66 to 68), closing the exclusions read-back gap. Engine-misc
+correctness: `RayMath` NaN origin/direction components now miss (the NaN comparisons used to fall through
+every slab test as an always-pass hit) and the zero-length-ray edge is pinned by test, `TerrainRaycast`
+throws `ArgumentOutOfRangeException` on a NaN step or maxDistance (was a silent NaN-poisoned miss) and its
+stall guard is covered by test, `Scene3D.UnloadTexture` is a safe no-op on a stale handle after `Dispose()`
+(the same guard `UnloadSplatMaterial` already had), and the three index-keyed remove commands
+(`RemoveExclusionCommand`/`RemoveScatterOverrideCommand`/`RemoveFeatureCommand`) throw a precise
+`ArgumentOutOfRangeException` on a bad index instead of whatever the raw list indexing surfaced. Editor UX
+smalls: the status line truncates with an ellipsis instead of overflowing the strip
+(`GuiDraw.TruncateWithEllipsis`, now public), a mode swap unfocuses the hidden filter, whitespace-only
+filter edits no longer rebuild, the overlay draw list is a caller-owned reused buffer instead of a per-frame
+allocation, the selected-overlay brighten clamps channels (`Color.ScaleRgbClamped`), the stale exit-chord
+warning-text doc claim is corrected, and the feature-selection highlight, spawn id-gap reuse, and
+polygon-row `Description` gaps are covered by tests.
+
+**Also resolved this round (editor-round8, inspector widgets)**: the three inspector widgets' known gaps are closed. `NumberField`'s
 numeric filter now validates against the buffer `TextEntry.Apply` is accumulating THIS call (not the stale
 pre-frame field), so a multi-key frame or a paste admits at most one dot. Public `Value` is now a property
 whose setter always clamps to `[Min, Max]`, so an out-of-range external value (e.g. a `FloatRow` polling a
@@ -295,6 +321,22 @@ WITHIN one gesture). `TreeView`/`PropertyGrid` wheel scrolling is also now conti
 (`ScrollDelta * WheelSpeed`, the `ScrollablePanel` idiom) instead of rounding to an integer notch count, with
 both exposing a `WheelSpeed` property for the same idiom. `ChoiceRow`'s overlay-clipping host contract was
 reviewed and left as documented behavior, no code change.
+
+**Deferred out of this round (round8)**: concave polygon overlays still self-overlap through the centroid
+fan (carried from editor-round6, unrelated to this round's widget/visibility work). A richer per-kind kinds
+editor for scatter-layer rules and companion `HostKinds`/`Kinds` (per-kind rows, drag-to-reweight, a picker
+over known prop ids) is still future work, the crude comma-separated text row is unchanged this round.
+Feature/exclusion/scatter-layer/companion-layer selection still keys off list index or name rather than a
+stable synthetic id, the same v1 carve-out as before. Camera bookmarks still do not persist across an editor
+close/reopen (session-only by design, carried from editor-round7). `ExtremeMaxDistanceToStepRatio_StillTerminates`
+takes about 6 seconds to reproduce the float32 accumulation-stall path (it inherently needs roughly 2^24 march
+iterations), accepted this round: a dedicated slow-test lane is only worth adding if this pattern recurs
+elsewhere. This round's index-keyed remove-command guards (`RemoveExclusionCommand`, `RemoveScatterOverrideCommand`,
+`RemoveFeatureCommand`, precise `ArgumentOutOfRangeException`) do not extend to the id- or name-keyed remove
+commands (`RemovePlacementCommand`, `RemoveSpawnCommand`, `RemovePlayerSpawnCommand`, `RemoveScatterLayerCommand`,
+`RemoveCompanionLayerCommand`, `RemoveRegionCommand`, `RemoveBiomeBandCommand`), which stay plain existence-checked
+lookups (a generic `InvalidOperationException` from the `Find*` helper on a missing id or name), deliberately left
+unguarded this round.
 
 **Resolved this round (editor-round7)**: Shift+Escape used to pop the scene with no way back (a head that
 pushed the editor as its only scene was left with a blank screen once the stack emptied), now goes through
@@ -343,41 +385,25 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
   those consumers to document reads in the editor era. Clearing-disc boundary semantics
   differ at exactly the radius, strict vs inclusive, a measure-zero case.
 - **Gui widgets**:
-  - `NumberField`: fixed this round (editor-round8, see below). `Slider.Value` still bypasses its own
-    clamp (a bare public field), unaffected by this round.
-  - `TreeView`: the wheel-during-drag and caret/RowBounds/VisibleRows gaps are fixed this round
-    (editor-round8, see below). Every `TreeView` (outline, kit palette, spawn list, feature list) still
-    draws its selection fill through `GuiDraw.FillStyled` against `GuiStyle.Modern`, so every one of them
-    picked up a rounded selection border. This is a visual-only change with no pixel-exact test coverage,
-    verify by eyeball in a manual playtest rather than trusting the test suite alone.
-  - `PropertyGrid`: the partial-row input sliver, wheel feel, and cross-parameter scrub-merge gaps are
-    fixed this round (editor-round8, see below). `ChoiceRow`'s open option list still draws in the grid's
-    late overlay pass (above the rows below the selector, no longer overpainted), but still inside the
-    grid's own scissor, so a long list clips at the grid bounds. A host needing the list to spill past the
-    grid has to call `Dropdown.DrawOverlay` itself after the grid's `Draw`. `PropertyGrid.EditorStyle`
-    pushes into every row's inner widget on every `Update`, so a single row cannot carry a
-    style different from the grid's own: this is unreachable through the grid by design, not
-    a bug, and a future per-row style override would need its own opt-out flag.
+  - `NumberField`: `Slider.Value` still bypasses its own clamp (a bare public field), unaffected by
+    this round.
+  - `TreeView`: every `TreeView` (outline, kit palette, spawn list, feature list) draws its selection
+    fill through `GuiDraw.FillStyled` against `GuiStyle.Modern`, so every one of them picked up a rounded
+    selection border. This is a visual-only change with no pixel-exact test coverage, verify by eyeball
+    in a manual playtest rather than trusting the test suite alone.
+  - `PropertyGrid`: `ChoiceRow`'s open option list draws in the grid's late overlay pass (above the rows
+    below the selector, no longer overpainted), but still inside the grid's own scissor, so a long list
+    clips at the grid bounds. A host needing the list to spill past the grid has to call
+    `Dropdown.DrawOverlay` itself after the grid's `Draw`. `PropertyGrid.EditorStyle` pushes into every
+    row's inner widget on every `Update`, so a single row cannot carry a style different from the grid's
+    own: this is unreachable through the grid by design, not a bug, and a future per-row style override
+    would need its own opt-out flag.
 - **Editor UX**: sibling-focus drop after a rename, defer the pending re-select while any
-  inspector row is focused. Stale exit-chord warning text lingers after disarm. Status-line
-  length can overflow the strip, no truncation yet. Default `PlaceKind` pre-arm changed to
-  sorted-first. Stale inactive filter focus survives across a mode swap. Whitespace-only
-  filter edits trigger a redundant rebuild. Concave polygon overlays self-overlap, the
-  centroid fan. The overlay draw list allocates per frame. Selected-overlay brighten clamps
-  channels, a slight hue shift. Feature-selection highlight lacks direct unit tests.
+  inspector row is focused. Default `PlaceKind` pre-arm changed to sorted-first. Concave polygon
+  overlays self-overlap, the centroid fan.
   Custom `MapEditorScene` hosts must unsubscribe `DocumentChanged` and the three command
   events (`CommandApplied`/`CommandRedone`/`CommandUndone`) themselves (documented). `BakeRegion`'s two-arg overload has a doc
-  nicety around its shadowed-discriminator caveat. Index-keyed hides (the feature and
-  exclusion `Visible` rows key on list index) remap on a live feature or exclusion
-  reorder or delete, whether via Ctrl+Up/Ctrl+Down, an outline drag-and-drop, or Delete, and
-  now survive undo and redo: the reorder/remove/rename commands carry an `IVisibilityEffect`
-  (`VisibilityOp`) the `EditorDocument` command events drive, so the forward remap runs on
-  execute/redo and its inverse on undo (`EditorVisibility.RemapIndex`/`RemoveIndex`/`InsertIndex`/
-  `RenameKey`), from a single source (the old inline call sites and the `OnIndexRemoved`
-  callback are gone). The one residual: a deleted element's OWN hide is dropped and not
-  restored on undo (it was never part of the reversible document). Renaming a placement, spawn,
-  player spawn, or region now moves its hide entry with the key across execute/undo/redo, so
-  there is no orphan under the abandoned key (the earlier stale-key leak is fixed).
+  nicety around its shadowed-discriminator caveat.
   Scatter-layer rule editing and companion `HostKinds`/`Kinds` editing are
   deliberately v1-crude (a carve-out taken at design time): a rule is a Biome choice plus a
   Density scalar plus a comma-separated `"id:weight"` text row parsed with the same
@@ -394,29 +420,11 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
   used everywhere else in this program, and fine at the current few-rules-per-layer scale,
   but it does mean a rule add/remove undo step reverts the WHOLE layer value, not just the
   one rule, which would matter more if a layer ever grew a large rule list edited by
-  multiple hands. Player spawns now have their own `VisibilityGroup.PlayerSpawns` (labeled
-  "Player spawns" in the Layers panel, gating both the `DrawPlayerSpawnMarkers` draw and the
-  pick, in lockstep with the per-element hide), so mass-hiding every player spawn works like
-  the other whole-class toggles. Player spawn (and NPC spawn) id-uniqueness is tested for the
-  straightforward case but not for reusing a gap left by a removed id (add "a", "b", "c",
-  remove "b", add a new "b") - worth its own test once the id-generation scheme is revisited.
-  The polygon branch of the shape editor (`AddShapeRows`, read-only v1: kind + point count) is
-  never exercised by `EveryRow_HasDescription`'s inspector walk, since every exclusion/region
-  fixture the test suite selects is a disc or a rect, so a future polygon-row `Description`
-  regression would not be caught by that guard.
-- **ke-mapedit MCP surface**: exclusions support add/edit/remove and layer-targeting mutations plus
-  rename, but have no dedicated read-back verb (only the `map_summary` count is readable, not individual
-  exclusion details, names, or layer targeting). An `exclusions_info` read verb or a `map_summary`
-  enrichment is a candidate follow-up.
-- **Engine misc**: `RayMath`'s zero-length-ray edge is untested, and a NaN direction acts
-  as an always-pass slab (garbage in, garbage out). `TerrainRaycast`'s NaN step is a silent
-  miss, and its stall guard jumps to the endpoint at absurd ranges. Gizmo overlay builders
-  compute normals the unlit pass never uses. `RemoveExclusionCommand`'s raw indexing throws
-  the wrong exception type for a bad index.
+  multiple hands.
+- **Engine misc**: Gizmo overlay builders compute normals the unlit pass never uses.
 
-**Deferred out of this round (mapedit-perf)**: `Scene3D.UnloadTexture` has the identical latent
-post-dispose bug the splat-material guard just fixed, left alone deliberately this round. Coverage
-breadth deferred: an async flush-interleave test for `TerrainStreamer.Invalidate`, a device-gated
+**Deferred out of this round (mapedit-perf)**: Coverage breadth deferred: an async flush-interleave
+test for `TerrainStreamer.Invalidate`, a device-gated
 kit-mesh/splat retention test that exercises a real `Rebuild`, a direct rim-remove null-`DirtyRegion`
 test, a GPU-built `PartialRebuild` body test, and interleaved sticky-full-vs-throttle plus
 interval-change-mid-gesture tests. Also: exclusion, scatter-layer, companion, and terrain-scalar edits

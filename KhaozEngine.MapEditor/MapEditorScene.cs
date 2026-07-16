@@ -1990,8 +1990,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     }
 
     // The inline Name row for INDEX-pinned selections (feature, exclusion): the selection key is the list
-    // index, which a rename never moves (only reorder/delete do, both remapped separately through
-    // EditorVisibility.RemapIndex/RemoveIndex), so unlike AddNameRow there is no pending re-select to queue and
+    // index, which a rename never moves (only reorder/delete do, both remapped through the command's
+    // IVisibilityEffect via the EditorDocument event path, event-driven rather than called from here), so
+    // unlike AddNameRow there is no pending re-select to queue and
     // no `_nameRow` chord-gating hook to wire (the grid's own HasActiveEditor aggregate already covers a
     // focused TextRow). Name is optional (MapFeature.Name / MapExclusion.Name: empty means unnamed, falling
     // back to the index label), so clearing to blank is a legal target, not a guard-reject. Only an UNCHANGED

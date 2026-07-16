@@ -130,4 +130,7 @@ player.Update(dt);
 scene.DrawEffect(player, looks);
 ```
 
+The showcase's "Particles & VFX" room (`KhaozEngine.Showcase/RoomVfx.cs`) is the runnable reference:
+all nine presets cycled live over a flat stage, with bloom and HDR toggles.
+
 Depends on `KhaozEngine.Particles` + `KhaozEngine.Render3D`. In the `Game3D` umbrella.

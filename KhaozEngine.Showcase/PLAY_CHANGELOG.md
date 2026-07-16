@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-07-17
+
+### Build 0.5.0 (Alpha 5)
+
+- **New**
+  - A `Particles & VFX` room joined the hub: nine authored effects (fire bursts, frost shatters, shockwaves, heat haze and more) you can cycle with the arrow keys, replay with Space, and view with bloom and HDR toggled live.
+  - The `Catcher` mini-game now kicks the screen when you miss a block, and harder when you lose, so a drop actually stings.
+- **Bug**
+  - In the `3D overworld`, stepping left no longer flips the starfield sky on and off. The starfield toggle moved from `A` to `N`.
+
+---
+
 ## 2026-07-16
 
 ### Build 0.4.0 (Alpha 4)

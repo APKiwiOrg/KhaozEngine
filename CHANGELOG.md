@@ -5,6 +5,60 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.129.0
+
+Flipbook particles: the modern particle pass can now play an authored atlas sheet per sprite (per-particle frame
+index) with motion-vector frame interpolation, so offline-simmed smoke, fire, and explosion sheets read fluid at
+low frame counts. Additive over the procedural shapes (procedural stays the identity for sparks, glows, magic,
+rings), purely additive API, and byte-identical when unused. Tier 1 of the AAA VFX program, design record
+`docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
+
+- **KhaozEngine.Render3D (additive API).** New `ParticleFlipbook` spec (atlas `TextureHandle`, `Columns` x `Rows`
+  grid, optional motion-vector `MotionTexture` + `MotionStrength`, `Loop`) plus `ParticleSprite.Flipbook` and a
+  continuous `ParticleSprite.FlipbookFrame` (integer part = current cell, fractional part = blend toward the next).
+  When a sprite's flipbook is active the fragment shader samples that atlas frame in place of the procedural
+  `ParticleShape`, motion-vector warped when a motion sheet is bound, otherwise a plain cross-fade. Atlas and motion
+  sheets ride the existing `Scene3D.LoadTexture` / `TextureHandle` registry (the textured-billboard precedent), with
+  per-atlas-pair cached resource sets.
+- **Motion-vector two-tap warp.** Frame A is sampled warped forward along its encoded motion vector scaled by the
+  blend, frame B warped backward by (1 - blend), and the two mix by blend, so a motion sheet reads fluid at low
+  frame counts where a cross-fade ghosts. A neutral motion texture (the zero-displacement encode) degrades the warp
+  to a plain cross-fade automatically, so "no motion sheet authored" needs no flag and no shader variant.
+  `MotionStrength` scales the displacement (0 cross-fades even with a real sheet bound).
+- **KhaozEngine.Particles.Render3D (additive API).** `ParticleLook` gains `Flipbook` (the same
+  `ParticleFlipbook`), `FlipbookMode` (`LifeOneShot` default = frame swept once across a particle's life, clamping
+  on the last cell for one-shot explosion sheets, or `TimeLoop` = advance at `FlipbookFps` and wrap, for looping
+  fire/smoke), `FlipbookFps` (0 means 12), and `FlipbookRandomStart` (default true, staggers each particle's start
+  frame by its seed so a burst of identical looping sprites does not play in lockstep). Timing is resolved in the
+  adapter (`ResolveFlipbookFrame`, pure and headless-tested), so the renderer receives only the resolved continuous
+  frame and stays policy-free.
+- **Simulation untouched.** Flipbook is presentation-only: `KhaozEngine.Particles` learns nothing about textures,
+  the `Particle` / `EmitterConfig` types are unchanged, and a headless server references the sim with no atlas
+  concept in scope.
+- **Per-atlas run batching, sorted stream preserved.** The pass keeps ONE globally back-to-front sorted stream
+  (alpha and additive still interleave correctly) and splits it, AFTER the sort, into contiguous runs keyed by
+  atlas pair, one instanced draw per run at an instance-start offset into one packed buffer (the ground-decal
+  same-blend-run precedent). No sprite is reordered across runs. Procedural sprites carry a dummy pair and merge
+  into one run, so an all-procedural frame is still exactly one draw.
+- **Dummy-texture zero-neutral, one pipeline.** No pipeline fork: procedural-vs-flipbook is per-sprite, selected by
+  the packed grid value in the instance stream (0 = procedural). A 1x1 white dummy atlas and a 1x1 neutral motion
+  sheet are bound for procedural runs, sampled statically up front in binding order (the Metal rule) then discarded
+  by the branch, so procedural output is byte-identical to before flipbooks existed. Proven by the committed
+  `scene3d_particles_modern` goldens staying GREEN on all three backends with no rebake.
+- **IFlip instance lane (internal).** A sixth instance vec4 carries frame A, frame B, blend, and a packed
+  grid + quantized motion strength (`cols + rows*256 + qstr*65536`, `qstr` capped at 255 so the whole value stays
+  at or below 2^24 - 1 and every field is bit-exact in float32). The particle instance stride grows from 80 to 96
+  bytes, invisible across the public API. The pack (`PackFlipGrid`), the frame resolve (`ResolveFrames`), and the
+  adapter timing (`ResolveFlipbookFrame`) are pure and headless round-trip tested.
+- **Tests and goldens.** New `scene3d_particles_flipbook` golden baked on metal, direct3d11, and vulkan (a generated
+  atlas + motion sheet, sprites at fixed frames including one mid-blend and one motion-warped, interleaved with
+  procedural sprites to exercise run-splitting). Behaviour GpuFacts cover frame selection, cross-fade, the
+  motion-vector warp (offset sheet vs neutral reads measurably different), and byte-identical zero-neutral. Every
+  test sheet is generated procedurally in-test, so the suite ships no asset files.
+- **Compatibility.** Purely additive. Every new field zero-defaults to the procedural path, so a sprite or look
+  that never sets a flipbook renders exactly as before (golden-proven). The only non-additive change is the internal
+  instance stride (80 to 96 bytes). SemVer minor.
+
 ## 10.128.0
 
 HDR rendering pipeline: the internal colour chain now renders at float16 with an ACES filmic tonemap, on by

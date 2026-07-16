@@ -5,6 +5,34 @@ using KhaozEngine.Render3D;
 // DrawParticles/DrawEffect extensions, and the VfxPresets in scope. Mirrors the Telegraphs.Render3D precedent.
 namespace KhaozEngine.Particles
 {
+    /// <summary>
+    /// The screen-space distortion recipe for a <see cref="ParticleLook"/>. When <see cref="Strength"/> is non-zero
+    /// the look's phase emits one <see cref="DistortionSprite"/> per live particle (heat haze, refractive ring,
+    /// splash lens) INSTEAD of a visible <see cref="ParticleSprite"/>, so the phase warps the scene rather than
+    /// drawing over it. The default (all-zero, <see cref="Strength"/> 0) is inactive and keeps the phase on the
+    /// normal particle-sprite path.
+    /// </summary>
+    public struct DistortionLook
+    {
+        /// <summary>Which offset field each sprite writes (ripple ring, heat wobble, lens bulge).</summary>
+        public DistortionShape Shape;
+
+        /// <summary>Per-shape tuning knob in [0,1]. 0 is the shape's documented default look.</summary>
+        public float ShapeParam;
+
+        /// <summary>Offset magnitude in world-ish units. 0 leaves the look inactive (normal particle sprites). For
+        /// <see cref="DistortionShape.Lens"/> the sign chooses magnify (positive) or pinch (negative). The adapter
+        /// scales each sprite's strength by the particle's current alpha, so fields fade with the particle's life.</summary>
+        public float Strength;
+
+        /// <summary>Per-sprite multiplier on <see cref="Scene3D.ParticleSoftFade"/> for the depth occlusion, mirroring
+        /// <see cref="SoftFadeScale"/>. 0 means 1. Flat-on-ground ripples want a small value.</summary>
+        public float SoftFadeScale;
+
+        /// <summary>Whether this look drives the distortion path (a non-zero <see cref="Strength"/>).</summary>
+        public readonly bool IsActive => Strength != 0f;
+    }
+
     /// <summary>How the adapter advances a flipbook look's frame over a particle's life.</summary>
     public enum ParticleFlipbookMode
     {
@@ -77,6 +105,13 @@ namespace KhaozEngine.Particles
         /// <summary>Playback rate for <see cref="ParticleFlipbookMode.TimeLoop"/>, in frames per second. 0 is
         /// treated as 12. Ignored by <see cref="ParticleFlipbookMode.LifeOneShot"/>.</summary>
         public float FlipbookFps;
+
+        /// <summary>Optional screen-space distortion for this look. When active (a non-zero
+        /// <see cref="DistortionLook.Strength"/>) the phase emits distortion sprites INSTEAD of visible particle
+        /// sprites, so it warps the scene (heat haze, refractive shockwave ring, splash lens) rather than drawing
+        /// over it. The inactive default keeps the phase on the normal <see cref="Shape"/> / <see cref="Flipbook"/>
+        /// particle path.</summary>
+        public DistortionLook Distortion;
 
         // Stored inverted so the struct's zero-value default (a look created without touching this field) reads as
         // "random start on", the desired default. The public property below re-inverts.

@@ -65,39 +65,52 @@ namespace KhaozEngine.Particles
                 return 0;
             }
 
-            // Flipbook timing is look-level and loop-invariant, so resolve the per-look constants once. When the look
-            // has no atlas, flip stays false and every sprite keeps the procedural path.
-            bool flip = look.Flipbook.IsActive;
-            int frameCount = flip ? look.Flipbook.Columns * look.Flipbook.Rows : 0;
-            float fps = look.FlipbookFps > 0f ? look.FlipbookFps : 12f;
-            float effectTime = scene.EffectTimeSeconds;
-
-            for (int i = 0; i < active.Length; i++)
+            // An active-distortion look warps the scene INSTEAD of drawing a visible sprite: emit one distortion
+            // sprite per live particle (strength scaled by the particle's alpha so fields fade with life) and skip
+            // the particle-sprite path entirely. The inactive default keeps every particle on the normal path below.
+            if (look.Distortion.IsActive)
             {
-                ref readonly Particle p = ref active[i];
-                ParticleSprite sprite = new()
+                for (int i = 0; i < active.Length; i++)
                 {
-                    Position = p.Position,
-                    Velocity = p.Velocity,
-                    Size = p.Size,
-                    Rotation = p.Rotation,
-                    Color = p.Color,
-                    Shape = look.Shape,
-                    ShapeParam = look.ShapeParam,
-                    LifeNorm = p.Norm,
-                    Seed = p.Seed,
-                    Stretch = look.Stretch,
-                    Blend = look.Blend,
-                    Orientation = look.Orientation,
-                    SoftFadeScale = look.SoftFadeScale,
-                };
-                if (flip)
-                {
-                    sprite.Flipbook = look.Flipbook;
-                    sprite.FlipbookFrame = ResolveFlipbookFrame(
-                        look.FlipbookMode, p.Norm, p.Seed, effectTime, fps, frameCount, look.FlipbookRandomStart);
+                    scene.DrawDistortion(BuildDistortionSprite(in look, in active[i]));
                 }
-                scene.DrawParticle(in sprite);
+            }
+            else
+            {
+                // Flipbook timing is look-level and loop-invariant, so resolve the per-look constants once. When the
+                // look has no atlas, flip stays false and every sprite keeps the procedural path.
+                bool flip = look.Flipbook.IsActive;
+                int frameCount = flip ? look.Flipbook.Columns * look.Flipbook.Rows : 0;
+                float fps = look.FlipbookFps > 0f ? look.FlipbookFps : 12f;
+                float effectTime = scene.EffectTimeSeconds;
+
+                for (int i = 0; i < active.Length; i++)
+                {
+                    ref readonly Particle p = ref active[i];
+                    ParticleSprite sprite = new()
+                    {
+                        Position = p.Position,
+                        Velocity = p.Velocity,
+                        Size = p.Size,
+                        Rotation = p.Rotation,
+                        Color = p.Color,
+                        Shape = look.Shape,
+                        ShapeParam = look.ShapeParam,
+                        LifeNorm = p.Norm,
+                        Seed = p.Seed,
+                        Stretch = look.Stretch,
+                        Blend = look.Blend,
+                        Orientation = look.Orientation,
+                        SoftFadeScale = look.SoftFadeScale,
+                    };
+                    if (flip)
+                    {
+                        sprite.Flipbook = look.Flipbook;
+                        sprite.FlipbookFrame = ResolveFlipbookFrame(
+                            look.FlipbookMode, p.Norm, p.Seed, effectTime, fps, frameCount, look.FlipbookRandomStart);
+                    }
+                    scene.DrawParticle(in sprite);
+                }
             }
 
             if (look.Trails && system.TrailCapacity > 0)
@@ -133,6 +146,23 @@ namespace KhaozEngine.Particles
             // the last authored frame shows at full life instead of wrapping past the sheet.
             return Math.Clamp(lifeNorm, 0f, 1f) * frameCount;
         }
+
+        // Map one live particle onto a distortion sprite through an active DistortionLook. The authored strength is
+        // scaled by the particle's current alpha so the offset field fades with the particle's life. Pure and
+        // internal so the field mapping is headless-testable (like ResolveFlipbookFrame).
+        internal static DistortionSprite BuildDistortionSprite(in ParticleLook look, in Particle p) => new()
+        {
+            Position = p.Position,
+            Size = p.Size,
+            Rotation = p.Rotation,
+            Shape = look.Distortion.Shape,
+            ShapeParam = look.Distortion.ShapeParam,
+            Strength = look.Distortion.Strength * p.Color.A,
+            LifeNorm = p.Norm,
+            Seed = p.Seed,
+            Orientation = look.Orientation,
+            SoftFadeScale = look.Distortion.SoftFadeScale,
+        };
 
         // Forward each particle's motion history to DrawTrail. One point buffer and one sample buffer are rented
         // from the shared pool and reused across every particle, returned in a finally.

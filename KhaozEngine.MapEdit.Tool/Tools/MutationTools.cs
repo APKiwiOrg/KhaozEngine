@@ -434,6 +434,6 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
     public MutationResult ElementDuplicate(
         [Description("Element kind: placement, spawn, player_spawn, region, scatter_layer, or companion_layer (id/name-keyed), or feature, exclusion, scatter_override, or biome_band (index-keyed).")] string kind,
         [Description("Id or name of the element to duplicate, for an id/name-keyed kind. Null for an index-keyed kind.")] string? id = null,
-        [Description("Zero-based index of the element to duplicate, for an index-keyed kind (feature, exclusion, biome_band). Null for an id/name-keyed kind.")] int? index = null)
+        [Description("Zero-based index of the element to duplicate, for an index-keyed kind (feature, exclusion, scatter_override, biome_band). Null for an id/name-keyed kind.")] int? index = null)
         => ToolGuard.Guard(() => mutation.ElementDuplicate(kind, id, index));
 }

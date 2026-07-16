@@ -1037,7 +1037,7 @@ public sealed class MutationService(MapEditSession session)
             RequireIndexInRange(fromIndex, count, "scatter override", nameof(fromIndex));
             RequireIndexInRange(toIndex, count, "scatter override", nameof(toIndex));
             return new ReorderScatterOverrideCommand(fromIndex, toIndex);
-        }, "scatter_override_reorder", _ => $"moved scatter override from index {fromIndex} to {toIndex}",
+        }, "scatter_override_reorder", _ => $"moved scatter override from index {fromIndex} to {toIndex}, override order is first-match-wins so this changes scatter output",
             worldChanged: true);
         return result with { Index = toIndex };
     }

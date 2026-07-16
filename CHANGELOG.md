@@ -5,6 +5,70 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.130.0
+
+Screen-space distortion pass: distortion sprites (heat haze, refractive shockwave rings, splash lensing) now
+accumulate a signed screen-space offset field, and the resolved scene colour re-samples through it as the FIRST
+post-chain pass, so refraction reads as an in-scene phenomenon that warps the pixels behind it. Purely additive,
+gated by a `DistortionQuality` tier knob, and byte-identical when unused. This completes Tier 1 of the AAA VFX
+program, design record `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
+
+- **KhaozEngine.Render3D (additive API).** New `Scene3D.DrawDistortion(in DistortionSprite)` /
+  `DrawDistortions(ReadOnlySpan<DistortionSprite>)` queue heat-haze / refractive-shockwave / splash-lens sprites
+  (cleared each `Begin`, like the particle queue). A `DistortionSprite` carries a world position, size, rotation,
+  a `DistortionShape`, its shape param, `Strength`, life norm, seed, a `ParticleOrientation`, and a
+  `SoftFadeScale`. Three shapes: `Ripple` (radial ring of outward offsets, shockwaves), `Heat` (upward-scrolling
+  value-noise wobble over the footprint), and `Lens` (smooth radial bulge, a positive `Strength` magnifies and a
+  negative one pinches). All procedural in the fragment shader (SDF / value noise, no texture).
+- **Apply pass is the chain's FIRST pass, both modes.** The queued sprites accumulate into a lazily allocated
+  half/quarter-res offset field as ONE instanced draw (the modern particle pass's quad-expansion + soft depth
+  occlusion recipe), then a fullscreen apply pass re-samples the resolved scene colour through that field before
+  every other post pass: HDR `Distort -> Bloom -> Tonemap -> Quantize -> Outline -> FXAA -> Blit`, legacy
+  `Distort -> Quantize -> Outline -> Bloom -> FXAA -> Blit`. Refraction precedes every camera-response pass, so
+  bloom halos follow the warped sources, the tonemap sees the warped float scene, and the retro path quantizes the
+  warped image. The apply pass counts in both post-chain parities (the blit flip and the edge pass's
+  `passesBeforeOutline`) in both modes.
+- **New `GpuPixelFormat.R16G16Float`.** The two-channel half-float offset target (Veldrid `R16_G16_Float`). No
+  alpha lane, so the accumulation blend's alpha factors are inert and the colour factors `(One, One)` sum
+  overlapping fields.
+- **Lazy, zero-neutral target.** The offset field is allocated on the first frame that queues a distortion sprite
+  (the bloom-allocation precedent), rendered at half res (`Full`) or quarter res (`Reduced`), and freed on the next
+  resize when unwanted. A frame that queues no distortion sprite allocates nothing, clears nothing, runs no apply
+  pass, and renders byte-identically to before distortion existed. Proven by the committed `scene3d`,
+  `scene3d_particles_modern`, and `scene3d_hdr_bloom` goldens staying GREEN on all three backends with no rebake.
+- **Own-alpha preservation.** The apply pass emits `vec4(warpedColor.rgb, ownSample.a)`, sampling the source at
+  the un-warped UV for the alpha and at the warped UV for the colour, so warping the colour is the effect while the
+  alpha-lane background marker (clear a=0, geometry/sky a=1) is never displaced and the starfield / transparency
+  blit semantics survive.
+- **Strength dial with a hard ceiling.** `DistortionSprite.Strength` is the one authoring magnitude dial
+  (world-ish units, its sign choosing magnify vs pinch for `Lens`). The apply pass converts it to a UV excursion by
+  a fixed texel scale and clamps the total to a small maximum, so a hot mess of stacked sprites cannot smear the
+  whole screen. The clamp constants are internal, not knobs.
+- **`Scene3D.DistortionQuality` tier knob.** `Full` (default) / `Reduced`, host-set and not cleared by `Begin`
+  (the `ParticleQuality` precedent). `Reduced` drops the second heat noise octave and renders the offset field at
+  quarter resolution instead of half.
+- **KhaozEngine.Particles.Render3D (additive API).** `ParticleLook` gains a `DistortionLook Distortion`
+  (`Shape`, `ShapeParam`, `Strength`, `SoftFadeScale`). When `Strength` is non-zero the phase emits one
+  `DistortionSprite` per live particle INSTEAD of a visible sprite, so it warps the scene rather than drawing over
+  it, each sprite's strength scaled by the particle's alpha so the field fades with life. `VfxPresets.Shockwave`
+  gains a refraction-ring phase (a flat-ground `Ripple` that expands with the nova), and a new `VfxPresets.HeatHaze`
+  preset pairs a `Heat` distortion column with a faint warm additive shimmer for braziers, lava, desert air, and
+  exhaust.
+- **Tests and goldens.** New `scene3d_distortion` golden baked on metal, direct3d11, and vulkan (a textured
+  checkerboard floor plus one `Ripple`, one `Lens`, and one `Heat` sprite at fixed positions, frozen effect time
+  and seeds, HDR default on). Behaviour GpuFacts cover pixel displacement with an untouched control region,
+  geometry occlusion (a wall fades the offsets to zero), own-alpha starfield survival, byte-identical zero-neutral
+  (a queued-then-cleared frame equals a never-queued one), and the `Reduced` tier rendering. Showcase PNGs cover
+  the shockwave, heat-over-a-bloomed-sphere, and lens trio.
+- **Compatibility.** Purely additive. New API: `DistortionShape`, `DistortionSprite`, `DistortionQuality`,
+  `Scene3D.DrawDistortion` / `DrawDistortions` / `DistortionQuality`, `GpuPixelFormat.R16G16Float`, and the
+  adapter's `DistortionLook` / `ParticleLook.Distortion` / `VfxPresets.HeatHaze`. With no `DrawDistortion` call and
+  an inactive look, output is byte-identical to 10.129.0 (golden-proven). The alpha-lane contract, the blit paths,
+  `RenderScale` semantics, and the post-post overlay / Gui / 2D path are untouched. SemVer minor.
+- **AAA VFX program Tier 1 complete.** The three sub-features have all shipped: HDR pipeline (10.128.0), flipbook
+  particles (10.129.0), and screen-space distortion (this release). Tiers 2 and 3 remain on `docs/ROADMAP.md`,
+  each pulled into its own worktree when a game calls for it.
+
 ## 10.129.0
 
 Flipbook particles: the modern particle pass can now play an authored atlas sheet per sprite (per-particle frame

@@ -89,6 +89,11 @@ KhaozEngine.Server.Admin -> Microsoft.AspNetCore.App [shared framework, Framewor
 A server that does not want an admin HTTP endpoint never references `Server.Admin`, so the web stack stays
 out of its dependency closure.
 
+The game-registered admin action registry (`ServerAdmin.RegisterAction`/`ActionNames`/`TryGetAction`, since
+10.131.0) lives on `ServerAdmin` itself, on the `NetWorld` side of this edge, not in `Server.Admin`. The
+`/actions` HTTP routes in `Server.Admin` are a thin dispatch shell over that registry, so this edge is
+unchanged: `Server.Admin` still only references `NetWorld`, `WorldStore`, and `Microsoft.AspNetCore.App`.
+
 ## Commerce wallet seams
 
 `KhaozEngine.Commerce` splits into three seams, not one, because the wallet has three independent axes a

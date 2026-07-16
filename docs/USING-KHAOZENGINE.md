@@ -7080,6 +7080,29 @@ composes the three: `BanAsync` persists then kicks if the account is online; `Li
 the enumeration; unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
 `AccountsSupported`).
 
+**Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed registry a game
+populates at startup: `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)`,
+a synchronous convenience overload `RegisterAction(string name, Func<JsonElement?, AdminActionResult> handler)`,
+`ActionNames`, and `TryGetAction`. A name must match `^[a-z0-9][a-z0-9-]{0,63}$`. An invalid or duplicate name
+throws `ArgumentException`. The backing store is a `ConcurrentDictionary`, so registering is thread-safe even
+though it normally happens once before the endpoint starts.
+
+```csharp
+var admin = new ServerAdmin(server, banStore, accountStore);
+admin.RegisterAction("set-time", payload =>
+{
+    float t = payload?.GetProperty("timeOfDay").GetSingle() ?? 0f;
+    gameClockQueue.Enqueue(t);
+    return AdminActionResult.Accepted();
+});
+```
+
+`AdminActionResult` is the handler's return type: `Ok(payload = null)` for a query (the payload, if any, is
+serialized as the JSON response body), `Accepted()` for a mutation the handler enqueued, or `BadRequest(error)`
+to reject the request with a reason. The threading contract matches `IAdminControllable` above: the handler runs
+on the caller's thread (an HTTP request thread), so it must never touch simulation state directly, a mutation
+enqueues to the host thread, and a read returns a published snapshot.
+
 **HTTPS endpoint (`KhaozEngine.Server.Admin`).** An opt-in package (the only one that pulls ASP.NET Core, via a
 `FrameworkReference`; not in the `Server` umbrella - add it explicitly). It hosts a minimal Kestrel REST API over a
 `ServerAdmin`, TLS + a single bearer token:
@@ -7098,9 +7121,13 @@ await endpoint.StopAsync();
 ```
 
 Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`,
-`POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`. Mutations return
-202; capabilities not wired return 501. Bind defaults to loopback. There are no changes to the game client wire
-protocol.
+`POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions`
+(lists registered action names, sorted ordinal), `GET /actions/{name}` (dispatches with a null payload),
+`POST /actions/{name}` (dispatches with an optional JSON body). Mutations return 202. Capabilities not wired
+return 501. An unknown action name returns 404. A malformed JSON body returns 400 with `{ "error": "malformed
+json body" }`. An absent, empty, whitespace-only, or literal JSON-null request body all reach the handler as a
+null payload, so the common `payload?.GetProperty(...)` idiom is safe against a caller that posts nothing. Bind
+defaults to loopback. There are no changes to the game client wire protocol.
 
 ### Client self-rescue / unstuck
 

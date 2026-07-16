@@ -210,7 +210,31 @@ The **`ServerAdmin`** facade composes an `IAdminControllable` server, an optiona
 materializes the account enumeration. Unwired capabilities throw `NotSupportedException` (feature-detect via
 `BansSupported` / `AccountsSupported`).
 
-For the opt-in Kestrel HTTPS endpoint that exposes `ServerAdmin` as a REST API, see
+**Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed action registry:
+`RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)` (and a
+synchronous convenience overload taking `Func<JsonElement?, AdminActionResult>`), `ActionNames`, and
+`TryGetAction`. A name must match `^[a-z0-9][a-z0-9-]{0,63}$`. An invalid or already-registered name throws
+`ArgumentException`. The registry is a `ConcurrentDictionary`, so registering is safe from any thread, though
+registration normally happens once at startup before the endpoint starts.
+
+```csharp
+var admin = new ServerAdmin(server, banStore, accountStore);
+admin.RegisterAction("set-time", payload =>
+{
+    float t = payload?.GetProperty("timeOfDay").GetSingle() ?? 0f;
+    gameClockQueue.Enqueue(t);
+    return AdminActionResult.Accepted();
+});
+```
+
+A handler runs on the caller's thread (an HTTP request thread for `KhaozEngine.Server.Admin`), so it must never
+touch simulation state directly: enqueue mutations to the host thread and return published snapshots for reads,
+exactly like `IAdminControllable` above. `AdminActionResult` is `Ok(payload = null)` for a query (serialized as
+JSON when a payload is given), `Accepted()` for an enqueued mutation, or `BadRequest(error)` to reject the
+request.
+
+For the opt-in Kestrel HTTPS endpoint that exposes `ServerAdmin` (including registered actions, under
+`GET /actions`, `GET /actions/{name}`, `POST /actions/{name}`) as a REST API, see
 [`KhaozEngine.Server.Admin`](../KhaozEngine.Server.Admin).
 
 ## Client self-rescue / unstuck (since 8.6.0)

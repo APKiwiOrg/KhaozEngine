@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.131.0
+
+A game-registered admin action seam on `ServerAdmin`, served by the existing `KhaozEngine.Server.Admin`
+token/TLS endpoint under three new routes: named handlers a game registers at startup, dispatched over the
+same authenticated pipeline as the built-in admin commands.
+
+- **KhaozEngine.NetWorld (additive): `AdminActionResult` / `ServerAdmin.RegisterAction`.** A new readonly
+  struct `AdminActionResult` (`AdminActionStatus.Ok`/`Accepted`/`BadRequest`, an optional `object? Payload`,
+  an optional `string? Error`, static factories `Ok(payload = null)`, `Accepted()`, `BadRequest(error)`) is
+  the return type of a game-supplied handler. `ServerAdmin` gained a name-keyed registry over a
+  `ConcurrentDictionary`: `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)`,
+  a synchronous convenience overload `RegisterAction(string name, Func<JsonElement?, AdminActionResult> handler)`,
+  `ActionNames`, and `TryGetAction`. Names must match `^[a-z0-9][a-z0-9-]{0,63}$`, and both an invalid name
+  and a duplicate registration throw `ArgumentException`.
+- **KhaozEngine.Server.Admin (additive): three new routes.** `GET /actions` lists the registered names
+  (sorted ordinal). `GET /actions/{name}` dispatches with a null payload. `POST /actions/{name}` reads an
+  optional JSON body and dispatches with it. An unknown name returns 404, malformed JSON returns 400 with
+  `{ "error": "malformed json body" }`, and the result maps `Ok` (with a payload) to a 200 JSON body, `Ok`
+  (no payload) to a bare 200, `Accepted` to 202, and `BadRequest` to a 400 with `{ "error": ... }`. All three
+  routes sit inside the endpoint's existing bearer/TLS pipeline, right after the `/ban`/`/unban` block.
+- **Body normalization.** An absent body, an empty body, a whitespace-only body, and a literal JSON `null`
+  body all reach the handler as a null payload, so the canonical handler idiom
+  `payload?.GetProperty("...")` never throws on a caller that posts nothing or posts `null`. Only bodies that
+  fail to parse as JSON return 400.
+- **Threading contract unchanged from `IAdminControllable`.** A handler runs on the caller's thread (the
+  HTTP request thread) by contract: it must never touch simulation state directly, a mutation enqueues to
+  the game's host thread, and a read returns a published snapshot, exactly like the engine's own
+  `AdminCommandBuffer` idiom. The request's `RequestAborted` token is threaded through to the handler, which
+  decides whether to honor it (a query may abort on client disconnect, a mutation it already enqueued should
+  not), mirroring the existing `/accounts` vs `/ban`/`/unban` split.
+- **No dependency edges changed.** The registry lives on the existing `KhaozEngine.NetWorld` seam
+  (`ServerAdmin`). `KhaozEngine.Server.Admin` still only references `NetWorld`, `WorldStore`, and
+  `Microsoft.AspNetCore.App`.
+
 ## 10.127.0
 
 New KhaozEngine.Gui toast notification stack, ported from the Nullwake reference implementation: a

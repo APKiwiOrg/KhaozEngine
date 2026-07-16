@@ -53,7 +53,7 @@ namespace KhaozEngine.Render3D.Rendering
         int _capacity;
         IGpuResourceSet? _set;
         RenderResources? _bound;
-        int _boundW, _boundH;
+        int _boundGen;
         // Fixed-size grid buffers: every WaterPlane draws through the SAME GridResolution grid (only the CPU-side
         // vertex positions differ per plane, re-uploaded per draw), so these are allocated once and never regrown.
         IGpuBuffer? _vb;
@@ -104,11 +104,11 @@ namespace KhaozEngine.Render3D.Rendering
 
         void BindTargets(RenderResources res)
         {
-            if (_set != null && ReferenceEquals(_bound, res) && res.Width == _boundW && res.Height == _boundH) return;
+            if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             _set?.Dispose();
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex, _gd.PointSampler,
                 new GpuBufferRange(_ubo!, 0, PayloadBytes)));
-            _bound = res; _boundW = res.Width; _boundH = res.Height;
+            _bound = res; _boundGen = res.Generation;
         }
 
         /// <summary>Ensure the UBO holds at least <paramref name="planeCount"/> slots, growing geometrically. A

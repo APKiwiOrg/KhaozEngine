@@ -45,6 +45,63 @@ public struct EmitterConfig
     /// <summary>RGBA colour at death (set alpha to 0 to fade out).</summary>
     public Color EndColor;
 
+    // --- Modernisation fields (all zero-default = exactly the legacy behaviour above) ---
+
+    /// <summary>Spawn volume around the origin. Default <see cref="EmissionShape.Point"/> spawns at the origin.</summary>
+    public EmissionShape Shape;
+
+    /// <summary>Radius of the spawn <see cref="Shape"/> (world units). Ignored for <see cref="EmissionShape.Point"/>.</summary>
+    public float ShapeRadius;
+
+    /// <summary>0 fills the shape volume, 1 spawns only on its surface/edge (a shell). Blends in between.</summary>
+    public float ShapeShell;
+
+    /// <summary>How the initial velocity direction is chosen. Default <see cref="ParticleVelocityMode.Cone"/>.</summary>
+    public ParticleVelocityMode VelocityMode;
+
+    /// <summary>Per-particle size jitter in 0..1: bakes a multiplier <c>1 + SizeVariance*(2u-1)</c> into both
+    /// start and end size. 0 disables the jitter (and its RNG draw).</summary>
+    public float SizeVariance;
+
+    /// <summary>When true, each particle blends a random <c>t</c> between the A and B colour pairs at spawn
+    /// (<see cref="StartColor"/>/<see cref="StartColorB"/> and <see cref="EndColor"/>/<see cref="EndColorB"/>).</summary>
+    public bool VaryColor;
+
+    /// <summary>Second start colour for the <see cref="VaryColor"/> random-between-two-gradients blend.</summary>
+    public Color StartColorB;
+
+    /// <summary>Second end colour for the <see cref="VaryColor"/> random-between-two-gradients blend.</summary>
+    public Color EndColorB;
+
+    /// <summary>When true, colour interpolates through <see cref="MidColor"/> at normalised age 0.5 (3-stop gradient).</summary>
+    public bool UseMidColor;
+
+    /// <summary>The middle colour stop used when <see cref="UseMidColor"/> is set.</summary>
+    public Color MidColor;
+
+    /// <summary>Remaps the normalised age fed to the size lerp. Default (<see cref="ParticleCurveKind.Linear"/>) is
+    /// bit-identical to the legacy straight interpolation.</summary>
+    public ParticleCurve SizeCurve;
+
+    /// <summary>Remaps the normalised age fed to the alpha lerp. Default (<see cref="ParticleCurveKind.Linear"/>) is
+    /// bit-identical to the legacy straight interpolation.</summary>
+    public ParticleCurve AlphaCurve;
+
+    /// <summary>Minimum spin rate in rad/s (negatives allowed). Draws a per-particle spin when either bound is nonzero.</summary>
+    public float SpinMin;
+
+    /// <summary>Maximum spin rate in rad/s (negatives allowed).</summary>
+    public float SpinMax;
+
+    /// <summary>When true, each particle is given a random initial <see cref="Particle.Rotation"/> in [0, 2pi).</summary>
+    public bool RandomStartRotation;
+
+    /// <summary>Strength of the deterministic curl-noise turbulence force. 0 disables it (no per-frame noise work).</summary>
+    public float TurbulenceStrength;
+
+    /// <summary>Spatial/temporal frequency of the turbulence field. &lt;= 0 is treated as 1.</summary>
+    public float TurbulenceFrequency;
+
     /// <summary>A short-lived, fast, fading spark (good additive hit/muzzle burst).</summary>
     public static EmitterConfig Spark => new()
     {

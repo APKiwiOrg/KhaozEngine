@@ -963,6 +963,380 @@ void main() {
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
 }";
 
+        // ---- Modern particle sprites (ParticleRenderer). One instanced draw for the whole frame's queue:
+        //      per-instance attributes carry each sprite (locations 0..4, no holes, every attribute consumed,
+        //      the D3D11 contiguous-input contract), the two-triangle quad comes from gl_VertexIndex like the
+        //      decal pass. Billboarding, spin, and velocity-aligned stretch happen in the vertex stage from the
+        //      camera basis in the single Frame UBO (ONE uniform buffer per pipeline, declared identically in
+        //      both stages, the Metal contract). The fragment evaluates a procedural SDF/noise shape per sprite
+        //      and a soft depth fade against the reconstructed scene surface (the ground-decal texelFetch +
+        //      RAW-InvViewProj recipe). Output is PREMULTIPLIED color with alpha scaled by (1 - additivity), so
+        //      alpha and additive sprites composite correctly in one back-to-front sorted draw under a single
+        //      (One, InverseSourceAlpha) blend state. Draws into ColorDepthFB (lit color + read-only scene
+        //      depth) after the water pass and before the post chain, so sprites are occluded by geometry and
+        //      additive glow feeds bloom. ----
+        public const string ParticleVert = @"#version 450
+layout(set=0, binding=0) uniform Frame {
+    mat4 ViewProj;      // GpuClip-corrected world->clip (positions the quads per backend)
+    mat4 InvViewProj;   // RAW inverse, matching Camera.ScreenToRay (soft-fade reconstruction only)
+    vec4 CamRight;      // xyz camera right
+    vec4 CamUp;         // xyz camera up
+    vec4 CamPosTime;    // xyz eye position, w effect time seconds
+    vec4 Params;        // x soft-fade distance (0 = off), y quality (1 full / 0 reduced), z background depth-clear marker, w reserved
+};
+layout(location=0) in vec4 ICenterSize;   // xyz world center, w half-size
+layout(location=1) in vec4 IVelocityRot;  // xyz world velocity, w rotation (radians)
+layout(location=2) in vec4 IColor;        // straight rgba tint (premultiplied by the fragment)
+layout(location=3) in vec4 IShape;        // x shape id, y shape param, z life norm, w seed
+layout(location=4) in vec4 IExtra;        // x stretch, y additivity (0 alpha / 1 additive), z orientation (0 camera / 1 flat ground), w soft-fade scale
+layout(location=5) in vec4 IFlip;         // x frameA, y frameB, z blend, w packed grid+strength (0 = procedural)
+layout(location=0) out vec2 vLocal;
+layout(location=1) out vec4 vColor;
+layout(location=2) out vec4 vShape;
+layout(location=3) out vec4 vExtra;       // x aspect (stretch elongation), y additivity, z orientation, w soft-fade scale
+layout(location=4) out vec3 vWorld;
+layout(location=5) out vec4 vFlip;        // flipbook frames + packed grid, passed straight through to the fragment
+void main() {
+    // Two-triangle quad from gl_VertexIndex (0..5), the same instanced-quad path DecalVert uses.
+    float u = (gl_VertexIndex == 1 || gl_VertexIndex == 3 || gl_VertexIndex == 4) ? 1.0 : 0.0;
+    float v = (gl_VertexIndex == 2 || gl_VertexIndex == 4 || gl_VertexIndex == 5) ? 1.0 : 0.0;
+    vec2 corner = vec2(u, v) * 2.0 - 1.0;
+
+    float size = max(ICenterSize.w, 1e-5);
+    // Basis plane: camera-facing (right/up) by default, or flat on the ground (XZ) for shockwave rings and
+    // ground glows. The 2D math below (spin, stretch alignment) is identical in either plane.
+    vec3 planeX = CamRight.xyz;
+    vec3 planeY = CamUp.xyz;
+    if (IExtra.z > 0.5) {
+        planeX = vec3(1.0, 0.0, 0.0);
+        planeY = vec3(0.0, 0.0, 1.0);
+    }
+    // Velocity-aligned stretch: project the velocity onto the sprite plane. When usable, the quad's local +X
+    // follows the in-plane motion direction and lengthens with speed (so the Spark shape's bright head points
+    // where the particle is going). Otherwise the quad rolls by its rotation like any round sprite.
+    vec2 v2 = vec2(dot(IVelocityRot.xyz, planeX), dot(IVelocityRot.xyz, planeY));
+    float speed2 = length(v2);
+    float aspect = 1.0;
+    vec2 ax;
+    if (IExtra.x > 0.0 && speed2 > 1e-4) {
+        ax = v2 / speed2;
+        aspect = min(1.0 + IExtra.x * speed2 / size, 8.0);
+    } else {
+        float cr = cos(IVelocityRot.w);
+        float sr = sin(IVelocityRot.w);
+        ax = vec2(cr, sr);
+    }
+    vec2 ay = vec2(-ax.y, ax.x);
+    vec3 axisX = planeX * ax.x + planeY * ax.y;
+    vec3 axisY = planeX * ay.x + planeY * ay.y;
+    vec3 world = ICenterSize.xyz + axisX * (corner.x * size * aspect) + axisY * (corner.y * size);
+    gl_Position = ViewProj * vec4(world, 1.0);
+    vLocal = corner;
+    vColor = IColor;
+    vShape = IShape;
+    vExtra = vec4(aspect, IExtra.y, IExtra.z, IExtra.w);
+    vWorld = world;
+    vFlip = IFlip;
+}";
+
+        public const string ParticleFrag = @"#version 450
+layout(set=0, binding=0) uniform Frame {
+    mat4 ViewProj;
+    mat4 InvViewProj;
+    vec4 CamRight;
+    vec4 CamUp;
+    vec4 CamPosTime;
+    vec4 Params;
+};
+layout(set=0, binding=1) uniform texture2D DepthTex;   // .r = scene NDC depth (single-channel R32F, resolved)
+layout(set=0, binding=2) uniform sampler Samp;
+// Flipbook atlas + motion-vector sheet. MotionTex sits at binding 3 and AtlasTex at binding 4 on purpose: Metal
+// requires every texture be sampled statically in binding order, and the two-tap warp needs the motion vectors
+// BEFORE it can offset the atlas taps, so motion must come first. AtlasSamp is the shared linear sampler for both.
+layout(set=0, binding=3) uniform texture2D MotionTex;
+layout(set=0, binding=4) uniform texture2D AtlasTex;
+layout(set=0, binding=5) uniform sampler AtlasSamp;
+layout(location=0) in vec2 vLocal;    // quad-local coords in [-1,1] (rotate/stretch with the quad)
+layout(location=1) in vec4 vColor;
+layout(location=2) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
+layout(location=3) in vec4 vExtra;    // x aspect, y additivity, zw reserved
+layout(location=4) in vec3 vWorld;    // fragment world position (flat across the quad's plane)
+layout(location=5) in vec4 vFlip;     // x frameA, y frameB, z blend, w packed grid+strength (0 = procedural)
+layout(location=0) out vec4 oColor;
+
+// Texture-free value noise, the exact polynomial-hash idiom the decal pass ships cross-backend goldens with
+// (sin-based hashes diverge between GPU compilers, this one does not).
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+float vnoise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void main() {
+    int shape = int(vShape.x + 0.5);
+    float param = clamp(vShape.y, 0.0, 1.0);
+    float life = clamp(vShape.z, 0.0, 1.0);
+    float seed = vShape.w;
+    float t = CamPosTime.w;
+    float quality = Params.y;
+    float d = length(vLocal);
+
+    // Scene depth for the soft fade. Sampled unconditionally up front (Metal's static-sample rule, binding order
+    // DepthTex then MotionTex then AtlasTex). The fade MATH below stays gated on fadeDist, so hoisting the fetch
+    // here changes no output.
+    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
+    float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+
+    // Flipbook atlas playback (D-F6 grid decode + D-F3 two-tap motion-vector warp). Sampled statically here, after
+    // DepthTex and in binding order (MotionTex then AtlasTex), so Metal stays happy. Procedural sprites pack grid 0
+    // (useFlip false) and DISCARD these taps below, keeping their output byte-identical. safeCols guards the mod/div
+    // for that discarded path (a real flipbook always has cols >= 1, so it is a no-op there).
+    float packedW = vFlip.w;
+    bool useFlip = packedW > 0.5;
+    float cols = mod(packedW, 256.0);
+    float rows = mod(floor(packedW / 256.0), 256.0);
+    float mstr = floor(packedW / 65536.0) / 64.0;
+    float safeCols = max(cols, 1.0);
+    vec2 cell = 1.0 / max(vec2(cols, rows), vec2(1.0));
+    vec2 lu = vLocal * 0.5 + 0.5;                          // quad-local [0,1], rotates/stretches with the quad
+    vec2 uvA = (vec2(mod(vFlip.x, safeCols), floor(vFlip.x / safeCols)) + lu) * cell;
+    vec2 uvB = (vec2(mod(vFlip.y, safeCols), floor(vFlip.y / safeCols)) + lu) * cell;
+    vec2 mvA = (texture(sampler2D(MotionTex, AtlasSamp), uvA).rg * 2.0 - 1.0) * mstr * cell;
+    vec2 mvB = (texture(sampler2D(MotionTex, AtlasSamp), uvB).rg * 2.0 - 1.0) * mstr * cell;
+    float fb = vFlip.z;
+    vec4 texA = texture(sampler2D(AtlasTex, AtlasSamp), uvA - mvA * fb);
+    vec4 texB = texture(sampler2D(AtlasTex, AtlasSamp), uvB + mvB * (1.0 - fb));
+    vec4 flipCol = mix(texA, texB, fb);
+
+    float mask;
+    if (shape == 0) {
+        // SoftGlow: normalized gaussian-like falloff. Param 0 is the wide classic blob, param 1 a hot center.
+        float k = mix(5.0, 14.0, param);
+        mask = max(exp(-d * d * k) - exp(-k), 0.0) / (1.0 - exp(-k));
+    } else if (shape == 1) {
+        // Ember: tight hot core + faint halo, subtle per-particle flicker (Full quality only).
+        float coreK = mix(28.0, 10.0, param);
+        float flicker = 1.0;
+        if (quality > 0.5) flicker = 0.82 + 0.36 * vnoise(vec2(seed * 289.0, t * 7.0));
+        mask = (exp(-d * d * coreK) + exp(-d * d * 3.5) * 0.30) * flicker;
+    } else if (shape == 2) {
+        // Spark: rounded capsule along local +X in aspect-corrected space (caps stay round on screen), with a
+        // bright head toward +X (the motion direction under stretch) and a tail that dims by param.
+        vec2 q = vec2(vLocal.x * vExtra.x, vLocal.y);
+        float capR = 0.30;
+        float halfLen = max(vExtra.x - capR, 0.0);
+        float sd = length(q - vec2(clamp(q.x, -halfLen, halfLen), 0.0));
+        float body = 1.0 - smoothstep(capR * 0.25, capR, sd);
+        float along = clamp(q.x / max(vExtra.x, 1e-4) * 0.5 + 0.5, 0.0, 1.0);
+        mask = body * (0.35 + 0.65 * pow(along, mix(1.0, 3.0, param)));
+    } else if (shape == 3) {
+        // Wisp: noise-eroded smoke. The erosion threshold rises with life so the sprite dissolves at its edges
+        // instead of fading uniformly. Reduced quality drops the second octave.
+        float base = 1.0 - smoothstep(0.25, 1.0, d);
+        vec2 np = vLocal * 2.6 + vec2(seed * 157.0, seed * 93.0);
+        float n = vnoise(np + vec2(t * 0.35, -t * 0.22));
+        if (quality > 0.5) n = 0.65 * n + 0.35 * vnoise(np * 2.3 - vec2(t * 0.5, t * 0.3));
+        float erode = mix(0.08, 0.85, life) + (param - 0.5) * 0.3;
+        mask = base * smoothstep(erode, erode + 0.28, n * 0.7 + base * 0.5);
+    } else if (shape == 4) {
+        // Ring: soft annulus for shockwaves. Param widens the band.
+        float th = mix(0.055, 0.24, param);
+        mask = (1.0 - smoothstep(th * 0.35, th, abs(d - 0.70))) * (1.0 - smoothstep(0.92, 1.0, d));
+    } else {
+        // Star: four-point glint plus a small hot center. Param sharpens the rays.
+        float ang = atan(vLocal.y, vLocal.x);
+        float rays = pow(abs(cos(ang * 2.0)), mix(2.0, 10.0, param));
+        mask = exp(-d * d * 5.0) * (0.22 + 0.78 * rays) + exp(-d * d * 30.0) * 0.6;
+    }
+
+    // Soft depth fade: reconstruct the scene surface behind this fragment (texelFetch at gl_FragCoord + RAW
+    // InvViewProj, the backend-independent decal recipe) and fade coverage over Params.x world units of
+    // approach. The depth-color attachment is CLEARED to the background color's red channel, not to the far
+    // plane, so a sample equal to that marker (Params.z) means no geometry: skip the fade there instead of
+    // reconstructing a bogus near-plane point that would dim sprites against empty sky.
+    // vExtra.w is the per-sprite soft-fade scale (packed as 1 for the default): flat-on-ground sprites shrink
+    // it so the floor sitting immediately behind them does not erase them, dense smoke can grow it.
+    float fade = 1.0;
+    float fadeDist = Params.x * vExtra.w;
+    if (fadeDist > 0.0) {
+        if (abs(depth - Params.z) > 1e-6) {
+            vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, depth, 1.0);
+            vec4 wp = InvViewProj * ndc;
+            vec3 sceneWorld = wp.xyz / wp.w;
+            float sceneDist = distance(sceneWorld, CamPosTime.xyz);
+            float fragDist = distance(vWorld, CamPosTime.xyz);
+            fade = clamp((sceneDist - fragDist) / fadeDist, 0.0, 1.0);
+        }
+    }
+
+    // Premultiplied output under a (One, InverseSourceAlpha) blend: alpha sprites keep their coverage in the
+    // alpha lane, additive sprites zero it (out = dst + rgb), so one sorted stream composites both correctly.
+    // Flipbook sprites take coverage + colour from the atlas frame (tint * sheet). Procedural sprites keep the SDF
+    // mask path byte-for-byte.
+    float a;
+    vec3 rgb;
+    if (useFlip) {
+        a = clamp(vColor.a * flipCol.a, 0.0, 1.0) * fade;
+        rgb = vColor.rgb * flipCol.rgb * a;
+    } else {
+        a = clamp(vColor.a * mask, 0.0, 1.0) * fade;
+        rgb = vColor.rgb * a;
+    }
+    oColor = vec4(rgb, a * (1.0 - vExtra.y));
+}";
+
+        // ---- Screen-space distortion: instanced quads write signed UV offsets into the half/quarter-res
+        //      R16G16Float offset field (DistortionRenderer), accumulated additively and re-sampled by the post
+        //      apply pass. Reuses the particle pass's proven recipes (gl_VertexIndex quad expansion, camera vs
+        //      flat-ground orientation basis, texelFetch depth occlusion with the background-marker skip) but emits
+        //      offsets, not colour, and never writes depth (the target has no depth attachment). ----
+        public const string DistortionVert = @"#version 450
+layout(set=0, binding=0) uniform Frame {
+    mat4 ViewProj;      // GpuClip-corrected world->clip
+    mat4 InvViewProj;   // RAW inverse, matching Camera.ScreenToRay (depth occlusion reconstruction only)
+    vec4 CamRight;      // xyz camera right
+    vec4 CamUp;         // xyz camera up
+    vec4 CamPosTime;    // xyz eye position, w effect time seconds
+    vec4 Params;        // x soft-fade distance (0 = off), y quality (1 full / 0 reduced), z background depth marker, w half-res->full-res texel ratio
+};
+layout(location=0) in vec4 ICenterSize;   // xyz world center, w half-size
+layout(location=1) in vec4 IShapeLife;    // x shape id, y shape param, z life norm, w seed
+layout(location=2) in vec4 IExtra;        // x strength, y rotation (radians), z orientation (0 camera / 1 flat ground), w soft-fade scale
+layout(location=0) out vec2 vLocal;
+layout(location=1) out vec4 vShape;       // x shape id, y shape param, z life norm, w seed
+layout(location=2) out vec4 vExtra;       // x strength, y rotation, z orientation, w soft-fade scale
+layout(location=3) out vec3 vWorld;
+void main() {
+    // Two-triangle quad from gl_VertexIndex (0..5), the same instanced-quad path the particle pass uses.
+    float u = (gl_VertexIndex == 1 || gl_VertexIndex == 3 || gl_VertexIndex == 4) ? 1.0 : 0.0;
+    float v = (gl_VertexIndex == 2 || gl_VertexIndex == 4 || gl_VertexIndex == 5) ? 1.0 : 0.0;
+    vec2 corner = vec2(u, v) * 2.0 - 1.0;
+
+    float size = max(ICenterSize.w, 1e-5);
+    // Camera-facing (right/up) by default, or flat on the ground plane (XZ) for ground ripples/shockwaves.
+    vec3 planeX = CamRight.xyz;
+    vec3 planeY = CamUp.xyz;
+    if (IExtra.z > 0.5) {
+        planeX = vec3(1.0, 0.0, 0.0);
+        planeY = vec3(0.0, 0.0, 1.0);
+    }
+    float cr = cos(IExtra.y);
+    float sr = sin(IExtra.y);
+    vec2 ax = vec2(cr, sr);
+    vec2 ay = vec2(-ax.y, ax.x);
+    vec3 axisX = planeX * ax.x + planeY * ax.y;
+    vec3 axisY = planeX * ay.x + planeY * ay.y;
+    vec3 world = ICenterSize.xyz + axisX * (corner.x * size) + axisY * (corner.y * size);
+    gl_Position = ViewProj * vec4(world, 1.0);
+    vLocal = corner;
+    vShape = IShapeLife;
+    vExtra = IExtra;
+    vWorld = world;
+}";
+
+        public const string DistortionFrag = @"#version 450
+layout(set=0, binding=0) uniform Frame {
+    mat4 ViewProj;
+    mat4 InvViewProj;
+    vec4 CamRight;
+    vec4 CamUp;
+    vec4 CamPosTime;
+    vec4 Params;
+};
+layout(set=0, binding=1) uniform texture2D DepthTex;   // .r = scene NDC depth (single-channel R32F, resolved, full-res)
+layout(set=0, binding=2) uniform sampler Samp;
+layout(location=0) in vec2 vLocal;    // quad-local coords in [-1,1]
+layout(location=1) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
+layout(location=2) in vec4 vExtra;    // x strength, y rotation, z orientation, w soft-fade scale
+layout(location=3) in vec3 vWorld;    // fragment world position
+layout(location=0) out vec4 oOffset;  // .rg = signed screen-space UV offset (accumulated additively), .ba unused
+
+// Texture-free value noise, the exact polynomial-hash idiom the particle/decal passes ship cross-backend goldens
+// with (sin-based hashes diverge between GPU compilers, this one does not).
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 345.45)); p += dot(p, p + 34.345); return fract(p.x * p.y); }
+float vnoise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void main() {
+    int shape = int(vShape.x + 0.5);
+    float param = clamp(vShape.y, 0.0, 1.0);
+    float seed = vShape.w;
+    float strength = vExtra.x;
+    float t = CamPosTime.w;
+    float quality = Params.y;
+    float ratio = Params.w;               // half/quarter-res gl_FragCoord -> full-res texel scale
+    float d = length(vLocal);
+
+    // Scene depth for the occlusion fade. The offset target is half/quarter res, so gl_FragCoord is in the small
+    // target's pixel space: scale it up by ratio to index the full-res depth texel (and to normalize below). Sampled
+    // unconditionally up front (Metal's static-sample rule).
+    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
+    float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy * ratio), 0).r;
+
+    vec2 offset;
+    if (shape == 0) {
+        // Ripple: outward radial offset in a soft ring band around d = 0.7, band width from param.
+        float th = mix(0.05, 0.22, param);
+        float band = exp(-pow((d - 0.7) / th, 2.0));
+        vec2 dir = d > 1e-4 ? vLocal / d : vec2(0.0);
+        offset = dir * band;
+    } else if (shape == 1) {
+        // Heat: upward-scrolling value-noise wobble over the footprint, param scales the frequency. The second
+        // octave is Full-quality only (a uniform branch, not a pipeline variant), matching the particle pass.
+        float freq = mix(3.0, 9.0, param);
+        vec2 p = vLocal * freq + vec2(seed * 41.0, seed * 17.0);
+        vec2 up = vec2(0.0, -t * 0.6);    // scroll the noise field over the footprint via effect time
+        float nx = vnoise(p + up) - 0.5;
+        float ny = vnoise(p + vec2(19.7, 4.3) + up) - 0.5;
+        if (quality > 0.5) {
+            nx += (vnoise(p * 2.3 + up * 1.7) - 0.5) * 0.5;
+            ny += (vnoise(p * 2.3 + vec2(11.1, 7.9) + up * 1.7) - 0.5) * 0.5;
+        }
+        offset = vec2(nx, ny) * 2.0;
+    } else {
+        // Lens: smooth radial bulge toward the center. A positive strength magnifies (pull inward), a negative one
+        // pinches (push outward), the sign rides on strength below. Param softens the falloff shoulder.
+        float falloff = 1.0 - smoothstep(0.0, mix(0.5, 1.0, param), d);
+        offset = -vLocal * falloff;
+    }
+
+    // Footprint fade so the quad never hard-edges, then the soft depth occlusion (skipping the background marker,
+    // the same recipe the particle pass uses), then the authored strength. Fade the offset toward zero (never
+    // discard) so edges stay soft.
+    float footprint = 1.0 - smoothstep(0.85, 1.0, d);
+    float fade = 1.0;
+    float fadeDist = Params.x * vExtra.w;
+    if (fadeDist > 0.0) {
+        if (abs(depth - Params.z) > 1e-6) {
+            vec2 fullUv = gl_FragCoord.xy * ratio / vec2(sz);
+            vec4 ndc = vec4(fullUv.x * 2.0 - 1.0, 1.0 - fullUv.y * 2.0, depth, 1.0);
+            vec4 wp = InvViewProj * ndc;
+            vec3 sceneWorld = wp.xyz / wp.w;
+            float sceneDist = distance(sceneWorld, CamPosTime.xyz);
+            float fragDist = distance(vWorld, CamPosTime.xyz);
+            fade = clamp((sceneDist - fragDist) / fadeDist, 0.0, 1.0);
+        }
+    }
+
+    oOffset = vec4(offset * strength * footprint * fade, 0.0, 0.0);
+}";
+
         // ---- Additive glowing beam (lasers/thrusters/tethers). Drawn INTO the model MRT alongside the meshes
         //      with the depth test on (no write), so geometry occludes it (like the textured billboard). A
         //      camera-facing strip carries (across,along) UV; the core+halo profile is computed in the fragment
@@ -1103,6 +1477,34 @@ void main() {
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }";
 
+        // ---- Screen-space distortion apply: the FIRST post-chain pass (both modes). Re-samples the chain source
+        // through the accumulated half-res offset field so refraction warps the scene BEFORE every camera-response
+        // pass (bloom halos follow the warped sources, the retro path quantizes the warped image). Preserves each
+        // pixel's OWN alpha so the background/starfield marker never warps (warping it would corrupt the blit's
+        // marker semantics, D-S5). Only ever run when a distortion sprite was queued this frame
+        // (RenderResources.DistortAllocated), so a distortion-free frame is byte-identical to before distortion existed.
+        public const string DistortionApplyFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;        // the chain source (ColorTex on the first pass)
+layout(set=0, binding=1) uniform texture2D OffsetTex;  // half/quarter-res R16G16Float signed UV offset field
+layout(set=0, binding=2) uniform sampler Samp;         // linear: bilinear offset upsample + colour resample
+layout(set=0, binding=3) uniform Apply { vec4 Params; }; // .x = strength->UV scale, .y = max UV excursion clamp, zw reserved
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+void main() {
+    // Own tap first (binding order Src then OffsetTex, the Metal static-sample rule), keeping this pixel's own alpha
+    // so the background marker survives the warp.
+    vec4 own = texture(sampler2D(Src, Samp), vUv);
+    vec2 offset = texture(sampler2D(OffsetTex, Samp), vUv).rg;   // bilinear half-res upsample
+    // World-ish offset -> UV excursion, clamped so a hot mess of stacked sprites cannot smear the whole screen.
+    vec2 duv = clamp(offset * Params.x, -vec2(Params.y), vec2(Params.y));
+    // Keep the warped sample inside the viewport (half a texel in from each edge).
+    ivec2 sz = textureSize(sampler2D(Src, Samp), 0);
+    vec2 halfTexel = 0.5 / vec2(sz);
+    vec2 wuv = clamp(vUv + duv, halfTexel, vec2(1.0) - halfTexel);
+    vec3 warped = texture(sampler2D(Src, Samp), wuv).rgb;
+    oColor = vec4(warped, own.a);
+}";
+
         // ---- Palette quantize (+ optional Bayer dither) ----
         public const string PaletteFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
@@ -1145,30 +1547,35 @@ layout(set=0, binding=1) uniform texture2D NormalTex;
 layout(set=0, binding=2) uniform texture2D DepthTex;
 layout(set=0, binding=3) uniform sampler Samp;
 layout(set=0, binding=4) uniform Edge { vec4 OutlineColor; vec4 Texel; vec4 Thresh; vec4 Fade; };
-// Texel.xy=1/size, .z=isPerspective, .w=distanceFadeOn; Thresh.x=depth, .y=normal, .z=near, .w=far; Fade.xy=start/end
+// Texel.xy=1/size, .z=isPerspective, .w=distanceFadeOn; Thresh.x=depth, .y=normal, .z=near, .w=far;
+// Fade.x=start, .y=end, .z=MRT-flip parity: the chain source (ColorTex or a ping) flips vertically once per
+// preceding fullscreen pass, while NormalTex/DepthTex are raw MRT attachments that never do. When an odd
+// number of chain passes ran before this one (Fade.z=1, computed CPU-side per mode), sample normal/depth at
+// the V-flipped coordinate so the edge field stays aligned with the image it outlines.
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 float linearizeDepth(float d, float near, float far) { return (near * far) / (far - d * (far - near)); }
 void main() {
+    vec2 nuv = (Fade.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
     // Up-front, in binding order (Color, Normal, Depth) - see Bug B note above.
     vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);
     vec3 base = baseSrc.rgb;
-    vec3 n0 = texture(sampler2D(NormalTex, Samp), vUv).rgb * 2.0 - 1.0;
-    float d0 = texture(sampler2D(DepthTex, Samp), vUv).r;
+    vec3 n0 = texture(sampler2D(NormalTex, Samp), nuv).rgb * 2.0 - 1.0;
+    float d0 = texture(sampler2D(DepthTex, Samp), nuv).r;
 
     bool persp = Texel.z > 0.5;
     float near = Thresh.z, far = Thresh.w;
     vec2 ex = vec2(Texel.x, 0.0), ey = vec2(0.0, Texel.y);
 
     // Four-neighbour samples (binding order preserved: Normal first, then Depth).
-    vec3 nL = texture(sampler2D(NormalTex, Samp), vUv - ex).rgb * 2.0 - 1.0;
-    vec3 nR = texture(sampler2D(NormalTex, Samp), vUv + ex).rgb * 2.0 - 1.0;
-    vec3 nU = texture(sampler2D(NormalTex, Samp), vUv + ey).rgb * 2.0 - 1.0;
-    vec3 nD = texture(sampler2D(NormalTex, Samp), vUv - ey).rgb * 2.0 - 1.0;
-    float dL = texture(sampler2D(DepthTex, Samp), vUv - ex).r;
-    float dR = texture(sampler2D(DepthTex, Samp), vUv + ex).r;
-    float dU = texture(sampler2D(DepthTex, Samp), vUv + ey).r;
-    float dD = texture(sampler2D(DepthTex, Samp), vUv - ey).r;
+    vec3 nL = texture(sampler2D(NormalTex, Samp), nuv - ex).rgb * 2.0 - 1.0;
+    vec3 nR = texture(sampler2D(NormalTex, Samp), nuv + ex).rgb * 2.0 - 1.0;
+    vec3 nU = texture(sampler2D(NormalTex, Samp), nuv + ey).rgb * 2.0 - 1.0;
+    vec3 nD = texture(sampler2D(NormalTex, Samp), nuv - ey).rgb * 2.0 - 1.0;
+    float dL = texture(sampler2D(DepthTex, Samp), nuv - ex).r;
+    float dR = texture(sampler2D(DepthTex, Samp), nuv + ex).r;
+    float dU = texture(sampler2D(DepthTex, Samp), nuv + ey).r;
+    float dD = texture(sampler2D(DepthTex, Samp), nuv - ey).r;
 
     float edge = 0.0;
     // Normal-crease edge: fire if ANY neighbour's geometric normal turns by more than the threshold. Flat
@@ -1250,6 +1657,31 @@ void main() {
     vec2 suv = vec2(vUv.x, 1.0 - vUv.y);   // match the blit's ColorTex flip so the frozen frame aligns with the target
     vec4 s = texture(sampler2D(Src, Samp), suv);
     oColor = vec4(s.rgb, P.x);
+}";
+
+        // ---- HDR tonemap: map the float16 over-range scene colour to LDR [0,1] before the retro/AA passes.
+        // Runs ONLY in HDR mode, directly after the (pre-tonemap) bloom composite. Preserves the source
+        // alpha untouched so the blit's background marker (alpha < 0.5 -> starfield / transparent) survives.
+        // Operator fit choices are pure ALU (no LUT) so cross-backend goldens stay stable.
+        public const string TonemapFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Tone { vec4 Params; }; // Params.x = exposure, .y = operator (0 aces, 1 reinhard, 2 clamp)
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+// ACES filmic fit (Krzysztof Narkowicz 2015): filmic S-curve with highlight desaturation toward white.
+vec3 acesFilm(vec3 x) {
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+void main() {
+    vec4 s = texture(sampler2D(Src, Samp), vUv);
+    vec3 c = max(s.rgb, vec3(0.0)) * Params.x;
+    int op = int(Params.y + 0.5);
+    vec3 mapped;
+    if (op == 0) mapped = acesFilm(c);
+    else if (op == 1) mapped = c / (vec3(1.0) + c);
+    else mapped = clamp(c, 0.0, 1.0);
+    oColor = vec4(mapped, s.a);
 }";
 
         // ---- FXAA (fast approximate anti-aliasing) ----
@@ -1443,7 +1875,7 @@ layout(set=0, binding=1) uniform sampler Samp;
 // and the time/quality value share this single Frame block, grown from 64 to 80 bytes.
 layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
-    vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), zw reserved
+    vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w reserved
 };
 layout(location=0) in vec4 Center;    // xyz world center, w = rotation (radians about +Y)
 layout(location=1) in vec4 Size;      // per-shape params (see GroundDecal.Size)
@@ -1653,10 +2085,12 @@ void main() {
         rgb = mix(rgb, Outline.rgb, clamp(oband * dash * Energy.w * 0.85, 0.0, 1.0));
         a = max(a, oband * dash * Energy.w * Outline.a);
     }
-    rgb = clamp(rgb, 0.0, 1.0);
+    // Ceiling is TimeQ.z: 1.0 in LDR (bit-identical to the legacy clamp), 65504.0 (float16 max) in HDR so the
+    // energy lanes can push telegraph cores over 1.0 and bloom before the tonemap compresses them.
+    rgb = clamp(rgb, 0.0, TimeQ.z);
 
     // Impact flash: brighten toward white. Kept exactly where the legacy shader had it.
-    rgb = clamp(rgb + Params.z, 0.0, 1.0);
+    rgb = clamp(rgb + Params.z, 0.0, TimeQ.z);
 
     if (a <= 0.001) discard;
     // Edge-energy lanes (rim/sweep glow, max-composited) can push a above 1 on float render targets. Legacy

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Dungeon;
 using KhaozEngine.Game;
 using KhaozEngine.Physics;
@@ -33,8 +34,13 @@ namespace KhaozEngine.Showcase
     /// the analytic ground and the physics floor every tick - so the flat fallback only matters where no static
     /// is underfoot (there is none in a fully-stamped layout, but it keeps the character from ever falling
     /// through into the void on a rules edge case).</summary>
-    public sealed class RoomDungeon : GameScene, IGameScene3D
+    public sealed class RoomDungeon : GameScene, IGameScene3D, IShowcaseRoom
     {
+        static readonly StringId[] Hints = { ShowcaseStrings.ControlsDungeon };
+
+        public StringId Title => ShowcaseStrings.RoomDungeonTitle;
+        public IReadOnlyList<StringId> ControlsHints => Hints;
+
         const float CapsuleRadius = 0.3f;
         const float CapsuleHalfHeight = 0.9f;     // 1.8 m total (height 1.2 + 2*radius 0.6)
 
@@ -64,8 +70,7 @@ namespace KhaozEngine.Showcase
         const ulong Seed = 2026UL;
 
         Scene3D _scene = null!;
-        Texture2D _white = null!;
-        DpiFont _hud = null!;
+        ShowcaseHud _hud = null!;      // shared chrome: the outline toggle toasts here
 
         // Guards OnExit against running before OnEnter has built the per-enter state (and OnEnter against
         // leftover state from a previous visit), matching Room3D's re-entry guard.
@@ -115,9 +120,9 @@ namespace KhaozEngine.Showcase
         bool _animated;
         readonly List<CharacterSample> _samples = new(1);
 
-        public RoomDungeon Init(Scene3D scene, Texture2D white, DpiFont hud)
+        public RoomDungeon Init(Scene3D scene, ShowcaseHud hud)
         {
-            _scene = scene; _white = white; _hud = hud;
+            _scene = scene; _hud = hud;
             return this;
         }
 
@@ -225,7 +230,7 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.O))
             {
                 _scene.Post.Outline = !_scene.Post.Outline;
-                Console.WriteLine($"[post] Outline = {_scene.Post.Outline}");
+                _hud.Toast($"[post] Outline = {_scene.Post.Outline}");
             }
 
             // Physics world ticks once per frame before movement, matching Room3D's ordering.

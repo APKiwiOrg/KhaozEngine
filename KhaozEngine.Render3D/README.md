@@ -148,29 +148,42 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   // each frame, timeOfDay in [0,1) comes from YOUR game clock:
   SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
   ```
-- Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in LDR threshold +
+- Bloom: `PixelPostProcessSettings.Bloom` (a `BloomSettings`, **default off**) is an opt-in threshold +
   separable-blur bloom - beams, emissive materials, and bright billboards read as a glow instead of flat. A
   bright-pass thresholds the lit colour (soft smoothstep knee, `Threshold`/`Knee`) into a HALF-resolution target,
   blurs it separably (horizontal then vertical, `Radius` taps per side, gaussian weights via `BloomMath`), and adds
-  it back onto the full-resolution image at `Intensity` strength. Runs AFTER palette quantize + the edge outline
-  (so the glow composites on top of - and is never itself posterized/outlined by - the stylized chain) and BEFORE
-  FXAA (so FXAA also smooths the bloom composite's edges). Costs nothing when off (`Bloom.Enabled == false`, no
-  extra passes, no half-res targets allocated, existing scenes byte-stable); the half-res pair is lazily allocated
+  it back onto the full-resolution image at `Intensity` strength. In HDR mode (the default) it runs FIRST, on the
+  float16 scene BEFORE the tonemap (hot cores over 1.0 halo then desaturate through the filmic curve). In legacy
+  mode it runs AFTER palette quantize + the edge outline (so the glow composites on top of, and is never itself
+  posterized/outlined by, the stylized chain) and BEFORE FXAA. Costs nothing when off (`Bloom.Enabled == false`, no
+  extra passes, no half-res targets allocated, existing scenes byte-stable), the half-res pair is lazily allocated
   the first frame it is enabled and freed the frame it is disabled, re-derived from the CURRENT internal target size
   on every resize (works under both `RenderScale.FixedInternal` and `.MatchViewport`). Respects
   `TransparentBackground` (the composite pass preserves the source alpha unchanged, so bloom never resurrects an
-  alpha-0 background pixel into an opaque one). **LDR, not HDR**: the internal target is `R8G8B8A8UNorm` (no
-  over-1.0 headroom), so the bright-pass thresholds the already-tonemapped-to-[0,1] colour rather than a linear HDR
-  value - still a convincing glow on beams/emissive materials/bright billboards, but it will not bloom a surface
-  that is merely well-lit white. Lower `Threshold` for a softer cutoff. The pure math (`BloomMath`: the knee curve,
-  gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL bright-pass/blur shaders
-  exactly.
+  alpha-0 background pixel into an opaque one). HDR-aware threshold: in HDR mode the target is float16
+  (`R16G16B16A16Float`) and the bright-pass reads the PRE-tonemap scene, so `Threshold` sees luma over 1.0 (set it at
+  or above 1.0 to bloom only genuinely over-range content). In legacy mode the target is `R8G8B8A8UNorm` with no
+  over-1.0 headroom, so it thresholds the already-clamped-to-[0,1] colour (lower `Threshold` for a softer cutoff).
+  Either way it is a convincing glow on beams/emissive materials/bright billboards. The pure math (`BloomMath`: the
+  knee curve, gaussian weight generation, half-res sizing) is headless-tested and mirrors the GLSL bright-pass/blur
+  shaders exactly.
+- HDR + filmic tonemap: `PixelPostProcessSettings.Hdr` (an `HdrSettings`, **on by default**) renders the internal
+  colour chain at float16 (`R16G16B16A16Float`) so shading carries values above 1.0, blooms the over-range
+  highlights BEFORE tonemapping, then maps the float scene back to LDR with a filmic `TonemapOperator` (`AcesFilmic`
+  default, `Reinhard`/`Clamp` alternates) modulated by `Exposure`. Hot cores desaturate toward white and roll off
+  instead of hard-clipping at the UNorm boundary, so every glowing feature (emissive, beams, particles, sky, water
+  glints, telegraphs) reads hotter at once. Authored via unclamped `Color` (a `new Color(4f, 2f, 1f)` emissive
+  carries four units of energy), no new per-material field. The retro passes (palette quantize, pixelation) and FXAA
+  run AFTER the tonemap, so a per-game retro look survives on top of HDR. Default behaviour changed: every consumer's
+  render shifts on repin. `Hdr.Enabled = false` restores the exact legacy UNorm chain and pass order BYTE-IDENTICAL
+  to the pre-HDR output (golden-proven via `scene3d_hdr_off`). Formats: only the colour targets flip, the
+  encoded-normal/linear-depth MRTs, the swapchain, and everything post-blit stay LDR.
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus
   `PixelPostProcessSettings.Water` (a `WaterSettings`, **default no request queued = no pass, no cost**) draws an
   opt-in animated water surface - a flat, alpha-blended, procedurally-perturbed plane with a fresnel-style blend
   between `DeepColor` and a sky-derived `HorizonColor`, a key-light specular sun glint (`GlintStrength`/
   `GlintExponent`), and depth-sampled shore fade (`ShoreFadeDistance`). **No reflections/probes** (out of scope) -
-  an LDR stylized surface. Drawn after the sky + ground decals, before the MRT resolve, with depth test ON (`Less`,
+  a stylized surface. Drawn after the sky + ground decals, before the MRT resolve, with depth test ON (`Less`,
   so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the outline
   pass reads is untouched - matching the ground-decal/beam/textured-billboard depth-interleave convention). Time is
   driven by the same `Scene3D.EffectTimeSeconds` clock the beam pulse/scroll uses (freeze it for a deterministic
@@ -178,6 +191,50 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the same `gl_FragCoord` + raw-inverse-view-projection convention the ground-decal pass uses. The pure math is
   `WaterMath` (internal: scrolling-normal perturbation, Schlick fresnel, Blinn-Phong glint, shore-fade curve, grid
   tessellation), headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag` exactly.
+- Modern particle pass: `Scene3D.DrawParticle(in ParticleSprite)` / `DrawParticles(ReadOnlySpan<ParticleSprite>)`
+  queue procedural particle sprites that render as ONE premultiplied-alpha instanced draw after the water pass and
+  BEFORE the post chain, so additive sprites feed bloom and every sprite flows through the pixel post like meshes.
+  A `ParticleSprite` carries position, velocity, size, rotation, colour, a `ParticleShape`, its shape param, life
+  norm, seed, velocity `Stretch`, `BillboardBlend`, a `ParticleOrientation`, and a per-sprite `SoftFadeScale`. The
+  six procedural shapes are SDF/noise in the fragment shader (no atlas): `SoftGlow` (soft gaussian disc, a premium
+  take on the legacy blob), `Ember` (hot core + warm halo with a subtle flicker), `Spark` (streak along local X,
+  pairs with velocity stretch), `Wisp` (noise-eroded smoke that dissolves at its edges with life instead of fading
+  uniformly), `Ring` (soft annulus for shockwaves and impact rings), `Star` (four-point glint for sparkles). A sprite can
+  instead play an authored flipbook: set `ParticleSprite.Flipbook` (a `ParticleFlipbook` naming an atlas
+  `TextureHandle`, its `Columns` x `Rows` grid, an optional motion-vector sheet + `MotionStrength`, and `Loop`)
+  and a continuous `FlipbookFrame` (integer part = cell, fractional part = blend to the next, motion-vector warped
+  when a motion sheet is bound, else a plain cross-fade). Flipbooks are additive over the procedural shapes,
+  selected per-sprite, and a sprite that leaves `Flipbook` default renders byte-identically to the procedural path
+  (a 1x1 dummy atlas + neutral motion sheet keep procedural runs in the same one pipeline).
+  `ParticleOrientation` is `CameraFacing` (default) or `FlatGround` (the quad lies in the XZ plane, for shockwave
+  rings and ground glows). The whole queue sorts back-to-front and BOTH blend modes interleave in the one stream,
+  because the fragment premultiplies colour and zeroes the alpha lane for additive sprites. Depth state is test
+  LessEqual / no write against the resolved scene depth, and a soft depth fade (`Scene3D.ParticleSoftFade`, world
+  units, default 0.35, 0 disables the fade and its texture work) dims a sprite as it approaches geometry, scaled
+  per sprite by `SoftFadeScale` (a flat-ground sprite wants a small value like 0.1 so the floor just behind it does
+  not erase it). `Scene3D.ParticleQuality` (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second
+  noise octave and the ember flicker on weak GPUs. The pass obeys the engine one-UBO rule: a single set-0 frame
+  uniform, every per-sprite value on an instanced vertex-attribute stream, and the textures at set 0 bindings 1..5
+  in the order they are sampled (scene depth + its sampler at 1 and 2, then the motion, atlas, and atlas sampler at
+  3, 4, 5 for flipbook playback), the Metal-safe pattern the ground-decal pass proves. The untextured
+  `DrawBillboard(Vector3, float, Color, BillboardBlend)` overlay remains the LEGACY particle path (post-post,
+  unoccluded, always crisp, still fully supported for on-top markers), and the textured `DrawBillboard(TextureHandle, ...)`
+  overloads remain the artist-texture path. The turn-key `ParticleSystem`/`ParticleEffectPlayer` mapping lives in
+  `KhaozEngine.Particles.Render3D`. See `docs/USING-KHAOZENGINE.md`.
+- Screen-space distortion: `Scene3D.DrawDistortion(in DistortionSprite)` / `DrawDistortions(ReadOnlySpan<DistortionSprite>)`
+  queue heat-haze / refractive-shockwave / splash-lens sprites that WARP the pixels behind them instead of drawing
+  over them. The queue accumulates a signed screen-space offset field (a lazily allocated half/quarter-res
+  `R16G16Float` target) as ONE instanced draw with the modern particle pass's quad-expansion + depth-occlusion
+  recipe, and the post chain's FIRST pass re-samples the resolved scene colour through that field, so the warp
+  precedes every camera-response pass (bloom halos follow the warped sources, the tonemap and retro palette see the
+  warped image). Three `DistortionShape`s (`Ripple` shockwave rings, `Heat` upward-scrolling wobble, `Lens` radial
+  bulge, sign chooses magnify/pinch). `DistortionSprite.Strength` is the magnitude dial, converted to a UV
+  excursion and clamped to a small maximum so stacked sprites cannot smear the whole screen. The apply pass
+  preserves each pixel's own alpha, so the starfield/transparency background marker never warps. `Scene3D.DistortionQuality`
+  (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second heat noise octave and renders the offset
+  field at quarter res instead of half. Zero cost when unused: a frame that queues no distortion sprite allocates
+  nothing, runs no extra pass, and is byte-identical to before distortion existed. The turn-key `ParticleLook.Distortion`
+  mapping lives in `KhaozEngine.Particles.Render3D`. See `docs/USING-KHAOZENGINE.md`.
 - Motion trails: `Scene3D.DrawTrail(ReadOnlySpan<TrailSample>, TrailStyle)` (since 10.41.0) queues an immediate-mode
   tapered ribbon traced through an ordered list of recent world-space samples (oldest-first) - weapon swings,
   thruster streaks, projectile tracers. Each `TrailSample` carries a world position, per-sample ribbon half-width,

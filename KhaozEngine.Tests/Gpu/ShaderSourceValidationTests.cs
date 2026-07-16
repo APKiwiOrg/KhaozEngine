@@ -16,6 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>LineVert+LineFrag (LineRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+BillboardFrag (BillboardRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+TexturedBillboardFrag (TexturedBillboardRenderer - reuses BillboardVert)</item>
+    /// <item>ParticleVert+ParticleFrag (ParticleRenderer modern particle sprites)</item>
     /// <item>BeamVert+BeamFrag (BeamRenderer)</item>
     /// <item>OverlayUnlitVert+OverlayUnlitFrag (OverlayMeshRenderer)</item>
     /// <item>DecalVert+DecalFrag (GroundDecalRenderer)</item>
@@ -54,6 +55,14 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardFrag, "TexturedBillboard");
 
         [Fact]
+        public void Particle()
+            => ShaderValidation.ValidatePair(ShaderSources.ParticleVert, ShaderSources.ParticleFrag, "Particle");
+
+        [Fact]
+        public void Distortion()
+            => ShaderValidation.ValidatePair(ShaderSources.DistortionVert, ShaderSources.DistortionFrag, "Distortion");
+
+        [Fact]
         public void Beam()
             => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamFrag, "Beam");
 
@@ -88,6 +97,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void PostFxaa()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.FxaaFrag, "PostFxaa");
+
+        [Fact]
+        public void Tonemap()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TonemapFrag, "Tonemap");
+
+        [Fact]
+        public void PostDistortionApply()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.DistortionApplyFrag, "PostDistortionApply");
 
         [Fact]
         public void PostBloomBright()

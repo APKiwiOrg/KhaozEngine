@@ -5,6 +5,311 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.130.0
+
+Screen-space distortion pass: distortion sprites (heat haze, refractive shockwave rings, splash lensing) now
+accumulate a signed screen-space offset field, and the resolved scene colour re-samples through it as the FIRST
+post-chain pass, so refraction reads as an in-scene phenomenon that warps the pixels behind it. Purely additive,
+gated by a `DistortionQuality` tier knob, and byte-identical when unused. This completes Tier 1 of the AAA VFX
+program, design record `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
+
+- **KhaozEngine.Render3D (additive API).** New `Scene3D.DrawDistortion(in DistortionSprite)` /
+  `DrawDistortions(ReadOnlySpan<DistortionSprite>)` queue heat-haze / refractive-shockwave / splash-lens sprites
+  (cleared each `Begin`, like the particle queue). A `DistortionSprite` carries a world position, size, rotation,
+  a `DistortionShape`, its shape param, `Strength`, life norm, seed, a `ParticleOrientation`, and a
+  `SoftFadeScale`. Three shapes: `Ripple` (radial ring of outward offsets, shockwaves), `Heat` (upward-scrolling
+  value-noise wobble over the footprint), and `Lens` (smooth radial bulge, a positive `Strength` magnifies and a
+  negative one pinches). All procedural in the fragment shader (SDF / value noise, no texture).
+- **Apply pass is the chain's FIRST pass, both modes.** The queued sprites accumulate into a lazily allocated
+  half/quarter-res offset field as ONE instanced draw (the modern particle pass's quad-expansion + soft depth
+  occlusion recipe), then a fullscreen apply pass re-samples the resolved scene colour through that field before
+  every other post pass: HDR `Distort -> Bloom -> Tonemap -> Quantize -> Outline -> FXAA -> Blit`, legacy
+  `Distort -> Quantize -> Outline -> Bloom -> FXAA -> Blit`. Refraction precedes every camera-response pass, so
+  bloom halos follow the warped sources, the tonemap sees the warped float scene, and the retro path quantizes the
+  warped image. The apply pass counts in both post-chain parities (the blit flip and the edge pass's
+  `passesBeforeOutline`) in both modes.
+- **New `GpuPixelFormat.R16G16Float`.** The two-channel half-float offset target (Veldrid `R16_G16_Float`). No
+  alpha lane, so the accumulation blend's alpha factors are inert and the colour factors `(One, One)` sum
+  overlapping fields.
+- **Lazy, zero-neutral target.** The offset field is allocated on the first frame that queues a distortion sprite
+  (the bloom-allocation precedent), rendered at half res (`Full`) or quarter res (`Reduced`), and freed on the next
+  resize when unwanted. A frame that queues no distortion sprite allocates nothing, clears nothing, runs no apply
+  pass, and renders byte-identically to before distortion existed. Proven by the committed `scene3d`,
+  `scene3d_particles_modern`, and `scene3d_hdr_bloom` goldens staying GREEN on all three backends with no rebake.
+- **Own-alpha preservation.** The apply pass emits `vec4(warpedColor.rgb, ownSample.a)`, sampling the source at
+  the un-warped UV for the alpha and at the warped UV for the colour, so warping the colour is the effect while the
+  alpha-lane background marker (clear a=0, geometry/sky a=1) is never displaced and the starfield / transparency
+  blit semantics survive.
+- **Strength dial with a hard ceiling.** `DistortionSprite.Strength` is the one authoring magnitude dial
+  (world-ish units, its sign choosing magnify vs pinch for `Lens`). The apply pass converts it to a UV excursion by
+  a fixed texel scale and clamps the total to a small maximum, so a hot mess of stacked sprites cannot smear the
+  whole screen. The clamp constants are internal, not knobs.
+- **`Scene3D.DistortionQuality` tier knob.** `Full` (default) / `Reduced`, host-set and not cleared by `Begin`
+  (the `ParticleQuality` precedent). `Reduced` drops the second heat noise octave and renders the offset field at
+  quarter resolution instead of half.
+- **KhaozEngine.Particles.Render3D (additive API).** `ParticleLook` gains a `DistortionLook Distortion`
+  (`Shape`, `ShapeParam`, `Strength`, `SoftFadeScale`). When `Strength` is non-zero the phase emits one
+  `DistortionSprite` per live particle INSTEAD of a visible sprite, so it warps the scene rather than drawing over
+  it, each sprite's strength scaled by the particle's alpha so the field fades with life. `VfxPresets.Shockwave`
+  gains a refraction-ring phase (a flat-ground `Ripple` that expands with the nova), and a new `VfxPresets.HeatHaze`
+  preset pairs a `Heat` distortion column with a faint warm additive shimmer for braziers, lava, desert air, and
+  exhaust.
+- **Tests and goldens.** New `scene3d_distortion` golden baked on metal, direct3d11, and vulkan (a textured
+  checkerboard floor plus one `Ripple`, one `Lens`, and one `Heat` sprite at fixed positions, frozen effect time
+  and seeds, HDR default on). Behaviour GpuFacts cover pixel displacement with an untouched control region,
+  geometry occlusion (a wall fades the offsets to zero), own-alpha starfield survival, byte-identical zero-neutral
+  (a queued-then-cleared frame equals a never-queued one), and the `Reduced` tier rendering. Showcase PNGs cover
+  the shockwave, heat-over-a-bloomed-sphere, and lens trio.
+- **Compatibility.** Purely additive. New API: `DistortionShape`, `DistortionSprite`, `DistortionQuality`,
+  `Scene3D.DrawDistortion` / `DrawDistortions` / `DistortionQuality`, `GpuPixelFormat.R16G16Float`, and the
+  adapter's `DistortionLook` / `ParticleLook.Distortion` / `VfxPresets.HeatHaze`. With no `DrawDistortion` call and
+  an inactive look, output is byte-identical to 10.129.0 (golden-proven). The alpha-lane contract, the blit paths,
+  `RenderScale` semantics, and the post-post overlay / Gui / 2D path are untouched. SemVer minor.
+- **AAA VFX program Tier 1 complete.** The three sub-features have all shipped: HDR pipeline (10.128.0), flipbook
+  particles (10.129.0), and screen-space distortion (this release). Tiers 2 and 3 remain on `docs/ROADMAP.md`,
+  each pulled into its own worktree when a game calls for it.
+
+## 10.129.0
+
+Flipbook particles: the modern particle pass can now play an authored atlas sheet per sprite (per-particle frame
+index) with motion-vector frame interpolation, so offline-simmed smoke, fire, and explosion sheets read fluid at
+low frame counts. Additive over the procedural shapes (procedural stays the identity for sparks, glows, magic,
+rings), purely additive API, and byte-identical when unused. Tier 1 of the AAA VFX program, design record
+`docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
+
+- **KhaozEngine.Render3D (additive API).** New `ParticleFlipbook` spec (atlas `TextureHandle`, `Columns` x `Rows`
+  grid, optional motion-vector `MotionTexture` + `MotionStrength`, `Loop`) plus `ParticleSprite.Flipbook` and a
+  continuous `ParticleSprite.FlipbookFrame` (integer part = current cell, fractional part = blend toward the next).
+  When a sprite's flipbook is active the fragment shader samples that atlas frame in place of the procedural
+  `ParticleShape`, motion-vector warped when a motion sheet is bound, otherwise a plain cross-fade. Atlas and motion
+  sheets ride the existing `Scene3D.LoadTexture` / `TextureHandle` registry (the textured-billboard precedent), with
+  per-atlas-pair cached resource sets.
+- **Motion-vector two-tap warp.** Frame A is sampled warped forward along its encoded motion vector scaled by the
+  blend, frame B warped backward by (1 - blend), and the two mix by blend, so a motion sheet reads fluid at low
+  frame counts where a cross-fade ghosts. A neutral motion texture (the zero-displacement encode) degrades the warp
+  to a plain cross-fade automatically, so "no motion sheet authored" needs no flag and no shader variant.
+  `MotionStrength` scales the displacement (0 cross-fades even with a real sheet bound).
+- **KhaozEngine.Particles.Render3D (additive API).** `ParticleLook` gains `Flipbook` (the same
+  `ParticleFlipbook`), `FlipbookMode` (`LifeOneShot` default = frame swept once across a particle's life, clamping
+  on the last cell for one-shot explosion sheets, or `TimeLoop` = advance at `FlipbookFps` and wrap, for looping
+  fire/smoke), `FlipbookFps` (0 means 12), and `FlipbookRandomStart` (default true, staggers each particle's start
+  frame by its seed so a burst of identical looping sprites does not play in lockstep). Timing is resolved in the
+  adapter (`ResolveFlipbookFrame`, pure and headless-tested), so the renderer receives only the resolved continuous
+  frame and stays policy-free.
+- **Simulation untouched.** Flipbook is presentation-only: `KhaozEngine.Particles` learns nothing about textures,
+  the `Particle` / `EmitterConfig` types are unchanged, and a headless server references the sim with no atlas
+  concept in scope.
+- **Per-atlas run batching, sorted stream preserved.** The pass keeps ONE globally back-to-front sorted stream
+  (alpha and additive still interleave correctly) and splits it, AFTER the sort, into contiguous runs keyed by
+  atlas pair, one instanced draw per run at an instance-start offset into one packed buffer (the ground-decal
+  same-blend-run precedent). No sprite is reordered across runs. Procedural sprites carry a dummy pair and merge
+  into one run, so an all-procedural frame is still exactly one draw.
+- **Dummy-texture zero-neutral, one pipeline.** No pipeline fork: procedural-vs-flipbook is per-sprite, selected by
+  the packed grid value in the instance stream (0 = procedural). A 1x1 white dummy atlas and a 1x1 neutral motion
+  sheet are bound for procedural runs, sampled statically up front in binding order (the Metal rule) then discarded
+  by the branch, so procedural output is byte-identical to before flipbooks existed. Proven by the committed
+  `scene3d_particles_modern` goldens staying GREEN on all three backends with no rebake.
+- **IFlip instance lane (internal).** A sixth instance vec4 carries frame A, frame B, blend, and a packed
+  grid + quantized motion strength (`cols + rows*256 + qstr*65536`, `qstr` capped at 255 so the whole value stays
+  at or below 2^24 - 1 and every field is bit-exact in float32). The particle instance stride grows from 80 to 96
+  bytes, invisible across the public API. The pack (`PackFlipGrid`), the frame resolve (`ResolveFrames`), and the
+  adapter timing (`ResolveFlipbookFrame`) are pure and headless round-trip tested.
+- **Tests and goldens.** New `scene3d_particles_flipbook` golden baked on metal, direct3d11, and vulkan (a generated
+  atlas + motion sheet, sprites at fixed frames including one mid-blend and one motion-warped, interleaved with
+  procedural sprites to exercise run-splitting). Behaviour GpuFacts cover frame selection, cross-fade, the
+  motion-vector warp (offset sheet vs neutral reads measurably different), and byte-identical zero-neutral. Every
+  test sheet is generated procedurally in-test, so the suite ships no asset files.
+- **Compatibility.** Purely additive. Every new field zero-defaults to the procedural path, so a sprite or look
+  that never sets a flipbook renders exactly as before (golden-proven). The only non-additive change is the internal
+  instance stride (80 to 96 bytes). SemVer minor.
+
+## 10.128.0
+
+HDR rendering pipeline: the internal colour chain now renders at float16 with an ACES filmic tonemap, on by
+default, so shading carries values above 1.0 and hot cores bloom, desaturate, and roll off instead of clipping at
+the old UNorm boundary. A one-line escape hatch (`Post.Hdr.Enabled = false`) restores the exact pre-HDR (10.126.0)
+output, byte-identical and golden-proven. Design record: `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md` (Tier 1 of the
+AAA VFX program).
+
+- **BREAKING LOOK (default behaviour change, not an API break).** Every consumer's rendered 3D output shifts the
+  frame it repins: bright content (emissive materials, beams, particles, sky/sun, water glints, telegraph energy
+  lanes) no longer hard-clips, it tonemaps. This is the point of the release. If you need the previous look exactly,
+  set `scene.Post.Hdr.Enabled = false` to restore the legacy UNorm chain and pass order BYTE-IDENTICAL to 10.126.0
+  (proven by the `scene3d_hdr_off` golden, whose reference grids are literal copies of the pre-HDR `scene3d` grids).
+- **KhaozEngine.Render3D (additive API + default HDR).** New `PixelPostProcessSettings.Hdr` (`HdrSettings`, on by
+  default) renders `ColorTex`/`MsColor`/`PingA`/`PingB`/`BloomA`/`BloomB` at `R16G16B16A16Float`, blooms the
+  over-range highlights PRE-tonemap, then maps the float scene back to LDR with a `TonemapOperator` (`AcesFilmic`
+  default, `Reinhard` and `Clamp` as debug/stylistic alternates) scaled by `Exposure` (linear pre-tonemap
+  multiplier, default 1.0, clamped non-negative). The encoded-normal and linear-depth MRT targets, the swapchain,
+  and everything post-blit stay LDR. Tonemapping is display-referred (no separate scene-linear conversion pass), so
+  the current art direction is preserved with headroom added.
+- **Authoring over 1.0 is the unclamped `Color`.** No new per-material intensity field: `Color` is unclamped float
+  storage and every colour path (materials, particles, beams, trails, sky, water, lights) already transports values
+  above 1.0 end-to-end. `new Color(4f, 2f, 1f)`, `color.ScaleRgb(3f)`, and `Material.Glowing` are the idioms, and
+  giving a beam/particle/sky/water colour a value above 1.0 makes it bloom and saturate. In legacy mode those same
+  values clamp at the UNorm boundary as before.
+- **Bloom is now HDR-aware.** In HDR mode the bright-pass reads the PRE-tonemap float16 scene, so `Threshold`/`Knee`
+  operate on pre-tonemap luma that can exceed 1.0. Set a threshold at or above 1.0 so only genuinely over-range
+  content halos and merely well-lit white does not. Legacy mode keeps the historical [0,1] threshold semantics.
+  Bloom stays opt-in (`Bloom.Enabled` default false), so no silent default shift rides on this. Chain order in HDR
+  mode is Bloom (pre-tonemap) then Tonemap then Quantize/Outline/FXAA/Blit, so the retro palette/pixelation passes
+  run AFTER the tonemap and a per-game retro look survives on top of HDR.
+- **KhaozEngine.Gpu (additive).** New `GpuPixelFormat.R16G16B16A16Float` member, the half-float colour target format
+  the HDR chain renders into.
+- **Decal energy headroom.** `DecalFrag`'s final-rgb clamp upper bound is now a uniform (`MaxRgb`, 1.0 in legacy,
+  float16-max in HDR), so telegraph energy lanes can exceed 1.0 and bloom. Legacy output stays bit-identical.
+- **Fix: edge pass parity across the chain flip.** The outline pass mixes chain content (V-flipped once per
+  preceding fullscreen pass) with the never-flipped raw MRT normal/depth. With HDR on, the tonemap pass always
+  precedes it, so the edge field rendered vertically mirrored. `EdgeFrag` now carries the per-mode parity and
+  samples normal/depth V-flipped when it is odd. This ALSO fixes a latent legacy bug: the quantize+outline combo
+  computed parity 1 all along and was simply never pinned by a golden. Golden-covered configs that compute 0 stay
+  byte-identical. Caught by `Golden3D_SkyWorldSun`'s semantic sun-pixel assert.
+- **Fix: resource-set rebinds across same-size target recreates.** `RenderResources` now bumps a `Generation`
+  counter on every `Create`, and the four renderers that cache resource sets over its textures (post chain,
+  particles, decals, water) guard rebinds on it instead of on dimensions. A sample-count-only (MSAA toggle) resize
+  recreates every target at unchanged size, so the old dimension guards early-outed and left sets referencing
+  disposed textures: Metal tolerated the zombie reference, but D3D11 faulted with E_INVALIDARG and Vulkan with a
+  use-after-dispose. A latent crash independent of HDR, surfaced by the new MSAA golden.
+- **Tests and goldens.** Full rebake of every 3D golden on metal, direct3d11, and vulkan (the HDR default flips them
+  all), plus three new pins: `scene3d_hdr_off` (grids pre-seeded as copies of the pre-HDR `scene3d` grids, proving
+  the escape hatch is byte-identical), `scene3d_hdr_bloom` (over-range emissive + pre-tonemap bloom), and
+  `scene3d_hdr_msaa` (float16 MSAA resolve, also the guard for the resource-set fix above). New behaviour GpuFacts
+  (emissive brightening through ACES, threshold-above-1 extraction, HDR toggle round-trip byte-stability, float16
+  MSAA resolve, the alpha-lane starfield marker surviving the tonemap) plus tonemap UBO-layout and shader-pair
+  validation in the headless suite.
+- **Compatibility.** API is purely additive (`HdrSettings`, `TonemapOperator`, `GpuPixelFormat.R16G16B16A16Float`,
+  widened internal `RenderResources` signatures). Default behaviour deliberately changes (HDR on): rendered output
+  shifts on repin, restored byte-identically to 10.126.0 with `Hdr.Enabled = false`. The alpha-lane contract, blit
+  paths, RenderScale semantics, and the post-post overlay/Gui/2D path are unchanged in both modes.
+
+## 10.127.1
+
+Showcase cleanup: a tile-menu hub, one consolidated tabbed 2D & GUI room, and shared room chrome
+(title band, controls hints, status line, toggle toasts) across every room. No package API changed,
+this release is the `KhaozEngine.Showcase` app plus its docs.
+
+- **Consolidated 2D & GUI room (`KhaozEngine.Showcase`).** The old "2D sprites + text", "GUI +
+  widgets", and "Input + audio" rooms folded into one `Room2DGui` hosting a `TabBar` of five pages:
+  Widgets (relaid into three labelled columns - form, HUD, skinned chrome - and gaining a
+  `NumberField` demo), Sprites & text (scale / tint / alpha sprite series plus a TTF type specimen,
+  in framed cards), Input & audio (the gesture playground clamped inside a panel beside a labelled
+  status card), Immediate mode (plus a disabled-button preset), and Screens & dialogs (launchers
+  for the modal Settings dialog, the pause overlay - now shown over the real tab host, the
+  placeholder green host screen is gone - patch notes, and the 10.127.0 toast stack demo, re-seated
+  here from the old GUI menu). Per-screen Back buttons are dropped: Esc backs out one level and
+  Tab/Shift+Tab switch tabs. `Room2D.cs`, `RoomGui.cs`, and `RoomInput.cs` are deleted.
+- **Tile-menu hub.** The menu is a centred 2-column tile grid, each tile a room title over a
+  one-line blurb, with spatial arrow/WASD navigation (clamped grid moves on the headless
+  `ShowcaseMenu`, covered by new tests), a subtitle, a hint line, and an engine-version footer read
+  from the `KhaozEngine.Game` assembly's informational version.
+- **Shared room chrome.** New `IShowcaseRoom` + `ShowcaseHud`: every room (map editor excepted, it
+  carries its own chrome) wears a consistent title band top-left, a controls-hint band above the
+  display readout, and an optional live status line (RoomNet's connection/RTT/loss/entities,
+  Room3D's skinning A/B readout). The 3D rooms' render toggles (outline, cel, retro, palette,
+  starfield, collision overlay, GPU skinning) now toast on-screen instead of writing to the
+  console, so a windowed run finally shows what a toggle did.
+- **Mini-game layout.** Catcher lays out from the live design bounds instead of a hardcoded
+  960x540, so the field fills the window, and its copy moved into the localization catalog.
+- **Localization.** All static showcase copy (room titles and blurbs, controls hints, tab labels,
+  section headers, captions, mini-game strings) resolves through `ShowcaseStrings.resx` (~60 new
+  entries), keeping the showcase the worked example of the catalog-first rule. Dynamic diagnostics
+  stay raw under `[LocalizationExempt]`.
+- **Room registry.** `ShowcaseApp.Rooms` entries are now `ShowcaseRoomEntry(StringId Title,
+  StringId Blurb, Func<GameScene> Factory)`, and KE_SHOWCASE_ROOM matches a case-insensitive
+  prefix of the resolved title.
+
+## 10.127.0
+
+New KhaozEngine.Gui toast notification stack, ported from the Nullwake reference implementation: a
+headless `ToastStack` model plus a `ToastView` presenter, with sticky toasts, keyed replacement
+channels, and real-time auto-dismiss.
+
+- **KhaozEngine.Gui (additive): `ToastStack`/`Toast`/`ToastKind`/`ToastTheme`/`ToastView`.** The
+  model/presenter split mirrors `DiagnosticsOverlay`/`PatchNotesView`: `ToastStack` holds no
+  rendering or input state, `ToastView` draws it corner-anchored and reads a shared pointer for
+  tap-dismiss. Three typed kinds (`ToastKind.Standard`/`Warning`/`Danger`) each resolve to a
+  themeable `ToastPalette` (background/border/timer-bar/text) via `ToastTheme`, anchored to any
+  `OverlayCorner` with configurable width, padding, gap, and margin metrics.
+- **Real-time auto-dismiss.** `ToastStack.Show` defaults to `DefaultDuration` (6 seconds) and
+  `Update` takes a raw, unscaled frame delta so toasts keep counting down at real speed while the
+  game is paused or slowed, never the scaled simulation delta.
+- **MaxVisible cap with sticky-aware eviction.** `ToastStack.MaxVisible` (default 5) is enforced on
+  every `Show`/`Update`. Over the cap, the oldest non-sticky toast is evicted first, scanning from
+  the end. Only once every remaining toast is sticky does the oldest sticky toast get evicted, so an
+  all-sticky flood still stays bounded.
+- **First-class sticky toasts.** Passing `duration <= 0` to `Show` (or calling `ShowSticky`) marks a
+  toast sticky (`Toast.IsSticky`): it never expires on its own, `ToastStack.Update` never decrements
+  it, and `ToastView` draws it with no timer bar. A tap is the only way to dismiss it.
+- **Keyed replacement channels.** `Show` with a non-null `key` replaces any currently active toast
+  sharing that key in place (same index, no reordering, no eviction), so a repeated status line
+  ("reconnecting", then "connected") stays pinned at its slot instead of growing the stack.
+  `ToastStack.Clear(key)` removes that channel's toast outright.
+- **Tap-dismiss on the shared pointer.** `ToastView` hit-tests taps via the press-origin invariant
+  (`IsTapIn`) and consumes the dismissing gesture on the shared `InputManager`/`Pointer` so a tap
+  through a toast never falls through to whatever is underneath.
+- **Word-wrapped, localized messages.** `Toast.Message` is a `LocalizedText` resolved through the
+  localization catalog at draw time, word-wrapped to the toast's fixed width, growing `MinHeight`
+  as needed. A finite-duration toast draws a shrinking timer bar along its edge.
+- **Showcase demo + docs.** `KhaozEngine.Showcase`'s `RoomGui` gained a toast stack demo screen
+  (`ToastOverlayScreen`), documenting the `ScreenStack` hosting pattern for a permanent overlay
+  screen (`AlwaysReceivesInput`, high `DrawOrder`) whose model keeps counting down independent of
+  which screen is on top. Headless test coverage includes localized-resolution facts. Usage
+  documented in the `KhaozEngine.Gui` package README and `docs/USING-KHAOZENGINE.md`.
+
+## 10.126.0
+
+Ground-up particle/VFX modernization: shaped procedural sprites with soft depth fade and velocity
+stretch in a new Render3D particle pass, curve-driven emission-shaped sim in KhaozEngine.Particles,
+an authored-effect scheduling layer, and a new KhaozEngine.Particles.Render3D adapter package with
+eight VFX presets, all fully backward compatible. Design record: `docs/PARTICLES-VFX-DESIGN-2026-07-16.md`.
+
+- **KhaozEngine.Particles (additive).** `EmitterConfig` gains curve-driven life (`ParticleCurve`
+  with Linear/EaseIn/EaseOut/EaseInOut/Flash/FadeInOut/Pulse kinds remapping the existing
+  start-to-end lerp), emission shapes (`EmissionShape` Point/Sphere/Hemisphere/Disc with
+  `ShapeRadius` + `ShapeShell`, a ring is Disc at shell 1), `ParticleVelocityMode.Radial` (outward
+  from the origin for explosions and novas), per-particle `SizeVariance`, random-between-two
+  gradients (`VaryColor` + `StartColorB`/`EndColorB`), a 3-stop gradient (`UseMidColor` +
+  `MidColor`), spin (`SpinMin`/`SpinMax`, `RandomStartRotation`), and deterministic curl-noise
+  turbulence (`TurbulenceStrength`/`TurbulenceFrequency` over the new hash-based
+  `ParticleNoise.Curl`). `Particle` gains `Rotation` and `Seed` (hashed from a monotonic emit
+  counter, no rng draw). Every new field zero-defaults to the exact legacy behavior, and a test
+  pins the historical per-particle RNG draw sequence for legacy configs.
+- **Trails and authored effects (Particles).** `ParticleSystem` grows an opt-in per-particle
+  motion-history ring (`trailSamples` ctor parameter, `TrailSampleInterval`, `GetTrail`,
+  `ParticleTrailPoint`) that survives swap-remove recycling. A new scheduling layer plays authored
+  multi-phase effects headlessly: `ParticleEffectPhase` (config, delay, duration, rate, burst,
+  pool capacity, trail depth, and a direction-rotated `OriginOffset`), `ParticleEffect`, and
+  `ParticleEffectPlayer` (bounded concurrent instances, one deterministic pool per phase, `Play`
+  rotates each phase's emitter axis from +Y onto the played direction).
+- **KhaozEngine.Render3D (additive): modern particle pass.** New `Scene3D.DrawParticle`/
+  `DrawParticles` queue `ParticleSprite`s (position, velocity, size, rotation, color,
+  `ParticleShape`, shape param, life norm, seed, stretch, blend, `ParticleOrientation`, per-sprite
+  `SoftFadeScale`) drawn as ONE premultiplied instanced draw after the water pass and before the
+  post chain, back-to-front sorted so alpha smoke and additive glow interleave correctly, additive
+  energy feeds bloom, and the depth test (no write) occludes sprites against geometry. Six
+  procedural SDF/noise shapes (SoftGlow, Ember, Spark, Wisp with life-driven noise erosion, Ring,
+  Star), velocity-aligned stretch in the vertex stage, camera-facing or flat-ground orientation
+  (shockwave rings lie on the floor), and soft particles via the decal pass's depth-reconstruction
+  recipe with a background-clear marker so sprites never fade against empty sky. Host knobs:
+  `Scene3D.ParticleQuality` (Full/Reduced, decal-knob pattern) and `Scene3D.ParticleSoftFade`.
+  One uniform buffer per pipeline and contiguous always-consumed instanced attributes per the
+  cross-backend contracts. The untextured `DrawBillboard` overlay is untouched and documented as
+  the legacy path (crisp, unoccluded, post-post).
+- **KhaozEngine.Particles.Render3D (NEW adapter package).** Turn-key glue in the `Game3D`
+  umbrella: `ParticleLook` (shape, param, blend, stretch, orientation, soft-fade scale, trail
+  forwarding to `DrawTrail`, budgeted light links via `AddLight`), `Scene3D.DrawParticles(system,
+  look)` and `DrawEffect(player, looks)` extensions (one shared light budget across phases), and
+  `VfxPresets` with eight authored effects: FireBurst, FrostShatter, HealMotes, EmberDrift,
+  SparkShower, Shockwave, SmokePlume, ArcaneSparkle.
+- **Tests and goldens.** 90+ new headless tests (curves, shapes, variance, turbulence
+  determinism, trail ring integrity under swap-remove, effect scheduling, legacy RNG pin, pack
+  lanes, presets), the `ParticleVert`/`ParticleFrag` pair in the device-free
+  `ShaderSourceValidationTests`, human-reviewed `ParticleShowcaseGpuTests` PNG dumps, and
+  `Golden3D_ParticlesModern` baked and verified green on metal, direct3d11, and vulkan.
+- **Compatibility.** Purely additive across all three packages. Existing consumers compile and
+  render identically (all pre-existing goldens pass unchanged). Cross-version RNG stream identity
+  for the sim was never promised and is not preserved (the in-build determinism contract is).
+
 ## 10.125.0
 
 A full editing surface for scatter overrides (`MapScatterOverrideDoc`) in both `KhaozEngine.MapEditor`

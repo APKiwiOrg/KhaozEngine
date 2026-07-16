@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-07-16
+
+### Build 0.4.0 (Alpha 4)
+
+- **Major**
+  - The whole showcase got a facelift. The menu is now a tile grid with a one-line description per room, so you can tell what each demo shows before you enter it.
+  - The old `2D sprites`, `GUI widgets`, and `Input` rooms merged into one `2D & GUI` room with tabs, so the whole 2D toolkit is one visit instead of three.
+  - Every room now shows its name in the top corner and its controls along the bottom, and the 3D rooms pop a small on-screen note when you flip a render toggle, so you can finally tell what those keys did.
+- **New**
+  - A `Toast stack` demo joined the `Screens & dialogs` tab: fire standard, warning, danger, sticky, and self-updating toasts, and tap them to dismiss.
+- **Bug**
+  - The `Catcher` mini-game field now fills the window instead of stopping short of the right and bottom edges.
+
+---
+
 ## 2026-07-10
 
 ### Build 0.3.0 (Alpha 3)

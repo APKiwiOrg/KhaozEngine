@@ -14,25 +14,30 @@ namespace KhaozEngine.Showcase
 {
     /// <summary>Ported from <c>MiniGame/Program.cs</c> ("Catcher": move the paddle to catch falling blocks, miss
     /// three and it's over) into a room hosting its own <see cref="ScreenStack"/> (title -&gt; play -&gt; game
-    /// over, same as the sample's title/play/game-over screens). The room owns no GPU device itself (a
-    /// <see cref="GameScene"/> cannot reach one) - <see cref="ShowcaseApp"/> creates the texture/fonts on its
-    /// <c>Surface2D</c> and hands them in via <see cref="Init"/> right after construction, keeping the
-    /// constructor parameterless for the room registry's <c>Func&lt;GameScene&gt;</c> factory.
+    /// over, same as the sample's title/play/game-over screens). Everything lays out from the live
+    /// <see cref="IDesignViewport.DesignBounds"/> now (no 960x540 hardcode), so the field fills whatever design
+    /// size the app runs at. The room owns no GPU device itself (a <see cref="GameScene"/> cannot reach one) -
+    /// <see cref="ShowcaseApp"/> creates the texture/fonts on its <c>Surface2D</c> and hands them in via
+    /// <see cref="Init"/> right after construction, keeping the constructor parameterless for the room registry's
+    /// <c>Func&lt;GameScene&gt;</c> factory.
     /// <para>Music: the sample generates a two-second looping arpeggio WAV at runtime (no shipped asset file) and
-    /// plays it through <see cref="AudioSystem"/> as looped music. This room does the same, generating and
-    /// loading the track in <see cref="OnEnter"/> (playback then auto-starts and loops the first time
-    /// <see cref="AudioSystem.Update()"/> runs, same as the sample) and disposing the <see cref="AudioSystem"/> in
-    /// <see cref="OnExit"/> so leaving the room silences it, exactly like <see cref="RoomInput"/> manages its own
-    /// audio lifecycle.</para>
-    /// <para>Key remap vs the sample: the sample used Escape to close the whole window. Here Escape returns to
-    /// the showcase menu once the room's own screen stack is back down to just the title screen (mirrors
-    /// <see cref="RoomGui"/>'s Esc-pops-topmost-first convention), so nothing internal to this room needed a
-    /// further remap.</para></summary>
-    public sealed class RoomMiniGame : GameScene
+    /// plays it through <see cref="AudioSystem"/> as looped music. This room does the same, generating and loading
+    /// the track in <see cref="OnEnter"/> (playback then auto-starts and loops the first time
+    /// <see cref="AudioSystem.Update()"/> runs) and disposing the <see cref="AudioSystem"/> in <see cref="OnExit"/>
+    /// so leaving the room silences it.</para>
+    /// <para>Key remap vs the sample: the sample used Escape to close the whole window. Here Escape returns to the
+    /// showcase menu once the room's own screen stack is back down to just the title screen (mirrors the GUI room's
+    /// Esc-pops-topmost-first convention).</para></summary>
+    public sealed class RoomMiniGame : GameScene, IShowcaseRoom
     {
+        static readonly StringId[] Hints = { ShowcaseStrings.ControlsMiniGame };
+
         MiniGameCtx _ctx = null!;
         ScreenStack _stack = null!;
         AudioSystem _audio = null!;
+
+        public StringId Title => ShowcaseStrings.RoomMiniGameTitle;
+        public IReadOnlyList<StringId> ControlsHints => Hints;
 
         /// <summary>Wire in the texture/fonts created on the app's Surface2D. Call once, right after
         /// construction and before the room is pushed.</summary>
@@ -44,11 +49,11 @@ namespace KhaozEngine.Showcase
 
         public override void OnEnter()
         {
-            // Background music: generate the same short looping WAV the sample used and play it through the
-            // OpenAL backend (falls back to a silent backend headless, so this never crashes the room). A
-            // single registered track under the default PlayMode.RandomRotation just replays itself when it
-            // ends, i.e. it loops - the same one-track recipe MiniGame/Program.cs uses. Playback is driven by
-            // AudioSystem.Update() (called every OnUpdate below), which auto-starts on its first call.
+            // Background music: generate the same short looping WAV the sample used and play it through the OpenAL
+            // backend (falls back to a silent backend headless, so this never crashes the room). A single
+            // registered track under the default PlayMode.RandomRotation just replays itself when it ends, i.e. it
+            // loops. Playback is driven by AudioSystem.Update() (called every OnUpdate below), auto-starting on its
+            // first call.
             string musicDir = Path.Combine(Path.GetTempPath(), "ke-showcase-minigame");
             Directory.CreateDirectory(musicDir);
             WriteLoopWav(Path.Combine(musicDir, "theme.wav"));
@@ -59,8 +64,8 @@ namespace KhaozEngine.Showcase
             _stack.Add(new MiniGameTitleScreen(_ctx, Manager!.Viewport!));
         }
 
-        // Disposing the AudioSystem tears down the music backend directly, silencing playback immediately -
-        // the same teardown MiniGame/Program.cs does on window close (just `audio.Dispose()`, no separate stop).
+        // Disposing the AudioSystem tears down the music backend directly, silencing playback immediately - the
+        // same teardown MiniGame/Program.cs does on window close.
         public override void OnExit() => _audio.Dispose();
 
         public override void OnUpdate(float dt)
@@ -100,8 +105,7 @@ namespace KhaozEngine.Showcase
     }
 
     /// <summary>Shared white texture, two font sizes, and the RNG, mirroring <c>MiniGame</c>'s <c>GameCtx</c>.
-    /// The sample also carried an <c>AppWindow</c> reference so Quit could close the whole window. The room's
-    /// Quit buttons pop back to the showcase menu instead (see <see cref="MiniGameTitleScreen"/>/
+    /// The room's Quit buttons pop back to the showcase menu (see <see cref="MiniGameTitleScreen"/>/
     /// <see cref="MiniGameGameOverScreen"/>).</summary>
     sealed class MiniGameCtx
     {
@@ -123,23 +127,30 @@ namespace KhaozEngine.Showcase
 
         public override void LoadContent()
         {
-            _start = new Button(new Rect(380, 280, 200, 56), ShowcaseStrings.MiniGamePlay, _c.Small, () => { Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
-            _quit = new Button(new Rect(380, 350, 200, 56), ShowcaseStrings.MiniGameBackToMenu, _c.Small, ExitScreen);
+            Rect db = _vp.DesignBounds;
+            float cx = (db.Width - 200f) * 0.5f, cy = db.Height * 0.5f;
+            _start = new Button(new Rect(cx, cy, 200f, 56f), ShowcaseStrings.MiniGamePlay, _c.Small,
+                () => { Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
+            _quit = new Button(new Rect(cx, cy + 72f, 200f, 56f), ShowcaseStrings.MiniGameBackToMenu, _c.Small, ExitScreen);
         }
+
         public override bool Update(float dt, bool receivesInput)
         {
             if (!receivesInput) return false;
             _start.Update(Manager.Pointer); _quit.Update(Manager.Pointer);
             return true;
         }
-        // Mini-game title/instructions are demo chrome, not localizable player copy - the raw DrawString literals
-        // are intentional (KELOC003 escape hatch).
-        [LocalizationExempt]
+
         public override void Draw(SpriteBatch b)
         {
             DrawBackground(b, _c.White, _vp);
-            b.DrawString(_c.Big, "CATCHER", new Vector2(330, 140), (Color)GuiTheme.Default.Text);
-            b.DrawString(_c.Small, "catch the falling blocks - A/D or arrows", new Vector2(290, 220), (Color)GuiTheme.Default.TextMuted);
+            Rect db = _vp.DesignBounds;
+            string title = ((LocalizedText)ShowcaseStrings.MiniGameTitle).Resolve();
+            Vector2 ts = _c.Big.Measure(title);
+            b.DrawString(_c.Big, title, new Vector2((db.Width - ts.X) * 0.5f, db.Height * 0.24f), (Color)GuiTheme.Default.Text);
+            string tag = ((LocalizedText)ShowcaseStrings.MiniGameTagline).Resolve();
+            Vector2 gs = _c.Small.Measure(tag);
+            b.DrawString(_c.Small, tag, new Vector2((db.Width - gs.X) * 0.5f, db.Height * 0.34f), (Color)GuiTheme.Default.TextMuted);
             _start.Draw(b, _c.White); _quit.Draw(b, _c.White);
         }
     }
@@ -153,34 +164,44 @@ namespace KhaozEngine.Showcase
         readonly List<Item> _items = new();
         float _paddleX = 420, _spawn;
         int _score, _lives = 3;
-        const float PaddleY = 492, PaddleW = 120, PaddleH = 18, ItemSize = 22;
+        const float PaddleW = 120, PaddleH = 18, ItemSize = 22;
+
+        // The paddle rides a fixed clearance above the bottom edge, so it tracks the live design height.
+        static float PaddleY(Rect db) => db.Height - 88f;
 
         public MiniGamePlayScreen(MiniGameCtx c, IDesignViewport vp) { _c = c; _vp = vp; PassUpdateThrough = false; BackgroundColor = GuiTheme.Default.Background; }
 
         public override bool Update(float dt, bool receivesInput)
         {
             if (!receivesInput) return true;   // frozen under the game-over modal
+            Rect db = _vp.DesignBounds;
+            float w = db.Width, h = db.Height, paddleY = PaddleY(db);
             var input = Manager.Input;
             float speed = 520f * dt;
             if (input.IsDown(Key.Left) || input.IsDown(Key.A)) _paddleX -= speed;
             if (input.IsDown(Key.Right) || input.IsDown(Key.D)) _paddleX += speed;
-            _paddleX = Math.Clamp(_paddleX, 0, 960 - PaddleW);
+            _paddleX = Math.Clamp(_paddleX, 0, w - PaddleW);
 
             _spawn -= dt;
             if (_spawn <= 0f)
             {
                 _spawn = Math.Max(0.35f, 0.9f - _score * 0.015f);
-                _items.Add(new Item { Pos = new Vector2(_c.Rng.Next(20, 920), -ItemSize), Speed = 170 + _c.Rng.Next(0, 120) + _score * 4, Color = new Vector4(0.95f, 0.6f + _c.Rng.NextSingle() * 0.3f, 0.25f, 1f) });
+                _items.Add(new Item
+                {
+                    Pos = new Vector2(_c.Rng.Next(20, (int)MathF.Max(21f, w - 40f)), -ItemSize),
+                    Speed = 170 + _c.Rng.Next(0, 120) + _score * 4,
+                    Color = new Vector4(0.95f, 0.6f + _c.Rng.NextSingle() * 0.3f, 0.25f, 1f),
+                });
             }
 
             for (int i = _items.Count - 1; i >= 0; i--)
             {
                 var it = _items[i];
                 it.Pos.Y += it.Speed * dt;
-                bool caught = it.Pos.Y + ItemSize >= PaddleY && it.Pos.Y <= PaddleY + PaddleH
+                bool caught = it.Pos.Y + ItemSize >= paddleY && it.Pos.Y <= paddleY + PaddleH
                               && it.Pos.X + ItemSize >= _paddleX && it.Pos.X <= _paddleX + PaddleW;
                 if (caught) { _score++; _items.RemoveAt(i); }
-                else if (it.Pos.Y > 540) { _lives--; _items.RemoveAt(i); }
+                else if (it.Pos.Y > h) { _lives--; _items.RemoveAt(i); }
                 else _items[i] = it;
             }
 
@@ -191,10 +212,16 @@ namespace KhaozEngine.Showcase
         public override void Draw(SpriteBatch b)
         {
             DrawBackground(b, _c.White, _vp);
+            Rect db = _vp.DesignBounds;
+            float paddleY = PaddleY(db);
             foreach (var it in _items) _c.Rect(b, it.Pos.X, it.Pos.Y, ItemSize, ItemSize, it.Color);
-            _c.Rect(b, _paddleX, PaddleY, PaddleW, PaddleH, new Vector4(0.5f, 0.85f, 0.95f, 1f));
-            b.DrawString(_c.Small, $"Score {_score}", new Vector2(20, 16), new Color(0.92f, 0.96f, 1f, 1f));
-            b.DrawString(_c.Small, $"Lives {_lives}", new Vector2(820, 16), new Color(1f, 0.7f, 0.6f, 1f));
+            _c.Rect(b, _paddleX, paddleY, PaddleW, PaddleH, new Vector4(0.5f, 0.85f, 0.95f, 1f));
+
+            string score = LocalizedText.Of(ShowcaseStrings.MiniGameScore, _score).Resolve();
+            b.DrawString(_c.Small, score, new Vector2(20, 16), (Color)GuiTheme.Default.Text);
+            string lives = LocalizedText.Of(ShowcaseStrings.MiniGameLives, _lives).Resolve();
+            Vector2 ls = _c.Small.Measure(lives);
+            b.DrawString(_c.Small, lives, new Vector2(db.Width - ls.X - 20f, 16), (Color)GuiTheme.Default.TextMuted);
         }
     }
 
@@ -204,6 +231,7 @@ namespace KhaozEngine.Showcase
         readonly IDesignViewport _vp;
         readonly MiniGamePlayScreen _play;
         readonly int _score;
+        Rect _dialog;
         Button _retry = null!, _quit = null!;
 
         public MiniGameGameOverScreen(MiniGameCtx c, IDesignViewport vp, MiniGamePlayScreen play, int score)
@@ -212,28 +240,37 @@ namespace KhaozEngine.Showcase
             DrawOrder = 10; PassUpdateThrough = false;          // modal: freezes the play screen beneath
             TransitionOnDuration = 0.2f;
         }
+
         public override void LoadContent()
         {
-            _retry = new Button(new Rect(300, 320, 160, 54), ShowcaseStrings.MiniGameRetry, _c.Small, () => { Manager.Remove(_play); Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
-            _quit = new Button(new Rect(500, 320, 160, 54), ShowcaseStrings.MiniGameBackToMenu, _c.Small, () => { Manager.Remove(_play); ExitScreen(); });
+            _dialog = Layout.Resolve(_vp.DesignBounds, Anchor.Center, 440, 250);
+            _retry = new Button(new Rect(_dialog.X + 40f, _dialog.Y + 170f, 160f, 54f), ShowcaseStrings.MiniGameRetry, _c.Small,
+                () => { Manager.Remove(_play); Manager.Remove(this); Manager.Add(new MiniGamePlayScreen(_c, _vp)); });
+            _quit = new Button(new Rect(_dialog.Right - 200f, _dialog.Y + 170f, 160f, 54f), ShowcaseStrings.MiniGameBackToMenu, _c.Small,
+                () => { Manager.Remove(_play); ExitScreen(); });
         }
+
         public override bool Update(float dt, bool receivesInput)
         {
             if (receivesInput) { _retry.Update(Manager.Pointer); _quit.Update(Manager.Pointer); }
             return true;
         }
-        // "GAME OVER" is demo chrome, not localizable player copy - the raw DrawString literal is intentional
-        // (KELOC003 escape hatch).
-        [LocalizationExempt]
+
         public override void Draw(SpriteBatch b)
         {
             float a = TransitionAlpha;
+            Rect db = _vp.DesignBounds;
             // Crisp-theme dialog chrome, all faded by the screen's transition alpha.
             Vector4 surf = GuiTheme.Default.Surface, text = GuiTheme.Default.Text, muted = GuiTheme.Default.TextMuted;
-            _c.Rect(b, 0, 0, 960, 540, new Vector4(0, 0, 0, 0.6f * a));
-            _c.Rect(b, 260, 150, 440, 250, new Vector4(surf.X, surf.Y, surf.Z, a));
-            b.DrawString(_c.Big, "GAME OVER", new Vector2(300, 185), new Color(text.X, text.Y, text.Z, a));
-            b.DrawString(_c.Small, $"Final score: {_score}", new Vector2(380, 265), new Color(muted.X, muted.Y, muted.Z, a));
+            _c.Rect(b, db.X, db.Y, db.Width, db.Height, new Vector4(0, 0, 0, 0.6f * a));
+            _c.Rect(b, _dialog.X, _dialog.Y, _dialog.Width, _dialog.Height, new Vector4(surf.X, surf.Y, surf.Z, a));
+
+            string over = ((LocalizedText)ShowcaseStrings.MiniGameGameOver).Resolve();
+            Vector2 os = _c.Big.Measure(over);
+            b.DrawString(_c.Big, over, new Vector2(_dialog.X + (_dialog.Width - os.X) * 0.5f, _dialog.Y + 40f), new Color(text.X, text.Y, text.Z, a));
+            string final = LocalizedText.Of(ShowcaseStrings.MiniGameFinalScore, _score).Resolve();
+            Vector2  fs = _c.Small.Measure(final);
+            b.DrawString(_c.Small, final, new Vector2(_dialog.X + (_dialog.Width - fs.X) * 0.5f, _dialog.Y + 110f), new Color(muted.X, muted.Y, muted.Z, a));
             _retry.Draw(b, _c.White); _quit.Draw(b, _c.White);
         }
     }

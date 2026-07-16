@@ -7,9 +7,12 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>
     /// Owns the low-res GPU targets for one resolution: a 3-attachment MRT (lit color, encoded normal,
     /// linear depth) plus a depth-stencil for the model pass, and two single-target ping-pong buffers for
-    /// the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled change.
+    /// the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled / HDR-format change.
     /// Also owns an optional half-resolution ping-pong pair (<see cref="BloomA"/>/<see cref="BloomB"/>) for the
     /// bloom bright-pass + separable blur, allocated only while bloom is enabled (see <see cref="BloomAllocated"/>).
+    /// The colour-carrying targets (lit colour + both ping-pong pairs) render at <c>R16G16B16A16Float</c> when
+    /// <see cref="HdrColor"/> is set (over-range headroom for the tonemap) or <c>R8G8B8A8UNorm</c> otherwise (the
+    /// legacy path). The encoded-normal (UNorm) and linear-depth (R32Float) attachments are format-fixed either way.
     /// </summary>
     /// <remarks>
     /// Under MSAA (<see cref="SampleCount"/> &gt; 1) the model pass renders into a MULTISAMPLED MRT
@@ -26,6 +29,13 @@ namespace KhaozEngine.Render3D.Internal
         public int Width { get; private set; }
         public int Height { get; private set; }
 
+        /// <summary>Whether the colour-carrying targets (<see cref="ColorTex"/> / <see cref="MsColor"/> /
+        /// <see cref="PingA"/> / <see cref="PingB"/> / <see cref="BloomA"/> / <see cref="BloomB"/>) render at
+        /// <c>R16G16B16A16Float</c> (HDR headroom above 1.0 for the tonemap) rather than the legacy
+        /// <c>R8G8B8A8UNorm</c>. Mirrors the <c>hdrColor</c> argument of the last <see cref="Create"/> /
+        /// <see cref="Resize"/> call. The normal (UNorm) and linear-depth (R32Float) attachments are unaffected.</summary>
+        public bool HdrColor { get; private set; }
+
         /// <summary>Whether the three blit-source colour targets (<see cref="ColorTex"/> / <see cref="PingA"/> /
         /// <see cref="PingB"/>) carry a full mip chain + <see cref="GpuTextureUsage.GenerateMipmaps"/>, so the final
         /// downscale blit can trilinear-filter a supersampled target correctly at ANY factor (see
@@ -41,6 +51,14 @@ namespace KhaozEngine.Render3D.Internal
         public int SampleCount { get; private set; }
         /// <summary>Whether the MRT is multisampled (<see cref="SampleCount"/> &gt; 1) and therefore needs a resolve.</summary>
         public bool Msaa => SampleCount > 1;
+
+        /// <summary>Bumped every time <see cref="Create"/> (re)allocates the targets, INCLUDING same-size recreates
+        /// (an MSAA sample-count, bloom, or HDR-format toggle recreates every texture at unchanged dimensions).
+        /// Renderers that cache resource sets over these textures must compare this, not the dimensions: a
+        /// dimension-based guard early-outs on a same-size recreate and leaves sets referencing disposed textures,
+        /// which Metal tolerates silently but D3D11 and Vulkan fault on (caught by the first MSAA golden on the
+        /// WARP and lavapipe CI legs).</summary>
+        public int Generation { get; private set; }
 
         // Single-sample targets the POST chain samples (also the MRT attachments when SampleCount == 1).
         public IGpuTexture ColorTex = null!;
@@ -74,28 +92,50 @@ namespace KhaozEngine.Render3D.Internal
         /// argument passed to the last <see cref="Create"/>/<see cref="Resize"/> call).</summary>
         public bool BloomAllocated { get; private set; }
 
-        public RenderResources(IGpuDevice gd, int w, int h)
+        /// <summary>Half- or quarter-resolution offset field the distortion pass accumulates signed screen-space UV
+        /// offsets into (<c>R16G16Float</c>, no depth). Unlike the bloom pair it is allocated LAZILY per frame via
+        /// <see cref="EnsureDistortion"/> (from Scene3D.RenderInternal), because whether any distortion sprite is
+        /// queued is a per-frame decision, not a resize-time one. Null (the default, and any frame that queues no
+        /// distortion sprite) costs zero GPU memory - byte-identical to before distortion existed.</summary>
+        public IGpuTexture? DistortTex;
+        public IGpuFramebuffer? DistortFB;
+        public int DistortWidth { get; private set; }
+        public int DistortHeight { get; private set; }
+
+        /// <summary>Whether the distortion offset target is currently allocated (mirrors the last
+        /// <see cref="EnsureDistortion"/> request). The post apply pass builds its resource set only while set.</summary>
+        public bool DistortAllocated { get; private set; }
+
+        // The divisor (2 = Full, 4 = Reduced) the current DistortTex was built for, so a quality change reallocates.
+        int _distortDivisor;
+
+        public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor)
         {
             _gd = gd;
-            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false);
+            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor);
         }
 
-        public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled)
+        public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor)
         {
             if (w == Width && h == Height && mipped == Mipped && sampleCount == SampleCount
-                && bloomEnabled == BloomAllocated) return;
+                && bloomEnabled == BloomAllocated && hdrColor == HdrColor) return;
             DisposeTargets();
-            Create(w, h, mipped, sampleCount, bloomEnabled);
+            Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor);
         }
 
         IGpuTexture Tex(uint w, uint h, GpuPixelFormat fmt, GpuTextureUsage usage, uint mipLevels = 1, uint samples = 1) =>
             _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, fmt, usage, mipLevels, 1, samples));
 
-        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled)
+        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor)
         {
+            Generation++;
             Width = w; Height = h; Mipped = mipped; SampleCount = sampleCount < 1 ? 1 : sampleCount;
+            HdrColor = hdrColor;
             uint uw = (uint)w, uh = (uint)h, s = (uint)SampleCount;
             var rt = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
+            // The colour-carrying targets go float16 in HDR mode for over-range headroom. The encoded-normal (UNorm)
+            // and linear-depth (R32Float) attachments are format-fixed regardless.
+            var colorFmt = hdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
 
             // The blit-source colour targets get a full mip chain (+ GenerateMipmaps) only when the final blit is a
             // genuine downscale (MatchViewport supersampling); the trilinear sampler then picks LOD ~= log2(ratio) so
@@ -106,7 +146,7 @@ namespace KhaozEngine.Render3D.Internal
 
             // Single-sample targets the post chain samples. Under MSAA these are the RESOLVE destinations; otherwise
             // they ARE the MRT attachments (the historical path).
-            ColorTex = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, blitRt, blitMips);
+            ColorTex = Tex(uw, uh, colorFmt, blitRt, blitMips);
             NormalTex = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
             DepthColorTex = Tex(uw, uh, GpuPixelFormat.R32Float, rt);
 
@@ -115,7 +155,7 @@ namespace KhaozEngine.Render3D.Internal
                 // Multisampled MRT (render target only; a multisampled texture cannot be sampled directly). The
                 // depth-stencil is multisampled too; it is only depth-tested (never sampled), so it needs no resolve.
                 var rtOnly = GpuTextureUsage.RenderTarget;
-                MsColor = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rtOnly, 1, s);
+                MsColor = Tex(uw, uh, colorFmt, rtOnly, 1, s);
                 MsNormal = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rtOnly, 1, s);
                 MsDepthColor = Tex(uw, uh, GpuPixelFormat.R32Float, rtOnly, 1, s);
                 DepthStencil = Tex(uw, uh, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil, 1, s);
@@ -132,8 +172,8 @@ namespace KhaozEngine.Render3D.Internal
                 ColorDepthFB = _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex);
             }
 
-            PingA = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, blitRt, blitMips);
-            PingB = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, blitRt, blitMips);
+            PingA = Tex(uw, uh, colorFmt, blitRt, blitMips);
+            PingB = Tex(uw, uh, colorFmt, blitRt, blitMips);
             PingAFB = _gd.Factory.CreateFramebuffer(null, PingA);
             PingBFB = _gd.Factory.CreateFramebuffer(null, PingB);
 
@@ -143,8 +183,8 @@ namespace KhaozEngine.Render3D.Internal
                 var (bw, bh) = BloomMath.HalfResSize(w, h);
                 BloomWidth = bw; BloomHeight = bh;
                 uint ubw = (uint)bw, ubh = (uint)bh;
-                BloomA = Tex(ubw, ubh, GpuPixelFormat.R8G8B8A8UNorm, rt);
-                BloomB = Tex(ubw, ubh, GpuPixelFormat.R8G8B8A8UNorm, rt);
+                BloomA = Tex(ubw, ubh, colorFmt, rt);
+                BloomB = Tex(ubw, ubh, colorFmt, rt);
                 BloomAFB = _gd.Factory.CreateFramebuffer(null, BloomA);
                 BloomBFB = _gd.Factory.CreateFramebuffer(null, BloomB);
             }
@@ -172,8 +212,48 @@ namespace KhaozEngine.Render3D.Internal
             cl.ResolveTexture(MsNormal!, NormalTex);
         }
 
+        /// <summary>Lazily (re)allocate or free the distortion offset target (<c>R16G16Float</c>) to match
+        /// <paramref name="wanted"/> at <see cref="Width"/>/<see cref="Height"/> divided by <paramref name="divisor"/>
+        /// (2 = Full, 4 = Reduced). Called once per frame from Scene3D.RenderInternal BEFORE the post chain: a frame
+        /// that queues distortion sprites requests it, a frame that queues none (or a resize, via
+        /// <see cref="DisposeTargets"/>) frees it. A (re)allocate or free bumps <see cref="Generation"/> so the post
+        /// apply resource set rebinds over the new target. A no-op (early return, no Generation bump) when already
+        /// allocated at the requested size and divisor, so a steady stream of distortion frames does not thrash.</summary>
+        public void EnsureDistortion(bool wanted, int divisor)
+        {
+            if (divisor < 1) divisor = 1;
+            if (wanted)
+            {
+                int dw = Math.Max(1, Width / divisor), dh = Math.Max(1, Height / divisor);
+                if (DistortAllocated && dw == DistortWidth && dh == DistortHeight && divisor == _distortDivisor) return;
+                DisposeDistortion();
+                DistortWidth = dw; DistortHeight = dh; _distortDivisor = divisor;
+                DistortTex = Tex((uint)dw, (uint)dh, GpuPixelFormat.R16G16Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled);
+                DistortFB = _gd.Factory.CreateFramebuffer(null, DistortTex);
+                DistortAllocated = true;
+                Generation++;
+            }
+            else
+            {
+                if (!DistortAllocated) return;
+                DisposeDistortion();
+                Generation++;
+            }
+        }
+
+        // Free the distortion target and reset its bookkeeping. Called by EnsureDistortion (on a free / size or
+        // divisor change) and by DisposeTargets (a resize disposes it, the next frame's EnsureDistortion re-lazies).
+        void DisposeDistortion()
+        {
+            DistortFB?.Dispose(); DistortTex?.Dispose();
+            DistortFB = null; DistortTex = null;
+            DistortWidth = 0; DistortHeight = 0; _distortDivisor = 0;
+            DistortAllocated = false;
+        }
+
         void DisposeTargets()
         {
+            DisposeDistortion();
             ModelFB?.Dispose(); ColorDepthFB?.Dispose(); PingAFB?.Dispose(); PingBFB?.Dispose();
             ColorTex?.Dispose(); NormalTex?.Dispose(); DepthColorTex?.Dispose(); DepthStencil?.Dispose();
             MsColor?.Dispose(); MsNormal?.Dispose(); MsDepthColor?.Dispose();

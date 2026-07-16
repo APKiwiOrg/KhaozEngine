@@ -35,11 +35,13 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuBuffer _solidBuf, _crossBuf;
 
         // The captured pre-teleport frame (a copy of the resolved ColorTex), sized to the render target and rebuilt on
-        // resize. Only allocated/used by the crossfade style.
+        // resize. Its colour format follows ColorTex (float16 in HDR mode, UNorm in legacy) so the CopyTexture stays
+        // format-matched. Only allocated/used by the crossfade style.
         IGpuTexture? _frozen;
         IGpuResourceSet _solidSet = null!;
         IGpuResourceSet? _crossSet;
         int _w, _h;
+        GpuPixelFormat _frozenFmt;
 
         // FIX-1 frozen-frame lifecycle. _frozenValid: _frozen holds a real previous-frame image safe to sample (false
         // until the first successful capture, and after any resize). _prevFrozenActive: a crossfade was frozen-style
@@ -94,13 +96,18 @@ namespace KhaozEngine.Render3D.Rendering
         /// Call on construction and whenever the targets resize (alongside <c>PixelPostProcess.BindTargets</c>).</summary>
         public void BindTargets(RenderResources res)
         {
-            if (_frozen != null && _w == res.Width && _h == res.Height) return;
+            // Match the frozen capture's colour format to ColorTex so the BeginFrame CopyTexture is format-matched
+            // (float16 in HDR mode, UNorm in legacy). The crossfade pipeline samples _frozen and outputs to the
+            // swapchain, so a float16 source needs no pipeline rebuild here (only the OUTPUT format is baked).
+            var colorFmt = res.HdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
+            if (_frozen != null && _w == res.Width && _h == res.Height && _frozenFmt == colorFmt) return;
             _crossSet?.Dispose();
             _frozen?.Dispose();
             _w = res.Width;
             _h = res.Height;
+            _frozenFmt = colorFmt;
             _frozen = _gd.Factory.CreateTexture(new GpuTextureDescription((uint)_w, (uint)_h,
-                GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled | GpuTextureUsage.RenderTarget, 1, 1, 1));
+                colorFmt, GpuTextureUsage.Sampled | GpuTextureUsage.RenderTarget, 1, 1, 1));
             _crossSet = _gd.Factory.CreateResourceSet(
                 new GpuResourceSetDescription(_crossLayout, _frozen, _gd.LinearSampler, _crossBuf));
             // The freshly (re)allocated _frozen is blank, and no frame has resolved into the new ColorTex yet: any

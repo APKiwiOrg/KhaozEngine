@@ -100,6 +100,22 @@ namespace KhaozEngine.Showcase
         public static readonly StringId ScreensOverlayCaption = new("Screens.OverlayCaption");
         public static readonly StringId ScreensPatchNotes = new("Screens.PatchNotes");
         public static readonly StringId ScreensPatchNotesCaption = new("Screens.PatchNotesCaption");
+        public static readonly StringId ScreensToasts = new("Screens.Toasts");
+        public static readonly StringId ScreensToastsCaption = new("Screens.ToastsCaption");
+
+        // Toasts demo (pushed from the Screens page)
+        public static readonly StringId ToastsTitle = new("Toasts.Title");
+        public static readonly StringId ToastsStandard = new("Toasts.Standard");
+        public static readonly StringId ToastsWarning = new("Toasts.Warning");
+        public static readonly StringId ToastsDanger = new("Toasts.Danger");
+        public static readonly StringId ToastsSticky = new("Toasts.Sticky");
+        public static readonly StringId ToastsUpdate = new("Toasts.Update");
+        public static readonly StringId ToastsClear = new("Toasts.Clear");
+        public static readonly StringId ToastsStandardMessage = new("Toasts.StandardMessage");
+        public static readonly StringId ToastsWarningMessage = new("Toasts.WarningMessage");
+        public static readonly StringId ToastsDangerMessage = new("Toasts.DangerMessage");
+        public static readonly StringId ToastsStickyMessage = new("Toasts.StickyMessage");
+        public static readonly StringId ToastsCounterMessage = new("Toasts.CounterMessage");
 
         // Overlay demo (the pause overlay pushed from the Screens page)
         public static readonly StringId OverlayPaused = new("Overlay.Paused");

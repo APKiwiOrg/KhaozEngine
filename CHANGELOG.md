@@ -5,6 +5,44 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 10.127.0
+
+New KhaozEngine.Gui toast notification stack, ported from the Nullwake reference implementation: a
+headless `ToastStack` model plus a `ToastView` presenter, with sticky toasts, keyed replacement
+channels, and real-time auto-dismiss.
+
+- **KhaozEngine.Gui (additive): `ToastStack`/`Toast`/`ToastKind`/`ToastTheme`/`ToastView`.** The
+  model/presenter split mirrors `DiagnosticsOverlay`/`PatchNotesView`: `ToastStack` holds no
+  rendering or input state, `ToastView` draws it corner-anchored and reads a shared pointer for
+  tap-dismiss. Three typed kinds (`ToastKind.Standard`/`Warning`/`Danger`) each resolve to a
+  themeable `ToastPalette` (background/border/timer-bar/text) via `ToastTheme`, anchored to any
+  `OverlayCorner` with configurable width, padding, gap, and margin metrics.
+- **Real-time auto-dismiss.** `ToastStack.Show` defaults to `DefaultDuration` (6 seconds) and
+  `Update` takes a raw, unscaled frame delta so toasts keep counting down at real speed while the
+  game is paused or slowed, never the scaled simulation delta.
+- **MaxVisible cap with sticky-aware eviction.** `ToastStack.MaxVisible` (default 5) is enforced on
+  every `Show`/`Update`. Over the cap, the oldest non-sticky toast is evicted first, scanning from
+  the end. Only once every remaining toast is sticky does the oldest sticky toast get evicted, so an
+  all-sticky flood still stays bounded.
+- **First-class sticky toasts.** Passing `duration <= 0` to `Show` (or calling `ShowSticky`) marks a
+  toast sticky (`Toast.IsSticky`): it never expires on its own, `ToastStack.Update` never decrements
+  it, and `ToastView` draws it with no timer bar. A tap is the only way to dismiss it.
+- **Keyed replacement channels.** `Show` with a non-null `key` replaces any currently active toast
+  sharing that key in place (same index, no reordering, no eviction), so a repeated status line
+  ("reconnecting", then "connected") stays pinned at its slot instead of growing the stack.
+  `ToastStack.Clear(key)` removes that channel's toast outright.
+- **Tap-dismiss on the shared pointer.** `ToastView` hit-tests taps via the press-origin invariant
+  (`IsTapIn`) and consumes the dismissing gesture on the shared `InputManager`/`Pointer` so a tap
+  through a toast never falls through to whatever is underneath.
+- **Word-wrapped, localized messages.** `Toast.Message` is a `LocalizedText` resolved through the
+  localization catalog at draw time, word-wrapped to the toast's fixed width, growing `MinHeight`
+  as needed. A finite-duration toast draws a shrinking timer bar along its edge.
+- **Showcase demo + docs.** `KhaozEngine.Showcase`'s `RoomGui` gained a toast stack demo screen
+  (`ToastOverlayScreen`), documenting the `ScreenStack` hosting pattern for a permanent overlay
+  screen (`AlwaysReceivesInput`, high `DrawOrder`) whose model keeps counting down independent of
+  which screen is on top. Headless test coverage includes localized-resolution facts. Usage
+  documented in the `KhaozEngine.Gui` package README and `docs/USING-KHAOZENGINE.md`.
+
 ## 10.126.0
 
 Ground-up particle/VFX modernization: shaped procedural sprites with soft depth fade and velocity

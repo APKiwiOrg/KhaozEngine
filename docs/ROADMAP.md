@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.126.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.127.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -105,7 +105,9 @@ consumer and sets the bar: "A"-tier semi-realistic fidelity with a light styliza
 AAA. The other games consume the same stack for 2D/2.5D. Consequences: the cel/palette/retro post path stays a
 per-game option, not the engine identity, and the items below are ordered by what closes the gap to that
 "A" semi-realistic bar. Explicitly out of scope for that bar (do not build without a concrete game pull): TAA,
-global illumination, a deferred renderer, full PBR+IBL, occlusion culling, GPU-driven rendering, GPU particles.
+global illumination, a deferred renderer, full PBR+IBL, occlusion culling, GPU-driven rendering. GPU particles
+moved from this list into the AAA VFX program below as its gated Tier 3 (owner direction change 2026-07-16:
+VFX specifically targets AAA quality even though the general rendering bar stays "A" semi-realistic).
 
 Ordered gap list (2026-07-07 feature audit):
 
@@ -133,13 +135,51 @@ Ordered gap list (2026-07-07 feature audit):
    Ruinborne adopts it, dropping the unused `Res` UBO field, and a water-footprint-scoped golden guard.
 6. Bloom follow-ups (the LDR threshold + separable-blur bloom shipped in 10.27.0, opt-in via
    `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
-   and a second blur octave only if a game pulls for wider halos. A full HDR/tonemap pipeline is still not planned.
+   and a second blur octave only if a game pulls for wider halos. The full HDR/tonemap pipeline is now planned
+   as Tier 1 of the AAA VFX program below (supersedes the earlier "not planned" call).
 7. Animation follow-ups (layered blending shipped in 10.31.0: `LayeredAnimator` with bone masks, override and
    local-frame additive layers, and one-shot or held actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
    placement) waits for adoption feedback, action-trigger replication stays a game-message pattern, and a
    per-layer sync-group mechanism (matching walk/run phase across layers) only if combat blending pulls for it.
 8. Reflections / environment probes: not planned for the current bar. Revisit only if water or a specific scene
    demands more than the sky provides.
+
+### AAA VFX program (owner direction 2026-07-16)
+
+The particles/VFX domain specifically targets modern AAA effect quality (Diablo 4 / PoE2 / Lost Ark class
+impact and ambience) on top of the 10.126.0 modernization (procedural shaped sprites, curves, emission
+shapes, soft particles, effect scheduler, `Particles.Render3D` adapter, design record
+`docs/PARTICLES-VFX-DESIGN-2026-07-16.md`). Three tiers, ordered by visual impact per engineering cost.
+The general rendering bar above is unchanged, this program is scoped to effects and the pipeline pieces
+they sit on.
+
+**Tier 1 (one engine program, scoped 2026-07-16, next up for this domain):**
+
+1. HDR pipeline + filmic tonemap + HDR bloom. Float16 internal targets, emissive values above 1.0,
+   bloom moved pre-tonemap so hot cores saturate and halo naturally. The single biggest visual
+   multiplier, and it upgrades every glowing feature at once (particles, beams, trails, telegraphs,
+   sky, water glints). Must compose with the retro post path (palette/pixelation quantize after
+   tonemap) and forces a full golden rebake on all three backends.
+2. Flipbook particles with motion-vector blending. Atlas playback (per-particle frame index) plus
+   motion-vector frame interpolation in the particle pass, so offline-simmed smoke/fire/explosion
+   sheets (EmberGen class) read fluid at low frame counts. Complements, not replaces, the procedural
+   shapes: procedural stays the identity for sparks, glows, magic, rings.
+3. Screen-space distortion pass. Distortion particles write an offset buffer, the resolved scene
+   color re-samples through it: heat haze, refractive shockwaves, splash lensing. High AAA-feel per
+   cost.
+
+**Tier 2 (independent follow-up features, each its own worktree when pulled):** lit smoke (fold the
+existing light arrays into the particle UBO, wrap term + fake spherical normals), mesh particles
+(instanced debris driven by the sim's transform + spin), death/collision events on the sim (the gap
+SpaceGame's port notes flagged: deterministic ground-hit kill, scorch-decal and child-effect spawning),
+textured UV-scrolling ribbons on TrailRenderer.
+
+**Tier 3 (gated, build only on concrete pull):** GPU compute simulation (hundreds of thousands of
+ambient particles: rain, ash, swarms. The cross-backend compute + determinism + golden story is the
+biggest lift in the program, and current combat scale does not need it), and VFX authoring tooling
+(data-driven effect descriptors through Content with hot reload, eventually a small VFX editor on the
+MapEditor/MCP precedent. Iteration speed is the real AAA secret, so this graduates from Tier 3 as soon
+as effect-tuning friction demonstrably slows a game).
 
 Also here, unchanged:
 

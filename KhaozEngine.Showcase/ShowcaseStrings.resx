@@ -131,6 +131,20 @@
   <data name="Screens.OverlayCaption" xml:space="preserve"><value>A transparent overlay that freezes this screen</value></data>
   <data name="Screens.PatchNotes" xml:space="preserve"><value>Patch notes</value></data>
   <data name="Screens.PatchNotesCaption" xml:space="preserve"><value>The turn-key player changelog panel</value></data>
+  <data name="Screens.Toasts" xml:space="preserve"><value>Toast stack</value></data>
+  <data name="Screens.ToastsCaption" xml:space="preserve"><value>Transient notifications: kinds, sticky, keyed replace</value></data>
+  <data name="Toasts.Title" xml:space="preserve"><value>Toast Stack</value></data>
+  <data name="Toasts.Standard" xml:space="preserve"><value>Standard toast</value></data>
+  <data name="Toasts.Warning" xml:space="preserve"><value>Warning toast</value></data>
+  <data name="Toasts.Danger" xml:space="preserve"><value>Danger toast</value></data>
+  <data name="Toasts.Sticky" xml:space="preserve"><value>Sticky toast</value></data>
+  <data name="Toasts.Update" xml:space="preserve"><value>Update keyed</value></data>
+  <data name="Toasts.Clear" xml:space="preserve"><value>Clear keyed</value></data>
+  <data name="Toasts.StandardMessage" xml:space="preserve"><value>Just a heads up, nothing is wrong.</value></data>
+  <data name="Toasts.WarningMessage" xml:space="preserve"><value>Something looks off, might be worth a look.</value></data>
+  <data name="Toasts.DangerMessage" xml:space="preserve"><value>That failed.</value></data>
+  <data name="Toasts.StickyMessage" xml:space="preserve"><value>This one sticks around until you tap it.</value></data>
+  <data name="Toasts.CounterMessage" xml:space="preserve"><value>Updated {0} times</value></data>
   <data name="Overlay.Paused" xml:space="preserve"><value>PAUSED - Esc to resume</value></data>
   <data name="Overlay.Resume" xml:space="preserve"><value>Resume</value></data>
   <data name="MiniGame.Title" xml:space="preserve"><value>CATCHER</value></data>

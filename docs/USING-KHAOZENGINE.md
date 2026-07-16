@@ -3250,6 +3250,34 @@ the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid` la
 directed `NavLink` stair connections a climber crosses between floors, at the same cell size and world
 anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons" above.
 
+### Bake ramps, stairs, and standable props
+
+`BakeOverworld` tests a flat band above analytic terrain, so a low rock, a ramp, or a staircase bakes as a
+hard wall. `NavGridBaker.BakeOverworldSteps` bakes a per-cell walkable surface height instead, and marks a
+step between neighboring cells walkable when the rise is within a step height and the headroom clears an
+agent height, so ramps, staircases, and low standable props become walkable without leaving a single
+`NavGrid` layer:
+
+```csharp
+var provider = new TerrainSurfaceProvider(terrain, maxSlopeRadians: MathF.PI / 4f, surfaces, colliders,
+    colliderProbeRadius: 0.5f * 0.70710678f);
+NavGrid grid = NavGridBaker.BakeOverworldSteps(
+    provider,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f);
+```
+
+`TerrainSurfaceProvider` is the shipped `INavSurfaceProvider`: analytic terrain height raised to any
+`WorldSurfaces` prop top covering the point, so a creature stands on the prop instead of routing around
+it. It always reports open-sky headroom, so with the default provider `agentHeight` never blocks a cell.
+Real vertical clearance takes effect only with a game-supplied provider that reports actual headroom.
+A game that wants a different surface source (a downward physics raycast against its own
+`IPhysicsWorld`, for example) implements `INavSurfaceProvider` itself, or wraps a delegate in
+`DelegateSurfaceProvider`. Either way `KhaozEngine.Navigation` reads the surface only through the
+interface and never takes a dependency on `KhaozEngine.Physics`. The planner and follower below are
+unchanged: a step-aware grid is still one `NavGrid` layer, so `GridPathPlanner` and `PathFollower` need no
+new code to route across a ramp or a low rock.
+
 ### Plan a route
 
 `GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an
@@ -7254,6 +7282,29 @@ composes the three: `BanAsync` persists then kicks if the account is online; `Li
 the enumeration; unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
 `AccountsSupported`).
 
+**Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed registry a game
+populates at startup: `RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)`,
+a synchronous convenience overload `RegisterAction(string name, Func<JsonElement?, AdminActionResult> handler)`,
+`ActionNames`, and `TryGetAction`. A name must match `^[a-z0-9][a-z0-9-]{0,63}$`. An invalid or duplicate name
+throws `ArgumentException`. The backing store is a `ConcurrentDictionary`, so registering is thread-safe even
+though it normally happens once before the endpoint starts.
+
+```csharp
+var admin = new ServerAdmin(server, banStore, accountStore);
+admin.RegisterAction("set-time", payload =>
+{
+    float t = payload?.GetProperty("timeOfDay").GetSingle() ?? 0f;
+    gameClockQueue.Enqueue(t);
+    return AdminActionResult.Accepted();
+});
+```
+
+`AdminActionResult` is the handler's return type: `Ok(payload = null)` for a query (the payload, if any, is
+serialized as the JSON response body), `Accepted()` for a mutation the handler enqueued, or `BadRequest(error)`
+to reject the request with a reason. The threading contract matches `IAdminControllable` above: the handler runs
+on the caller's thread (an HTTP request thread), so it must never touch simulation state directly, a mutation
+enqueues to the host thread, and a read returns a published snapshot.
+
 **HTTPS endpoint (`KhaozEngine.Server.Admin`).** An opt-in package (the only one that pulls ASP.NET Core, via a
 `FrameworkReference`; not in the `Server` umbrella - add it explicitly). It hosts a minimal Kestrel REST API over a
 `ServerAdmin`, TLS + a single bearer token:
@@ -7272,9 +7323,13 @@ await endpoint.StopAsync();
 ```
 
 Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`,
-`POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`. Mutations return
-202; capabilities not wired return 501. Bind defaults to loopback. There are no changes to the game client wire
-protocol.
+`POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions`
+(lists registered action names, sorted ordinal), `GET /actions/{name}` (dispatches with a null payload),
+`POST /actions/{name}` (dispatches with an optional JSON body). Mutations return 202. Capabilities not wired
+return 501. An unknown action name returns 404. A malformed JSON body returns 400 with `{ "error": "malformed
+json body" }`. An absent, empty, whitespace-only, or literal JSON-null request body all reach the handler as a
+null payload, so the common `payload?.GetProperty(...)` idiom is safe against a caller that posts nothing. Bind
+defaults to loopback. There are no changes to the game client wire protocol.
 
 ### Client self-rescue / unstuck
 

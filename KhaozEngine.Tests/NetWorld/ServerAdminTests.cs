@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
@@ -50,5 +52,69 @@ public class ServerAdminTests
         Assert.True(admin.AccountsSupported);
         Assert.False(admin.BansSupported);
         await Assert.ThrowsAsync<NotSupportedException>(async () => await admin.UnbanAsync("x"));
+    }
+
+    [Theory]
+    [InlineData("Upper")]      // uppercase
+    [InlineData("")]           // empty
+    [InlineData("has space")]  // space
+    [InlineData("-lead")]      // leading dash
+    public void RegisterAction_RejectsInvalidNames(string bad)
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        Assert.Throws<ArgumentException>(() => admin.RegisterAction(bad, _ => AdminActionResult.Ok()));
+    }
+
+    [Fact]
+    public void RegisterAction_RejectsNameOver64Chars()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        Assert.Throws<ArgumentException>(() => admin.RegisterAction(new string('a', 65), _ => AdminActionResult.Ok()));
+    }
+
+    [Fact]
+    public void RegisterAction_RejectsDuplicate()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        admin.RegisterAction("ping", _ => AdminActionResult.Ok());
+        Assert.Throws<ArgumentException>(() => admin.RegisterAction("ping", _ => AdminActionResult.Ok()));
+    }
+
+    [Fact]
+    public void ActionNames_ListsRegistrations()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        admin.RegisterAction("alpha", _ => AdminActionResult.Ok());
+        admin.RegisterAction("bravo", _ => AdminActionResult.Ok());
+        Assert.Equal(new[] { "alpha", "bravo" }, admin.ActionNames.OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task SyncOverload_WrapsAndExecutes()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        admin.RegisterAction("echo", _ => AdminActionResult.Ok(new { ok = true }));
+
+        Assert.True(admin.TryGetAction("echo", out var handler));
+        AdminActionResult result = await handler(null, CancellationToken.None);
+        Assert.Equal(AdminActionStatus.Ok, result.Status);
+        Assert.NotNull(result.Payload);
+    }
+
+    [Fact]
+    public void TryGetAction_ReturnsFalseForUnknown()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        Assert.False(admin.TryGetAction("missing", out _));
+    }
+
+    // A live world is irrelevant to the action registry, which hangs on ServerAdmin itself, so these tests back the
+    // facade with a do-nothing controllable rather than spinning a WorldServer over LoopbackTransport.
+    private sealed class NullAdminControllable : IAdminControllable
+    {
+        public IReadOnlyList<OnlinePlayer> ListOnline() => Array.Empty<OnlinePlayer>();
+        public void Teleport(PlayerRef target, Vector3 position) { }
+        public void Kick(PlayerRef target, string reason) { }
+        public void Broadcast(string text) { }
     }
 }

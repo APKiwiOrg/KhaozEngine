@@ -19,6 +19,7 @@ namespace KhaozEngine.Navigation;
 public sealed class NavGrid
 {
     readonly byte[] _clearance;
+    readonly float[]? _heights;
 
     /// <summary>World size of one cell, on both axes (world units).</summary>
     public float CellSize { get; }
@@ -43,7 +44,7 @@ public sealed class NavGrid
     /// (no upper bound). See <see cref="ContainsY"/>.</summary>
     public float YMax { get; }
 
-    NavGrid(byte[] clearance, int width, int height, float cellSize, float originX, float originZ, float yMin, float yMax)
+    NavGrid(byte[] clearance, int width, int height, float cellSize, float originX, float originZ, float yMin, float yMax, float[]? heights = null)
     {
         _clearance = clearance;
         Width = width;
@@ -53,6 +54,7 @@ public sealed class NavGrid
         OriginZ = originZ;
         YMin = yMin;
         YMax = yMax;
+        _heights = heights;
     }
 
     /// <summary>
@@ -82,12 +84,73 @@ public sealed class NavGrid
         return new NavGrid(clearance, width, height, cellSize, originX, originZ, yMin, yMax);
     }
 
+    /// <summary>
+    /// Rasterizes <paramref name="sample"/> over a <paramref name="width"/> by <paramref name="height"/>
+    /// grid of <paramref name="cellSize"/> world units anchored at (<paramref name="originX"/>,
+    /// <paramref name="originZ"/>), then applies the step-reachability and headroom rules
+    /// (<paramref name="stepHeight"/> / <paramref name="agentHeight"/>, see <see cref="StepMask"/>) and
+    /// bakes the clearance transform once. <paramref name="sample"/> is called once per cell with its
+    /// (cx, cz) grid coordinates. Unlike <see cref="FromWalkable"/>, the resulting grid records the
+    /// per-cell surface heights (see <see cref="SurfaceHeightAt"/> / <see cref="HasSurfaceHeights"/>).
+    /// A cell is blocked when its sample is not standable, its headroom is below
+    /// <paramref name="agentHeight"/>, or its surface drops to a standable neighbor by more than
+    /// <paramref name="stepHeight"/>. <paramref name="yMin"/> and <paramref name="yMax"/> record the
+    /// vertical band, checked later via <see cref="ContainsY"/>.
+    /// </summary>
+    public static NavGrid FromSurfaces(
+        int width, int height, float cellSize, float originX, float originZ,
+        Func<int, int, NavSurfaceSample> sample,
+        float stepHeight, float agentHeight,
+        float yMin = float.NegativeInfinity, float yMax = float.PositiveInfinity)
+    {
+        if (sample is null) throw new ArgumentNullException(nameof(sample));
+        if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width), width, "Width must be positive.");
+        if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height), height, "Height must be positive.");
+        if (cellSize <= 0f) throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Cell size must be positive.");
+
+        var standable = new bool[width * height];
+        var heights = new float[width * height];
+        var headroom = new float[width * height];
+        for (int z = 0; z < height; z++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int i = z * width + x;
+                NavSurfaceSample s = sample(x, z);
+                standable[i] = s.Standable;
+                heights[i] = s.Standable ? s.Height : 0f;
+                headroom[i] = s.Headroom;
+            }
+        }
+
+        bool[] blocked = StepMask.Compute(standable, heights, headroom, width, height, stepHeight, agentHeight);
+        byte[] clearance = ClearanceTransform.Compute(blocked, width, height);
+        return new NavGrid(clearance, width, height, cellSize, originX, originZ, yMin, yMax, heights);
+    }
+
     /// <summary>True when (<paramref name="cx"/>, <paramref name="cz"/>) is within the grid.</summary>
     public bool InBounds(int cx, int cz) => cx >= 0 && cz >= 0 && cx < Width && cz < Height;
 
     /// <summary>Clearance at (<paramref name="cx"/>, <paramref name="cz"/>) in half-cell units. 0 when the
     /// cell is blocked or out of bounds (space outside the grid counts as blocked).</summary>
     public byte ClearanceAt(int cx, int cz) => InBounds(cx, cz) ? _clearance[cz * Width + cx] : (byte)0;
+
+    /// <summary>True when this grid was baked with a per-cell surface height field
+    /// (via <see cref="FromSurfaces"/>). False for grids from <see cref="FromWalkable"/>.</summary>
+    public bool HasSurfaceHeights => _heights is not null;
+
+    /// <summary>
+    /// The baked surface height at (<paramref name="cx"/>, <paramref name="cz"/>) in world Y, or null when
+    /// this grid has no height field (<see cref="HasSurfaceHeights"/> is false), the cell is out of bounds,
+    /// or the cell is blocked (clearance 0). A non-null result is the surface an agent stands on there.
+    /// </summary>
+    public float? SurfaceHeightAt(int cx, int cz)
+    {
+        if (_heights is null) return null;
+        if (!InBounds(cx, cz)) return null;
+        if (ClearanceAt(cx, cz) == 0) return null;
+        return _heights[cz * Width + cx];
+    }
 
     /// <summary>Clearance at (<paramref name="cx"/>, <paramref name="cz"/>) converted to world meters:
     /// <see cref="ClearanceAt"/> * <see cref="CellSize"/> * 0.5f.</summary>

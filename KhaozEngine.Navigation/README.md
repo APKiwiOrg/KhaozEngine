@@ -65,6 +65,50 @@ NavGrid grid = NavGridBaker.BakeOverworld(
     extraBlocked: (x, z) => scriptedNoGoZone.Contains(x, z));
 ```
 
+## Step-aware overworld bake (`INavSurfaceProvider` / `NavGridBaker.BakeOverworldSteps`)
+
+`BakeOverworld` tests a flat band above analytic terrain and blocks any collider footprint outright, so a
+low rock, a ramp, or a staircase bakes as a hard wall. `BakeOverworldSteps` instead reads a per-cell
+walkable surface height from an `INavSurfaceProvider` (`TrySample(x, z, out height, out headroom) ->
+bool`, false when there is no standable surface there) and marks a step between neighboring cells walkable
+when the rise is within `stepHeight` and the headroom clears `agentHeight`. Ramps, staircases, and low
+standable props become walkable without leaving a single `NavGrid` layer.
+
+`TerrainSurfaceProvider` is the shipped default: analytic terrain height raised to any `WorldSurfaces`
+prop top covering the point, so a creature stands on the prop instead of routing around it. A prop top
+also rescues ground the slope gate would otherwise block, since the agent stands on the prop, not the
+hillside. Note that `TerrainSurfaceProvider` always reports open-sky headroom
+(`float.PositiveInfinity`), so with the default provider the `agentHeight` half of the rule never blocks
+a cell. Real vertical clearance takes effect only with a game-supplied provider that reports actual
+headroom. `DelegateSurfaceProvider` wraps a plain delegate for a game that wants to supply its own source,
+for example a downward physics raycast, without declaring a named class. That physics-probe source is a
+game-implemented provider over the game's own `IPhysicsWorld`: `KhaozEngine.Navigation` reads it only
+through the `INavSurfaceProvider` interface and takes no dependency on `KhaozEngine.Physics`.
+
+The rise-within-`stepHeight`-plus-headroom rule bakes into the blocked mask itself, so the planner and
+follower need no per-edge logic and no changes. One v1 conservatism: a step taller than `stepHeight`
+blocks its higher side by one cell (the standable top itself bakes standable, but the cell one step up
+from it does not), so a too-tall step is impassable from either direction rather than merely steep. A
+later phase (multi-level layered surfaces, `docs/ROADMAP.md`) removes this by giving the tall side its own
+layer.
+
+`NavGrid.FromSurfaces` is the lower-level entry point `BakeOverworldSteps` calls: it rasterizes a
+`(cx, cz) -> NavSurfaceSample` sampler directly, for a caller that already has per-cell surface data and
+does not go through an `INavSurfaceProvider`. A grid baked this way records its per-cell surface height,
+readable via `NavGrid.SurfaceHeightAt(cx, cz)` (null when the grid has no height field, the cell is out of
+bounds, or the cell is blocked) and `NavGrid.HasSurfaceHeights` (false for grids from `FromWalkable`).
+
+```csharp
+using KhaozEngine.Navigation;
+
+var provider = new TerrainSurfaceProvider(terrain, maxSlopeRadians: MathF.PI / 4f, surfaces, colliders,
+    colliderProbeRadius: 0.5f * 0.70710678f);
+NavGrid grid = NavGridBaker.BakeOverworldSteps(
+    provider,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f);
+```
+
 ## Path planning (`IPathPlanner` / `GridPathPlanner` / `PathQueryBudget`)
 
 `IPathPlanner.FindPath(start, goal, agentRadius, budget)` is the seam: callers depend on the interface so
@@ -155,6 +199,8 @@ produce the same waypoints.
 
 Depends on `KhaozEngine.Primitives`, `KhaozEngine.Collision` (`WorldColliders` footprints in
 `NavGridBaker`), and `KhaozEngine.Terrain` (`TerrainCollision` slope in `NavGridBaker`). In the
-`Foundation` umbrella metapackage.
+`Foundation` umbrella metapackage. Unchanged by the step-aware bake: `INavSurfaceProvider` is the seam a
+game-implemented physics-probe surface source enters through, so a downward raycast against the game's
+own `IPhysicsWorld` never becomes a dependency of this package.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

@@ -55,6 +55,9 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
    (content beneath bleeds through) or, at low factors, invisibility - use it only when you mean to fade.
+   `ScaleRgb` is unclamped, so a brighten factor over an already-bright color can overshoot 1.0 per channel;
+   use `color.ScaleRgbClamped(factor)` (same contract, each scaled channel clamped to 0..1) whenever the
+   factor can push a channel out of range, e.g. a UI "selected" highlight tint.
 7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.

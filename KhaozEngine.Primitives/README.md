@@ -11,7 +11,8 @@ automatically, so this is transparent to every other package.
 
 - `Color` - RGBA float struct, a typed wrapper over `Vector4` (implicit to `Vector4`, explicit back).
   `FromBytes`, `FromHex`/`ToHex`, `WithAlpha`, `ScaleRgb` (scale RGB, keep alpha - dim a color without
-  making it translucent, unlike `* float`), `* float`, unclamped `Lerp`.
+  making it translucent, unlike `* float`), `ScaleRgbClamped` (`ScaleRgb`, but each scaled channel clamped
+  to 0..1 - a brighten factor that would otherwise overshoot 1.0), `* float`, unclamped `Lerp`.
 - `DeterministicRng` - seeded xorshift128+ (splitmix64 init), reproducible across .NET versions and
   platforms. `State` get/set for save/resume, `CreateDerived("combat")` for decorrelated per-subsystem
   streams, `StableHash` for a platform-stable string hash.

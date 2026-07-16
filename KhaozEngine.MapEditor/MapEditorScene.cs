@@ -107,6 +107,9 @@ public class MapEditorScene : GameScene, IGameScene3D
     const float StatusHeight = 26f;
     /// <summary>Height in points of the filter box slotted at the top of the palette / spawn-list region.</summary>
     const float PaletteFilterHeight = 26f;
+    /// <summary>Left inset in points between the status strip's edge and the status text (see <see cref="TruncateStatusLine"/>,
+    /// which reserves this on both sides when fitting the line to the strip).</summary>
+    const float StatusTextInset = 8f;
     /// <summary>Falls back to this world-space box height for a kit id absent from the manifests.</summary>
     const float FallbackKindHeight = 2f;
 
@@ -201,8 +204,13 @@ public class MapEditorScene : GameScene, IGameScene3D
     // rebuilding. Per-category expansion is remembered across rebuilds so clearing a filter restores the tree.
     readonly List<PaletteCategory> _paletteSource = new();
     readonly Dictionary<string, bool> _paletteExpansion = new(StringComparer.Ordinal);
-    string _paletteTreeFilter = "";   // the filter text the live palette tree was last built for
-    string _spawnTreeFilter = "";     // the filter text the live spawn list was last built for
+    string _paletteTreeFilter = "";   // the TRIMMED filter text the live palette tree was last built for
+    string _spawnTreeFilter = "";     // the TRIMMED filter text the live spawn list was last built for
+
+    // The controller mode UpdateChrome last saw, so it can detect a swap and drop a now-hidden filter's stale
+    // focus (see the UpdateChrome block that compares this every frame). Defaults to Select, matching the
+    // controller's own default Mode, so the very first chrome step never misfires an unfocus.
+    EditorToolMode _lastChromeMode;
 
     bool _built;
     string _statusText = "";
@@ -543,6 +551,20 @@ public class MapEditorScene : GameScene, IGameScene3D
         // never raises a change event, so this cannot loop back into a mode switch.
         _toolbar.ActiveIndex = (int)_controller.Mode;
 
+        // Drop a filter's focus the moment the mode swap that just happened hides its panel: TextInput.Unfocus
+        // normally only runs inside the filter's own Update call in UpdateWidgets, which only runs for the
+        // mode's CURRENTLY visible filter (see AnyEditorFocused), so a filter focused while its panel was up
+        // would otherwise keep IsFocused stuck true forever once the panel hides - not just a toolbar tap (the
+        // controller can also change mode on its own, same as the ActiveIndex sync above). Compared every frame
+        // outside UpdateWidgets' UiViewport guard so this fixes the stale bit even headless. AnyEditorFocused's
+        // own mode gate stays in place too, as defense in depth.
+        if (_controller.Mode != _lastChromeMode)
+        {
+            if (!KitPaletteVisible) _paletteFilter.Unfocus();
+            if (!SpawnMode) _spawnFilter.Unfocus();
+            _lastChromeMode = _controller.Mode;
+        }
+
         // Keep the toolbar Save button's label tracking the dirty flag, also outside the UiViewport guard so a
         // headless test sees "Save" / "Save*" flip without a live viewport (decision 4).
         _saveButton.Content = LocalizedText.Raw(_document.IsDirty ? "Save*" : "Save");
@@ -608,6 +630,13 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
+    // Reused across calls instead of allocated fresh each time (the TreeView.VisibleRows pattern): DrawOverlays
+    // runs ComputeOverlayDrawList every frame, so a per-call List<T> would litter Gen0 with a small allocation
+    // for a value nobody keeps past that same frame's GPU submission. Shared across every caller (both the live
+    // scene's per-frame draw and KhaozEngine.MapEdit.Tool's offline renderer, which is why this is static rather
+    // than an instance field), so it assumes single-threaded, non-reentrant use - true of both callers today.
+    static readonly List<OverlayDraw> _overlayDrawList = new();
+
     /// <summary>Turns the document's exclusions, scatter overrides, regions, and terrain features into a flat list of
     /// ground-plane overlay fills: each authoring shape becomes a disc / rect / polygon fill (exclusions red-ish,
     /// scatter overrides orange, regions blue-ish) and each terrain feature a small amber marker disc at its center,
@@ -617,8 +646,11 @@ public class MapEditorScene : GameScene, IGameScene3D
     /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
     /// unknown custom type) is skipped, and so is any element <paramref name="visibility"/> hides (its group is off
     /// or it is individually hidden), so a hidden overlay is not drawn. Returns an empty list when
-    /// <paramref name="showOverlays"/> is false. Pure (no GPU, no scene state), so the whole computation is
-    /// headless-testable. <see cref="DrawOverlays"/> submits the result untested.</summary>
+    /// <paramref name="showOverlays"/> is false. Pure aside from the reuse below (no GPU, no scene state), so the
+    /// whole computation is headless-testable. <see cref="DrawOverlays"/> submits the result untested.
+    /// <para>Rebuilt on every call into a shared cached list (see <see cref="TreeView.VisibleRows"/> for the
+    /// same pattern), so a caller that needs to keep one call's result across a LATER call must materialize it
+    /// (<c>ToList</c>/<c>ToArray</c>) first, or the earlier reference's content changes out from under it.</para></summary>
     internal static List<OverlayDraw> ComputeOverlayDrawList(
         MapDocument doc, EditorSelection selection, Func<float, float, float> sampleHeight, bool showOverlays,
         EditorVisibility visibility)
@@ -628,7 +660,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         ArgumentNullException.ThrowIfNull(sampleHeight);
         ArgumentNullException.ThrowIfNull(visibility);
 
-        var list = new List<OverlayDraw>();
+        List<OverlayDraw> list = _overlayDrawList;
+        list.Clear();
         if (!showOverlays) return list;
 
         int selectedExclusion = selection.Kind == SelectionKind.Exclusion ? SelectedIndex(selection.Id) : -1;
@@ -717,10 +750,11 @@ public class MapEditorScene : GameScene, IGameScene3D
         }
     }
 
-    // A selected overlay reads brighter: scale RGB up (ScaleRgb preserves the base alpha) then firm up that alpha,
-    // so the highlighted shape stands out against its unselected neighbours. Unselected returns the base color.
+    // A selected overlay reads brighter: scale RGB up (clamped at 1.0, alpha preserved) then firm up that alpha,
+    // so the highlighted shape stands out against its unselected neighbours without an unclamped channel
+    // overshooting past white. Unselected returns the base color.
     static Color Tint(Color baseColor, bool selected) => selected
-        ? baseColor.ScaleRgb(OverlaySelectBrighten).WithAlpha(MathF.Min(1f, baseColor.A * OverlaySelectAlphaBoost))
+        ? baseColor.ScaleRgbClamped(OverlaySelectBrighten).WithAlpha(MathF.Min(1f, baseColor.A * OverlaySelectAlphaBoost))
         : baseColor;
 
     // The list index a feature / exclusion selection id encodes, or -1 when it is not a valid non-negative index.
@@ -757,8 +791,9 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector.Draw(batch, _white, font);
 
         DrawPalette(batch, font, L.Palette);
-        batch.DrawString(font, StatusLine(),
-            new Vector2(MathF.Floor(L.Status.X + 8f), MathF.Floor(L.Status.Y + (StatusHeight - font.LineHeight) * 0.5f)),
+        string statusLine = TruncateStatusLine(StatusLine(), L.Status.Width, s => font.Measure(s).X);
+        batch.DrawString(font, statusLine,
+            new Vector2(MathF.Floor(L.Status.X + StatusTextInset), MathF.Floor(L.Status.Y + (StatusHeight - font.LineHeight) * 0.5f)),
             new Color(0.85f, 0.87f, 0.92f, 1f));
 
         // Drawn LAST, after every other chrome element (including the inspector, whose own Draw already clears its
@@ -1458,7 +1493,8 @@ public class MapEditorScene : GameScene, IGameScene3D
         // forced-open categories never overwrite the user's real collapse choices and clearing the filter
         // restores exactly what they left. A category the filter hides keeps its remembered value in the
         // persistent map (it is absent from Roots to snapshot, but was captured the last time it was shown).
-        if (_paletteTreeFilter.Trim().Length == 0)
+        // _paletteTreeFilter is always already trimmed (see the assignment below), so no re-Trim here.
+        if (_paletteTreeFilter.Length == 0)
             foreach (TreeNode root in _paletteTree.Roots)
                 if (root.Tag is string label) _paletteExpansion[label] = root.Expanded;
 
@@ -1478,7 +1514,7 @@ public class MapEditorScene : GameScene, IGameScene3D
                 || !_paletteExpansion.TryGetValue(category.Label, out bool wasExpanded) || wasExpanded;
             _paletteTree.Roots.Add(node);
         }
-        _paletteTreeFilter = filter;
+        _paletteTreeFilter = needle;   // trimmed, so RefreshPalettes' trimmed compare matches what was actually built
     }
 
     // Rebuild the flat spawn-archetype list for a filter substring, preserving the game-authored order (no
@@ -1496,18 +1532,21 @@ public class MapEditorScene : GameScene, IGameScene3D
             if (needle.Length > 0 && archetype.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
             _spawnList.Roots.Add(new TreeNode(LocalizedText.Raw(archetype), new PaletteLeaf(archetype)));
         }
-        _spawnTreeFilter = filter;
+        _spawnTreeFilter = needle;   // trimmed, so RefreshPalettes' trimmed compare matches what was actually built
     }
 
-    /// <summary>Rebuilds the palette tree and / or the spawn list when its filter box text no longer matches what
-    /// the live view was built for. Called once per widget step after the filter boxes are driven, so a rebuild
-    /// happens only on a filter change, not every frame. Internal so a headless test can trigger it after a
+    /// <summary>Rebuilds the palette tree and / or the spawn list when its filter box text, trimmed, no longer
+    /// matches what the live view was last built for (trimmed too, since that is what <see cref="RebuildPaletteTree"/>
+    /// / <see cref="RebuildSpawnList"/> actually match against). Comparing trimmed text on both sides means an
+    /// edit that only adds or removes leading/trailing whitespace - the matched leaves are unchanged either way -
+    /// does not trigger a rebuild. Called once per widget step after the filter boxes are driven, so a rebuild
+    /// happens only on a real filter change, not every frame. Internal so a headless test can trigger it after a
     /// <see cref="TextInput.SetText"/> without a full UI frame.</summary>
     internal void RefreshPalettes()
     {
-        if (!string.Equals(_paletteFilter.Text, _paletteTreeFilter, StringComparison.Ordinal))
+        if (!string.Equals(_paletteFilter.Text.Trim(), _paletteTreeFilter, StringComparison.Ordinal))
             RebuildPaletteTree(_paletteFilter.Text);
-        if (!string.Equals(_spawnFilter.Text, _spawnTreeFilter, StringComparison.Ordinal))
+        if (!string.Equals(_spawnFilter.Text.Trim(), _spawnTreeFilter, StringComparison.Ordinal))
             RebuildSpawnList(_spawnFilter.Text);
     }
 
@@ -3359,7 +3398,8 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     /// <summary>Composes the status-strip text. The active mode name and its <see cref="EditorToolController.ModeHint"/>
     /// lead the line (the operator's most useful cue), followed by the undo/redo labels, the exit chord, and any
-    /// transient message (save result, discard warning). Internal so a headless test can assert the ordering.</summary>
+    /// transient message (a save result or a bookmark action). Internal so a headless test can assert the
+    /// ordering.</summary>
     internal string StatusLine()
     {
         string dirty = _document.IsDirty ? "*" : "";
@@ -3370,6 +3410,16 @@ public class MapEditorScene : GameScene, IGameScene3D
         return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}   " +
             $"R: snap to ground   Ctrl+Up/Down: reorder feature   Shift+Esc: exit{tail}";
     }
+
+    /// <summary>Fits <paramref name="text"/> to the status strip's available width (its full width minus
+    /// <see cref="StatusTextInset"/> on both sides), truncating with a trailing ellipsis via
+    /// <see cref="GuiDraw.TruncateWithEllipsis"/> when it does not fit. <c>SpriteBatch.DrawString</c> has no
+    /// width or clip parameter of its own, so an unbounded status line (a long save-failure message, a
+    /// compressed strip width) would otherwise run past the strip's edge with nothing to catch it.
+    /// <paramref name="measureWidth"/> is the caller's width function (e.g. <c>s =&gt; font.Measure(s).X</c>),
+    /// so the helper is pure and headless-testable without a live <c>SpriteFont</c>.</summary>
+    internal static string TruncateStatusLine(string text, float stripWidth, Func<string, float> measureWidth) =>
+        GuiDraw.TruncateWithEllipsis(text, MathF.Max(0f, stripWidth - StatusTextInset * 2f), measureWidth);
 
     void Fill(SpriteBatch batch, Rect r, Color color) =>
         batch.Draw(_white, new Vector4(r.X, r.Y, r.Width, r.Height), color);

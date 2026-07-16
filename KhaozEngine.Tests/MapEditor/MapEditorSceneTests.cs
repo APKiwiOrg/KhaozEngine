@@ -1490,6 +1490,52 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void PaletteFilter_UnfocusesOnModeSwapAwayFromPlaceMode()
+        {
+            // Before this fix, a filter focused in the mode that shows it kept IsFocused stuck true forever once
+            // the mode swapped away and its panel hid: TextInput.Unfocus only ever ran inside the filter's own
+            // (mode-gated) Update call, which UpdateWidgets stops driving the instant KitPaletteVisible goes
+            // false. AnyEditorFocused's own mode gate papered over the symptom (a hidden filter's stale focus no
+            // longer blocked shortcuts in a DIFFERENT mode) without clearing the stuck bit itself.
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager { Input = InputState.Empty };
+            m.Push(scene);
+
+            scene.Controller.Mode = EditorToolMode.PlacePlacement;   // the mode that shows the kit palette filter
+            m.Update(0.016f);   // establishes PlacePlacement as the chrome step's last-seen mode
+
+            scene.PaletteFilter.Focus();
+            Assert.True(scene.PaletteFilter.IsFocused);   // precondition: the filter owns focus
+
+            scene.Controller.Mode = EditorToolMode.Select;   // swap away: the kit palette (and its filter) hides
+            m.Update(0.016f);
+
+            Assert.False(scene.PaletteFilter.IsFocused);
+        }
+
+        [Fact]
+        public void SpawnFilter_UnfocusesOnModeSwapAwayFromSpawnMode()
+        {
+            // Same stuck-focus bug as PaletteFilter_UnfocusesOnModeSwapAwayFromPlaceMode, for the spawn filter.
+            var scene = new DocScene(() => ValidDoc());
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            var m = new SceneManager { Input = InputState.Empty };
+            m.Push(scene);
+
+            scene.Controller.Mode = EditorToolMode.PlaceSpawn;   // the mode that shows the spawn filter
+            m.Update(0.016f);   // establishes PlaceSpawn as the chrome step's last-seen mode
+
+            scene.SpawnFilter.Focus();
+            Assert.True(scene.SpawnFilter.IsFocused);   // precondition: the filter owns focus
+
+            scene.Controller.Mode = EditorToolMode.Select;   // swap away: the spawn list (and its filter) hides
+            m.Update(0.016f);
+
+            Assert.False(scene.SpawnFilter.IsFocused);
+        }
+
+        [Fact]
         public void TerrainNode_InspectorEditsWaterLevel_TriggersRebuild()
         {
             var scene = PushDocScene(() =>
@@ -2539,6 +2585,24 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void Palette_WhitespaceOnlyFilterEdit_DoesNotRebuild()
+        {
+            var scene = PushPaletteScene(KitCategories());
+
+            scene.PaletteFilter.SetText("oak");
+            scene.RefreshPalettes();
+            TreeNode nodeBefore = scene.PaletteTree.Roots[0];   // RebuildPaletteTree always mints fresh TreeNodes
+
+            // Trims to the same "oak" the tree was already built for: RefreshPalettes must compare trimmed text
+            // against the last-applied TRIMMED value, not the raw text, or a bare-space edit re-triggers
+            // RebuildPaletteTree for no visible change.
+            scene.PaletteFilter.SetText("oak ");
+            scene.RefreshPalettes();
+
+            Assert.Same(nodeBefore, scene.PaletteTree.Roots[0]);   // same instance: no rebuild ran
+        }
+
+        [Fact]
         public void Palette_LeafSelection_SetsPlaceKind()
         {
             var scene = PushPaletteScene(KitCategories());
@@ -2571,6 +2635,23 @@ namespace KhaozEngine.Tests.MapEditor
             scene.SpawnFilter.SetText("");
             scene.RefreshPalettes();
             Assert.Equal(4, scene.SpawnList.Roots.Count);                 // clearing restores the pin plus all three
+        }
+
+        [Fact]
+        public void SpawnList_WhitespaceOnlyFilterEdit_DoesNotRebuild()
+        {
+            var scene = PushPaletteScene(new Dictionary<string, string>(StringComparer.Ordinal), "wolf", "bear", "wolfpup");
+
+            scene.SpawnFilter.SetText("wolf");
+            scene.RefreshPalettes();
+            TreeNode nodeBefore = scene.SpawnList.Roots[0];   // RebuildSpawnList always mints a fresh pinned root
+
+            // Same underlying bug as the palette filter: a whitespace-only edit trims to the same "wolf" match, so
+            // it must not re-trigger RebuildSpawnList.
+            scene.SpawnFilter.SetText(" wolf");
+            scene.RefreshPalettes();
+
+            Assert.Same(nodeBefore, scene.SpawnList.Roots[0]);   // same instance: no rebuild ran
         }
 
         // ---- palette visibility ----------------------------------------------------------------------------
@@ -2663,6 +2744,41 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.StartsWith("PlacePlacement", line);
             Assert.Contains(hint, line);
             Assert.True(line.IndexOf(hint, StringComparison.Ordinal) < line.IndexOf("undo:", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void TruncateStatusLine_FitsWithinStrip_ReturnsUnchanged()
+        {
+            // A deterministic 10-units-per-char measure keeps the math exact and font-free (the GridCellText
+            // idiom from PropertyGridTests, applied to the status strip's own truncation helper).
+            static float Width(string s) => s.Length * 10f;
+
+            Assert.Equal("Select   undo: -", MapEditorScene.TruncateStatusLine("Select   undo: -", 1000f, Width));
+        }
+
+        [Fact]
+        public void TruncateStatusLine_TooWideForStrip_TruncatesWithEllipsis()
+        {
+            static float Width(string s) => s.Length * 10f;
+            string longLine = new string('x', 40);
+
+            string truncated = MapEditorScene.TruncateStatusLine(longLine, 100f, Width);
+
+            // Fits inside the strip's own width (the truncation target is narrower still, once the left/right
+            // insets are reserved), ends in the trailing ellipsis, and is strictly shorter than the source.
+            Assert.True(Width(truncated) <= 100f);
+            Assert.EndsWith("...", truncated);
+            Assert.True(truncated.Length < longLine.Length);
+        }
+
+        [Fact]
+        public void TruncateStatusLine_StripNarrowerThanInsets_ReturnsEllipsisOnly()
+        {
+            static float Width(string s) => s.Length * 10f;
+
+            // A strip width at or below the reserved insets clamps the fit target to zero: not even one prefix
+            // char plus the dots fits, so TruncateWithEllipsis's own floor case returns the bare ellipsis.
+            Assert.Equal("...", MapEditorScene.TruncateStatusLine(new string('x', 40), 0f, Width));
         }
 
         // ---- toolbar mode sync ---------------------------------------------------------------------------
@@ -3434,6 +3550,31 @@ namespace KhaozEngine.Tests.MapEditor
             noScatterScene.Document.Selection.Set(SelectionKind.CompanionLayer, "lonely");
             Assert.NotNull(ReadOnlyRowByLabel(noScatterScene.Inspector, "HostLayer"));
             AssertEveryRowDescribed(noScatterScene.Inspector, "CompanionLayer (no scatter layers)");
+        }
+
+        // A dedicated document for the PolygonShapeDoc branch of AddShapeRows: EveryKindDoc deliberately keeps its
+        // exclusion/region/scatter-override shapes disc/rect (other tests depend on that exact fixture), so the
+        // polygon branch (the read-only "Kind" + "Points" rows) has never been walked by EveryRow_HasDescription.
+        [Fact]
+        public void PolygonShapeRows_HaveDescriptions()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Exclusions.Add(new MapExclusion
+                {
+                    Shape = new PolygonShapeDoc { Points = { new[] { 0f, 0f }, new[] { 10f, 0f }, new[] { 5f, 8f } } },
+                });
+                return doc;
+            });
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+
+            ReadOnlyRow kind = ReadOnlyRowByLabel(scene.Inspector, "Kind");
+            kind.Update(new Rect(0f, 0f, 200f, 28f), new InputManager(), 0f);   // polls the display getter
+            Assert.Equal("polygon", kind.Display);
+
+            AssertEveryRowDescribed(scene.Inspector, "Exclusion (polygon)");
         }
 
         // Asserts the CURRENT inspector carries at least the given group HeaderRow labels (order-independent,

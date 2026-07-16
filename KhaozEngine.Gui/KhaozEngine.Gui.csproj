@@ -16,5 +16,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <!-- MapEditorScene's status-strip truncation reuses GuiDraw.TruncateWithEllipsis (the PropertyGrid cell/label
+         idiom) instead of duplicating the fit-to-width binary search. -->
+    <InternalsVisibleTo Include="KhaozEngine.MapEditor" />
   </ItemGroup>
 </Project>

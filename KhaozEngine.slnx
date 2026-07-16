@@ -39,6 +39,7 @@
   <Project Path="KhaozEngine.Netcode.Abstractions.DecouplingTests/KhaozEngine.Netcode.Abstractions.DecouplingTests.csproj" />
   <Project Path="KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />
   <Project Path="KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
+  <Project Path="KhaozEngine.Particles.Render3D/KhaozEngine.Particles.Render3D.csproj" />
   <Project Path="KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
   <Project Path="KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
   <Project Path="KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />

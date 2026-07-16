@@ -17,6 +17,8 @@
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+    <!-- the modern particle sim <-> Render3D adapter (looks, presets, light-linked draws) -->
+    <ProjectReference Include="../KhaozEngine.Particles.Render3D/KhaozEngine.Particles.Render3D.csproj" />
     <!-- physics seam only; the BepuPhysics backend (KhaozEngine.Physics.Bepu) is an opt-in sibling
          package, not bundled here - matching the WorldStore.Sqlite/.SqlServer pattern -->
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />

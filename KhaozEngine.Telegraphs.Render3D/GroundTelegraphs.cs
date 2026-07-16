@@ -76,6 +76,8 @@ namespace KhaozEngine.Telegraphs
                 RimGlow = r.RimGlow,
                 SweepGlow = r.SweepGlow,
                 Sparkle = r.Sparkle,
+                InteriorDim = r.InteriorDim,
+                Runner = r.Runner,
             };
         }
 

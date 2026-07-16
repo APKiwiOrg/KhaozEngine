@@ -151,5 +151,48 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(TelegraphFillPattern.Solid, r.Pattern);
             Assert.Equal(0f, r.FeatherFraction);
         }
+    [Fact]
+    public void Sweep_glow_ramps_in_after_the_early_cast_window()
+    {
+        // The glow band is wider than the tiny early swept region, so full-strength glow at low progress
+        // reads as a ball at the shape center. The resolver holds it at zero through the ramp-in window.
+        var s = TelegraphStyle.Nature;
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.05f, s).SweepGlow);
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.08f, s).SweepGlow);
+        Assert.True(TelegraphResolve.Resolve(0.15f, s).SweepGlow > 0f);
+        Assert.True(TelegraphResolve.Resolve(0.15f, s).SweepGlow < TelegraphResolve.Resolve(0.5f, s).SweepGlow);
+    }
+
+    [Fact]
+    public void Interior_dim_passes_through_clamped()
+    {
+        var s = TelegraphStyle.Frost;
+        Assert.Equal(s.InteriorDim, TelegraphResolve.Resolve(0.4f, s).InteriorDim);
+        s.InteriorDim = 3f;
+        Assert.Equal(1f, TelegraphResolve.Resolve(0.4f, s).InteriorDim);
+        s.InteriorDim = -1f;
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.4f, s).InteriorDim);
+    }
+
+    [Fact]
+    public void Runner_follows_the_outline_runner_flag_and_energy()
+    {
+        Assert.True(TelegraphResolve.Resolve(0.5f, TelegraphStyle.Arcane).Runner > 0f);
+        Assert.Equal(0f, TelegraphResolve.Resolve(0.5f, TelegraphStyle.Frost).Runner);
+        var s = TelegraphStyle.Steel;
+        s.EdgeEnergy = 0.5f;
+        Assert.Equal(0.5f, TelegraphResolve.Resolve(0.5f, s).Runner, 4);
+    }
+
+    [Fact]
+    public void Prior_fourteen_arg_resolved_ctor_still_compiles_with_zero_new_fields()
+    {
+        var r = new ResolvedTelegraph(Color.White, Color.White, 1f, 0f, 2f,
+            FillMode.Fill, TelegraphBlend.Alpha,
+            0.1f, TelegraphFillPattern.ScrollingNoise, 1f, 6f, 1f, 1f, 1f);
+        Assert.Equal(0f, r.InteriorDim);
+        Assert.Equal(0f, r.Runner);
+    }
+
     }
 }

@@ -1532,7 +1532,14 @@ namespace KhaozEngine.Render3D
             Matrix4x4 lightVpGpu = GpuClip.Correct(lightVp, _gd.Capabilities);
             int res = _model.ShadowMap.Resolution;   // the actual allocated resolution (clamped)
             float invRes = 1f / Math.Max(1, res);
-            _model.SetShadowUniforms(lightVpGpu, invRes, shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength);
+            // Normal-offset world size = the world width of one shadow texel (2*radius/resolution) x the tunable
+            // ShadowNormalOffset (in texels). Baked here (CPU) so it stays extent-aware: change the focus radius or
+            // resolution and the receiver's normal offset tracks the texel size automatically. The shader scales it by
+            // the grazing angle to the key light and offsets the sample point along the surface normal, which lets the
+            // depth bias stay tiny (no peter-panning) while still killing self-shadow acne.
+            float texelWorld = Internal.ShadowMapMath.TexelWorldSize(shadows.ShadowFocusRadius, res);
+            float normalOffsetWorld = texelWorld * MathF.Max(0f, shadows.ShadowNormalOffset);
+            _model.SetShadowUniforms(lightVpGpu, invRes, shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength, normalOffsetWorld);
             return lightVpGpu;
         }
 

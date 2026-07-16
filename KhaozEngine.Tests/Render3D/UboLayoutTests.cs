@@ -49,11 +49,11 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void ShadowTail_MarshalSize_And_Offset_MatchConstants()
         {
-            // The shadow tail (mat4 LightViewProj + vec4 Params) is 80 bytes, appended right after the two light
-            // arrays at offset 688. If the ShadowUbo struct or the constants drift apart the shadow-tail upload
-            // (WriteFrameUniformsTo -> UpdateBuffer at ShadowTailOffset) smears the splat params that follow.
+            // The shadow tail (mat4 LightViewProj + vec4 Params + vec4 Params2) is 96 bytes, appended right after the
+            // two light arrays at offset 688. If the ShadowUbo struct or the constants drift apart the shadow-tail
+            // upload (WriteFrameUniformsTo -> UpdateBuffer at ShadowTailOffset) smears the splat params that follow.
             Assert.Equal((int)ModelRenderer.ShadowTailBytes, Marshal.SizeOf<ModelRenderer.ShadowUbo>());
-            Assert.Equal(64 + 16, (int)ModelRenderer.ShadowTailBytes);
+            Assert.Equal(64 + 32, (int)ModelRenderer.ShadowTailBytes);
             Assert.Equal(ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes, ModelRenderer.ShadowTailOffset);
             Assert.Equal(688u, ModelRenderer.ShadowTailOffset);
         }
@@ -68,11 +68,11 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is768_TheDocumentedCombinedSize()
+        public void UboBytes_Is784_TheDocumentedCombinedSize()
         {
-            // 176 + 2*256 + 80 = 768. The value the comments/docs quote; a sanity anchor on the derived arithmetic
-            // (header + both point-light arrays + the shadow tail).
-            Assert.Equal(768u, ModelRenderer.UboBytes);
+            // 176 + 2*256 + 96 = 784. The value the comments/docs quote, a sanity anchor on the derived arithmetic
+            // (header + both point-light arrays + the shadow tail, which grew a vec4 for the normal-offset world size).
+            Assert.Equal(784u, ModelRenderer.UboBytes);
         }
 
         // ---- Splat material params tail ----
@@ -283,6 +283,8 @@ namespace KhaozEngine.Tests.Render3D
                     $"{name} lost 'mat4 ShadowMat;': the shadow tail dropped from the frame UBO block; the splat params tail now lands at the wrong offset. Fix ShaderSources.{name}.");
                 Assert.True(src.Contains("vec4 ShadowParams;"),
                     $"{name} lost 'vec4 ShadowParams;': the shadow tail dropped from the frame UBO block. Fix ShaderSources.{name}.");
+                Assert.True(src.Contains("vec4 ShadowParams2;"),
+                    $"{name} lost 'vec4 ShadowParams2;': the shadow tail's normal-offset vec4 dropped from the frame UBO block; the splat params tail now lands at the wrong offset. Fix ShaderSources.{name}.");
             }
         }
 

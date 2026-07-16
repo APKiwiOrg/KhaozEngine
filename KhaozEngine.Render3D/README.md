@@ -64,7 +64,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   lighting block PCF-samples (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models
   and terrain. Every drawn mesh casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`:
   `ShadowMapResolution` (default `2048`, a construction-time knob), `ShadowFocusRadius`/`ShadowGroundHeight`,
-  `ShadowStrength`, and the acne biases `ShadowConstantBias`/`ShadowSlopeBias`. On a device without depth-sample
+  `ShadowStrength`, and the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias
+  that is the primary acne defence and keeps the shadow connected to the caster's feet) plus the tiny residual depth
+  biases `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample
   support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The depth map persists across frames,
   so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (the fitted light matrix, the
   rigid caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior

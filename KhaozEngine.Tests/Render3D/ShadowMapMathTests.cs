@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -116,6 +117,105 @@ namespace KhaozEngine.Tests.Render3D
             Matrix4x4 vp = ShadowMapMath.BuildLightViewProj(Vector3.Zero, Vector3.Zero, radius: 3f, resolution: 512);
             Vector4 clip = Vector4.Transform(new Vector4(0f, 0f, 0f, 1f), vp);
             Assert.False(float.IsNaN(clip.X) || float.IsNaN(clip.Y) || float.IsNaN(clip.Z));
+        }
+
+        // ---- Cascade split (FillCascadeRadii) --------------------------------------------------------------------
+
+        [Fact]
+        public void CascadeRadii_Endpoints_AreExactlyFocusAndMaxDistance()
+        {
+            // The near cascade is ALWAYS exactly the focus radius (so cascade 0 == the pre-cascade single map and the
+            // near-shadow contact quality is preserved), and the outermost cascade is ALWAYS exactly the max distance.
+            Span<float> r = stackalloc float[4];
+            ShadowMapMath.FillCascadeRadii(r, count: 3, focusRadius: 16f, maxDistance: 130f);
+            Assert.Equal(16f, r[0], 3);
+            Assert.Equal(130f, r[2], 3);
+        }
+
+        [Fact]
+        public void CascadeRadii_AreStrictlyGrowing()
+        {
+            // Concentric cascades must grow outward so the receiver's tightest-containing selection is well defined.
+            Span<float> r = stackalloc float[4];
+            ShadowMapMath.FillCascadeRadii(r, count: 4, focusRadius: 12f, maxDistance: 120f);
+            Assert.True(r[0] < r[1] && r[1] < r[2] && r[2] < r[3], $"radii not growing: {r[0]},{r[1]},{r[2]},{r[3]}");
+        }
+
+        [Fact]
+        public void CascadeRadii_SingleCascade_IsJustFocusRadius()
+        {
+            // count == 1 reproduces the pre-cascade single map: one entry at the focus radius (max distance unused).
+            Span<float> r = stackalloc float[4];
+            ShadowMapMath.FillCascadeRadii(r, count: 1, focusRadius: 16f, maxDistance: 130f);
+            Assert.Equal(16f, r[0], 3);
+        }
+
+        [Fact]
+        public void CascadeRadii_MaxDistanceBelowFocus_ClampsToFocus()
+        {
+            // A nonsensical max distance below the focus radius collapses (the outer cascade never fits tighter than
+            // the near one), so every cascade is at least the focus radius.
+            Span<float> r = stackalloc float[4];
+            ShadowMapMath.FillCascadeRadii(r, count: 3, focusRadius: 20f, maxDistance: 5f);
+            Assert.True(r[0] >= 20f - 1e-3f && r[2] >= 20f - 1e-3f);
+        }
+
+        // ---- Atlas column transform ------------------------------------------------------------------------------
+
+        [Fact]
+        public void AtlasColumnTransform_SingleColumn_IsIdentity()
+        {
+            Assert.Equal(Matrix4x4.Identity, ShadowMapMath.AtlasColumnTransform(0, 1));
+        }
+
+        [Fact]
+        public void AtlasColumnTransform_MapsCascadeNdcIntoItsColumn()
+        {
+            // For column i of n, the transform must map cascade clip.x [-1,1] onto the column's atlas-U sub-range
+            // [i/n, (i+1)/n] (as NDC [-1 + 2i/n, -1 + 2(i+1)/n]), leaving Y and the stored depth Z untouched.
+            const int n = 3;
+            for (int i = 0; i < n; i++)
+            {
+                Matrix4x4 c = ShadowMapMath.AtlasColumnTransform(i, n);
+                // clip' = clip * C (row vector). Feed the left/right/centre of the cascade clip x range.
+                Vector4 left = Vector4.Transform(new Vector4(-1f, 0.3f, 0.7f, 1f), c);
+                Vector4 right = Vector4.Transform(new Vector4(1f, 0.3f, 0.7f, 1f), c);
+                float expLeft = -1f + 2f * i / n;
+                float expRight = -1f + 2f * (i + 1) / n;
+                Assert.Equal(expLeft, left.X, 4);
+                Assert.Equal(expRight, right.X, 4);
+                // Y and Z (the stored depth) are unchanged by the X-only column transform.
+                Assert.Equal(0.3f, left.Y, 5);
+                Assert.Equal(0.7f, left.Z, 5);
+            }
+        }
+
+        // ---- Cascade selection (containment) ---------------------------------------------------------------------
+
+        [Fact]
+        public void SelectCascade_PicksTightestContainingCascade_AndFallsOutward()
+        {
+            // Concentric cascades of growing radius around one focus. A point near the focus falls in cascade 0, a
+            // point past cascade 0's extent but inside cascade 1 falls in cascade 1, and a point beyond all is -1.
+            var focus = new Vector3(0f, 0f, 0f);
+            var mats = new Matrix4x4[3];
+            Span<float> r = stackalloc float[4];
+            ShadowMapMath.FillCascadeRadii(r, 3, focusRadius: 8f, maxDistance: 80f);
+            for (int i = 0; i < 3; i++) mats[i] = ShadowMapMath.BuildLightViewProj(LightDir, focus, r[i], 2048);
+
+            // On the focus plane, displace along a light-space axis by increasing world distance. Use the light's
+            // right vector so the displacement lands in the map's XY plane.
+            Vector3 near = focus + new Vector3(3f, 0f, 0f);     // ~3 units: inside cascade 0 (radius 8)
+            Vector3 mid = focus + new Vector3(30f, 0f, 0f);     // ~30 units: past cascade 0, inside cascade 1/2
+            Vector3 far = focus + new Vector3(200f, 0f, 0f);    // ~200 units: beyond every cascade
+
+            int selNear = ShadowMapMath.SelectCascade(mats, 3, near);
+            int selMid = ShadowMapMath.SelectCascade(mats, 3, mid);
+            int selFar = ShadowMapMath.SelectCascade(mats, 3, far);
+            Assert.Equal(0, selNear);
+            Assert.True(selMid >= 1 && selMid <= 2, $"mid point should fall in a later cascade, got {selMid}");
+            Assert.True(selMid >= selNear, "selection must fall outward for a farther point");
+            Assert.Equal(-1, selFar);
         }
     }
 }

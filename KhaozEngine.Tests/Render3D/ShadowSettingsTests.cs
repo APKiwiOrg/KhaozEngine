@@ -145,5 +145,38 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1f, b.Strength, 3);
             Assert.Equal(0f, b.HeightAboveGround, 3);
         }
+
+        // ---- Cascade settings validation ----
+
+        [Fact]
+        public void Cascade_defaults_are_three_and_mmo_vista_distance()
+        {
+            var s = new ShadowSettings();
+            Assert.Equal(3, s.ShadowCascadeCount);
+            Assert.Equal(3, s.ResolvedCascadeCount);
+            Assert.Equal(130f, s.ShadowMaxDistance, 3);
+            Assert.Equal(2048, s.ShadowMapResolution);   // per-cascade resolution unchanged
+        }
+
+        [Fact]
+        public void ResolvedCascadeCount_clamps_to_one_through_four()
+        {
+            Assert.Equal(1, new ShadowSettings { ShadowCascadeCount = 0 }.ResolvedCascadeCount);
+            Assert.Equal(1, new ShadowSettings { ShadowCascadeCount = -5 }.ResolvedCascadeCount);
+            Assert.Equal(4, new ShadowSettings { ShadowCascadeCount = 9 }.ResolvedCascadeCount);
+            Assert.Equal(ShadowSettings.MaxCascades, new ShadowSettings { ShadowCascadeCount = 99 }.ResolvedCascadeCount);
+            for (int n = ShadowSettings.MinCascades; n <= ShadowSettings.MaxCascades; n++)
+                Assert.Equal(n, new ShadowSettings { ShadowCascadeCount = n }.ResolvedCascadeCount);
+        }
+
+        [Fact]
+        public void ResolvedMaxDistance_never_below_focus_radius()
+        {
+            // The outer cascade must never fit tighter than the near cascade.
+            var s = new ShadowSettings { ShadowFocusRadius = 20f, ShadowMaxDistance = 5f };
+            Assert.Equal(20f, s.ResolvedMaxDistance, 3);
+            var ok = new ShadowSettings { ShadowFocusRadius = 16f, ShadowMaxDistance = 130f };
+            Assert.Equal(130f, ok.ResolvedMaxDistance, 3);
+        }
     }
 }

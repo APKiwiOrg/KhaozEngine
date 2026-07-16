@@ -132,5 +132,63 @@ namespace KhaozEngine.Tests.Render3D
             var runsB = Runs((5, 1, 1), (3, 1, 1));
             Assert.True(Scene3D.ShadowCastersChanged(runsA, Models(0f, 1f), runsB, Models(1f, 0f)));
         }
+
+        // ---- Cascade light-matrix dirty tracking (day/night across ALL cascades) --------------------------------
+
+        static Matrix4x4[] CascadeVps(Vector3 lightDir, Vector3 focus, params float[] radii)
+        {
+            var m = new Matrix4x4[radii.Length];
+            for (int i = 0; i < radii.Length; i++) m[i] = ShadowMapMath.BuildLightViewProj(lightDir, focus, radii[i], 2048);
+            return m;
+        }
+
+        [Fact]
+        public void Identical_cascade_fits_compare_equal()
+        {
+            var f = new Vector3(2f, 0f, -1f);
+            var a = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var b = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            Assert.False(Scene3D.ShadowCascadeVpsChanged(a, 3, b, 3));
+        }
+
+        [Fact]
+        public void A_moving_sun_dirties_across_all_cascades()
+        {
+            // A per-frame LightDirection change (day/night) re-fits EVERY cascade, so the cascade-set compare flips
+            // true and the depth pass re-renders. Reproduces the Scene3D wiring (ShadowCascadeVpsChanged feeds
+            // lightMatrixChanged into ShadowDepthPassDirty).
+            var f = new Vector3(2f, 0f, -1f);
+            var noon = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var evening = CascadeVps(new Vector3(-0.8f, -0.4f, -0.2f), f, 16f, 56f, 130f);
+            bool changed = Scene3D.ShadowCascadeVpsChanged(noon, 3, evening, 3);
+            Assert.True(changed);
+            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
+                resolutionChanged: false, lightMatrixChanged: changed, casterDataChanged: false));
+
+            // A held sun (identical direction) leaves every cascade unchanged, so a static scene reuses the atlas.
+            var held = CascadeVps(new Vector3(-0.8f, -0.4f, -0.2f), f, 16f, 56f, 130f);
+            Assert.False(Scene3D.ShadowCascadeVpsChanged(evening, 3, held, 3));
+        }
+
+        [Fact]
+        public void A_changed_cascade_count_is_a_change()
+        {
+            // Comparing a 3-cascade fit to a 2-cascade fit (a settings change) differs even if the shared cascades match.
+            var f = new Vector3(0f, 0f, 0f);
+            var three = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var two = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 130f);
+            Assert.True(Scene3D.ShadowCascadeVpsChanged(three, 3, two, 2));
+        }
+
+        [Fact]
+        public void One_moved_cascade_is_a_change()
+        {
+            // Only the far cascade's fit moved (e.g. the camera panned enough to snap the coarse cascade a texel):
+            // the set compare must still trip, so a stale far cascade never lingers.
+            var f = new Vector3(0f, 0f, 0f);
+            var a = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 130f);
+            var b = CascadeVps(new Vector3(-0.2f, -1f, -0.1f), f, 16f, 56f, 131f);
+            Assert.True(Scene3D.ShadowCascadeVpsChanged(a, 3, b, 3));
+        }
     }
 }

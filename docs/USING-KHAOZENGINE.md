@@ -2,14 +2,14 @@
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
 on it. The engine is **MonoGame-free**: Silk.NET windowing/input, Veldrid behind `KhaozEngine.Gpu` for the GPU,
-Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first; the rest
+Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
 is reference.
 
 ---
 
 ## Mental model: one data flow
 
-A game subclasses `GameApp` (2D) or `GameApp3D` (3D). The base owns the window and the per-frame loop; the game
+A game subclasses `GameApp` (2D) or `GameApp3D` (3D). The base owns the window and the per-frame loop. The game
 fills in seams.
 
 ```
@@ -43,13 +43,13 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    once per frame before `OnUpdate`. If you use an `InputManager` directly (e.g. for menu nav), call
    `Update(input, viewport)` once per frame, before you query it.
 3. **Hit-test with the bounds helpers, never with raw position + button.** Use `IsTapIn`, `IsPressingIn`,
-   `IsHoveringIn`, `IsDraggingIn`, etc. `IsTapIn` enforces the press-origin invariant; a hand-rolled
+   `IsHoveringIn`, `IsDraggingIn`, etc. `IsTapIn` enforces the press-origin invariant. A hand-rolled
    `IsPointerDown && rect.Contains(pos)` does not, and it leaks clicks.
 4. **An overlay above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every
    frame, and the layer beneath must guard its actions with `IsInputBlocked(point)`. This is half of the
-   click-through fix; the other half is `IsTapIn`.
+   click-through fix. The other half is `IsTapIn`.
 5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
-   drawn. `GameApp` does this for you; if you build your own loop, do it yourself.
+   drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
 6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
@@ -74,7 +74,7 @@ head inherit two build-property defaults from `KhaozEngine.Foundation`:
 .NET 9+ marks the x64 apphost CET / shadow-stack compatible by default. On Windows 10 builds with only partial
 CET support (e.g. 20H2) that hard-aborts at boot: *"Your Windows doesn't fully support CET."* `CETCompat` is an
 apphost (game-head) MSBuild property, and the engine ships libraries, not an apphost, so it cannot be set from
-engine code; Foundation ships it as a `buildTransitive` props default instead, which every head inherits whether
+engine code. Foundation ships it as a `buildTransitive` props default instead, which every head inherits whether
 Foundation is a direct reference or pulled in through `Game2D`/`Game3D`. A `normal`-importance build message
 announces it (visible at `-v normal` and in IDE build output; the default minimal `dotnet build` stays quiet).
 
@@ -111,7 +111,7 @@ host (no `GameApp`) gets the same attach from the `AppWindow` constructor. **Opt
 **Crash visibility with no console.** A fatal *startup* crash on a WinExe launched from Explorer (no window yet,
 no console) would otherwise be silent. `GameApp` installs a last-chance net in exactly that case (a Windows GUI
 launch that ended up with no console) that writes the unhandled exception to a file under
-`%LOCALAPPDATA%\KhaozEngine\crash\`. This is the floor; the recommended richer path is still to wire
+`%LOCALAPPDATA%\KhaozEngine\crash\`. This is the floor. The recommended richer path is still to wire
 `KhaozEngine.Diagnostics.CrashHandler.Install()` with a `FileSink` (see the Diagnostics / logging section below),
 which routes every fatal to your game's `game.log` regardless of console. `KhaozEngine.Showcase` is the reference
 desktop head and ships as `WinExe`.

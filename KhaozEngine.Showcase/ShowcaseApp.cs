@@ -12,23 +12,33 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Showcase
 {
-    /// <summary>The showcase host: a GameApp3D holding a SceneManager and the room registry. Each room is a
-    /// (display name, factory) pair. MenuScene lists them and pushes the chosen one. Later rooms self-register
-    /// in OnLoad. Honors KE_MAX_FRAMES via the AppWindow loop (headless smoke renders N frames then exits 0).</summary>
+    /// <summary>One entry in the showcase room registry: the localized tile <paramref name="Title"/> and one-line
+    /// <paramref name="Blurb"/> the hub menu shows, plus the <paramref name="Factory"/> that builds the room scene
+    /// when it is entered. The title also drives the KE_SHOWCASE_ROOM auto-enter (a case-insensitive prefix match
+    /// against the resolved title).</summary>
+    public sealed record ShowcaseRoomEntry(StringId Title, StringId Blurb, Func<GameScene> Factory);
+
+    /// <summary>The showcase host: a GameApp3D holding a SceneManager, the room registry, and the shared
+    /// <see cref="ShowcaseHud"/> that draws each room's chrome (title / controls hint / status / toasts). Each
+    /// registry entry pairs a localized title + blurb with a scene factory; <see cref="MenuScene"/> lays them out
+    /// as a tile grid and pushes the chosen one. Honors KE_MAX_FRAMES via the AppWindow loop (headless smoke
+    /// renders N frames then exits 0) and KE_SHOWCASE_ROOM to auto-enter a room by title prefix.</summary>
     public sealed class ShowcaseApp : GameApp3D
     {
         readonly SceneManager _scenes = new();
 
         /// <summary>Points of bottom-edge clearance the F7-F10 display readout band occupies, so a room can reserve
         /// it (the map editor's <see cref="KhaozEngine.MapEditor.MapEditorOptions.StatusBottomOffset"/>) and not
-        /// draw its own chrome under the readout line.</summary>
+        /// draw its own chrome under the readout line. The shared <see cref="ShowcaseHud"/> also sits its controls
+        /// band directly above this band.</summary>
         public const float DisplayReadoutHeight = 36f;
 
-        /// <summary>Room registry, in menu order. Rooms append here in OnLoad.</summary>
-        public readonly List<(string Name, Func<GameScene> Factory)> Rooms = new();
+        /// <summary>Room registry, in menu order. Rooms are appended here in OnLoad.</summary>
+        public readonly List<ShowcaseRoomEntry> Rooms = new();
 
         Texture2D _white = null!;
         DpiFont _readoutFont = null!;   // point-space readout: baked at the live DPI scale so the overlay stays crisp
+        ShowcaseHud _hud = null!;       // shared room chrome (title band, controls band, status line, toasts)
 
         // Runtime display-settings smoke controls (F7-F10), driven through the GameApp.Display surface. The cap /
         // resolution cycles walk fixed tables; window mode + present mode toggle. Overlaid state is drawn each frame.
@@ -56,67 +66,74 @@ namespace KhaozEngine.Showcase
 
             _white = Surface2D.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
 
-            // Room2D's texture/fonts are created here (Surface2D is only reachable from the app, not a
-            // GameScene) and wired into the room right after construction, so Room2D itself keeps a public
-            // parameterless constructor for the Func<GameScene> factory below.
-            var checker = Surface2D.CreateTexture(Room2D.Checker(64), 64, 64);
-
-            // Procedural nine-slice frame texture (original / CC0) for RoomGui's skinned-chrome widgets.
+            // Room2DGui's textures are created here (Surface2D is only reachable from the app, not a GameScene) and
+            // handed in via Init: the checker sprite for its sprites page and the procedural nine-slice frame skin
+            // for the skinned-chrome widgets on its widgets page.
+            var checker = Surface2D.CreateTexture(Room2DGui.Checker(64), 64, 64);
             var frameTex = Surface2D.CreateTexture(
-                RoomGui.BakeFramePixels(RoomGui.FrameSize, RoomGui.FrameInset), RoomGui.FrameSize, RoomGui.FrameSize);
-            var guiSkin = GuiSkin.NineSlice(frameTex, RoomGui.FrameInset);
+                Room2DGui.BakeFramePixels(Room2DGui.FrameSize, Room2DGui.FrameInset), Room2DGui.FrameSize, Room2DGui.FrameSize);
+            var guiSkin = GuiSkin.NineSlice(frameTex, Room2DGui.FrameInset);
 
             // Two font families, both crisp on HiDPI:
-            //  - DpiFonts (baked at the live DPI scale, drawn 1:1) for everything that draws through the point-space
-            //    UI pass: the menu, the display readout, and the rooms whose text/HUD is a point-space overlay.
-            //  - Oversample-3 SpriteFonts for the two ScreenStack rooms (RoomGui / RoomMiniGame): those stay in the
-            //    design-space pass (their widget layout is a fixed centered canvas that must not reflow on resize),
-            //    and a 3x supersampled atlas is minified by the design->framebuffer scale, so their text is crisp too.
+            //  - DpiFonts (baked at the live DPI scale, drawn 1:1) for everything drawn through the point-space UI
+            //    pass: the menu (dpi40 title / dpi22 tile titles / dpi16 subtitle-blurb-hint-footer), the shared
+            //    hud chrome (dpi22 title + dpi16 body), the display readout, and the 3D rooms' point-space overlays.
+            //  - Oversample-3 SpriteFonts for the design-space ScreenStack rooms (Room2DGui / RoomMiniGame): their
+            //    widget layout is a fixed centred canvas that must not reflow on resize, and a 3x supersampled atlas
+            //    minified by the design->framebuffer scale keeps that text crisp too.
             var dpi40 = Surface2D.LoadDefaultDpiFont(40f);
             var dpi22 = Surface2D.LoadDefaultDpiFont(22f);
+            var dpi16 = Surface2D.LoadDefaultDpiFont(16f);
             var big3 = Surface2D.LoadDefaultFont(40f, oversample: 3);
             var small3 = Surface2D.LoadDefaultFont(22f, oversample: 3);
             var bootFont = Surface2D.LoadDefaultDpiFont(28f, cacheSlots: 4);   // DPI-aware: crisp boot text on HiDPI
             _readoutFont = dpi22; // crisp point-space overlay text
 
-            // Room2D / RoomInput are fixed-layout design-space demos (they scale + centre as a unit on resize):
-            // crisp via the supersampled fonts, same as the ScreenStack rooms below.
-            Rooms.Add(("2D sprites + text", () => new Room2D().Init(_white, checker, big3, small3)));
+            // The shared room chrome: title band + status line in dpi22/dpi16, controls band + toasts. Rooms that
+            // toast (Room3D / RoomDungeon toggles) receive it via Init.
+            _hud = new ShowcaseHud(_white, dpi22, dpi16);
 
-            // RoomGui / RoomMiniGame are ScreenStack widget rooms: crisp via the supersampled design-space fonts.
-            Rooms.Add(("GUI + widgets", () => new RoomGui().Init(_white, big3, small3, guiSkin)));
+            // Room2DGui folds the old 2D-sprites, GUI-widgets, and input-audio rooms into one tabbed toolkit tour
+            // (a ScreenStack with a tab host + five pages), crisp via the supersampled design-space fonts.
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomGui2DTitle, ShowcaseStrings.RoomGui2DBlurb,
+                () => new Room2DGui().Init(_white, checker, big3, small3, guiSkin)));
 
-            Rooms.Add(("Input + audio", () => new RoomInput().Init(_white, small3)));
-
-            Rooms.Add(("Mini-game (Catcher)", () => new RoomMiniGame().Init(_white, big3, small3)));
+            // RoomMiniGame is a ScreenStack widget room: crisp via the supersampled design-space fonts.
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomMiniGameTitle, ShowcaseStrings.RoomMiniGameBlurb,
+                () => new RoomMiniGame().Init(_white, big3, small3)));
 
             // Boot screen: the turn-key startup pipeline (KhaozEngine.Game.Boot) driven with fake delayed steps, so
             // the instant-on bar + staged progress + error/retry state can be seen without a real update feed.
-            Rooms.Add(("Boot screen", () => new RoomBoot().Init(_white, bootFont)));
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomBootTitle, ShowcaseStrings.RoomBootBlurb,
+                () => new RoomBoot().Init(_white, bootFont)));
 
-            // Room3D is the walkable streamed 3D overworld ported from TerrainWalkSample. It renders through
-            // the app's shared Scene3D (injected here, since a GameScene cannot reach Surface3D itself); its
-            // collision legend overlay draws crisp through the point-space UI pass.
-            Rooms.Add(("3D World (walk)", () => new Room3D().Init(Scene, _white, dpi22)));
+            // Room3D is the walkable streamed 3D overworld. It renders through the app's shared Scene3D (injected
+            // here, since a GameScene cannot reach Surface3D itself); its overlays draw crisp through the UI pass,
+            // and its render/skinning toggles toast through the shared hud.
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomWorldTitle, ShowcaseStrings.RoomWorldBlurb,
+                () => new Room3D().Init(Scene, _white, dpi22, _hud)));
 
-            // RoomNet is the networked-walk room: authoritative WorldServer + local WorldClient over loopback
-            // UDP, demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D.
-            Rooms.Add(("Networked walk", () => new RoomNet().Init(Scene, _white, dpi22)));
+            // RoomNet is the networked-walk room: authoritative WorldServer + local WorldClient over loopback UDP,
+            // demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D. Its live
+            // net stats surface through the chrome status line (no toggles, so no hud toasts needed).
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomNetTitle, ShowcaseStrings.RoomNetBlurb,
+                () => new RoomNet().Init(Scene, _white, dpi22)));
 
-            // RoomDungeon is the walkable dungeon-generator demo: DungeonGenerator + DungeonStamp over the
-            // greybox kit, rendered as instanced props through the same shared Scene3D as Room3D.
-            Rooms.Add(("Dungeon (walk)", () => new RoomDungeon().Init(Scene, _white, dpi22)));
+            // RoomDungeon is the walkable dungeon-generator demo: DungeonGenerator + DungeonStamp over the greybox
+            // kit, rendered as instanced props through the same shared Scene3D as Room3D. Its outline toggle toasts.
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomDungeonTitle, ShowcaseStrings.RoomDungeonBlurb,
+                () => new RoomDungeon().Init(Scene, _white, dpi22, _hud)));
 
-            // Map editor: the turn-key KhaozEngine.MapEditor scene, registered directly (see RoomMapEditor's
-            // doc comment for why a wrapper GameScene would leave it half-wired) over the committed showcase
-            // demo document. Unlike the other rooms, plain Esc does NOT leave this room (the editor reserves
-            // it for cancelling gizmo/draw gestures): Shift+Esc is the exit chord, with a discard warning
-            // when there are unsaved changes. The manual verification room for Task 8: fly around, place a
-            // prop, drag it with the gizmo, undo/redo, bake a scatter region, save, Shift+Esc back to menu.
-            Rooms.Add(("Map editor", () => RoomMapEditor.Create(Scene, _white, dpi22)));
+            // Map editor: the turn-key KhaozEngine.MapEditor scene, registered directly (see RoomMapEditor's doc
+            // comment for why a wrapper GameScene would leave it half-wired) over the committed showcase demo
+            // document. Unlike the other rooms, plain Esc does NOT leave this room (the editor reserves it for
+            // cancelling gizmo/draw gestures): Shift+Esc is the exit chord, with a discard warning when there are
+            // unsaved changes. It is not an IShowcaseRoom (it carries its own chrome), so the shared hud skips it.
+            Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomMapEditorTitle, ShowcaseStrings.RoomMapEditorBlurb,
+                () => RoomMapEditor.Create(Scene, _white, dpi22)));
 
             // The landing menu draws through the point-space UI pass with the shared DpiFonts.
-            _scenes.Push(new MenuScene(_white, dpi40, dpi22, Rooms));
+            _scenes.Push(new MenuScene(_white, dpi40, dpi22, dpi16, Rooms));
 
             // Feed the built-in diagnostics HUD (F1) a Network section whenever the networked-walk room is active:
             // the source returns the live client stats there and null everywhere else (so the section drops out).
@@ -126,7 +143,7 @@ namespace KhaozEngine.Showcase
             // exercises the room's OnEnter/OnUpdate/OnDraw (the menu alone never builds a room's world). The push
             // is deferred to the first OnUpdate (below), not done here, because a room's OnEnter reads the scene
             // manager's Viewport/FrameWidth, which are only set once per frame in OnUpdate. Case-insensitive prefix
-            // match on the display name, so "3D" or "mini" is enough. Unmatched = ignored.
+            // match on the resolved room title, so "3D" or "mini" is enough. Unmatched = ignored.
             _autoRoom = System.Environment.GetEnvironmentVariable("KE_SHOWCASE_ROOM");
         }
 
@@ -135,6 +152,7 @@ namespace KhaozEngine.Showcase
         protected override void OnUpdate(float dt)
         {
             HandleDisplayKeys();
+            _hud.Update(dt);
 
             _scenes.Input = Input;
             _scenes.Pointer = Pointer;
@@ -149,9 +167,12 @@ namespace KhaozEngine.Showcase
             {
                 string want = _autoRoom;
                 _autoRoom = null;
-                foreach (var r in Rooms)
-                    if (r.Name.StartsWith(want, System.StringComparison.OrdinalIgnoreCase))
+                foreach (ShowcaseRoomEntry r in Rooms)
+                {
+                    string title = ((LocalizedText)r.Title).Resolve();
+                    if (title.StartsWith(want, System.StringComparison.OrdinalIgnoreCase))
                     { _scenes.Push(r.Factory()); break; }
+                }
             }
 
             _scenes.Update(dt);
@@ -171,11 +192,13 @@ namespace KhaozEngine.Showcase
             _scenes.Draw2D(batch);
         }
 
-        // The point-space UI pass (crisp on HiDPI): the scenes' own OnDrawUi (the menu), then the app-level display
-        // readout overlay on top.
+        // The point-space UI pass (crisp on HiDPI): the scenes' own OnDrawUi, then the shared room chrome, then the
+        // app-level display readout overlay on top. The chrome reads the active scene as an IShowcaseRoom (null for
+        // the menu / map editor, which carry their own chrome).
         protected override void OnDrawUi(SpriteBatch batch)
         {
             _scenes.DrawUi(batch);
+            _hud.Draw(batch, Ui, _scenes.Active as IShowcaseRoom);
             DrawDisplayReadout(batch);
         }
 

@@ -193,5 +193,13 @@ namespace KhaozEngine.Tests.Render3D
         Assert.Equal(0.9f, i.Energy.W);
     }
 
+    [Fact]
+    public void PackInstance_carries_base_fill_in_the_extra_lane()
+    {
+        var d = new GroundDecal { Shape = DecalShape.Circle, Size = new Vector4(3f, 0f, 0f, 0f), BaseFill = 0.3f };
+        var i = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+        Assert.Equal(new Vector4(0.3f, 0f, 0f, 0f), i.Extra);
+    }
+
     }
 }

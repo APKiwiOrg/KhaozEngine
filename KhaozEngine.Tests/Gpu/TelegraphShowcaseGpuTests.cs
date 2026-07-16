@@ -110,7 +110,15 @@ namespace KhaozEngine.Tests.Gpu
             preview.Scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(17f, 1f, 21f));
             MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(26f, 0.1f));
 
-            TelegraphStyle[] rows = { TelegraphStyle.Generic, TelegraphStyle.Fire, TelegraphStyle.Frost, TelegraphStyle.Arcane };
+            // Borderless variants (FillMode.Fill): the no-outline look consumers like Ruinborne ship. The base
+            // fill carries the extent, the sweep brightens across it, no outline band at all.
+            static TelegraphStyle Borderless(TelegraphStyle s)
+            {
+                s.FillMode = FillMode.Fill;
+                return s;
+            }
+            TelegraphStyle[] rows = { Borderless(TelegraphStyle.Generic), Borderless(TelegraphStyle.Fire),
+                Borderless(TelegraphStyle.Frost), Borderless(TelegraphStyle.Arcane) };
             float[] cols = { 0.15f, 0.45f, 0.75f };
 
             void DrawScene(Scene3D s)

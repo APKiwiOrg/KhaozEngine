@@ -32,7 +32,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class GroundDecalRenderer : IDisposable
     {
         /// <summary>Per-instance decal attributes, matching the <c>I*</c> inputs of <see cref="ShaderSources.DecalVert"/>
-        /// (9 x vec4 = 144 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
+        /// (9 x vec4 = 160 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
         /// instance vertex buffer each frame.</summary>
         public struct DecalInstance
         {
@@ -45,6 +45,7 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Gate;          // x=groundY, y=yTol, z=maxStep, w=featherWidth
             public Vector4 PatternP;      // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
             public Vector4 Energy;        // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
+            public Vector4 Extra;         // x=baseFill, yzw reserved 0
         }
 
         /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). ONE uniform buffer
@@ -151,6 +152,7 @@ namespace KhaozEngine.Render3D.Rendering
                             new GpuVertexElement("IGate", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IPattern", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IEnergy", GpuVertexElementFormat.Float4),
+                            new GpuVertexElement("IExtra", GpuVertexElementFormat.Float4),
                         }),
                 },
                 Outputs = outputs,
@@ -190,6 +192,7 @@ namespace KhaozEngine.Render3D.Rendering
             Gate = new Vector4(d.Center.Y, d.YTolerance, d.MaxStep, d.FeatherWidth),
             PatternP = new Vector4((int)d.Pattern, d.PatternSpeed, d.PatternScale, d.InteriorDim),
             Energy = new Vector4(d.RimGlow, d.SweepGlow, d.Sparkle, d.Runner),
+            Extra = new Vector4(d.BaseFill, 0f, 0f, 0f),
         };
 
         /// <summary>World-space bounding radius of a decal's painted shape about its <see cref="GroundDecal.Center"/>

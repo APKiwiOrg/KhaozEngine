@@ -70,8 +70,6 @@ namespace KhaozEngine.Showcase
         const ulong Seed = 2026UL;
 
         Scene3D _scene = null!;
-        Texture2D _white = null!;
-        DpiFont _hudFont = null!;      // reserved point-space overlay font (parity with Room3D's injection)
         ShowcaseHud _hud = null!;      // shared chrome: the outline toggle toasts here
 
         // Guards OnExit against running before OnEnter has built the per-enter state (and OnEnter against
@@ -122,9 +120,9 @@ namespace KhaozEngine.Showcase
         bool _animated;
         readonly List<CharacterSample> _samples = new(1);
 
-        public RoomDungeon Init(Scene3D scene, Texture2D white, DpiFont hudFont, ShowcaseHud hud)
+        public RoomDungeon Init(Scene3D scene, ShowcaseHud hud)
         {
-            _scene = scene; _white = white; _hudFont = hudFont; _hud = hud;
+            _scene = scene; _hud = hud;
             return this;
         }
 

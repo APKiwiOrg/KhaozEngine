@@ -124,8 +124,6 @@ namespace KhaozEngine.Showcase
         const int BindAttempts = 5;
 
         Scene3D _scene = null!;
-        Texture2D _white = null!;
-        DpiFont _hud = null!;
 
         // Guards OnExit/OnUpdate/OnDraw3D against running before OnEnter has built the per-enter state (and
         // OnEnter against leftover state from a previous visit).
@@ -164,9 +162,9 @@ namespace KhaozEngine.Showcase
         /// active. See <see cref="ShowcaseApp"/>'s HUD wiring.</summary>
         public ClientNetStats? NetStats => _client is null ? null : _client.NetStats;
 
-        public RoomNet Init(Scene3D scene, Texture2D white, DpiFont hud)
+        public RoomNet Init(Scene3D scene)
         {
-            _scene = scene; _white = white; _hud = hud;
+            _scene = scene;
             return this;
         }
 

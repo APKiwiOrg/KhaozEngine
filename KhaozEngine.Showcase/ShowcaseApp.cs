@@ -117,12 +117,12 @@ namespace KhaozEngine.Showcase
             // demonstrating predict/replicate/reconcile netcode. Reuses the same shared Scene3D as Room3D. Its live
             // net stats surface through the chrome status line (no toggles, so no hud toasts needed).
             Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomNetTitle, ShowcaseStrings.RoomNetBlurb,
-                () => new RoomNet().Init(Scene, _white, dpi22)));
+                () => new RoomNet().Init(Scene)));
 
             // RoomDungeon is the walkable dungeon-generator demo: DungeonGenerator + DungeonStamp over the greybox
             // kit, rendered as instanced props through the same shared Scene3D as Room3D. Its outline toggle toasts.
             Rooms.Add(new ShowcaseRoomEntry(ShowcaseStrings.RoomDungeonTitle, ShowcaseStrings.RoomDungeonBlurb,
-                () => new RoomDungeon().Init(Scene, _white, dpi22, _hud)));
+                () => new RoomDungeon().Init(Scene, _hud)));
 
             // Map editor: the turn-key KhaozEngine.MapEditor scene, registered directly (see RoomMapEditor's doc
             // comment for why a wrapper GameScene would leave it half-wired) over the committed showcase demo

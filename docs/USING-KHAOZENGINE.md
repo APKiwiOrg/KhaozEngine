@@ -2328,6 +2328,13 @@ modern style knobs below). The 3D path paints onto the ground/terrain via the de
 occluded by meshes. (EdgeThickness is authored in 2D pixels: the 3D ground path derives its own
 world-space edge from the decal size.)
 
+`FillMode` (`Outline` / `Fill` / `OutlineAndFill`) is honored by both renderers: `TelegraphResolve`
+zeroes the unwanted alpha before either path draws, so `Fill` also silences the outline-band
+effects (`RimGlow`, `OutlineRunner`) and `Outline` silences the fill (which in turn silences the
+fill-driven pattern, base fill, and sweep glow). Behavior fix: the 3D ground-decal path used to
+draw the outline band unconditionally regardless of `FillMode`, only the 2D renderer honored it.
+Both paths now agree.
+
 **Modern style knobs** (fields on `TelegraphStyle`, resolved by `TelegraphResolve` and consumed by
 the 3D ground-decal path only, see below):
 
@@ -2349,6 +2356,14 @@ the 3D ground-decal path only, see below):
   sweep edge instead of pooling flat across the whole shape. Presets use roughly 0.35 (dense) to
   0.6 (hollow). All seven set a nonzero value now, so every preset renders the hollow-rim look
   unless you dial it back to 0 on a custom style.
+- `BaseFill` - fraction of the fill alpha painted across the ENTIRE shape from progress 0,
+  independent of the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets the full
+  danger extent read immediately, the sweep then brightens across it. Presets use 0.3.
+
+**Borderless telegraphs**: set `FillMode = FillMode.Fill` (silences the outline band and its rim/
+runner effects) and give the style a nonzero `BaseFill` (all seven presets already do) so the full
+shape extent still reads before the sweep gets there instead of only the swept fraction being
+visible.
 
 `TelegraphAnim` gained four flags alongside the original four (`OutlinePulse`, `FillSweep`,
 `ColorRamp`, `ImpactFlash`):
@@ -2396,9 +2411,9 @@ The builder is pure and immediate-mode like every other telegraph call, so the C
         scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
-Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, RimGlow, SweepGlow, EdgeSparkle,
-OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash look. They
-are a 3D ground-decal feature.
+Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
+EdgeSparkle, OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash
+look, picking primitives by `FillMode` directly. They are a 3D ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same

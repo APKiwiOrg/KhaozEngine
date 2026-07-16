@@ -122,5 +122,15 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.False(TelegraphStyle.Frost.Animation.HasFlag(TelegraphAnim.OutlineRunner));
     }
 
+    [Fact]
+    public void Base_fill_defaults_to_legacy_zero_and_presets_set_it()
+    {
+        Assert.Equal(0f, default(TelegraphStyle).BaseFill);
+        Assert.True(TelegraphStyle.Generic.BaseFill > 0f);
+        Assert.True(TelegraphStyle.Fire.BaseFill > 0f);
+        Assert.True(TelegraphStyle.Frost.BaseFill > 0f);
+        Assert.True(TelegraphStyle.Arcane.BaseFill > 0f);
+    }
+
     }
 }

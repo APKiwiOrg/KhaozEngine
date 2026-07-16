@@ -127,5 +127,17 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.Equal(0f, d.Runner);
     }
 
+    [Fact]
+    public void Base_fill_maps_through_and_fill_mode_zeroes_the_outline_on_the_decal()
+    {
+        var s = TelegraphStyle.Frost;
+        s.FillMode = FillMode.Fill;
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s);
+        Assert.Equal(TelegraphStyle.Frost.BaseFill, d.BaseFill, 4);
+        Assert.Equal(0f, d.OutlineColor.A);
+        Assert.Equal(0f, d.RimGlow);
+        Assert.Equal(0f, d.Runner);
+    }
+
     }
 }

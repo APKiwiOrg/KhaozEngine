@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 10.120.0
+## 10.121.0
 
 `ScrollablePanel` opt-in smooth height glide: a caller-driven `Bounds` height change while the panel is
 visible (async content arriving, a tab switch changing row count) now eases instead of snapping in a single
@@ -25,7 +25,33 @@ frame, so a bottom-docked overlay panel no longer visibly jumps.
   panel becomes fully hidden (`TransitionAlpha <= 0`), so a panel always opens directly at its needed height;
   only a target change while the panel is already visible glides. While the user is actively drag-resizing
   (`Resizable`), the dragged height applies directly with no glide fighting the pointer; releasing the drag
-  resumes the glide from wherever the drag left it.
+  resumes the glide from wherever the drag left it. For the open-at-target guarantee to hold, the panel must
+  keep receiving dt-fed updates while hidden: a consumer that freezes updates while closed and reopens with
+  changed content will glide the open instead of snapping.
+
+## 10.120.0
+
+Borderless telegraphs: `TelegraphStyle.FillMode` is now honored on the 3D ground-decal path (a behaviour
+fix), plus a `BaseFill` extent tint and slimmer feathered bands. Additive minor with one behaviour change
+flagged below.
+
+- **BEHAVIOUR FIX: `FillMode` is now honored on the decal path.** `TelegraphResolve` applies
+  `TelegraphStyle.FillMode` for BOTH renderers. The 3D ground-decal path historically ignored `FillMode` and
+  always drew the outline, so a consumer that set `FillMode.Fill` or `FillMode.Outline` on the 3D path
+  previously got `OutlineAndFill` rendering and now gets what it asked for. `FillMode.Fill` zeroes the outline
+  alpha and the outline-band effects (RimGlow, OutlineRunner); `FillMode.Outline` zeroes the fill alpha;
+  `FillMode.OutlineAndFill` (every preset default) is unchanged. The 2D path already honored `FillMode`, so
+  that side is unaffected.
+- **`TelegraphStyle.BaseFill`** (0 = legacy, presets ship 0.3): the fraction of the fill alpha painted across
+  the entire shape from progress 0, independent of the sweep, so a borderless telegraph's full danger extent
+  reads immediately instead of only where the sweep has passed. New `ResolvedTelegraph.BaseFill` with an
+  18-arg constructor (the prior constructors are retained), `GroundDecal.BaseFill`, and a new 10th per-instance
+  `vec4` (`Extra`, `x=baseFill`, `yzw` reserved 0) on the decal instance layout.
+- **Slimmer borders** for styles that keep an outline: the outline band's feather contribution is halved and
+  the rim-glow band narrowed, so feathered telegraphs read thinner. Legacy hard-edge decals (feather 0) stay
+  bit-identical and the zero-neutral contract holds (the `telegraph_ground` goldens are unchanged, verified on
+  Metal). The `telegraph_modern` golden moved on feathered styles: Metal rebaked locally, D3D11 + Vulkan
+  rebaked via CI.
 
 ## 10.119.0
 

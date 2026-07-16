@@ -194,5 +194,54 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.Equal(0f, r.Runner);
     }
 
+    [Fact]
+    public void Fill_mode_silences_the_outline_and_its_band_effects()
+    {
+        var s = TelegraphStyle.Arcane;
+        s.FillMode = FillMode.Fill;
+        var r = TelegraphResolve.Resolve(0.5f, s);
+        Assert.Equal(0f, r.OutlineColor.A);
+        Assert.Equal(0f, r.RimGlow);
+        Assert.Equal(0f, r.Runner);
+        Assert.True(r.FillColor.A > 0f);
+        Assert.True(r.SweepGlow > 0f);
+    }
+
+    [Fact]
+    public void Outline_mode_silences_the_fill()
+    {
+        var s = TelegraphStyle.Generic;
+        s.FillMode = FillMode.Outline;
+        var r = TelegraphResolve.Resolve(0.5f, s);
+        Assert.Equal(0f, r.FillColor.A);
+        Assert.True(r.OutlineColor.A > 0f);
+    }
+
+    [Fact]
+    public void Outline_and_fill_mode_keeps_both_alphas()
+    {
+        var r = TelegraphResolve.Resolve(0.5f, TelegraphStyle.Generic);
+        Assert.True(r.FillColor.A > 0f);
+        Assert.True(r.OutlineColor.A > 0f);
+    }
+
+    [Fact]
+    public void Base_fill_passes_through_clamped()
+    {
+        var s = TelegraphStyle.Frost;
+        Assert.Equal(s.BaseFill, TelegraphResolve.Resolve(0.4f, s).BaseFill);
+        s.BaseFill = 2f;
+        Assert.Equal(1f, TelegraphResolve.Resolve(0.4f, s).BaseFill);
+    }
+
+    [Fact]
+    public void Prior_sixteen_arg_resolved_ctor_still_compiles_with_zero_base_fill()
+    {
+        var r = new ResolvedTelegraph(Color.White, Color.White, 1f, 0f, 2f,
+            FillMode.Fill, TelegraphBlend.Alpha,
+            0.1f, TelegraphFillPattern.ScrollingNoise, 1f, 6f, 1f, 1f, 1f, 0.5f, 1f);
+        Assert.Equal(0f, r.BaseFill);
+    }
+
     }
 }

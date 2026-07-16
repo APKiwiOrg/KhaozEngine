@@ -90,5 +90,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Rotating outline dash-runner energy: dash segments orbiting the outline band.
         /// 0 (default) = inert.</summary>
         public float Runner;
+        /// <summary>Fraction of the fill alpha painted across the ENTIRE shape regardless of the sweep
+        /// (0 = legacy, fill shows only where the sweep has reached). Lets the full extent read without an
+        /// outline. 0 (default) = inert.</summary>
+        public float BaseFill;
     }
 }

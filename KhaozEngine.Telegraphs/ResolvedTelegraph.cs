@@ -67,6 +67,12 @@ namespace KhaozEngine.Telegraphs
         /// </summary>
         public readonly float Runner;
 
+        /// <summary>
+        /// Fraction of the fill alpha painted across the entire shape from progress 0 (0 = legacy, the fill
+        /// only shows where the sweep has reached). Carried through from the style clamped to 0..1.
+        /// </summary>
+        public readonly float BaseFill;
+
         public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
             float edgeThickness, FillMode fillMode, TelegraphBlend blend)
             : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
@@ -88,6 +94,17 @@ namespace KhaozEngine.Telegraphs
             float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
             float patternScale, float rimGlow, float sweepGlow, float sparkle,
             float interiorDim, float runner)
+            : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
+                featherFraction, pattern, patternSpeed, patternScale, rimGlow, sweepGlow, sparkle,
+                interiorDim, runner, 0f)
+        {
+        }
+
+        public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
+            float edgeThickness, FillMode fillMode, TelegraphBlend blend,
+            float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
+            float patternScale, float rimGlow, float sweepGlow, float sparkle,
+            float interiorDim, float runner, float baseFill)
         {
             FillColor = fillColor;
             OutlineColor = outlineColor;
@@ -105,6 +122,7 @@ namespace KhaozEngine.Telegraphs
             Sparkle = sparkle;
             InteriorDim = interiorDim;
             Runner = runner;
+            BaseFill = baseFill;
         }
     }
 }

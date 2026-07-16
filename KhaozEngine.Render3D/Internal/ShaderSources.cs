@@ -1369,7 +1369,8 @@ layout(location=4) in vec4 IOutline;
 layout(location=5) in vec4 IParams;
 layout(location=6) in vec4 IGate;
 layout(location=7) in vec4 IPattern;   // x=pattern index, y=speed, z=cells per world unit, w=0
-layout(location=8) in vec4 IEnergy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=0
+layout(location=8) in vec4 IEnergy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
+layout(location=9) in vec4 IExtra;     // x=baseFill, yzw reserved 0
 layout(location=0) out vec4 vCenter;
 layout(location=1) out vec4 vSize;
 layout(location=2) out vec4 vFill;
@@ -1378,6 +1379,7 @@ layout(location=4) out vec4 vParams;
 layout(location=5) out vec4 vGate;
 layout(location=6) out vec4 vPattern;
 layout(location=7) out vec4 vEnergy;
+layout(location=8) out vec4 vExtra;
 void main() {
     // Two-triangle quad (gl_VertexIndex 0..5) spanning the instance's NDC footprint rect. Each per-instance attribute
     // is identical across the quad's six vertices, so the smooth varyings deliver the exact per-instance value to the
@@ -1394,6 +1396,7 @@ void main() {
     vGate = IGate;
     vPattern = IPattern;
     vEnergy = IEnergy;
+    vExtra = IExtra;
 }";
 
         public const string DecalFrag = @"#version 450
@@ -1413,6 +1416,7 @@ layout(location=4) in vec4 Params;    // x=edgeThickness, y=fillFraction, z=flas
 layout(location=5) in vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=featherWidth (world units)
 layout(location=6) in vec4 PatternP;  // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
 layout(location=7) in vec4 Energy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
+layout(location=8) in vec4 Extra;     // x=baseFill, yzw reserved 0
 layout(location=0) out vec4 oColor;
 
 // 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).
@@ -1503,8 +1507,18 @@ void main() {
     float feather = max(Gate.w, 0.0);
     // Fill: inside the swept boundary, AA across one edge width (widened by feather).
     float fillA = (1.0 - smoothstep(-feather, edge + feather, swept)) * Fill.a;
-    // Outline: a band straddling the FULL shape boundary.
-    float outlineA = (1.0 - smoothstep(edge, edge * 2.0 + feather, abs(sd))) * Outline.a;
+    // Outline: a band straddling the FULL shape boundary. The feather contribution is halved so soft styles do
+    // not grow fat borders (feather == 0 keeps the exact legacy band, the zero-neutral contract).
+    float outlineA = (1.0 - smoothstep(edge, edge * 2.0 + feather * 0.5, abs(sd))) * Outline.a;
+
+    // Base fill (Extra.x, 0 = legacy, gated so it is zero-neutral): a faint tint across the ENTIRE shape from
+    // progress 0, independent of the sweep. This is what lets a borderless (FillMode.Fill) telegraph read its
+    // full danger extent immediately, the sweep then brightens across it.
+    if (Extra.x > 0.0)
+    {
+        float baseA = (1.0 - smoothstep(-feather, edge + feather, sd)) * Fill.a * Extra.x;
+        fillA = max(fillA, baseA);
+    }
 
     // Animated noise fill. Gated on pattern index > 0 (Solid == 0 leaves fillA untouched, so zero-neutral) and a
     // non-empty fill. Reduced quality (TimeQ.y <= 0.5) drops the second octave.
@@ -1566,7 +1580,7 @@ void main() {
     if (Energy.x > 0.0)
     {
         // Rim glow: a band straddling the full boundary, tinted toward the outline colour with a slow shimmer.
-        float rim = (1.0 - smoothstep(0.0, edge * 2.0 + feather, abs(sd))) * Energy.x;
+        float rim = (1.0 - smoothstep(0.0, edge * 1.5 + feather * 0.5, abs(sd))) * Energy.x;
         float shimmer = 0.85 + 0.15 * sin(TimeQ.x * 6.0 + Center.x + Center.z);
         rgb = mix(rgb, Outline.rgb, clamp(rim * 0.6, 0.0, 1.0));
         a = max(a, rim * shimmer * Outline.a * 0.8);

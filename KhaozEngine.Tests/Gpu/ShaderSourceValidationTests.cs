@@ -95,6 +95,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.FxaaFrag, "PostFxaa");
 
         [Fact]
+        public void Tonemap()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TonemapFrag, "Tonemap");
+
+        [Fact]
         public void PostBloomBright()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.BloomBrightFrag, "PostBloomBright");
 

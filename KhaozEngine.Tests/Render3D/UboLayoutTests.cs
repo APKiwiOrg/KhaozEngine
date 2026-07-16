@@ -170,6 +170,16 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void ToneUbo_MarshalSize_EqualsToneBufferAllocation()
+        {
+            // GLSL: Tone { vec4 Params; } = 1 vec4 = 16 bytes (TonemapFrag).
+            Assert.Equal(16u, PixelPostProcess.ToneBufferBytes);
+            Assert.Equal(
+                (int)PixelPostProcess.ToneBufferBytes,
+                Marshal.SizeOf<PixelPostProcess.ToneUbo>());
+        }
+
+        [Fact]
         public void BlurScratch_MatchesBlurBuffer_And_GlslWeightsArray()
         {
             // The Blur block is `vec4 Texel; vec4 Params; vec4 Weights[BlurWeightSlots];`. The CPU scratch mirrors

@@ -8,10 +8,12 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// The toggleable fullscreen post chain on the low-res target:
-    /// palette quantization (+ Bayer dither) -> depth/normal edge outline -> bloom (bright-pass + separable blur +
-    /// additive composite) -> FXAA -> point-upscale to the swapchain. Stages ping-pong between PingA/PingB (and,
-    /// for bloom, the half-res BloomA/BloomB pair) so no pass reads its own output.
+    /// The toggleable fullscreen post chain on the low-res target. Two orders, selected by <see cref="HdrSettings"/>:
+    /// HDR (the default) runs bloom (over-range, pre-tonemap) -> ACES tonemap -> palette quantize -> edge outline ->
+    /// FXAA -> point-upscale to the swapchain, so the float16 scene is compressed to LDR after the highlights have
+    /// bloomed. Legacy (<c>Hdr.Enabled = false</c>) keeps the historical quantize -> outline -> bloom -> FXAA ->
+    /// upscale order, byte-identical to the pre-HDR output. Stages ping-pong between PingA/PingB (and, for bloom, the
+    /// half-res BloomA/BloomB pair) so no pass reads its own output.
     /// </summary>
     internal sealed class PixelPostProcess : IDisposable
     {
@@ -20,6 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
         internal struct BrightUbo { public Vector4 Params; }       // .x=threshold, .y=knee
         internal struct CompositeUbo { public Vector4 Params; }    // .x=intensity
+        internal struct ToneUbo { public Vector4 Params; }         // .x=exposure, .y=operator
 
         // Palette-quantize UBO sizing. The GLSL block is `vec4 Colors[MaxPaletteColors]; vec4 Info;` and the CPU
         // scratch mirrors it flat as floats. Named so UboLayoutTests can assert the scratch, the buffer, and the
@@ -32,6 +35,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint FxaaBufferBytes = 16;                         // 1 vec4 (rcpFrame)
         internal const uint BrightBufferBytes = 16;                       // 1 vec4 (BrightUbo)
         internal const uint CompositeBufferBytes = 16;                    // 1 vec4 (CompositeUbo)
+        internal const uint ToneBufferBytes = 16;                         // 1 vec4 (ToneUbo)
 
         // Bloom blur UBO sizing. GLSL: `vec4 Texel; vec4 Params; vec4 Weights[BlurWeightSlots];` (BloomBlurFrag).
         // The CPU scratch mirrors it flat as floats (Texel + Params + Weights), like the palette scratch above.
@@ -49,17 +53,24 @@ namespace KhaozEngine.Render3D.Rendering
         // recurs, and gives a single owner list for correct one-time disposal. The public Gpu API
         // (CreateShadersFromSpirv compiles a PAIR and returns an opaque IGpuShaderSet) is unchanged.
         readonly Dictionary<(string vert, string frag), IGpuShaderSet> _shaderCache = new();
-        readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag, _fxaaFrag;
+        readonly IGpuShaderSet _palFrag, _edgeFrag, _blitFrag, _fxaaFrag, _toneFrag;
         readonly IGpuShaderSet _brightFrag, _blurFrag, _compositeFrag;
-        readonly IGpuResourceLayout _palLayout, _edgeLayout, _blitLayout, _fxaaLayout;
+        readonly IGpuResourceLayout _palLayout, _edgeLayout, _blitLayout, _fxaaLayout, _toneLayout;
         readonly IGpuResourceLayout _brightLayout, _blurLayout, _compositeLayout;
-        readonly IGpuPipeline _palPipe, _edgePipe, _blitPipe, _fxaaPipe;
-        readonly IGpuPipeline _brightPipe, _blurPipe, _compositePipe;
-        readonly IGpuBuffer _palBuf, _edgeBuf, _finalBuf, _fxaaBuf;
+        // The ping-output pipelines are rebuilt on a ping colour-format change (the HDR float16 <-> legacy UNorm
+        // toggle), so they are NOT readonly. The blit pipeline targets the swapchain (format-fixed) and stays readonly.
+        IGpuPipeline _palPipe, _edgePipe, _fxaaPipe, _tonePipe;
+        IGpuPipeline _brightPipe, _blurPipe, _compositePipe;
+        readonly IGpuPipeline _blitPipe;
+        readonly IGpuBuffer _palBuf, _edgeBuf, _finalBuf, _fxaaBuf, _toneBuf;
         readonly IGpuBuffer _brightBuf, _blurBufH, _blurBufV, _compositeBuf;
+        // The ping framebuffers' colour format the ping pipelines were last built for (compared in BindTargets to
+        // detect the HDR toggle). Seeded to the ctor's pingOutput so the first BindTargets sees no change.
+        GpuOutputDescription _pingOutput;
 
-        IGpuResourceSet _paletteSet = null!;
-        IGpuResourceSet _edgeFromColor = null!, _edgeFromPingA = null!;
+        IGpuResourceSet _paletteFromColor = null!, _paletteFromPingA = null!, _paletteFromPingB = null!;
+        IGpuResourceSet _edgeFromColor = null!, _edgeFromPingA = null!, _edgeFromPingB = null!;
+        IGpuResourceSet _toneFromColor = null!, _toneFromPingA = null!, _toneFromPingB = null!; // tonemap reads (linear)
         IGpuResourceSet _blitColorP = null!, _blitPingAP = null!, _blitPingBP = null!; // point sampler
         IGpuResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
         IGpuResourceSet _fxaaFromColor = null!, _fxaaFromPingA = null!, _fxaaFromPingB = null!; // FXAA reads (linear)
@@ -85,6 +96,7 @@ namespace KhaozEngine.Render3D.Rendering
             _blurBufH = f.CreateBuffer(new GpuBufferDescription(BlurBufferBytes, GpuBufferUsage.UniformBuffer)); // Texel+Params(H)+Weights
             _blurBufV = f.CreateBuffer(new GpuBufferDescription(BlurBufferBytes, GpuBufferUsage.UniformBuffer)); // Texel+Params(V)+Weights
             _compositeBuf = f.CreateBuffer(new GpuBufferDescription(CompositeBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4
+            _toneBuf = f.CreateBuffer(new GpuBufferDescription(ToneBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4
 
             // Each pass is its own vert+frag pair (FullscreenVert is the shared vertex source), compiled through
             // the (vert,frag) cache so each unique pair compiles + disposes once.
@@ -95,6 +107,7 @@ namespace KhaozEngine.Render3D.Rendering
             _brightFrag = Pair(f, ShaderSources.BloomBrightFrag);
             _blurFrag = Pair(f, ShaderSources.BloomBlurFrag);
             _compositeFrag = Pair(f, ShaderSources.BloomCompositeFrag);
+            _toneFrag = Pair(f, ShaderSources.TonemapFrag);
 
             _palLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), S("Samp"), U("Pal")));
@@ -110,11 +123,14 @@ namespace KhaozEngine.Render3D.Rendering
                 T("Src"), S("Samp"), U("Blur")));
             _compositeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("Src"), T("Bloom"), S("Samp"), U("Composite")));
+            _toneLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                T("Src"), S("Samp"), U("Tone")));
 
             _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOutput);
             _edgePipe = FullscreenPipeline(f, _edgeFrag, _edgeLayout, pingOutput);
             _blitPipe = FullscreenPipeline(f, _blitFrag, _blitLayout, swapchainOutput);
             _fxaaPipe = FullscreenPipeline(f, _fxaaFrag, _fxaaLayout, pingOutput); // FXAA writes a ping (pre-blit)
+            _tonePipe = FullscreenPipeline(f, _toneFrag, _toneLayout, pingOutput); // tonemap writes a ping (HDR mode)
             // Bloom bright-pass + blur write the half-res BloomA/BloomB pair, which share PingA/PingB's format
             // (R8G8B8A8UNorm, no depth) - GpuOutputDescription carries only format/sample-count (not size), so the
             // same pingOutput description is valid for a differently-sized framebuffer of the same format. The
@@ -122,6 +138,7 @@ namespace KhaozEngine.Render3D.Rendering
             _brightPipe = FullscreenPipeline(f, _brightFrag, _brightLayout, pingOutput);
             _blurPipe = FullscreenPipeline(f, _blurFrag, _blurLayout, pingOutput);
             _compositePipe = FullscreenPipeline(f, _compositeFrag, _compositeLayout, pingOutput);
+            _pingOutput = pingOutput;
         }
 
         static GpuResourceLayoutElement T(string n) => new(n, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
@@ -160,16 +177,31 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="RenderResources.BloomB"/>).</summary>
         public void BindTargets(RenderResources res)
         {
+            // Rebuild the ping-output pipelines first if the ping colour format flipped (HDR float16 <-> legacy UNorm),
+            // independent of the resource-set guard below (a pure format toggle keeps the same size/bloom state).
+            RebuildPingPipelinesIfFormatChanged(res);
             if (ReferenceEquals(_bound, res) && res.Width == _boundW && res.Height == _boundH
-                && res.BloomAllocated == _boundBloom) return;
+                && res.BloomAllocated == _boundBloom && res.HdrColor == _boundHdr) return;
             DisposeSets();
             var f = _gd.Factory;
             var samp = _gd.PointSampler;
 
             var lin = _gd.LinearSampler;
-            _paletteSet = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.ColorTex, samp, _palBuf));
+            // Palette quantize samples 1:1 with the point sampler (a colour-snap, not a filter). Built for all three
+            // possible sources: legacy runs it first from ColorTex, the HDR chain runs it after tonemap from a ping.
+            _paletteFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.ColorTex, samp, _palBuf));
+            _paletteFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.PingA, samp, _palBuf));
+            _paletteFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.PingB, samp, _palBuf));
+            // Edge outline reads the colour source + the (format-fixed) normal/linear-depth MRT attachments. The PingB
+            // source only arises in the HDR chain (after tonemap+quantize); legacy only ever feeds it ColorTex/PingA.
             _edgeFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.ColorTex, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
             _edgeFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.PingA, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
+            _edgeFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.PingB, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
+            // Tonemap reads its input 1:1 with the linear sampler (matches the FXAA/blit-linear precedent for a 1:1
+            // read). Built for all three sources: after bloom the src is a ping, with bloom off it is still ColorTex.
+            _toneFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_toneLayout, res.ColorTex, lin, _toneBuf));
+            _toneFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_toneLayout, res.PingA, lin, _toneBuf));
+            _toneFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_toneLayout, res.PingB, lin, _toneBuf));
             _blitColorP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.ColorTex, samp, _finalBuf));
             _blitPingAP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingA, samp, _finalBuf));
             _blitPingBP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingB, samp, _finalBuf));
@@ -202,9 +234,38 @@ namespace KhaozEngine.Render3D.Rendering
             }
 
             _bound = res; _boundW = res.Width; _boundH = res.Height; _boundBloom = res.BloomAllocated;
+            _boundHdr = res.HdrColor;
         }
         int _boundW, _boundH;
-        bool _boundBloom;
+        bool _boundBloom, _boundHdr;
+
+        // Whether two ping output descriptions carry the same colour attachment format. The ping targets are always
+        // one colour attachment, no depth, single-sample, so the first colour format is the only field that moves on
+        // an HDR toggle.
+        static bool SamePingFormat(in GpuOutputDescription a, in GpuOutputDescription b) =>
+            a.Colour.Length == b.Colour.Length && a.Colour.Length > 0 && a.Colour[0] == b.Colour[0];
+
+        // Rebuild every ping-output pipeline when the ping colour format flips (HDR float16 <-> legacy UNorm). A
+        // pipeline bakes its target's colour format, so all seven ping writers must be recreated. The shaders,
+        // layouts, and buffers are format-agnostic and survive. The blit pipeline targets the swapchain (format-fixed)
+        // and is untouched. The caller idles the GPU before a format change (Scene3D.EnsureSize), so no pipeline is in
+        // flight here.
+        void RebuildPingPipelinesIfFormatChanged(RenderResources res)
+        {
+            var pingOut = res.PingAFB.Outputs;
+            if (SamePingFormat(pingOut, _pingOutput)) return;
+            var f = _gd.Factory;
+            _palPipe.Dispose(); _edgePipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
+            _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose();
+            _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOut);
+            _edgePipe = FullscreenPipeline(f, _edgeFrag, _edgeLayout, pingOut);
+            _fxaaPipe = FullscreenPipeline(f, _fxaaFrag, _fxaaLayout, pingOut);
+            _tonePipe = FullscreenPipeline(f, _toneFrag, _toneLayout, pingOut);
+            _brightPipe = FullscreenPipeline(f, _brightFrag, _brightLayout, pingOut);
+            _blurPipe = FullscreenPipeline(f, _blurFrag, _blurLayout, pingOut);
+            _compositePipe = FullscreenPipeline(f, _compositeFrag, _compositeLayout, pingOut);
+            _pingOutput = pingOut;
+        }
 
         /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).
         /// <paramref name="runFxaa"/> is the caps-resolved FXAA decision from the scene (so an MSAA request the device
@@ -271,20 +332,29 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.UpdateBuffer(_compositeBuf, 0, in composite);
             }
 
+            if (s.Hdr.Enabled)
+            {
+                // .x = exposure (>= 0), .y = operator index (0 aces, 1 reinhard, 2 clamp).
+                var tone = new ToneUbo { Params = new Vector4(MathF.Max(s.Hdr.Exposure, 0f), (float)(int)s.Hdr.Operator, 0f, 0f) };
+                cl.UpdateBuffer(_toneBuf, 0, in tone);
+            }
+
             // Bug A: each fullscreen post pass flips vertically; the on-screen orientation depends on the parity of
-            // (quantize + outline + bloom-composite + fxaa). The blit cancels it so EVERY config is upright: flip
-            // the sampled V iff the number of preceding post passes is EVEN. This rule is fully generic in the pass
-            // count - it does not assume any particular default. The engine default (outline OFF, quantize off,
-            // bloom off, fxaa off) has 0 preceding passes (even) => flipV=1: the blit un-flips the single scene
-            // render so the bare-default frame is upright (the same even-parity branch bloom-on already exercises).
-            // That outline-off default path is guarded on-device by DefaultPost_RendersUprightWithoutOutline and by
+            // how many ran. The blit cancels it so EVERY config is upright: flip the sampled V iff the number of
+            // preceding post passes is EVEN. This rule is fully generic in the pass COUNT and order-independent - it
+            // does not assume any particular default or chain order. The engine default (outline OFF, quantize off,
+            // bloom off, fxaa off) with HDR off has 0 preceding passes (even) => flipV=1: the blit un-flips the single
+            // scene render so the bare-default frame is upright (the same even-parity branch bloom-on already
+            // exercises). That path is guarded on-device by DefaultPost_RendersUprightWithoutOutline and by
             // Golden3D_OutlineToggle_DoesNotFlip's outline-off branch. Pinning outline ON (as the committed 3D
             // goldens now do explicitly) restores 1 preceding pass (odd) => no flip => byte-identical to those
-            // outline-on reference PNGs. Bloom contributes exactly ONE net pass to this count (the composite pass
-            // that writes back into the main ping chain) - the bright-pass + separable blur are an off-chain branch
-            // (see BloomCompositeFrag's fixed internal un-flip) and do not themselves add to the main chain's parity.
-            // This rule depends only on the settings, matching Run's pass sequence exactly.
-            int precedingPasses = (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0) + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
+            // outline-on reference PNGs. Tonemap contributes exactly ONE main-chain pass whenever HDR is on (it runs
+            // once, directly after bloom). Bloom contributes exactly ONE net pass (the composite pass that writes back
+            // into the main ping chain) - the bright-pass + separable blur are an off-chain branch (see
+            // BloomCompositeFrag's fixed internal un-flip) and do not add to the main chain's parity. This rule
+            // depends only on the settings, matching Run's pass sequence exactly in BOTH the HDR and legacy orders.
+            int precedingPasses = (s.Hdr.Enabled ? 1 : 0) + (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0)
+                                + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
             float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;
 
             var final = new FinalUbo
@@ -298,38 +368,33 @@ namespace KhaozEngine.Render3D.Rendering
         public void Run(IGpuCommandList cl, RenderResources res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa)
         {
             IGpuTexture src = res.ColorTex;
+            bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
 
-            if (s.Quantize)
+            // Shared free-ping ping-pong for the single-input passes (tonemap / quantize / outline / FXAA): each
+            // writes to the ping NOT holding src so no pass reads its own output. ColorTex/PingB -> PingA, PingA ->
+            // PingB. The resource set already carries the right textures per source, so the pass logic is uniform.
+            void Simple(IGpuPipeline pipe, IGpuResourceSet fromColor, IGpuResourceSet fromPingA, IGpuResourceSet fromPingB)
             {
-                cl.SetFramebuffer(res.PingAFB);
-                cl.SetPipeline(_palPipe);
-                cl.SetGraphicsResourceSet(0, _paletteSet);
+                bool fromA = ReferenceEquals(src, res.PingA);
+                IGpuResourceSet set = ReferenceEquals(src, res.ColorTex) ? fromColor : fromA ? fromPingA : fromPingB;
+                cl.SetFramebuffer(fromA ? res.PingBFB : res.PingAFB);
+                cl.SetPipeline(pipe);
+                cl.SetGraphicsResourceSet(0, set);
                 cl.Draw(3);
-                src = res.PingA;
+                src = fromA ? res.PingB : res.PingA;
             }
 
-            if (s.Outline)
-            {
-                bool fromColor = ReferenceEquals(src, res.ColorTex);
-                cl.SetFramebuffer(fromColor ? res.PingAFB : res.PingBFB);
-                cl.SetPipeline(_edgePipe);
-                cl.SetGraphicsResourceSet(0, fromColor ? _edgeFromColor : _edgeFromPingA);
-                cl.Draw(3);
-                src = fromColor ? res.PingA : res.PingB;
-            }
+            void RunQuantize() => Simple(_palPipe, _paletteFromColor, _paletteFromPingA, _paletteFromPingB);
+            void RunOutline() => Simple(_edgePipe, _edgeFromColor, _edgeFromPingA, _edgeFromPingB);
+            void RunTonemap() => Simple(_tonePipe, _toneFromColor, _toneFromPingA, _toneFromPingB);
+            void RunFxaa() => Simple(_fxaaPipe, _fxaaFromColor, _fxaaFromPingA, _fxaaFromPingB);
 
-            // Bloom: bright-pass -> separable blur (half-res) -> additive composite back into a full-res ping.
-            // Pass-order decisions (see BloomSettings/docs for the full rationale):
-            //  - AFTER Quantize: bloom composites a smooth glow on top of the (possibly posterized) palette colour
-            //    instead of being posterized itself, which would band the halo.
-            //  - AFTER Outline: the dark outline colour never blooms, and the glow reads as sitting on top of /
-            //    outside the silhouette line, matching how an outline+glow stylized look is normally composed.
-            //  - BEFORE FXAA: FXAA's edge-smoothing then also polishes the bloom composite's soft edges (the halo
-            //    blending into the background) instead of anti-aliasing a pre-bloom image and adding an unaliased
-            //    bloom on top of it.
-            // Runs only when RenderResources.BloomAllocated (Scene3D only requests the half-res targets while
-            // Bloom.Enabled), so bloom off costs exactly zero extra passes - the historical chain, byte-identical.
-            if (s.Bloom.Enabled && res.BloomAllocated)
+            // Bloom: bright-pass -> separable blur (half-res) -> additive composite back into a full-res ping. Runs
+            // only when RenderResources.BloomAllocated (Scene3D requests the half-res targets only while
+            // Bloom.Enabled), so bloom off costs exactly zero extra passes. In HDR mode this runs FIRST, reading the
+            // raw float16 scene so over-range cores halo before the tonemap compresses them; in legacy mode it runs
+            // third, reading the already-LDR post src.
+            void RunBloom()
             {
                 IGpuResourceSet brightSet = ReferenceEquals(src, res.ColorTex) ? _brightFromColor!
                                           : ReferenceEquals(src, res.PingA) ? _brightFromPingA! : _brightFromPingB!;
@@ -356,8 +421,8 @@ namespace KhaozEngine.Render3D.Rendering
                 bool compFromPingA = ReferenceEquals(src, res.PingA);
                 IGpuResourceSet compositeSet = compFromColor ? _compositeColorBloomA!
                                              : compFromPingA ? _compositePingABloomA! : _compositePingBBloomA!;
-                // Write to the ping NOT currently holding src (mirrors the FXAA ping-pong below), so composite never
-                // reads its own output.
+                // Write to the ping NOT currently holding src (mirrors the FXAA ping-pong), so composite never reads
+                // its own output.
                 bool toPingB = compFromPingA;                 // PingA->PingB; ColorTex/PingB->PingA
                 cl.SetFramebuffer(toPingB ? res.PingBFB : res.PingAFB);
                 cl.SetPipeline(_compositePipe);
@@ -366,21 +431,32 @@ namespace KhaozEngine.Render3D.Rendering
                 src = toPingB ? res.PingB : res.PingA;
             }
 
-            // FXAA (fast approximate AA): one cheap fullscreen pass on the near-final colour, before the blit. Writes
-            // to the ping NOT currently holding src (the consumed one is free), so it never reads its own output.
-            // runFxaa is the caps-resolved decision from the scene (AntiAliasingMode.Fxaa, or an MSAA request the
-            // device can't honour falling back to FXAA); never set under the Pixelated retro path.
-            if (runFxaa)
+            if (s.Hdr.Enabled)
             {
-                bool fromPingA = ReferenceEquals(src, res.PingA);
-                bool toPingB = fromPingA;                    // PingA->PingB; ColorTex/PingB->PingA
-                IGpuResourceSet set = ReferenceEquals(src, res.ColorTex) ? _fxaaFromColor
-                                    : fromPingA ? _fxaaFromPingA : _fxaaFromPingB;
-                cl.SetFramebuffer(toPingB ? res.PingBFB : res.PingAFB);
-                cl.SetPipeline(_fxaaPipe);
-                cl.SetGraphicsResourceSet(0, set);
-                cl.Draw(3);
-                src = toPingB ? res.PingB : res.PingA;
+                // HDR order: bloom the over-range cores FIRST (float16, pre-tonemap) so hot values halo, then tonemap
+                // the scene to LDR, then run the retro/AA passes on the tonemapped [0,1] result. The bloom-before-
+                // quantize swap vs legacy is deliberate (see HdrSettings / the design record): retro palette games
+                // that need bloom AFTER quantize stay on legacy mode.
+                if (bloomRuns) RunBloom();
+                RunTonemap();
+                if (s.Quantize) RunQuantize();
+                if (s.Outline) RunOutline();
+                if (runFxaa) RunFxaa();
+            }
+            else
+            {
+                // Legacy order (byte-identical to the pre-HDR chain): quantize -> outline -> bloom -> fxaa. Pass-order
+                // rationale (unchanged, see BloomSettings/docs):
+                //  - bloom AFTER quantize so the glow composites on top of the (possibly posterized) palette colour
+                //    instead of being posterized itself, which would band the halo.
+                //  - bloom AFTER outline so the dark outline colour never blooms and the glow reads as sitting outside
+                //    the silhouette line.
+                //  - bloom BEFORE fxaa so fxaa also polishes the bloom composite's soft edges instead of adding an
+                //    unaliased halo on top of an already-anti-aliased image.
+                if (s.Quantize) RunQuantize();
+                if (s.Outline) RunOutline();
+                if (bloomRuns) RunBloom();
+                if (runFxaa) RunFxaa();
             }
 
             IGpuResourceSet blit = s.Pixelated
@@ -408,7 +484,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         void DisposeSets()
         {
-            _paletteSet?.Dispose(); _edgeFromColor?.Dispose(); _edgeFromPingA?.Dispose();
+            _paletteFromColor?.Dispose(); _paletteFromPingA?.Dispose(); _paletteFromPingB?.Dispose();
+            _edgeFromColor?.Dispose(); _edgeFromPingA?.Dispose(); _edgeFromPingB?.Dispose();
+            _toneFromColor?.Dispose(); _toneFromPingA?.Dispose(); _toneFromPingB?.Dispose();
             _blitColorP?.Dispose(); _blitPingAP?.Dispose(); _blitPingBP?.Dispose();
             _blitColorL?.Dispose(); _blitPingAL?.Dispose(); _blitPingBL?.Dispose();
             _fxaaFromColor?.Dispose(); _fxaaFromPingA?.Dispose(); _fxaaFromPingB?.Dispose();
@@ -423,15 +501,15 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             DisposeSets();
-            _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose();
+            _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
             _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose();
-            _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose(); _fxaaLayout.Dispose();
+            _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose(); _fxaaLayout.Dispose(); _toneLayout.Dispose();
             _brightLayout.Dispose(); _blurLayout.Dispose(); _compositeLayout.Dispose();
             // Dispose each UNIQUE compiled shader set once (the cache is the single owner; _palFrag/_edgeFrag/... are
             // aliases into it, so disposing them again would double-dispose a shared set).
             foreach (var set in _shaderCache.Values) set.Dispose();
             _shaderCache.Clear();
-            _palBuf.Dispose(); _edgeBuf.Dispose(); _finalBuf.Dispose(); _fxaaBuf.Dispose();
+            _palBuf.Dispose(); _edgeBuf.Dispose(); _finalBuf.Dispose(); _fxaaBuf.Dispose(); _toneBuf.Dispose();
             _brightBuf.Dispose(); _blurBufH.Dispose(); _blurBufV.Dispose(); _compositeBuf.Dispose();
         }
     }

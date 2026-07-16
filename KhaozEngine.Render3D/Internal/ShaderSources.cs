@@ -1436,6 +1436,31 @@ void main() {
     oColor = vec4(s.rgb, P.x);
 }";
 
+        // ---- HDR tonemap: map the float16 over-range scene colour to LDR [0,1] before the retro/AA passes.
+        // Runs ONLY in HDR mode, directly after the (pre-tonemap) bloom composite. Preserves the source
+        // alpha untouched so the blit's background marker (alpha < 0.5 -> starfield / transparent) survives.
+        // Operator fit choices are pure ALU (no LUT) so cross-backend goldens stay stable.
+        public const string TonemapFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D Src;
+layout(set=0, binding=1) uniform sampler Samp;
+layout(set=0, binding=2) uniform Tone { vec4 Params; }; // Params.x = exposure, .y = operator (0 aces, 1 reinhard, 2 clamp)
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+// ACES filmic fit (Krzysztof Narkowicz 2015): filmic S-curve with highlight desaturation toward white.
+vec3 acesFilm(vec3 x) {
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+void main() {
+    vec4 s = texture(sampler2D(Src, Samp), vUv);
+    vec3 c = max(s.rgb, vec3(0.0)) * Params.x;
+    int op = int(Params.y + 0.5);
+    vec3 mapped;
+    if (op == 0) mapped = acesFilm(c);
+    else if (op == 1) mapped = c / (vec3(1.0) + c);
+    else mapped = clamp(c, 0.0, 1.0);
+    oColor = vec4(mapped, s.a);
+}";
+
         // ---- FXAA (fast approximate anti-aliasing) ----
         // The classic Timothy Lottes FXAA3-console pass: read a 3x3 luma neighbourhood, skip near-flat areas
         // (contrast gate), otherwise estimate the edge direction from the luma gradient and blend two/four taps along

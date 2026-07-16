@@ -189,7 +189,8 @@ public sealed class ParticleEffectPlayer
     {
         EmitterConfig cfg = phase.Config;
         cfg.Direction = Vector3.Transform(phase.Config.Direction, _instRotation[instance]);
-        _pools[phaseIndex].Emit(cfg, _instOrigin[instance], count);
+        Vector3 origin = _instOrigin[instance] + Vector3.Transform(phase.OriginOffset, _instRotation[instance]);
+        _pools[phaseIndex].Emit(cfg, origin, count);
     }
 
     /// <summary>Quaternion rotating +Y onto <paramref name="dir"/> (identity when the direction is ~zero).</summary>

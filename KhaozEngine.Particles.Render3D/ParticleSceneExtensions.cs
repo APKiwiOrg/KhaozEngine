@@ -81,6 +81,8 @@ namespace KhaozEngine.Particles
                     Seed = p.Seed,
                     Stretch = look.Stretch,
                     Blend = look.Blend,
+                    Orientation = look.Orientation,
+                    SoftFadeScale = look.SoftFadeScale,
                 };
                 scene.DrawParticle(in sprite);
             }

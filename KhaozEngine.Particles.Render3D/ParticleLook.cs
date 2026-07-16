@@ -25,6 +25,14 @@ namespace KhaozEngine.Particles
         /// <summary>Velocity-stretch factor: 0 keeps a round camera-facing quad, larger elongates along motion.</summary>
         public float Stretch;
 
+        /// <summary>Camera-facing (default) or flat in the ground plane (shockwave rings, ground glows).</summary>
+        public ParticleOrientation Orientation;
+
+        /// <summary>Per-sprite multiplier on <see cref="Scene3D.ParticleSoftFade"/>. 0 means 1 (the default).
+        /// Flat-on-ground looks want a small value (around 0.1) so the floor just behind the quad does not fade
+        /// it out.</summary>
+        public float SoftFadeScale;
+
         /// <summary>When true, each live particle's motion history (from <see cref="ParticleSystem.GetTrail"/>) is
         /// forwarded as a tapered ribbon to <see cref="Scene3D.DrawTrail"/>. Ignored when the pool has no trail
         /// capacity (<see cref="ParticleSystem.TrailCapacity"/> 0).</summary>

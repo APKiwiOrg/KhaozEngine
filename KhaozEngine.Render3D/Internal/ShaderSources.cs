@@ -988,11 +988,11 @@ layout(location=0) in vec4 ICenterSize;   // xyz world center, w half-size
 layout(location=1) in vec4 IVelocityRot;  // xyz world velocity, w rotation (radians)
 layout(location=2) in vec4 IColor;        // straight rgba tint (premultiplied by the fragment)
 layout(location=3) in vec4 IShape;        // x shape id, y shape param, z life norm, w seed
-layout(location=4) in vec4 IExtra;        // x stretch factor, y additivity (0 alpha / 1 additive), zw reserved
+layout(location=4) in vec4 IExtra;        // x stretch, y additivity (0 alpha / 1 additive), z orientation (0 camera / 1 flat ground), w soft-fade scale
 layout(location=0) out vec2 vLocal;
 layout(location=1) out vec4 vColor;
 layout(location=2) out vec4 vShape;
-layout(location=3) out vec4 vExtra;       // x aspect (stretch elongation), y additivity, zw carried reserved lanes
+layout(location=3) out vec4 vExtra;       // x aspect (stretch elongation), y additivity, z orientation, w soft-fade scale
 layout(location=4) out vec3 vWorld;
 void main() {
     // Two-triangle quad from gl_VertexIndex (0..5), the same instanced-quad path DecalVert uses.
@@ -1001,10 +1001,18 @@ void main() {
     vec2 corner = vec2(u, v) * 2.0 - 1.0;
 
     float size = max(ICenterSize.w, 1e-5);
-    // Velocity-aligned stretch: project the velocity onto the camera plane. When usable, the quad's local +X
-    // follows the on-screen motion direction and lengthens with speed (so the Spark shape's bright head points
+    // Basis plane: camera-facing (right/up) by default, or flat on the ground (XZ) for shockwave rings and
+    // ground glows. The 2D math below (spin, stretch alignment) is identical in either plane.
+    vec3 planeX = CamRight.xyz;
+    vec3 planeY = CamUp.xyz;
+    if (IExtra.z > 0.5) {
+        planeX = vec3(1.0, 0.0, 0.0);
+        planeY = vec3(0.0, 0.0, 1.0);
+    }
+    // Velocity-aligned stretch: project the velocity onto the sprite plane. When usable, the quad's local +X
+    // follows the in-plane motion direction and lengthens with speed (so the Spark shape's bright head points
     // where the particle is going). Otherwise the quad rolls by its rotation like any round sprite.
-    vec2 v2 = vec2(dot(IVelocityRot.xyz, CamRight.xyz), dot(IVelocityRot.xyz, CamUp.xyz));
+    vec2 v2 = vec2(dot(IVelocityRot.xyz, planeX), dot(IVelocityRot.xyz, planeY));
     float speed2 = length(v2);
     float aspect = 1.0;
     vec2 ax;
@@ -1017,8 +1025,8 @@ void main() {
         ax = vec2(cr, sr);
     }
     vec2 ay = vec2(-ax.y, ax.x);
-    vec3 axisX = CamRight.xyz * ax.x + CamUp.xyz * ax.y;
-    vec3 axisY = CamRight.xyz * ay.x + CamUp.xyz * ay.y;
+    vec3 axisX = planeX * ax.x + planeY * ax.y;
+    vec3 axisY = planeX * ay.x + planeY * ay.y;
     vec3 world = ICenterSize.xyz + axisX * (corner.x * size * aspect) + axisY * (corner.y * size);
     gl_Position = ViewProj * vec4(world, 1.0);
     vLocal = corner;
@@ -1116,8 +1124,11 @@ void main() {
     // approach. The depth-color attachment is CLEARED to the background color's red channel, not to the far
     // plane, so a sample equal to that marker (Params.z) means no geometry: skip the fade there instead of
     // reconstructing a bogus near-plane point that would dim sprites against empty sky.
+    // vExtra.w is the per-sprite soft-fade scale (packed as 1 for the default): flat-on-ground sprites shrink
+    // it so the floor sitting immediately behind them does not erase them, dense smoke can grow it.
     float fade = 1.0;
-    if (Params.x > 0.0) {
+    float fadeDist = Params.x * vExtra.w;
+    if (fadeDist > 0.0) {
         ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
         float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
         if (abs(depth - Params.z) > 1e-6) {
@@ -1126,7 +1137,7 @@ void main() {
             vec3 sceneWorld = wp.xyz / wp.w;
             float sceneDist = distance(sceneWorld, CamPosTime.xyz);
             float fragDist = distance(vWorld, CamPosTime.xyz);
-            fade = clamp((sceneDist - fragDist) / Params.x, 0.0, 1.0);
+            fade = clamp((sceneDist - fragDist) / fadeDist, 0.0, 1.0);
         }
     }
 

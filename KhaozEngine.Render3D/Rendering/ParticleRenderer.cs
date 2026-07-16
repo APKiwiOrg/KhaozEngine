@@ -29,7 +29,7 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 VelocityRot;   // xyz world velocity, w rotation (radians)
             public Vector4 Color;         // straight rgba
             public Vector4 Shape;         // x shape id, y shape param, z life norm, w seed
-            public Vector4 Extra;         // x stretch, y additivity (0 alpha / 1 additive), zw reserved
+            public Vector4 Extra;         // x stretch, y additivity (0 alpha / 1 additive), z orientation, w soft-fade scale
         }
 
         /// <summary>The single per-frame uniform block, declared identically in both shader stages (ONE uniform
@@ -143,7 +143,8 @@ namespace KhaozEngine.Render3D.Rendering
             VelocityRot = new Vector4(s.Velocity, s.Rotation),
             Color = s.Color,
             Shape = new Vector4((int)s.Shape, s.ShapeParam, s.LifeNorm, s.Seed),
-            Extra = new Vector4(s.Stretch, s.Blend == BillboardBlend.Additive ? 1f : 0f, 0f, 0f),
+            Extra = new Vector4(s.Stretch, s.Blend == BillboardBlend.Additive ? 1f : 0f,
+                (int)s.Orientation, s.SoftFadeScale <= 0f ? 1f : s.SoftFadeScale),
         };
 
         /// <summary>Draw the (already back-to-front sorted) sprites as one instanced call into ColorDepthFB.

@@ -48,8 +48,8 @@ namespace KhaozEngine.Particles
                     {
                         Config = new EmitterConfig
                         {
-                            LifetimeMin = 0.25f, LifetimeMax = 0.25f,
-                            StartSize = 0.9f, EndSize = 0.2f,
+                            LifetimeMin = 0.3f, LifetimeMax = 0.3f,
+                            StartSize = 1.4f, EndSize = 0.25f,
                             StartColor = new Color(1f, 0.95f, 0.8f, 1f),
                             EndColor = new Color(1f, 0.7f, 0.3f, 0f),
                             SizeCurve = ParticleCurve.EaseOut,
@@ -73,7 +73,7 @@ namespace KhaozEngine.Particles
                             SizeCurve = ParticleCurve.EaseOut,
                             AlphaCurve = ParticleCurve.EaseOut,
                         },
-                        BurstCount = 18, PoolCapacity = 32,
+                        BurstCount = 24, PoolCapacity = 40,
                     },
                     // Embers: slower radial coals that drift up and light the scene.
                     new ParticleEffectPhase
@@ -117,7 +117,12 @@ namespace KhaozEngine.Particles
 
                 var looks = new[]
                 {
-                    new ParticleLook { Shape = ParticleShape.SoftGlow, ShapeParam = 0.3f, Blend = BillboardBlend.Additive },
+                    // The flash carries its own brief light: the strongest single cue that something hit.
+                    new ParticleLook
+                    {
+                        Shape = ParticleShape.SoftGlow, ShapeParam = 0.3f, Blend = BillboardBlend.Additive,
+                        LightRadius = 3.5f, LightIntensity = 2.2f,
+                    },
                     new ParticleLook { Shape = ParticleShape.Spark, Blend = BillboardBlend.Additive, Stretch = 0.3f },
                     new ParticleLook
                     {
@@ -356,7 +361,9 @@ namespace KhaozEngine.Particles
                             SizeCurve = ParticleCurve.EaseOut,
                             AlphaCurve = ParticleCurve.EaseOut,
                         },
-                        BurstCount = 1, PoolCapacity = 4,
+                        // Lifted slightly off the surface: a flat-ground quad exactly coplanar with the floor
+                        // would be erased by the soft depth fade.
+                        BurstCount = 1, PoolCapacity = 4, OriginOffset = new Vector3(0f, 0.09f, 0f),
                     },
                     // Dust: a shell of alpha wisps pushed outward low to the ground.
                     new ParticleEffectPhase
@@ -382,7 +389,13 @@ namespace KhaozEngine.Particles
 
                 var looks = new[]
                 {
-                    new ParticleLook { Shape = ParticleShape.Ring, ShapeParam = 0.15f, Blend = BillboardBlend.Additive },
+                    // The nova ring lies flat in the ground plane, the ARPG read. SoftFadeScale is small so the
+                    // floor immediately behind the flat quad does not fade it out.
+                    new ParticleLook
+                    {
+                        Shape = ParticleShape.Ring, ShapeParam = 0.15f, Blend = BillboardBlend.Additive,
+                        Orientation = ParticleOrientation.FlatGround, SoftFadeScale = 0.12f,
+                    },
                     new ParticleLook { Shape = ParticleShape.Wisp, Blend = BillboardBlend.Alpha },
                 };
 

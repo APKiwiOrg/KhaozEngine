@@ -268,4 +268,34 @@ public class ParticleEffectPlayerTests
         }
         Assert.False(player.AnyAlive);
     }
+
+    [Fact]
+    public void OriginOffset_ShiftsEmission_AndRotatesWithDirection()
+    {
+        var effect = new ParticleEffect(new ParticleEffectPhase
+        {
+            Config = Emitter(Vector3.UnitY, speed: 0f),
+            BurstCount = 1,
+            OriginOffset = new Vector3(0f, 2f, 0f),
+        });
+
+        // Played straight up: the offset stays +Y, so the particle spawns 2 above the origin.
+        var up = new ParticleEffectPlayer(effect, maxInstances: 1, seed: 1);
+        up.Play(new Vector3(5f, 0f, 0f), Vector3.UnitY);
+        up.Update(0.01f);
+        Assert.Equal(1, up.PhaseSystem(0).ActiveCount);
+        Vector3 upPos = up.PhaseSystem(0).Active[0].Position;
+        Assert.Equal(5f, upPos.X, 3);
+        Assert.Equal(2f, upPos.Y, 3);
+        Assert.Equal(0f, upPos.Z, 3);
+
+        // Played along +X: the +Y-authored offset rotates onto +X.
+        var side = new ParticleEffectPlayer(effect, maxInstances: 1, seed: 1);
+        side.Play(Vector3.Zero, Vector3.UnitX);
+        side.Update(0.01f);
+        Vector3 sidePos = side.PhaseSystem(0).Active[0].Position;
+        Assert.Equal(2f, sidePos.X, 3);
+        Assert.Equal(0f, sidePos.Y, 3);
+        Assert.Equal(0f, sidePos.Z, 3);
+    }
 }

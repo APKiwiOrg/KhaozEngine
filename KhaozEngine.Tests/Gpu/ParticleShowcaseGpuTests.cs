@@ -3,6 +3,7 @@ using System.IO;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Imaging;
+using KhaozEngine.Particles;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
@@ -113,6 +114,15 @@ namespace KhaozEngine.Tests.Gpu
             glow.Position = new Vector3(-2.8f, 1.9f, 1.4f);
             glow.Size = 0.9f;
             s.DrawParticle(glow);
+
+            // Flat-on-ground shockwave ring: must read as a perspective ellipse lying on the floor (not a
+            // vertical arc), lifted slightly and fade-descaled so the floor does not erase it.
+            ParticleSprite ring = Sprite(4, 0, 0.15f, 0.4f, BillboardBlend.Additive);
+            ring.Position = new Vector3(4.6f, 0.12f, 2.4f);
+            ring.Size = 1.7f;
+            ring.Orientation = ParticleOrientation.FlatGround;
+            ring.SoftFadeScale = 0.12f;
+            s.DrawParticle(ring);
         }
 
         [GpuFact]
@@ -167,6 +177,67 @@ namespace KhaozEngine.Tests.Gpu
             string png = Path.Combine(dir, "particle_behaviors.png");
             PngWriter.Save(png, px, W, H);
             Assert.True(new FileInfo(png).Length > 0, $"empty png at {png}");
+        }
+
+        [GpuFact]
+        public void Showcase_presets_dump_at_two_effect_times()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H);
+            preview.Scene.Camera.Frame(new Vector3(0f, 1.4f, 0f), new Vector3(12f, 3.4f, 7f));
+            MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(34f, 0.1f));
+
+            (string Name, VfxPreset Preset)[] presets =
+            {
+                ("fire", VfxPresets.FireBurst), ("frost", VfxPresets.FrostShatter),
+                ("heal", VfxPresets.HealMotes), ("embers", VfxPresets.EmberDrift),
+                ("sparks", VfxPresets.SparkShower), ("shock", VfxPresets.Shockwave),
+                ("smoke", VfxPresets.SmokePlume), ("arcane", VfxPresets.ArcaneSparkle),
+            };
+            var players = new ParticleEffectPlayer[presets.Length];
+            for (int i = 0; i < presets.Length; i++)
+            {
+                players[i] = new ParticleEffectPlayer(presets[i].Preset.Effect, maxInstances: 2, seed: (uint)(7 + i));
+                int col = i % 4, row = i / 4;
+                Vector3 origin = new((col - 1.5f) * 5.6f, 0f, (row - 0.5f) * 5.2f);
+                Assert.True(players[i].Play(origin, Vector3.UnitY));
+            }
+
+            string dir = Environment.GetEnvironmentVariable("KE_PNG_DUMP_DIR") ?? Path.GetTempPath();
+            Directory.CreateDirectory(dir);
+
+            void Step(float toSeconds, ref float now)
+            {
+                const float dt = 1f / 60f;
+                while (now < toSeconds) { foreach (var p in players) p.Update(dt); now += dt; }
+            }
+            void DrawScene(Scene3D s)
+            {
+                s.Draw(floor, Matrix4x4.Identity, new Color(0.10f, 0.10f, 0.13f, 1f));
+                for (int i = 0; i < presets.Length; i++)
+                {
+                    var looks = new ParticleLook[presets[i].Preset.Looks.Count];
+                    for (int k = 0; k < looks.Length; k++) looks[k] = presets[i].Preset.Looks[k];
+                    s.DrawEffect(players[i], looks);
+                }
+            }
+
+            float time = 0f;
+            Step(0.18f, ref time);
+            preview.Scene.EffectTimeSeconds = time;
+            byte[] a = Read(gd, preview.Capture(DrawScene));
+            AssertNonBackgroundPixels(a);
+            string pngA = Path.Combine(dir, "particle_presets_t018.png");
+            PngWriter.Save(pngA, a, W, H);
+            Assert.True(new FileInfo(pngA).Length > 0, $"empty png at {pngA}");
+
+            Step(0.8f, ref time);
+            preview.Scene.EffectTimeSeconds = time;
+            byte[] b = Read(gd, preview.Capture(DrawScene));
+            string pngB = Path.Combine(dir, "particle_presets_t080.png");
+            PngWriter.Save(pngB, b, W, H);
+            Assert.True(new FileInfo(pngB).Length > 0, $"empty png at {pngB}");
         }
 
         static void AssertNonBackgroundPixels(byte[] rgba)

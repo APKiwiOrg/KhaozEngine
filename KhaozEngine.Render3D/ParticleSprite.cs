@@ -31,6 +31,17 @@ namespace KhaozEngine.Render3D
         Star = 5,
     }
 
+    /// <summary>How a <see cref="ParticleSprite"/>'s quad is oriented in the world.</summary>
+    public enum ParticleOrientation : byte
+    {
+        /// <summary>Billboard toward the camera (the default for glows, sparks, smoke).</summary>
+        CameraFacing = 0,
+        /// <summary>Lie flat in the ground plane (XZ), for shockwave rings and ground glows. Pair with a small
+        /// <see cref="ParticleSprite.SoftFadeScale"/> so the floor immediately behind the quad does not erase
+        /// it, and lift the sprite slightly above the surface.</summary>
+        FlatGround = 1,
+    }
+
     /// <summary>Quality tier for the particle pass, mirroring <see cref="GroundDecalQuality"/>. Reduced drops the
     /// second noise octave and the ember flicker (a uniform branch in the shader, not a pipeline variant).</summary>
     public enum ParticleQuality
@@ -77,5 +88,11 @@ namespace KhaozEngine.Render3D
         /// <summary>Alpha or additive compositing. Both blend modes share one sorted draw (the shader emits
         /// premultiplied color), so alpha smoke and additive glow interleave correctly.</summary>
         public BillboardBlend Blend;
+        /// <summary>Camera-facing (default) or flat in the ground plane (shockwave rings, ground glows).</summary>
+        public ParticleOrientation Orientation;
+        /// <summary>Per-sprite multiplier on <see cref="Scene3D.ParticleSoftFade"/>. 0 means 1 (the default).
+        /// Flat-on-ground sprites want a small value (around 0.1) so the floor just behind them does not fade
+        /// them out, and dense smoke can raise it for a longer, softer approach.</summary>
+        public float SoftFadeScale;
     }
 }

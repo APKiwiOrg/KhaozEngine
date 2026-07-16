@@ -38,6 +38,21 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0.6f, p.Shape.Z);
             Assert.Equal(0.33f, p.Shape.W);
             Assert.Equal(2f, p.Extra.X);
+            // Defaults: camera-facing orientation, soft-fade scale 0 packs as the neutral 1.
+            Assert.Equal(0f, p.Extra.Z);
+            Assert.Equal(1f, p.Extra.W);
+        }
+
+        [Fact]
+        public void PackInstance_OrientationAndFadeScale_Lanes()
+        {
+            ParticleSprite s = Sprite();
+            s.Orientation = ParticleOrientation.FlatGround;
+            s.SoftFadeScale = 0.12f;
+
+            ParticleRenderer.ParticleInstance p = ParticleRenderer.PackInstance(s);
+            Assert.Equal(1f, p.Extra.Z);
+            Assert.Equal(0.12f, p.Extra.W);
         }
 
         [Fact]

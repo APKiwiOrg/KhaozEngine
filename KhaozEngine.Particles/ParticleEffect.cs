@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace KhaozEngine.Particles;
 
@@ -26,6 +27,11 @@ public struct ParticleEffectPhase
 
     /// <summary>Pool capacity for this phase's particle system. &lt;= 0 defaults to 256.</summary>
     public int PoolCapacity;
+
+    /// <summary>Effect-local offset of this phase's emission origin, authored with +Y as the effect axis and
+    /// rotated with the played direction (a ground ring lifts slightly off the surface, a muzzle phase sits
+    /// ahead of the hand). Zero keeps the played origin.</summary>
+    public Vector3 OriginOffset;
 
     /// <summary>Per-particle trail history depth for this phase's pool. 0 disables trails.</summary>
     public int TrailSamples;

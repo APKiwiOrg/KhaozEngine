@@ -53,6 +53,23 @@ The per-emitter presentation recipe:
   `LifeOneShot`.
 - `FlipbookRandomStart`: for `TimeLoop`, staggers each particle's start frame by its seed so a burst of
   identical looping sprites does not play in lockstep. Defaults to true (set false for a synchronized loop).
+- `Distortion`: an optional `DistortionLook` (`Shape`, `ShapeParam`, `Strength`, `SoftFadeScale`). When
+  `Strength` is non-zero the phase emits one `DistortionSprite` per live particle INSTEAD of a visible sprite, so
+  it WARPS the scene behind it (heat haze, refractive shockwave ring, splash lens) rather than drawing over it.
+  Each sprite's strength is scaled by the particle's alpha so the field fades with life. The inactive default
+  (`Strength` 0) keeps the phase on the normal `Shape` / `Flipbook` particle path. See the Render3D distortion
+  pass in `docs/USING-KHAOZENGINE.md`.
+
+```csharp
+var look = new ParticleLook
+{
+    Orientation = ParticleOrientation.FlatGround,
+    Distortion = new DistortionLook
+    {
+        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+    },
+};
+```
 
 Trails are sampled oldest-to-newest, so the tail is faintest and thinnest and the head is full. Light
 selection is a small-K partial selection by alpha, no allocation, and never exceeds `Scene3D.MaxPointLights`.
@@ -88,9 +105,12 @@ read at roughly 8 to 12 world units from the camera, origin on the ground, +Y up
 - `HealMotes`: gentle rising green-gold star sparkles that softly light the target.
 - `EmberDrift`: ambient warm embers drifting up on turbulence (braziers, campfires).
 - `SparkShower`: a single fountain of stretched sparks arcing up and falling.
-- `Shockwave`: a fast expanding ground ring plus a low outward puff of dust.
+- `Shockwave`: a fast expanding ground ring plus a low outward puff of dust, with a refraction-ring phase that
+  warps the scene behind the nova (an active `Ripple` distortion look).
 - `SmokePlume`: a steady rising column of soft, turbulent smoke.
 - `ArcaneSparkle`: swirling violet-to-cyan magic sparkles that pulse and faintly light the caster.
+- `HeatHaze`: a shimmering heat haze, a slow rising column that warps the scene (a `Heat` distortion) under a
+  faint warm additive shimmer. For braziers, lava, desert air, exhaust.
 
 ## Usage
 

@@ -2644,7 +2644,7 @@ scene.DrawEffect(player, looks);                          // one look per phase,
 ```
 
 Presets: `FireBurst`, `FrostShatter`, `HealMotes`, `EmberDrift`, `SparkShower`, `Shockwave`, `SmokePlume`,
-`ArcaneSparkle`. `looks.Length` must equal `player.PhaseCount`.
+`ArcaneSparkle`, `HeatHaze`. `looks.Length` must equal `player.PhaseCount`.
 
 **Authoring your own emitter.** `EmitterConfig` grew emission shapes, per-particle variance, life curves, spin, and
 turbulence. Every new field zero-defaults to the legacy look:
@@ -2751,6 +2751,78 @@ ribbon half-width against the particle size, `TrailStyle` its tint/blend/feather
 
 Both are byte-stable and fully supported. The procedural modern pass just covers the common
 glow/ember/streak/smoke/ring/glint vocabulary without an asset pipeline.
+
+---
+
+## Screen-space distortion
+
+Distortion sprites warp the pixels behind them instead of drawing over them: heat haze, refractive shockwave
+rings, splash lensing. They accumulate a signed screen-space offset field and the resolved scene colour
+re-samples through it as the FIRST post-chain pass, so the warp precedes every camera-response pass (bloom halos
+follow the warped sources, the tonemap and the retro palette see the warped image). Queue them on `Scene3D`, one
+per frame inside the 3D pass:
+
+```csharp
+scene.DrawDistortion(new DistortionSprite
+{
+    Position = impactPoint,
+    Size = 1.5f,                                 // half-size in world units
+    Shape = DistortionShape.Ripple,             // a shockwave ring
+    ShapeParam = 0.15f,                          // ring band thickness (0 tight, 1 fat)
+    Strength = 1.5f,                             // offset magnitude, the one authoring dial
+    Orientation = ParticleOrientation.FlatGround,
+    SoftFadeScale = 0.12f,                       // flat-on-ground, so a small fade
+});
+// or a batch: scene.DrawDistortions(spriteSpan);
+```
+
+The three shapes and when to reach for each:
+
+- `Ripple` - a radial ring of outward offsets. Shockwaves and impact rings (usually `FlatGround`). `ShapeParam`
+  is the band thickness.
+- `Heat` - an upward-scrolling noise wobble over the footprint. Braziers, lava, desert air, exhaust.
+  `ShapeParam` is the wobble frequency.
+- `Lens` - a smooth radial bulge. Splashes and force bubbles. A positive `Strength` magnifies (pulls pixels
+  inward), a negative one pinches. `ShapeParam` softens the falloff shoulder.
+
+`Strength` is the magnitude dial (world-ish units), and for `Lens` its sign chooses magnify vs pinch. The apply
+pass converts it to a UV excursion and clamps the total to a small maximum, so stacking many hot sprites can
+never smear the whole screen. Sprites are depth-occluded against the scene like the modern particle pass: a wall
+between the camera and the sprite fades its offsets to zero. `SoftFadeScale` multiplies `Scene3D.ParticleSoftFade`
+for that fade (0 means 1). A flat-on-ground ripple wants a small value so the floor just behind it does not erase
+it.
+
+Quality is a host knob, not cleared by `Begin` (the `ParticleQuality` pattern). Set it once when picking a
+graphics tier:
+
+```csharp
+scene.DistortionQuality = DistortionQuality.Reduced;   // weak GPU: single heat octave + quarter-res field
+```
+
+`Full` (the default) renders the offset field at half resolution with both heat noise octaves. `Reduced` drops to
+quarter-res and a single octave.
+
+**Zero cost when unused.** A frame that queues no distortion sprite allocates no offset target, clears nothing,
+runs no apply pass, and renders byte-identically to before distortion existed. The half/quarter-res field is
+allocated lazily the first frame a sprite is queued and freed on the next resize when it goes unused.
+
+**The adapter path.** `KhaozEngine.Particles.Render3D` drives distortion off a particle emitter: set
+`ParticleLook.Distortion` (a `DistortionLook`) with a non-zero `Strength` and that phase emits one distortion
+sprite per live particle INSTEAD of a visible sprite, each sprite's strength scaled by the particle's alpha so
+the field fades with life. `VfxPresets.Shockwave` already carries a refraction-ring phase, and `VfxPresets.HeatHaze`
+is a ready-made shimmering-air preset (a heat column plus a faint warm additive shimmer).
+
+```csharp
+var look = new ParticleLook
+{
+    Orientation = ParticleOrientation.FlatGround,
+    Distortion = new DistortionLook
+    {
+        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+    },
+};
+scene.DrawParticles(system, in look);   // this phase warps the scene instead of drawing sprites
+```
 
 ---
 

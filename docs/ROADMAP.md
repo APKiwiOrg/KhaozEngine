@@ -150,15 +150,11 @@ Ordered gap list (2026-07-07 feature audit):
 The particles/VFX domain specifically targets modern AAA effect quality (Diablo 4 / PoE2 / Lost Ark class
 impact and ambience) on top of the 10.126.0 modernization (procedural shaped sprites, curves, emission
 shapes, soft particles, effect scheduler, `Particles.Render3D` adapter, design record
-`docs/PARTICLES-VFX-DESIGN-2026-07-16.md`). Three tiers, ordered by visual impact per engineering cost.
-The general rendering bar above is unchanged, this program is scoped to effects and the pipeline pieces
-they sit on.
-
-**Tier 1 (one engine program, scoped 2026-07-16, next up for this domain):**
-
-1. Screen-space distortion pass. Distortion particles write an offset buffer, the resolved scene
-   color re-samples through it: heat haze, refractive shockwaves, splash lensing. High AAA-feel per
-   cost.
+`docs/PARTICLES-VFX-DESIGN-2026-07-16.md`). Ordered by visual impact per engineering cost. Tier 1 shipped as
+one engine program (HDR pipeline 10.128.0, flipbook particles 10.129.0, screen-space distortion 10.130.0,
+design record `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`), so Tiers 2 and 3 are what remain, Tier 2 next when a
+game pulls for it. The general rendering bar above is unchanged, this program is scoped to effects and the
+pipeline pieces they sit on.
 
 **Tier 2 (independent follow-up features, each its own worktree when pulled):** lit smoke (fold the
 existing light arrays into the particle UBO, wrap term + fake spherical normals), mesh particles

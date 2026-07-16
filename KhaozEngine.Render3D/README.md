@@ -221,6 +221,20 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   unoccluded, always crisp, still fully supported for on-top markers), and the textured `DrawBillboard(TextureHandle, ...)`
   overloads remain the artist-texture path. The turn-key `ParticleSystem`/`ParticleEffectPlayer` mapping lives in
   `KhaozEngine.Particles.Render3D`. See `docs/USING-KHAOZENGINE.md`.
+- Screen-space distortion: `Scene3D.DrawDistortion(in DistortionSprite)` / `DrawDistortions(ReadOnlySpan<DistortionSprite>)`
+  queue heat-haze / refractive-shockwave / splash-lens sprites that WARP the pixels behind them instead of drawing
+  over them. The queue accumulates a signed screen-space offset field (a lazily allocated half/quarter-res
+  `R16G16Float` target) as ONE instanced draw with the modern particle pass's quad-expansion + depth-occlusion
+  recipe, and the post chain's FIRST pass re-samples the resolved scene colour through that field, so the warp
+  precedes every camera-response pass (bloom halos follow the warped sources, the tonemap and retro palette see the
+  warped image). Three `DistortionShape`s (`Ripple` shockwave rings, `Heat` upward-scrolling wobble, `Lens` radial
+  bulge, sign chooses magnify/pinch). `DistortionSprite.Strength` is the magnitude dial, converted to a UV
+  excursion and clamped to a small maximum so stacked sprites cannot smear the whole screen. The apply pass
+  preserves each pixel's own alpha, so the starfield/transparency background marker never warps. `Scene3D.DistortionQuality`
+  (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second heat noise octave and renders the offset
+  field at quarter res instead of half. Zero cost when unused: a frame that queues no distortion sprite allocates
+  nothing, runs no extra pass, and is byte-identical to before distortion existed. The turn-key `ParticleLook.Distortion`
+  mapping lives in `KhaozEngine.Particles.Render3D`. See `docs/USING-KHAOZENGINE.md`.
 - Motion trails: `Scene3D.DrawTrail(ReadOnlySpan<TrailSample>, TrailStyle)` (since 10.41.0) queues an immediate-mode
   tapered ribbon traced through an ordered list of recent world-space samples (oldest-first) - weapon swings,
   thruster streaks, projectile tracers. Each `TrailSample` carries a world position, per-sample ribbon half-width,

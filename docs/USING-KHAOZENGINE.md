@@ -818,7 +818,7 @@ tip.Update(pointer);                               // auto-dismisses on tap-outs
 tip.Draw(batch, white);
 ```
 
-**`ScrollablePanel` opt-in height glide (10.120.0)** - when a caller recomputes `panel.Bounds`'s height while the
+**`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
 panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
 every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the
 new overload to smooth it instead:

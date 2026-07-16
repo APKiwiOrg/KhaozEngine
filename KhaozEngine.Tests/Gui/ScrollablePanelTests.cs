@@ -260,7 +260,7 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(sp.ScrimDismissed);
         }
 
-        // ---- opt-in height glide (10.120.0) ----------------------------------------------------------------
+        // ---- opt-in height glide (10.121.0) ----------------------------------------------------------------
 
         [Fact]
         public void Height_glide_off_by_default_snaps_every_frame_exactly_as_before()
@@ -348,16 +348,43 @@ namespace KhaozEngine.Tests.Gui
         public void Height_glide_snaps_once_within_half_a_pixel_of_target()
         {
             var sp = Make();
-            sp.HeightGlideSeconds = 0.05f;   // fast time constant
+            sp.HeightGlideSeconds = 10f;   // slow time constant: the easing step below barely moves on its own
             var p = new Pointer();
             var pos = new Vector2(150, 200);
 
-            sp.Update(p, Frame(pos, false), 0.016f);   // snap to the initial target
-            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 320f);   // small 20px jump
-            for (int i = 0; i < 50; i++)
-                sp.Update(p, Frame(pos, false), 0.05f);   // 2.5s at a 0.05s time constant: residual is negligible
+            sp.Update(p, Frame(pos, false), 0.016f);   // snap to the initial target (300)
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 300.4f);   // residual 0.4px, already under the 0.5px snap band
 
-            Assert.Equal(320f, sp.EffectiveHeight, 3);   // exactly snapped, not merely close
+            // One tiny step: the pure exponential move is 0.4 * (1 - exp(-0.001/10)) < 0.0001px, so ONLY the
+            // 0.5px snap branch can land this on the target in a single update. Pins the branch uniquely
+            // (a long-run convergence loop would reach the target through float underflow regardless).
+            sp.Update(p, Frame(pos, false), 0.001f);
+            Assert.Equal(300.4f, sp.EffectiveHeight, 3);
+        }
+
+        [Fact]
+        public void Height_glide_rearms_when_toggled_off_and_back_on()
+        {
+            var sp = Make();
+            sp.HeightGlideSeconds = 0.3f;
+            var p = new Pointer();
+            var pos = new Vector2(150, 200);
+
+            sp.Update(p, Frame(pos, false), 0.016f);   // snap to the initial target (300)
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 500f);
+            sp.Update(p, Frame(pos, false), 0.016f);   // glide partway toward 500
+            float partway = sp.EffectiveHeight;
+            Assert.True(partway > 300f && partway < 500f);
+
+            sp.HeightGlideSeconds = 0f;                // feature off: EffectiveHeight tracks the target directly
+            sp.Update(p, Frame(pos, false), 0.016f);   // this update re-arms the glide state
+            Assert.Equal(500f, sp.EffectiveHeight, 3);
+
+            sp.Bounds = new Rect(Box.X, Box.Y, Box.Width, 250f);   // target changes while the glide is off
+            sp.HeightGlideSeconds = 0.3f;              // back on
+            sp.Update(p, Frame(pos, false), 0.016f);
+            // Snaps fresh to the NEW target: no glide from the stale partway value, no jump back toward 500.
+            Assert.Equal(250f, sp.EffectiveHeight, 3);
         }
 
         [Fact]

@@ -21,7 +21,7 @@ namespace KhaozEngine.Gui
     /// computed off <see cref="CurrentBounds"/> (== <see cref="Bounds"/> when no overlay knob is set).
     /// </para>
     /// <para>
-    /// Opt-in height glide (10.120.0): <see cref="HeightGlideSeconds"/> smooths a content-driven height change
+    /// Opt-in height glide (10.121.0): <see cref="HeightGlideSeconds"/> smooths a content-driven height change
     /// (e.g. <see cref="ItemCount"/> changing while the panel is open) instead of snapping every frame, so
     /// <see cref="EffectiveHeight"/> (and everything derived from it) eases toward its target. 0 (default) is a
     /// no-op, byte-identical to before this knob existed. Fed by the <see cref="Update(Pointer,InputState,float)"/>
@@ -74,7 +74,7 @@ namespace KhaozEngine.Gui
         public float MinHeight = 0f;
         public float MaxHeight = float.MaxValue;
 
-        /// <summary>Opt-in smooth height glide (10.120.0): the exponential time constant, in seconds, that
+        /// <summary>Opt-in smooth height glide (10.121.0): the exponential time constant, in seconds, that
         /// <see cref="EffectiveHeight"/> takes to approach a changed target height while the panel stays visible
         /// (e.g. <see cref="ItemCount"/> changing async, or a tab switch). 0 (default) turns the feature off:
         /// <see cref="EffectiveHeight"/> snaps to the target every frame, exactly as before this knob existed.
@@ -86,7 +86,10 @@ namespace KhaozEngine.Gui
         /// actively drag-resizing (<see cref="Resizable"/>), the dragged height applies directly with no glide
         /// fighting the pointer; releasing the drag resumes the glide from wherever the drag left it. Only the dt
         /// overload advances the glide: a caller that never feeds dt (the legacy <see cref="Update(Pointer,InputState)"/>
-        /// overload) gets no glide regardless of this value, exactly as before.</summary>
+        /// overload) gets no glide regardless of this value, exactly as before. Caveat: the open-at-target
+        /// guarantee relies on the hidden-snap rule running, so the panel must keep receiving dt-fed updates
+        /// while hidden; a consumer that freezes updates while closed and reopens with changed content will
+        /// glide the open instead of snapping.</summary>
         public float HeightGlideSeconds = 0f;
 
         /// <summary>Optional dimmed backdrop behind the panel. When set, <see cref="Update(Pointer,InputState)"/> reserves it on the

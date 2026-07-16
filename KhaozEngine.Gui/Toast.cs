@@ -2,7 +2,7 @@ using KhaozEngine.App;
 
 namespace KhaozEngine.Gui;
 
-/// <summary>Visual/semantic category of a <see cref="Toast"/>, used by the theme to pick a colour and icon.</summary>
+/// <summary>Visual/semantic category of a <see cref="Toast"/>, used by the theme to pick a colour.</summary>
 public enum ToastKind
 {
     Standard,

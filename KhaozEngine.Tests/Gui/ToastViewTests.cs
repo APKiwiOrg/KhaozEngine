@@ -41,7 +41,7 @@ public class ToastViewTests
 
         Rect r = view.GetToastBounds(0);
 
-        // Right(970) - Width(200) - MarginX(6) = 764; Y = Bounds.Y(20) + MarginY(6) = 26.
+        // Right(970) - Width(200) - MarginX(6) = 764. Y = Bounds.Y(20) + MarginY(6) = 26.
         Assert.Equal(764f, r.X);
         Assert.Equal(26f, r.Y);
         Assert.Equal(200f, r.Width);
@@ -105,7 +105,7 @@ public class ToastViewTests
         Rect first = view.GetToastBounds(0);
         Rect second = view.GetToastBounds(1);
 
-        // Bottom(560) - MarginY(6) = 554 is toast 0's bottom edge; toast 1 sits above it, separated by Gap(4).
+        // Bottom(560) - MarginY(6) = 554 is toast 0's bottom edge. Toast 1 sits above it, separated by Gap(4).
         Assert.Equal(554f, first.Bottom);
         Assert.Equal(first.Y - theme.Gap, second.Bottom);
     }

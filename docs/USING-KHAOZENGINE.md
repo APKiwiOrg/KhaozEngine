@@ -909,8 +909,9 @@ view.Draw(batch, white, font);  // drawn last so toasts sit on top
 
 **Hosting pattern B: a `ScreenStack` host.** Put the `ToastView` inside a permanent overlay `Screen` - a high
 `DrawOrder` so it updates first and draws last, `AlwaysReceivesInput = true` so toasts stay tappable under a
-modal, and `PassUpdateThrough = true` paired with a dismissal-only `Update` return so it never blocks the
-screens below (the dormant-overlay trap above applies here too). The `ToastStack` model is NOT owned by that
+modal, and `PassUpdateThrough = true` paired with a dismissal-only `Update` return that keeps the reported
+consumption honest and keeps the pattern portable to screens that don't set `AlwaysReceivesInput`. The
+`ToastStack` model is NOT owned by that
 screen: the room/game ticks it with its own raw frame dt, because a `ScreenStack`'s dt can be sim-scaled while
 toasts must keep counting down at real speed regardless. `KhaozEngine.Showcase`'s `RoomGui.ToastOverlayScreen`
 is the reference implementation. Read it before copying this pattern into a game:

@@ -725,7 +725,8 @@ namespace KhaozEngine.Showcase
         public override bool Update(float dt, bool receivesInput)
         {
             // Returns true only on an actual tap-dismiss, per the Screen.Update contract for permanently
-            // mounted overlays (a bare true would starve every screen below of input while dormant).
+            // mounted overlays (the dismissal-only return keeps the reported consumption honest and keeps this
+            // pattern portable to screens that don't set AlwaysReceivesInput).
             if (!receivesInput) return false;
             return _view.Update(Manager.Pointer);
         }

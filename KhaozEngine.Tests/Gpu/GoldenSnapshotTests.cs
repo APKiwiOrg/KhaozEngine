@@ -960,6 +960,53 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden3D_Distortion()
+        {
+            MeshHandle floor = default;
+            Scene3D.TextureHandle tex = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    // A colourful grid albedo on the floor gives the screen-space warp visible edges to bend at the
+                    // coarse golden-grid scale (a flat floor would average out).
+                    (byte[] ap, int aw, int ah) = FlipbookTestSheets.Atlas(8, 8, 24);
+                    tex = scene.LoadTexture(ap, aw, ah);
+                    floor = scene.LoadMesh(MeshPrimitives.Tile(16f, 0.1f), tex);
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = true;      // pinned explicit, matching the other 3D goldens (HDR default on)
+                    scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.09f, 1f);
+                    scene.Camera.Frame(new Vector3(0f, 0.6f, 0.1f), new Vector3(6.0f, 2.6f, 4.2f));
+                    scene.EffectTimeSeconds = 0f;   // frozen time => deterministic noise/ring terms
+                },
+                drawFrame: scene =>
+                {
+                    scene.Draw(floor, Matrix4x4.Identity);
+                    // One of each shape at fixed positions over the textured floor: locks the ripple ring band, the
+                    // lens bulge, and the heat wobble through the full offset-field + apply-pass path. Fixed seeds +
+                    // frozen time keep every term deterministic.
+                    scene.DrawDistortion(new DistortionSprite
+                    {
+                        Position = new Vector3(-2.2f, 1.1f, -1.2f), Size = 1.3f,
+                        Shape = DistortionShape.Ripple, ShapeParam = 0.2f, Strength = 2.2f, Seed = 0.13f,
+                    });
+                    scene.DrawDistortion(new DistortionSprite
+                    {
+                        Position = new Vector3(2.0f, 1.0f, -1.0f), Size = 1.3f,
+                        Shape = DistortionShape.Lens, ShapeParam = 0.4f, Strength = 2.0f, Seed = 0.41f,
+                    });
+                    scene.DrawDistortion(new DistortionSprite
+                    {
+                        Position = new Vector3(0f, 1.2f, 0.4f), Size = 1.4f,
+                        Shape = DistortionShape.Heat, ShapeParam = 0.5f, Strength = 1.6f, Seed = 0.7f,
+                    });
+                },
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("scene3d_distortion", rgba, W, H);
+        }
+
+        [GpuFact]
         public void Golden3D_Beam_DepthInterleaved()
         {
             MeshHandle box = default;

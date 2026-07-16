@@ -81,7 +81,7 @@ DungeonStampResult stamp = DungeonStamp.Build(layout, kit, plot);
 are greedy axis-run merges, not one shape per tile: a contiguous wall run along a row becomes one `BoxShape`,
 same for a contiguous walkable floor run (stair-tread cells are excluded, they are covered by their stair's step
 boxes instead). Each stair run climbs one floor over a three-cell run as a row of solid upright box steps (riser
-under the default step-up height, so the character mounts every tread; a single pitched ramp box is not walkable
+under the default step-up height, so the character mounts every tread. A single pitched ramp box is not walkable
 from a flush floor), matching the greybox stair mesh. See `KhaozEngine.Showcase`'s "Dungeon (walk)" room
 for a wiring example (generate once, stamp, load the kit meshes, spawn the player at the `Entrance`
 marker). Note the demo wires rendering and the walk camera only, it does not register the physics statics.

@@ -20,6 +20,13 @@ namespace KhaozEngine.Gui
     /// and a dimmed <see cref="Scrim"/> with tap-outside-to-close (<see cref="ScrimDismissed"/>). All geometry is
     /// computed off <see cref="CurrentBounds"/> (== <see cref="Bounds"/> when no overlay knob is set).
     /// </para>
+    /// <para>
+    /// Opt-in height glide (10.121.0): <see cref="HeightGlideSeconds"/> smooths a content-driven height change
+    /// (e.g. <see cref="ItemCount"/> changing while the panel is open) instead of snapping every frame, so
+    /// <see cref="EffectiveHeight"/> (and everything derived from it) eases toward its target. 0 (default) is a
+    /// no-op, byte-identical to before this knob existed. Fed by the <see cref="Update(Pointer,InputState,float)"/>
+    /// dt overload; the legacy <see cref="Update(Pointer,InputState)"/> overload never glides.
+    /// </para>
     /// </summary>
     public sealed class ScrollablePanel
     {
@@ -31,7 +38,7 @@ namespace KhaozEngine.Gui
         public float ItemSpacing = 4f;
         /// <summary>Pixels scrolled per wheel notch.</summary>
         public float WheelSpeed = 30f;
-        /// <summary>When true, <see cref="Update"/> reserves <see cref="CurrentBounds"/> on the pointer (so layers beneath skip it).</summary>
+        /// <summary>When true, <see cref="Update(Pointer,InputState)"/> reserves <see cref="CurrentBounds"/> on the pointer (so layers beneath skip it).</summary>
         public bool BlocksPointer = true;
 
         public Vector4 Background = new(0.047f, 0.047f, 0.078f, 0.96f);
@@ -67,7 +74,25 @@ namespace KhaozEngine.Gui
         public float MinHeight = 0f;
         public float MaxHeight = float.MaxValue;
 
-        /// <summary>Optional dimmed backdrop behind the panel. When set, <see cref="Update"/> reserves it on the
+        /// <summary>Opt-in smooth height glide (10.121.0): the exponential time constant, in seconds, that
+        /// <see cref="EffectiveHeight"/> takes to approach a changed target height while the panel stays visible
+        /// (e.g. <see cref="ItemCount"/> changing async, or a tab switch). 0 (default) turns the feature off:
+        /// <see cref="EffectiveHeight"/> snaps to the target every frame, exactly as before this knob existed.
+        /// When &gt; 0, each dt-fed <see cref="Update(Pointer,InputState,float)"/> call eases the rendered height
+        /// with <c>current += (target - current) * (1 - exp(-dt / HeightGlideSeconds))</c>, snapping once within
+        /// 0.5px of the target. The glide always snaps (no easing) on the first update after construction and
+        /// whenever the panel is fully hidden (<see cref="TransitionAlpha"/> &lt;= 0), so a panel always OPENS
+        /// directly at its needed height: only a target change while already visible glides. While the user is
+        /// actively drag-resizing (<see cref="Resizable"/>), the dragged height applies directly with no glide
+        /// fighting the pointer; releasing the drag resumes the glide from wherever the drag left it. Only the dt
+        /// overload advances the glide: a caller that never feeds dt (the legacy <see cref="Update(Pointer,InputState)"/>
+        /// overload) gets no glide regardless of this value, exactly as before. Caveat: the open-at-target
+        /// guarantee relies on the hidden-snap rule running, so the panel must keep receiving dt-fed updates
+        /// while hidden; a consumer that freezes updates while closed and reopens with changed content will
+        /// glide the open instead of snapping.</summary>
+        public float HeightGlideSeconds = 0f;
+
+        /// <summary>Optional dimmed backdrop behind the panel. When set, <see cref="Update(Pointer,InputState)"/> reserves it on the
         /// pointer and reports <see cref="ScrimDismissed"/> when it is tapped outside the panel; draw it with
         /// <see cref="DrawScrim"/>. Null (default) = no scrim.</summary>
         public Rect? Scrim = null;
@@ -82,14 +107,26 @@ namespace KhaozEngine.Gui
         float? _resizeHeight;
         bool _resizing;
 
+        float _glideHeight;
+        bool _glideInitialized;
+
         public float ScrollOffset { get; private set; }
         public float Stride => ItemHeight + ItemSpacing;
         public float ContentHeight => ItemCount * Stride;
 
-        /// <summary>The panel's height this frame after any drag-resize (docked to <see cref="Bounds"/>'s bottom edge).</summary>
-        public float EffectiveHeight => Resizable
+        /// <summary>The un-glided target height this frame: <see cref="Bounds"/>'s height, or the drag-resize
+        /// height clamped to <see cref="MinHeight"/>/<see cref="MaxHeight"/> when <see cref="Resizable"/>. This is
+        /// what <see cref="EffectiveHeight"/> equals when <see cref="HeightGlideSeconds"/> is off, and what it
+        /// glides toward when the glide is on.</summary>
+        float TargetHeight => Resizable
             ? Math.Clamp(_resizeHeight ?? Bounds.Height, MinHeight, MaxHeight)
             : Bounds.Height;
+
+        /// <summary>The panel's height this frame after any drag-resize and the opt-in height glide (docked to
+        /// <see cref="Bounds"/>'s bottom edge). Equals <see cref="TargetHeight"/> exactly (no state, no lag) unless
+        /// <see cref="HeightGlideSeconds"/> is &gt; 0 AND a dt-fed <see cref="Update(Pointer,InputState,float)"/>
+        /// call has already run at least once - see <see cref="HeightGlideSeconds"/> for the full contract.</summary>
+        public float EffectiveHeight => HeightGlideSeconds > 0f && _glideInitialized ? _glideHeight : TargetHeight;
 
         /// <summary>The on-screen panel rect this frame: <see cref="Bounds"/> after optional resize + slide. Equals
         /// <see cref="Bounds"/> when no overlay knob is set.</summary>
@@ -124,8 +161,18 @@ namespace KhaozEngine.Gui
         /// <summary>Jump to a scroll offset (clamped to range).</summary>
         public void ScrollTo(float offset) => ScrollOffset = Math.Clamp(offset, 0f, MaxScroll);
 
-        /// <summary>Apply wheel + drag scrolling for this frame, drive header-resize + scrim, and (optionally) reserve the pointer.</summary>
-        public void Update(Pointer pointer, InputState input)
+        /// <summary>Apply wheel + drag scrolling for this frame, drive header-resize + scrim, and (optionally)
+        /// reserve the pointer. Feeds no dt, so <see cref="HeightGlideSeconds"/> never glides on this path -
+        /// <see cref="EffectiveHeight"/> snaps to target exactly as before that knob existed. Use
+        /// <see cref="Update(Pointer,InputState,float)"/> to opt into the glide.</summary>
+        public void Update(Pointer pointer, InputState input) => Update(pointer, input, 0f);
+
+        /// <summary>Apply wheel + drag scrolling for this frame, drive header-resize + scrim + the opt-in height
+        /// glide (<see cref="HeightGlideSeconds"/>), and (optionally) reserve the pointer. <paramref name="dt"/> is
+        /// the frame delta in seconds; a value &lt;= 0 (including the legacy <see cref="Update(Pointer,InputState)"/>
+        /// overload, which forwards 0) never advances or initializes the glide, so <see cref="EffectiveHeight"/>
+        /// stays exactly at <c>TargetHeight</c> until a positive dt is fed at least once.</summary>
+        public void Update(Pointer pointer, InputState input, float dt)
         {
             ScrimDismissed = false;
 
@@ -162,6 +209,8 @@ namespace KhaozEngine.Gui
                 }
             }
 
+            AdvanceHeightGlide(dt);
+
             Rect content = ContentBounds;
 
             if (pointer.IsPointerIn(content) && input.ScrollDelta != 0f)
@@ -176,6 +225,37 @@ namespace KhaozEngine.Gui
                 ScrollOffset -= dragY;
 
             ScrollOffset = Math.Clamp(ScrollOffset, 0f, MaxScroll);
+        }
+
+        /// <summary>Advance the opt-in height glide by one frame. A <paramref name="dt"/> &lt;= 0 (the legacy
+        /// no-dt <see cref="Update(Pointer,InputState)"/> overload, or a genuinely paused frame) leaves the glide
+        /// state untouched entirely, so a caller that never feeds a positive dt never initializes it and
+        /// <see cref="EffectiveHeight"/> keeps returning <see cref="TargetHeight"/> directly. Snaps (no easing) on
+        /// the first initializing call, whenever the panel is fully hidden, and while a drag-resize is in
+        /// progress, per the <see cref="HeightGlideSeconds"/> contract.</summary>
+        void AdvanceHeightGlide(float dt)
+        {
+            if (HeightGlideSeconds <= 0f)
+            {
+                // Re-arm: if the glide is switched back on later, it snaps fresh instead of resuming from a
+                // value that went stale while the feature was off.
+                _glideInitialized = false;
+                return;
+            }
+
+            if (dt <= 0f) return;   // no positive dt fed yet - leave state untouched (see the doc comment above)
+
+            float target = TargetHeight;
+
+            if (!_glideInitialized || TransitionAlpha <= 0f || _resizing)
+            {
+                _glideHeight = target;
+                _glideInitialized = true;
+                return;
+            }
+
+            float next = _glideHeight + (target - _glideHeight) * (1f - MathF.Exp(-dt / HeightGlideSeconds));
+            _glideHeight = MathF.Abs(target - next) <= 0.5f ? target : next;
         }
 
         /// <summary>The on-screen bounds of item <paramref name="index"/> (accounting for scroll). May lie outside <see cref="ContentBounds"/>.</summary>

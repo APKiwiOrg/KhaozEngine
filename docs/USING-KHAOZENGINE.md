@@ -818,6 +818,22 @@ tip.Update(pointer);                               // auto-dismisses on tap-outs
 tip.Draw(batch, white);
 ```
 
+**`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
+panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
+every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the
+new overload to smooth it instead:
+
+```csharp
+panel.HeightGlideSeconds = 0.15f;               // exponential time constant in seconds
+panel.Bounds = panel.Bounds with { Height = ComputeNeededHeight() };  // may change frame to frame
+panel.Update(pointer, input, dt);               // dt-fed overload: EffectiveHeight eases toward the new height
+```
+
+The glide always snaps (no easing) on the first update and whenever the panel is fully hidden
+(`TransitionAlpha <= 0`), so a panel still OPENS directly at its needed height, and it never fights an active
+`Resizable` drag. The legacy `Update(pointer, input)` overload never feeds dt, so it never glides regardless of
+`HeightGlideSeconds`.
+
 **HUD widgets: `SlotGrid` + `ProgressBar` (10.78.0)** - two additive widgets for inventory / status HUDs. `SlotGrid`
 lays out `Count` uniform square slots wrapping at `Columns` (`Bounds`.X/Y is the origin; the footprint is `ContentSize`
 / `ContentBounds`, derived from `SlotSize` / `Spacing`). It hit-tests each slot through the press-origin invariant and

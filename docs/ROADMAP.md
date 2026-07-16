@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **10.121.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **10.122.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -99,7 +99,7 @@ global illumination, a deferred renderer, full PBR+IBL, occlusion culling, GPU-d
 Ordered gap list (2026-07-07 feature audit):
 
 1. Shadow polish (the ShadowMode tier shipped in 10.19.0: blob + key-light PCF map, model and terrain both
-   receive, model-only casting; cascaded shadow maps + the outer coverage fade shipped in 10.121.0): remaining
+   receive, model-only casting; cascaded shadow maps + the outer coverage fade shipped in 10.122.0): remaining
    follow-ups when a game pulls for them - terrain self-shadowing / terrain-as-caster, per-game bias tuning
    beyond the small-scene defaults, and a runtime-resizable cascade atlas (resolution + cascade count are
    construction-time knobs today).

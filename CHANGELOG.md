@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## 10.121.0
+## 10.122.0
 
 Cascaded shadow maps for the `ShadowMap` tier plus an outer-boundary fade, killing the visible square
 coverage box that followed the camera. The single ortho map is replaced by N concentric cascades (default 3)
@@ -42,6 +42,30 @@ byte-stable, and existing `ShadowMap` scenes whose shadows fall within the near 
   atlas is allocated up front for a stable bound handle), so set them before creating the scene.
 - **Out of scope (unchanged):** terrain casting (terrain still receives, does not cast), alpha-tested cutout
   casters, and the GPU-skinned caster default (still opt-in and off).
+
+## 10.121.0
+
+`ScrollablePanel` opt-in smooth height glide: a caller-driven `Bounds` height change while the panel is
+visible (async content arriving, a tab switch changing row count) now eases instead of snapping in a single
+frame, so a bottom-docked overlay panel no longer visibly jumps.
+
+- **New `ScrollablePanel.HeightGlideSeconds`** (float, default 0 = off, byte-identical to before). When set
+  above 0, `EffectiveHeight` (and everything derived from it: `CurrentBounds`, `HeaderBounds`,
+  `ContentBounds`, `MaxScroll`, the `SlideFromBottom` offset) eases toward the target height (`Bounds.Height`,
+  or the drag-resize height clamped to `MinHeight`/`MaxHeight` when `Resizable`) using the frame-rate
+  independent exponential form `current += (target - current) * (1 - exp(-dt / HeightGlideSeconds))`,
+  snapping once within 0.5px of the target.
+- **New `ScrollablePanel.Update(Pointer, InputState, float dt)` overload** feeds the frame delta needed to
+  drive the glide. The existing `Update(Pointer, InputState)` overload now forwards `dt = 0`, which never
+  advances or initializes the glide state, so a caller that keeps using it (or that never sets
+  `HeightGlideSeconds`) sees `EffectiveHeight` snap to target every frame, exactly as before this release.
+- **Snap rules.** The glide always snaps (no easing) on the first update after construction and whenever the
+  panel becomes fully hidden (`TransitionAlpha <= 0`), so a panel always opens directly at its needed height;
+  only a target change while the panel is already visible glides. While the user is actively drag-resizing
+  (`Resizable`), the dragged height applies directly with no glide fighting the pointer; releasing the drag
+  resumes the glide from wherever the drag left it. For the open-at-target guarantee to hold, the panel must
+  keep receiving dt-fed updates while hidden: a consumer that freezes updates while closed and reopens with
+  changed content will glide the open instead of snapping.
 
 ## 10.120.0
 

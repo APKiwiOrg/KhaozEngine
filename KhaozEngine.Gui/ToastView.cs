@@ -85,14 +85,17 @@ public sealed class ToastView
 
     /// <summary>
     /// Tap-dismiss input: for each active toast (newest first), reserve its bounds via
-    /// <see cref="Pointer.BlockRegion"/> so a tap never leaks through to whatever the host draws underneath,
-    /// then hit-test with <see cref="Pointer.IsTapIn"/> (the press-origin invariant, so a drag that started
-    /// elsewhere can't dismiss a toast it merely ends over). The first toast that registers a valid tap is
-    /// removed via <see cref="ToastStack.Dismiss(Toast)"/> and processing stops for this call, since the
-    /// remaining toasts' bounds shift once <see cref="Stack"/> loses that entry and reserving them now against
-    /// a rect that is about to move would be stale. They get their own <see cref="Pointer.BlockRegion"/> call
-    /// next frame. Works identically for a sticky toast, whose only dismissal path is a tap. Returns true when
-    /// a toast was dismissed.
+    /// <see cref="Pointer.BlockRegion"/> (the seam for a layer beneath the UI that explicitly checks
+    /// <see cref="Pointer.IsBlocked"/>, like a game world, to ignore input landing over a toast), then hit-test
+    /// with <see cref="Pointer.IsTapIn"/> (the press-origin invariant, so a drag that started elsewhere can't
+    /// dismiss a toast it merely ends over). The first toast that registers a valid tap is removed via
+    /// <see cref="ToastStack.Dismiss(Toast)"/> and the gesture is claimed via
+    /// <see cref="Pointer.ConsumeGesture"/>, so the same release can't also fire any other widget hit-testing
+    /// this pointer (<see cref="Pointer.IsTapIn"/> requires an unconsumed gesture). Processing then stops for
+    /// this call, since the remaining toasts' bounds shift once <see cref="Stack"/> loses that entry and
+    /// reserving them now against a rect that is about to move would be stale. They get their own
+    /// <see cref="Pointer.BlockRegion"/> call next frame. Works identically for a sticky toast, whose only
+    /// dismissal path is a tap. Returns true when a toast was dismissed.
     /// </summary>
     public bool Update(Pointer pointer)
     {
@@ -104,6 +107,7 @@ public sealed class ToastView
             if (pointer.IsTapIn(bounds))
             {
                 Stack.Dismiss(active[i]);
+                pointer.ConsumeGesture();
                 return true;
             }
         }

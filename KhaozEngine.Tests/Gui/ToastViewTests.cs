@@ -244,6 +244,29 @@ public class ToastViewTests
     }
 
     [Fact]
+    public void Dismissing_tap_consumes_the_gesture_so_it_cannot_also_fire_a_widget_below()
+    {
+        var stack = new ToastStack();
+        stack.Show(LocalizedText.Raw("hi"));
+        ToastView view = MakeView(stack);
+        Rect bounds = view.GetToastBounds(0);
+        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
+
+        var p = new Pointer();
+        p.Update(Frame(inside, false));   // idle
+        view.Update(p);
+        p.Update(Frame(inside, true));    // press inside
+        view.Update(p);
+        p.Update(Frame(inside, false));   // release inside, dismissing the toast
+        bool dismissed = view.Update(p);
+
+        Assert.True(dismissed);
+        Assert.True(p.IsConsumed);
+        // A widget under the toast sharing this pointer sees no tap from the same, now-consumed gesture.
+        Assert.False(p.IsTapIn(bounds));
+    }
+
+    [Fact]
     public void Tap_outside_every_toast_dismisses_nothing()
     {
         var stack = new ToastStack();

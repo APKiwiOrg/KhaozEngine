@@ -18,20 +18,21 @@ namespace KhaozEngine.Showcase
     /// (Input/Pointer/Viewport) exactly as <c>ShowcaseApp</c> feeds <c>SceneManager</c>. A <see cref="GameScene"/>
     /// cannot reach <c>Surface2D</c> itself, so <see cref="ShowcaseApp"/> creates the texture/fonts and hands them
     /// in via <see cref="Init"/> right after construction, keeping the constructor parameterless for the room
-    /// registry's <c>Func&lt;GameScene&gt;</c>. The room also owns a <see cref="ToastStack"/>/<see cref="ToastView"/>
-    /// pair (see the "Toasts" menu button, which pushes a <c>ToastsScreen</c> demo), driven the same way beside
-    /// <see cref="_stack"/> rather than from within a screen, so toasts outlive any single screen and draw on top
-    /// of the whole stack.</summary>
+    /// registry's <c>Func&lt;GameScene&gt;</c>. The room also hosts the toast demo (see the "Toasts" menu button,
+    /// which pushes a <c>ToastsScreen</c>): it owns the <see cref="ToastStack"/> model, ticked from
+    /// <see cref="OnUpdate"/> with the raw frame dt, while the <see cref="ToastView"/> lives in a permanent
+    /// <see cref="ToastOverlayScreen"/> inside <see cref="_stack"/> (topmost by DrawOrder, passthrough), so
+    /// toasts outlive any single screen, update before every sibling screen, and draw on top of them all.</summary>
     public sealed class RoomGui : GameScene
     {
         GuiAssets _assets = null!;
         ScreenStack _stack = null!;
 
-        // Toasts are hosted at the room level, not inside a screen, so they persist across every screen
-        // push/pop on _stack and always draw on top of whichever screen is active. This is the pattern a game
-        // copies: own a ToastStack + ToastView beside the ScreenStack and drive both from the room.
+        // The toast MODEL lives on the room so code outside any screen can fire toasts, and so the tick below
+        // runs on the room's raw frame dt (a real game's ScreenStack dt may be sim-scaled). The VIEW lives in a
+        // permanent ToastOverlayScreen inside _stack, which updates it against the stack's own pointer before
+        // any sibling screen hit-tests and draws it last. This split is the pattern a game copies.
         ToastStack _toasts = null!;
-        ToastView _toastView = null!;
 
         /// <summary>Wire in the textures/fonts created on the app's Surface2D. Call once, right after
         /// construction and before the room is pushed. <paramref name="skin"/> is the nine-slice frame skin used by
@@ -74,10 +75,10 @@ namespace KhaozEngine.Showcase
         public override void OnEnter()
         {
             _toasts = new ToastStack();
-            _toastView = new ToastView(_toasts, _assets.Small) { Bounds = Manager!.Viewport!.DesignBounds };
 
             _stack = new ScreenStack();
             _stack.Add(new GuiMenuScreen(_assets, Manager!.Viewport!, _toasts));
+            _stack.Add(new ToastOverlayScreen(_assets, Manager!.Viewport!, _toasts));   // permanent, topmost
         }
 
         public override void OnUpdate(float dt)
@@ -86,32 +87,26 @@ namespace KhaozEngine.Showcase
 
             // A real game feeds ToastStack.Update a RAW, unscaled frame dt (Frame.Dt / GameClock.RealDeltaSeconds),
             // never a scaled simulation dt, so toasts keep counting down at real speed while the game is paused or
-            // slowed. The showcase has no time scaling of its own, so dt here already is that raw value.
+            // slowed. The showcase has no time scaling of its own, so dt here already is that raw value. The tick
+            // stays host-driven for that reason: ToastOverlayScreen only handles input and drawing.
             _toasts.Update(dt);
-            // Toasts see the pointer and reserve their own rects before the screen stack updates, so a tap that
-            // lands on a toast dismisses it instead of also reaching whatever the active screen draws under it.
-            // m.Pointer is already refreshed for this frame (the app updates it before calling OnUpdate), unlike
-            // _stack.Pointer, which is only current once _stack.Update runs below.
-            _toastView.Update(m.Pointer!);
 
             // Esc backs out exactly one level. With a modal sub-screen open (Settings/Widgets/Immediate/Overlay),
             // Esc exits the topmost screen (which plays its off-transition) and returns to the root menu. Only
-            // once the stack is back down to just the root menu screen does Esc leave the room via Manager.Pop().
-            // Centralized here so no sub-screen needs its own Esc handler (avoids a double-pop on the same frame).
+            // once the stack is back down to the root menu does Esc leave the room via Manager.Pop(). Centralized
+            // here so no sub-screen needs its own Esc handler (avoids a double-pop on the same frame). The
+            // permanent ToastOverlayScreen is always Screens[^1] (highest DrawOrder) and never counts as a
+            // backable level, so the checks skip it: root = 2 screens, and the top UI screen is Screens[^2].
             if (m.Input.WasPressed(Key.Escape))
             {
-                if (_stack.Screens.Count <= 1) { m.Pop(); return; }
-                _stack.Screens[^1].ExitScreen();
+                if (_stack.Screens.Count <= 2) { m.Pop(); return; }
+                _stack.Screens[^2].ExitScreen();
                 return;
             }
             _stack.Update(dt, m.Input, m.Viewport);
         }
 
-        public override void OnDraw2D(SpriteBatch batch)
-        {
-            _stack.Draw(batch);
-            _toastView.Draw(batch, _assets.White, _assets.Small);   // after the stack, so toasts sit on top
-        }
+        public override void OnDraw2D(SpriteBatch batch) => _stack.Draw(batch);
     }
 
     /// <summary>Shared white texture + two font sizes + the demo nine-slice skin, mirroring <c>GuiSample</c>'s
@@ -701,10 +696,47 @@ namespace KhaozEngine.Showcase
         }
     }
 
+    /// <summary>Permanent, passthrough overlay screen hosting the <see cref="ToastView"/> on top of the whole
+    /// stack. DrawOrder 100 keeps it above every demo screen (Settings 10, Popup 20), so the stack updates it
+    /// FIRST and draws it LAST each frame. <see cref="Screen.AlwaysReceivesInput"/> keeps toasts tappable even
+    /// while a modal below has consumed input, and <see cref="Screen.PassUpdateThrough"/> (with the
+    /// dismissal-only consumed return from <see cref="Update"/>) means it never freezes or input-starves the
+    /// screens below. Tap-dismiss runs against the stack's own <see cref="ScreenStack.Pointer"/>, the exact
+    /// instance every sibling screen hit-tests, and a dismissing tap calls <c>Pointer.ConsumeGesture</c> inside
+    /// <see cref="ToastView.Update"/>, so the same gesture can't also fire a button underneath the toast. The
+    /// view's <c>Pointer.BlockRegion</c> calls additionally protect a beneath layer that checks
+    /// <c>Pointer.IsBlocked</c> explicitly (a game world under the UI). The <see cref="ToastStack"/> model is NOT
+    /// ticked here: <see cref="RoomGui.OnUpdate"/> ticks it with the raw frame dt, because a real game's
+    /// ScreenStack dt may be sim-scaled while toasts must count down at real speed.</summary>
+    sealed class ToastOverlayScreen : Screen
+    {
+        readonly GuiAssets _a;
+        readonly ToastView _view;
+
+        public ToastOverlayScreen(GuiAssets a, IDesignViewport vp, ToastStack toasts)
+        {
+            _a = a;
+            _view = new ToastView(toasts, a.Small) { Bounds = vp.DesignBounds };
+            DrawOrder = 100;              // topmost: updated first, drawn last
+            AlwaysReceivesInput = true;   // toasts stay tappable under a modal
+            PassUpdateThrough = true;     // never blocks the screens below (transitions stay at the zero default)
+        }
+
+        public override bool Update(float dt, bool receivesInput)
+        {
+            // Returns true only on an actual tap-dismiss, per the Screen.Update contract for permanently
+            // mounted overlays (a bare true would starve every screen below of input while dormant).
+            if (!receivesInput) return false;
+            return _view.Update(Manager.Pointer);
+        }
+
+        public override void Draw(SpriteBatch batch) => _view.Draw(batch, _a.White, _a.Small);
+    }
+
     /// <summary>Demo screen for the toast stack: a button per <see cref="ToastKind"/>, a sticky toast that only
     /// dismisses on tap, a keyed toast that replaces itself in place (with an incrementing counter baked into
     /// the message) on every click, and clearing that key. The <see cref="ToastStack"/> itself belongs to
-    /// <see cref="RoomGui"/>, not this screen (see <see cref="RoomGui.OnUpdate"/>/<see cref="RoomGui.OnDraw2D"/>),
+    /// <see cref="RoomGui"/> and its view to the permanent <see cref="ToastOverlayScreen"/>, not to this screen,
     /// so toasts fired here keep counting down and stay visible even after Back returns to the root menu.</summary>
     sealed class ToastsScreen : Screen
     {

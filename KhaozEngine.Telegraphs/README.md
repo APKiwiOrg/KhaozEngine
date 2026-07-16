@@ -29,7 +29,7 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
 
   | Preset | Character |
   |--------|-----------|
-  | `Generic` | Neutral red-orange danger zone, alpha-blended, all core animations on. |
+  | `Generic` | Neutral red-orange danger zone, alpha-blended, fill sweep + color ramp + impact flash, plus rim and sweep glow (no outline pulse). |
   | `Fire` | Additive warm glow, scrolling noise, edge sparkle. |
   | `Poison` | Toxic green, alpha-blended, pulsing outline. |
   | `Steel` | Cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle. |

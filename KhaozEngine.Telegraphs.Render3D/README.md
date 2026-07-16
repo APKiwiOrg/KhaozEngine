@@ -57,7 +57,7 @@ This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRe
 wrapper) build a one-shot fading, slightly expanding scorch/frost mark for the moment after a
 telegraph resolves: fill alpha fades as `(1 - age01)^2` and the radius grows by up to 8%. The
 builder stays pure and immediate-mode like every other telegraph call here, so the CONSUMER owns
-and advances `age01` (0 = just resolved, 1 = gone) each frame and simply stops calling once it
+and advances `age01` (0 = just resolved, 1 = gone) each frame and stops calling once it
 reaches 1. It always uses `style.DangerColor` (dimmed) for the fill, never `style.FillColor`, and
 defaults to a `ScrollingNoise` pattern even for a `Solid`-pattern style.
 

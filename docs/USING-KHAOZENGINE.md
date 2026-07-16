@@ -2289,7 +2289,8 @@ the 3D ground-decal path only, see below):
 **Presets** (`TelegraphStyle.Generic` / `.Fire` / `.Poison` / `.Steel` / `.Frost` / `.Nature` /
 `.Arcane`), each a distinct character to reach for by name instead of hand-tuning fields:
 
-- `Generic` - neutral red-orange danger zone, alpha-blended, all core animations on.
+- `Generic` - neutral red-orange danger zone, alpha-blended, fill sweep, color ramp, impact
+  flash, plus rim and sweep glow (no outline pulse).
 - `Fire` - additive warm glow, scrolling noise, edge sparkle.
 - `Poison` - toxic green, alpha-blended, pulsing outline.
 - `Steel` - cool grey, crisp edge, fine brushed-grain noise, no rim glow or sparkle.

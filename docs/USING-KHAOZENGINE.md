@@ -1712,6 +1712,33 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       directly as screen NDC, visible whenever the sun is above the view horizon. Not a physical projection, but it
       places the disc under BOTH the ortho iso camera and the perspective camera, which is what a decorative backdrop
       wants. Pick it for a stylized sky, or for the orthographic iso camera where `World` degenerates.
+- **Day/night cycle** (`KhaozEngine.Render3D.SunCycle`, a pure mapping, no shader/UBO change): drives the sky and
+  lighting above from a caller-supplied normalized time of day.
+  ```csharp
+  var cycle = new SunCycleSettings();
+  scene.Post.Sky.Enabled = true;
+  // each frame, timeOfDay in [0,1) comes from YOUR game clock:
+  SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
+  ```
+  - **The engine owns no clock.** `SunCycle.Evaluate` takes a plain `float timeOfDay` (0 is midnight, 0.5 is solar
+    noon, any value wraps) and `SunCycleSettings` (latitude/declination/heading shape the sun arc, plus the
+    twilight/night elevation bands). The game owns the clock, ticks it, and decides how it advances; in an MMO the
+    server replicates the time to clients so every player sees the same sky.
+  - **Night handling.** Below the horizon the sun disc hides (`Sky.SunEnabled = false`, `Sky.SunColor` faded to
+    black) and the key light switches to a virtual moon placed opposite the sun, so `Post.LightDirection` still
+    points somewhere downward instead of flipping to darkness. The key light dips to zero across the horizon
+    crossing so the 180 degree azimuth flip between sun and moon is never visible. `AmbientColor` never reaches
+    pure black, so night stays playable. A visible moon disc and a secondary night key light are deferred
+    follow-ups, see `docs/ROADMAP.md`.
+  - **Palettes are calibrated, not fixed.** `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette` (each a
+    `SunCyclePalette`) default to the engine's existing look (`DefaultDay()` reproduces the stock `Sky`/`Post`
+    defaults exactly), blended by sun elevation rather than time of day so one setup works at any latitude or day
+    length. Calibrate `DayPalette` to your own midday lighting rig rather than relying on the defaults for a
+    stylized scene.
+  - **Re-tie anything you derived from the sky.** `SunCycle.Apply` writes `Post.Sky`'s gradient/sun colors and
+    `Post.LightDirection`/`LightColor`/`AmbientColor`/`FillLightColor` every call. If your game reads those values
+    to drive something else (for example a water horizon tint sampled from `Sky.HorizonColor`), re-tie it after
+    `Apply` runs so it does not read a stale value from before the time of day advanced.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur LDR bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to

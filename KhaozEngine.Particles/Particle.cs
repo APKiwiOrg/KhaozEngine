@@ -27,6 +27,13 @@ public struct Particle
     /// <summary>Current (interpolated) RGBA colour.</summary>
     public Color Color;
 
+    /// <summary>Current billboard rotation in radians (integrated from the emitter's spin).</summary>
+    public float Rotation;
+
+    /// <summary>Stable per-particle randomiser in [0,1), hashed from a monotonic emit counter (consumes no
+    /// RNG draw). Drives per-particle variation in a renderer or the turbulence field.</summary>
+    public float Seed;
+
     /// <summary>True while the particle has not exceeded its lifetime.</summary>
     public readonly bool Alive => Age < Life;
 

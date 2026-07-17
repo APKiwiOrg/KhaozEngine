@@ -3008,6 +3008,48 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(SelectionKind.CompanionLayer, scene.Document.Selection.Kind);
         }
 
+        // Bug #25: with zero scatter layers the "[+ add companion]" action node used to still appear, and
+        // activating it crashed the editor (AddCompanionLayerCommand defaults HostLayer to "", which
+        // BuildPropLayers then rejects mid-frame, out of OnUpdate). A companion rings a host scatter layer,
+        // so with none the affordance is meaningless and unsafe: it must not be offered.
+        [Fact]
+        public void CompanionLayerAddAction_NoScatterLayers_NotOffered()
+        {
+            var scene = PushDocScene(ValidDoc);
+
+            TreeNode companionRoot = scene.Outline.Roots.Single(r => r.Label.Resolve() == "Companion Layers");
+            Assert.DoesNotContain(companionRoot.Children, n => n.Label.Resolve() == "[+ add companion]");
+        }
+
+        // The gate only withholds the action when there is nothing to host a companion: with >= 1 scatter
+        // layer present, the affordance is still offered (the fix gates, it does not delete, the feature).
+        [Fact]
+        public void CompanionLayerAddAction_WithScatterLayer_Offered()
+        {
+            var scene = ScatterScene();
+
+            TreeNode companionRoot = scene.Outline.Roots.Single(r => r.Label.Resolve() == "Companion Layers");
+            Assert.Contains(companionRoot.Children, n => n.Label.Resolve() == "[+ add companion]");
+        }
+
+        // The gate targets only the trailing action node: an existing companion layer (e.g. left over after
+        // its host scatter layer was removed) still gets a selectable outline row even with zero scatter
+        // layers, it just cannot grow a new one via the outline until a host exists again.
+        [Fact]
+        public void CompanionLayerAddAction_NoScatterLayersButExistingCompanion_CompanionStillListed()
+        {
+            var scene = PushDocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.CompanionLayers.Add(new MapCompanionLayer { Name = "ring", HostLayer = "trees" });
+                return doc;
+            });
+
+            TreeNode companionRoot = scene.Outline.Roots.Single(r => r.Label.Resolve() == "Companion Layers");
+            Assert.Contains(companionRoot.Children, n => n.Label.Resolve() == "ring (host trees)");
+            Assert.DoesNotContain(companionRoot.Children, n => n.Label.Resolve() == "[+ add companion]");
+        }
+
         [Fact]
         public void RuleAddRemove_RoundTrip()
         {

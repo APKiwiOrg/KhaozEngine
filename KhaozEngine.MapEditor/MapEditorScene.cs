@@ -1804,13 +1804,16 @@ public class MapEditorScene : GameScene, IGameScene3D
 
     // The Companion Layers category's children: one selectable node per layer (label = "name (host <host>)", so
     // the outline surfaces which scatter layer a companion rings without opening the inspector), then a trailing
-    // "[+ add companion]" ACTION node.
+    // "[+ add companion]" ACTION node. The action node is gated on there being a scatter layer to host it (bug
+    // #25): a companion rings a host scatter layer's placements, so with none the affordance is meaningless,
+    // and activating it anyway used to crash the editor via an undeclared "" HostLayer.
     IEnumerable<TreeNode> CompanionLayerNodes()
     {
         foreach (MapCompanionLayer layer in _document.Doc.CompanionLayers)
             yield return new TreeNode(LocalizedText.Raw($"{layer.Name} (host {layer.HostLayer})"),
                 new OutlineRef(SelectionKind.CompanionLayer, layer.Name));
-        yield return new TreeNode(LocalizedText.Raw("[+ add companion]"), new OutlineAction(OutlineActionKind.AddCompanionLayer));
+        if (_document.Doc.ScatterLayers.Count > 0)
+            yield return new TreeNode(LocalizedText.Raw("[+ add companion]"), new OutlineAction(OutlineActionKind.AddCompanionLayer));
     }
 
     void RebuildInspector()

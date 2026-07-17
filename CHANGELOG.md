@@ -5,6 +5,51 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 12.0.0
+
+Shadow cascades are now standard frustum-slice CSM: each cascade fits the bounding sphere of its own
+slice of the camera's actual view frustum instead of a concentric circle around a focus point, so
+shadow sharpness no longer depends on where the camera looks and the fit is continuous (no more
+gaze-ground-ray jumps). BREAKING rename/removals on `ShadowSettings`, a new cross-cascade blend knob,
+a caster-visibility fix, and a Metal golden rebake.
+
+- **BREAKING: `ShadowSettings.ShadowFocusRadius` renamed to `ShadowNearDistance`.** Same default `16`,
+  same role as the near cascade's view-depth reach, but the name now matches what it actually controls
+  under the frustum-slice fit (a view distance from the camera along its forward axis, not a radius
+  around a ground focus point). A game that set `ShadowFocusRadius` needs a one-line rename to
+  `ShadowNearDistance`. The value carries over unchanged.
+- **BREAKING: `ShadowSettings.ShadowGroundHeight` and `ShadowSettings.ShadowFocusDistance` removed, no
+  replacement.** Both existed to steer the old focus-sphere fit onto the ground the camera was looking
+  at. The frustum-slice fit follows the camera's actual view frustum automatically, so there is nothing
+  left to configure. A game that set either field deletes the line, there is no equivalent knob.
+- **NEW `ShadowSettings.ShadowCascadeBlend`** (`float`, default `0.15`, clamped `0..0.49`). A UV-fraction
+  border width: a fragment within this band of its cascade's edge cross-fades toward the next cascade's
+  PCF result in `sampleKeyShadow`, so the texel-density step at a cascade hand-off is invisible instead
+  of a visible square seam. `0` restores the old hard cut. Threaded through the frame UBO as
+  `ShadowUbo.Params2.w`.
+- **Caster visibility now unions ALL cascade frustums.** `Scene3D.ClassifySkinnedVisibility` takes a
+  `ReadOnlySpan<FrustumPlanes> shadowFrustums` instead of a single frustum: under the frustum-slice fit
+  the cascades no longer nest, so a caster inside the near cascade but outside the far one needs the
+  union test to stay a shadow caster (the old single-frustum check could silently drop it). Internal
+  API, no public surface change.
+- **`Scene3D.ComputeShadowCascades()` returns `0` and disables shadows for the frame on a degenerate
+  camera** (e.g. a zero-length forward vector) instead of producing garbage cascade matrices.
+- **New pure math in `Internal.ShadowMapMath`:** `FrustumCornersWorld(viewProj, corners)` (the 8 world-space
+  corners of a camera's view frustum, near-then-far, from the inverse view-projection) and
+  `SliceBoundingSphere(corners, tNear, tFar, out center, out radius)` (the tight bounding sphere of the
+  depth slice between two frustum-relative interpolants along the corner edges). `FillCascadeRadii` is
+  renamed `FillCascadeSplits` (it now fills split DISTANCES over `[camNear, ShadowMaxDistance]`, not
+  radii) and reused unchanged for the split schedule. `BuildLightViewProj` (the texel-snapped light-view
+  matrix builder) is reused as-is, now fed a slice-sphere center/radius instead of a ground-focus one.
+  All headless-tested (`ShadowMapMathTests`), no GPU.
+- **Tests and goldens.** Existing shadow-map GPU goldens (4 scenes) re-baked on Metal for the new fit.
+  Every delta was sub-tolerance (the frustum-slice fit reproduces the old concentric fit closely enough
+  in the pinned scenes' framing that no scene needed a hand-tuned camera change). New golden
+  `scene3d_cascade_handoff` (Metal-baked, D3D11/Vulkan bake in CI next) pins a camera framed so the
+  cascade 0-to-1 hand-off crosses visible ground, guarding the blend band itself with an in-test
+  visible-pixel-count assertion so a scene that stops exercising the hand-off fails loudly instead of
+  silently passing.
+
 ## 11.7.0
 
 HDR tonemap now preserves highlight hue by default, closing the additive-glow-legibility gap the AAA

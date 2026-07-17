@@ -1,5 +1,8 @@
 # Background pass + void ground decals (design, 2026-07-17)
 
+**Status: both releases shipped.** Release 1 in 11.9.0, Release 2 in 12.1.0. Kept as the design
+record, including the two corrections made during Release 2's implementation below.
+
 Two releases, in order. Release 1 moves the procedural starfield from the final blit into a real
 background pass and folds the background knobs into one mode enum. Release 2 adds the opt-in
 virtual-plane fallback for ground decals, which is only correct once release 1 has landed.
@@ -103,14 +106,11 @@ explicitly, where before the default was already safe for that combination.
 ### The API: one concern, one knob
 
 `Post.Starfield` and `Post.Sky.Enabled` are two booleans with an implicit `sky > starfield > solid`
-precedence, both describing one thing: what fills the background. They collapse into:
-
-```csharp
-public enum BackgroundMode { Solid, Starfield, Sky }
-```
-
-Mutually exclusive by construction, and extensible where the next options actually land (`Gradient`,
-`Cubemap`, `Nebula`). `Post.Background` defaults to `Starfield`, preserving today's default.
+precedence, both describing one thing: what fills the background. They collapse into one derived
+enum, `BackgroundMode { Solid, Starfield, Sky }` (`Post.Background`), mutually exclusive by
+construction and extensible where the next options actually land (`Gradient`, `Cubemap`, `Nebula`),
+defaulting to `Starfield` to preserve today's default. Current shape is canonical in
+`KhaozEngine.Render3D/README.md`'s Background bullet and `docs/USING-KHAOZENGINE.md`, not here.
 
 `Post.TransparentBackground` deliberately stays a separate boolean and is **not** folded in. It is a
 different concern: it controls the final image's output alpha for offscreen compositing, not what is
@@ -120,17 +120,8 @@ default `true` is a reachable state today, and no single enum value means it). T
 documented instead: a non-`Solid` background writes opaque pixels, so `TransparentBackground` only
 takes effect with `Background = Solid`.
 
-`Background` is a **derived view** over the existing booleans, not new state:
-
-```csharp
-public BackgroundMode Background
-{
-    get => Sky.Enabled ? BackgroundMode.Sky
-         : Starfield   ? BackgroundMode.Starfield
-                       : BackgroundMode.Solid;
-    set { Sky.Enabled = value == BackgroundMode.Sky; Starfield = value == BackgroundMode.Starfield; }
-}
-```
+`Background` is a **derived view** over the existing booleans, not new state (the getter/setter shape
+is canonical in the README above, not repeated here).
 
 An earlier draft made the enum authoritative and demoted the booleans to `[Obsolete]` aliases. That
 does not survive contact with `SkySettings`, which is a `sealed class` held in a reassignable field
@@ -234,19 +225,9 @@ already proves on all three backends.
 
 ### API
 
-```csharp
-public struct GroundDecal
-{
-    // ...
-    /// <summary>Project onto the virtual horizontal plane at Center.Y wherever there is no scene
-    /// geometry, instead of leaving the decal truncated at the geometry's edge. Default false keeps
-    /// the legacy depth-only behaviour byte-for-byte.</summary>
-    public bool VoidFallback;
-    /// <summary>Alpha scale applied only to void-projected pixels, so they read as projected rather
-    /// than as standing on ground. 0 (default) = no dim, i.e. void pixels match ground pixels.</summary>
-    public float VoidDim;
-}
-```
+`GroundDecal.VoidFallback` (default `false`) / `GroundDecal.VoidDim` (default `0`). Field docs
+(exact defaults and behavior) are canonical in `KhaozEngine.Render3D/README.md` and
+`docs/USING-KHAOZENGINE.md`, not here.
 
 `TelegraphStyle` carries the passthrough (`VoidFallback`, `VoidDim`) through `TelegraphResolve` to
 `ResolvedTelegraph` to `GroundTelegraphs.Base`, because the `Ground*` extension methods take only
@@ -338,13 +319,6 @@ raw-pixel A/B pairs, each of which collapses to two identical renders if the fea
 anti-vacuity control on every one. That is the 11.9.0 lesson applied rather than restated: a green grid is not
 evidence, and neither is a green suite. **Both defects in this release were found by looking at the PNGs**, not
 by a failing test.
-
-### Docs
-
-`docs/USING-KHAOZENGINE.md` (a section for the new public API), `KhaozEngine.Render3D/README.md`,
-`KhaozEngine.Telegraphs.Render3D/README.md`, `CHANGELOG.md`, plus the guard-checked version
-declarations (`docs/ROADMAP.md` "Current released version", the `README.md` `<PackageReference>`
-example). Full doc sweep per AGENTS.md: grep the new type/flag names across all `*.md` recursively.
 
 ## Consumer follow-up (not engine work)
 

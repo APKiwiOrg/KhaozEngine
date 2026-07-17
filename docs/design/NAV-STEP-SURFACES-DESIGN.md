@@ -86,16 +86,13 @@ No new package, no new dependency edge. Everything lands in `KhaozEngine.Navigat
 
 ### Dependency-layering decision (recorded for DEPENDENCY-SEAMS.md)
 
-The roadmap names "a downward physics probe" as a valid height source, but a downward probe needs
-`KhaozEngine.Physics` (`IPhysicsWorld.Raycast` / `PhysicsGroundProbe`). Adding a `Navigation ->
-Physics` edge would be legal in the layering (Physics is a dependency-free Foundation leaf and would
-NOT drag in the opt-in `Physics.Bepu`), but it is unnecessary and we deliberately do not add it. The
-`INavSurfaceProvider` seam inverts the dependency: the GAME, which already holds the `IPhysicsWorld`,
-implements the provider by raycasting down (a five-line wrapper over `PhysicsGroundProbe.Height` plus
-an up-ray for headroom), and hands it to `BakeOverworldSteps`. Navigation depends on nothing new, the
-physics option is fully available, and the seam is the same one phase 2 extends. This mirrors the
-existing Navigation stance of taking agent radius and slope as plain floats rather than referencing
-`Locomotion`.
+Full reasoning for the `Navigation -> Physics` non-edge and the `INavSurfaceProvider` inversion (the
+GAME implements the provider over its own `IPhysicsWorld` and hands it to `BakeOverworldSteps`) is
+canonical in `docs/DEPENDENCY-SEAMS.md`'s "Surface-source seam" section, not here. Two points that
+section does not carry: the edge would have been LEGAL in the layering (Physics is a dependency-free
+Foundation leaf, would not drag in the opt-in `Physics.Bepu`), just unnecessary, and the shape mirrors
+the existing Navigation stance of taking agent radius and slope as plain floats rather than
+referencing `Locomotion`.
 
 ### New public surface
 

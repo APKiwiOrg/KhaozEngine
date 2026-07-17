@@ -398,8 +398,8 @@ if (service.PostUpdateRelaunch is { } applied)
 
 ## macOS: the `.app` re-sign caveat
 
-On macOS the game ships as an `<Game>.app` bundle (for the Finder / Dock icon; see [ICONS.md](ICONS.md) in
-the game). The updater still patches the **flat payload inside `Contents/MacOS/`** (that directory is
+On macOS the game ships as an `<Game>.app` bundle (for the Finder / Dock icon, see each game's own
+`docs/ICONS.md`, which is a per-game file with no engine copy to link to). The updater still patches the **flat payload inside `Contents/MacOS/`** (that directory is
 `AppContext.BaseDirectory`, so the engine's default install dir), and the feed stays flat: only the
 hand-distributed zip is a bundle.
 

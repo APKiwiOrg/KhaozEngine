@@ -184,6 +184,6 @@ the quarantine handling runtime cell blobs get.
 Depends on `KhaozEngine.Primitives`, `KhaozEngine.Serialization`, `KhaozEngine.Content`, and
 `KhaozEngine.Terrain`. GPU-free. In the `Foundation` umbrella. The GUI editor (`KhaozEngine.MapEditor`)
 and the `ke-mapedit` MCP tool are later frontends over this model, see
-[`docs/MAP-EDITOR-DESIGN.md`](../docs/MAP-EDITOR-DESIGN.md).
+[`docs/design/MAP-EDITOR-DESIGN.md`](../docs/design/MAP-EDITOR-DESIGN.md).
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

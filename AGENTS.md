@@ -124,8 +124,20 @@ version/release work.
   - **Discovered follow-ups -> a GitHub issue.** Anything the change knowingly leaves undone, defers, or
     works around is filed as you find it, with a `confidence/*` label, and any issue the change resolves
     is closed as it lands.
+  - **Design rationale -> `docs/design/`, and NOTHING else lives there.** A design doc holds the why: the
+    alternatives weighed, the decisions taken, and the reasoning that a corrected-in-flight implementation
+    proved out. It is not a reference surface, so shipped API and usage move to `CHANGELOG.md` /
+    `docs/USING-KHAOZENGINE.md` / the package README as they land. An IN-FLIGHT program's doc may carry its own
+    round-scoped deferrals as working notes (the map editor does, and its `kind/roadmap` issue delegates to it),
+    but that licence ends with the program: anything still open when the program completes MUST become an issue,
+    because a design doc nobody is actively working is not a ledger anyone reads. The dungeon generator stranded
+    three follow-ups exactly there, invisible for 20+ releases after it finished (now filed as #74). Add a row +
+    a status line to `docs/INDEX.md`'s design table when you add a doc, or it is orphaned on arrival (three nav
+    docs were, for releases). A complete design doc is KEPT as history rather than deleted,
+    because the reasoning behind a shipped decision is the expensive thing to reconstruct. `docs/` root is for
+    the living docs only.
   Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`
-  recursively** (root, `docs/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
+  recursively** (root, `docs/`, `docs/design/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
   that should mention it does (and no stale doc still describes what you removed).
 - `scripts/check-doc-versions.sh` enforces two things. First, that the engine-version declarations
   (EVERY `README.md` `<PackageReference>` example line, not just one) match the **engine version line**

@@ -183,7 +183,7 @@ rather than a generic one.
 Full document format, the runtime builders, and the GUI editor sharing this same model:
 [`KhaozEngine.MapDoc`](../KhaozEngine.MapDoc/README.md),
 [`KhaozEngine.MapEditor`](../KhaozEngine.MapEditor/README.md), and
-[`docs/MAP-EDITOR-DESIGN.md`](../docs/MAP-EDITOR-DESIGN.md). The `ke-mapedit` section of
+[`docs/design/MAP-EDITOR-DESIGN.md`](../docs/design/MAP-EDITOR-DESIGN.md). The `ke-mapedit` section of
 [`docs/USING-KHAOZENGINE.md`](../docs/USING-KHAOZENGINE.md) has the same wiring example plus more on the
 session model.
 

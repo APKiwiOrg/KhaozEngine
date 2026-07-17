@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Gpu
     /// Behavioural GPU proofs of the screen-space distortion pass that a coarse RGB golden cannot express: a ripple
     /// actually displaces pixels of the scene behind it, geometry occludes the offset field (the depth recipe fades
     /// it to zero), a ripple over open background warps the starfield sitting there (see
-    /// docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md), the reduced-quality tier still renders, and the
+    /// docs/design/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md), the reduced-quality tier still renders, and the
     /// whole feature is zero-neutral (a queued-then-cleared frame is byte-identical to one that never queued
     /// distortion). Scenes are deterministic (EffectTimeSeconds 0, fixed seeds) and asset-free (an in-test
     /// checkerboard albedo gives the high-frequency content a warp needs to show). Skipped unless KE_GPU_TESTS=1
@@ -156,7 +156,7 @@ namespace KhaozEngine.Tests.Gpu
             // keeps each pixel's OWN (unwarped) alpha, so the old blit always repainted the same star pattern at
             // that exact screen pixel regardless of what the warp had done there: the stars were structurally immune
             // to distortion. That mechanism no longer exists. StarfieldRenderer now paints bg.rgb + star (alpha 1)
-            // into ColorTex BEFORE the post chain runs (see docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md),
+            // into ColorTex BEFORE the post chain runs (see docs/design/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md),
             // so the stars are ordinary scene content by the time distortion's apply pass resamples ColorTex at an
             // offset UV, exactly as it would for a checkerboard floor. A ripple queued over open background must
             // therefore perturb the stars behind it. This is correct, not a regression: a heat-haze or ripple

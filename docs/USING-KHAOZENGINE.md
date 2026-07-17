@@ -5,6 +5,76 @@ on it. The engine is **MonoGame-free**: Silk.NET windowing/input, Veldrid behind
 Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
 is reference.
 
+This file is large (about 540 KB) and is a reference, not a read-through. Jump via the contents below,
+or grep it: every section is an `##` heading named after the package or feature it covers.
+
+## Contents
+
+- [Mental model: one data flow](#mental-model-one-data-flow)
+- [Hard rules](#hard-rules)
+- [Game head build settings (CETCompat)](#game-head-build-settings-cetcompat)
+- [Wiring a game (`KhaozEngine.Game` + `KhaozEngine.Game.Render3D`)](#wiring-a-game-khaozenginegame-khaozenginegamerender3d)
+- [Input (`KhaozEngine.Windowing`)](#input-khaozenginewindowing)
+- [Gui (`KhaozEngine.Gui`)](#gui-khaozenginegui)
+- [Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)](#toast-notifications-toaststack-toastview-toasttheme)
+- [Action-bar icons and cooldowns (SlotContent + CooldownOverlay)](#action-bar-icons-and-cooldowns-slotcontent-cooldownoverlay)
+- [Number + duration formatting (`NumberFormatter` / `TimeFormatter`)](#number-duration-formatting-numberformatter-timeformatter)
+- [Version comparison (`VersionComparer`)](#version-comparison-versioncomparer)
+- [Compile-time localization enforcement (`StringId` / `LocalizedText`)](#compile-time-localization-enforcement-stringid-localizedtext)
+- [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader-patchnotesview-patchnotesscreen-10450)
+- [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
+- [DPI-aware / crisp UI (the point-space path)](#dpi-aware-crisp-ui-the-point-space-path)
+- [Render3D (`KhaozEngine.Render3D`)](#render3d-khaozenginerender3d)
+- [Skinned / deformable meshes (runtime bone control)](#skinned-deformable-meshes-runtime-bone-control)
+- [Animated characters (glTF clip playback + locomotion blend)](#animated-characters-gltf-clip-playback-locomotion-blend)
+- [Attack telegraphs / danger zones](#attack-telegraphs-danger-zones)
+- [Modern particle VFX](#modern-particle-vfx)
+- [Screen-space distortion](#screen-space-distortion)
+- [Terrain (`KhaozEngine.Terrain` / `KhaozEngine.Terrain.Render3D`)](#terrain-khaozengineterrain-khaozengineterrainrender3d)
+- [Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)](#third-person-follow-camera-character-controller-followcamera3d-charactercontroller3d)
+- [Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)](#prop-scatter-asset-pipeline-assetmanifest-propscatter-scene3ddrawprops)
+- [Procedural dungeons (`KhaozEngine.Dungeon`)](#procedural-dungeons-khaozenginedungeon)
+- [NPC navigation (`KhaozEngine.Navigation`)](#npc-navigation-khaozenginenavigation)
+- [Bounded zones (`RimFeature` + `WorldBounds` + the slope gate)](#bounded-zones-rimfeature-worldbounds-the-slope-gate)
+- [3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`)](#3d-physics-khaozenginephysics-khaozenginephysicsbepu)
+- [Baking prop collision (`ke-propbake`)](#baking-prop-collision-ke-propbake)
+- [Static world collision (`WorldColliders` / `WorldSurfaces`) - legacy](#static-world-collision-worldcolliders-worldsurfaces---legacy)
+- [Social / Discord presence (`KhaozEngine.Social` / `KhaozEngine.Social.Discord`)](#social-discord-presence-khaozenginesocial-khaozenginesocialdiscord)
+- [World streaming (`TerrainStreamer` / `Scene3DChunkSink`)](#world-streaming-terrainstreamer-scene3dchunksink)
+- [Textured terrain (PBR splat)](#textured-terrain-pbr-splat)
+- [Textured props](#textured-props)
+- [Ground-cover scatter and understory companions](#ground-cover-scatter-and-understory-companions)
+- [Map documents (`KhaozEngine.MapDoc`)](#map-documents-khaozenginemapdoc)
+- [Editor building blocks (`NumberField` / `TreeView` / `PropertyGrid` / `FlyCamera3D` / `RayMath` / `TerrainRaycast`)](#editor-building-blocks-numberfield-treeview-propertygrid-flycamera3d-raymath-terrainraycast)
+- [Map editor (`KhaozEngine.MapEditor`)](#map-editor-khaozenginemapeditor)
+- [ke-mapedit (`KhaozEngine.MapEdit.Tool`)](#ke-mapedit-khaozenginemapedittool)
+- [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
+- [Server status (`KhaozEngine.ServerStatus`)](#server-status-khaozengineserverstatus)
+- [HTTP retry (`KhaozEngine.Http`)](#http-retry-khaozenginehttp)
+- [ECS (`KhaozEngine.Ecs`)](#ecs-khaozengineecs)
+- [Audio (`KhaozEngine.Audio`)](#audio-khaozengineaudio)
+- [Diagnostics / logging (`KhaozEngine.Diagnostics`)](#diagnostics-logging-khaozenginediagnostics)
+- [Seeing where the frame goes (turn-key HUD + frame counters)](#seeing-where-the-frame-goes-turn-key-hud-frame-counters)
+- [Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)](#diagnostics-overlay-telemetry-recording-diagnosticsoverlay-framestats-telemetryrecorder-worldclientnetstats)
+- [Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)](#per-pass-frame-timing-scene3denabletiming-passtimings)
+- [Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)](#collision-shape-debug-overlay-collisionshapeoverlay-overlaylegend)
+- [Install / update stamp (`KhaozEngine.App.AppInstallStamp`)](#install-update-stamp-khaozengineappappinstallstamp)
+- [Clean self-restart (`KhaozEngine.App.AppRelaunch`)](#clean-self-restart-khaozengineappapprelaunch)
+- [Single-instance guard (`KhaozEngine.App.SingleInstanceGuard`, 10.110.0)](#single-instance-guard-khaozengineappsingleinstanceguard-101100)
+- [Foundation packages (brief)](#foundation-packages-brief)
+- [Wall-clock periodic rewards (`KhaozEngine.Progression`)](#wall-clock-periodic-rewards-khaozengineprogression)
+- [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
+- [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
+- [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
+- [Versioned save migrations (`MigrationChain<T>`)](#versioned-save-migrations-migrationchaint)
+- [Deterministic floating point (`KhaozEngine.Determinism`)](#deterministic-floating-point-khaozenginedeterminism)
+- [Testing your game headlessly](#testing-your-game-headlessly)
+- [Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)](#device-free-shader-validation-khaozenginegpushadervalidation)
+- [Drain before mid-life GPU resource disposal (`IGpuDevice.WaitForIdle`)](#drain-before-mid-life-gpu-resource-disposal-igpudevicewaitforidle)
+- [Headless snapshots / screenshots (`KhaozEngine.Snapshot`)](#headless-snapshots-screenshots-khaozenginesnapshot)
+- [Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)](#multiplayer-transport-seam-fixed-tick-host-khaozenginenetcode-khaozenginesimulation)
+- [Versioning & change process](#versioning-change-process)
+
 ---
 
 ## Mental model: one data flow
@@ -4337,7 +4407,7 @@ the full section list and a complete example document.
 The primitives an in-engine editor viewport is built from: three inspector widgets (`KhaozEngine.Gui`), a
 free-fly camera (`KhaozEngine.Render3D`), and ray-based picking (`KhaozEngine.Primitives` +
 `KhaozEngine.Terrain`). Every game gets them, not just an eventual `MapEditor` (see
-`docs/MAP-EDITOR-DESIGN.md` for the program this building-block set feeds).
+`docs/design/MAP-EDITOR-DESIGN.md` for the program this building-block set feeds).
 
 **Inspector widgets.** `PropertyGrid` is a vertical stack of `PropertyRow`s split label/editor at
 `LabelFraction`, scrolling and scissor-clipped like `ScrollablePanel`. Add typed rows over plain get/set
@@ -4750,7 +4820,7 @@ narrows the same way, to `ShapeGeometry.TryBounds` (a shape AABB padded by a mar
 time: a base constant plus the document's largest scatter-layer jitter, since scatter tests membership at
 the jittered candidate position while chunk assignment uses the cell centre). A ridge or rim edit has unbounded
 reach and, like a scatter layer, companion layer, or terrain-scalar edit, still takes the full
-`ViewportWorld.Rebuild` path (see the `KhaozEngine` `docs/MAP-EDITOR-DESIGN.md` deferred-work note for the
+`ViewportWorld.Rebuild` path (see the `KhaozEngine` `docs/design/MAP-EDITOR-DESIGN.md` deferred-work note for the
 one remaining gap: a biome band is bounded only in its world-Z-range slice, not narrowed yet),
 throttled to at most once per
 `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or

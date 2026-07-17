@@ -31,6 +31,16 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   section.
 ## Known gaps
 
+- [ ] **Showcase 3D overworld room is not a shadow/day-night testbed.** The 12.0.0 frustum-slice
+  shadow rework had to be visually verified without a representative showcase scene: the 3D overworld
+  demo room enables no shadows (`ShadowMode` stays `Off`), has no staircase or multi-level geometry
+  (the exact stair-climb case that surfaced the old cascade square-seam artifact in Ruinborne), and
+  runs no day/night cycle. Extend the room to enable `ShadowMode.ShadowMap` with the engine defaults,
+  add a walkable staircase plus a tree line near a cascade hand-off distance, and drive the sun with
+  the same `SunCycle` mapping Ruinborne uses so a moving key light exercises per-frame cascade refits
+  and the dirty-skip path. Makes the showcase the one-click windowed verification surface for every
+  future shadow/lighting change. Recorded 2026-07-17 from the 12.0.0 release retro.
+
 - [ ] **Vulkan/lavapipe full-suite crash, mode 2 (use-after-free).** `UnloadTexture` disposes GPU
   resources while an unfenced staging upload is still queued. Metal and WARP absorb it silently,
   lavapipe segfaults. A prototype fix (`IGpuDevice.DisposeWhenIdle` across 11 disposal sites in

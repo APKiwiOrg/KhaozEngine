@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
         internal struct BrightUbo { public Vector4 Params; }       // .x=threshold, .y=knee
         internal struct CompositeUbo { public Vector4 Params; }    // .x=intensity
-        internal struct ToneUbo { public Vector4 Params; }         // .x=exposure, .y=operator
+        internal struct ToneUbo { public Vector4 Params; }         // .x=exposure, .y=operator, .z=chroma preservation
         internal struct ApplyUbo { public Vector4 Params; }        // .x=strength->UV scale, .y=max UV excursion clamp
 
         // Palette-quantize UBO sizing. The GLSL block is `vec4 Colors[MaxPaletteColors]; vec4 Info;` and the CPU
@@ -376,8 +376,8 @@ namespace KhaozEngine.Render3D.Rendering
 
             if (s.Hdr.Enabled)
             {
-                // .x = exposure (>= 0), .y = operator index (0 aces, 1 reinhard, 2 clamp).
-                var tone = new ToneUbo { Params = new Vector4(MathF.Max(s.Hdr.Exposure, 0f), (float)(int)s.Hdr.Operator, 0f, 0f) };
+                // .x = exposure (>= 0), .y = operator index (0 aces, 1 reinhard, 2 clamp), .z = chroma preservation [0,1].
+                var tone = new ToneUbo { Params = new Vector4(MathF.Max(s.Hdr.Exposure, 0f), (float)(int)s.Hdr.Operator, Math.Clamp(s.Hdr.ChromaPreservation, 0f, 1f), 0f) };
                 cl.UpdateBuffer(_toneBuf, 0, in tone);
             }
 

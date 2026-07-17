@@ -52,5 +52,28 @@ namespace KhaozEngine.Render3D
         /// (see <see cref="TonemapOperator"/> for the alternatives and why ACES is the default). Ignored when
         /// <see cref="Enabled"/> is <c>false</c>.</summary>
         public TonemapOperator Operator = TonemapOperator.AcesFilmic;
+
+        /// <summary>
+        /// How much of a highlight's colour (hue + saturation) the tonemap preserves as it rolls off, in <c>[0,1]</c>
+        /// (clamped at upload). Blends between two ways of compressing an over-range colour to LDR:
+        /// <list type="bullet">
+        /// <item><description><c>0</c> applies the <see cref="Operator"/> to each channel independently: the
+        /// historical look, where a hot core desaturates toward white as its brightest channel saturates first (an
+        /// additive glow bleaches out at the top end).</description></item>
+        /// <item><description><c>1</c> applies the operator to luminance only and rescales RGB by the mapped
+        /// luminance, so only brightness rolls off and the hue is fully preserved (a coloured glow stays chromatic
+        /// into its core).</description></item>
+        /// </list>
+        /// Values in between blend the two. Default <c>0.75</c>, the user-approved balance from the look-evidence
+        /// ladder review: close enough to full hue preservation that saturated preset colours (telegraph fire/poison/
+        /// frost/arcane, glow decals, beams) stay legible against the filmic roll-off, while still leaving a touch of
+        /// the classic bleach-toward-white so the hottest cores read as hot. Hue is preserved except where a
+        /// saturated channel clips at the display ceiling (<c>1.0</c>) before the rescale: the clipped channel cannot
+        /// be pushed back down to hold the exact ratio, so a partial desaturating shift remains at the very core of
+        /// the brightest highlights even at <c>1</c>. At <c>0</c> the shader short-circuits to the exact per-channel
+        /// expression, byte-identical to the pre-chroma tonemap. Applies to all three operators. Ignored when
+        /// <see cref="Enabled"/> is <c>false</c>.
+        /// </summary>
+        public float ChromaPreservation = 0.75f;
     }
 }

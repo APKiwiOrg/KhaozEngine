@@ -52,3 +52,18 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
 - [ ] **Cascaded shadow map gaps.** Terrain is receive-only and cannot cast, there are no alpha-tested
   cutout casters, and GPU-skinned casters stay opt-in and off by default pending a windowed A/B.
   Evidence: `CHANGELOG.md` 10.122.0 "Out of scope (unchanged)".
+- [ ] **The golden grid is blind to fine, sparse detail. It cannot see the starfield at all.**
+  `GoldenCompare` downsamples each render to a 32x18 grid of AVERAGED rgb per cell and compares with a
+  0.06/channel tolerance (`GoldenGrid.DefaultTolerance`). A star contributes only about 0.012 to a cell
+  average, five times under tolerance. Proven during 11.9.0: with `_starfield.Draw` commented out, so the
+  engine renders NO starfield whatsoever, `telegraph_ground` and `scene3d` still PASS. The grid is
+  deliberately coarse (it exists to catch gross shader / UBO / blend / winding regressions while
+  tolerating driver noise), so this is not a defect in itself, but it means any sparse or fine-detail
+  feature has zero golden coverage and needs its own raw-pixel test. `StarfieldGpuTests` is now the only
+  net for the starfield. Worth auditing which OTHER features believe they are golden-covered but are not.
+  Evidence: `CHANGELOG.md` 11.9.0, `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
+- [ ] **`StarfieldGpuTests` box-coverage guard proves "mostly covered", not fully.** The guard added in
+  11.9.0 asserts the box's centre block is meaningfully brighter than the clear colour before trusting
+  the cross-mode byte-identity diff, which closes the vacuous-pass hole. A reviewer noted it still only
+  establishes the block is mostly covered by geometry, not wholly. Low value, recorded for honesty.
+  Evidence: `CHANGELOG.md` 11.9.0.

@@ -277,6 +277,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   declares none, in which case a consumer such as `KhaozEngine.MapEditor.ViewportWorld.KindCategories` falls
   back to the declaring manifest's own file-name stem (`props.manifest.json` maps to `props`),
   first-manifest-wins on a duplicate id across manifests.
+- Manifest relative paths resolve to the native separator: manifests author forward-slash paths
+  (`"sub/rock_a.glb"`), and `AssetManifest`'s internal `ResolveFile` normalizes that segment to
+  `Path.DirectorySeparatorChar` before combining with the base directory, so a resolved path is never a
+  mixed `\`/`/` form on Windows.
 - Textured props: `PropLoader.LoadPropWithMaterial(AssetEntry, PropValidation?) -> (GltfMesh Mesh, GltfMaterialMaps
   Maps)` loads + normalizes a prop like `LoadProp`, AND auto-reads its glTF's first textured material's
   baseColor/normal/metallicRoughness textures (via `GltfLoader.LoadWithMaterial`). A prop whose glTF has no

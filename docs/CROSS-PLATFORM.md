@@ -41,34 +41,53 @@ fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were gre
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
-Runs the golden tests (`--filter FullyQualifiedName~Golden`, `KE_GPU_TESTS=1`) per OS with its backend,
-`fail-fast: false`.
+The suite each leg runs is split by trigger, from measured cost and lavapipe stability
+(`KE_GPU_TESTS=1`, `fail-fast: false`):
+
+- **Self-hosted Metal leg (free)**: the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
+  trigger - every `[GpuFact]` test (golden and behavioral) plus the headless suite, matching `ci.yml`'s
+  own `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not available here).
+- **GitHub-hosted D3D11 leg (2x billing)**: golden tests only (`FullyQualifiedName~Golden`) on
+  `push`/`pull_request`, and the WHOLE suite on the weekly `schedule` (Sunday 18:00 UTC) and on
+  `workflow_dispatch`. The full suite on hosted Windows measured 17m14s vs the golden-only 7m44s, about
+  +19 billed 2x minutes per run - too costly per-push, so full hosted coverage rides the weekly cron and
+  any manual dispatch instead.
+- **GitHub-hosted Vulkan leg (1x)**: golden tests only, on EVERY trigger. The full suite on Mesa
+  lavapipe crashes the test host natively at a nondeterministic point (three consecutive dispatch runs
+  died in three unrelated GpuFact classes, the last with zero managed failures. Silent segfault, Mesa
+  25.2.8). WARP and Metal run the identical full suite green, so this is lavapipe/Veldrid native-layer
+  instability under parallel headless-device churn, tracked as a follow-up (first lead: serialize xUnit
+  collections on that leg). The golden subset is the configuration lavapipe has run green for months.
+
+Historically the test step filtered every leg to `FullyQualifiedName~Golden`, so any `[GpuFact]` class
+without "Golden" in its name never ran on ANY backend (`Scene3DTextureUnloadTests`, `WaterQueueTests`,
+`RenderServiceTests`, and dozens of other classes were never exercised on Metal/D3D11/Vulkan). Every GPU
+test now runs on Metal (every trigger) and D3D11 (weekly + dispatch) regardless of what it is called. The
+name is not a CI contract. The first full-suite sweeps surfaced 13 real Windows portability bugs, a
+dispose-before-submit contract violation in three test classes that only Vulkan enforces, and the
+lavapipe host-crash instability above - all of which the golden-only filter had been hiding.
 
 `KE_GPU_TESTS` accepts two values. `1` is strict (CI and the dev Mac): tests run, and a device-creation
 failure is a test error, never a skip, so CI cannot go green with zero GPU coverage. `probe` is for
 arbitrary machines: a one-per-process headless device probe runs the tests when a device exists and
 skips them with the probe's failure reason when it does not.
 
-### Golden naming contract
+### Golden test flavors
 
-The matrix selects tests by substring: a GPU test is run cross-platform **iff its fully-qualified name contains
-`Golden`**. That string is the contract. Do NOT rename a golden test to drop `Golden` from its name (class or
-method) - it would silently vanish from the CI filter and stop being verified on the other backends, with no red.
-This has bitten us before (the original splat tests lacked `Golden` in their names, so the D3D11 leg never ran
-them and a white-terrain bug shipped).
-
-Two flavors both satisfy the contract by carrying `Golden` in the name:
+Two flavors of golden test exist, both conventionally named with `Golden` for discoverability (grep-ability,
+not a CI filter contract):
 
 - **committed-grid goldens** - render a scene, downsample, and diff against a committed per-backend reference grid
   via `GoldenCompare.AssertOrUpdate` (e.g. `GoldenSnapshotTests`, `CollisionOverlayGoldenTests`). A backend needs
   its own baked `.txt`.
 - **property / invariant "goldens"** - assert thresholds or invariants on the rendered pixels instead of a
-  committed grid (e.g. `SplatTerrainGoldenTests`, `SplatTerrainDistanceGoldenTests`). No committed grid, but they
-  still MUST keep `Golden` in the name so the matrix runs them on every backend.
+  committed grid (e.g. `SplatTerrainGoldenTests`, `SplatTerrainDistanceGoldenTests`). No committed grid.
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify** committed goldens for each backend                                 |
+| `push` / `pull_request` on main  | **verify**: Metal runs the full suite. D3D11 and Vulkan run the golden tests only |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + D3D11 run the full suite. Vulkan stays golden-only  |
+| `workflow_dispatch` `bake=false` | same as `schedule` (Metal + D3D11 full suite, Vulkan golden-only)             |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) and upload per-backend goldens as artifacts |
 
 Software rasterizers on the runners (no real GPU):
@@ -146,9 +165,10 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
 - **One uniform buffer per pipeline.** A second fragment UBO reads the first UBO's bytes on Metal; fold extra
   per-material data into the frame UBO (the splat pipeline appends its params after the light arrays in one
   combined UBO). See `SplatVert` / `SplatFrag`.
-- **A new render feature needs a pixel-READBACK assertion, not just "it did not throw"** - and name the regression
-  test `*Golden*` so the `cross-platform-gpu` matrix actually runs it per backend. The original splat tests lacked
-  `Golden` in their names, so the D3D11 leg never exercised them and the white-terrain bug shipped.
+- **A new render feature needs a pixel-READBACK assertion, not just "it did not throw".** Any `[GpuFact]` test
+  runs on Metal (every trigger) and D3D11 (weekly/dispatch) in `cross-platform-gpu.yml` regardless of its name,
+  so this is no longer a naming trap, but the underlying lesson stands: the original splat tests asserted no
+  throw with no pixel readback, so the D3D11 leg ran them and still let the white-terrain bug through.
 
 When a backend-specific render bug reproduces ONLY on the CI rasterizer (WARP / lavapipe), dump the SPIRV-Cross
 output locally to read what that backend's compiler receives:

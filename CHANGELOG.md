@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
-## TODO-VERSION
+## 11.6.0
 
 Navigation: `PathFollower` exposes the corridor it is actually following read-only, so a consumer can
 draw or log the committed path without re-running the planner.
@@ -32,8 +32,42 @@ draw or log the committed path without re-running the planner.
   `ReadOnlyCollection<NavWaypoint>` is kept as-is, an `IList<NavWaypoint>` (including an array) is wrapped
   in a `ReadOnlyCollection<NavWaypoint>` view without copying, and any other `IReadOnlyList<NavWaypoint>`
   is copied to a fresh array and wrapped. The wrap happens once at path construction (one small wrapper
-  object per plan, no copy on the planner's list and array paths), so `PathFollower.Tick` stays
+  object per plan, no copy on the planner's list and array paths), so the follower's steering path stays
   allocation-free. The public constructor signature is unchanged.
+
+## 11.5.0
+
+GPU CI now runs the full test suite on every leg instead of a golden-only filter that hid 172
+`[GpuFact]` tests from every backend, and the portability bugs that full coverage surfaced are fixed.
+
+- **BEHAVIOR: indented-JSON persistence emits canonical LF on every OS.** `JsonDefaults.IndentedWrite`
+  and `NetWorldJsonContext` both pin `NewLine` to `"\n"`. Previously the default indented writer used
+  the OS newline, so a Windows host persisted CRLF while Linux/macOS persisted LF for the same object.
+  This affects NetWorld persisted records and every other `JsonDefaults.IndentedWrite` consumer (game
+  saves/settings). Linux/macOS output is byte-identical to before. MIGRATION NOTE: existing Windows
+  CRLF blobs stay readable and rewrite to LF once on next save (a byte-level dirty check avoids a
+  needless rewrite), no data loss, and the binary cell-blob migration/quarantine machinery is
+  unaffected.
+- **BEHAVIOR: `AssetManifest` relative paths resolve to native separators.** A manifest authors
+  forward-slash paths (`"sub/rock_a.glb"`). `ResolveFile` now normalizes that segment to
+  `Path.DirectorySeparatorChar` before combining with the base directory, so a resolved path is never
+  a mixed `\`/`/` form on Windows.
+- **HARDENING: session log opens with explicit `FileShare.Read`.** `FileSink` now opens its
+  `FileStream` directly with `FileShare.Read` instead of relying on `StreamWriter`'s incidental
+  sharing, guaranteeing a crash reporter or tail tool can read the log live for the whole process
+  lifetime. Bytes on disk are unchanged. `Render2DSnapshot.Capture`'s dispose-before-submit lifetime
+  contract is now documented.
+- **CI: GPU legs restructured.** The old `FullyQualifiedName~Golden` filter hid 172 `[GpuFact]` tests
+  from every leg. Now the self-hosted Metal leg (free) runs the full suite on every trigger, the
+  hosted D3D11 leg runs golden tests per push/PR and the full suite on the weekly schedule (Sunday
+  18:00 UTC) and on manual dispatch, and the hosted Vulkan leg stays golden-only pending a documented
+  lavapipe host-crash follow-up. Permanent `--blame` with `Sequence.xml` artifacts on failure.
+  Per-event concurrency groups so a gated push cannot cancel the weekly full sweep.
+- **TESTS: the widened coverage exposed and fixed** the ucrt fenv constant in the FP determinism test
+  poke, a fake-path comparison in the updater test, a WARP supersample guard (precise
+  software-rasterizer detection with the strong gate kept on real hardware), three dispose-before-
+  submit test classes violating the `Capture` contract, session-log live-read sharing, and a stale
+  decal glow test (LDR pin that predates the ACES desaturation change).
 
 ## 11.4.0
 

@@ -39,13 +39,26 @@ public sealed class FileSink : ILogSink
                 catch { /* best-effort rotation */ }
             }
 
-            writer = new StreamWriter(options.Path, append: false, Encoding.UTF8) { AutoFlush = true };
+            writer = OpenWriter(options.Path);
             bytesWritten = 0;
         }
         catch
         {
             writer = null;   // fall back silently; Emit becomes a no-op
         }
+    }
+
+    // Open the log for writing while explicitly SHARING read access. The session log is held open for the whole
+    // process lifetime, so crash reporters and tail tools must be able to read it live. StreamWriter's string
+    // constructor already shares read, but open the FileStream explicitly so the "readable while held" contract
+    // is guaranteed rather than incidental. (A Windows reader must itself pass FileShare.ReadWrite to open a file
+    // that has a live write handle - sharing read is the writer's half of that contract, POSIX ignores share
+    // modes.) FileMode.Create + Encoding.UTF8 matches the previous StreamWriter(path, append:false, UTF8) bytes,
+    // BOM included.
+    private static StreamWriter OpenWriter(string path)
+    {
+        var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+        return new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
     }
 
     /// <inheritdoc />
@@ -91,7 +104,7 @@ public sealed class FileSink : ILogSink
             }
             if (File.Exists(options.Path)) File.Move(options.Path, options.Path + ".1", overwrite: true);
 
-            writer = new StreamWriter(options.Path, append: false, Encoding.UTF8) { AutoFlush = true };
+            writer = OpenWriter(options.Path);
             bytesWritten = 0;
         }
         catch

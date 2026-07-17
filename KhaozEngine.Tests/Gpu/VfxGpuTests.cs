@@ -16,6 +16,14 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 200, H = 120;
 
+        // LIFETIME RULE for these tests: never dispose a GPU resource inside the Capture draw callback. The
+        // callback runs mid-command-recording (between Begin and End), so anything it created is still referenced
+        // by the not-yet-submitted command list. Veldrid's Vulkan backend refcount-checks every referenced resource
+        // at submit and throws "attempt was made to reference a disposed resource" (or hard-crashes lavapipe) on
+        // one disposed early. Metal/D3D11 happen to tolerate it, which is why this only surfaced on the Vulkan CI
+        // leg. The snapshot's per-capture device is torn down inside Capture itself, reclaiming the textures, so
+        // there is nothing for the test to dispose - a VfxRenderer or white pixel is simply left to that teardown.
+
         static byte Lum(byte[] rgba, int x, int y) => rgba[(y * W + x) * 4]; // R channel; VFX here is grey/white
 
         [GpuFact]
@@ -27,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] single = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                using var vfx = new VfxRenderer(ctx, glowSize: 64);
+                var vfx = new VfxRenderer(ctx, glowSize: 64);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 vfx.DrawGlow(ctx.Batch, c, 24f, dim);
                 ctx.Batch.End();
@@ -35,7 +43,7 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] stacked = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                using var vfx = new VfxRenderer(ctx, glowSize: 64);
+                var vfx = new VfxRenderer(ctx, glowSize: 64);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 vfx.DrawGlow(ctx.Batch, c, 24f, dim);
                 vfx.DrawGlow(ctx.Batch, c, 24f, dim);
@@ -56,7 +64,7 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] rgba = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                using var vfx = new VfxRenderer(ctx);
+                var vfx = new VfxRenderer(ctx);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 vfx.DrawBeam(ctx.Batch, a, b, bp, timeSeconds: 0f);
                 ctx.Batch.End();
@@ -78,7 +86,7 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] square = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                using var vfx = new VfxRenderer(ctx);
+                var vfx = new VfxRenderer(ctx);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 vfx.DrawBeam(ctx.Batch, a, b, bp with { Caps = BeamCap.None }, 0f);
                 ctx.Batch.End();
@@ -86,7 +94,7 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] round = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                using var vfx = new VfxRenderer(ctx);
+                var vfx = new VfxRenderer(ctx);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 vfx.DrawBeam(ctx.Batch, a, b, bp with { Caps = BeamCap.Round }, 0f);
                 ctx.Batch.End();
@@ -113,11 +121,10 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] rgba = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                var white = VfxTextures.White(ctx);
+                var white = VfxTextures.White(ctx);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 sys.Draw(ctx.Batch, white);
                 ctx.Batch.End();
-                white.Dispose();
             });
 
             Assert.True(Lum(rgba, W / 2, H / 2) > 20, "additive particle centre should be lit");
@@ -132,7 +139,7 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] rgba = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                using var vfx = new VfxRenderer(ctx);
+                var vfx = new VfxRenderer(ctx);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 vfx.DrawAttentionBeacon(ctx.Batch, c, p, timeSeconds: 0.6f);
                 ctx.Batch.End();
@@ -154,7 +161,7 @@ namespace KhaozEngine.Tests.Gpu
 
             byte[] rgba = Render2DSnapshot.Capture(W, H, Color.Black, ctx =>
             {
-                using var vfx = new VfxRenderer(ctx);
+                var vfx = new VfxRenderer(ctx);   // not disposed: see the class lifetime rule
                 ctx.Batch.Begin();
                 vfx.DrawAttentionBeacon(ctx.Batch, c, p, timeSeconds: 0.6f);
                 ctx.Batch.End();

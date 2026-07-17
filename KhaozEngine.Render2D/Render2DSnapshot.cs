@@ -37,6 +37,15 @@ namespace KhaozEngine.Render2D
     /// <summary>Headless offscreen 2D render to a CPU RGBA buffer (no window). For tooling/tests; needs a Metal GPU.</summary>
     public static class Render2DSnapshot
     {
+        /// <summary>
+        /// Renders one offscreen frame via <paramref name="draw"/> and reads it back as RGBA bytes.
+        /// LIFETIME CONTRACT: the callback runs mid-command-recording, so a GPU resource it creates (a texture,
+        /// a font, a <c>VfxRenderer</c>) must NOT be disposed inside the callback - the recorded command list still
+        /// references it until the submit that happens after the callback returns. Veldrid's Vulkan backend rejects
+        /// a submit referencing a disposed resource (other backends tolerate it, so the bug hides off Vulkan).
+        /// There is no valid later dispose point either: the per-capture device is torn down before this returns,
+        /// reclaiming everything created on it, so callback-created resources are simply left to that teardown.
+        /// </summary>
         public static byte[] Capture(int width, int height, Color clear, Action<Render2DContext> draw)
         {
             // NOTE: the context is intentionally NOT disposed here, as in the original inline CreateMetal path,

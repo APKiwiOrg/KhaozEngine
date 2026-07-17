@@ -1,8 +1,23 @@
-# cross-platform-gpu: desktop GPU golden-snapshot matrix (Win D3D11 / Linux Vulkan / macOS Metal).
+# cross-platform-gpu: desktop GPU test matrix (Win D3D11 / Linux Vulkan / macOS Metal).
 #
-# What this does:
-#   * On push / pull_request to main it VERIFIES the committed per-backend goldens
-#     (KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt) on a real runner for each desktop backend.
+# What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
+#   * The self-hosted Metal leg (free) runs the FULL test suite (every [GpuFact], golden and
+#     behavioral, plus the headless suite) on EVERY trigger.
+#   * The GitHub-hosted D3D11 leg (2x billing) runs only the golden tests
+#     (FullyQualifiedName~Golden) on push / pull_request, and the FULL suite on the weekly
+#     schedule and on workflow_dispatch. Rationale: the full suite on hosted Windows measured
+#     17m14s vs the golden-only 7m44s (trial runs 29542939552 / 29545657401), about +19 billed
+#     2x minutes per run - too much per-push for this repo's cost posture, so full hosted
+#     coverage rides the weekly cron (and any manual dispatch) instead.
+#   * The GitHub-hosted Vulkan leg (1x) runs the golden tests ONLY, on every trigger. The full
+#     suite on Mesa lavapipe crashes the test host natively at a NONDETERMINISTIC point (three
+#     dispatch runs died in three unrelated GpuFact classes: VfxGpuTests, BootScreenVisualTests,
+#     Scene3DPassTimingsGpuTests, the last with zero managed failures. Mesa 25.2.8, silent
+#     segfault, no managed stack). WARP and Metal run the identical full suite green, so this is
+#     a lavapipe/Veldrid native-layer instability under parallel headless-device churn, tracked
+#     as a follow-up (first lead: serialize xUnit collections on this leg). The golden subset is
+#     the configuration lavapipe has run green for months.
+#   * Committed per-backend goldens live at KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt.
 #   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
 #     Linux Vulkan (Mesa lavapipe).
 #
@@ -31,7 +46,9 @@ name: cross-platform-gpu
 # only when something that can change a GPU golden is touched (rendering stack, the GPU seam, the GPU
 # test dir, or this workflow). Docs/netcode/etc. pushes skip it. PRs + manual bake still run as before.
 concurrency:
-  group: cross-platform-gpu-${{ github.ref }}
+  # Event name folded into the group so a gated push near the weekly cron cannot cancel the
+  # weekly full-suite sweep (or vice versa): push and schedule now get separate groups.
+  group: cross-platform-gpu-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 on:
@@ -44,12 +61,17 @@ on:
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
       - 'KhaozEngine.Tests/Gpu/**'
-      # GoldenGridTests live here and match the ~Golden matrix filter, so this dir must trigger too
+      # GoldenGridTests live here and run as part of the full suite below, so this dir must trigger too
       # (the 10.18.1 LF fix shipped without a matrix run because only Tests/Gpu was watched).
       - 'KhaozEngine.Tests/Imaging/**'
       - '.github/workflows/cross-platform-gpu.yml'
   pull_request:
     branches: [ main ]
+  # Weekly full-suite pass on the hosted D3D11 leg (Metal runs the full suite on every trigger anyway,
+  # and Vulkan stays golden-only per the header). Sunday 18:00 UTC: a quiet slot, and any breakage
+  # surfaces before the working week.
+  schedule:
+    - cron: '0 18 * * 0'
   workflow_dispatch:
     inputs:
       bake:
@@ -73,16 +95,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # `fullSuite` picks when a leg runs the whole suite vs the golden subset (see the test step's
+        # filter expression, plus the cost + lavapipe-stability rationale in the header):
+        #   always    - every trigger (self-hosted Metal, free)
+        #   scheduled - weekly schedule + workflow_dispatch only (hosted D3D11, bills 2x)
+        #   never     - golden subset on every trigger (hosted Vulkan: the full suite crashes lavapipe,
+        #               see the header and the tracked follow-up)
         include:
           - os: macos-14
             backend: metal
             runner: [self-hosted, macOS, ARM64]
+            fullSuite: always
           - os: windows-latest
             backend: direct3d11
             runner: windows-latest
+            fullSuite: scheduled
           - os: ubuntu-latest
             backend: vulkan
             runner: ubuntu-latest
+            fullSuite: never
     steps:
       - uses: actions/checkout@v4
 
@@ -146,12 +177,37 @@ jobs:
         continue-on-error: true
         run: vulkaninfo --summary || true
 
-      - name: Run GPU golden tests
+      # Suite selection per leg + trigger (the cost + stability split in the header):
+      #   * fullSuite: always (Metal): the FULL suite on every trigger - "Category!=LiveSocket",
+      #     mirroring ci.yml's exclusion (LiveSocket needs a live network peer, not available here).
+      #   * fullSuite: scheduled (D3D11): golden tests only on push/PR ("FullyQualifiedName~Golden"),
+      #     the FULL suite on schedule + workflow_dispatch. Full hosted Windows measured +19 billed 2x
+      #     minutes per run vs golden-only (17m14s vs 7m44s, runs 29542939552 / 29545657401), so
+      #     per-push hosted coverage stays golden-only and the weekly cron carries the full sweep.
+      #   * fullSuite: never (Vulkan): golden tests only on EVERY trigger - the full suite crashes the
+      #     lavapipe test host nondeterministically (header + follow-up).
+      - name: Run test suite
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
-        run: dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden"
+          KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden' }}
+        # Plain --blame (no --blame-crash) is kept permanently: it only writes a tiny Sequence.xml naming the
+        # last-started test if the host dies (no dump utility attached, no measurable overhead), and a lavapipe
+        # native crash without it is unattributable - an unnamed crash on the unattended weekly cron would cost
+        # a full diagnostic re-run. The 200MB dump collection (--blame-crash) stays off.
+        run: dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults
+        shell: bash
+
+      # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
+      # Kilobytes, failure-only, no dumps.
+      - name: Upload crash-sequence evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-sequence-${{ matrix.backend }}
+          path: TestResults/**/Sequence_*.xml
+          if-no-files-found: ignore
 
       # On a verify FAILURE: upload the got/want/diff evidence PNGs the golden compare wrote, so the visual
       # regression can be eyeballed from the run without re-running. ignore = no spurious failure when a leg

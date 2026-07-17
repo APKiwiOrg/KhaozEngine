@@ -22,10 +22,14 @@ public static class JsonDefaults
 
     /// <summary>Human-readable writer for files a person might open: <see cref="JsonSerializerOptions.WriteIndented"/>.
     /// System.Text.Json cannot emit comments, so this writes plain JSON; JSONC is a read-time convenience only.
-    /// Used by saves/settings persistence.</summary>
+    /// Used by saves/settings persistence. <see cref="JsonSerializerOptions.NewLine"/> is pinned to <c>"\n"</c>: the
+    /// default indented writer uses the OS newline, so a Windows host would emit CRLF and a Linux host LF for the
+    /// same object. Persisted/hashed blobs (e.g. the NetWorld world-store records) must be byte-identical across
+    /// OSes, so the newline is canonical LF everywhere.</summary>
     public static JsonSerializerOptions IndentedWrite { get; } = new()
     {
         WriteIndented = true,
+        NewLine = "\n",
     };
 
     /// <summary>Round-trips public fields, not just properties (<see cref="JsonSerializerOptions.IncludeFields"/>).

@@ -31,6 +31,9 @@ JSONC is a **read-time** convenience. `System.Text.Json` cannot emit comments, s
 
 - **Generated files** (settings, saves) are written as plain, indented JSON via `JsonDefaults.IndentedWrite`. A
   comment a user adds to a generated save survives only until the engine rewrites that file.
+  `IndentedWrite` pins `NewLine` to `"\n"` so the output is byte-identical LF on every OS, not the
+  platform default (Windows previously emitted CRLF). Every consumer of this option, including the
+  NetWorld persisted records, gets canonical LF.
 - **Hand-authored files** (config, content manifests) keep their comments because the engine only reads them.
 - **Signed / wire formats** stay strict JSON on purpose: the `KhaozEngine.Updates` manifest is signed over its
   exact bytes and the apply-update config is source-generated for AOT, so neither uses the JSONC policy.

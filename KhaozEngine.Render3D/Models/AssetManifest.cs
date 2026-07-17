@@ -129,7 +129,15 @@ namespace KhaozEngine.Render3D
         }
 
         static string ResolveFile(string file, string? baseDir)
-            => string.IsNullOrEmpty(baseDir) || Path.IsPathRooted(file) ? file : Path.Combine(baseDir, file);
+        {
+            // Manifests author paths with forward slashes ("sub/rock_a.glb"), so normalize the relative segment
+            // to the native separator BEFORE combining. Path.Combine only inserts a separator between the two
+            // arguments - it leaves an embedded '/' verbatim - so on Windows "X\kit" + "sub/rock_a.glb" would
+            // otherwise yield a mixed-separator "X\kit\sub/rock_a.glb". File IO tolerates the mix, but a resolved
+            // filesystem path should be one consistent form. On Unix DirectorySeparatorChar is '/' so this is a no-op.
+            string native = file.Replace('/', Path.DirectorySeparatorChar);
+            return string.IsNullOrEmpty(baseDir) || Path.IsPathRooted(native) ? native : Path.Combine(baseDir, native);
+        }
 
         // Optional per-prop collision footprint: { "type": "cylinder", "radius" } or { "type": "box", "halfW", "halfD" }.
         static ColliderShape? ParseCollider(string id, Dto.ColliderDto? c)

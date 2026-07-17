@@ -1351,6 +1351,15 @@ public sealed class AddScatterOverrideCommand : EditorCommand
     // keeps it current, see AddExclusionCommand's matching field).
     float? _boundsMargin;
 
+    // The insertion index, captured at Apply and used by Revert (RemoveAt, the RemoveScatterOverrideCommand
+    // idiom) instead of a reference-based List.Remove. MapScatterOverrideDoc has no Equals override, so
+    // List.Remove compares by reference: EditScatterOverrideValuesCommand.Revert can put a DEEP CLONE of this
+    // override back into the slot (its constructor clones both the new and old values it is given), which
+    // List.Remove(_override) then fails to find, stranding the clone (#24). Add always appends, so the
+    // captured index is the list's length at Apply time. Under LIFO undo everything added after this command
+    // is already reverted by the time this Revert runs, so the index is still correct then.
+    int _index;
+
     /// <inheritdoc/>
     public override string Label => "Add scatter override";
     internal override bool AffectsWorld => true;
@@ -1366,11 +1375,12 @@ public sealed class AddScatterOverrideCommand : EditorCommand
     public override void Apply(MapDocument doc)
     {
         _boundsMargin = ShapeGeometry.BoundsMarginFor(doc);
+        _index = doc.ScatterOverrides.Count;
         doc.ScatterOverrides.Add(_override);
     }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.ScatterOverrides.Remove(_override);
+    public override void Revert(MapDocument doc) => doc.ScatterOverrides.RemoveAt(_index);
 }
 
 /// <summary>Removes the scatter override at the given index, restoring it at that index on revert. Affects the
@@ -1733,6 +1743,16 @@ public sealed class AddScatterLayerCommand : EditorCommand
     public AddScatterLayerCommand(MapScatterLayer layer) =>
         _layer = layer ?? throw new ArgumentNullException(nameof(layer));
 
+    // The insertion index, captured at Apply and used by Revert (RemoveAt) instead of a reference-based
+    // List.Remove, the same #24 hardening AddScatterOverrideCommand carries. EditScatterLayerCommand does not
+    // clone internally (every caller passes the live document instance through as its oldValue, see
+    // MapEditorScene.EditScatterLayer and MutationService), so its Revert always restores the exact reference
+    // this command captured and the pair does not actually diverge today. Capturing the index costs nothing
+    // and keeps this Revert identity-independent if that calling convention ever changes. Add always appends,
+    // so the index is the list's length at Apply time, still correct at Revert under LIFO undo (see
+    // AddScatterOverrideCommand's matching field).
+    int _index;
+
     /// <inheritdoc/>
     public override string Label => "Add scatter layer";
     internal override bool AffectsWorld => true;
@@ -1741,11 +1761,12 @@ public sealed class AddScatterLayerCommand : EditorCommand
     public override void Apply(MapDocument doc)
     {
         GuardNoScatterLayerName(doc, _layer.Name, -1);   // reject a duplicate name before touching the list
+        _index = doc.ScatterLayers.Count;
         doc.ScatterLayers.Add(_layer);
     }
 
     /// <inheritdoc/>
-    public override void Revert(MapDocument doc) => doc.ScatterLayers.Remove(_layer);
+    public override void Revert(MapDocument doc) => doc.ScatterLayers.RemoveAt(_index);
 }
 
 /// <summary>Removes the scatter layer with the given name, restoring it at its original index on revert. A

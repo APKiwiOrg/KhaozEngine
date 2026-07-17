@@ -1891,6 +1891,34 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void AddScatterLayerCommand_UndoAfterEditUndo_LeavesNoStrayLayer()
+        {
+            // Defensive mirror of the #24 fix, proving AddScatterLayerCommand's RemoveAt hardening round-trips
+            // the same add -> edit -> undo -> undo sequence that stranded a scatter override. Unlike that case,
+            // EditScatterLayerCommand does not clone internally, so this pair never actually diverged, but the
+            // hardening and this test both guard against a future caller changing that.
+            var doc = Sample();
+            int baseline = doc.ScatterLayers.Count;   // Sample() carries exactly one, "trees"
+            string beforeAdd = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            ed.Execute(new AddScatterLayerCommand(Layer("grass")));
+            Assert.Equal(baseline + 1, doc.ScatterLayers.Count);
+
+            MapScatterLayer live = doc.ScatterLayers[baseline];
+            var newValue = new MapScatterLayer { Name = "grass", CellSize = 9f };
+            ed.Execute(new EditScatterLayerCommand("grass", newValue, live));
+            Assert.Equal(9f, doc.ScatterLayers[baseline].CellSize);
+
+            Assert.True(ed.Undo());   // revert the values edit
+            Assert.True(ed.Undo());   // revert the Add: must remove the slot regardless of its identity
+
+            Assert.Equal(baseline, doc.ScatterLayers.Count);
+            Assert.Equal(beforeAdd, Save(doc));
+            Assert.False(ed.IsDirty);
+        }
+
+        [Fact]
         public void ScatterLayerRemove_ReferencedByCompanion_RejectedAndReverted()
         {
             // SampleDoc's "trees" is hosted by companion "understory" AND named by scatterOverride[0]'s filter.
@@ -2183,6 +2211,38 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.True(ed.Undo());
             Assert.Equal(new List<string> { "trees" }, doc.ScatterOverrides[0].Layers);   // construction-time old value
+        }
+
+        [Fact]
+        public void AddScatterOverrideCommand_UndoAfterEditValuesUndo_LeavesNoStrayOverride()
+        {
+            // Regression for #24. AddScatterOverrideCommand.Apply appends the override by reference and its
+            // Revert used to remove it by reference (List.Remove, reference equality since MapScatterOverrideDoc
+            // has no Equals override). EditScatterOverrideValuesCommand deep-clones both its new and old values
+            // in its own constructor, so undoing an edit restores a CLONE into the list slot, a different
+            // instance from the one Add captured. Undoing the Add after that then removed nothing, stranding
+            // the clone: the override count stayed baseline + 1 while History.UndoDepth == 0 and IsDirty ==
+            // false both still passed over the corrupted document.
+            var doc = Sample();
+            int baseline = doc.ScatterOverrides.Count;   // Sample() carries exactly one, at index 0
+            string beforeAdd = Save(doc);
+
+            var ed = new EditorDocument(doc);
+            var added = new MapScatterOverrideDoc { Shape = new DiscShapeDoc { CenterX = 20f, CenterZ = 20f, Radius = 4f } };
+            ed.Execute(new AddScatterOverrideCommand(added));
+            Assert.Equal(baseline + 1, doc.ScatterOverrides.Count);
+
+            MapScatterOverrideDoc live = doc.ScatterOverrides[baseline];
+            var newValue = new MapScatterOverrideDoc { Shape = live.Shape, DensityMultiplier = 0.5f, Layers = new List<string> { "trees" } };
+            ed.Execute(new EditScatterOverrideValuesCommand(baseline, newValue, live));
+            Assert.Equal(0.5f, doc.ScatterOverrides[baseline].DensityMultiplier);
+
+            Assert.True(ed.Undo());   // revert the values edit: the slot now holds a clone, not `added`
+            Assert.True(ed.Undo());   // revert the Add: must remove the slot regardless of its identity
+
+            Assert.Equal(baseline, doc.ScatterOverrides.Count);
+            Assert.Equal(beforeAdd, Save(doc));
+            Assert.False(ed.IsDirty);
         }
 
         [Fact]

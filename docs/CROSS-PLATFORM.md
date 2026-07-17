@@ -62,7 +62,7 @@ The suite each leg runs is split by trigger, from measured cost and lavapipe sta
 Historically the test step filtered every leg to `FullyQualifiedName~Golden`, so any `[GpuFact]` class
 without "Golden" in its name never ran on ANY backend (`Scene3DTextureUnloadTests`, `WaterQueueTests`,
 `RenderServiceTests`, and dozens of other classes were never exercised on Metal/D3D11/Vulkan). Every GPU
-test now runs on Metal (every trigger) and D3D11 (weekly + dispatch) regardless of what it is called; the
+test now runs on Metal (every trigger) and D3D11 (weekly + dispatch) regardless of what it is called. The
 name is not a CI contract. The first full-suite sweeps surfaced 13 real Windows portability bugs, a
 dispose-before-submit contract violation in three test classes that only Vulkan enforces, and the
 lavapipe host-crash instability above - all of which the golden-only filter had been hiding.
@@ -85,8 +85,8 @@ not a CI filter contract):
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify**: Metal runs the full suite; D3D11 and Vulkan run the golden tests only |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + D3D11 run the full suite; Vulkan stays golden-only  |
+| `push` / `pull_request` on main  | **verify**: Metal runs the full suite. D3D11 and Vulkan run the golden tests only |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + D3D11 run the full suite. Vulkan stays golden-only  |
 | `workflow_dispatch` `bake=false` | same as `schedule` (Metal + D3D11 full suite, Vulkan golden-only)             |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) and upload per-backend goldens as artifacts |
 

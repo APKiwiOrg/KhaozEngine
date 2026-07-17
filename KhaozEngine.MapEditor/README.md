@@ -393,8 +393,9 @@ wired as the outline's `TreeView.CanReorder`, so every other row (Placements, Sp
 Biomes, Scatter Layers, Companion Layers, and the category headers and add-actions) is rejected at the
 press-origin gate before it grabs, showing no insertion line and firing no `OnReordered` at all, rather
 than arming and being rejected as a no-op after the drop. `OnOutlineReordered`'s own kind check stays as
-the safety net behind the gate. Wheel-scrolling the outline while a drag is armed is not yet supported:
-the drop geometry freezes at the scroll position the drag started at.
+the safety net behind the gate. Wheel-scrolling the outline while a drag is armed is supported: the drop
+geometry resolves against the live scroll position each frame, so a long outline can scroll mid-drag
+instead of freezing.
 
 A per-element hide follows the moved, deleted, or renamed element automatically, driven by an
 `IVisibilityEffect` the reorder, remove, and rename commands carry (`VisibilityOp` describing a

@@ -9,8 +9,8 @@ TODO. Shipped detail lives in [`../CHANGELOG.md`](../CHANGELOG.md), so a resolve
 rather than ticked and kept.
 
 Anything discovered and not done belongs here **at the moment it is discovered**, before the finding
-chat moves on. Open items are actioned at a checkpoint (current unit of work finished, before the
-release ritual), never mid-task. Resolved entries are deleted by the release sweep. See the
+chat moves on. Open items are actioned at a checkpoint (the moment you are about to end your turn and
+report back), never mid-task. Resolved entries are deleted by the release sweep. See the
 "Discovered work" section in [`../AGENTS.md`](../AGENTS.md) for the full lifecycle and the entry format.
 
 ## Consumer pulls (game-requested)
@@ -29,6 +29,17 @@ release ritual), never mid-task. Resolved entries are deleted by the release swe
   Recorded and deliberately not centralized at the time. Evidence: Ruinborne
   `docs/ENGINE-INTEGRATION.md`, "Not centralized (recorded)" note in the NPC follower-integration
   section.
+- [ ] **Vertical hop links for NPC navigation.** Branch `feature/nav-hop-links` builds the first slice of
+  roadmap item 1 "NPC navigation: vertical worlds" (same-grid short vertical hops), per
+  `docs/NAV-HOP-LINKS-DESIGN.md`. Both halves the design doc specifies are done and tested on the branch:
+  generation/bake (`NavHopLinks.Generate`, `BakeOverworldHops`, `NavLinkKind`, `NavWaypointKind`) and the
+  follower seam (`PathFollowState.Hopping`, `HopStart`, commit `23128d62`). The branch is not merged to
+  `main`, is not pushed to `origin`, and has not been through the release ritual, so none of it is
+  consumable by a game yet. Ruinborne wolves are the first consumer and cannot path onto anything taller
+  than the step budget until this ships and Ruinborne does its own game-side wiring (swap
+  `BakeOverworldSteps` for `BakeOverworldHops`, handle `Hopping` in the wolf brain, per the design doc's
+  "Consumer wiring" section).
+  **Handed off:** Ruinborne `docs/TODO.md` "Vertical NPC navigation adoption" (2026-07-17)
 
 ## Known gaps
 
@@ -40,12 +51,10 @@ release ritual), never mid-task. Resolved entries are deleted by the release swe
   Vulkan loader) is fixed on branch `fix/vulkan-lavapipe-full-suite` (commit `0b7831af`). That branch
   also carries commit `4f056153` widening the Vulkan CI leg to the full-suite tier, which would
   reintroduce the flake if merged before mode 2 is fixed.
-  **Handed off:** branch `fix/vulkan-lavapipe-full-suite` (2026-07-17)
+  **Blocked on:** branch `fix/vulkan-lavapipe-full-suite` (2026-07-17)
 - [ ] **HDR chroma preservation is partial.** A saturated channel that clips at the display ceiling
   before the rescale still desaturates, even at `ChromaPreservation = 1`. Evidence: `CHANGELOG.md`
   11.7.0.
-- [ ] **SunCycle has no visible moon disc and no secondary night key light.** Called out as deferred
-  follow-ups. Evidence: `CHANGELOG.md` 10.124.0.
 - [ ] **Map editor invalidation still falls back to full rebuild for several edit kinds.** Scatter-layer,
   companion, and terrain-scalar edits take the full-rebuild path rather than narrowed partial
   invalidation (exclusion and scatter-override edits were narrowed to partial rebuild in 11.4.0).

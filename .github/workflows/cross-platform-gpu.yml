@@ -46,7 +46,9 @@ name: cross-platform-gpu
 # only when something that can change a GPU golden is touched (rendering stack, the GPU seam, the GPU
 # test dir, or this workflow). Docs/netcode/etc. pushes skip it. PRs + manual bake still run as before.
 concurrency:
-  group: cross-platform-gpu-${{ github.ref }}
+  # Event name folded into the group so a gated push near the weekly cron cannot cancel the
+  # weekly full-suite sweep (or vice versa): push and schedule now get separate groups.
+  group: cross-platform-gpu-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 on:

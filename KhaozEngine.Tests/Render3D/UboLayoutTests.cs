@@ -409,6 +409,16 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        // ---- Starfield background pass UBO (StarfieldRenderer) ----
+
+        [Fact]
+        public void StarfieldUbo_matches_the_gpu_allocation()
+        {
+            // 2 * vec4 = 32. Every member is 16-byte aligned, so std140 needs no extra padding.
+            Assert.Equal((int)StarfieldRenderer.UboBytes, Marshal.SizeOf<StarfieldRenderer.StarfieldUbo>());
+            Assert.Equal(32, (int)StarfieldRenderer.UboBytes);
+        }
+
         [Fact]
         public void PaletteFrag_ColorsArray_SizedByMaxPaletteColors()
         {

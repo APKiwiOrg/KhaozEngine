@@ -78,7 +78,8 @@ namespace KhaozEngine.Telegraphs
 
             return new ResolvedTelegraph(fill, outline, fillFraction, flash, style.EdgeThickness, style.FillMode, style.Blend,
                 style.FeatherWidth, style.Pattern, style.PatternSpeed, style.PatternScale, rimGlow, sweepGlow, sparkle,
-                MathUtil.Clamp01(style.InteriorDim), runner, MathUtil.Clamp01(style.BaseFill));
+                MathUtil.Clamp01(style.InteriorDim), runner, MathUtil.Clamp01(style.BaseFill),
+                MathF.Max(style.EdgeWidthWorld, 0f), MathF.Max(style.FeatherWidthWorld, 0f));
         }
 
         // 0 below ~0.6, rising steeply to 1 at p=1. Quartic for a snappy late spike.

@@ -131,6 +131,13 @@ public class MapEditorScene : GameScene, IGameScene3D
     static readonly Color ScatterOverrideOverlayColor = new(0.98f, 0.52f, 0.1f, 0.28f);
     static readonly Color RegionOverlayColor = new(0.2f, 0.5f, 0.95f, 0.26f);
     static readonly Color FeatureOverlayColor = new(0.96f, 0.76f, 0.22f, 0.55f);
+    // The selected biome band's world-Z edge lines: a bright magenta, distinct from every fill hue above (its blue
+    // is high like the region's, but its red is far higher, so it never reads as a region). A thin line reads
+    // faint, so the alpha runs higher than the translucent area fills.
+    static readonly Color BiomeBandOverlayColor = new(0.85f, 0.3f, 0.95f, 0.6f);
+    /// <summary>Half-thickness (m, along world Z) of a biome-band edge line drawn as a thin overlay quad. Wide
+    /// enough to read as a line at typical camera distances, far narrower than the band widths it delimits.</summary>
+    const float BiomeBandLineHalfDepth = 0.4f;
     /// <summary>World-space lift (m) added above the sampled ground height when seating an overlay fill. Overlays
     /// never z-fight the terrain regardless: the debug-fill pass runs depth-disabled after post, so the fills
     /// composite on top of the scene rather than depth-testing against it. The lift only keeps the fill geometry a
@@ -701,7 +708,40 @@ public class MapEditorScene : GameScene, IGameScene3D
             list.Add(new OverlayDraw(OverlayCategory.Feature, OverlayShape.Disc, center,
                 OverlayPicking.FeatureMarkerRadius, Vector2.Zero, rim: null, Tint(FeatureOverlayColor, selected), selected));
         }
+
+        // The selected biome band's finite Start/End edges, as full-width ground lines across the doc's X extent at
+        // those world-Z positions (a band is a world-Z slice, not a placed shape - see TerrainField.ShapeAt, which
+        // blends bands by z only). A band carries no viewport geometry of its own and its order is meaningless, so
+        // ONLY the current selection draws, and an open edge (null Start/End) draws nothing. Not gated on the
+        // visibility system: bands have no visibility toggle (they are outline-only, never independently drawn).
+        if (selection.Kind == SelectionKind.BiomeBand)
+        {
+            int selectedBand = SelectedIndex(selection.Id);
+            List<MapBiomeBand> bands = doc.Terrain.Biomes;
+            if (selectedBand >= 0 && selectedBand < bands.Count)
+            {
+                MapBiomeBand band = bands[selectedBand];
+                AddBandEdgeLine(list, doc.Bounds, band.Start, sampleHeight);
+                AddBandEdgeLine(list, doc.Bounds, band.End, sampleHeight);
+            }
+        }
         return list;
+    }
+
+    // One finite biome-band edge as a full-width ground line across the doc's X extent at world-Z `edge`. A null or
+    // infinite edge (an open, unbounded band edge) draws nothing. The line is a thin rect quad centered on the doc's
+    // X midpoint, seated at the ground height sampled there (a thin line needs one sample, like a feature marker).
+    static void AddBandEdgeLine(List<OverlayDraw> list, MapBounds bounds, float? edge, Func<float, float, float> sampleHeight)
+    {
+        if (edge is not { } z || float.IsInfinity(z)) return;
+        float cx = (bounds.MinX + bounds.MaxX) * 0.5f;
+        float halfWidth = MathF.Abs(bounds.MaxX - bounds.MinX) * 0.5f;
+        var center = new Vector3(cx, sampleHeight(cx, z) + OverlayLift, z);
+        var half = new Vector2(halfWidth, BiomeBandLineHalfDepth);
+        // Always the current selection, so the base color is drawn directly (no Tint pass): there is no unselected
+        // band line to contrast against.
+        list.Add(new OverlayDraw(OverlayCategory.BiomeBand, OverlayShape.Rect, center, 0f, half,
+            rim: null, BiomeBandOverlayColor, selected: true));
     }
 
     // An index-keyed element id (feature / exclusion), matching the selection and outline id encoding.
@@ -939,6 +979,7 @@ public class MapEditorScene : GameScene, IGameScene3D
         _inspector = new PropertyGrid(default) { EditorStyle = GuiStyle.Modern };
         _outline.OnSelected = OnOutlineSelected;
         _outline.OnReordered = OnOutlineReordered;
+        _outline.CanReorder = OutlineNodeIsReorderable;
 
         _paletteFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter kits...") };
         _paletteTree = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
@@ -1431,6 +1472,16 @@ public class MapEditorScene : GameScene, IGameScene3D
     // moved element too, but that is now driven by the command's IVisibilityEffect through the document events (see
     // OnCommandVisibilityForward), not remapped here. Every other category (Placements, Spawns, Regions, Terrain)
     // has no reorder, so its drop is a no-op.
+    // Only the outline kinds with a real reorder command (the order-significant, index-keyed lists) may arm a drag:
+    // features, exclusions, and scatter overrides. Everything else is blocked at the arm gate, so it never shows a
+    // phantom insertion line that OnOutlineReordered would only reject after the drop. That covers biome bands (the
+    // blend is order-independent, so band order is meaningless), placements, spawns, regions, and the layer kinds
+    // (no list-order semantics), and the category headers and add-actions (not elements at all). OnOutlineReordered's
+    // default branch stays as the safety net.
+    static bool OutlineNodeIsReorderable(TreeNode node) =>
+        node.Tag is OutlineRef r &&
+        r.Kind is SelectionKind.Feature or SelectionKind.Exclusion or SelectionKind.ScatterOverride;
+
     void OnOutlineReordered(TreeNode node, int fromIndex, int toIndex)
     {
         if (node.Tag is not OutlineRef r) return;
@@ -2513,8 +2564,10 @@ public class MapEditorScene : GameScene, IGameScene3D
     // The band inspector: the Biome choice (kind ChoiceRow, Rows[0]), the nullable Start / End edges, and the
     // BaseHeight / HillAmplitude scalars. Every edit is a WHOLE-VALUE edit routed through EditBiomeBandCommand
     // (clone the live band, change the one field, keep the live band as the command's old value), whose same-index
-    // merge coalesces a scrub into one undo step. Bands have no name and no viewport geometry, so there is no name
-    // row and no Visible row (visibility is a viewport concept, and a band never draws).
+    // merge coalesces a scrub into one undo step. Bands have no name and no authored shape, so there is no name row
+    // and no Visible row: a band is not an independently hideable element (visibility is per placed shape). The
+    // selected band still draws its Start/End world-Z edge lines in the viewport (see ComputeOverlayDrawList), an
+    // always-on aid rather than a toggled overlay element.
     //
     // Nullable edges (the smallest honest mechanism): each of Start / End is a FloatRow for the concrete value
     // PAIRED with an "<edge> open" BoolRow that toggles the open edge (null = +/- infinity). This mirrors the
@@ -2528,26 +2581,31 @@ public class MapEditorScene : GameScene, IGameScene3D
         if (BandAt(index) is null) return;
 
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Range")));
+        _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Affects"),
+            () => "terrain shape + scatter",
+            LocalizedText.Raw(
+                "This band's Biome drives terrain shaping (BaseHeight and HillAmplitude) and the scatter rules keyed " +
+                "by that biome, blended over its world-Z range. Ground tinting by biome is not wired yet.")));
         _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Biome"), BiomeChoices,
             () => (BandAt(index)?.Biome ?? BiomeId.Meadow).ToString(),
             v => { if (Enum.TryParse(v, out BiomeId biome)) EditBand(index, b => b.Biome = biome); },
             description: LocalizedText.Raw(
-                "Which biome's height and scatter rules apply within this band's Start/End height range.")));
+                "Which biome's height and scatter rules apply within this band's Start/End world-Z range.")));
 
         AddBandFloatRow(index, "Start",
-            "Lower height bound, in world units, where this band begins applying. Ignored (treated as an open, " +
-            "unbounded edge) while Start open is on.",
+            "Lower world-space Z position where this band begins applying (bands are a Z-axis slice, not a height " +
+            "range). Ignored (treated as an open, unbounded edge) while Start open is on.",
             b => b.Start ?? 0f, (b, v) => b.Start = v);
         AddBandEdgeToggle(index, "Start open",
-            "On leaves the lower bound open: this band applies below End with no lower limit. Off closes it to " +
+            "On leaves the lower Z edge open: this band applies below End with no lower Z limit. Off closes it to " +
             "the Start value above.",
             b => b.Start, (b, open) => b.Start = open ? null : (b.Start ?? 0f));
         AddBandFloatRow(index, "End",
-            "Upper height bound, in world units, where this band stops applying. Ignored (treated as an open, " +
-            "unbounded edge) while End open is on.",
+            "Upper world-space Z position where this band stops applying (bands are a Z-axis slice, not a height " +
+            "range). Ignored (treated as an open, unbounded edge) while End open is on.",
             b => b.End ?? 0f, (b, v) => b.End = v);
         AddBandEdgeToggle(index, "End open",
-            "On leaves the upper bound open: this band applies above Start with no upper limit. Off closes it to " +
+            "On leaves the upper Z edge open: this band applies above Start with no upper Z limit. Off closes it to " +
             "the End value above.",
             b => b.End, (b, open) => b.End = open ? null : (b.End ?? 0f));
 
@@ -3553,6 +3611,8 @@ internal enum OverlayCategory
     Region,
     /// <summary>A terrain feature's center marker.</summary>
     Feature,
+    /// <summary>A biome band's world-Z edge line (a full-width line at Start or End).</summary>
+    BiomeBand,
 }
 
 /// <summary>Which <see cref="Scene3D"/> debug-fill primitive draws an <see cref="OverlayDraw"/>.</summary>

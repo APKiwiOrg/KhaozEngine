@@ -2557,6 +2557,12 @@ the 3D ground-decal path only, see below):
 - `BaseFill` - fraction of the fill alpha painted across the ENTIRE shape from progress 0,
   independent of the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets the full
   danger extent read immediately, the sweep then brightens across it. Presets use 0.3.
+- `EdgeWidthWorld` - opt-in world-unit override for the outline / AA edge half-width. 0 (default)
+  keeps the derived auto-scaling edge (5% of the shape's characteristic size, clamped to 0.03..0.3
+  world units). A positive value pins the stroke at any shape size. The outline band's solid core
+  renders about twice this value across the boundary.
+- `FeatherWidthWorld` - opt-in world-unit override for the feather band. 0 (default) keeps the
+  shape-relative `FeatherWidth` fraction. A positive value pins the feather in world units.
 
 **Borderless telegraphs**: set `FillMode = FillMode.Fill` (silences the outline band and its rim/
 runner effects) and give the style a nonzero `BaseFill` (all seven presets already do) so the full
@@ -2608,10 +2614,28 @@ The builder is pure and immediate-mode like every other telegraph call, so the C
     if (age01 < 1f)
         scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
 
+**Thin crisp static ring** (a tower range ring, an ability radius indicator): at large radii the
+derived edge auto-scales up (5% of the radius, capped at 0.3 world units) and the preset feather
+adds more on top, so a radius-6 ring renders as a fat soft band. Pin both in world units and strip
+the animation:
+
+    var ring = TelegraphStyle.Generic;              // any preset for the colors
+    ring.FillMode = FillMode.Outline;               // stroke only, no fill
+    ring.Animation = TelegraphAnim.None;            // static: no pulse, sweep, or flash
+    ring.Pattern = TelegraphFillPattern.Solid;
+    ring.FeatherWidth = 0f;                         // kill the shape-relative feather
+    ring.EdgeWidthWorld = 0.04f;                    // ~0.08 world units of solid stroke core
+    ring.FeatherWidthWorld = 0.02f;                 // a whisper of AA softening
+    scene.GroundCircle(towerPos, range, 1f, ring);  // progress is inert with no animation
+
+Both overrides are opt-in: 0 keeps the derived auto-scaling behavior, so existing styles render
+identically.
+
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
 Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-EdgeSparkle, OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash
-look, picking primitives by `FillMode` directly. They are a 3D ground-decal feature.
+EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, and residue) and always renders the
+flat legacy fill/outline/pulse/flash look, picking primitives by `FillMode` directly. They are a 3D
+ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same
@@ -4213,7 +4237,11 @@ Releasing over a valid slot in the dragged row's own sibling list fires `OnReord
 newIndex)` and draws an insertion-line indicator at the target boundary while dragging. Escape aborts the
 gesture with no drop, and a cross-parent or off-tree release is rejected. The widget only reports the
 move: it never mutates `Roots` or `TreeNode.Children` itself, so the host applies the reorder and rebuilds
-the tree. `TreeView` node labels and `PropertyRow` labels are `LocalizedText` like every other Gui sink.
+the tree. Set `CanReorder` (a `Func<TreeNode, bool>?`) to gate which rows may drag: it is consulted on the
+press-origin row before a drag arms, and a row it rejects never grabs, shows no insertion line, and fires no
+`OnReordered` (a held-then-released press on it still selects). Null (the default) leaves every row
+reorderable. A host uses this when only some node kinds carry list-order semantics, instead of arming a drag
+the drop handler would only reject after the fact. `TreeView` node labels and `PropertyRow` labels are `LocalizedText` like every other Gui sink.
 `NumberField` is label-free (it renders only the numeric value, so it has no text sink to localize).
 
 **Free-fly editor camera.** `FlyCamera3D` implements `IIsoCamera3D` (a world `Position` plus `Yaw`/`Pitch`, no
@@ -4569,10 +4597,14 @@ shared 260) now split independently, giving the grouped companion/scatter-layer 
 **Viewport rebuild performance.** A bounded terrain-feature edit (a lake or flatten drag, for example)
 reports a `DirtyRegion`, so `CheckWorldRebuild` re-meshes only the loaded chunks the edit's accumulated
 region overlaps (`ViewportWorld.PartialRebuild`) instead of tearing down and rebuilding the whole streamed
-world. A ridge or rim edit has unbounded reach and, like a scatter layer, exclusion, scatter override, or
-terrain-scalar edit, still takes the full `ViewportWorld.Rebuild` path (a scatter override's `DirtyRegion`
-narrowing is deferred, see the `KhaozEngine` `docs/MAP-EDITOR-DESIGN.md` deferred-work note), throttled to
-at most once per
+world. An exclusion or scatter-override edit (add, remove, shape drag/scrub, layer/value edit, or reorder)
+narrows the same way, to `ShapeGeometry.TryBounds` (a shape AABB padded by a margin captured at apply
+time: a base constant plus the document's largest scatter-layer jitter, since scatter tests membership at
+the jittered candidate position while chunk assignment uses the cell centre). A ridge or rim edit has unbounded
+reach and, like a scatter layer, companion layer, or terrain-scalar edit, still takes the full
+`ViewportWorld.Rebuild` path (see the `KhaozEngine` `docs/MAP-EDITOR-DESIGN.md` deferred-work note for the
+one remaining gap: a biome band is bounded only in its world-Z-range slice, not narrowed yet),
+throttled to at most once per
 `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or
 draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the world every frame. Kit meshes
 and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF

@@ -49,9 +49,11 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   queues them to control completion order. A faulted build surfaces as a **`ChunkBuildException`** on the
   frame thread (during `Pump`/`Flush`), never a silent stuck chunk.
 - **`Scene3DChunkSink`** - the production sink: builds each chunk's mesh + scatters **`PropLayer`**s
-  (each layer with its own config, mesh set, and draw radius), re-LODs meshes in place, draws every
-  loaded chunk + in-range props per frame, and optionally adds baked prop collision statics to an
-  `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params), removed again on unload. A game may also
+  (each layer with its own config, mesh set, and draw radius), re-LODs meshes AND re-adopts the freshly
+  scattered props in place (byte-identical after a pure LOD change, freshly correct after a field swap plus
+  invalidate), draws every loaded chunk + in-range props per frame, and optionally adds baked prop collision
+  statics to an `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params), refreshed on re-LOD and
+  removed on unload. A game may also
   pass an **`IChunkDynamicsSource`** (`dynamicsSource` ctor param, requires `physics`) to spawn dynamic
   bodies per chunk: the source yields **`DynamicSpawn`**s (shape + pose + `DynamicBodyDescription`) for a
   chunk, the sink registers them on load and removes them on unload. Mechanism only - the game decides what

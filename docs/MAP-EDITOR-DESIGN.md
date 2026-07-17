@@ -427,14 +427,32 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
 test for `TerrainStreamer.Invalidate`, a device-gated
 kit-mesh/splat retention test that exercises a real `Rebuild`, a direct rim-remove null-`DirtyRegion`
 test, a GPU-built `PartialRebuild` body test, and interleaved sticky-full-vs-throttle plus
-interval-change-mid-gesture tests. Also: exclusion, scatter-layer, companion, and terrain-scalar edits
+interval-change-mid-gesture tests. Also: scatter-layer, companion, and terrain-scalar edits
 still take the full-rebuild path by design this round (the dirty-region seam exists so a later round
 can narrow them), and ridge and rim features always fall back to full rebuild since their reach is
-unbounded.
+unbounded. Exclusion edits were narrowed to the dirty-region path by the mapedit-playtest-fixes round
+below (see Resolved).
 
-**Deferred out of this round (scatter-overrides)**: DirtyRegion narrowing for override shapes still
-takes the full-rebuild path (the shape bound could narrow like features do, once a later round picks
-that up). Exclusions were deliberately not added to the Ctrl+Up/Down reorder chord: their masks combine
+**Resolved (mapedit-playtest-fixes)**: DirtyRegion narrowing for exclusion and scatter-override shapes,
+deferred by the scatter-overrides round below, now ships. `ShapeGeometry.TryBounds` (a disc/rect/polygon
+AABB) gives every exclusion and scatter-override command a bounded dirty region, padded by a margin the
+command captures at Apply time (`ShapeGeometry.BoundsMarginFor`: a 2 m base constant plus the document's
+largest scatter-layer jitter, because `PropScatter.Generate` assigns a candidate to its chunk by the
+un-jittered cell centre while testing exclusion/override membership at the jittered position, so a shape
+edit reaches up to Jitter beyond the shape and authored jitter has no clamp): the two shape commands
+(`EditExclusionShapeCommand`/`EditScatterOverrideShapeCommand`)
+union old and new shape bounds live (never cached, so a merged drag still covers the latest endpoint),
+add/remove report the touched shape's bounds, the layers/values whole-value commands report their
+(unchanged) shape's bounds, and `ReorderScatterOverrideCommand` unions every override shape across the
+inclusive from..to index range (not just the two endpoints: a reorder also flips first-match-wins
+precedence for every override sandwiched in between, so the whole range is the honest cheap cover).
+Fixes the choppy-drag feel an exclusion or scatter-override gizmo drag used to have (every frame fell to
+the throttled full-rebuild path, same as terrain scalars). Terrain scalars and biome bands are
+unaffected and stay whole-doc (a biome band is bounded only in its world-Z-range slice, a possible
+future narrowing).
+
+**Deferred out of this round (scatter-overrides)**: Exclusions were deliberately not added to the
+Ctrl+Up/Down reorder chord: their masks combine
 as a set union where order never changes which ground ends up excluded, so a reorder chord would be
 meaningless for them (scatter overrides get the chord because their order is genuinely significant,
 first-match-wins). Polygon override shapes remain MCP-authored and inspector-read-only, the same as

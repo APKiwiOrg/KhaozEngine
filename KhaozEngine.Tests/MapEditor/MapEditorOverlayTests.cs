@@ -239,5 +239,83 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.Empty(list);
         }
+
+        // ---- biome band Z-range overlay -------------------------------------------------------------------
+
+        // The selected band draws its finite Start/End edges as full-width ground lines across the doc's X extent at
+        // those world-Z positions, so the band's slice is visible while its edges are scrubbed. A band carries no
+        // shape of its own, so only the current selection contributes.
+        [Fact]
+        public void OverlayDrawList_SelectedBand_DrawsFiniteEdgeLines()
+        {
+            MapDocument doc = ValidDoc("bands");           // Bounds X -50..50
+            doc.Terrain.Biomes.Add(new MapBiomeBand { Start = -10f, End = 25f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+            doc.Terrain.Biomes.Add(new MapBiomeBand { Start = 25f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Forest });
+
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(
+                doc, Select(SelectionKind.BiomeBand, "0"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
+
+            List<OverlayDraw> bandLines = list.Where(o => o.Category == OverlayCategory.BiomeBand).ToList();
+            Assert.Equal(2, bandLines.Count);                                   // both edges of band 0 are finite
+            Assert.All(bandLines, o => Assert.Equal(OverlayShape.Rect, o.Shape));
+            Assert.All(bandLines, o => Near(50f, o.HalfExtents.X));             // spans the full doc X extent (100 / 2)
+            Assert.All(bandLines, o => Assert.True(o.HalfExtents.Y > 0f && o.HalfExtents.Y < o.HalfExtents.X, "a thin line, not a slab"));
+            Assert.All(bandLines, o => Near(0f, o.Center.X));                   // centered on the doc X midpoint
+            Assert.All(bandLines, o => Assert.True(o.Center.Y > Ground && o.Center.Y < Ground + 1f, "lifted a small epsilon above ground"));
+            Assert.Contains(bandLines, o => MathF.Abs(o.Center.Z + 10f) < 1e-3f);   // Start edge at world-Z -10
+            Assert.Contains(bandLines, o => MathF.Abs(o.Center.Z - 25f) < 1e-3f);   // End edge at world-Z 25
+        }
+
+        // An open-ended band (a null Start or End = an unbounded edge) draws only its finite edge.
+        [Fact]
+        public void OverlayDrawList_OpenEndedBand_DrawsOnlyTheFiniteEdge()
+        {
+            MapDocument doc = ValidDoc("open");
+            doc.Terrain.Biomes.Add(new MapBiomeBand { Start = null, End = 12f, Biome = KhaozEngine.Terrain.BiomeId.Marsh });
+
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(
+                doc, Select(SelectionKind.BiomeBand, "0"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
+
+            List<OverlayDraw> bandLines = list.Where(o => o.Category == OverlayCategory.BiomeBand).ToList();
+            OverlayDraw only = Assert.Single(bandLines);
+            Near(12f, only.Center.Z);   // the finite End edge, the open Start edge draws nothing
+        }
+
+        // A band that is not the current selection contributes no line.
+        [Fact]
+        public void OverlayDrawList_DeselectedBand_DrawsNothing()
+        {
+            MapDocument doc = ValidDoc("deselected");
+            doc.Terrain.Biomes.Add(new MapBiomeBand { Start = -10f, End = 25f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+
+            // Nothing selected.
+            List<OverlayDraw> none = MapEditorScene.ComputeOverlayDrawList(doc, Nothing(), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
+            Assert.DoesNotContain(none, o => o.Category == OverlayCategory.BiomeBand);
+
+            // A different kind selected (a feature) also contributes no band line.
+            doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 3f, Depth = 1f });
+            List<OverlayDraw> otherKind = MapEditorScene.ComputeOverlayDrawList(
+                doc, Select(SelectionKind.Feature, "0"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
+            Assert.DoesNotContain(otherKind, o => o.Category == OverlayCategory.BiomeBand);
+        }
+
+        // The band color is distinct from every other overlay category's color.
+        [Fact]
+        public void OverlayDrawList_BandColor_IsDistinct()
+        {
+            MapDocument doc = ValidDoc("bandcolor");
+            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { Radius = 4f } });
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new DiscShapeDoc { Radius = 4f } });
+            doc.Regions.Add(new MapRegion { Name = "zone", Shape = new DiscShapeDoc { Radius = 3f } });
+            doc.Terrain.Features.Add(new LakeFeatureDoc { Radius = 3f });
+            doc.Terrain.Biomes.Add(new MapBiomeBand { Start = -5f, End = 5f, Biome = KhaozEngine.Terrain.BiomeId.Snow });
+
+            List<OverlayDraw> list = MapEditorScene.ComputeOverlayDrawList(
+                doc, Select(SelectionKind.BiomeBand, "0"), FlatGround, showOverlays: true, visibility: new EditorVisibility(), into: new List<OverlayDraw>());
+
+            Color band = list.First(o => o.Category == OverlayCategory.BiomeBand).Color;
+            foreach (OverlayCategory other in new[] { OverlayCategory.Exclusion, OverlayCategory.ScatterOverride, OverlayCategory.Region, OverlayCategory.Feature })
+                Assert.NotEqual(band, list.First(o => o.Category == other).Color);
+        }
     }
 }

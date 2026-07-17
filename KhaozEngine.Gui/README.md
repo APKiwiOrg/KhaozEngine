@@ -189,6 +189,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     move, never mutating `Roots`/`Children` itself, so the host applies it and rebuilds the tree. The wheel scrolls
     even while a drag is armed: the drop geometry (`RowAt`/`RowBounds`) reads the live `ScrollOffset`, recomputed
     the same frame right after the wheel updates it, so a long list can scroll mid-reorder instead of freezing.
+    Setting `CanReorder` (a `Func<TreeNode, bool>?`, default null) gates which rows may drag, consulted on the
+    press-origin row before arming: a rejected row never grabs, shows no insertion line, and fires no `OnReordered`,
+    while null leaves every row reorderable.
     `ScrollTo(TreeNode)` brings a node into view: expands every collapsed ancestor so it
     rejoins the visible walk, then scrolls the minimal amount needed so its row sits fully inside `Bounds`
     (clamped to `[0, maxScroll]`, the same clamp idiom as `ScrollablePanel.ScrollTo(float)`), a no-op when

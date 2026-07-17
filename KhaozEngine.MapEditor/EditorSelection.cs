@@ -28,7 +28,7 @@ public enum SelectionKind
     Exclusion,
     /// <summary>A named, game-interpreted region marker, keyed by its name.</summary>
     Region,
-    /// <summary>A terrain biome band (an elevation-range biome slice), keyed by its list index as a string.
+    /// <summary>A terrain biome band (a world-Z-range biome slice), keyed by its list index as a string.
     /// Outline-only: bands have no viewport geometry, so they are never picked or gizmo-dragged and carry no
     /// visibility toggle. Index-keyed like <see cref="Feature"/> and <see cref="Exclusion"/>.</summary>
     BiomeBand,

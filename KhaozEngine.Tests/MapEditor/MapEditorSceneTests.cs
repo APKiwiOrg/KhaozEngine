@@ -626,6 +626,61 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(4, scene.Log.Count(s => s == "full"));
         }
 
+        // ---- exclusion gizmo drag: partial rebuild, never throttled (the choppy-drag fix) --------------
+
+        // A minimal document holding one disc exclusion at the origin, so a gizmo drag on it reuses the exact
+        // press/drag geometry EditorToolTests.ShapeDrag_MovesCenterThroughCommand already verifies (a +X arrow
+        // grab at (0.6, 100, 0) on a DiscShapeDoc CenterX=0 CenterZ=0 Radius=5).
+        static MapDocument SampleWithExclusion()
+        {
+            var doc = new MapDocument { Id = "exclusion-throttle", Bounds = new MapBounds { MinX = -100f, MinZ = -100f, MaxX = 100f, MaxZ = 100f } };
+            doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f } });
+            return doc;
+        }
+
+        [Fact]
+        public void ExclusionGizmoDrag_RoutesToPartial_NeverThrottled()
+        {
+            // EditExclusionShapeCommand now reports a bounded DirtyRegion (ShapeGeometry.TryBounds), so a gizmo
+            // drag on a selected exclusion takes the PARTIAL rebuild seam every frame, and CheckWorldRebuild's
+            // gesture throttle only ever wraps the FULL path, never partial. Mirrors
+            // Throttle_PartialRebuilds_BypassThrottle_AndDoNotFeedFullAccumulator above but drives it through a
+            // REAL selection + gizmo drag instead of the synthetic DirtyPartial helper, proving the fix through
+            // the actual editing gesture a map author performs, not just the command's own DirtyRegion getter.
+            var scene = new ThrottleScene(SampleWithExclusion) { PartialSucceeds = true };
+            scene.Init(null!, null!, null!, new MapEditorOptions { GestureRebuildInterval = 0.25f });
+            new SceneManager().Push(scene);
+            scene.Document.AcknowledgeWorldRebuild();   // ignore any pending state from the initial load
+            scene.Log.Clear();
+
+            scene.Document.Selection.Set(SelectionKind.Exclusion, "0");
+
+            // Grab the +X translate arrow on the shape-center gizmo.
+            scene.Controller.Update(new EditorFrameInput(new Vector3(0.6f, 100f, 0f), ThrottleDown,
+                pointerPressed: true, pointerDown: true, dt: 0.016f));
+            Assert.True(scene.Controller.IsDragging);
+
+            // 5 drag frames, each carrying only 0.1s (well under the 0.25s gesture-rebuild interval): a
+            // full-rebuild-throttled path would stay silent for several of these, but the partial path never is.
+            for (int i = 0; i < 5; i++)
+            {
+                scene.Controller.Update(new EditorFrameInput(new Vector3(1.6f + i, 100f, 0f), ThrottleDown, pointerDown: true, dt: 0.016f));
+                scene.RunRebuildCheck(0.1f);
+            }
+
+            Assert.Equal(5, scene.Log.Count(s => s == "partial"));
+            Assert.DoesNotContain("full", scene.Log);
+            Assert.False(scene.Document.WorldRebuildPending);   // each partial rebuild acknowledges immediately
+
+            // Releasing seals the gesture into one coalesced undo step (drag coalescing), and the shape actually
+            // moved: this is a real edit, not just a rebuild-routing no-op.
+            scene.Controller.Update(new EditorFrameInput(new Vector3(5.6f, 100f, 0f), ThrottleDown, pointerReleased: true, dt: 0.016f));
+            Assert.False(scene.Controller.IsDragging);
+            Assert.Equal(1, scene.Document.History.UndoDepth);
+            var disc = Assert.IsType<DiscShapeDoc>(scene.Document.Doc.Exclusions[0].Shape);
+            Assert.True(disc.CenterX > 0f);
+        }
+
         // ---- same-frame inspector rebuild regression ---------------------------------------------------
 
         [Fact]
@@ -1241,6 +1296,48 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(scene.Document.WorldRebuildPending);
         }
 
+        // A biome band's order is meaningless (the blend is order-independent), so a band row must not even arm a
+        // drag: the outline's CanReorder gate blocks it up front (no phantom insertion line), while a feature row
+        // still arms. Drives a real drag on a band row and asserts the document and undo stack are untouched, then
+        // pins the predicate directly on a band node (blocked) versus a feature node (allowed).
+        [Fact]
+        public void OutlineDrag_OnBiomeBand_DoesNotArm_FeatureStillDoes()
+        {
+            var band0 = new MapBiomeBand { Start = null, End = 20f, Biome = KhaozEngine.Terrain.BiomeId.Meadow };
+            var band1 = new MapBiomeBand { Start = 20f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Forest };
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Biomes.Add(band0);
+                doc.Terrain.Biomes.Add(band1);
+                doc.Terrain.Features.Add(lake);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 600f);   // tall enough for every outline row
+            TreeNode b0 = CategoryChild(outline, "Biomes", 0);
+            TreeNode b1 = CategoryChild(outline, "Biomes", 1);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, b0), RowOf(outline, b1), afterTarget: true);
+
+            // Nothing armed, so nothing committed: the band order and the undo stack are untouched.
+            Assert.Same(band0, scene.Document.Doc.Terrain.Biomes[0]);
+            Assert.Same(band1, scene.Document.Doc.Terrain.Biomes[1]);
+            Assert.False(scene.Document.History.CanUndo);
+            Assert.False(scene.Document.WorldRebuildPending);
+
+            // The predicate itself: a band node is not reorderable, a feature node is.
+            Assert.NotNull(outline.CanReorder);
+            Assert.False(outline.CanReorder!(b0));
+            TreeNode f0 = CategoryChild(outline, "Features", 0);
+            Assert.True(outline.CanReorder!(f0));
+        }
+
         [Fact]
         public void CtrlDown_AtEnd_IsNoOp()
         {
@@ -1696,12 +1793,14 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("[0] Meadow 0..40", band0.Label.Resolve());
             Assert.Equal("[1] Mountains 40..*", band1.Label.Resolve());   // open end edge renders as "*"
 
-            // Selecting the band node builds its editable inspector (a "Range" group header, then the Biome
-            // choice + scalar rows, Task 5 grouping).
+            // Selecting the band node builds its editable inspector (a "Range" group header, a read-only "Affects"
+            // explainer, then the Biome choice + scalar rows, Task 5 grouping).
             scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
             Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[1]);
-            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[1]).Selected);
+            Assert.IsType<ReadOnlyRow>(scene.Inspector.Rows[1]);
+            Assert.Equal("Affects", scene.Inspector.Rows[1].Label.Resolve());
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[2]);
+            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[2]).Selected);
             Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "BaseHeight").Field.Value);
             Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "HillAmplitude").Field.Value);
             Assert.Equal(0f, FloatRowByLabel(scene.Inspector, "Start").Field.Value);

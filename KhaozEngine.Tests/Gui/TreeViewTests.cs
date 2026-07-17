@@ -447,6 +447,97 @@ namespace KhaozEngine.Tests.Gui
             Assert.Null(tree.Selected);              // and the post-abort release does not select A2
         }
 
+        // ---- CanReorder: per-row drag gating --------------------------------------------------------------
+
+        // A predicate that returns false for the dragged row blocks arming: the same gesture that reorders when the
+        // predicate is absent (drag A1 onto A2's lower half) now arms nothing, so the drop fires no reorder and the
+        // release falls through to the plain tap path (which selects the row under the release).
+        [Fact]
+        public void TreeView_CanReorderFalse_BlocksArming()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+            a.Expanded = true;                       // rows: A(0), A1(1), A2(2), B(3)
+            TreeNode a1 = a.Children[0], a2 = a.Children[1];
+
+            int fired = 0;
+            tree.OnReordered = (_, _, _) => fired++;
+            tree.CanReorder = _ => false;            // no row may be dragged
+
+            var input = new InputManager();
+            Rect a2Row = tree.RowBounds(2);
+            var release = new Vector2(a2Row.X + a2Row.Width * 0.5f, a2Row.Y + a2Row.Height * 0.75f);
+
+            Step(tree, input, RowLabel(tree, 1), down: false);   // hover A1
+            Step(tree, input, RowLabel(tree, 1), down: true);    // press A1's label
+            Step(tree, input, release, down: true);              // drag onto A2 (would arm if unblocked)
+            Step(tree, input, release, down: false);             // release on A2
+
+            Assert.Equal(0, fired);                  // predicate blocked arming, so nothing committed
+            Assert.False(tree.WasReordered);
+            Assert.Same(a2, tree.Selected);          // the release falls through to the tap path (selects A2)
+            Assert.Same(a1, a.Children[0]);          // the host list is the widget's, and it never moved a row
+        }
+
+        // A null predicate (the default) preserves the pre-CanReorder behavior: the drag arms and commits exactly as
+        // TreeView_DragRow_FiresOnReordered_WithinParent expects.
+        [Fact]
+        public void TreeView_CanReorderNull_PreservesDragBehavior()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+            a.Expanded = true;                       // rows: A(0), A1(1), A2(2), B(3)
+            TreeNode a1 = a.Children[0];
+
+            TreeNode? dragged = null;
+            int from = -1, to = -1, fired = 0;
+            tree.OnReordered = (n, f, t) => { dragged = n; from = f; to = t; fired++; };
+            tree.CanReorder = null;                  // explicit: all rows reorderable
+
+            var input = new InputManager();
+            Rect a2Row = tree.RowBounds(2);
+            var release = new Vector2(a2Row.X + a2Row.Width * 0.5f, a2Row.Y + a2Row.Height * 0.75f);
+
+            Step(tree, input, RowLabel(tree, 1), down: false);
+            Step(tree, input, RowLabel(tree, 1), down: true);
+            Step(tree, input, release, down: true);
+            Step(tree, input, release, down: false);
+
+            Assert.Equal(1, fired);
+            Assert.Same(a1, dragged);
+            Assert.Equal(0, from);
+            Assert.Equal(1, to);
+            Assert.True(tree.WasReordered);
+        }
+
+        // A predicate that returns true for the dragged row arms and commits like the null default.
+        [Fact]
+        public void TreeView_CanReorderTrue_ArmsAndCommits()
+        {
+            var tree = NewTree();
+            TreeNode a = tree.Roots[0];
+            a.Expanded = true;                       // rows: A(0), A1(1), A2(2), B(3)
+            TreeNode a1 = a.Children[0];
+
+            int fired = 0;
+            TreeNode? probed = null;
+            tree.OnReordered = (_, _, _) => fired++;
+            tree.CanReorder = n => { probed = n; return true; };   // every row reorderable
+
+            var input = new InputManager();
+            Rect a2Row = tree.RowBounds(2);
+            var release = new Vector2(a2Row.X + a2Row.Width * 0.5f, a2Row.Y + a2Row.Height * 0.75f);
+
+            Step(tree, input, RowLabel(tree, 1), down: false);
+            Step(tree, input, RowLabel(tree, 1), down: true);
+            Step(tree, input, release, down: true);
+            Step(tree, input, release, down: false);
+
+            Assert.Equal(1, fired);
+            Assert.True(tree.WasReordered);
+            Assert.Same(a1, probed);                 // the predicate saw the press-origin row before arming
+        }
+
         // ---- TreeView.ScrollTo(TreeNode) / FindByTag ------------------------------------------------------
 
         // The visible-row index of `node`, or -1 when it is not (yet) part of the visible walk. A small local

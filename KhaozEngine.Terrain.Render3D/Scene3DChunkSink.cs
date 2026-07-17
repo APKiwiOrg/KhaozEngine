@@ -12,7 +12,8 @@ namespace KhaozEngine.Terrain
     /// ride alongside the sparse tree layer at a long one), and each companion layer rings its host scatter
     /// layer's placements with foliage. <c>Load</c> builds the chunk mesh at the requested LOD
     /// (<see cref="TerrainChunkBuilder"/>) + scatters every layer for the chunk; <c>ReLod</c> rebuilds the mesh in
-    /// place (props are LOD-independent, so they are kept); <c>Unload</c> frees the mesh; <c>Draw</c> queues every
+    /// place and re-adopts the freshly scattered props (byte-identical after a pure LOD change, freshly correct
+    /// after a field swap plus invalidate); <c>Unload</c> frees the mesh; <c>Draw</c> queues every
     /// loaded chunk + each layer's in-range props (XZ-culled to that layer's draw radius) every frame. Companions
     /// attach to their host's chunk, so each host emits its companions exactly once (a host lives in one chunk),
     /// even when they spill geometrically into a neighbour. Ships in the package so every game gets streaming for
@@ -194,8 +195,8 @@ namespace KhaozEngine.Terrain
 
         /// <summary>Turn a completed CPU build into live GPU + physics state on the frame thread. Fresh load when
         /// <paramref name="existing"/> is null (create the mesh buffers, register props + optional terrain collider).
-        /// Re-LOD otherwise (swap the mesh, rebuild the LOD-dependent terrain collider, keep the LOD-independent
-        /// props).</summary>
+        /// Re-LOD otherwise (swap the mesh, adopt the fresh props from <paramref name="cpuBuild"/>, refresh their
+        /// static bodies when physics is wired, and rebuild the LOD-dependent terrain collider).</summary>
         public object Apply(ChunkCoord coord, int lod, object cpuBuild, object? existing)
         {
             var cpu = (CpuBuild)cpuBuild;
@@ -223,8 +224,21 @@ namespace KhaozEngine.Terrain
             _scene.UnloadMesh(relod.Mesh);
             relod.Mesh = UploadMesh(cpu.Mesh);
             relod.Lod = lod;
-            // Props are LOD-independent, keep relod.LayerProps (the fresh scatter in cpu is identical). The terrain
-            // surface collider IS LOD-dependent (the mesh resolution changed), so rebuild it.
+            // Scatter is deterministic per (chunk, field): a pure LOD transition (no field change) reproduces
+            // byte-identical placements, so adopting cpu.LayerProps costs nothing extra there, and after a field
+            // swap (map-editor carve/paint) plus invalidate it is the ONLY way to see the fresh placements. Keeping
+            // the old array left stale props behind after an edit, for example trees still standing in a carved
+            // lake. Adopt unconditionally.
+            relod.LayerProps = cpu.LayerProps;
+            // Props can change on re-LOD now, so refresh their static bodies too when a physics world is wired
+            // (mirrors the fresh-load registration above). The editor passes physics: null, so this only matters
+            // for physics-wired hosts.
+            if (_physics is not null && _collisionShapes is not null)
+            {
+                ChunkStatics.RemoveAll(_physics, relod.Statics);
+                ChunkStatics.AddAll(_physics, _collisionShapes, relod.Props, relod.Statics);
+            }
+            // The terrain surface collider IS LOD-dependent (the mesh resolution changed), so rebuild it.
             if (_collideTerrain && _physics is not null)
             {
                 ChunkTerrainCollision.Remove(_physics, relod.HasTerrainCollider, relod.TerrainCollider);

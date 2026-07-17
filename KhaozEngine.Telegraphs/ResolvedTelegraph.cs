@@ -73,6 +73,16 @@ namespace KhaozEngine.Telegraphs
         /// </summary>
         public readonly float BaseFill;
 
+        /// <summary>World-unit override for the 3D ground-decal outline / AA edge half-width. 0 keeps
+        /// the derived auto-scaling edge. Carried through from the style clamped to non-negative. The
+        /// 2D renderer ignores it.</summary>
+        public readonly float EdgeWidthWorld;
+
+        /// <summary>World-unit override for the 3D ground-decal feather band. 0 keeps the
+        /// shape-relative <see cref="FeatherFraction"/> behavior. Carried through from the style
+        /// clamped to non-negative. The 2D renderer ignores it.</summary>
+        public readonly float FeatherWidthWorld;
+
         public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
             float edgeThickness, FillMode fillMode, TelegraphBlend blend)
             : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
@@ -105,6 +115,17 @@ namespace KhaozEngine.Telegraphs
             float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
             float patternScale, float rimGlow, float sweepGlow, float sparkle,
             float interiorDim, float runner, float baseFill)
+            : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
+                featherFraction, pattern, patternSpeed, patternScale, rimGlow, sweepGlow, sparkle,
+                interiorDim, runner, baseFill, 0f, 0f)
+        {
+        }
+
+        public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
+            float edgeThickness, FillMode fillMode, TelegraphBlend blend,
+            float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
+            float patternScale, float rimGlow, float sweepGlow, float sparkle,
+            float interiorDim, float runner, float baseFill, float edgeWidthWorld, float featherWidthWorld)
         {
             FillColor = fillColor;
             OutlineColor = outlineColor;
@@ -123,6 +144,8 @@ namespace KhaozEngine.Telegraphs
             InteriorDim = interiorDim;
             Runner = runner;
             BaseFill = baseFill;
+            EdgeWidthWorld = edgeWidthWorld;
+            FeatherWidthWorld = featherWidthWorld;
         }
     }
 }

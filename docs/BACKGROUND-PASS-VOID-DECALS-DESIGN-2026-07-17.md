@@ -72,12 +72,18 @@ The blit's starfield branch is deleted along with its now-unused `BgColor` unifo
 Every one of these has the same root cause: the stars stop being pasted on at the end and start
 living in the scene. They are all consequences of the fix, not incidental damage.
 
+**Most of them do not fire for the actual consumer.** Measured against Hardpoint's real configuration:
+`Bloom`, `Quantize`, `Dither` and `Outline` all default to false, and Hardpoint sets
+`RenderScale = MatchViewport`, so stars render at the same resolution as before. That leaves exactly
+one live change, the HDR tonemap row, because `Hdr.Enabled` defaults to true. The rest of this table
+describes what happens to a consumer who has opted into those passes.
+
 | Change | Effect | Assessment |
 |---|---|---|
 | Stars flow through quantize/dither/palette | They pixelate with everything else | Fix. Today the stars are the only element the retro chain does not touch. |
 | Stars flow through bloom | Bright stars glow | Improvement. |
 | Stars flow through the distortion pass | A ripple over the void now warps the stars behind it | Fix. Heat-haze should distort what is behind it. |
-| Stars tonemap in HDR | Slightly dimmer than today's post-tonemap injection | Accepted. The new bloom compensates. Verified in the A/B, not assumed. |
+| Stars tonemap in HDR | Measured: star count identical (835 vs 835, none lost), brightest star luma 255 to 205, mean star luma 202.1 to 189.4 | Accepted, and milder than predicted. An earlier draft claimed "the new bloom compensates". That was wrong: `Bloom.Enabled` defaults to FALSE, so nothing compensates. The stars are simply slightly dimmer, and the brightest ones stop clipping to pure white, which is arguably more correct. |
 | Stars render at internal resolution | Cell grid is the same in NDC, so the pattern is unchanged, but per-star pixel size and crispness shift | Accepted. |
 | Stars now make background pixels opaque | `TransparentBackground = true` combined with the DEFAULT `Starfield = true` on a raw `Scene3D` previously composited invisibly (stars drawn at `outA = 0`). Now the background pass writes `alpha = 1`, so the background is fully OPAQUE and hides whatever the caller composites it over | Accepted, but a real behaviour change on reachable public API, not just a look change. See the note below the table. |
 

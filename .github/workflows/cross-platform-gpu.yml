@@ -175,8 +175,22 @@ jobs:
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_TEST_FILTER: ${{ (matrix.hosted && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') && 'FullyQualifiedName~Golden' || 'Category!=LiveSocket' }}
-        run: dotnet test -c Release --no-build --filter "$KE_TEST_FILTER"
+        # Plain --blame (no --blame-crash) is kept permanently: it only writes a tiny Sequence.xml naming the
+        # last-started test if the host dies (no dump utility attached, no measurable overhead), and a lavapipe
+        # native crash without it is unattributable - an unnamed crash on the unattended weekly cron would cost
+        # a full diagnostic re-run. The 200MB dump collection (--blame-crash) stays off.
+        run: dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults
         shell: bash
+
+      # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
+      # Kilobytes, failure-only, no dumps.
+      - name: Upload crash-sequence evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-sequence-${{ matrix.backend }}
+          path: TestResults/**/Sequence_*.xml
+          if-no-files-found: ignore
 
       # On a verify FAILURE: upload the got/want/diff evidence PNGs the golden compare wrote, so the visual
       # regression can be eyeballed from the run without re-running. ignore = no spurious failure when a leg

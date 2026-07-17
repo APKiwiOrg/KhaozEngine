@@ -12,11 +12,18 @@ namespace KhaozEngine.Tests.Updates;
 /// </summary>
 internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 {
-    public readonly Dictionary<string, string> Files = new(StringComparer.Ordinal);
-    public readonly HashSet<string> Directories = new(StringComparer.Ordinal);
-    public readonly HashSet<string> ThrowOnCopyFrom = new(StringComparer.Ordinal);
-    public readonly HashSet<string> ThrowOnDeleteOf = new(StringComparer.Ordinal);
-    public readonly HashSet<string> ThrowOnWriteTo = new(StringComparer.Ordinal);
+    // A real filesystem does not distinguish two path strings that denote the same file: on Windows "/appdata\x"
+    // and "\appdata\x" are the same path, and lookups are case-insensitive. The virtual filesystem must model
+    // that, or a path the applier derives via Path.GetDirectoryName/Combine (which can flip a leading '/' to '\'
+    // on Windows) fails to match a key the test built with a different-but-equivalent separator form. That
+    // Windows-only divergence is exactly what a plain StringComparer.Ordinal dictionary got wrong.
+    internal static readonly IEqualityComparer<string> PathComparer = new VirtualPathComparer();
+
+    public readonly Dictionary<string, string> Files = new(PathComparer);
+    public readonly HashSet<string> Directories = new(PathComparer);
+    public readonly HashSet<string> ThrowOnCopyFrom = new(PathComparer);
+    public readonly HashSet<string> ThrowOnDeleteOf = new(PathComparer);
+    public readonly HashSet<string> ThrowOnWriteTo = new(PathComparer);
     public readonly List<string> Log_ = new();
 
     // Clock for the post-update marker's AppliedAtUtc. Defaults to a fixed, obviously-synthetic instant so
@@ -201,7 +208,7 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     // Elevation modelling. CanWriteToDirectory reports every dir writable unless added to NonWritableDirs
     // (a Program-Files-like protected install). TryElevate records the handoff and returns ElevateSucceeds
     // (default true). Set false to model a declined UAC prompt.
-    public readonly HashSet<string> NonWritableDirs = new(StringComparer.Ordinal);
+    public readonly HashSet<string> NonWritableDirs = new(PathComparer);
     public bool ElevateSucceeds = true;
     public bool ElevateCalled;
     public string? ElevatedExe;
@@ -260,7 +267,7 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
 
     public void ClearQuarantine(string installDir) { }
 
-    public readonly HashSet<string> ReparsePoints = new(StringComparer.Ordinal);
+    public readonly HashSet<string> ReparsePoints = new(PathComparer);
 
     public bool IsReparsePoint(string path) => Files.ContainsKey(path) && ReparsePoints.Contains(path);
 
@@ -292,4 +299,21 @@ internal sealed class FakeUpdaterEnvironment : IUpdaterEnvironment
     }
 
     public void Log(string message) => Log_.Add(message);
+
+    // Models the host filesystem's path equality: separators are canonicalized to the native one (so '/' and '\'
+    // forms of the same path are equal, matching Path.Combine/GetDirectoryName round-trips on Windows) and, on
+    // Windows, comparison is case-insensitive. Mirrors the OS split UpdateApplier.IsDirInside already uses.
+    private sealed class VirtualPathComparer : IEqualityComparer<string>
+    {
+        private static readonly StringComparison Comparison =
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        private static string Normalize(string s) =>
+            s.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+
+        public bool Equals(string? a, string? b) => string.Equals(Normalize(a ?? ""), Normalize(b ?? ""), Comparison);
+
+        public int GetHashCode(string s) =>
+            Normalize(s).GetHashCode(Comparison);
+    }
 }

@@ -131,6 +131,24 @@ namespace KhaozEngine.Render3D
         /// <summary>Procedural starfield in the background (assumes a dark space background).</summary>
         public bool Starfield = true;
 
+        /// <summary>
+        /// What fills the background, as one mutually-exclusive knob. DERIVED from <see cref="Starfield"/> and
+        /// <see cref="SkySettings.Enabled"/> rather than stored, so it can never drift from them: the getter encodes
+        /// the engine's long-standing sky-over-starfield-over-solid precedence, and the setter clears the modes it
+        /// did not select. Prefer this over setting the booleans directly.
+        /// </summary>
+        public BackgroundMode Background
+        {
+            get => Sky.Enabled ? BackgroundMode.Sky
+                 : Starfield ? BackgroundMode.Starfield
+                 : BackgroundMode.Solid;
+            set
+            {
+                Sky.Enabled = value == BackgroundMode.Sky;
+                Starfield = value == BackgroundMode.Starfield;
+            }
+        }
+
         /// <summary>0 = smooth diffuse; N&gt;0 = cel shading with N light bands (retro/toon).</summary>
         public int CelBands = 0;
 
@@ -159,9 +177,9 @@ namespace KhaozEngine.Render3D
         /// composited over something else - e.g. an offscreen model preview drawn into a 2D panel (see
         /// <see cref="Render3DPreview"/>). The whole stylized chain still runs; only the final blit keeps the
         /// per-pixel alpha (geometry stays opaque, the cleared background stays clear). Default false (the
-        /// historical opaque output for an on-screen surface). Has no useful effect together with
-        /// <see cref="Starfield"/> (the stars fill the background opaquely), so a transparent preview leaves
-        /// starfield off.
+        /// historical opaque output for an on-screen surface). Has no useful effect together with a non-<see cref="BackgroundMode.Solid"/>
+        /// <see cref="Background"/> (the stars and sky fill the background opaquely), so a transparent preview requires
+        /// <see cref="Background"/> = <see cref="BackgroundMode.Solid"/>.
         /// </summary>
         public bool TransparentBackground = false;
 

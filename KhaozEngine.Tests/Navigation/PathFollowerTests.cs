@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Navigation;
@@ -324,23 +325,92 @@ public class PathFollowerTests
     public void ActivePath_ReflectsAReplanWhenGoalMovesBeyondRetargetTolerance()
     {
         var planner = new FakePlanner();
-        NavPath first = Complete(new NavWaypoint(new Vector2(5f, 5f), 0));
+        NavPath first = Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(10f, 10f), 0));
         NavPath second = Complete(new NavWaypoint(new Vector2(28f, 28f), 0), new NavWaypoint(new Vector2(30f, 30f), 0));
         planner.Enqueue(first);
         planner.Enqueue(second);
         var config = new PathFollowConfig { GoalRetargetTolerance = 1.5f, ReplanCooldownSeconds = 0.5f };
         var follower = new PathFollower(planner, config);
-        Vector3 position = new Vector3(0f, 0f, 0f);
+        Vector3 goal = new Vector3(10f, 0f, 10f);
 
-        follower.Tick(position, new Vector3(10f, 0f, 10f), AgentRadius, 0.1f);
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.1f);
         Assert.Same(first, follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
 
-        // Cooldown (0.5 after the first plan) drains fully and the drifted goal forces a replan: the
-        // corridor accessor swaps to the fresh committed path and the index resets to zero.
-        follower.Tick(position, new Vector3(30f, 0f, 30f), AgentRadius, 0.5f);
+        // Reach waypoint 0 so progress sits at a nonzero index before the replan. This is what proves
+        // the replan RESETS the index, rather than it never having left zero.
+        follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.1f);
+        Assert.Equal(1, planner.CallCount);
+        Assert.Same(first, follower.ActivePath);
+        Assert.Equal(1, follower.ActiveWaypointIndex);
+
+        // Remaining cooldown (0.4) drains fully and the drifted goal forces a replan: the corridor
+        // accessor swaps to the fresh committed path and the index returns to zero.
+        follower.Tick(new Vector3(5f, 0f, 5f), goal: new Vector3(30f, 0f, 30f), AgentRadius, 0.4f);
         Assert.Equal(2, planner.CallCount);
         Assert.Same(second, follower.ActivePath);
         Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void ActivePath_DuringPartialExhaustionGapTick_IsNull()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Partial(new NavWaypoint(new Vector2(5f, 5f), 0)));
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(20f, 20f), 0)));
+        var config = new PathFollowConfig { ReplanCooldownSeconds = 0.5f };
+        var follower = new PathFollower(planner, config);
+        Vector3 goal = new Vector3(20f, 0f, 20f);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.5f);
+        Assert.NotNull(follower.ActivePath);
+
+        // Consuming the partial path's last waypoint clears it: for this one gap tick the follower
+        // steers straight at the raw goal while State stays Following, holding no corridor at all.
+        PathFollowOutput gap = follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.5f);
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(PathFollowState.Following, gap.State);
+        Assert.Equal(Vector2.Zero, gap.ActiveWaypoint);
+        Assert.Null(follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+
+        // The next tick replans and the corridor accessor comes back.
+        follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+        Assert.Equal(2, planner.CallCount);
+        Assert.NotNull(follower.ActivePath);
+    }
+
+    [Fact]
+    public void ActivePath_Waypoints_CannotBeDowncastToTheBackingList()
+    {
+        var planner = new FakePlanner();
+        var backing = new List<NavWaypoint> { new(new Vector2(5f, 5f), 0), new(new Vector2(10f, 10f), 0) };
+        planner.Enqueue(new NavPath(NavPathStatus.Complete, backing));
+        var follower = new PathFollower(planner);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), new Vector3(10f, 0f, 10f), AgentRadius, 0.016f);
+
+        // The read-only wrap at NavPath construction blocks the downcast attack: a reader can never
+        // reach the live committed corridor's mutable storage through ActivePath.
+        Assert.NotNull(follower.ActivePath);
+        Assert.Throws<InvalidCastException>(() => { _ = (List<NavWaypoint>)follower.ActivePath!.Waypoints; });
+        Assert.Throws<InvalidCastException>(() => { _ = (NavWaypoint[])follower.ActivePath!.Waypoints; });
+    }
+
+    [Fact]
+    public void ActivePath_Waypoints_FromPlannerStraightShotFastPath_CannotBeDowncastToTheBackingArray()
+    {
+        // The straight-shot fast path in GridPathPlanner builds its NavPath over a raw array, so this
+        // proves the construction-time wrap covers real planner-produced paths end to end.
+        NavGrid grid = NavGrid.FromWalkable(20, 20, 1f, 0f, 0f, (_, _) => true);
+        var planner = new GridPathPlanner(NavSpace.Single(grid));
+        var follower = new PathFollower(planner);
+
+        follower.Tick(new Vector3(5f, 0f, 5f), new Vector3(10f, 0f, 10f), AgentRadius, 0.016f);
+
+        Assert.NotNull(follower.ActivePath);
+        Assert.Throws<InvalidCastException>(() => { _ = (NavWaypoint[])follower.ActivePath!.Waypoints; });
+        Assert.Throws<InvalidCastException>(() => { _ = (List<NavWaypoint>)follower.ActivePath!.Waypoints; });
     }
 
     [Fact]

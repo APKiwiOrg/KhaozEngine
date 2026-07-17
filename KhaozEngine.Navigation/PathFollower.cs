@@ -105,15 +105,19 @@ public sealed class PathFollower
     /// The committed path the follower is currently steering along, for a consumer that wants to draw or
     /// log the corridor an agent is actually following, or <see langword="null"/> when it is following
     /// none. It is <see langword="null"/> before the first <see cref="Tick"/> plans, after
-    /// <see cref="Reset"/>, once the goal is reached (<see cref="PathFollowState.Arrived"/>), and while the
-    /// goal is <see cref="PathFollowState.Unreachable"/> (the planner found no route). While a replan is
-    /// merely due but still gated by <see cref="PathFollowConfig.ReplanCooldownSeconds"/>, this stays the
-    /// previously committed path, so the reader always sees the route the agent is steering on, never a
-    /// re-run of the planner. Reading it is allocation-free and never invokes the planner. The returned
-    /// <see cref="NavPath"/> is immutable (the same instance <see cref="IPathPlanner.FindPath"/> produced),
-    /// so this is a read-only view with no path back into the follower's state. When non-null it always
-    /// carries at least one waypoint and <see cref="ActiveWaypointIndex"/> is a valid index into its
-    /// <see cref="NavPath.Waypoints"/>.
+    /// <see cref="Reset"/>, once the goal is reached (<see cref="PathFollowState.Arrived"/>), while the
+    /// goal is <see cref="PathFollowState.Unreachable"/> (the planner found no route), and for the single
+    /// gap tick after a fully consumed <see cref="NavPathStatus.Partial"/> path, where <see cref="Tick"/>
+    /// clears the exhausted path and steers straight at the raw goal (still
+    /// <see cref="PathFollowState.Following"/>) until the next replan picks up a fresh route. While a
+    /// replan is merely due but still gated by <see cref="PathFollowConfig.ReplanCooldownSeconds"/>, this
+    /// stays the previously committed path, so the reader always sees the route the agent is steering on,
+    /// never a re-run of the planner. Reading it is allocation-free and never invokes the planner. The
+    /// returned <see cref="NavPath"/> is the instance <see cref="IPathPlanner.FindPath"/> produced, and
+    /// its <see cref="NavPath.Waypoints"/> is a read-only view that cannot be downcast to mutable storage
+    /// (guaranteed by the <see cref="NavPath"/> constructor), so this is a read-only view with no path
+    /// back into the follower's state. When non-null it always carries at least one waypoint and
+    /// <see cref="ActiveWaypointIndex"/> is a valid index into its <see cref="NavPath.Waypoints"/>.
     /// </summary>
     public NavPath? ActivePath =>
         _path is { Status: not NavPathStatus.Unreachable, Waypoints.Count: > 0 } ? _path : null;

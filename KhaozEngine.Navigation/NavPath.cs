@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Numerics;
 
 namespace KhaozEngine.Navigation;
@@ -41,20 +42,43 @@ public sealed class NavPath
     public NavPathStatus Status { get; }
 
     /// <summary>The waypoints toward the goal, in travel order. Empty when <see cref="Status"/> is
-    /// <see cref="NavPathStatus.Unreachable"/>.</summary>
+    /// <see cref="NavPathStatus.Unreachable"/>. Always a read-only view that cannot be downcast to a
+    /// mutable list or array (see the constructor for the wrapping rules).</summary>
     public IReadOnlyList<NavWaypoint> Waypoints { get; }
 
     /// <summary>Builds a path result from a <paramref name="status"/> and its
-    /// <paramref name="waypoints"/>.</summary>
+    /// <paramref name="waypoints"/>. The waypoints are exposed through a read-only wrapper, so a reader
+    /// of <see cref="Waypoints"/> cannot downcast it to the concrete list or array underneath and mutate
+    /// the stored corridor. A <see cref="ReadOnlyCollection{T}"/> is kept as-is, an
+    /// <see cref="IList{T}"/> (including an array) is wrapped as a view without copying (the constructing
+    /// planner must not mutate its list after handing it over), and any other
+    /// <see cref="IReadOnlyList{T}"/> is copied into a fresh array first.</summary>
     public NavPath(NavPathStatus status, IReadOnlyList<NavWaypoint> waypoints)
     {
+        ArgumentNullException.ThrowIfNull(waypoints);
         Status = status;
-        Waypoints = waypoints ?? throw new ArgumentNullException(nameof(waypoints));
+        Waypoints = waypoints switch
+        {
+            ReadOnlyCollection<NavWaypoint> readOnly => readOnly,
+            IList<NavWaypoint> list => new ReadOnlyCollection<NavWaypoint>(list),
+            _ => new ReadOnlyCollection<NavWaypoint>(CopyToArray(waypoints)),
+        };
         if (status == NavPathStatus.Unreachable && Waypoints.Count != 0)
         {
             throw new ArgumentException(
                 "An Unreachable NavPath must carry zero waypoints.", nameof(waypoints));
         }
+    }
+
+    static NavWaypoint[] CopyToArray(IReadOnlyList<NavWaypoint> waypoints)
+    {
+        var copy = new NavWaypoint[waypoints.Count];
+        for (int i = 0; i < copy.Length; i++)
+        {
+            copy[i] = waypoints[i];
+        }
+
+        return copy;
     }
 
     /// <summary>Shared, cached result for an unreachable query: <see cref="NavPathStatus.Unreachable"/>

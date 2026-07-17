@@ -5,16 +5,22 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// Pure light-space fitting for the directional (key-light) shadow map: builds the orthographic
-    /// world-&gt;light-clip matrix that frames a focus sphere (the region the camera looks at), texel-SNAPPED so a
-    /// sub-texel camera pan does not slide the sampled shadow edge (the "swimming shadows" fix). No GPU, no engine
-    /// state - just matrix math, so the headless <c>ShadowMapMathTests</c> can pin containment + snapping.
+    /// world-&gt;light-clip matrix that frames a per-cascade slice bounding sphere (the camera-frustum slab a
+    /// cascade covers), texel-SNAPPED so a sub-texel camera pan does not slide the sampled shadow edge (the
+    /// "swimming shadows" fix). No GPU, no engine state - just matrix math, so the headless
+    /// <c>ShadowMapMathTests</c> can pin containment + snapping.
     /// </summary>
     /// <remarks>
-    /// The fit is deliberately coarse: one ortho frustum around a sphere of <c>radius</c> centred on the camera
-    /// focus (no cascades - a single map at the "A"-tier target). The map covers <c>2*radius</c> world units per
-    /// axis at <c>resolution</c> texels, so a bigger radius trades crisper contact shadows for coverage. The depth
-    /// range spans the sphere along the light axis with slack so a caster a little above/below the focus plane still
-    /// writes depth. Depth is authored [0,1] (the DepthRangeZeroToOne convention every supported backend uses).
+    /// The fit is per-cascade: <see cref="FrustumCornersWorld"/> unprojects the camera frustum's 8 world corners
+    /// once per frame, and each cascade calls <see cref="SliceBoundingSphere"/> with its near/far edge fractions
+    /// (from <see cref="FillCascadeSplits"/>) to get the sphere that exactly contains that slice of the ACTUAL
+    /// camera frustum - not a fixed-radius sphere around the gaze focus point. That is what fixes the near-caster
+    /// regression: a point visible at the bottom of the screen but far from the centre of gaze still lands inside
+    /// its slice's frustum corners, so it gets near-cascade texel density regardless of where the camera looks.
+    /// Each cascade still ends up as one ortho frustum around a centre + radius, still texel-snapped by
+    /// <see cref="BuildLightViewProj"/>. The map covers <c>2*radius</c> world units per axis at <c>resolution</c>
+    /// texels, so a bigger radius trades crisper contact shadows for coverage. Depth is authored [0,1] (the
+    /// DepthRangeZeroToOne convention every supported backend uses).
     /// </remarks>
     internal static class ShadowMapMath
     {
@@ -28,27 +34,29 @@ namespace KhaozEngine.Render3D.Internal
         public const float DefaultSplitLambda = 0.6f;
 
         /// <summary>
-        /// Fill <paramref name="radii"/> (length == <paramref name="count"/>) with each concentric cascade's focus
-        /// radius, from the tight near cascade (<paramref name="focusRadius"/>) out to the far cascade
+        /// Fill <paramref name="splits"/> (length == <paramref name="count"/>) with each cascade's outer VIEW-DEPTH
+        /// split distance, from the tight near cascade (<paramref name="nearDistance"/>) out to the far cascade
         /// (<paramref name="maxDistance"/>), via the practical split (a <paramref name="lambda"/>-blend of a
-        /// logarithmic and a linear progression). Cascade 0 is ALWAYS exactly <paramref name="focusRadius"/> (so the
-        /// near-shadow contact quality is preserved and <c>count == 1</c> reproduces the pre-cascade single map), and
-        /// the outermost cascade is ALWAYS exactly <paramref name="maxDistance"/>. With <c>count == 1</c> the single
-        /// entry is <paramref name="focusRadius"/> (<paramref name="maxDistance"/> unused). Pure, headless-tested.
+        /// logarithmic and a linear progression). Cascade <c>i</c> covers view depth <c>splits[i-1]</c>..
+        /// <c>splits[i]</c>, with the camera near plane sitting below <c>splits[0]</c>. Cascade 0 is ALWAYS exactly
+        /// <paramref name="nearDistance"/> (so the near-shadow contact quality is preserved and <c>count == 1</c>
+        /// reproduces the pre-cascade single map), and the outermost cascade is ALWAYS exactly
+        /// <paramref name="maxDistance"/>. With <c>count == 1</c> the single entry is <paramref name="nearDistance"/>
+        /// (<paramref name="maxDistance"/> unused). Pure, headless-tested.
         /// </summary>
-        public static void FillCascadeRadii(Span<float> radii, int count, float focusRadius, float maxDistance, float lambda = DefaultSplitLambda)
+        public static void FillCascadeSplits(Span<float> splits, int count, float nearDistance, float maxDistance, float lambda = DefaultSplitLambda)
         {
-            int n = Math.Clamp(count, 1, radii.Length);
-            float near = MathF.Max(focusRadius, 1e-3f);
+            int n = Math.Clamp(count, 1, splits.Length);
+            float near = MathF.Max(nearDistance, 1e-3f);
             float far = MathF.Max(maxDistance, near);   // never fit the outer cascade tighter than the near one
             float lam = Math.Clamp(lambda, 0f, 1f);
-            if (n == 1) { radii[0] = near; return; }
+            if (n == 1) { splits[0] = near; return; }
             for (int i = 0; i < n; i++)
             {
                 float f = (float)i / (n - 1);                       // 0 at cascade 0, 1 at the outer cascade
                 float lin = near + (far - near) * f;                // linear (uniform) progression
                 float log = near * MathF.Pow(far / near, f);        // logarithmic (geometric) progression
-                radii[i] = lam * log + (1f - lam) * lin;            // exact at the ends (f==0 -> near, f==1 -> far)
+                splits[i] = lam * log + (1f - lam) * lin;           // exact at the ends (f==0 -> near, f==1 -> far)
             }
         }
 
@@ -105,6 +113,69 @@ namespace KhaozEngine.Render3D.Internal
             float r = MathF.Max(radius, 1e-3f);
             int res = Math.Max(resolution, 1);
             return (2f * r) / res;
+        }
+
+        /// <summary>
+        /// Unproject the camera frustum's 8 corners into world space from the CPU-authored
+        /// <paramref name="viewProj"/> (NDC z in [0,1], the engine's pre-GpuClip convention). Near-plane quad
+        /// at indices 0..3 and far-plane quad at 4..7, in matching XY order, so corner <c>i+4</c> is the far
+        /// end of near corner <c>i</c>'s frustum edge (the invariant <see cref="SliceBoundingSphere"/> slices
+        /// along). Works for perspective and orthographic projections alike. Returns <c>false</c> for a
+        /// non-invertible matrix or a degenerate unproject (a caller skips shadows that frame).
+        /// </summary>
+        public static bool FrustumCornersWorld(in Matrix4x4 viewProj, Span<Vector3> corners)
+        {
+            if (corners.Length < 8 || !Matrix4x4.Invert(viewProj, out Matrix4x4 inv)) return false;
+            int k = 0;
+            for (int z = 0; z <= 1; z++)
+                for (int y = -1; y <= 1; y += 2)
+                    for (int x = -1; x <= 1; x += 2)
+                    {
+                        Vector4 p = Vector4.Transform(new Vector4(x, y, z, 1f), inv);
+                        if (MathF.Abs(p.W) < 1e-9f) return false;
+                        corners[k++] = new Vector3(p.X, p.Y, p.Z) / p.W;
+                    }
+            return true;
+        }
+
+        /// <summary>
+        /// Bounding sphere of the camera-frustum slice between edge fractions <paramref name="tNear"/> and
+        /// <paramref name="tFar"/> (0 = near plane, 1 = far plane). View depth varies LINEARLY along each
+        /// near-to-far frustum edge, so lerping the corner pairs by t yields the true camera-depth slice for
+        /// both perspective and orthographic projections. The centre is placed on the axis between the two
+        /// slice-quad centroids so the worst near-corner and far-corner distances balance, and the radius is
+        /// the exact maximum corner distance, so all 8 slice corners are contained. Deterministic and
+        /// rotation-invariant: a camera rotation transforms the corners rigidly, so the radius is unchanged
+        /// and only the centre moves - the property that keeps the ortho extent (and the texel world size the
+        /// snap quantizes by) from breathing as the camera turns.
+        /// </summary>
+        public static void SliceBoundingSphere(ReadOnlySpan<Vector3> corners, float tNear, float tFar,
+            out Vector3 center, out float radius)
+        {
+            Span<Vector3> s = stackalloc Vector3[8];
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 edge = corners[i + 4] - corners[i];
+                s[i] = corners[i] + edge * tNear;
+                s[i + 4] = corners[i] + edge * tFar;
+            }
+            Vector3 a = (s[0] + s[1] + s[2] + s[3]) * 0.25f;
+            Vector3 b = (s[4] + s[5] + s[6] + s[7]) * 0.25f;
+            float rn2 = 0f, rf2 = 0f;
+            for (int i = 0; i < 4; i++)
+            {
+                rn2 = MathF.Max(rn2, (s[i] - a).LengthSquared());
+                rf2 = MathF.Max(rf2, (s[i + 4] - b).LengthSquared());
+            }
+            Vector3 ab = b - a;
+            float len2 = ab.LengthSquared();
+            // Balance point on the axis where the worst near-corner and far-corner distances agree:
+            // |c-a|^2 + rn^2 == |b-c|^2 + rf^2 solved for c = a + u*ab, clamped into the slice.
+            float u = len2 > 1e-12f ? Math.Clamp((len2 + rf2 - rn2) / (2f * len2), 0f, 1f) : 0.5f;
+            center = a + ab * u;
+            float r2 = 0f;
+            for (int i = 0; i < 8; i++) r2 = MathF.Max(r2, (s[i] - center).LengthSquared());
+            radius = MathF.Sqrt(r2);
         }
 
         /// <summary>

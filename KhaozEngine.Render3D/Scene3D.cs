@@ -1632,7 +1632,7 @@ namespace KhaozEngine.Render3D
             int res = _model.ShadowMap.Resolution;         // the actual allocated per-cascade resolution (clamped)
             int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
             Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
-            Internal.ShadowMapMath.FillCascadeRadii(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
+            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
             for (int i = 0; i < count; i++)
                 _cascadeCpuVps[i] = Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, radii[i], res);
             _cascadeCount = count;
@@ -1656,7 +1656,7 @@ namespace KhaozEngine.Render3D
             int res = _model.ShadowMap.Resolution;
             float texelStep = 1f / Math.Max(1, res);
             Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
-            Internal.ShadowMapMath.FillCascadeRadii(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
+            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
             for (int i = 0; i < count; i++)
             {
                 _cascadeReceiverVps[i] = GpuClip.Correct(_cascadeCpuVps[i], _gd.Capabilities);

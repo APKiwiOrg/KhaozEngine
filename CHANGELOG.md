@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 11.7.0
+
+HDR tonemap now preserves highlight hue by default, closing the additive-glow-legibility gap the AAA
+VFX Tier 1 HDR release left open.
+
+- **BEHAVIOR, default HDR look change: the tonemap now preserves hue in highlights.** `HdrSettings.ChromaPreservation`
+  (a `float` `0..1`, default `0.75`) blends the existing per-channel ACES roll-off against a
+  luminance-only tonemap that rescales RGB to hold hue. The `0.75` default is the user-approved
+  balance from the look-evidence ladder review: gameplay glows stay chromatic, a residue of filmic
+  bleach remains on hot cores. Additive telegraphs/decals/auras stay readable on bright grounds, the
+  round's design finding. Documented `0..1`: `0` restores the exact pre-11.x per-channel ACES look for
+  a game that wants to pin it, byte-identical to the pre-chroma output. `Hdr.Enabled = false` (the
+  legacy UNorm chain) is untouched, grid-proven byte-identical. Caveat: hue preservation is partial
+  where a saturated channel clips at the display ceiling before the rescale, a residual desaturating
+  shift remains there even at `1`.
+- **New `Internal.TonemapMath` C# mirror.** A headless port of the GLSL tonemap curve (ACES/Reinhard/Clamp
+  plus the chroma blend), kept in sync with `TonemapFrag` and covered by `TonemapMathTests`, plus new
+  showcase chroma-ladder dumps (`HdrShowcaseGpuTests`, `TelegraphShowcaseGpuTests`) across the composed
+  HDR scene, a coloured emissive intensity ladder, the 8-preset telegraph grid, and an additive HDR
+  decal glow.
+- **All 27 HDR-chain goldens re-baked on all three backends** (Metal, D3D11, Vulkan) for the new
+  0.75 default. `scene3d_hdr_off` and every 2D golden are byte-identical across the re-bake, confirming
+  the legacy chain and the 2D path are untouched.
+- **Test-threshold change:** `Golden3D_Sky`'s background-only regression guard assumed an achromatic
+  floor. At 0.75 the floor's ambient tint reads blue-dominant too, narrowing the guard's signal to the
+  coloured meshes only. Measured on real Metal hardware: 34 foreground cells for a correct render, 5
+  for a synthetic background-only baseline. New threshold 15, documented with both numbers.
+
 ## 11.6.0
 
 Navigation: `PathFollower` exposes the corridor it is actually following read-only, so a consumer can

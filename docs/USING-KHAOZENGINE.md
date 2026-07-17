@@ -1907,6 +1907,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - **Exposure** (`Post.Hdr.Exposure`, a `float`, **default `1.0`**): a linear multiplier on the scene colour BEFORE
     the operator. Above 1 pushes more of the scene into the highlight roll-off (brighter, hotter cores), below 1
     pulls it back. Clamped non-negative at upload. Ignored when `Hdr.Enabled = false`.
+  - **Chroma preservation** (`Post.Hdr.ChromaPreservation`, a `float` `0..1`, **default `0.75`**): how much highlight
+    hue survives the roll-off. At `0` the operator applies per channel (the pre-11.x look, hot cores desaturate
+    toward white). At `1` only luminance is tonemapped and RGB is rescaled to keep hue, so a coloured glow stays
+    chromatic into its core, and values between blend. The `0.75` default is the reviewed, user-approved balance: preset
+    glow colours stay legible against the filmic roll-off while the hottest cores still read as hot, keeping
+    additive telegraphs/decals/auras readable on bright grounds. Escape hatch: set `ChromaPreservation = 0` for the
+    pre-11.x look exactly, byte-identical to the pre-chroma per-channel output. Caveat: hue preservation is partial
+    where a saturated channel clips at the display ceiling before the rescale, a residual desaturating shift remains
+    there even at `1`. Ignored when `Hdr.Enabled = false`. Mirrored headlessly by `Internal.TonemapMath` for tests.
   - **Authoring intensity above 1.0**: there is no separate "emissive intensity" field. The engine's `Color` is
     unclamped float storage and every colour path (materials, particles, beams, trails, sky, water, lights)
     transports values above 1.0 end-to-end, so the over-range authoring surface IS the colour itself. Use

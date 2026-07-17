@@ -108,6 +108,20 @@ precedent) as debugging and stylistic escapes.
 - The alpha-lane contract, blit paths (MatchViewport mip/trilinear, FixedInternal single-tap),
   RenderScale semantics, and the post-post overlay/Gui/2D path are unchanged in both modes.
 
+### Follow-up: additive glow legibility under HDR (RESOLVED)
+
+D-H2's ACES per-channel roll-off bleaches a saturated additive highlight toward white as it clips,
+exactly where gameplay-critical glows live: telegraph presets (Fire orange, Poison green, Frost cyan,
+Arcane purple) and additive ground decals composited onto a lit floor lose their hue right where a
+player needs to read them. Tracked as a Tier 1 gap and closed by the chroma-preservation follow-on
+release: `HdrSettings.ChromaPreservation` (0..1, default 0.75) blends the per-channel operator against
+a luminance-only tonemap that rescales RGB to hold hue, so telegraphs/decals/auras stay readable on
+bright grounds while hot cores still read as hot. Evidence: the ChromaPreservation look-evidence ladder
+(`Showcase_chroma_preservation_preset_grid_dumps`, `Showcase_chroma_ladder_additive_decal` in
+`KhaozEngine.Tests/Gpu`) across the 8-preset telegraph grid and an additive HDR decal on a mid-tone
+floor. Full rationale and the saturated-clip caveat are in `KhaozEngine.Render3D/README.md` and
+`docs/USING-KHAOZENGINE.md`.
+
 ## Flipbook particles
 
 Authored-atlas playback in the modern particle pass: a sprite can name a flipbook sheet (a grid of frame

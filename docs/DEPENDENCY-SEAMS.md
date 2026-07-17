@@ -333,7 +333,9 @@ KhaozEngine.Navigation -x KhaozEngine.Physics       (no edge - INavSurfaceProvid
 implements it over `KhaozEngine.Terrain`/`KhaozEngine.Collision`, both dependencies the package already
 has. A game that wants a physics-probe surface instead implements `INavSurfaceProvider` itself (or wraps a
 delegate in `DelegateSurfaceProvider`) in its own code, over its own `IPhysicsWorld`, and hands the
-provider to `BakeOverworldSteps`. `KhaozEngine.Navigation`'s dependencies stay exactly `Primitives`,
+provider to `BakeOverworldSteps`. The hop bake (`NavGridBaker.BakeOverworldHops`) reads its heights
+through the same provider seam as `BakeOverworldSteps`, so hop-link generation adds no dependency
+either. `KhaozEngine.Navigation`'s dependencies stay exactly `Primitives`,
 `Collision`, `Terrain`, matching the package-global rule that a nav bake never re-touches a physics world
 at query time (it already does not re-touch `TerrainCollision`/`WorldColliders` either, per
 `NavGridBaker.BakeOverworld`). This is the same shape as the pathfinding seam above: an interface exists

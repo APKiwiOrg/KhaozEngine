@@ -64,23 +64,32 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   repaints a character's legs). Radius follows the caster footprint. Strength fades with height above ground
   (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
   - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast; terrain receives only) into
-  a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` concentric cascades (default 3) side by side in one
-  R32F texture, from the tight near cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance`, texel-snapped per cascade
-  to kill shimmer. The shared lighting block picks the tightest cascade per fragment and PCF-samples it (3x3 +
-  slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models and terrain, fading the term to lit at
-  the outermost cascade's border so the coverage limit is invisible (no hard box, no sliding coverage). Every drawn mesh
-  casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via
-  `ResolvedCascadeCount`) and `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it
-  `>= ShadowFocusRadius`); `ShadowMapResolution` (default `2048`, now the PER-CASCADE resolution - a construction-time
-  knob alongside `ShadowCascadeCount`, so the atlas is `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes);
-  `ShadowFocusRadius`/`ShadowGroundHeight`, `ShadowStrength`, and the acne biases `ShadowNormalOffset` (default `2.5`
-  texels, the extent-aware normal-offset bias, scaled PER CASCADE so far cascades do not acne and near ones do not
-  detach) plus the tiny residual depth biases `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a
-  device without depth-sample support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas
-  persists across frames, so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY
-  cascade's fitted matrix, the rigid caster set/transforms, the resolution, or any animated skinned caster present) and
-  otherwise reuses the prior atlas, so a mostly-static scene stops repainting it every frame. A skipped pass adds zero
-  shadow draw calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
+  a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` cascades (default 3) side by side in one R32F
+  texture, each fitted to the bounding sphere of its own slice of the camera's ACTUAL view frustum (frustum-slice CSM,
+  not a fixed-radius circle around a focus point, so shadow sharpness no longer depends on where the camera looks and
+  there is no gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer. The slices run from the tight
+  near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The shared lighting block picks the tightest cascade
+  per fragment and PCF-samples it (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH
+  models and terrain, cross-fading toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade
+  hand-off is invisible instead of a visible square seam, and fading the outermost cascade's term to lit at its border
+  so the coverage limit is invisible (no hard box, no sliding coverage). Caster visibility for the shadow pass unions
+  ALL cascade frustums (a caster camera-culled from the main pass but still inside any cascade still casts its
+  shadow). Every drawn mesh casts automatically (no per-frame opt-in). A degenerate camera makes
+  `ComputeShadowCascades()` return `0` and disables shadows for that frame rather than throwing. Knobs on
+  `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via `ResolvedCascadeCount`), `ShadowNearDistance`
+  (default `16`, the near cascade's view-depth reach - smaller packs texels onto the near action) and
+  `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it `>= ShadowNearDistance`).
+  `ShadowCascadeBlend` (default `0.15`, the cross-cascade blend band width as a UV fraction, `0` restores the hard
+  cut). `ShadowMapResolution` (default `2048`, now the PER-CASCADE resolution - a construction-time knob alongside
+  `ShadowCascadeCount`, so the atlas is `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes). `ShadowStrength`, and
+  the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias, scaled PER CASCADE
+  so far cascades do not acne and near ones do not detach) plus the tiny residual depth biases
+  `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample support
+  (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas persists across frames, so the pass
+  **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY cascade's fitted matrix, the rigid
+  caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior atlas,
+  so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
+  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
@@ -120,6 +129,19 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   finalized inside the render pass like `DrawnInstances`/`PassTimingsMs`, so read it after the scene rendered.
   Fullscreen post blits are not itemized (their encode time is the Pass-timings `PostMs`). Aggregate it with a
   2D batch's `FrameStats` via `+` for a whole-frame total.
+- Background: `PixelPostProcessSettings.Background` (a `BackgroundMode`: `Solid`, `Starfield` (default), `Sky`) is
+  the one knob for what fills a pixel no scene geometry drew. It is a DERIVED view over the existing
+  `Starfield`/`Sky.Enabled` booleans, not new state: the getter encodes the long-standing `Sky` over `Starfield`
+  over `Solid` precedence in one place, the setter clears the modes it did not select. Nothing is `[Obsolete]` and
+  the booleans keep working unchanged. Since 11.9.0 the starfield is a real background pass, `StarfieldRenderer`
+  (an internal `SkyRenderer` sibling): a fullscreen triangle at the far plane with a read-only `Equal` depth test
+  paints ONLY where the stored depth still equals the cleared far plane, i.e. background where no geometry drew,
+  writing `alpha = 1` before the ground decals. Procedural stars therefore flow through the whole post chain like
+  any other scene content: they quantize/dither with the retro passes, bloom, warp under screen-space distortion,
+  and tonemap in HDR, instead of being pasted on after the chain finished. `TransparentBackground` interaction: a
+  non-`Solid` background always paints alpha 1, so a transparent composite needs
+  `Background = BackgroundMode.Solid` set explicitly. `Render3DPreview` already forces `Post.Starfield = false`,
+  which resolves to `Solid` through the derived getter.
 - Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only
@@ -182,6 +204,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   render shifts on repin. `Hdr.Enabled = false` restores the exact legacy UNorm chain and pass order BYTE-IDENTICAL
   to the pre-HDR output (golden-proven via `scene3d_hdr_off`). Formats: only the colour targets flip, the
   encoded-normal/linear-depth MRTs, the swapchain, and everything post-blit stay LDR.
+  `Hdr.ChromaPreservation` (`0..1`, default `0.75`) controls how much highlight colour survives the roll-off: `0`
+  applies the operator per channel (the historical look, hot cores desaturate toward white), `1` maps luminance only
+  and rescales RGB so hue is fully preserved (a coloured glow stays chromatic into its core), in between blends. The
+  `0.75` default is the user-approved balance from the look-evidence ladder review: saturated preset colours stay
+  legible against the filmic roll-off while the hottest cores still read as hot. Hue is preserved except where a
+  saturated channel clips at the display ceiling before the rescale, where a partial desaturating shift remains even
+  at `1`. At `0` the tonemap short-circuits to the exact per-channel expression, byte-identical to the pre-chroma
+  output. The mapping is mirrored headlessly by `Internal.TonemapMath` (kept in sync with the GLSL `TonemapFrag`).
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus
   `PixelPostProcessSettings.Water` (a `WaterSettings`, **default no request queued = no pass, no cost**) draws an
   opt-in animated water surface - a flat, alpha-blended, procedurally-perturbed plane with a fresnel-style blend
@@ -234,7 +264,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   warped image). Three `DistortionShape`s (`Ripple` shockwave rings, `Heat` upward-scrolling wobble, `Lens` radial
   bulge, sign chooses magnify/pinch). `DistortionSprite.Strength` is the magnitude dial, converted to a UV
   excursion and clamped to a small maximum so stacked sprites cannot smear the whole screen. The apply pass
-  preserves each pixel's own alpha, so the starfield/transparency background marker never warps. `Scene3D.DistortionQuality`
+  preserves each pixel's own alpha, so the transparency background marker never warps. The starfield stopped being
+  that marker: since 11.9.0 stars are ordinary scene content drawn before the post chain (see Background above),
+  so a ripple over the void now warps the stars behind it too. `Scene3D.DistortionQuality`
   (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second heat noise octave and renders the offset
   field at quarter res instead of half. Zero cost when unused: a frame that queues no distortion sprite allocates
   nothing, runs no extra pass, and is byte-identical to before distortion existed. The turn-key `ParticleLook.Distortion`

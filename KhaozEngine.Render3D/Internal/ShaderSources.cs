@@ -26,79 +26,101 @@ namespace KhaozEngine.Render3D.Internal
         //      parameter), so behaviour is bit-identical on every backend.
         public const string LightingCommonGlsl = @"
 // Cascaded 3x3 PCF shadow lookup. Returns 1 = fully lit, 0 = fully in shadow, from the key light's CASCADED depth
-// atlas: N concentric ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks the tightest
+// atlas: N frustum-slice ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks the tightest
 // cascade whose light-clip projection of worldPos lands inside its map, manual-depth-compares a 3x3 PCF kernel in
-// that cascade's atlas column, and fades the term to fully lit toward the outermost cascade's UV border AND beyond
-// the view-distance limit, so the coverage edge is invisible (no hard box). worldPos is pushed off the surface
-// along Ngeo by a PER-CASCADE normal offset (grows with the cascade's texel world size) before projecting - the
-// standard normal-offset bias, scaled per cascade so far cascades do not acne and near ones do not detach, plus a
-// constant + slope-scaled depth bias. This lives in the shared block so ModelFrag and SplatFrag shadow identically.
-// It reads the frame UBO shadow tail directly (like computeLighting): ShadowMat[4] = per-cascade world->light-clip,
-// ShadowParams = (cascadeCount, strength, constBias, slopeBias), ShadowParams2 = (texelStep, maxDistance,
-// borderFrac, -), ShadowNormalOffsets = per-cascade normal-offset world size. Only the atlas texture + sampler are
-// parameters, because their set/binding differ per fragment and GLSL cannot reference a
-// fragment's own bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and
-// combined at the point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
-float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
-    float strength = ShadowParams.y;
-    if (strength <= 0.0) return 1.0;                       // shadow atlas inactive this frame => fully lit
-    int count = int(ShadowParams.x + 0.5);
-    float texelStep = ShadowParams2.x;                     // 1/perCascadeResolution (a PCF step in cascade-local UV)
-    float atlasScaleX = 1.0 / float(count);                // one cascade column's width in atlas U
-    float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));      // grazing factor: largest where acne is worst
-    float slope = clamp(1.0 - ndl, 0.0, 1.0);
-    float bias = ShadowParams.z + ShadowParams.w * slope;  // constant + slope-scaled depth bias
+// that cascade's atlas column, and either cross-fades toward the NEXT cascade's result near an INNER cascade's
+// border (so the texel-density step at a hand-off is invisible) or fades the term to fully lit toward the
+// OUTERMOST cascade's UV border AND beyond the view-distance limit (so the coverage edge is invisible, no hard
+// box). worldPos is pushed off the surface along Ngeo by a PER-CASCADE normal offset (grows with the cascade's
+// texel world size) before projecting - the standard normal-offset bias, scaled per cascade so far cascades do not
+// acne and near ones do not detach, plus a constant + slope-scaled depth bias. This lives in the shared block so
+// ModelFrag and SplatFrag shadow identically, and is factored into two helpers: projectCascade (light-clip
+// projection + map-bounds test) and pcfCascade (the 3x3 atlas-column average), so sampleKeyShadow can call either
+// twice, once for the selected cascade and once more for its neighbour inside the blend band. It reads the frame
+// UBO shadow tail directly (like computeLighting): ShadowMat[4] = per-cascade world->light-clip, ShadowParams =
+// (cascadeCount, strength, constBias, slopeBias), ShadowParams2 = (texelStep, maxDistance, borderFrac,
+// cascadeBlendFrac), ShadowNormalOffsets = per-cascade normal-offset world size. Only the atlas texture + sampler
+// are parameters, because their set/binding differ per fragment and GLSL cannot reference a fragment's own
+// bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the
+// point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
+bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margin, out vec2 uv, out float z) {
+    vec3 samplePos = worldPos + Ngeo * (ShadowNormalOffsets[i] * slopeSin);
+    vec4 lc = ShadowMat[i] * vec4(samplePos, 1.0);
+    uv = vec2(0.0); z = 0.0;
+    if (lc.w <= 0.0) return false;
+    vec3 proj = lc.xyz / lc.w;                          // light-clip - xy in [-1,1], z in [0,1]
+    uv = proj.xy * 0.5 + 0.5;                           // to [0,1] cascade-local texture space
+    uv.y = 1.0 - uv.y;                                  // render-target SAMPLING flips V vs the clip-Y the depth
+                                                        // pass rasterized with (the same Y-origin trap as before)
+    z = proj.z;
+    return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z > 1.0);
+}
 
-    // Select the tightest cascade containing the fragment (concentric, growing radius => lowest index wins). The
-    // margin keeps the 3x3 PCF kernel inside this cascade's atlas column, so a near-border fragment falls OUTWARD to
-    // the next (larger) cascade instead of a kernel that straddles the column seam.
-    int sel = -1; vec2 selUv = vec2(0.0); float selDepth = 0.0;
-    float margin = texelStep * 2.0;
-    for (int i = 0; i < 4; i++) {
-        if (i >= count) break;
-        // Per-cascade normal offset: push the sample point off the surface along Ngeo, scaled by the grazing angle.
-        vec3 samplePos = worldPos + Ngeo * (ShadowNormalOffsets[i] * slopeSin);
-        vec4 lc = ShadowMat[i] * vec4(samplePos, 1.0);
-        if (lc.w <= 0.0) continue;
-        vec3 proj = lc.xyz / lc.w;                          // light-clip; xy in [-1,1], z in [0,1]
-        vec2 uv = proj.xy * 0.5 + 0.5;                      // to [0,1] cascade-local texture space
-        uv.y = 1.0 - uv.y;                                  // render-target SAMPLING flips V vs the clip-Y the depth
-                                                            // pass rasterized with (the same Y-origin trap as before)
-        if (uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || proj.z > 1.0) continue;
-        sel = i; selUv = uv; selDepth = proj.z - bias; break;
-    }
-    if (sel < 0) return 1.0;                                // beyond every cascade => lit (coverage edge)
-
-    // 3x3 PCF within the selected cascade's atlas column. Offsets are in cascade-local UV, and each tap is CLAMPED inside
-    // the column then mapped to atlas U (u = luv.x/count + sel/count) so it never bleeds into a neighbour cascade.
-    float atlasBiasX = float(sel) * atlasScaleX;
+// One cascade's 3x3 PCF average inside its atlas column. uv is cascade-local, depth is already biased. Each
+// tap is CLAMPED inside the column then mapped to atlas U so it never bleeds into a neighbour cascade.
+float pcfCascade(texture2D shadowAtlas, sampler shadowSamp, int cascade, int count, vec2 uv, float depth, float texelStep) {
+    float atlasScaleX = 1.0 / float(count);
+    float atlasBiasX = float(cascade) * atlasScaleX;
     float halfTexel = texelStep * 0.5;
     float lit = 0.0;
     for (int oy = -1; oy <= 1; oy++) {
         for (int ox = -1; ox <= 1; ox++) {
-            vec2 luv = selUv + vec2(float(ox), float(oy)) * texelStep;
+            vec2 luv = uv + vec2(float(ox), float(oy)) * texelStep;
             luv = clamp(luv, vec2(halfTexel), vec2(1.0 - halfTexel));
             vec2 auv = vec2(luv.x * atlasScaleX + atlasBiasX, luv.y);
             float d = texture(sampler2D(shadowAtlas, shadowSamp), auv).r;
-            lit += (selDepth <= d) ? 1.0 : 0.0;             // receiver in front of the stored caster depth => lit
+            lit += (depth <= d) ? 1.0 : 0.0;            // receiver in front of the stored caster depth => lit
         }
     }
-    lit /= 9.0;
+    return lit / 9.0;
+}
 
-    // Edge fade so the coverage limit is invisible: on the OUTERMOST cascade only (it has nothing beyond it), fade the
-    // shadow to fully lit toward its UV border. That border sits at ShadowMaxDistance from the focus, so this is the
-    // beyond-the-coverage-distance fade - precise to the cascade's own extent, no camera-distance guesswork. Inner
-    // cascades hand off to the next (larger) cascade at their border, so they need no fade. A single cascade fades at
-    // its own border (the pre-cascade single map, softened from a hard box edge). ShadowParams2.y (maxDistance) rides
-    // in the UBO as the documented coverage distance for downstream effects. The fade itself is UV-border-driven.
-    float fade = 1.0;
-    if (sel == count - 1) {
-        float border = ShadowParams2.z;
-        float edge = min(min(selUv.x, 1.0 - selUv.x), min(selUv.y, 1.0 - selUv.y));
-        fade = smoothstep(0.0, border, edge);
+float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
+    float strength = ShadowParams.y;
+    if (strength <= 0.0) return 1.0;                    // shadow atlas inactive this frame => fully lit
+    int count = int(ShadowParams.x + 0.5);
+    float texelStep = ShadowParams2.x;                  // 1/perCascadeResolution (a PCF step in cascade-local UV)
+    float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));   // grazing factor: largest where acne is worst
+    float slope = clamp(1.0 - ndl, 0.0, 1.0);
+    float bias = ShadowParams.z + ShadowParams.w * slope;
+    float margin = texelStep * 2.0;
+
+    // Select the tightest cascade containing the fragment (slice cascades ordered near to far => lowest
+    // index wins). A fragment past its slice border falls outward to the next cascade's coverage.
+    int sel = -1; vec2 selUv = vec2(0.0); float selZ = 0.0;
+    for (int i = 0; i < 4; i++) {
+        if (i >= count) break;
+        vec2 uv; float z;
+        if (!projectCascade(i, worldPos, Ngeo, slopeSin, margin, uv, z)) continue;
+        sel = i; selUv = uv; selZ = z; break;
     }
-    // strength 1 removes the key light fully in shadow, <1 leaves a partial key term. Fade eases both to fully lit.
-    return mix(1.0, mix(1.0, lit, strength), fade);
+    if (sel < 0) return 1.0;                            // beyond every cascade => lit (coverage edge)
+
+    float lit = pcfCascade(shadowAtlas, shadowSamp, sel, count, selUv, selZ - bias, texelStep);
+    float edge = min(min(selUv.x, 1.0 - selUv.x), min(selUv.y, 1.0 - selUv.y));
+
+    if (sel == count - 1) {
+        // Outermost cascade: nothing beyond it, so fade to fully lit toward its UV border (the coverage-limit
+        // fade, sitting at ShadowMaxDistance - ShadowParams2.y documents that distance for downstream effects).
+        float border = ShadowParams2.z;
+        float fade = smoothstep(0.0, border, edge);
+        return mix(1.0, mix(1.0, lit, strength), fade);
+    }
+
+    // Inner cascade near its border: cross-fade toward the NEXT cascade's result so the texel-density step at
+    // a hand-off is invisible (the hard cut showed as a square seam sliding with the camera). If the next
+    // cascade does not cover this fragment (a slice-sphere overlap gap at an extreme angle), keep this
+    // cascade's result: a hard fallback beats sampling garbage.
+    float blend = ShadowParams2.w;
+    if (blend > 0.0 && edge < blend) {
+        vec2 uv2; float z2;
+        if (projectCascade(sel + 1, worldPos, Ngeo, slopeSin, margin, uv2, z2)) {
+            float lit2 = pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
+            lit = mix(lit2, lit, smoothstep(0.0, blend, edge));   // at the border (edge 0) fully the next cascade
+        }
+    }
+    // strength 1 removes the key light fully in shadow, below 1 leaves a partial key term, and the fade/blend paths above ease the result toward fully lit.
+    return mix(1.0, lit, strength);
 }
 
 void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
@@ -155,7 +177,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // cascaded shadow tail (offset 688): per-cascade world->light-clip (unused by the vertex stage)
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
 };
 layout(location=0) in vec3 Position;
@@ -208,7 +230,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // per-cascade world->light-clip for the cascaded shadow atlas (offset 688)
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
@@ -298,7 +320,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
@@ -389,7 +411,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     mat4 bones[128];       // offset 976: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
 };
@@ -472,7 +494,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     mat4 bones[128];
 };
@@ -542,7 +564,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     mat4 bones[128];
 };
@@ -623,7 +645,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // cascaded shadow tail (offset 688): per-cascade world->light-clip
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 TintTiling[5];   // per-material params appended (offset 992): xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
@@ -690,7 +712,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // per-cascade world->light-clip for the cascaded shadow atlas (offset 688)
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 992)
     vec4 Roughness;       // x..w = roughness for layers 0..3
@@ -1480,7 +1502,7 @@ void main() {
         // ---- Screen-space distortion apply: the FIRST post-chain pass (both modes). Re-samples the chain source
         // through the accumulated half-res offset field so refraction warps the scene BEFORE every camera-response
         // pass (bloom halos follow the warped sources, the retro path quantizes the warped image). Preserves each
-        // pixel's OWN alpha so the background/starfield marker never warps (warping it would corrupt the blit's
+        // pixel's OWN alpha so the background marker (transparent background) never warps (warping it would corrupt the blit's
         // marker semantics, D-S5). Only ever run when a distortion sprite was queued this frame
         // (RenderResources.DistortAllocated), so a distortion-free frame is byte-identical to before distortion existed.
         public const string DistortionApplyFrag = @"#version 450
@@ -1602,32 +1624,27 @@ void main() {
     oColor = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker
 }";
 
-        // ---- Final upscale blit (+ optional procedural starfield in the background) ----
-        // Background is flagged by the color target's alpha (model writes a=1, the clear sets a=0),
-        // which the palette/edge passes preserve. Keeps the blit to a safe 3-binding set (the depth
-        // texture in here tripped a backend/Metal multi-resource binding bug).
+        // ---- Final upscale blit ----
+        // Background is flagged by the color target's alpha (model + the sky/starfield background passes write a=1,
+        // the clear sets a=0), which the palette/edge passes preserve. The starfield USED to be injected here, but a
+        // pass that rebuilds the background AFTER the whole chain necessarily discards whatever was drawn at those
+        // pixels, so it moved to StarfieldRenderer (a real background pass, before the decals). Keeps the blit to a
+        // safe 3-binding set (the depth texture in here tripped a backend/Metal multi-resource binding bug).
         public const string BlitFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn, .y=transparentBg, .z=flipV
+layout(set=0, binding=2) uniform Final { vec4 Params; }; // Params.x=transparentBg, .y=flipV
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
     // Bug A: each fullscreen post pass flips vertically, so the orientation depends on the parity of how many
-    // ran. The blit cancels it (Params.z = flipV) so every config is upright. Starfield stays in screen space.
-    vec2 suv = (Params.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
+    // ran. The blit cancels it (Params.y = flipV) so every config is upright.
+    vec2 suv = (Params.y > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
     vec4 s = texture(sampler2D(Src, Samp), suv);
-    vec3 col = s.rgb;
-    if (Params.x > 0.5 && s.a < 0.5) {                   // background (alpha marker) -> stars
-        vec2 cell = floor(vUv * vec2(220.0, 124.0));
-        float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
-        col = BgColor.rgb + vec3(star);
-    }
-    // Opaque on-screen by default; for an offscreen preview (Params.y) keep the alpha marker so the cleared
+    // Opaque on-screen by default; for an offscreen preview (Params.x) keep the alpha marker so the cleared
     // background composites transparently (geometry a=1 stays opaque, cleared background a=0 stays clear).
-    float outA = (Params.y > 0.5) ? s.a : 1.0;
-    oColor = vec4(col, outA);
+    float outA = (Params.x > 0.5) ? s.a : 1.0;
+    oColor = vec4(s.rgb, outA);
 }";
 
         // ---- Teleport transition: solid fullscreen fill (HardBlink) ----
@@ -1661,26 +1678,51 @@ void main() {
 
         // ---- HDR tonemap: map the float16 over-range scene colour to LDR [0,1] before the retro/AA passes.
         // Runs ONLY in HDR mode, directly after the (pre-tonemap) bloom composite. Preserves the source
-        // alpha untouched so the blit's background marker (alpha < 0.5 -> starfield / transparent) survives.
+        // alpha untouched so the blit's background marker (alpha < 0.5 for transparent background) survives.
         // Operator fit choices are pure ALU (no LUT) so cross-backend goldens stay stable.
         public const string TonemapFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Tone { vec4 Params; }; // Params.x = exposure, .y = operator (0 aces, 1 reinhard, 2 clamp)
+layout(set=0, binding=2) uniform Tone { vec4 Params; }; // Params.x = exposure, .y = operator (0 aces, 1 reinhard, 2 clamp), .z = ChromaPreservation (0..1)
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
+// Rec.601 luma, matching the local luma() the rest of the post chain (FxaaFrag/bloom) uses.
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 // ACES filmic fit (Krzysztof Narkowicz 2015): filmic S-curve with highlight desaturation toward white.
 vec3 acesFilm(vec3 x) {
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
+float acesFilm(float x) {
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+// Mirrors KhaozEngine.Render3D.Internal.TonemapMath (keep the curve dispatch, luma, rescale, mix, and the
+// factor-0 short-circuit in sync). This is the engine's most-shipped pixel: at Params.z == 0 the output must
+// stay byte-identical to the pre-chroma tonemap, which the Metal golden gate proves on real hardware.
 void main() {
     vec4 s = texture(sampler2D(Src, Samp), vUv);
     vec3 c = max(s.rgb, vec3(0.0)) * Params.x;
     int op = int(Params.y + 0.5);
-    vec3 mapped;
-    if (op == 0) mapped = acesFilm(c);
-    else if (op == 1) mapped = c / (vec3(1.0) + c);
-    else mapped = clamp(c, 0.0, 1.0);
+    // Per-channel operator: the historical look. An over-range core desaturates toward white as its
+    // brightest channel saturates first.
+    vec3 perChannel;
+    if (op == 0) perChannel = acesFilm(c);
+    else if (op == 1) perChannel = c / (vec3(1.0) + c);
+    else perChannel = clamp(c, 0.0, 1.0);
+    // Params.z == 0 short-circuits to the EXACT per-channel expression above (a uniform branch, no divergence)
+    // so the default output carries no blend re-association and stays byte-identical.
+    if (Params.z <= 0.0) {
+        oColor = vec4(perChannel, s.a);
+        return;
+    }
+    // Hue-preserving path: map luminance through the same operator, then rescale RGB by mappedLuma / luma so
+    // only brightness rolls off and the chromaticity (hue + saturation direction) is held.
+    float l = luma(c);
+    float lm;
+    if (op == 0) lm = acesFilm(l);
+    else if (op == 1) lm = l / (1.0 + l);
+    else lm = clamp(l, 0.0, 1.0);
+    vec3 huePreserving = c * (lm / max(l, 1e-5));
+    vec3 mapped = clamp(mix(perChannel, huePreserving, Params.z), 0.0, 1.0);
     oColor = vec4(mapped, s.a);
 }";
 
@@ -1688,7 +1730,7 @@ void main() {
         // The classic Timothy Lottes FXAA3-console pass: read a 3x3 luma neighbourhood, skip near-flat areas
         // (contrast gate), otherwise estimate the edge direction from the luma gradient and blend two/four taps along
         // it. Softens high-contrast edges (geometry silhouettes AND shaded interiors) in one cheap fullscreen pass.
-        // Preserves the CENTRE pixel's alpha so the blit's background marker (a < 0.5 -> starfield / transparent) still
+        // Preserves the CENTRE pixel's alpha so the blit's background marker (a < 0.5 for transparent background) still
         // works. Runs on the internal target BEFORE the blit; like the other post passes it flips V, so the blit's
         // flipV parity counts it. Rcp.xy = 1/targetSize.
         public const string FxaaFrag = @"#version 450
@@ -1790,7 +1832,7 @@ void main() {
         // ---- Bloom composite: additively blend the blurred (half-res, bilinear-upsampled by the sampler) bright
         // target onto the full-res colour chain. Sampled UP FRONT in binding order (Src, Bloom - see the Metal
         // first-sample-order rule in EdgeFrag/ModelFrag). Preserves Src's alpha UNCHANGED so the blit's background
-        // marker (alpha<0.5 -> starfield / TransparentBackground) is untouched - bloom must never resurrect an
+        // marker (alpha < 0.5 for transparent background) is untouched - bloom must never resurrect an
         // alpha-0 background pixel into an opaque one; adding a near-zero (thresholded-out) bloom colour to the
         // background also does not visibly brighten it in practice, since nothing exceeds the bright-pass threshold
         // there.
@@ -2100,13 +2142,54 @@ void main() {
     oColor = vec4(rgb, a);
 }";
 
+        // ---- Procedural starfield. A fullscreen-triangle BACKGROUND pass into the lit colour attachment +
+        //      read-only scene depth (ColorDepthFB), identical in shape to the sky pass: the triangle sits at the
+        //      FAR plane (z=1) and the pipeline uses a read-only Equal depth test, so a fragment passes ONLY where
+        //      the stored depth still EQUALS the cleared far plane, i.e. background pixels where no geometry was
+        //      drawn. Geometry (depth < 1) fails Equal and rejects the stars.
+        //      This USED to live at the end of BlitFrag, which regenerated the background from the clear colour
+        //      after the whole post chain and therefore DISCARDED anything drawn at a background pixel (translucent
+        //      content was erased at alpha < 0.5, or punched a star-free hole at alpha >= 0.5). Painting the stars
+        //      into the scene before the decals means anything over the void composites over them normally, which
+        //      is what release 2's void ground decals need. It also means the stars now flow through the post chain
+        //      (quantize/dither/palette, bloom, distortion, HDR tonemap) like everything else, instead of being the
+        //      one un-pixelated element pasted on at the very end.
+        //      Writes alpha = 1, matching the sky pass, so the background reads as painted for the blit's
+        //      TransparentBackground path.
+        //      No vertex inputs (gl_VertexIndex only), so the HLSL input signature is empty: no gap-free-holes
+        //      hazard (see the D3D11/FXC note on ModelVert).
+        public const string StarfieldVert = @"#version 450
+void main() {
+    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0);   // far plane (z=1): passes the Equal depth test only on background
+}";
+
+        // The star field is the EXACT function BlitFrag carried (same 220x124 cell grid, same 0.992 threshold, same
+        // 0.55 + 0.45 brightness spread), moved verbatim. The only change is where the UV comes from: gl_FragCoord
+        // (upper-left on EVERY backend) times Res.xy = 1/(width,height), the backend-independent convention SkyFrag
+        // and DecalFrag use, rather than an interpolated vUv. The star pattern is value noise, so its orientation
+        // carries no meaning and is not worth preserving bit-for-bit across the move.
+        public const string StarfieldFrag = @"#version 450
+layout(set=0, binding=0) uniform Starfield {
+    vec4 BgColor;   // rgb = the scene clear colour the stars sit on
+    vec4 Res;       // xy = 1/renderWidth, 1/renderHeight
+};
+layout(location=0) out vec4 oColor;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+    vec2 uv = gl_FragCoord.xy * Res.xy;
+    vec2 cell = floor(uv * vec2(220.0, 124.0));
+    float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
+    oColor = vec4(BgColor.rgb + vec3(star), 1.0);
+}";
+
         // ---- Procedural sky (gradient + sun disc/halo). A fullscreen-triangle BACKGROUND pass rendered into the lit
         //      colour attachment + read-only scene depth (ColorDepthFB), like the ground-decal pass, but INVERTED: the
-        //      triangle sits at the FAR plane (z=1) and the pipeline uses a GreaterEqual read-only depth test, so a
+        //      triangle sits at the FAR plane (z=1) and the pipeline uses an Equal read-only depth test, so a
         //      fragment passes ONLY where the stored depth is still the cleared far plane - i.e. background pixels
         //      where no geometry was drawn. Geometry (depth < 1) rejects the sky, so it never overwrites the scene and
         //      never touches the MRT normal/linear-depth attachments (ColorDepthFB binds only colour + depth). It
-        //      writes alpha = 1 so the blit's starfield "a < 0.5 == background" marker does not fire over sky pixels.
+        //      writes alpha = 1 as opaque painted background, matching the starfield pass for consistency.
         //      No vertex inputs (gl_VertexIndex only), so the HLSL input signature is empty - no gap-free-holes hazard.
         //      The sky is drawn in SCREEN space (not by a world view ray): under the orthographic iso camera every
         //      view ray is parallel, so a world-ray sky would be a flat colour with no gradient and no localized sun.
@@ -2158,7 +2241,7 @@ void main() {
         float sun = clamp(disc + halo, 0.0, 1.0);
         col = mix(col, SunColor.rgb, sun);
     }
-    oColor = vec4(col, 1.0);   // alpha 1: NOT the starfield/transparent background marker
+    oColor = vec4(col, 1.0);   // alpha 1: opaque painted background (consistent with starfield)
 }";
 
         // ---- Animated water surface (Rendering gap #5). Drawn AFTER the sky and the ground decals into

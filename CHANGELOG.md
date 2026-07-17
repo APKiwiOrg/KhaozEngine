@@ -5,6 +5,221 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 12.0.0
+
+Shadow cascades are now standard frustum-slice CSM: each cascade fits the bounding sphere of its own
+slice of the camera's actual view frustum instead of a concentric circle around a focus point, so
+shadow sharpness no longer depends on where the camera looks and the fit is continuous (no more
+gaze-ground-ray jumps). BREAKING rename/removals on `ShadowSettings`, a new cross-cascade blend knob,
+a caster-visibility fix, and a Metal golden rebake.
+
+- **BREAKING: `ShadowSettings.ShadowFocusRadius` renamed to `ShadowNearDistance`.** Same default `16`,
+  same role as the near cascade's view-depth reach, but the name now matches what it actually controls
+  under the frustum-slice fit (a view distance from the camera along its forward axis, not a radius
+  around a ground focus point). A game that set `ShadowFocusRadius` needs a one-line rename to
+  `ShadowNearDistance`. The value carries over unchanged.
+- **BREAKING: `ShadowSettings.ShadowGroundHeight` and `ShadowSettings.ShadowFocusDistance` removed, no
+  replacement.** Both existed to steer the old focus-sphere fit onto the ground the camera was looking
+  at. The frustum-slice fit follows the camera's actual view frustum automatically, so there is nothing
+  left to configure. A game that set either field deletes the line, there is no equivalent knob.
+- **NEW `ShadowSettings.ShadowCascadeBlend`** (`float`, default `0.15`, clamped `0..0.49`). A UV-fraction
+  border width: a fragment within this band of its cascade's edge cross-fades toward the next cascade's
+  PCF result in `sampleKeyShadow`, so the texel-density step at a cascade hand-off is invisible instead
+  of a visible square seam. `0` restores the old hard cut. Threaded through the frame UBO as
+  `ShadowUbo.Params2.w`.
+- **Caster visibility now unions ALL cascade frustums.** `Scene3D.ClassifySkinnedVisibility` takes a
+  `ReadOnlySpan<FrustumPlanes> shadowFrustums` instead of a single frustum: under the frustum-slice fit
+  the cascades no longer nest, so a caster inside the near cascade but outside the far one needs the
+  union test to stay a shadow caster (the old single-frustum check could silently drop it). Internal
+  API, no public surface change.
+- **`Scene3D.ComputeShadowCascades()` returns `0` and disables shadows for the frame on a degenerate
+  camera** (e.g. a zero-length forward vector) instead of producing garbage cascade matrices.
+- **New pure math in `Internal.ShadowMapMath`:** `FrustumCornersWorld(viewProj, corners)` (the 8 world-space
+  corners of a camera's view frustum, near-then-far, from the inverse view-projection) and
+  `SliceBoundingSphere(corners, tNear, tFar, out center, out radius)` (the tight bounding sphere of the
+  depth slice between two frustum-relative interpolants along the corner edges). `FillCascadeRadii` is
+  renamed `FillCascadeSplits` (it now fills split DISTANCES over `[camNear, ShadowMaxDistance]`, not
+  radii) and reused unchanged for the split schedule. `BuildLightViewProj` (the texel-snapped light-view
+  matrix builder) is reused as-is, now fed a slice-sphere center/radius instead of a ground-focus one.
+  All headless-tested (`ShadowMapMathTests`), no GPU.
+- **Tests and goldens.** Existing shadow-map GPU goldens (4 scenes) re-baked on Metal for the new fit.
+  Every delta was sub-tolerance (the frustum-slice fit reproduces the old concentric fit closely enough
+  in the pinned scenes' framing that no scene needed a hand-tuned camera change). New golden
+  `scene3d_cascade_handoff` (Metal-baked, D3D11/Vulkan bake in CI next) pins a camera framed so the
+  cascade 0-to-1 hand-off crosses visible ground, guarding the blend band itself with an in-test
+  visible-pixel-count assertion so a scene that stops exercising the hand-off fails loudly instead of
+  silently passing.
+## 11.9.0
+
+Render3D: the procedural starfield moves out of the final blit into a real background pass, so anything
+drawn at a background pixel composites over it instead of being erased. This unblocks void-projected
+ground decals (the next release) and removes a whole class of bug rather than working around it.
+
+### The problem
+
+The stars were generated in the FINAL BLIT, after the whole post chain, from the colour target's alpha
+marker (`if (starsOn && s.a < 0.5) col = BgColor.rgb + vec3(star);`). A pass that rebuilds the
+background from the clear colour at the very end necessarily DISCARDS whatever was drawn there. The
+alpha marker was doing double duty, answering both "is this background" and implicitly "how covered is
+it", so translucent content over the void was either erased (alpha below 0.5, the blit overwrote it) or
+punched a star-free hole (alpha at or above 0.5, the branch never fired). No alpha value composited
+correctly. `ParticleRenderer` (depth test `LessEqual`) already passes at background pixels and by
+inspection hits the same trap, unnoticed only because nothing currently draws over the void.
+
+### The change
+
+- **New `StarfieldRenderer`**, a sibling of `SkyRenderer` and structurally a clone of it: a fullscreen
+  triangle at the far plane with a read-only `Equal` depth test, which passes ONLY where the stored
+  depth still equals the cleared far plane, i.e. background where no geometry drew. It writes
+  `bg.rgb + star` with alpha 1 into `ColorDepthFB`, at the sky's slot, before the ground decals. The
+  decal pass's `Greater`-at-far test is the exact complement, so the two are disjoint by hardware.
+- **The star function moved verbatim**: the same 220x124 cell grid, the same `step(0.992, ...)`
+  threshold, the same `0.55 + 0.45` spread. Only the UV source changed, from the blit's interpolated
+  `vUv` to `gl_FragCoord * Res`, the backend-independent convention `SkyFrag` and `DecalFrag` use.
+- **The blit's starfield branch is deleted**, along with its `BgColor` uniform. `FinalUbo` shrinks from
+  32 to 16 bytes and its `Params` lanes renumber to `.x = transparentBg, .y = flipV`.
+- **New `BackgroundMode { Solid, Starfield, Sky }`** reached via `PixelPostProcessSettings.Background`.
+  It is a DERIVED view over the existing `Starfield` / `Sky.Enabled` booleans, not new state: the getter
+  encodes the long-standing sky-over-starfield-over-solid precedence in one place, the setter clears the
+  modes it did not select. Nothing is `[Obsolete]`, the booleans keep working unchanged, and there is no
+  owner back-pointer to go stale when a consumer assigns a fresh `SkySettings`.
+
+### BEHAVIOUR CHANGE (not merely additive)
+
+`TransparentBackground = true` combined with the DEFAULT `Starfield = true` on a raw `Scene3D` now
+produces an OPAQUE background. Previously the stars were drawn at `outA = 0` (invisible) and the
+background composited through. The background pass now writes alpha 1, so it hides whatever the caller
+composites over. A transparent composite needs `Background = BackgroundMode.Solid` set explicitly.
+`Render3DPreview` and `UseSmoothPreset` already force starfield off, so neither is affected. Consumers
+building `Scene3D` directly with `TransparentBackground = true` are.
+
+### Stars now flow through the post chain
+
+They stop being pasted on at the end and become ordinary scene content: they quantize and dither with
+the retro chain (previously the one un-pixelated element), they bloom, a ripple over the void now warps
+them (a heat-haze should distort what is behind it), and in HDR they tonemap. Measured on a default
+config, the tonemap is the only change that fires: star count identical (835 of 835, none lost),
+brightest star luma 255 to 205, mean star luma 202.1 to 189.4. The brightest stars stop clipping to pure
+white. `Bloom` defaults off, so nothing compensates and nothing needs to.
+
+### Testing
+
+`StarfieldGpuTests` is new and load-bearing, because the golden suite is measurably BLIND to the
+starfield: `GoldenCompare` averages each render into a 32x18 grid at 0.06/channel tolerance, and a star
+contributes about 0.012 to a cell average. With `_starfield.Draw` commented out entirely, the goldens
+still pass. Zero goldens were rebaked by this release. The new test samples raw pixels and pins star
+placement on background only, that a non-star background pixel still carries the clear colour (a wrong
+`BgColor` was previously caught by nothing), and the alpha 1 write. Each assertion was verified to FAIL
+under deliberate sabotage rather than assumed to have bite.
+
+Two tests had their premise inverted and were rewritten rather than rebaked:
+`Hdr_alpha_marker_survives_tonemap` becomes `Hdr_starfield_survives_tonemap` (stars now go THROUGH the
+tonemap, so surviving it is the new risk), and `Distortion_alpha_marker_survives` becomes
+`Distortion_warps_the_starfield` (the exact opposite assertion, and the correct one).
+
+Design: `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
+
+## 11.8.0
+
+Navigation: same-grid vertical hop links, so a standable top above the step budget but within a jump
+budget (a rock, a ledge, a crate) stops baking as an unreachable island and NPCs can jump onto and off
+it. Opt-in throughout, Ruinborne's wolves are the first consumer.
+
+- **`NavHopLinks.Generate(grid, stepHeight, jumpHeight, maxHopCells = 2, layer = 0)`.** Generates
+  directed `NavLinkKind.Hop` links from a step-baked grid (one carrying a surface height field): for each
+  passable cell and each of the 8 directions it walks outward, requiring the adjacent cell blocked (a
+  rim, not open ground) and every intervening cell blocked, and links to the first passable cell reached
+  at distance 2 to `maxHopCells` when the absolute rise is above `stepHeight` and within `jumpHeight`.
+  A jump-band pair yields both directed links (jump up, drop down), every link spans a Chebyshev distance
+  of at least 2 so it is never mistaken for a grid step, and generation is deterministic (fixed scan and
+  direction order). Only the takeoff and landing cells are clearance-checked: the arc between is assumed
+  free at grid resolution (open sky over the rim), there is no hop-arc overhang check.
+- **`NavGridBaker.BakeOverworldHops(...)`.** The turn-key form: bakes the step grid exactly as
+  `BakeOverworldSteps` does, runs `NavHopLinks.Generate` over it, and returns a single-layer `NavSpace`
+  carrying both. With no hoppable feature in range the result is identical to
+  `NavSpace.Single(BakeOverworldSteps(...))`.
+- **`NavLink.Kind` (`NavLinkKind`: `Stair` default, `Hop`) and `NavWaypoint.Kind` (`NavWaypointKind`:
+  `Walk` default, `Hop`).** Backward-compatible discriminators, both `init` with the old behavior as the
+  default, so existing constructions (including `DungeonNav` stair links) are byte-identical.
+- **Planner hop cost and hop-landing marking.** `GridPathPlanner(space, hopCostCells = 4f)` gains the one
+  knob: a `Hop` link costs `hopCostCells` cells of its source layer where a `Stair` link keeps its
+  nominal one-cell cost, and a hop crossing's landing waypoint is emitted with `NavWaypointKind.Hop`.
+  Admissibility caveat: keep `hopCostCells` at or above the longest hop's octile XZ length in cells
+  (about 2.83 at `maxHopCells = 2`, covered by the default 4) so a hop is never cheaper than walking its
+  own displacement and the octile heuristic never overestimates.
+- **Follower hop seam: `PathFollowState.Hopping` and `PathFollowOutput.HopStart`.** When the active
+  waypoint is a `Hop` landing, ground steering is suspended (`WorldDir` zero) and the tick reports
+  `Hopping` with both lunge endpoints, `HopStart` (takeoff XZ) to `ActiveWaypoint` (landing XZ). The
+  consumer drives its own jump motion and resolves each end's Y from the layer's grid via
+  `NavGrid.SurfaceHeightAt`, the follower stores no Y. The follower owns no hop timer: an agent never
+  moved by its consumer keeps receiving `Hopping` every tick until the landing comes within
+  `AcceptRadius`, then following resumes normally.
+- **Opt-in and backward compatible.** `BakeOverworldSteps`, `NavGrid`, `NavSpace.Single`, and every
+  existing planner/follower path behave identically when no hop links are present. Hop links enter only
+  via `BakeOverworldHops` or an explicit `NavHopLinks.Generate` call.
+- **Exception alignment.** `NavHopLinks.Generate` throws `ArgumentOutOfRangeException` for its numeric
+  and relational range checks (negative `stepHeight`, `jumpHeight` not above `stepHeight`,
+  `maxHopCells` below 2, negative `layer`), matching `NavGridBaker`'s argument style, and keeps plain
+  `ArgumentException` for the missing-height-field state check.
+
+## 11.7.0
+
+HDR tonemap now preserves highlight hue by default, closing the additive-glow-legibility gap the AAA
+VFX Tier 1 HDR release left open.
+
+- **BEHAVIOR, default HDR look change: the tonemap now preserves hue in highlights.** `HdrSettings.ChromaPreservation`
+  (a `float` `0..1`, default `0.75`) blends the existing per-channel ACES roll-off against a
+  luminance-only tonemap that rescales RGB to hold hue. The `0.75` default is the user-approved
+  balance from the look-evidence ladder review: gameplay glows stay chromatic, a residue of filmic
+  bleach remains on hot cores. Additive telegraphs/decals/auras stay readable on bright grounds, the
+  round's design finding. Documented `0..1`: `0` restores the exact pre-11.x per-channel ACES look for
+  a game that wants to pin it, byte-identical to the pre-chroma output. `Hdr.Enabled = false` (the
+  legacy UNorm chain) is untouched, grid-proven byte-identical. Caveat: hue preservation is partial
+  where a saturated channel clips at the display ceiling before the rescale, a residual desaturating
+  shift remains there even at `1`.
+- **New `Internal.TonemapMath` C# mirror.** A headless port of the GLSL tonemap curve (ACES/Reinhard/Clamp
+  plus the chroma blend), kept in sync with `TonemapFrag` and covered by `TonemapMathTests`, plus new
+  showcase chroma-ladder dumps (`HdrShowcaseGpuTests`, `TelegraphShowcaseGpuTests`) across the composed
+  HDR scene, a coloured emissive intensity ladder, the 8-preset telegraph grid, and an additive HDR
+  decal glow.
+- **All 27 HDR-chain goldens re-baked on all three backends** (Metal, D3D11, Vulkan) for the new
+  0.75 default. `scene3d_hdr_off` and every 2D golden are byte-identical across the re-bake, confirming
+  the legacy chain and the 2D path are untouched.
+- **Test-threshold change:** `Golden3D_Sky`'s background-only regression guard assumed an achromatic
+  floor. At 0.75 the floor's ambient tint reads blue-dominant too, narrowing the guard's signal to the
+  coloured meshes only. Measured on real Metal hardware: 34 foreground cells for a correct render, 5
+  for a synthetic background-only baseline. New threshold 15, documented with both numbers.
+
+## 11.6.0
+
+Navigation: `PathFollower` exposes the corridor it is actually following read-only, so a consumer can
+draw or log the committed path without re-running the planner.
+
+- **`PathFollower.ActivePath` (`NavPath?`) and `PathFollower.ActiveWaypointIndex` (`int`).** A game brain
+  (Ruinborne's NPC path debug overlay is the first) that holds the engine follower could previously only
+  read the single `PathFollowOutput.ActiveWaypoint` position, so visualizing the whole corridor meant
+  re-running `IPathPlanner.FindPath` and risking a route that diverges from the one the follower committed
+  inside its replan cooldown. `ActivePath` now returns the committed `NavPath` itself, a read-only view
+  with no path back into follower state, and `ActiveWaypointIndex` returns the index of the waypoint
+  currently being steered to, so `Waypoints[ActiveWaypointIndex]` onward is the corridor still ahead. Both
+  are allocation-free computed getters over existing state, so the hot `Tick` path is untouched and there
+  is zero cost when unused.
+  Lifecycle: `ActivePath` is null before the first `Tick` plans, after `Reset`, once `Arrived`, while
+  `Unreachable`, and for the single gap tick after a fully consumed `NavPathStatus.Partial` path, where
+  the follower clears the exhausted path and steers straight at the raw goal (still `Following`) until the
+  next replan picks up a fresh route. While a replan is due but gated by `ReplanCooldownSeconds` it stays
+  the previously committed path, never a re-plan. When non-null it always carries at least one waypoint
+  and `ActiveWaypointIndex` is a valid index into its `Waypoints` (zero, and not meaningful, when
+  `ActivePath` is null).
+- **`NavPath` waypoint storage is now genuinely read-only.** The constructor previously stored the passed
+  `IReadOnlyList<NavWaypoint>` directly, so a reader could downcast `Waypoints` to the planner's concrete
+  `List` or array and mutate a live committed corridor. The constructor now guarantees the exposure: a
+  `ReadOnlyCollection<NavWaypoint>` is kept as-is, an `IList<NavWaypoint>` (including an array) is wrapped
+  in a `ReadOnlyCollection<NavWaypoint>` view without copying, and any other `IReadOnlyList<NavWaypoint>`
+  is copied to a fresh array and wrapped. The wrap happens once at path construction (one small wrapper
+  object per plan, no copy on the planner's list and array paths), so the follower's steering path stays
+  allocation-free. The public constructor signature is unchanged.
+
 ## 11.5.0
 
 GPU CI now runs the full test suite on every leg instead of a golden-only filter that hid 172

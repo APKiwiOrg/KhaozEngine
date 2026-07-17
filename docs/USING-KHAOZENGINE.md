@@ -1658,7 +1658,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
 - Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
   background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the
-  per-pixel alpha (geometry opaque, cleared background clear). Leave `Starfield` off when transparent.
+  per-pixel alpha (geometry opaque, cleared background clear). Since 11.9.0, set `Post.Background =
+  BackgroundMode.Solid` when transparent: a non-`Solid` background (the default `Starfield`, or `Sky`) now paints
+  alpha 1 and hides whatever the composite sits over, where the old default used to draw invisible stars at
+  alpha 0. See Background below for the full behaviour change.
 - Internal render-target sizing: `Post.RenderScale`. The default `FixedInternal` renders into a
   fixed `Post.RenderWidth` x `RenderHeight` target (1600x900) and blit-scales it to the window - the retro path
   (small fixed target + `Pixelated`), but on a window bigger than that target the smooth blit UPscales and
@@ -1711,30 +1714,40 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Off` the queue is ignored, so submitting blobs unconditionally is safe.
   - `ShadowMode.ShadowMap`: the semi-realistic key-light directional CASCADED shadow map with PCF (the "A"-tier
     target). A depth-only pass renders the instanced casters into an orthographic light-space depth ATLAS -
-    `ShadowCascadeCount` concentric cascades (default 3) side by side in one R32F texture, fitted from the tight near
-    cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance` and texel-snapped per cascade to kill shimmer under camera
-    pan. The model AND terrain fragments pick the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF +
-    slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade,
-    not blackness), fading the shadow to fully lit toward the outermost cascade's border so the coverage limit is
-    invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does not cast**
-    (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API to opt in:
-    every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device reports
-    `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample the depth
-    target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
+    `ShadowCascadeCount` cascades (default 3) side by side in one R32F texture, each fitted to the bounding sphere of
+    its own slice of the camera's ACTUAL view frustum (frustum-slice CSM: a near caster off to the side of the screen
+    still lands in a near cascade, and the fit no longer depends on where the camera looks, so there is no
+    gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer under camera pan. The slices run from
+    the tight near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The model AND terrain fragments pick
+    the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF + slope-scaled bias to shadow the KEY
+    light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade, not blackness), cross-fading
+    toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade hand-off is invisible instead
+    of a visible square seam, and fading the shadow to fully lit toward the outermost cascade's border so the
+    coverage limit is invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does
+    not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). Caster visibility
+    for the shadow pass unions ALL cascade frustums (a caster camera-culled from the main pass but still inside any
+    cascade still casts its shadow). No per-frame API to opt in: every drawn mesh casts automatically. The tier is on
+    when `Shadows.Mode == ShadowMap` and the device reports `GpuCapabilities.SupportsShadowMaps` (every current
+    backend does). A degenerate camera (e.g. zero-length forward) makes `ComputeShadowCascades()` return `0` and
+    disables shadows for that frame rather than throwing. On a device that cannot render+sample the depth target,
+    `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
     `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
     - **Cascade knobs** (on `ShadowSettings`): `ShadowCascadeCount` (default `3`, clamped `1..4` by `ResolvedCascadeCount`)
-      concentric cascades. Cascade 0 stays `ShadowFocusRadius` tight for crisp near shadows (so `ShadowCascadeCount == 1`
-      is the pre-cascade single map plus the edge fade); the rest grow to `ShadowMaxDistance` (default `130` world units,
-      the far reach, clamped `>= ShadowFocusRadius` by `ResolvedMaxDistance`) via a log/linear-blended split, so distant
-      shadows exist without softening the near ones. `ShadowMapResolution` is the **per-cascade** resolution, so the atlas
-      costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) - drop the count or the
-      resolution for a lower-end profile.
+      cascades, each fitted to its own camera-frustum slice. Cascade 0 stays `ShadowNearDistance` tight for crisp near
+      shadows (so `ShadowCascadeCount == 1` is the pre-cascade single map plus the edge fade). The rest grow to
+      `ShadowMaxDistance` (default `130` world units, the far reach, clamped `>= ShadowNearDistance` by
+      `ResolvedMaxDistance`) via a log/linear-blended split, so distant shadows exist without softening the near
+      ones. `ShadowCascadeBlend` (default `0.15`, a UV-fraction border width, clamped `0..0.49`) cross-fades a
+      fragment near its cascade's border toward the next cascade's result, so the texel-density step at a hand-off is
+      invisible instead of a hard seam. `0` restores the hard cut. `ShadowMapResolution` is the **per-cascade**
+      resolution, so the atlas costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) -
+      drop the count or the resolution for a lower-end profile.
     - Other knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`, per cascade; a **construction-time**
       knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
-      material set - drop to 1024/512 on low-end); `ShadowFocusRadius` (default `16`, cascade-0 coverage half-extent -
-      smaller packs texels onto the near action); `ShadowGroundHeight` (world Y the focus is fitted onto, default `0`);
-      `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+      material set - drop to 1024/512 on low-end). `ShadowNearDistance` (default `16`, the near cascade's view-depth
+      reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
+      cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
@@ -1742,23 +1755,24 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       each cascade offsets by its own texel width - far cascades more, near ones less, so far cascades do not acne and
       near ones do not detach), grazing-angle-weighted so it is largest where
       acne is worst and zero facing the light. That lets the two DEPTH biases stay tiny, so the shadow keeps contact.
-      The depth biases act in light-clip NDC z over the light's full depth range (`4 * ShadowFocusRadius` world units),
-      so they were world-coupled to the radius - `ShadowConstantBias` dropped from `0.004` to `0.0004` (the old value
-      was ~0.25 world units of depth bias at the default radius, which peter-panned thin casters' contact shadows).
+      The depth biases act in light-clip NDC z over the light's full depth range (`4 *` each cascade's fitted
+      slice-sphere radius, in world units), so they were world-coupled to the radius - `ShadowConstantBias` dropped
+      from `0.004` to `0.0004` (the old value was ~0.25 world units of depth bias at the near cascade's radius, which
+      peter-panned thin casters' contact shadows).
       If you still see acne, raise `ShadowNormalOffset` first (say 3-4 texels), then the depth biases. If shadows float
       off their casters, lower the depth biases (the normal offset does not cause peter-panning). Set
       `ShadowNormalOffset = 0` to fall back to depth-bias-only.
     - **Depth-pass dirty-skip** (automatic, presentation-neutral): the cascade atlas persists across frames, so the
       depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - ANY of the fitted
-      cascade matrices (which fold in the light direction, focus, and camera, so a moving sun or a camera pan past a
-      texel re-renders), the rigid caster set + world transforms, the map resolution, or any animated skinned caster
-      present (a bone pose can change every frame, so any skinned caster forces a re-render). An unchanged static scene
-      reuses the prior atlas and skips every caster draw, so a mostly-static
-      view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw calls to
-      `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when the tier is
-      not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is still applied
-      on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the map with the
-      matrix it was baked against.
+      cascade matrices (which fold in the light direction, the camera-frustum slice, and the light distance, so a
+      moving sun or a camera pan/turn past a texel re-renders), the rigid caster set + world transforms, the map
+      resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
+      forces a re-render). An unchanged static scene reuses the prior atlas and skips every caster draw, so a
+      mostly-static view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw
+      calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when
+      the tier is not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is
+      still applied on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the
+      map with the matrix it was baked against.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a
@@ -1793,6 +1807,26 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     before either test, since a pose can carry vertices outside the mesh's static rest-pose box (a swung limb, a
     jump). Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
     counterpart of `DrawnInstances`/`CulledInstances` above.
+- **Background** (`Post.Background`, a `BackgroundMode`: `Solid`, `Starfield`, `Sky`, **default `Starfield`**): one
+  knob for what fills a pixel no scene geometry drew. It is a DERIVED view over the existing `Post.Starfield` and
+  `Post.Sky.Enabled` booleans, not new state, so both keep working exactly as before and nothing is `[Obsolete]`.
+  The getter encodes the engine's long-standing precedence, `Sky` over `Starfield` over `Solid`, in one place:
+  reading `Background` after setting both booleans tells you which one actually wins. The setter clears the modes
+  it did not select, so `Post.Background = BackgroundMode.Sky` also turns `Starfield` off.
+  - **Since 11.9.0 the starfield is a real background pass**, not a final-blit trick. `StarfieldRenderer` (a
+    `SkyRenderer` sibling) draws a fullscreen triangle at the far plane with a read-only `Equal` depth test, so it
+    paints ONLY background pixels (where the stored depth still equals the cleared far plane) and writes
+    `alpha = 1`, before the ground decals. Procedural stars are therefore ordinary scene content now: they
+    quantize/dither with the retro passes, bloom, warp under screen-space distortion, and tonemap in HDR, instead
+    of being pasted on after the whole post chain finished.
+  - **`TransparentBackground` interaction.** A non-`Solid` background always paints alpha 1 (opaque), so it hides
+    whatever a transparent composite is layered over. A transparent composite (`Post.TransparentBackground = true`)
+    needs `Post.Background = BackgroundMode.Solid` set explicitly, see "Transparent compositing" above.
+  - **Behaviour change from 11.9.0.** `TransparentBackground = true` with the default `Starfield = true` on a raw
+    `Scene3D` used to composite invisibly (stars drew at `alpha = 0`). It now produces an opaque background,
+    because the background pass writes `alpha = 1`. `Render3DPreview` and `UseSmoothPreset` already force
+    `Starfield` off and are unaffected. A consumer building `Scene3D` directly with `TransparentBackground = true`
+    is not, and needs the explicit `Background = BackgroundMode.Solid` above.
 - **Sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural sky drawn as a background pass behind
   all geometry - a vertical horizon-to-zenith gradient plus an optional sun disc + halo. Default `Sky.Enabled = false`,
   so the background stays the clear colour + starfield and existing scenes are byte-stable; set `Post.Sky.Enabled = true`
@@ -1907,6 +1941,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - **Exposure** (`Post.Hdr.Exposure`, a `float`, **default `1.0`**): a linear multiplier on the scene colour BEFORE
     the operator. Above 1 pushes more of the scene into the highlight roll-off (brighter, hotter cores), below 1
     pulls it back. Clamped non-negative at upload. Ignored when `Hdr.Enabled = false`.
+  - **Chroma preservation** (`Post.Hdr.ChromaPreservation`, a `float` `0..1`, **default `0.75`**): how much highlight
+    hue survives the roll-off. At `0` the operator applies per channel (the pre-11.x look, hot cores desaturate
+    toward white). At `1` only luminance is tonemapped and RGB is rescaled to keep hue, so a coloured glow stays
+    chromatic into its core, and values between blend. The `0.75` default is the reviewed, user-approved balance: preset
+    glow colours stay legible against the filmic roll-off while the hottest cores still read as hot, keeping
+    additive telegraphs/decals/auras readable on bright grounds. Escape hatch: set `ChromaPreservation = 0` for the
+    pre-11.x look exactly, byte-identical to the pre-chroma per-channel output. Caveat: hue preservation is partial
+    where a saturated channel clips at the display ceiling before the rescale, a residual desaturating shift remains
+    there even at `1`. Ignored when `Hdr.Enabled = false`. Mirrored headlessly by `Internal.TonemapMath` for tests.
   - **Authoring intensity above 1.0**: there is no separate "emissive intensity" field. The engine's `Color` is
     unclamped float storage and every colour path (materials, particles, beams, trails, sky, water, lights)
     transports values above 1.0 end-to-end, so the over-range authoring surface IS the colour itself. Use
@@ -3302,6 +3345,30 @@ interface and never takes a dependency on `KhaozEngine.Physics`. The planner and
 unchanged: a step-aware grid is still one `NavGrid` layer, so `GridPathPlanner` and `PathFollower` need no
 new code to route across a ramp or a low rock.
 
+### Bake vertical hops
+
+A standable top taller than `stepHeight` bakes as an unreachable island under the step bake alone: the
+top is standable, but no walkable step leads onto it. `NavGridBaker.BakeOverworldHops` closes that gap.
+It bakes the step grid exactly as `BakeOverworldSteps` does, then generates same-grid
+`NavLinkKind.Hop` links (`NavHopLinks.Generate`) wherever two standable cells face each other across a
+blocked rim with a rise above `stepHeight` but within `jumpHeight`, and returns a single-layer `NavSpace`
+carrying both:
+
+```csharp
+NavSpace space = NavGridBaker.BakeOverworldHops(
+    provider,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f,
+    jumpHeight: 1.2f, maxHopCells: 2);
+var planner = new GridPathPlanner(space);   // hopCostCells: 4 by default
+```
+
+Opt-in throughout: `BakeOverworldSteps` never generates hop links, and with no hoppable feature in range
+the returned space is identical to `NavSpace.Single(BakeOverworldSteps(...))`. The planner charges a hop
+the constructor's `hopCostCells` (in cells of the source layer, default 4, kept at or above the longest
+hop's octile length so paths stay optimal) and marks each hop landing waypoint `NavWaypointKind.Hop`,
+which the follower surfaces as the `Hopping` state below.
+
 ### Plan a route
 
 `GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an
@@ -3331,13 +3398,60 @@ if (output.State == PathFollowState.Following)
     agent = CharacterMovement.StepTowards(agent, output.WorldDir, run: false, dt,
         terrain.GroundHeight, tuning, world: physics);
 }
+else if (output.State == PathFollowState.Hopping)
+{
+    // A hop link's landing is the active waypoint. Ground steering is suspended (WorldDir is zero):
+    // the game drives its own lunge from HopStart to ActiveWaypoint. Both are world XZ, resolve each
+    // end's Y from the layer's grid, the follower stores no Y.
+    NavGrid layer = space.Layers[0];
+    Vector2 from = output.HopStart;
+    Vector2 to = output.ActiveWaypoint;
+    (int fx, int fz) = layer.CellOf(from.X, from.Y);
+    (int tx, int tz) = layer.CellOf(to.X, to.Y);
+    float fromY = layer.SurfaceHeightAt(fx, fz) ?? terrain.GroundHeight(from.X, from.Y);
+    float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
+    agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
+}
 // Arrived: agent.Position is within AcceptRadius of the goal, output.WorldDir is zero.
 // Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
 ```
 
+The follower owns no hop timer: it re-emits `Hopping` every tick until the agent actually reaches the
+landing (within `AcceptRadius`), then resumes `Following` (or `Arrived` when the landing is the goal).
+
 `output.WorldDir` is the raw follow direction only. A dynamic-avoidance pass (steering around other agents
 or a late-appearing obstacle) is expected to run after the follower and before `StepTowards`, adjusting
 `WorldDir` without touching the follower's own path state.
+
+### Read the committed corridor (debug overlays, logging)
+
+To visualize or log the whole route an agent is following, read the corridor off the follower rather than
+re-running `FindPath`, which would risk a route that diverges from the one the follower committed inside its
+replan cooldown:
+
+```csharp
+if (follower.ActivePath is { } corridor)
+{
+    // corridor.Waypoints[follower.ActiveWaypointIndex ..] is the corridor still ahead of the agent.
+    for (int i = follower.ActiveWaypointIndex; i < corridor.Waypoints.Count; i++)
+    {
+        Vector2 p = corridor.Waypoints[i].Position;   // world XZ, resolve Y from the layer's grid/terrain
+        // ... draw or log p ...
+    }
+}
+```
+
+`ActivePath` (`NavPath?`) is the committed path the planner returned. Its `Waypoints` is a read-only view
+that cannot be downcast to mutable storage (guaranteed by the `NavPath` constructor), so this is a genuine
+read-only view with no path back into follower state. `ActiveWaypointIndex` (`int`) is the waypoint the
+follower is currently steering toward. Both are allocation-free getters over existing state, so `Tick` is
+untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is following no
+corridor: before the first `Tick`, after `Reset`, once `Arrived`, while `Unreachable`, and for the single
+gap tick after a fully consumed `NavPathStatus.Partial` path, where the follower clears the exhausted path
+and steers straight at the raw goal (still `Following`) until the next replan picks up a fresh route. While
+a replan is due but still gated by `ReplanCooldownSeconds`, it stays the previously committed path, so you
+always read the route the agent is steering on, never a mid-cooldown re-plan. When non-null it always
+carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints`.
 
 ### Budget knobs
 

@@ -4,7 +4,7 @@ Future work only: what's planned or missing, highest-priority first. This file d
 history. See [CHANGELOG.md](../CHANGELOG.md) and `git tag` for what landed and when. When an item ships,
 delete it from here (the detail moves to the changelog) rather than marking it "done".
 
-Current released version: **11.5.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
+Current released version: **12.0.0** (the shared `<KhaozEngineVersion>` line in `Directory.Build.props`).
 
 Each near-term item gets its own design spec + plan when it is scheduled.
 
@@ -15,8 +15,11 @@ Each near-term item gets its own design spec + plan when it is scheduled.
 Extend `KhaozEngine.Navigation` beyond the step-aware single-layer overworld bake so NPCs can path
 across bridges, overhangs, and roofed interiors where two walkable surfaces coexist at one XZ.
 Auto-extract layered walkable surfaces plus inter-layer links from the physics world. `NavSpace`
-layers, links, and cross-layer planning already shipped and are proven by the dungeon adapter, so the
-remaining work is the layered-surface extraction bake and link generation at climbable transitions.
+layers, links, and cross-layer planning already shipped and are proven by the dungeon adapter, and the
+same-grid vertical hop slice shipped too (bake-generated `NavLinkKind.Hop` links via
+`BakeOverworldHops`/`NavHopLinks`, plus the follower `Hopping` seam), so the remaining work is the
+layered many-surfaces-per-column extraction bake and link generation at climbable transitions beyond
+same-grid hops.
 
 ### 2. Physics: ragdolls and vehicles (pull-gated)
 
@@ -78,6 +81,10 @@ duplicated here.
   replication and persistence scoped per instance. End state for dungeons: `KhaozEngine.Dungeon` ships
   today against the far-corner same-grid model, and its dungeon-local output (one placement transform,
   no world-absolute assumptions) adopts this when it lands.
+- Replicated-entity AoI presentation fade (recorded 2026-07-17): `AoiDeltaReplicator` spawns/despawns an
+  entity in full the tick it enters/leaves the interest set, a binary pop at the sharded default
+  `InterestRadius` (24). A client-side fade-in/out on enter/leave (the same dissolve the prop fade band
+  in Rendering item 2 uses) when a game surfaces it visually.
 ## Overworld / world content
 
 - Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF
@@ -100,38 +107,70 @@ VFX specifically targets AAA quality even though the general rendering bar stays
 Ordered gap list (2026-07-07 feature audit):
 
 1. Shadow polish (the ShadowMode tier shipped in 10.19.0: blob + key-light PCF map, model and terrain both
-   receive, model-only casting; cascaded shadow maps + the outer coverage fade shipped in 10.122.0): remaining
-   follow-ups when a game pulls for them - terrain self-shadowing / terrain-as-caster, per-game bias tuning
-   beyond the small-scene defaults, and a runtime-resizable cascade atlas (resolution + cascade count are
-   construction-time knobs today).
-2. Cross-pass transparent ordering (follow-up to the shipped within-batch sort, 10.18.2): alpha-blended draws
+   receive, model-only casting. Cascaded shadow maps + the outer coverage fade shipped in 10.122.0. The
+   frustum-slice cascade fit - each cascade fitted to the bounding sphere of its own camera-frustum depth
+   slice, replacing the old concentric focus-radius fit, so shadow sharpness no longer depends on where the
+   camera looks - plus the cross-cascade blend band shipped in 12.0.0): remaining follow-ups when a game
+   pulls for them - terrain self-shadowing / terrain-as-caster, per-game bias tuning beyond the small-scene
+   defaults, and a runtime-resizable cascade atlas (resolution + cascade count are construction-time knobs
+   today).
+2. Prop draw-distance fade + streaming-radius coupling (Ruinborne playtest finding 2026-07-17): scattered
+   props pop in hard at their `PropLayer.DrawRadius` (60-90 world units in the reference configs) while
+   terrain streams to roughly 240-360 (`StreamerConfig.Default`), and the cull is a per-frame binary XZ
+   radius test with no fade or hysteresis (`PropRenderer.Emit`). Fix: a two-radius band per layer (inner
+   solid, outer fade-in), a per-instance fade value threaded through `InstanceData` reusing the dissolve
+   alpha-clip so instancing and draw order stay untouched, raised reference radii toward the streamed ring,
+   and a coupling guard so a `DrawRadius` beyond the terrain `LoadRadius` cannot silently draw nothing.
+   Props are GPU-instanced (one draw per unique mesh), so wider radii are cheap on the GPU: the cost is
+   CPU-side scatter and instance upload, budget it like the terrain streamer does.
+3. Distance fog (Ruinborne playtest finding 2026-07-17): no fog exists anywhere in the engine (no settings
+   type, no shader term). A small feature: a fog settings struct beside `SkySettings`, a depth-based fog
+   term in the model/splat fragment shaders with a sky-derived color so it blends into the horizon. Masks
+   the far prop ring and the streamed-terrain edge, and adds atmospheric depth toward the "A" bar
+   generally.
+4. HDR display calibration knobs (Ruinborne pull 2026-07-17): `Post.Hdr` today exposes `Exposure`,
+   `Operator`, and `ChromaPreservation` only. Player-facing calibration needs a white point and
+   post-tonemap brightness/gamma (optionally contrast/saturation), folded into the existing tonemap pass:
+   extend `ToneUbo` (its `Params.w` slot is free, add a second vec4 as needed), `TonemapFrag`, and the
+   bit-exact `TonemapMath` C# mirror plus tests, all with identity defaults so existing goldens do not
+   rebake. Ruinborne then wires sliders and persistence game-side (the `SettingsManager<T>` pattern).
+   Out of scope: actual HDR10/scRGB swapchain output. The swapchain is SDR-only end to end and real HDR
+   output is a much larger Gpu/Windowing feature (format negotiation, OS color-space APIs, a PQ/scRGB
+   output path) with no display pull today.
+5. Mesh LOD + impostors for props/vegetation (program-sized): no mesh LOD exists anywhere in the engine
+   (the asset manifest carries one glTF per prop, no LOD slots). The program: LOD slots on `AssetEntry`
+   with distance-based mesh selection at draw time, authoring/bake support for simplified variants, then
+   camera-facing billboard impostors for far vegetation (billboard renderers exist but serve particle VFX
+   only). Sequenced after the fade band above: the fade removes the jarring pop now, LOD is what lets
+   vegetation exist much further out at acceptable cost.
+6. Cross-pass transparent ordering (follow-up to the shipped within-batch sort, 10.18.2): alpha-blended draws
    now sort back-to-front within each batch, but the inter-pass order of the transparent renderers is still
    fixed by Scene3D. A unified cross-renderer transparent queue is the eventual answer if a game hits a
    cross-pass ordering artifact. Also unpinned: a golden for mixed additive+alpha textured overlap.
-3. Culling follow-ups (frustum culling shipped in 10.20.0: chunks AABB-tested, instanced props sphere-tested,
+7. Culling follow-ups (frustum culling shipped in 10.20.0: chunks AABB-tested, instanced props sphere-tested,
    skinned meshes and the shadow pass deliberately exempt): light-volume culling for the shadow depth pass. A
    coarse spatial culling index (a chunk/region grid, broad-phase before the per-instance sphere/AABB test) once
    per-frame instance counts grow past linear-scan comfort - today every queued instance and skinned draw is
    tested against the frustum in one flat pass each frame, fine at current scene sizes but a candidate for a
    grid/quadtree broad-phase if a much larger streamed world pushes per-frame counts up.
-4. Sky follow-ups (the gradient + key-light-aligned sun disc shipped in 10.20.0, the world-anchored
+8. Sky follow-ups (the gradient + key-light-aligned sun disc shipped in 10.20.0, the world-anchored
    point-at-infinity sun projection shipped in 10.114.0 as `SunAnchor.World`, the day/night cycle mapping
    shipped in 10.124.0 as `SunCycle`): a full cubemap/skybox when water or a specific scene pulls for it, and
    an optional moon disc plus a secondary night key light when a consumer pulls for it.
-5. Water follow-ups (the animated water surface shipped in 10.28.0: `Scene3D.DrawWater` + `WaterSettings`,
+9. Water follow-ups (the animated water surface shipped in 10.28.0: `Scene3D.DrawWater` + `WaterSettings`,
    shore fade, sky-derived fresnel tint, sun glint, no reflections): shore foam, per-game wave tuning once
    Ruinborne adopts it, dropping the unused `Res` UBO field, and a water-footprint-scoped golden guard.
-6. Bloom follow-ups (the threshold + separable-blur bloom shipped in 10.27.0, opt-in via
+10. Bloom follow-ups (the threshold + separable-blur bloom shipped in 10.27.0, opt-in via
    `PixelPostProcessSettings.Bloom`): per-game tuning of threshold/intensity defaults once Ruinborne adopts it,
    and a second blur octave only if a game pulls for wider halos. The HDR/tonemap pipeline shipped (float16 chain
    + ACES filmic tonemap + pre-tonemap bloom, on by default, escape hatch `Post.Hdr.Enabled = false`), see the
    CHANGELOG.
-7. Animation follow-ups (layered blending shipped in 10.31.0: `LayeredAnimator` with bone masks, override and
+11. Animation follow-ups (layered blending shipped in 10.31.0: `LayeredAnimator` with bone masks, override and
    local-frame additive layers, and one-shot or held actions via `PlayAction` on `AnimatedCharacter`): skeletal IK (foot
    placement) waits for adoption feedback, action-trigger replication stays a game-message pattern, and a
    per-layer sync-group mechanism (matching walk/run phase across layers) only if combat blending pulls for it.
-8. Reflections / environment probes: not planned for the current bar. Revisit only if water or a specific scene
-   demands more than the sky provides.
+12. Reflections / environment probes: not planned for the current bar. Revisit only if water or a specific scene
+    demands more than the sky provides.
 
 ### AAA VFX program (owner direction 2026-07-16)
 

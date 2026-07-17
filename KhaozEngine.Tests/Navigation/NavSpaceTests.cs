@@ -139,4 +139,25 @@ public class NavSpaceTests
         Assert.Same(a, space.Layers[0]);
         Assert.Same(b, space.Layers[1]);
     }
+
+    [Fact]
+    public void NavLink_DefaultKind_IsStair()
+    {
+        Assert.Equal(NavLinkKind.Stair, new NavLink(0, 1, 1, 0, 2, 2).Kind);
+    }
+
+    [Fact]
+    public void NavLink_HopKind_RoundTrips()
+    {
+        var link = new NavLink(0, 1, 1, 0, 2, 2) { Kind = NavLinkKind.Hop };
+        Assert.Equal(NavLinkKind.Hop, link.Kind);
+    }
+
+    [Fact]
+    public void NavLink_EqualityIncludesKind()
+    {
+        var stairLink = new NavLink(0, 1, 1, 0, 2, 2);
+        var hopLink = new NavLink(0, 1, 1, 0, 2, 2) { Kind = NavLinkKind.Hop };
+        Assert.NotEqual(stairLink, hopLink);
+    }
 }

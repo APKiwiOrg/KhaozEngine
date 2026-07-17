@@ -121,7 +121,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void FinalUbo_MarshalSize_EqualsFinalBufferAllocation()
         {
-            // GLSL: Final { vec4 BgColor; vec4 Params; } = 2 vec4 = 32 bytes (BlitFrag).
+            // GLSL: Final { vec4 Params; } = 1 vec4 = 16 bytes (BlitFrag).
             Assert.Equal(
                 (int)PixelPostProcess.FinalBufferBytes,
                 Marshal.SizeOf<PixelPostProcess.FinalUbo>());
@@ -407,6 +407,16 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.True(ShaderSources.DistortionFrag.Contains(member),
                     $"DistortionFrag lost '{member}': the Frame UBO block drifted from DistortionVert's declaration.");
             }
+        }
+
+        // ---- Starfield background pass UBO (StarfieldRenderer) ----
+
+        [Fact]
+        public void StarfieldUbo_matches_the_gpu_allocation()
+        {
+            // 2 * vec4 = 32. Every member is 16-byte aligned, so std140 needs no extra padding.
+            Assert.Equal((int)StarfieldRenderer.UboBytes, Marshal.SizeOf<StarfieldRenderer.StarfieldUbo>());
+            Assert.Equal(32, (int)StarfieldRenderer.UboBytes);
         }
 
         [Fact]

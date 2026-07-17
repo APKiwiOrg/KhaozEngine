@@ -26,7 +26,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Post.Outline = true;
             scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-            scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
+            scene.Post.Quality.Shadows.ShadowNearDistance = 5f;
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
             scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
         }

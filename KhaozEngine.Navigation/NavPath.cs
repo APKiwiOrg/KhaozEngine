@@ -1,8 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Numerics;
 
 namespace KhaozEngine.Navigation;
+
+/// <summary>
+/// What kind of waypoint this is, so the follower can steer toward a normal point but surface a hop when it
+/// reaches a hop link's landing. New values may be added over time.
+/// </summary>
+public enum NavWaypointKind
+{
+    /// <summary>The default: steer toward this point with ordinary ground movement.</summary>
+    Walk,
+
+    /// <summary>The landing of a <see cref="NavLinkKind.Hop"/> link. The follower returns
+    /// <see cref="PathFollowState.Hopping"/> while steering toward it and suspends ground steering.</summary>
+    Hop,
+}
 
 /// <summary>
 /// Outcome of an <see cref="IPathPlanner.FindPath"/> query.
@@ -27,7 +42,13 @@ public enum NavPathStatus
 /// </summary>
 /// <param name="Position">World XZ position of this waypoint.</param>
 /// <param name="Layer">Index into <see cref="NavSpace.Layers"/> this waypoint lives on.</param>
-public readonly record struct NavWaypoint(Vector2 Position, int Layer);
+public readonly record struct NavWaypoint(Vector2 Position, int Layer)
+{
+    /// <summary>What kind of waypoint this is (default <see cref="NavWaypointKind.Walk"/>). A
+    /// <see cref="NavWaypointKind.Hop"/> waypoint is a hop link's landing, which the follower surfaces as
+    /// <see cref="PathFollowState.Hopping"/>.</summary>
+    public NavWaypointKind Kind { get; init; }
+}
 
 /// <summary>
 /// Result of a path query: a <see cref="NavPathStatus"/> plus the waypoints leading toward the goal, in
@@ -41,20 +62,43 @@ public sealed class NavPath
     public NavPathStatus Status { get; }
 
     /// <summary>The waypoints toward the goal, in travel order. Empty when <see cref="Status"/> is
-    /// <see cref="NavPathStatus.Unreachable"/>.</summary>
+    /// <see cref="NavPathStatus.Unreachable"/>. Always a read-only view that cannot be downcast to a
+    /// mutable list or array (see the constructor for the wrapping rules).</summary>
     public IReadOnlyList<NavWaypoint> Waypoints { get; }
 
     /// <summary>Builds a path result from a <paramref name="status"/> and its
-    /// <paramref name="waypoints"/>.</summary>
+    /// <paramref name="waypoints"/>. The waypoints are exposed through a read-only wrapper, so a reader
+    /// of <see cref="Waypoints"/> cannot downcast it to the concrete list or array underneath and mutate
+    /// the stored corridor. A <see cref="ReadOnlyCollection{T}"/> is kept as-is, an
+    /// <see cref="IList{T}"/> (including an array) is wrapped as a view without copying (the constructing
+    /// planner must not mutate its list after handing it over), and any other
+    /// <see cref="IReadOnlyList{T}"/> is copied into a fresh array first.</summary>
     public NavPath(NavPathStatus status, IReadOnlyList<NavWaypoint> waypoints)
     {
+        ArgumentNullException.ThrowIfNull(waypoints);
         Status = status;
-        Waypoints = waypoints ?? throw new ArgumentNullException(nameof(waypoints));
+        Waypoints = waypoints switch
+        {
+            ReadOnlyCollection<NavWaypoint> readOnly => readOnly,
+            IList<NavWaypoint> list => new ReadOnlyCollection<NavWaypoint>(list),
+            _ => new ReadOnlyCollection<NavWaypoint>(CopyToArray(waypoints)),
+        };
         if (status == NavPathStatus.Unreachable && Waypoints.Count != 0)
         {
             throw new ArgumentException(
                 "An Unreachable NavPath must carry zero waypoints.", nameof(waypoints));
         }
+    }
+
+    static NavWaypoint[] CopyToArray(IReadOnlyList<NavWaypoint> waypoints)
+    {
+        var copy = new NavWaypoint[waypoints.Count];
+        for (int i = 0; i < copy.Length; i++)
+        {
+            copy[i] = waypoints[i];
+        }
+
+        return copy;
     }
 
     /// <summary>Shared, cached result for an unreachable query: <see cref="NavPathStatus.Unreachable"/>

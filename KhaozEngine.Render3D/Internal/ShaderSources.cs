@@ -2125,6 +2125,47 @@ void main() {
     oColor = vec4(rgb, a);
 }";
 
+        // ---- Procedural starfield. A fullscreen-triangle BACKGROUND pass into the lit colour attachment +
+        //      read-only scene depth (ColorDepthFB), identical in shape to the sky pass: the triangle sits at the
+        //      FAR plane (z=1) and the pipeline uses a read-only Equal depth test, so a fragment passes ONLY where
+        //      the stored depth still EQUALS the cleared far plane, i.e. background pixels where no geometry was
+        //      drawn. Geometry (depth < 1) fails Equal and rejects the stars.
+        //      This USED to live at the end of BlitFrag, which regenerated the background from the clear colour
+        //      after the whole post chain and therefore DISCARDED anything drawn at a background pixel (translucent
+        //      content was erased at alpha < 0.5, or punched a star-free hole at alpha >= 0.5). Painting the stars
+        //      into the scene before the decals means anything over the void composites over them normally, which
+        //      is what release 2's void ground decals need. It also means the stars now flow through the post chain
+        //      (quantize/dither/palette, bloom, distortion, HDR tonemap) like everything else, instead of being the
+        //      one un-pixelated element pasted on at the very end.
+        //      Writes alpha = 1, matching the sky pass, so the background reads as painted for the blit's
+        //      TransparentBackground path.
+        //      No vertex inputs (gl_VertexIndex only), so the HLSL input signature is empty: no gap-free-holes
+        //      hazard (see the D3D11/FXC note on ModelVert).
+        public const string StarfieldVert = @"#version 450
+void main() {
+    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0);   // far plane (z=1): passes the Equal depth test only on background
+}";
+
+        // The star field is the EXACT function BlitFrag carried (same 220x124 cell grid, same 0.992 threshold, same
+        // 0.55 + 0.45 brightness spread), moved verbatim. The only change is where the UV comes from: gl_FragCoord
+        // (upper-left on EVERY backend) times Res.xy = 1/(width,height), the backend-independent convention SkyFrag
+        // and DecalFrag use, rather than an interpolated vUv. The star pattern is value noise, so its orientation
+        // carries no meaning and is not worth preserving bit-for-bit across the move.
+        public const string StarfieldFrag = @"#version 450
+layout(set=0, binding=0) uniform Starfield {
+    vec4 BgColor;   // rgb = the scene clear colour the stars sit on
+    vec4 Res;       // xy = 1/renderWidth, 1/renderHeight
+};
+layout(location=0) out vec4 oColor;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+    vec2 uv = gl_FragCoord.xy * Res.xy;
+    vec2 cell = floor(uv * vec2(220.0, 124.0));
+    float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
+    oColor = vec4(BgColor.rgb + vec3(star), 1.0);
+}";
+
         // ---- Procedural sky (gradient + sun disc/halo). A fullscreen-triangle BACKGROUND pass rendered into the lit
         //      colour attachment + read-only scene depth (ColorDepthFB), like the ground-decal pass, but INVERTED: the
         //      triangle sits at the FAR plane (z=1) and the pipeline uses a GreaterEqual read-only depth test, so a

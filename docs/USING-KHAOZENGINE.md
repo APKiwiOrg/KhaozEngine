@@ -3339,6 +3339,33 @@ if (output.State == PathFollowState.Following)
 or a late-appearing obstacle) is expected to run after the follower and before `StepTowards`, adjusting
 `WorldDir` without touching the follower's own path state.
 
+### Read the committed corridor (debug overlays, logging)
+
+To visualize or log the whole route an agent is following, read the corridor off the follower rather than
+re-running `FindPath`, which would risk a route that diverges from the one the follower committed inside its
+replan cooldown:
+
+```csharp
+if (follower.ActivePath is { } corridor)
+{
+    // corridor.Waypoints[follower.ActiveWaypointIndex ..] is the corridor still ahead of the agent.
+    for (int i = follower.ActiveWaypointIndex; i < corridor.Waypoints.Count; i++)
+    {
+        Vector2 p = corridor.Waypoints[i].Position;   // world XZ, resolve Y from the layer's grid/terrain
+        // ... draw or log p ...
+    }
+}
+```
+
+`ActivePath` (`NavPath?`) is the committed path (the same immutable `NavPath` the planner returned, so it
+is a read-only view with no path back into follower state), and `ActiveWaypointIndex` (`int`) is the
+waypoint the follower is currently steering toward. Both are allocation-free getters over existing state,
+so `Tick` is untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is
+following no corridor: before the first `Tick`, after `Reset`, once `Arrived`, and while `Unreachable`.
+While a replan is due but still gated by `ReplanCooldownSeconds`, it stays the previously committed path,
+so you always read the route the agent is steering on, never a mid-cooldown re-plan. When non-null it always
+carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints`.
+
 ### Budget knobs
 
 `PathQueryBudget` (handed to `IPathPlanner.FindPath`, and to every `PathFollower` replan via

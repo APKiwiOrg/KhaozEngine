@@ -5,6 +5,26 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## TODO-VERSION
+
+Navigation: `PathFollower` exposes the corridor it is actually following read-only, so a consumer can
+draw or log the committed path without re-running the planner.
+
+- **`PathFollower.ActivePath` (`NavPath?`) and `PathFollower.ActiveWaypointIndex` (`int`).** A game brain
+  (Ruinborne's NPC path debug overlay is the first) that holds the engine follower could previously only
+  read the single `PathFollowOutput.ActiveWaypoint` position, so visualizing the whole corridor meant
+  re-running `IPathPlanner.FindPath` and risking a route that diverges from the one the follower committed
+  inside its replan cooldown. `ActivePath` now returns the committed `NavPath` itself (the same immutable
+  instance the planner produced, so it is a read-only view with no path back into follower state), and
+  `ActiveWaypointIndex` returns the index of the waypoint currently being steered to, so
+  `Waypoints[ActiveWaypointIndex]` onward is the corridor still ahead. Both are allocation-free computed
+  getters over existing state, so the hot `Tick` path is untouched and there is zero cost when unused.
+  Lifecycle: `ActivePath` is null before the first `Tick` plans, after `Reset`, once `Arrived`, and while
+  `Unreachable`. While a replan is due but gated by `ReplanCooldownSeconds` it stays the previously
+  committed path, never a re-plan. When non-null it always carries at least one waypoint and
+  `ActiveWaypointIndex` is a valid index into its `Waypoints` (zero, and not meaningful, when `ActivePath`
+  is null).
+
 ## 11.4.0
 
 Map editor: three playtest fixes, leading with a regression, partial viewport invalidation now

@@ -92,9 +92,9 @@ version/release work.
 - Release ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props` → add the
   `CHANGELOG.md` entry → update the engine-version declarations the
   guard checks (`docs/ROADMAP.md` "Current released version" and
-  the `README.md` `<PackageReference>` example) → sweep `docs/TODO.md` (delete the resolved
-  entries, per the Discovered work section) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
-  release) → commit → `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
+  the `README.md` `<PackageReference>` example) → backstop-sweep `docs/TODO.md` (delete any resolved
+  entry that slipped through, per the Discovered work section) → `dotnet pack -c Release -o ./local-feed`
+  (cumulative within a release) → commit → `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
   `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
   lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags) →
   push `main` + the tag right away, don't hold or batch (CI publishes to GitHub Packages on `v*`).
@@ -222,21 +222,29 @@ Never use **Handed off** for a branch or a chat. A branch is not a party and can
 entry, and a scoping prompt pasted into another chat is not a handoff either, because that chat can
 drift and nothing records that it was ever asked.
 
-**Sweep at release.** The release ritual deletes the resolved entries. Shipped detail lives in the
-changelog, so a resolved item leaves this file rather than being ticked and kept.
+**Resolved means DELETED, on the spot. Never leave a finished item ticked.** The moment an item is
+done, delete the entry, in the same sitting and ideally the same commit that resolved it. Do not tick it
+and leave it for a later sweep to collect: a done item sitting in the backlog still reads as work, it
+pads the open pile, and the sweep that was supposed to collect it only runs at a release, which most
+sessions never reach. Shipped detail lives in the changelog and the commit, so a finished item has no
+reason to remain here. The release sweep is the BACKSTOP for whatever slipped through, not the mechanism.
 
-**"Forgotten" is not a disposition.** Six weeks on, an item that was silently dropped and an item that
-was deliberately declined look identical, and that ambiguity is the whole reason this file exists.
-Decline it in writing or leave it open.
+**"Forgotten" is not a disposition, so a decline is deleted WITH its reason written down.** A declined
+item leaves this file exactly like a finished one, but never silently: the commit that removes it must
+say what was declined and why (`docs(todo): drop <item>, wontfix: <reason>`), so
+`git log -- docs/TODO.md` still answers "why is this not here any more" six weeks on. Written-then-deleted
+is the disposition. Deleting an entry with a bare "cleanup" message is the one thing that IS forgetting
+it, and if you are not willing to write the reason, the item is not declined and stays open.
 
 ### Entry format
 
 Deliberately minimal. These files already differ across repos and that is fine.
 
 - A plain `-` bullet or `- [ ]` is an open item. Both are fine, match the file you are already in.
-- `- [x]` is resolved and the next release sweep deletes it. If it was declined rather than done, keep a
-  `**Wontfix:**` reason on it so the sweep does not read as "we shipped it".
-- `- [~]` is in progress. The sweep leaves it alone.
+- `- [~]` is in progress.
+- That is the whole format. **There is no `- [x]` and no done marker of any kind**, because a resolved
+  item is deleted and so is a declined one. If you are reaching for a tick, you are doing it wrong:
+  delete the entry and put the detail in the commit.
 - Bold title, then enough context and file links to action it without the chat that found it.
 
 **TODO vs ROADMAP.** [`docs/TODO.md`](docs/TODO.md) is the chip pile. [`docs/ROADMAP.md`](docs/ROADMAP.md)

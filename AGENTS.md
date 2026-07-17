@@ -125,10 +125,13 @@ version/release work.
   - **Design rationale -> `docs/design/`, and NOTHING else lives there.** A design doc holds the why: the
     alternatives weighed, the decisions taken, and the reasoning that a corrected-in-flight implementation
     proved out. It is not a reference surface, so shipped API and usage move to `CHANGELOG.md` /
-    `docs/USING-KHAOZENGINE.md` / the package README as they land, and it is not a private backlog either: a
-    follow-up recorded only in a design doc is invisible to `docs/TODO.md` and gets lost (the dungeon generator
-    hid three that way). Add a row + a status line to `docs/INDEX.md`'s design table when you add one, or it is
-    orphaned on arrival (three nav docs were). A complete design doc is KEPT as history rather than deleted,
+    `docs/USING-KHAOZENGINE.md` / the package README as they land. An IN-FLIGHT program's doc may carry its own
+    round-scoped deferrals as working notes (the map editor does, and `docs/ROADMAP.md` delegates to it), but
+    that licence ends with the program: anything still open when the program completes MUST reach `docs/TODO.md`,
+    because a design doc nobody is actively working is not a ledger anyone reads. The dungeon generator stranded
+    three follow-ups exactly there, invisible for 20+ releases after it finished. Add a row + a status line to
+    `docs/INDEX.md`'s design table when you add a doc, or it is orphaned on arrival (three nav docs were, for
+    releases). A complete design doc is KEPT as history rather than deleted,
     because the reasoning behind a shipped decision is the expensive thing to reconstruct. `docs/` root is for
     the living docs only.
   Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`

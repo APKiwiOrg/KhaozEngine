@@ -138,14 +138,41 @@ next-major move and is out of scope here.
 
 ### Test and golden impact
 
-Eight goldens rebake, all 3D, all with visible background pixels (verified by simulating each test's
-camera math against its geometry):
+**Zero goldens rebake. The golden suite is blind to the starfield.** This was measured, and it
+corrects an earlier draft of this document that predicted eight rebakes across three backends.
 
-`scene3d`, `scene3d_hdr_off`, `scene3d_fill`, `telegraph_ground`, `telegraph_modern`,
-`scene3d_textured`, `scene3d_splat`, `scene3d_splat_distance`.
+The prediction assumed the goldens were byte-exact pixel compares. They are not. `GoldenCompare`
+downsamples each render to a **32x18 grid of averaged RGB per cell** and compares with a per-channel
+tolerance of `0.06` (`GoldenGrid.DefaultTolerance`). The stars are sparse (roughly 0.8% of a 220x124
+cell grid) and each golden cell averages a block of hundreds of pixels, so a star's entire
+contribution to a cell average is about `0.012`, five times smaller than the tolerance. A committed
+golden shows this directly: a star-bearing cell reads `0.0316 0.0434 0.0708` against the
+`0.0196 0.0314 0.0588` clear colour.
 
-24 files (8 names x metal/direct3d11/vulkan). The other 24 golden names already run starfield-off or
-are 2D and are expected to stay byte-exact. That expectation is the regression net for this release.
+Measured proof, not inference: with the `_starfield.Draw` call commented out entirely, so the engine
+renders NO starfield at all, `telegraph_ground` and `scene3d` still pass. The full 65-test golden
+suite also passes unchanged with the real pass wired in.
+
+Two consequences, and the second matters more than the first:
+
+1. The migration is far cheaper than planned. No rebake, no cross-backend bake dispatch, no
+   contact-sheet review of rebaked scenes.
+2. **The golden suite provides zero regression protection for the starfield, and never did.** That is
+   a pre-existing gap this work exposed rather than caused. It is defensible by design (the grid is
+   built to catch gross shader / UBO / blend / winding regressions while tolerating driver noise), but
+   it means the automated net cannot see this feature at all. `StarfieldGpuTests` (added by this
+   release) is therefore the ONLY automated guard on the starfield, which makes it load-bearing rather
+   than a nice-to-have. It samples raw pixels, not the golden grid, and its sabotage check confirms it
+   fails when the pass is removed.
+
+Two non-golden tests have their premise inverted and are rewritten against the new pass:
+
+- `HdrPipelineGpuTests.Hdr_alpha_marker_survives_tonemap` asserts the blit injects stars only where
+  `a < 0.5`. That mechanism is being deleted. It becomes `Hdr_starfield_survives_tonemap`, asserting
+  the background pass's stars survive the tonemap (a real new risk: they now go through it).
+- `DistortionGpuTests.Distortion_alpha_marker_survives` asserts stars are unaffected by a ripple
+  **because** they are painted after distortion. Post-migration they are in `ColorTex` before the
+  post chain, so it becomes `Distortion_warps_the_starfield`, the opposite assertion.
 
 Two non-golden tests have their premise inverted and are rewritten against the new pass, not merely
 rebaked:
@@ -164,14 +191,14 @@ GPU test: stars land only on background pixels and never on geometry.
 
 ### Verification
 
-1. `dotnet test` green, with the 24 starfield-off goldens byte-exact.
-2. Metal goldens rebaked locally, then eyeballed via a PIL contact sheet (a self-baked golden always
-   passes its own compare, so the bake is reviewed visually, never trusted green).
-3. D3D11 + Vulkan baked via `cross-platform-gpu.yml` `workflow_dispatch` with `bake=true`, artifacts
-   downloaded and committed.
-4. **Windowed A/B in Hardpoint and SpaceGame before merge.** This release changes the look of the
-   starfield in both games. Tests cannot answer whether bloomed, quantized, distortable stars read
-   better than the current ones. This is a hard gate, not a nicety.
+1. `dotnet test` green, with all 65 goldens passing unchanged (no rebake, see above).
+2. `StarfieldGpuTests` passing, and confirmed to FAIL when the pass is sabotaged. Since the goldens
+   cannot see the starfield, this test carries the entire automated net and its bite is verified
+   rather than assumed.
+3. **Windowed A/B in Hardpoint and SpaceGame before merge. This is the hard gate.** The goldens being
+   blind to the starfield raises rather than lowers the stakes here: no automated check can tell us
+   whether bloomed, quantized, tonemapped, distortable stars read better than the pasted-on ones. A
+   fully green suite is not evidence the look is right. Only a human looking at the two games is.
 
 ## Release 2: opt-in void fallback for ground decals
 

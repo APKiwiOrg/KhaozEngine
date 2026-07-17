@@ -116,6 +116,19 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   finalized inside the render pass like `DrawnInstances`/`PassTimingsMs`, so read it after the scene rendered.
   Fullscreen post blits are not itemized (their encode time is the Pass-timings `PostMs`). Aggregate it with a
   2D batch's `FrameStats` via `+` for a whole-frame total.
+- Background: `PixelPostProcessSettings.Background` (a `BackgroundMode`: `Solid`, `Starfield` (default), `Sky`) is
+  the one knob for what fills a pixel no scene geometry drew. It is a DERIVED view over the existing
+  `Starfield`/`Sky.Enabled` booleans, not new state: the getter encodes the long-standing `Sky` over `Starfield`
+  over `Solid` precedence in one place, the setter clears the modes it did not select. Nothing is `[Obsolete]` and
+  the booleans keep working unchanged. Since 11.9.0 the starfield is a real background pass, `StarfieldRenderer`
+  (an internal `SkyRenderer` sibling): a fullscreen triangle at the far plane with a read-only `Equal` depth test
+  paints ONLY where the stored depth still equals the cleared far plane, i.e. background where no geometry drew,
+  writing `alpha = 1` before the ground decals. Procedural stars therefore flow through the whole post chain like
+  any other scene content: they quantize/dither with the retro passes, bloom, warp under screen-space distortion,
+  and tonemap in HDR, instead of being pasted on after the chain finished. `TransparentBackground` interaction: a
+  non-`Solid` background always paints alpha 1, so a transparent composite needs
+  `Background = BackgroundMode.Solid` set explicitly. `Render3DPreview` already forces `Post.Starfield = false`,
+  which resolves to `Solid` through the derived getter.
 - Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only
@@ -238,7 +251,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   warped image). Three `DistortionShape`s (`Ripple` shockwave rings, `Heat` upward-scrolling wobble, `Lens` radial
   bulge, sign chooses magnify/pinch). `DistortionSprite.Strength` is the magnitude dial, converted to a UV
   excursion and clamped to a small maximum so stacked sprites cannot smear the whole screen. The apply pass
-  preserves each pixel's own alpha, so the starfield/transparency background marker never warps. `Scene3D.DistortionQuality`
+  preserves each pixel's own alpha, so the transparency background marker never warps. The starfield stopped being
+  that marker: since 11.9.0 stars are ordinary scene content drawn before the post chain (see Background above),
+  so a ripple over the void now warps the stars behind it too. `Scene3D.DistortionQuality`
   (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second heat noise octave and renders the offset
   field at quarter res instead of half. Zero cost when unused: a frame that queues no distortion sprite allocates
   nothing, runs no extra pass, and is byte-identical to before distortion existed. The turn-key `ParticleLook.Distortion`

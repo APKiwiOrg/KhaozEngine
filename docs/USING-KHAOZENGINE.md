@@ -1658,7 +1658,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
 - Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
   background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the
-  per-pixel alpha (geometry opaque, cleared background clear). Leave `Starfield` off when transparent.
+  per-pixel alpha (geometry opaque, cleared background clear). Since 11.9.0, set `Post.Background =
+  BackgroundMode.Solid` when transparent: a non-`Solid` background (the default `Starfield`, or `Sky`) now paints
+  alpha 1 and hides whatever the composite sits over, where the old default used to draw invisible stars at
+  alpha 0. See Background below for the full behaviour change.
 - Internal render-target sizing: `Post.RenderScale`. The default `FixedInternal` renders into a
   fixed `Post.RenderWidth` x `RenderHeight` target (1600x900) and blit-scales it to the window - the retro path
   (small fixed target + `Pixelated`), but on a window bigger than that target the smooth blit UPscales and
@@ -1793,6 +1796,26 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     before either test, since a pose can carry vertices outside the mesh's static rest-pose box (a swung limb, a
     jump). Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
     counterpart of `DrawnInstances`/`CulledInstances` above.
+- **Background** (`Post.Background`, a `BackgroundMode`: `Solid`, `Starfield`, `Sky`, **default `Starfield`**): one
+  knob for what fills a pixel no scene geometry drew. It is a DERIVED view over the existing `Post.Starfield` and
+  `Post.Sky.Enabled` booleans, not new state, so both keep working exactly as before and nothing is `[Obsolete]`.
+  The getter encodes the engine's long-standing precedence, `Sky` over `Starfield` over `Solid`, in one place:
+  reading `Background` after setting both booleans tells you which one actually wins. The setter clears the modes
+  it did not select, so `Post.Background = BackgroundMode.Sky` also turns `Starfield` off.
+  - **Since 11.9.0 the starfield is a real background pass**, not a final-blit trick. `StarfieldRenderer` (a
+    `SkyRenderer` sibling) draws a fullscreen triangle at the far plane with a read-only `Equal` depth test, so it
+    paints ONLY background pixels (where the stored depth still equals the cleared far plane) and writes
+    `alpha = 1`, before the ground decals. Procedural stars are therefore ordinary scene content now: they
+    quantize/dither with the retro passes, bloom, warp under screen-space distortion, and tonemap in HDR, instead
+    of being pasted on after the whole post chain finished.
+  - **`TransparentBackground` interaction.** A non-`Solid` background always paints alpha 1 (opaque), so it hides
+    whatever a transparent composite is layered over. A transparent composite (`Post.TransparentBackground = true`)
+    needs `Post.Background = BackgroundMode.Solid` set explicitly, see "Transparent compositing" above.
+  - **Behaviour change from 11.9.0.** `TransparentBackground = true` with the default `Starfield = true` on a raw
+    `Scene3D` used to composite invisibly (stars drew at `alpha = 0`). It now produces an opaque background,
+    because the background pass writes `alpha = 1`. `Render3DPreview` and `UseSmoothPreset` already force
+    `Starfield` off and are unaffected. A consumer building `Scene3D` directly with `TransparentBackground = true`
+    is not, and needs the explicit `Background = BackgroundMode.Solid` above.
 - **Sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural sky drawn as a background pass behind
   all geometry - a vertical horizon-to-zenith gradient plus an optional sun disc + halo. Default `Sky.Enabled = false`,
   so the background stays the clear colour + starfield and existing scenes are byte-stable; set `Post.Sky.Enabled = true`

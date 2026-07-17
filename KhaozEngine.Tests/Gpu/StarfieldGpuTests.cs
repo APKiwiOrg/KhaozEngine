@@ -22,6 +22,10 @@ namespace KhaozEngine.Tests.Gpu
         // stars can land there.
         const int Bx0 = W * 40 / 100, Bx1 = W * 60 / 100, By0 = H * 40 / 100, By1 = H * 60 / 100;
 
+        // Tight block at dead centre, shared by the coverage guard and the box-identity diff below: guaranteed
+        // covered by the box given the camera framing in RenderBoxScene, so both checks scan the same footprint.
+        const int Cx0 = W / 2 - 3, Cx1 = W / 2 + 3, Cy0 = H / 2 - 3, Cy1 = H / 2 + 3;
+
         static float Luma(byte r, byte g, byte b) => 0.299f * r + 0.587f * g + 0.114f * b;
 
         // Render a small centred box (background all around) under the given background mode. Built directly
@@ -71,6 +75,23 @@ namespace KhaozEngine.Tests.Gpu
             return count;
         }
 
+        // Average luma across the centre block (the same footprint the box-identity diff below scans). Used as a
+        // coverage guard: proves the box's own geometry is actually painting that block before the byte-identity
+        // diff is trusted to mean anything (see the comment at the call site).
+        static float AverageLumaCentreBlock(byte[] rgba)
+        {
+            float sum = 0f;
+            int count = 0;
+            for (int y = Cy0; y <= Cy1; y++)
+                for (int x = Cx0; x <= Cx1; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    sum += Luma(rgba[i], rgba[i + 1], rgba[i + 2]);
+                    count++;
+                }
+            return sum / count;
+        }
+
         [GpuFact]
         public void Starfield_paints_background_only_never_the_box_solid_runs_no_pass()
         {
@@ -96,14 +117,25 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(starsOutside > 5,
                 $"starfield should paint bright pixels outside the box, well above the clear colour (count={starsOutside}, clear={clearLuma})");
 
+            // 2a) Coverage guard, gating check 2 below: prove the centre block is actually covered by the box's
+            // geometry in the Solid render before trusting the byte-identity diff to mean anything. Without this,
+            // a regression that made the box render nothing (bad camera framing, LoadMesh returning empty
+            // geometry, a Draw call silently no-opping) would leave the centre block as flat background in BOTH
+            // the Starfield and Solid renders. boxDiff would still land on exactly 0 and check 2 would pass
+            // vacuously, having silently stopped testing "never on the box" at all. The threshold is relative to
+            // the same measured clearLuma reference used throughout this test, not a hardcoded raw luma value.
+            float avgBoxLumaSolid = AverageLumaCentreBlock(solid);
+            Assert.True(avgBoxLumaSolid > clearLuma + 20f,
+                $"the centre block should be covered by the box's own geometry, well above the clear colour (avg={avgBoxLumaSolid}, clear={clearLuma}). If this fails, the box is not covering the sampled region any more, which means the byte-identity check below would be comparing two patches of background and would pass without proving anything about stars never landing on the box.");
+
             // 2) Those bright pixels never land ON the box: the depth-gated star pass only paints pixels where no
             // geometry was drawn, so switching Background must never perturb the box's OWN rendered pixels
-            // (whatever its lit colour happens to be). Diff a tight block at dead centre, guaranteed covered by the
-            // box given the camera framing above, between the Starfield and Solid renders: byte-identical proves no
+            // (whatever its lit colour happens to be). Diff the same tight centre block, guaranteed covered by the
+            // box per the coverage guard above, between the Starfield and Solid renders: byte-identical proves no
             // star landed there, whereas a naive brightness check can't tell a lit box from a star painted over it.
             long boxDiff = 0;
-            for (int y = H / 2 - 3; y <= H / 2 + 3; y++)
-                for (int x = W / 2 - 3; x <= W / 2 + 3; x++)
+            for (int y = Cy0; y <= Cy1; y++)
+                for (int x = Cx0; x <= Cx1; x++)
                 {
                     int i = (y * W + x) * 4;
                     boxDiff += Math.Abs(star[i] - solid[i]) + Math.Abs(star[i + 1] - solid[i + 1]) + Math.Abs(star[i + 2] - solid[i + 2]);

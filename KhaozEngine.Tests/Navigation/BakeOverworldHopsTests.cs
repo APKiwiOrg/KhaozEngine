@@ -110,4 +110,48 @@ public class BakeOverworldHopsTests
             minX: 0f, minZ: 0f, maxX: 10f, maxZ: 10f,
             cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: StepHeight));
     }
+
+    [Fact]
+    public void MaxHopCellsBelowTwo_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => NavGridBaker.BakeOverworldHops(
+            FlatProvider(),
+            minX: 0f, minZ: 0f, maxX: 10f, maxZ: 10f,
+            cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight,
+            maxHopCells: 1));
+    }
+
+    // A single-row world with a two-cell-thick unsampled rim: ground at height 0 for x < 1, unsampled
+    // (blocked) for x in [1, 3), a raised landing at 1.0 for x >= 3. Cell centers land at 0.5, 1.5, 2.5,
+    // 3.5, so the bake yields standable, blocked, blocked, standable with a rise inside the jump band.
+    static DelegateSurfaceProvider ThickRimProvider()
+        => new((float x, float z, out float h, out float hr) =>
+        {
+            hr = float.PositiveInfinity;
+            if (x >= 1f && x < 3f) { h = 0f; return false; }
+            h = x < 1f ? 0f : MesaTop;
+            return true;
+        });
+
+    [Fact]
+    public void MaxHopCells_PassesThroughToGeneration()
+    {
+        // Default maxHopCells 2 cannot cross the two-cell rim (the ray ends before a landing), while 3
+        // reaches it. A hardcoded 2 inside BakeOverworldHops would leave both spaces link-free.
+        NavSpace defaultReach = NavGridBaker.BakeOverworldHops(
+            ThickRimProvider(),
+            minX: 0f, minZ: 0f, maxX: 4f, maxZ: 1f,
+            cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight);
+
+        NavSpace extendedReach = NavGridBaker.BakeOverworldHops(
+            ThickRimProvider(),
+            minX: 0f, minZ: 0f, maxX: 4f, maxZ: 1f,
+            cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight,
+            maxHopCells: 3);
+
+        Assert.Empty(defaultReach.Links);
+        Assert.NotEmpty(extendedReach.Links);
+        Assert.Contains(new NavLink(0, 0, 0, 0, 3, 0) { Kind = NavLinkKind.Hop }, extendedReach.Links);
+        Assert.Contains(new NavLink(0, 3, 0, 0, 0, 0) { Kind = NavLinkKind.Hop }, extendedReach.Links);
+    }
 }

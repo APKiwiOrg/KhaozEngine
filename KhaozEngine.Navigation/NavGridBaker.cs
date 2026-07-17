@@ -130,11 +130,13 @@ public static class NavGridBaker
         Func<float, float, bool>? extraBlocked = null,
         float yMin = float.NegativeInfinity, float yMax = float.PositiveInfinity)
     {
-        NavGrid grid = BakeOverworldSteps(
-            surface, minX, minZ, maxX, maxZ, cellSize, stepHeight, agentHeight, extraBlocked, yMin, yMax);
-
         if (jumpHeight <= stepHeight)
             throw new ArgumentOutOfRangeException(nameof(jumpHeight), jumpHeight, "Jump height must be greater than step height.");
+        if (maxHopCells < 2)
+            throw new ArgumentOutOfRangeException(nameof(maxHopCells), maxHopCells, "Max hop cells must be at least 2.");
+
+        NavGrid grid = BakeOverworldSteps(
+            surface, minX, minZ, maxX, maxZ, cellSize, stepHeight, agentHeight, extraBlocked, yMin, yMax);
 
         IReadOnlyList<NavLink> hops = NavHopLinks.Generate(grid, stepHeight, jumpHeight, maxHopCells, layer: 0);
 

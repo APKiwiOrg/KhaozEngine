@@ -33,7 +33,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Starfield = false;
                     scene.Post.Outline = false;
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
-                    scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;   // default 3 cascades, focus radius 16
+                    scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;   // default 3 cascades, near distance 16
                     scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
                     // Look at z=14 so the focus (~near origin) puts the far box (z=44, ~30 units out, WAY past the
                     // 16-unit near map) into an outer cascade, and both boxes must drop a shadow.
@@ -181,10 +181,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // Moving-box regression guard: a fixed world ground point under a fixed caster must stay shadowed whether the
-        // camera looks from one side or the other. The cascades re-centre on the camera focus each frame, so a fixed
-        // point can change WHICH cascade shadows it as the camera moves - but it must never fall OUT of shadow (the old
-        // single map's coverage box slid off the point). No committed golden: a same-session invariant, so it runs on
-        // every backend.
+        // camera looks from one side or the other. Each cascade re-fits to its slice of the camera frustum every
+        // frame, so a fixed point can change WHICH cascade shadows it as the camera moves - but it must never fall OUT
+        // of shadow (the old single map's coverage box slid off the point). No committed golden: a same-session
+        // invariant, so it runs on every backend.
         [GpuFact]
         public void Cascade_FixedWorldPoint_StaysShadowed_AsCameraMoves()
         {

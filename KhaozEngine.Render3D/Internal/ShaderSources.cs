@@ -26,7 +26,7 @@ namespace KhaozEngine.Render3D.Internal
         //      parameter), so behaviour is bit-identical on every backend.
         public const string LightingCommonGlsl = @"
 // Cascaded 3x3 PCF shadow lookup. Returns 1 = fully lit, 0 = fully in shadow, from the key light's CASCADED depth
-// atlas: N concentric ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks the tightest
+// atlas: N frustum-slice ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks the tightest
 // cascade whose light-clip projection of worldPos lands inside its map, manual-depth-compares a 3x3 PCF kernel in
 // that cascade's atlas column, and either cross-fades toward the NEXT cascade's result near an INNER cascade's
 // border (so the texel-density step at a hand-off is invisible) or fades the term to fully lit toward the
@@ -119,6 +119,7 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
             lit = mix(lit2, lit, smoothstep(0.0, blend, edge));   // at the border (edge 0) fully the next cascade
         }
     }
+    // strength 1 removes the key light fully in shadow, below 1 leaves a partial key term, and the fade/blend paths above ease the result toward fully lit.
     return mix(1.0, lit, strength);
 }
 

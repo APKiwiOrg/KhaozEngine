@@ -36,7 +36,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Post.Quality.Shadows.ShadowNearDistance = 10f;
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
             // Frame a small region near the origin. The skinned caster at x=-10 sits outside this camera frustum
-            // but inside the ShadowNearDistance=10 ortho volume centred near the camera's ground focus.
+            // but inside the near cascade's ortho volume, fitted to the ShadowNearDistance=10 slice of that frustum.
             scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(5f, 4f, 5f));
             var casterPos = Matrix4x4.CreateTranslation(-10f, 0.9f, 0f);
 

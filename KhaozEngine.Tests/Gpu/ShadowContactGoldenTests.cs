@@ -28,8 +28,9 @@ namespace KhaozEngine.Tests.Gpu
         static readonly Vector3 CamTarget = new(0.55f, 0f, 0f);
         static readonly Vector3 CamSize = new(5.0f, 2.5f, 4.0f);
 
-        const float Radius = 16f;         // the DEFAULT focus radius: the ortho depth range = 4*16 = 64 world units,
-                                          // where the old 0.004 constant bias put ~0.25 world units of peter-panning.
+        const float Radius = 16f;         // the DEFAULT ShadowNearDistance: the near cascade's ortho depth range is
+                                          // 4x its FITTED slice-sphere radius (frustum-slice fit, not a fixed 4x this
+                                          // knob), where the old 0.004 constant bias put ~0.25 world units of peter-panning.
         const float ThinX = 0.12f;        // a thin slab (12 cm along the light travel): a character foot/leg, where the
                                           // second-depth trick's front-to-back margin is too small to hide a big bias.
         const float FootX = ThinX * 0.5f; // the +X (shadow-side) base edge = the true feet-contact x.

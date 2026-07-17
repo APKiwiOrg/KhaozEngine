@@ -9,8 +9,8 @@ namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
     /// The key-light directional CASCADED shadow map: a depth-only pass that renders the instanced casters into an
-    /// orthographic light-space depth ATLAS - one R32F colour target holding <see cref="CascadeCount"/> concentric
-    /// cascades side by side (tightest near cascade in column 0, growing outward). Storing all cascades in one texture
+    /// orthographic light-space depth ATLAS - one R32F colour target holding <see cref="CascadeCount"/> frustum-slice
+    /// cascades side by side, one column per cascade (tightest near slice in column 0, growing outward). Storing all cascades in one texture
     /// keeps the receivers sampling a plain texture2D and manual-PCF depth-comparing (no depth-sampling /
     /// comparison-sampler seam) - the single-texture binding model already proven on Metal/D3D11/Vulkan. The receivers
     /// (<see cref="ModelRenderer"/>'s model + splat fragments) bind this atlas + a clamp sampler and shadow the key

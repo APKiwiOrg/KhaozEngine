@@ -1090,7 +1090,7 @@ public sealed class EditorToolController
             {
                 if (!TryListIndex(sel.Id, _document.Doc.Terrain.Biomes.Count, out int bi)) return null;
                 MapBiomeBand source = _document.Doc.Terrain.Biomes[bi];
-                // No name, no position (a band is an elevation range, not a placed element): a plain verbatim
+                // No name, no position (a band is a world-Z range, not a placed element): a plain verbatim
                 // clone, no uniquify, no offset.
                 var clone = new MapBiomeBand
                 {

@@ -1052,7 +1052,7 @@ namespace KhaozEngine.Tests.MapEditor
         {
             // A terrain-scalar edit (here the water level) changes the whole world, so it reports no bounded region.
             Assert.Null(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f).DirtyRegion);
-            // A biome band's reach spans the whole doc (bounded only in its elevation-range Z slice, a possible
+            // A biome band's reach spans the whole doc (bounded only in its world-Z-range slice, a possible
             // future narrowing), so it stays whole-zone too.
             Assert.Null(new AddBiomeBandCommand(new MapBiomeBand()).DirtyRegion);
         }

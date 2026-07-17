@@ -447,7 +447,7 @@ inclusive from..to index range (not just the two endpoints: a reorder also flips
 precedence for every override sandwiched in between, so the whole range is the honest cheap cover).
 Fixes the choppy-drag feel an exclusion or scatter-override gizmo drag used to have (every frame fell to
 the throttled full-rebuild path, same as terrain scalars). Terrain scalars and biome bands are
-unaffected and stay whole-doc (a biome band is bounded only in its elevation-range Z slice, a possible
+unaffected and stay whole-doc (a biome band is bounded only in its world-Z-range slice, a possible
 future narrowing).
 
 **Deferred out of this round (scatter-overrides)**: Exclusions were deliberately not added to the

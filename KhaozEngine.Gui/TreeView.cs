@@ -135,6 +135,15 @@ namespace KhaozEngine.Gui
         /// </summary>
         public Action<TreeNode, int, int>? OnReordered;
 
+        /// <summary>Consulted before a held press ARMS a drag on its press-origin row (only when <see cref="OnReordered"/>
+        /// is wired): the row's node is passed in, and returning false blocks the drag outright, so that row never
+        /// grabs, never shows the insertion line, and never fires <see cref="OnReordered"/> (a held-then-released
+        /// press on it still falls through to the plain tap path). Null (the default) means every row is reorderable,
+        /// preserving the pre-predicate behavior. A host wires this when only some rows carry list-order semantics
+        /// (e.g. an outline where a few kinds reorder and the rest do not), instead of arming a drag that the drop
+        /// handler would only reject after the fact.</summary>
+        public Func<TreeNode, bool>? CanReorder;
+
         /// <summary>Create a tree view over the given screen rect. Add nodes via <see cref="Roots"/>.</summary>
         public TreeView(Rect bounds) { Bounds = bounds; }
 
@@ -247,7 +256,8 @@ namespace KhaozEngine.Gui
         /// drag path is fully inert and every held press is a plain tap candidate. When a handler is wired, a held
         /// press whose origin is in the tree becomes a row drag once the pointer clears <see cref="DragThreshold"/>
         /// (grabbing the press-origin row, unless that press landed in a parent's caret zone, which stays reserved
-        /// for the expand toggle). The wheel scrolls whenever the pointer is over the tree, including while a drag
+        /// for the expand toggle, or <see cref="CanReorder"/> rejects that row, which blocks the arm outright). The
+        /// wheel scrolls whenever the pointer is over the tree, including while a drag
         /// is armed: the drop geometry below (<see cref="RowAt"/>/<see cref="RowBounds"/>) reads the live
         /// <see cref="ScrollOffset"/>, so a reorder drag can scroll a long list mid-gesture instead of freezing.
         /// A valid same-parent release fires <see cref="OnReordered"/>, Escape or an off-tree release cancels.
@@ -350,6 +360,7 @@ namespace KhaozEngine.Gui
                 (TreeNode node, int depth) = rows[srcRow];
                 float caretStart = Bounds.X + depth * Indent;
                 if (node.Children.Count > 0 && origin.X >= caretStart && origin.X < caretStart + Indent) return;   // caret gesture, not a drag
+                if (CanReorder is not null && !CanReorder(node)) return;   // this row is not reorderable: never arm
                 if (!TryFindSiblings(node, out List<TreeNode>? siblings, out _dragFromIndex)) return;
                 _dragSiblings = siblings;
                 _dragNode = node;

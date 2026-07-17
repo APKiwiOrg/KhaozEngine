@@ -1296,6 +1296,48 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(scene.Document.WorldRebuildPending);
         }
 
+        // A biome band's order is meaningless (the blend is order-independent), so a band row must not even arm a
+        // drag: the outline's CanReorder gate blocks it up front (no phantom insertion line), while a feature row
+        // still arms. Drives a real drag on a band row and asserts the document and undo stack are untouched, then
+        // pins the predicate directly on a band node (blocked) versus a feature node (allowed).
+        [Fact]
+        public void OutlineDrag_OnBiomeBand_DoesNotArm_FeatureStillDoes()
+        {
+            var band0 = new MapBiomeBand { Start = null, End = 20f, Biome = KhaozEngine.Terrain.BiomeId.Meadow };
+            var band1 = new MapBiomeBand { Start = 20f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Forest };
+            var lake = new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f };
+            var scene = new DocScene(() =>
+            {
+                MapDocument doc = ValidDoc();
+                doc.Terrain.Biomes.Add(band0);
+                doc.Terrain.Biomes.Add(band1);
+                doc.Terrain.Features.Add(lake);
+                return doc;
+            });
+            scene.Init(null!, null!, null!, new MapEditorOptions());
+            new SceneManager().Push(scene);
+
+            TreeView outline = scene.Outline;
+            outline.Bounds = new Rect(0f, 0f, 240f, 600f);   // tall enough for every outline row
+            TreeNode b0 = CategoryChild(outline, "Biomes", 0);
+            TreeNode b1 = CategoryChild(outline, "Biomes", 1);
+
+            var input = new InputManager();
+            DragTreeRow(outline, input, RowOf(outline, b0), RowOf(outline, b1), afterTarget: true);
+
+            // Nothing armed, so nothing committed: the band order and the undo stack are untouched.
+            Assert.Same(band0, scene.Document.Doc.Terrain.Biomes[0]);
+            Assert.Same(band1, scene.Document.Doc.Terrain.Biomes[1]);
+            Assert.False(scene.Document.History.CanUndo);
+            Assert.False(scene.Document.WorldRebuildPending);
+
+            // The predicate itself: a band node is not reorderable, a feature node is.
+            Assert.NotNull(outline.CanReorder);
+            Assert.False(outline.CanReorder!(b0));
+            TreeNode f0 = CategoryChild(outline, "Features", 0);
+            Assert.True(outline.CanReorder!(f0));
+        }
+
         [Fact]
         public void CtrlDown_AtEnd_IsNoOp()
         {
@@ -1751,12 +1793,14 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal("[0] Meadow 0..40", band0.Label.Resolve());
             Assert.Equal("[1] Mountains 40..*", band1.Label.Resolve());   // open end edge renders as "*"
 
-            // Selecting the band node builds its editable inspector (a "Range" group header, then the Biome
-            // choice + scalar rows, Task 5 grouping).
+            // Selecting the band node builds its editable inspector (a "Range" group header, a read-only "Affects"
+            // explainer, then the Biome choice + scalar rows, Task 5 grouping).
             scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
             Assert.IsType<HeaderRow>(scene.Inspector.Rows[0]);
-            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[1]);
-            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[1]).Selected);
+            Assert.IsType<ReadOnlyRow>(scene.Inspector.Rows[1]);
+            Assert.Equal("Affects", scene.Inspector.Rows[1].Label.Resolve());
+            Assert.IsType<ChoiceRow>(scene.Inspector.Rows[2]);
+            Assert.Equal("Meadow", ((ChoiceRow)scene.Inspector.Rows[2]).Selected);
             Assert.Equal(2f, FloatRowByLabel(scene.Inspector, "BaseHeight").Field.Value);
             Assert.Equal(3f, FloatRowByLabel(scene.Inspector, "HillAmplitude").Field.Value);
             Assert.Equal(0f, FloatRowByLabel(scene.Inspector, "Start").Field.Value);

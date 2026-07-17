@@ -4212,7 +4212,11 @@ Releasing over a valid slot in the dragged row's own sibling list fires `OnReord
 newIndex)` and draws an insertion-line indicator at the target boundary while dragging. Escape aborts the
 gesture with no drop, and a cross-parent or off-tree release is rejected. The widget only reports the
 move: it never mutates `Roots` or `TreeNode.Children` itself, so the host applies the reorder and rebuilds
-the tree. `TreeView` node labels and `PropertyRow` labels are `LocalizedText` like every other Gui sink.
+the tree. Set `CanReorder` (a `Func<TreeNode, bool>?`) to gate which rows may drag: it is consulted on the
+press-origin row before a drag arms, and a row it rejects never grabs, shows no insertion line, and fires no
+`OnReordered` (a held-then-released press on it still selects). Null (the default) leaves every row
+reorderable. A host uses this when only some node kinds carry list-order semantics, instead of arming a drag
+the drop handler would only reject after the fact. `TreeView` node labels and `PropertyRow` labels are `LocalizedText` like every other Gui sink.
 `NumberField` is label-free (it renders only the numeric value, so it has no text sink to localize).
 
 **Free-fly editor camera.** `FlyCamera3D` implements `IIsoCamera3D` (a world `Position` plus `Yaw`/`Pitch`, no
@@ -4574,7 +4578,7 @@ time: a base constant plus the document's largest scatter-layer jitter, since sc
 the jittered candidate position while chunk assignment uses the cell centre). A ridge or rim edit has unbounded
 reach and, like a scatter layer, companion layer, or terrain-scalar edit, still takes the full
 `ViewportWorld.Rebuild` path (see the `KhaozEngine` `docs/MAP-EDITOR-DESIGN.md` deferred-work note for the
-one remaining gap: a biome band is bounded only in its elevation-range Z slice, not narrowed yet),
+one remaining gap: a biome band is bounded only in its world-Z-range slice, not narrowed yet),
 throttled to at most once per
 `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or
 draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the world every frame. Kit meshes

@@ -1573,7 +1573,7 @@ namespace KhaozEngine.Tests.MapEditor
                     Assert.Equal("1", doc.Selection.Id);
                     Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.BiomeBand, "1"), result);
                     MapBiomeBand dup = doc.Doc.Terrain.Biomes[1];
-                    // A band has no name and no position (an elevation range, not a placed element): a verbatim
+                    // A band has no name and no position (a world-Z range, not a placed element): a verbatim
                     // clone, distinct instance, no offset.
                     Assert.Equal(10f, dup.Start);
                     Assert.Equal(20f, dup.End);

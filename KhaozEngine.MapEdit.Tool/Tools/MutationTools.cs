@@ -185,20 +185,20 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
 
     // ---- terrain biome bands --------------------------------------------------------------------------------
 
-    [McpServerTool(Name = "biome_band_add"), Description("Appends a terrain biome band (an elevation-range biome slice that feeds biome selection and height shaping). The result reports the appended index.")]
+    [McpServerTool(Name = "biome_band_add"), Description("Appends a terrain biome band (a world-Z-range biome slice that feeds biome selection and height shaping). Start/End are world-space Z positions, not elevations. The result reports the appended index.")]
     public MutationResult BiomeBandAdd(
-        [Description("Lower elevation edge in meters. Null means an open (unbounded) lower edge.")] float? start = null,
-        [Description("Upper elevation edge in meters. Null means an open (unbounded) upper edge.")] float? end = null,
+        [Description("Lower world-space Z edge in meters. Null means an open (unbounded) lower edge.")] float? start = null,
+        [Description("Upper world-space Z edge in meters. Null means an open (unbounded) upper edge.")] float? end = null,
         [Description("Biome id for the band: Meadow, Forest, Marsh, Mountains, Desert, or Snow.")] string biome = "Meadow",
         [Description("Base terrain height in meters for this band.")] float baseHeight = 0f,
         [Description("Hill amplitude in meters for this band.")] float hillAmplitude = 0f)
         => ToolGuard.Guard(() => mutation.BiomeBandAdd(start, end, biome, baseHeight, hillAmplitude));
 
-    [McpServerTool(Name = "biome_band_edit"), Description("Replaces the terrain biome band at the given index with a new whole value. Every field must be supplied, unlike the scatter/companion layer edit verbs.")]
+    [McpServerTool(Name = "biome_band_edit"), Description("Replaces the terrain biome band at the given index with a new whole value. Every field must be supplied, unlike the scatter/companion layer edit verbs. Start/End are world-space Z positions, not elevations.")]
     public MutationResult BiomeBandEdit(
         [Description("Zero-based index of the biome band to replace.")] int index,
-        [Description("Lower elevation edge in meters. Null means an open (unbounded) lower edge.")] float? start,
-        [Description("Upper elevation edge in meters. Null means an open (unbounded) upper edge.")] float? end,
+        [Description("Lower world-space Z edge in meters. Null means an open (unbounded) lower edge.")] float? start,
+        [Description("Upper world-space Z edge in meters. Null means an open (unbounded) upper edge.")] float? end,
         [Description("Biome id for the band: Meadow, Forest, Marsh, Mountains, Desert, or Snow.")] string biome,
         [Description("Base terrain height in meters for this band.")] float baseHeight,
         [Description("Hill amplitude in meters for this band.")] float hillAmplitude)

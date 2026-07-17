@@ -46,7 +46,7 @@ public abstract class EditorCommand : IEditorCommand
     /// pending-rebuild-region accumulation (<see cref="EditorDocument"/>) and only meaningful while
     /// <see cref="AffectsWorld"/> is true. Every other <see cref="AffectsWorld"/> command (terrain scalars, biome
     /// bands, scatter layers, companions) keeps the null default: a terrain scalar or biome band's reach spans
-    /// the whole doc (a biome band is bounded only in its elevation-range Z slice, a possible future narrowing),
+    /// the whole doc (a biome band is bounded only in its world-Z-range slice, a possible future narrowing),
     /// and a scatter-layer or companion-layer edit changes generation rules read across every loaded chunk.
     /// </summary>
     internal virtual RectArea? DirtyRegion => null;
@@ -2316,7 +2316,7 @@ public sealed class EditTerrainCommand : EditorCommand
 
 // ---- terrain biome bands (terrain-shape affecting) -------------------------------------------------------
 
-/// <summary>Appends a terrain biome band (an elevation-range biome slice, <see cref="MapBiomeBand"/>). Bands feed
+/// <summary>Appends a terrain biome band (a world-Z-range biome slice, <see cref="MapBiomeBand"/>). Bands feed
 /// the terrain field's biome selection and base-height / hill shaping, so this affects the streamed world. Appends
 /// at the end (the <see cref="AddFeatureCommand"/> idiom), and <see cref="Revert"/> removes the same instance.</summary>
 public sealed class AddBiomeBandCommand : EditorCommand

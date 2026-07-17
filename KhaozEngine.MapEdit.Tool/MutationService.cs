@@ -416,7 +416,7 @@ public sealed class MutationService(MapEditSession session)
 
     // ---- terrain biome bands (terrain-shape affecting) -------------------------------------------------------
 
-    /// <summary>Appends a terrain biome band (an elevation-range biome slice). The result reports the appended
+    /// <summary>Appends a terrain biome band (a world-Z-range biome slice). The result reports the appended
     /// index (bands are index-addressed, the same key <see cref="BiomeBandEdit"/>/<see cref="BiomeBandRemove"/>
     /// take). Affects the streamed world (bands feed biome selection and height shaping).</summary>
     public MutationResult BiomeBandAdd(float? start = null, float? end = null, string biome = "Meadow",
@@ -1357,7 +1357,7 @@ public sealed class MutationService(MapEditSession session)
         {
             RequireIndexInRange(index, doc.Terrain.Biomes.Count, "biome band", nameof(index));
             MapBiomeBand source = doc.Terrain.Biomes[index];
-            // No name, no position (a band is an elevation range, not a placed element): a plain verbatim clone,
+            // No name, no position (a band is a world-Z range, not a placed element): a plain verbatim clone,
             // no uniquify, no offset, mirroring the GUI's own biome band duplicate.
             var clone = new MapBiomeBand
             {

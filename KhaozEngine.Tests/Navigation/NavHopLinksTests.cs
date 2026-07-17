@@ -122,4 +122,88 @@ public class NavHopLinksTests
         Assert.Equal(first.Count, second.Count);
         Assert.Equal(first, second);
     }
+
+    // Builds a single-row grid from hand-shaped samples. Null = blocked (non-standable), a value = that
+    // surface height. Bakes with a permissive step budget so passability comes only from the standable
+    // flags and Generate's own stepHeight / jumpHeight drive the band.
+    static NavGrid RowGrid(params float?[] cells)
+        => NavGrid.FromSurfaces(cells.Length, 1, 1f, 0f, 0f,
+            (x, z) => cells[x] is float h
+                ? new NavSurfaceSample(true, h, float.PositiveInfinity)
+                : new NavSurfaceSample(false, 0f, 0f),
+            stepHeight: 100f, agentHeight: 0f);
+
+    [Fact]
+    public void FirstPassableLanding_StopsRay()
+    {
+        // L at 0, k1 blocked, k2 passable out of band (5.0), k3 passable in band (1.0). The ray must
+        // land on k2 and stop, so nothing emits. A farthest-passable or any-intervening bug would
+        // walk through k2 and emit L to k3.
+        NavGrid grid = RowGrid(0f, null, 5f, 1f);
+
+        IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 3);
+
+        Assert.Empty(links);
+    }
+
+    [Fact]
+    public void ThickRim_HopsAcross()
+    {
+        // L at 0, k1 and k2 blocked, k3 passable in band. The ray continues through consecutive
+        // blocked cells and emits exactly one hop per direction across the two-cell rim.
+        NavGrid grid = RowGrid(0f, null, null, 1f);
+
+        IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 3);
+
+        Assert.Equal(2, links.Count);
+        Assert.Contains(new NavLink(0, 0, 0, 0, 3, 0) { Kind = NavLinkKind.Hop }, links);
+        Assert.Contains(new NavLink(0, 3, 0, 0, 0, 0) { Kind = NavLinkKind.Hop }, links);
+    }
+
+    [Fact]
+    public void RiseExactlyJumpHeight_EmitsHop()
+    {
+        NavGrid grid = MesaGrid(JumpHeight);
+
+        IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, StepHeight, JumpHeight);
+
+        Assert.NotEmpty(links);
+    }
+
+    [Fact]
+    public void RiseExactlyStepHeight_EmitsNoHop()
+    {
+        // A rise of exactly stepHeight bakes passable (the step rule only blocks drops strictly above
+        // the budget), so no ray ever starts and no hop emits.
+        NavGrid grid = MesaGrid(StepHeight);
+
+        IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, StepHeight, JumpHeight);
+
+        Assert.Empty(links);
+    }
+
+    [Fact]
+    public void OutOfRangeArguments_Throw()
+    {
+        NavGrid grid = MesaGrid(1.0f);
+
+        Assert.Throws<ArgumentException>(() => NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 1));
+        Assert.Throws<ArgumentException>(() => NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 2, layer: -1));
+        Assert.Throws<ArgumentException>(() => NavHopLinks.Generate(grid, stepHeight: -0.1f, jumpHeight: JumpHeight));
+    }
+
+    [Fact]
+    public void NonZeroLayer_StampsBothEndpoints()
+    {
+        NavGrid grid = MesaGrid(1.0f);
+
+        IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 2, layer: 3);
+
+        Assert.NotEmpty(links);
+        foreach (NavLink link in links)
+        {
+            Assert.Equal(3, link.FromLayer);
+            Assert.Equal(3, link.ToLayer);
+        }
+    }
 }

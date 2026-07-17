@@ -18,6 +18,10 @@
           {
             "type": "command",
             "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.md) c=$(printf '%s' \"$data\" | jq -r '.tool_input.content // .tool_input.new_string // \"\"'); printf '%s' \"$c\" | LC_ALL=C grep -qF -e '—' -e '–' && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Introduces an em-dash or en-dash. Repo bans them in shipped text. Use a period, comma, colon, or parentheses instead.\"}}' ;; esac"
+          },
+          {
+            "type": "command",
+            "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in */docs/TODO.md|docs/TODO.md|*/docs/ROADMAP.md|docs/ROADMAP.md) printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"docs/TODO.md and docs/ROADMAP.md are retired: the backlog moved to GitHub Issues on 2026-07-17 and both files were deleted. Do not re-create them. File backlog work with: gh issue create --label kind/backlog --label confidence/lead. Search prior art first with scripts/ledger.sh search <term>.\"}}' ;; esac"
           }
         ]
       },

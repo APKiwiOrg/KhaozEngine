@@ -211,6 +211,9 @@ version/release work.
   handoff-reciprocity guard any more (`scripts/check-handoffs.sh` and `HANDOFF_CHECK_OK` are both retired):
   a cross-repo handoff is an issue reference now, and GitHub backlinks it for free, so there is no
   one-sided handoff left to block.
+- **Two guards keep the backlog files retired.** A pre-commit check and a `Write`/`Edit` agent hook both
+  reject re-creating `docs/TODO.md` or `docs/ROADMAP.md` (migrated to GitHub Issues 2026-07-17, deleted),
+  pointing you at `gh issue create` instead. Override a deliberate exception with `BACKLOG_FILE_OK=1`.
 - **The ledger needs a token, and it will tell you so.** The backlog is GitHub Issues in a private repo,
   so there is no anonymous read: `scripts/ledger.sh` needs `gh auth login` or `GH_TOKEN` exported. Codex
   and CI generally need the env var. When it cannot read, it says `BACKLOG: UNKNOWN` or `STALE MIRROR` and

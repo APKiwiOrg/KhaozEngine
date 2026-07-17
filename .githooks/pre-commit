@@ -43,4 +43,17 @@ if [ -f scripts/check-doc-versions.sh ] && [ -n "$props" ]; then
   fi
 fi
 
+# 4) Retired backlog files. docs/TODO.md and docs/ROADMAP.md were migrated to GitHub Issues on
+#    2026-07-17 and deleted. Re-creating one restarts exactly the drift the migration ended, so a
+#    commit that ADDS either (diff-filter=A, repo-root docs/ only) is blocked. Override BACKLOG_FILE_OK=1.
+readded=$(git diff --cached --name-only --diff-filter=A 2>/dev/null | grep -E '^docs/(TODO|ROADMAP)\.md$' || true)
+if [ -n "$readded" ] && [ "${BACKLOG_FILE_OK:-}" != 1 ]; then
+  echo "pre-commit: this commit re-creates a retired backlog file:" >&2
+  for f in $readded; do echo "              $f" >&2; done
+  echo "            The backlog is GitHub Issues now (migrated + deleted 2026-07-17), not a file. File it with:" >&2
+  echo "              gh issue create --label kind/backlog --label confidence/lead" >&2
+  echo "            Search prior art first: scripts/ledger.sh search <term>. Deliberate exception: BACKLOG_FILE_OK=1." >&2
+  fail=1
+fi
+
 exit $fail

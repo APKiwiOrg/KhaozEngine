@@ -105,3 +105,116 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   generalized)? Does the suite catch anything the raw-pixel GPU tests do not? Is the per-backend rebake
   ritual masking real regressions as "driver noise"? Outcome should be a written verdict on what the
   goldens are for and what tier of test covers what, whether or not the mechanism changes.
+
+## From the 2026-07-17 partial whole-repo review
+
+A max-effort multi-agent review (27 subsystems planned, stopped early on cost) completed 9 subsystems:
+all six `KhaozEngine.Render3D` units and all three `KhaozEngine.MapEditor` units. Every item below was
+adversarially verified by an independent agent that tried to refute it. Three further candidates were
+refuted with evidence and are deliberately not recorded as work: `OverlayUnlitVert`'s holed vertex-input
+signature (`ShaderSources.cs:1477`, benign here, the committed direct3d11 goldens render correct colour
+and match metal to 0.0001), `ViewportWorld.Rebuild`'s stale `_built` flag (latent, no caller catches so
+the process dies on the failing frame anyway), and `SkinnedMeshBuilder.BuildTube`'s missing boneCount
+upper bound (already throws at first draw, error-message locality only).
+
+- [ ] **`LayeredAnimator` builds the additive rotation delta on the wrong side.** `ApplyAdditive`
+  extracts the delta in the PARENT frame (`sample * inverse(reference)`, `LayeredAnimator.cs:188`) but
+  applies it in the joint's LOCAL frame (`base * delta`, line 198). Local-frame application is the
+  deliberate, test-pinned convention, so line 188 is the wrong side and must be
+  `Quaternion.Inverse(reference.Rotation) * sample.Rotation`. Any joint whose additive reference (the
+  clip at t=0) is non-identity gets the authored rotation conjugated by the reference instead of the
+  authored pose, which is every glTF humanoid shoulder/spine. Confirmed by running a test through the
+  real `LayeredAnimator`/`BonePalette` path: with base == reference the result does not reproduce the
+  sample, which is the defining invariant of additive animation. The whole additive-rotation suite uses
+  an identity reference, where both extractions coincide, so it cannot catch this. Fix line 188, fix the
+  self-contradicting comment at 175-181, and add a non-identity-reference regression test.
+- [ ] **`TransitionRenderer` frozen-capture texture has 1 mip but is whole-resource-copied from a
+  mipped `ColorTex`.** `BindTargets` (`TransitionRenderer.cs:109`) always allocates `_frozen` with
+  mipLevels 1, while `BeginFrame` does `cl.CopyTexture(res.ColorTex, _frozen!)` (line 134). Veldrid's
+  whole-resource overload requires `source.MipLevels == destination.MipLevels` and throws otherwise.
+  Triggers when `Post.EffectiveSupersample > 1` (e.g. `AntiAliasing.Ssaa`) or `FixedInternal` +
+  `MipFilterFixedInternalDownscale` above the viewport, which makes `WantsMipDownsample` true and gives
+  `ColorTex` a full chain. Plain `MatchViewport` at supersample 1 does NOT trigger it (`tw == viewportW`
+  so `mipped` stays false). Veldrid 4.9.0 release does not compile the validation out, so it is a
+  deterministic exception, not silent corruption. Fix: copy only mip 0 via the existing
+  `CopyTextureSubresource` seam, which validates width/height but not mip-count equality, and the frozen
+  frame is only ever sampled 1:1.
+- [ ] **`DistortionRenderer` and `WaterRenderer` dispose live GPU buffers inline instead of retiring
+  them.** `DistortionRenderer.EnsureCapacity` (`DistortionRenderer.cs:121`) calls `_instances?.Dispose()`
+  on the grow path, and `WaterRenderer.EnsureUboCapacity` (`WaterRenderer.cs:120`) does the same to
+  `_ubo`, while a prior frame's submitted command list may still be reading them. The frame path has no
+  `WaitForIdle`, so the CPU can be N frames ahead. `ModelRenderer.cs:606` documents the rule in the
+  engine's own words and the sibling renderers (`ParticleRenderer.cs:223`, `GroundDecalRenderer.cs:177`,
+  `OverlayMeshRenderer.cs:135`, `ShadowMapRenderer.cs:289`) all keep a `_retired` list. Distortion is
+  reachable today via the public unbounded `Scene3D.DrawDistortion`/`DrawDistortions` once a frame
+  exceeds 64 sprites. Water is latent, since no current caller draws more than one plane, but the class
+  is public API and the fix is identical, so do both together.
+- [ ] **A vanished skinned caster leaves a ghost shadow baked into the reused atlas.**
+  `Scene3D.ShadowDepthPassDirty` (`Scene3D.cs:2874-2876`, called at :1975) takes `anySkinnedCaster` from
+  the CURRENT frame only. Nothing records whether the LAST rendered depth pass had skinned casters, and
+  `CaptureShadowCasters` (:2917) iterates only the rigid `_runs`, so when a character despawns or is
+  dropped by `ClassifySkinnedVisibility` (:1905) every dirty input reads false and the atlas is reused
+  un-cleared. The character's shadow stays on the ground until an unrelated event (a full-texel camera
+  pan, a sun move, a rigid caster change, a resolution change) forces a re-render. The texel-snapped
+  cascade fit widens the trigger: any sub-texel camera motion still leaves `lightMatrixChanged` false,
+  so a perfectly frozen camera is not required. `ShadowDepthDirtyTests.cs:37` currently asserts the buggy
+  frame is clean. Fix: persist last-rendered skinned presence alongside the other `_last*` fields and OR
+  it into the dirty check, with a test covering the true-to-false transition.
+- [ ] **Undoing an Add after a values edit silently leaves a stray scatter override.**
+  `AddScatterOverrideCommand.Revert` (`EditorCommands.cs:1365`) removes by reference, but
+  `EditScatterOverrideValuesCommand`'s ctor deep-clones `oldValue` (line 1505) and its `Revert` (1532)
+  restores that CLONE, evicting the original instance from the document. `MapScatterOverrideDoc`
+  (`MapDocument.cs:133`) has no `Equals` override, so the later `Remove` compares by reference, finds
+  nothing, and removes nothing. Proven by a throwaway test: after Add, values edit, and two undos the
+  override count is 2 against a baseline of 1, while `History.UndoDepth == 0` and `IsDirty == false`
+  both pass, so the editor renders "Save" with no asterisk over a corrupted document. Fix: have
+  `AddScatterOverrideCommand` capture its index at Apply and revert via `RemoveAt`, which is
+  identity-independent and also hardens the latent `AddScatterLayerCommand`/`EditScatterLayerCommand`
+  pair at 1740/1818.
+- [ ] **"[+ add companion]" crashes the editor on a document with no scatter layers.**
+  `MapEditorScene.RunOutlineAction` (`MapEditorScene.cs:1446-1447`) takes a `: ""` branch and commits a
+  companion layer with `HostLayer == ""`. The command's `AffectsWorld` is true with a null (full)
+  `DirtyRegion`, and because `OnUpdate` runs `UpdateChrome` before `CheckWorldRebuild`, the same frame's
+  rebuild reaches `ViewportWorld.BuildPropLayers`, which throws `MapDocumentException` for the undeclared
+  host, out of `OnUpdate`. The outline affordance is emitted unconditionally, so nothing stops an
+  operator reaching it on a fresh session. All three independent finder angles flagged this one. Fix:
+  gate the outline node on `ScatterLayers.Count > 0`, or treat an empty `HostLayer` as
+  unconfigured-and-skipped and leave rejection to the save-time validator.
+- [ ] **A rename gesture that returns to its starting name corrupts the history stack on redo.** The
+  inspector Name row writes through per keystroke (`PropertyGrid.cs:250-255`, no commit event) and
+  nothing seals the gesture while the row keeps focus (`SealGesture` is wired to `FloatRow.GestureEnded`
+  only, `MapEditorScene.cs:1937`). Typing "2" then backspacing chains two renames that `TryMerge`
+  collapses into one command with `_oldName == _newName`. Redo then calls the non-self-excluding
+  uniqueness guard, which matches the source object itself and throws, with no try/catch on the redo
+  path. Affects `RenameRegionCommand` (Apply `EditorCommands.cs:2135`), `RenameScatterLayerCommand`
+  (1864), and `RenameCompanionLayerCommand` (2034). Fix: give the guards the self-exclusion that
+  `GuardNoFeatureName` already has via `exceptIndex`, so a collapsed self-rename applies as a no-op.
+- [ ] **`ShadowMapResolution` and `ShadowCascadeCount` are documented knobs that can never take effect.**
+  `ShadowMode.cs:119`/:139 document these as construction-time quality settings ("a low-end profile can
+  drop to 1024 or 512", echoed at `docs/USING-KHAOZENGINE.md:1746`), but no public API offers the window:
+  `Render3DSurface`/`Render3DPreview` construct `Scene3D` in their own ctor with no settings parameter,
+  `Scene3D`'s ctor is internal, and `Post` is a get-only self-instantiated property. The only resize path
+  (`ShadowMapRenderer.EnsureLayout`) is called once from its own ctor on an internal class, so the atlas
+  is permanently 2048 x 3 (~48 MB) and a post-construction write is accepted with no error and ignored.
+  Aggravating the contract, sibling fields on the same object (`ShadowNearDistance`,
+  `ResolvedMaxDistance`) ARE re-read every frame, so two fields are inert while their neighbours are
+  live-tunable with nothing marking the difference. Fix: either forward an optional settings object
+  through the `Render3DSurface`/`Render3DPreview`/`Render3DSnapshot` ctors, or make a settings change
+  re-run `EnsureLayout` so the fields behave like their siblings.
+- [ ] **`FollowCamera3D.Eye` issues a physics sweep on every property read.** The getter
+  (`FollowCamera3D.cs:169`) runs a full `IPhysicsWorld.SweepCapsule` plus a `GroundHeight` sample, and
+  `Forward`/`View`/`ViewProjection`/`WorldToScreen`/`ScreenToRay` all funnel back through it, so one
+  `Scene3D.Render` pass re-enters it at 33 sites and issues dozens of broadphase sweeps where one would
+  do. Only bites when a consumer opts into `Occlusion` (Showcase `Room3D.cs:248` and `RoomDungeon.cs:189`
+  both do, as would any Ruinborne-style third-person game). Sibling `IsoCamera3D.Eye` is pure arithmetic,
+  so nothing at the call sites signals that reading a camera property is expensive. Fix: compute `Eye`
+  once per frame into a backing field invalidated by the setters.
+- [ ] **18 of 27 subsystems were never reviewed.** The 2026-07-17 review covered only `Render3D` and
+  `MapEditor`. Not read at all: `Netcode`/`NetWorld`/`Replication`/`Sharding`, `Ecs`/`Simulation`, `Gpu`,
+  `Windowing`, `Gui`, `Game`/`Game.Render3D`, `Physics`/`Physics.Bepu`/`Collision`/`Locomotion`/
+  `Navigation`, `Terrain`, `Updates`, `Dungeon`, `Render2D`, `Audio`, `Particles`/`Effects`/`Telegraphs`,
+  `Primitives`/`Pooling`/`Determinism`, `Platform`/`App`/`Diagnostics`/`Persistence`/`Localization`, the
+  `WorldStore`/`Commerce`/`Identity`/`Social` services, and `Showcase`. The hit rate on the two packages
+  that were reviewed (10 confirmed defects, 8 of them high severity) is the argument for finishing the
+  sweep. Note the cost shape for whoever picks this up: the per-candidate verify fan-out is what makes it
+  expensive, so cap it (high-severity only) rather than running it unbounded.

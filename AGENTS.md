@@ -92,7 +92,8 @@ version/release work.
 - Release ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props` → add the
   `CHANGELOG.md` entry → update the engine-version declarations the
   guard checks (`docs/ROADMAP.md` "Current released version" and
-  the `README.md` `<PackageReference>` example) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
+  the `README.md` `<PackageReference>` example) → sweep `docs/TODO.md` (delete the resolved
+  entries, per the Discovered work section) → `dotnet pack -c Release -o ./local-feed` (cumulative within a
   release) → commit → `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
   `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
   lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags) →
@@ -116,6 +117,8 @@ version/release work.
     `docs/DEPENDENCY-SEAMS.md`** whenever a dependency edge or a seam member changed.
   - **`CHANGELOG.md`** + the version bump as before; for a behaviour/bug change also fix any doc, README, or code
     comment that described the OLD behaviour.
+  - **Discovered follow-ups -> `docs/TODO.md`.** Anything the change knowingly leaves undone, defers, or
+    works around goes in the ledger as you find it, and resolved entries are deleted at release.
   Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`
   recursively** (root, `docs/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
   that should mention it does (and no stale doc still describes what you removed).
@@ -162,6 +165,45 @@ version/release work.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).
+
+## Discovered work (follow-ups and chips)
+
+Work you notice but do not do goes in [`docs/TODO.md`](docs/TODO.md) before you carry on. Not in your
+head, not only in a chat chip. A chip is a notification, its id does not survive a restart, and the chat
+that finds a problem is usually not the chat that fixes it. The file is the only durable record.
+
+**Raise it at discovery.** The moment you notice it (something you would spawn a chip for, a TODO you
+would otherwise leave in code, a gap a playtest exposes, a workaround you accept to keep moving), write
+the entry. Do it before you continue the current task, not at the end. The end of a task is where
+context runs out and the item evaporates.
+
+**Action it at a checkpoint, never mid-task.** Pick open items up when the current unit of work is
+finished, before the release ritual. A discovered item must NEVER redefine the scope of the work in
+flight. That is how a chat sent to fix X quietly ships Y instead. At the checkpoint anything small and
+self-contained is a subagent job, so do it then. Anything needing its own design, its own release, or
+another repo is handed off instead of started.
+
+**A handoff writes both sides.** An item parked here as "waiting on <other repo>" must have a matching
+entry in that repo pointing back, or the other side never learns it is blocking anyone. Name the target
+and the date on both ends.
+
+**Sweep at release.** The release ritual deletes resolved entries. Shipped detail lives in the
+changelog, so a resolved item leaves this file rather than being ticked and kept.
+
+**"Forgotten" is not a disposition.** Six weeks on, an item that was silently dropped and an item that
+was deliberately declined look identical, and that ambiguity is the whole reason this file exists.
+Decline it in writing or leave it open.
+
+### Entry format
+- `- [ ]` open. Bold title, then enough context and file links to action it without the chat that found it.
+- `- [x]` resolved. Deleted by the next release sweep. If it was declined rather than done, keep a
+  `**Wontfix:**` reason on it so the sweep does not read as "we shipped it".
+- An open item blocked elsewhere carries `**Handed off:** <target> (<date>)`, and the reciprocal entry
+  exists on the other side.
+
+**TODO vs ROADMAP.** [`docs/TODO.md`](docs/TODO.md) is the chip pile. [`docs/ROADMAP.md`](docs/ROADMAP.md)
+is the program list: anything that earns its own design spec and its own release. If it needs a spec, it
+is a roadmap item. Otherwise it is a TODO.
 
 ## Localization
 

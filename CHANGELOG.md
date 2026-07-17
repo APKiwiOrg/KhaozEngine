@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 11.3.0
+
+Telegraphs: opt-in world-unit edge and feather overrides for 3D ground decals. `TelegraphStyle`
+gains `EdgeWidthWorld` and `FeatherWidthWorld` (0 = the derived auto-scaling behavior, so existing
+styles render identically and the ground-decal goldens stay byte-exact). `TelegraphResolve` carries
+them through `ResolvedTelegraph` (new `EdgeWidthWorld` / `FeatherWidthWorld` readonly fields and a
+widened constructor, old constructors chain with zeros) and the 3D `GroundTelegraphs` path feeds a
+positive value straight into `GroundDecal.EdgeThickness` / `FeatherWidth` instead of the
+size-derived clamp (5% of characteristic size, 0.03..0.3) and feather fraction. This is what lets a
+consumer draw a thin crisp static range ring at a large radius, the fat-band failure that made
+Hardpoint fall back to `Scene3D.DebugCircle` wireframes for tower range rings. The 2D
+`TelegraphRenderer2D` ignores both fields. Residue marks stay on the derived path. New
+`Showcase_thin_static_ring_dumps` GPU showcase case and a "thin crisp static ring" recipe in
+`docs/USING-KHAOZENGINE.md`.
+
 ## 11.2.1
 
 Showcase: a new "Particles & VFX" room demos the modern particle stack, the Catcher mini-game gains

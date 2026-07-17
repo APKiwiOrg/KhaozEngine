@@ -166,12 +166,19 @@ internal static class FpPoke
 {
     private const string Lib = "ke_fppoke";
 
-    // FE_TONEAREST is 0 everywhere. FE_TOWARDZERO differs by arch: 0xC00 on the x86 family, 0xC00000 on
-    // ARM64 (the glibc/macOS pre-shifted FPCR encoding). NOTE: Bionic/Android arm64 uses an abstract
-    // (1<<5) encoding instead - if this test ever runs there, this constant needs an OS branch.
+    // FE_TONEAREST is 0 everywhere. FE_TOWARDZERO's encoding is the value the platform libc's fesetround
+    // expects, and it differs by C runtime, not just arch:
+    //   - Windows ucrt: 0x300 (_RC_CHOP) on every arch - ucrt abstracts the register write, so the abstract
+    //     mode constant is the same on x64 and arm64.
+    //   - glibc / musl / macOS x86 family: 0xC00 (the pre-shifted x87/SSE control-word bits).
+    //   - glibc / macOS arm64: 0xC00000 (the pre-shifted FPCR RMode encoding).
+    // NOTE: Bionic/Android arm64 uses an abstract (1<<5) encoding instead - if this test ever runs there,
+    // this needs another branch.
     public const int RoundToNearest = 0;
     public static int RoundTowardZero =>
-        RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 0xC00000 : 0xC00;
+        OperatingSystem.IsWindows() ? 0x300
+        : RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 0xC00000
+        : 0xC00;
 
     [ModuleInitializer]
     internal static void Init() =>

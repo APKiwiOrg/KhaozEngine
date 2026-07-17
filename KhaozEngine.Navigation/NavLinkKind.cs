@@ -12,7 +12,7 @@ public enum NavLinkKind
     Stair,
 
     /// <summary>A same-grid vertical hop: two standable cells whose rise exceeds the step budget but stays
-    /// within a jump budget, joined across a blocked rim. Its landing waypoint is marked NavWaypointKind.Hop
+    /// within a jump budget, joined across a blocked rim. Its landing waypoint is marked <see cref="NavWaypointKind.Hop"/>
     /// and the follower surfaces PathFollowState.Hopping.</summary>
     Hop,
 }

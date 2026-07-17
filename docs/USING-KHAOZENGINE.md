@@ -3357,13 +3357,16 @@ if (follower.ActivePath is { } corridor)
 }
 ```
 
-`ActivePath` (`NavPath?`) is the committed path (the same immutable `NavPath` the planner returned, so it
-is a read-only view with no path back into follower state), and `ActiveWaypointIndex` (`int`) is the
-waypoint the follower is currently steering toward. Both are allocation-free getters over existing state,
-so `Tick` is untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is
-following no corridor: before the first `Tick`, after `Reset`, once `Arrived`, and while `Unreachable`.
-While a replan is due but still gated by `ReplanCooldownSeconds`, it stays the previously committed path,
-so you always read the route the agent is steering on, never a mid-cooldown re-plan. When non-null it always
+`ActivePath` (`NavPath?`) is the committed path the planner returned. Its `Waypoints` is a read-only view
+that cannot be downcast to mutable storage (guaranteed by the `NavPath` constructor), so this is a genuine
+read-only view with no path back into follower state. `ActiveWaypointIndex` (`int`) is the waypoint the
+follower is currently steering toward. Both are allocation-free getters over existing state, so `Tick` is
+untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is following no
+corridor: before the first `Tick`, after `Reset`, once `Arrived`, while `Unreachable`, and for the single
+gap tick after a fully consumed `NavPathStatus.Partial` path, where the follower clears the exhausted path
+and steers straight at the raw goal (still `Following`) until the next replan picks up a fresh route. While
+a replan is due but still gated by `ReplanCooldownSeconds`, it stays the previously committed path, so you
+always read the route the agent is steering on, never a mid-cooldown re-plan. When non-null it always
 carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints`.
 
 ### Budget knobs

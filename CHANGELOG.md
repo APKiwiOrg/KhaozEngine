@@ -14,16 +14,26 @@ draw or log the committed path without re-running the planner.
   (Ruinborne's NPC path debug overlay is the first) that holds the engine follower could previously only
   read the single `PathFollowOutput.ActiveWaypoint` position, so visualizing the whole corridor meant
   re-running `IPathPlanner.FindPath` and risking a route that diverges from the one the follower committed
-  inside its replan cooldown. `ActivePath` now returns the committed `NavPath` itself (the same immutable
-  instance the planner produced, so it is a read-only view with no path back into follower state), and
-  `ActiveWaypointIndex` returns the index of the waypoint currently being steered to, so
-  `Waypoints[ActiveWaypointIndex]` onward is the corridor still ahead. Both are allocation-free computed
-  getters over existing state, so the hot `Tick` path is untouched and there is zero cost when unused.
-  Lifecycle: `ActivePath` is null before the first `Tick` plans, after `Reset`, once `Arrived`, and while
-  `Unreachable`. While a replan is due but gated by `ReplanCooldownSeconds` it stays the previously
-  committed path, never a re-plan. When non-null it always carries at least one waypoint and
-  `ActiveWaypointIndex` is a valid index into its `Waypoints` (zero, and not meaningful, when `ActivePath`
-  is null).
+  inside its replan cooldown. `ActivePath` now returns the committed `NavPath` itself, a read-only view
+  with no path back into follower state, and `ActiveWaypointIndex` returns the index of the waypoint
+  currently being steered to, so `Waypoints[ActiveWaypointIndex]` onward is the corridor still ahead. Both
+  are allocation-free computed getters over existing state, so the hot `Tick` path is untouched and there
+  is zero cost when unused.
+  Lifecycle: `ActivePath` is null before the first `Tick` plans, after `Reset`, once `Arrived`, while
+  `Unreachable`, and for the single gap tick after a fully consumed `NavPathStatus.Partial` path, where
+  the follower clears the exhausted path and steers straight at the raw goal (still `Following`) until the
+  next replan picks up a fresh route. While a replan is due but gated by `ReplanCooldownSeconds` it stays
+  the previously committed path, never a re-plan. When non-null it always carries at least one waypoint
+  and `ActiveWaypointIndex` is a valid index into its `Waypoints` (zero, and not meaningful, when
+  `ActivePath` is null).
+- **`NavPath` waypoint storage is now genuinely read-only.** The constructor previously stored the passed
+  `IReadOnlyList<NavWaypoint>` directly, so a reader could downcast `Waypoints` to the planner's concrete
+  `List` or array and mutate a live committed corridor. The constructor now guarantees the exposure: a
+  `ReadOnlyCollection<NavWaypoint>` is kept as-is, an `IList<NavWaypoint>` (including an array) is wrapped
+  in a `ReadOnlyCollection<NavWaypoint>` view without copying, and any other `IReadOnlyList<NavWaypoint>`
+  is copied to a fresh array and wrapped. The wrap happens once at path construction (one small wrapper
+  object per plan, no copy on the planner's list and array paths), so `PathFollower.Tick` stays
+  allocation-free. The public constructor signature is unchanged.
 
 ## 11.4.0
 

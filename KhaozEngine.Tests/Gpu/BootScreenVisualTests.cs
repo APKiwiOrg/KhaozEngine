@@ -52,8 +52,12 @@ public class BootScreenVisualTests
     {
         byte[] rgba = Render2DSnapshot.Capture(FbW, FbH, new Color(0.02f, 0.02f, 0.03f, 1f), ctx =>
         {
+            // Neither the texture nor the font is disposed here: the callback runs mid-command-recording, so the
+            // not-yet-submitted command list still references them (Veldrid's Vulkan backend rejects the submit
+            // and lavapipe can crash the host if they are disposed early). The snapshot's per-capture device is
+            // torn down inside Capture, reclaiming both. See Render2DSnapshot.Capture's lifetime contract.
             Texture2D white = ctx.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-            using DpiFont font = ctx.LoadDefaultDpiFont(30f, cacheSlots: 4);
+            DpiFont font = ctx.LoadDefaultDpiFont(30f, cacheSlots: 4);
             var gui = new GuiSurface(white);
             var ui = new UiViewport(FbW, FbH, LogW, LogH); // point space, DpiScale 2
 

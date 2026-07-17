@@ -113,4 +113,31 @@ public static class NavGridBaker
 
         return NavGrid.FromSurfaces(width, height, cellSize, minX, minZ, Sample, stepHeight, agentHeight, yMin, yMax);
     }
+
+    /// <summary>
+    /// Bakes a step-aware <see cref="NavGrid"/> exactly as <see cref="BakeOverworldSteps"/> does, then
+    /// generates same-grid vertical hop links over it (<see cref="NavHopLinks.Generate"/>) and returns a
+    /// single-layer <see cref="NavSpace"/> carrying both. A standable top taller than <paramref name="stepHeight"/>
+    /// (an unreachable island under the step bake alone) becomes reachable by a hop when its rise is within
+    /// <paramref name="jumpHeight"/>. Deterministic. Backward compatible: with no hoppable feature in range the
+    /// returned space is identical to <c>NavSpace.Single(BakeOverworldSteps(...))</c>.
+    /// </summary>
+    public static NavSpace BakeOverworldHops(
+        INavSurfaceProvider surface,
+        float minX, float minZ, float maxX, float maxZ,
+        float cellSize, float stepHeight, float agentHeight, float jumpHeight,
+        int maxHopCells = 2,
+        Func<float, float, bool>? extraBlocked = null,
+        float yMin = float.NegativeInfinity, float yMax = float.PositiveInfinity)
+    {
+        NavGrid grid = BakeOverworldSteps(
+            surface, minX, minZ, maxX, maxZ, cellSize, stepHeight, agentHeight, extraBlocked, yMin, yMax);
+
+        if (jumpHeight <= stepHeight)
+            throw new ArgumentOutOfRangeException(nameof(jumpHeight), jumpHeight, "Jump height must be greater than step height.");
+
+        IReadOnlyList<NavLink> hops = NavHopLinks.Generate(grid, stepHeight, jumpHeight, maxHopCells, layer: 0);
+
+        return new NavSpace(new[] { grid }, hops);
+    }
 }

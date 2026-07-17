@@ -130,6 +130,9 @@ public class NavHopLinksAcceptanceTests
 
             if (output.State == PathFollowState.Hopping)
             {
+                // Ground steering is suspended while the consumer drives the lunge: a leaked nonzero
+                // steering vector here is a production regression.
+                Assert.Equal(Vector2.Zero, output.WorldDir);
                 observedHop = true;
                 seenHopStart = output.HopStart;
                 seenLanding = output.ActiveWaypoint;
@@ -148,8 +151,8 @@ public class NavHopLinksAcceptanceTests
 
         Assert.True(observedHop, "the follower never surfaced Hopping while crossing onto the isolated top");
 
-        // The seam pins the traversal by value, not just by state name: ground steering is suspended
-        // (WorldDir zero) and both lunge ends are the planned takeoff and landing cell centers.
+        // The seam pins the traversal by value, not just by state name: both lunge ends are the planned
+        // takeoff and landing cell centers (steering suspension was asserted inside the Hopping branch).
         Assert.Equal(expectedTakeoff, seenHopStart);
         Assert.Equal(expectedLanding, seenLanding);
 

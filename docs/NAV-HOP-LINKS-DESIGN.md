@@ -146,7 +146,8 @@ provider `BakeOverworldSteps` does.
   `NavGrid.FromSurfaces` / `BakeOverworldSteps`, so it carries a height field). `layer` is the index the
   grid occupies in its owning `NavSpace` (0 for a single-layer space), stamped into every emitted link's
   `FromLayer` / `ToLayer`. Throws `ArgumentException` when `grid.HasSurfaceHeights` is false (hop generation
-  needs the height field) or the numeric arguments are out of range. Deterministic.
+  needs the height field) and `ArgumentOutOfRangeException` when a numeric argument is out of range
+  (matching `NavGridBaker`'s style). Deterministic.
 - **`NavGridBaker.BakeOverworldHops(surface, minX, minZ, maxX, maxZ, cellSize, stepHeight, agentHeight,
   jumpHeight, maxHopCells = 2, extraBlocked = null, yMin, yMax) -> NavSpace`**: the turn-key bake. Bakes
   the step grid exactly as `BakeOverworldSteps` does, runs `NavHopLinks.Generate` over it, and returns

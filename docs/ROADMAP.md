@@ -15,8 +15,11 @@ Each near-term item gets its own design spec + plan when it is scheduled.
 Extend `KhaozEngine.Navigation` beyond the step-aware single-layer overworld bake so NPCs can path
 across bridges, overhangs, and roofed interiors where two walkable surfaces coexist at one XZ.
 Auto-extract layered walkable surfaces plus inter-layer links from the physics world. `NavSpace`
-layers, links, and cross-layer planning already shipped and are proven by the dungeon adapter, so the
-remaining work is the layered-surface extraction bake and link generation at climbable transitions.
+layers, links, and cross-layer planning already shipped and are proven by the dungeon adapter, and the
+same-grid vertical hop slice shipped too (bake-generated `NavLinkKind.Hop` links via
+`BakeOverworldHops`/`NavHopLinks`, plus the follower `Hopping` seam), so the remaining work is the
+layered many-surfaces-per-column extraction bake and link generation at climbable transitions beyond
+same-grid hops.
 
 ### 2. Physics: ragdolls and vehicles (pull-gated)
 

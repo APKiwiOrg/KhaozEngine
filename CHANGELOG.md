@@ -5,6 +5,49 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## TODO-VERSION
+
+Navigation: same-grid vertical hop links, so a standable top above the step budget but within a jump
+budget (a rock, a ledge, a crate) stops baking as an unreachable island and NPCs can jump onto and off
+it. Opt-in throughout, Ruinborne's wolves are the first consumer.
+
+- **`NavHopLinks.Generate(grid, stepHeight, jumpHeight, maxHopCells = 2, layer = 0)`.** Generates
+  directed `NavLinkKind.Hop` links from a step-baked grid (one carrying a surface height field): for each
+  passable cell and each of the 8 directions it walks outward, requiring the adjacent cell blocked (a
+  rim, not open ground) and every intervening cell blocked, and links to the first passable cell reached
+  at distance 2 to `maxHopCells` when the absolute rise is above `stepHeight` and within `jumpHeight`.
+  A jump-band pair yields both directed links (jump up, drop down), every link spans a Chebyshev distance
+  of at least 2 so it is never mistaken for a grid step, and generation is deterministic (fixed scan and
+  direction order). Only the takeoff and landing cells are clearance-checked: the arc between is assumed
+  free at grid resolution (open sky over the rim), there is no hop-arc overhang check.
+- **`NavGridBaker.BakeOverworldHops(...)`.** The turn-key form: bakes the step grid exactly as
+  `BakeOverworldSteps` does, runs `NavHopLinks.Generate` over it, and returns a single-layer `NavSpace`
+  carrying both. With no hoppable feature in range the result is identical to
+  `NavSpace.Single(BakeOverworldSteps(...))`.
+- **`NavLink.Kind` (`NavLinkKind`: `Stair` default, `Hop`) and `NavWaypoint.Kind` (`NavWaypointKind`:
+  `Walk` default, `Hop`).** Backward-compatible discriminators, both `init` with the old behavior as the
+  default, so existing constructions (including `DungeonNav` stair links) are byte-identical.
+- **Planner hop cost and hop-landing marking.** `GridPathPlanner(space, hopCostCells = 4f)` gains the one
+  knob: a `Hop` link costs `hopCostCells` cells of its source layer where a `Stair` link keeps its
+  nominal one-cell cost, and a hop crossing's landing waypoint is emitted with `NavWaypointKind.Hop`.
+  Admissibility caveat: keep `hopCostCells` at or above the longest hop's octile XZ length in cells
+  (about 2.83 at `maxHopCells = 2`, covered by the default 4) so a hop is never cheaper than walking its
+  own displacement and the octile heuristic never overestimates.
+- **Follower hop seam: `PathFollowState.Hopping` and `PathFollowOutput.HopStart`.** When the active
+  waypoint is a `Hop` landing, ground steering is suspended (`WorldDir` zero) and the tick reports
+  `Hopping` with both lunge endpoints, `HopStart` (takeoff XZ) to `ActiveWaypoint` (landing XZ). The
+  consumer drives its own jump motion and resolves each end's Y from the layer's grid via
+  `NavGrid.SurfaceHeightAt`, the follower stores no Y. The follower owns no hop timer: an agent never
+  moved by its consumer keeps receiving `Hopping` every tick until the landing comes within
+  `AcceptRadius`, then following resumes normally.
+- **Opt-in and backward compatible.** `BakeOverworldSteps`, `NavGrid`, `NavSpace.Single`, and every
+  existing planner/follower path behave identically when no hop links are present. Hop links enter only
+  via `BakeOverworldHops` or an explicit `NavHopLinks.Generate` call.
+- **Exception alignment.** `NavHopLinks.Generate` throws `ArgumentOutOfRangeException` for its numeric
+  and relational range checks (negative `stepHeight`, `jumpHeight` not above `stepHeight`,
+  `maxHopCells` below 2, negative `layer`), matching `NavGridBaker`'s argument style, and keeps plain
+  `ArgumentException` for the missing-height-field state check.
+
 ## 11.6.0
 
 Navigation: `PathFollower` exposes the corridor it is actually following read-only, so a consumer can

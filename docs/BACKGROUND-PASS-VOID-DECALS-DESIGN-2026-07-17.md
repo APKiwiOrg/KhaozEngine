@@ -34,8 +34,8 @@ either erased (`a < 0.5`, the blit overwrites it with stars) or punches a star-s
 composites correctly.
 
 Void decals are the first feature to hit this, but not the only code path exposed to it.
-`ParticleRenderer` uses a `LessEqual` depth test, so its fragments already pass at background pixels;
-by inspection a translucent particle over the void hits the same trap today. No consumer has noticed
+`ParticleRenderer` uses a `LessEqual` depth test, so its fragments already pass at background pixels.
+By inspection a translucent particle over the void hits the same trap today. No consumer has noticed
 because nothing currently draws over the void. This is verified as part of release 1's test work, not
 asserted here.
 
@@ -79,7 +79,7 @@ living in the scene. They are all consequences of the fix, not incidental damage
 | Stars flow through the distortion pass | A ripple over the void now warps the stars behind it | Fix. Heat-haze should distort what is behind it. |
 | Stars tonemap in HDR | Slightly dimmer than today's post-tonemap injection | Accepted. The new bloom compensates. Verified in the A/B, not assumed. |
 | Stars render at internal resolution | Cell grid is the same in NDC, so the pattern is unchanged, but per-star pixel size and crispness shift | Accepted. |
-| Stars now make background pixels opaque | `TransparentBackground` + stars previously composited through, drawing stars at `outA = 0` (invisible) | Accepted. That combination was already nonsense; `Render3DPreview` and `UseSmoothPreset` both already force starfield off for exactly this reason. Documented: a transparent composite needs `Background = Solid`. |
+| Stars now make background pixels opaque | `TransparentBackground` + stars previously composited through, drawing stars at `outA = 0` (invisible) | Accepted. That combination was already nonsense, and `Render3DPreview` plus `UseSmoothPreset` both already force starfield off for exactly this reason. Documented: a transparent composite needs `Background = Solid`. |
 
 ### The API: one concern, one knob
 

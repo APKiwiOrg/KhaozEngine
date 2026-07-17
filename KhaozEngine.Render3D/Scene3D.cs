@@ -2156,7 +2156,7 @@ namespace KhaozEngine.Render3D
             // the Equal read-only depth test ONLY where the stored depth still EQUALS the cleared far plane
             // (background where no mesh drew), so it fills the gradient + sun there and geometry pixels (depth < 1)
             // reject it. Both passes write only the colour attachment (never the MRT normal/linear-depth the outline
-            // pass reads) with alpha 1 (so the blit's starfield marker skips background pixels). Fully skipped when
+            // pass reads) with alpha 1, marking those pixels as opaque painted background. Fully skipped when
             // Solid, so a Solid frame renders byte-identical to before this pass existed.
             switch (Post.Background)
             {

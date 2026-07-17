@@ -33,8 +33,8 @@ namespace KhaozEngine.Render3D.Rendering
         // rides in the SAME frame UBO after the light arrays (a SECOND UBO in the set mis-binds on Metal, see the
         // splat-params note below), so both the model and splat passes read the cascade atlas from their one bound UBO.
         // ShadowParams = (cascadeCount, strength[0=inactive], constBias, slopeBias). ShadowParams2 = (texelStep =
-        // 1/perCascadeResolution, maxDistance, borderFrac, reserved), ShadowNormalOffsets = per-cascade normal-offset
-        // world size (texel-world-size_i x ShadowNormalOffset, CPU-baked so it is extent-aware per cascade).
+        // 1/perCascadeResolution, maxDistance, borderFrac, cascadeBlendFrac), ShadowNormalOffsets = per-cascade
+        // normal-offset world size (texel-world-size_i x ShadowNormalOffset, CPU-baked so it is extent-aware per cascade).
         internal const uint ShadowTailBytes = (uint)MaxCascades * 64 + 48;     // mat4[4] + 3*vec4 = 304
         internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
         internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 992
@@ -69,8 +69,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// receiver breaks the loop past it). <see cref="Params"/> is (cascadeCount, strength, constantBias,
         /// slopeBias). Strength 0 means the atlas is inactive this frame, so the shader leaves the key light unshadowed
         /// (byte-stable with ShadowMode.Off). <see cref="Params2"/> is (texelStep = 1/perCascadeResolution,
-        /// maxDistance, borderFrac, reserved). <see cref="NormalOffsets"/> holds the per-cascade normal-offset world
-        /// size (x = cascade 0 .. w = cascade 3). 304 bytes = mat4[4] + 3*vec4.</summary>
+        /// maxDistance, borderFrac, cascadeBlendFrac - the inner-cascade cross-fade band width, in cascade-local
+        /// UV, that hides the texel-density step at a cascade hand-off). <see cref="NormalOffsets"/> holds the
+        /// per-cascade normal-offset world size (x = cascade 0 .. w = cascade 3). 304 bytes = mat4[4] + 3*vec4.</summary>
         internal struct ShadowUbo
         {
             public Matrix4x4 Cascade0;        // 0
@@ -78,7 +79,7 @@ namespace KhaozEngine.Render3D.Rendering
             public Matrix4x4 Cascade2;        // 128
             public Matrix4x4 Cascade3;        // 192
             public Vector4 Params;            // 256: x = cascadeCount, y = strength, z = const bias, w = slope bias
-            public Vector4 Params2;           // 272: x = texelStep (1/perCascadeRes), y = maxDistance, z = borderFrac, w = reserved
+            public Vector4 Params2;           // 272: x = texelStep (1/perCascadeRes), y = maxDistance, z = borderFrac, w = cascadeBlendFrac
             public Vector4 NormalOffsets;     // 288: per-cascade normal-offset world size (x=c0..w=c3)
         }
 
@@ -443,15 +444,17 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the model UBO and each splat material
         /// UBO. <paramref name="receiverMats"/> are already GPU-clip-corrected by the caller (up to
         /// <see cref="MaxCascades"/> entries, the first <paramref name="cascadeCount"/> are read).
-        /// <paramref name="normalOffsets"/> is the per-cascade normal-offset world size (index 0..cascadeCount-1).</summary>
+        /// <paramref name="cascadeBlend"/> is the inner-cascade cross-fade band width (fraction of cascade-local UV
+        /// from each edge) that blends toward the next cascade's result near a hand-off. <paramref name="normalOffsets"/>
+        /// is the per-cascade normal-offset world size (index 0..cascadeCount-1).</summary>
         public void SetShadowUniforms(ReadOnlySpan<Matrix4x4> receiverMats, int cascadeCount, float texelStep,
             float constantBias, float slopeBias, float strength, float maxDistance, float borderFrac,
-            ReadOnlySpan<float> normalOffsets)
+            float cascadeBlend, ReadOnlySpan<float> normalOffsets)
         {
             var s = new ShadowUbo
             {
                 Params = new Vector4(cascadeCount, strength, constantBias, slopeBias),
-                Params2 = new Vector4(texelStep, maxDistance, borderFrac, 0f),
+                Params2 = new Vector4(texelStep, maxDistance, borderFrac, cascadeBlend),
             };
             // Fill up to MaxCascades matrices + normal offsets, leaving unread slots (past cascadeCount) at identity/zero.
             Matrix4x4 m0 = Matrix4x4.Identity, m1 = Matrix4x4.Identity, m2 = Matrix4x4.Identity, m3 = Matrix4x4.Identity;

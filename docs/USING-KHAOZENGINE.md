@@ -1714,30 +1714,40 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Off` the queue is ignored, so submitting blobs unconditionally is safe.
   - `ShadowMode.ShadowMap`: the semi-realistic key-light directional CASCADED shadow map with PCF (the "A"-tier
     target). A depth-only pass renders the instanced casters into an orthographic light-space depth ATLAS -
-    `ShadowCascadeCount` concentric cascades (default 3) side by side in one R32F texture, fitted from the tight near
-    cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance` and texel-snapped per cascade to kill shimmer under camera
-    pan. The model AND terrain fragments pick the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF +
-    slope-scaled bias to shadow the KEY light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade,
-    not blackness), fading the shadow to fully lit toward the outermost cascade's border so the coverage limit is
-    invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does not cast**
-    (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). No per-frame API to opt in:
-    every drawn mesh casts automatically; the tier is on when `Shadows.Mode == ShadowMap` and the device reports
-    `GpuCapabilities.SupportsShadowMaps` (every current backend does). On a device that cannot render+sample the depth
-    target, `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
+    `ShadowCascadeCount` cascades (default 3) side by side in one R32F texture, each fitted to the bounding sphere of
+    its own slice of the camera's ACTUAL view frustum (frustum-slice CSM: a near caster off to the side of the screen
+    still lands in a near cascade, and the fit no longer depends on where the camera looks, so there is no
+    gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer under camera pan. The slices run from
+    the tight near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The model AND terrain fragments pick
+    the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF + slope-scaled bias to shadow the KEY
+    light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade, not blackness), cross-fading
+    toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade hand-off is invisible instead
+    of a visible square seam, and fading the shadow to fully lit toward the outermost cascade's border so the
+    coverage limit is invisible (no hard box). Casters shadow the ground and each other. **Terrain receives but does
+    not cast** (model-only casting - terrain self-shadowing is negligible on the flat MMO ground). Caster visibility
+    for the shadow pass unions ALL cascade frustums (a caster camera-culled from the main pass but still inside any
+    cascade still casts its shadow). No per-frame API to opt in: every drawn mesh casts automatically. The tier is on
+    when `Shadows.Mode == ShadowMap` and the device reports `GpuCapabilities.SupportsShadowMaps` (every current
+    backend does). A degenerate camera (e.g. zero-length forward) makes `ComputeShadowCascades()` return `0` and
+    disables shadows for that frame rather than throwing. On a device that cannot render+sample the depth target,
+    `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
     `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
     - **Cascade knobs** (on `ShadowSettings`): `ShadowCascadeCount` (default `3`, clamped `1..4` by `ResolvedCascadeCount`)
-      concentric cascades. Cascade 0 stays `ShadowFocusRadius` tight for crisp near shadows (so `ShadowCascadeCount == 1`
-      is the pre-cascade single map plus the edge fade); the rest grow to `ShadowMaxDistance` (default `130` world units,
-      the far reach, clamped `>= ShadowFocusRadius` by `ResolvedMaxDistance`) via a log/linear-blended split, so distant
-      shadows exist without softening the near ones. `ShadowMapResolution` is the **per-cascade** resolution, so the atlas
-      costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) - drop the count or the
-      resolution for a lower-end profile.
+      cascades, each fitted to its own camera-frustum slice. Cascade 0 stays `ShadowNearDistance` tight for crisp near
+      shadows (so `ShadowCascadeCount == 1` is the pre-cascade single map plus the edge fade). The rest grow to
+      `ShadowMaxDistance` (default `130` world units, the far reach, clamped `>= ShadowNearDistance` by
+      `ResolvedMaxDistance`) via a log/linear-blended split, so distant shadows exist without softening the near
+      ones. `ShadowCascadeBlend` (default `0.15`, a UV-fraction border width, clamped `0..0.49`) cross-fades a
+      fragment near its cascade's border toward the next cascade's result, so the texel-density step at a hand-off is
+      invisible instead of a hard seam. `0` restores the hard cut. `ShadowMapResolution` is the **per-cascade**
+      resolution, so the atlas costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) -
+      drop the count or the resolution for a lower-end profile.
     - Other knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`, per cascade; a **construction-time**
       knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
-      material set - drop to 1024/512 on low-end); `ShadowFocusRadius` (default `16`, cascade-0 coverage half-extent -
-      smaller packs texels onto the near action); `ShadowGroundHeight` (world Y the focus is fitted onto, default `0`);
-      `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+      material set - drop to 1024/512 on low-end). `ShadowNearDistance` (default `16`, the near cascade's view-depth
+      reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
+      cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
@@ -1745,23 +1755,24 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       each cascade offsets by its own texel width - far cascades more, near ones less, so far cascades do not acne and
       near ones do not detach), grazing-angle-weighted so it is largest where
       acne is worst and zero facing the light. That lets the two DEPTH biases stay tiny, so the shadow keeps contact.
-      The depth biases act in light-clip NDC z over the light's full depth range (`4 * ShadowFocusRadius` world units),
-      so they were world-coupled to the radius - `ShadowConstantBias` dropped from `0.004` to `0.0004` (the old value
-      was ~0.25 world units of depth bias at the default radius, which peter-panned thin casters' contact shadows).
+      The depth biases act in light-clip NDC z over the light's full depth range (`4 *` each cascade's fitted
+      slice-sphere radius, in world units), so they were world-coupled to the radius - `ShadowConstantBias` dropped
+      from `0.004` to `0.0004` (the old value was ~0.25 world units of depth bias at the near cascade's radius, which
+      peter-panned thin casters' contact shadows).
       If you still see acne, raise `ShadowNormalOffset` first (say 3-4 texels), then the depth biases. If shadows float
       off their casters, lower the depth biases (the normal offset does not cause peter-panning). Set
       `ShadowNormalOffset = 0` to fall back to depth-bias-only.
     - **Depth-pass dirty-skip** (automatic, presentation-neutral): the cascade atlas persists across frames, so the
       depth pass re-renders only when a shadow-relevant input changed since the last rendered pass - ANY of the fitted
-      cascade matrices (which fold in the light direction, focus, and camera, so a moving sun or a camera pan past a
-      texel re-renders), the rigid caster set + world transforms, the map resolution, or any animated skinned caster
-      present (a bone pose can change every frame, so any skinned caster forces a re-render). An unchanged static scene
-      reuses the prior atlas and skips every caster draw, so a mostly-static
-      view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw calls to
-      `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when the tier is
-      not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is still applied
-      on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the map with the
-      matrix it was baked against.
+      cascade matrices (which fold in the light direction, the camera-frustum slice, and the light distance, so a
+      moving sun or a camera pan/turn past a texel re-renders), the rigid caster set + world transforms, the map
+      resolution, or any animated skinned caster present (a bone pose can change every frame, so any skinned caster
+      forces a re-render). An unchanged static scene reuses the prior atlas and skips every caster draw, so a
+      mostly-static view stops repainting the shadow map each frame. A skipped pass contributes zero shadow draw
+      calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` (last rendered frame, always `false` when
+      the tier is not `ShadowMap`) for a HUD/diagnostics signal. The receiver tail (light matrix + bias/strength) is
+      still applied on a skipped frame, so bias/strength tweaks take effect immediately and the receivers sample the
+      map with the matrix it was baked against.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

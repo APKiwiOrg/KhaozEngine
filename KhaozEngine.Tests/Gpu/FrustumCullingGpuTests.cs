@@ -85,7 +85,7 @@ namespace KhaozEngine.Tests.Gpu
             MeshHandle caster = scene.LoadMesh(MeshPrimitives.Box(1.4f));
             scene.FrustumCulling = true;
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-            scene.Post.Quality.Shadows.ShadowFocusRadius = 10f;
+            scene.Post.Quality.Shadows.ShadowNearDistance = 10f;
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
             // Frame a small region near the origin; the caster at x=-10 sits outside this camera frustum.
             scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(5f, 4f, 5f));

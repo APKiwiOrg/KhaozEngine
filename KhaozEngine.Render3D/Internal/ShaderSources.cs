@@ -26,79 +26,101 @@ namespace KhaozEngine.Render3D.Internal
         //      parameter), so behaviour is bit-identical on every backend.
         public const string LightingCommonGlsl = @"
 // Cascaded 3x3 PCF shadow lookup. Returns 1 = fully lit, 0 = fully in shadow, from the key light's CASCADED depth
-// atlas: N concentric ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks the tightest
+// atlas: N frustum-slice ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks the tightest
 // cascade whose light-clip projection of worldPos lands inside its map, manual-depth-compares a 3x3 PCF kernel in
-// that cascade's atlas column, and fades the term to fully lit toward the outermost cascade's UV border AND beyond
-// the view-distance limit, so the coverage edge is invisible (no hard box). worldPos is pushed off the surface
-// along Ngeo by a PER-CASCADE normal offset (grows with the cascade's texel world size) before projecting - the
-// standard normal-offset bias, scaled per cascade so far cascades do not acne and near ones do not detach, plus a
-// constant + slope-scaled depth bias. This lives in the shared block so ModelFrag and SplatFrag shadow identically.
-// It reads the frame UBO shadow tail directly (like computeLighting): ShadowMat[4] = per-cascade world->light-clip,
-// ShadowParams = (cascadeCount, strength, constBias, slopeBias), ShadowParams2 = (texelStep, maxDistance,
-// borderFrac, -), ShadowNormalOffsets = per-cascade normal-offset world size. Only the atlas texture + sampler are
-// parameters, because their set/binding differ per fragment and GLSL cannot reference a
-// fragment's own bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and
-// combined at the point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
-float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
-    float strength = ShadowParams.y;
-    if (strength <= 0.0) return 1.0;                       // shadow atlas inactive this frame => fully lit
-    int count = int(ShadowParams.x + 0.5);
-    float texelStep = ShadowParams2.x;                     // 1/perCascadeResolution (a PCF step in cascade-local UV)
-    float atlasScaleX = 1.0 / float(count);                // one cascade column's width in atlas U
-    float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));      // grazing factor: largest where acne is worst
-    float slope = clamp(1.0 - ndl, 0.0, 1.0);
-    float bias = ShadowParams.z + ShadowParams.w * slope;  // constant + slope-scaled depth bias
+// that cascade's atlas column, and either cross-fades toward the NEXT cascade's result near an INNER cascade's
+// border (so the texel-density step at a hand-off is invisible) or fades the term to fully lit toward the
+// OUTERMOST cascade's UV border AND beyond the view-distance limit (so the coverage edge is invisible, no hard
+// box). worldPos is pushed off the surface along Ngeo by a PER-CASCADE normal offset (grows with the cascade's
+// texel world size) before projecting - the standard normal-offset bias, scaled per cascade so far cascades do not
+// acne and near ones do not detach, plus a constant + slope-scaled depth bias. This lives in the shared block so
+// ModelFrag and SplatFrag shadow identically, and is factored into two helpers: projectCascade (light-clip
+// projection + map-bounds test) and pcfCascade (the 3x3 atlas-column average), so sampleKeyShadow can call either
+// twice, once for the selected cascade and once more for its neighbour inside the blend band. It reads the frame
+// UBO shadow tail directly (like computeLighting): ShadowMat[4] = per-cascade world->light-clip, ShadowParams =
+// (cascadeCount, strength, constBias, slopeBias), ShadowParams2 = (texelStep, maxDistance, borderFrac,
+// cascadeBlendFrac), ShadowNormalOffsets = per-cascade normal-offset world size. Only the atlas texture + sampler
+// are parameters, because their set/binding differ per fragment and GLSL cannot reference a fragment's own
+// bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the
+// point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
+bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margin, out vec2 uv, out float z) {
+    vec3 samplePos = worldPos + Ngeo * (ShadowNormalOffsets[i] * slopeSin);
+    vec4 lc = ShadowMat[i] * vec4(samplePos, 1.0);
+    uv = vec2(0.0); z = 0.0;
+    if (lc.w <= 0.0) return false;
+    vec3 proj = lc.xyz / lc.w;                          // light-clip - xy in [-1,1], z in [0,1]
+    uv = proj.xy * 0.5 + 0.5;                           // to [0,1] cascade-local texture space
+    uv.y = 1.0 - uv.y;                                  // render-target SAMPLING flips V vs the clip-Y the depth
+                                                        // pass rasterized with (the same Y-origin trap as before)
+    z = proj.z;
+    return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z > 1.0);
+}
 
-    // Select the tightest cascade containing the fragment (concentric, growing radius => lowest index wins). The
-    // margin keeps the 3x3 PCF kernel inside this cascade's atlas column, so a near-border fragment falls OUTWARD to
-    // the next (larger) cascade instead of a kernel that straddles the column seam.
-    int sel = -1; vec2 selUv = vec2(0.0); float selDepth = 0.0;
-    float margin = texelStep * 2.0;
-    for (int i = 0; i < 4; i++) {
-        if (i >= count) break;
-        // Per-cascade normal offset: push the sample point off the surface along Ngeo, scaled by the grazing angle.
-        vec3 samplePos = worldPos + Ngeo * (ShadowNormalOffsets[i] * slopeSin);
-        vec4 lc = ShadowMat[i] * vec4(samplePos, 1.0);
-        if (lc.w <= 0.0) continue;
-        vec3 proj = lc.xyz / lc.w;                          // light-clip; xy in [-1,1], z in [0,1]
-        vec2 uv = proj.xy * 0.5 + 0.5;                      // to [0,1] cascade-local texture space
-        uv.y = 1.0 - uv.y;                                  // render-target SAMPLING flips V vs the clip-Y the depth
-                                                            // pass rasterized with (the same Y-origin trap as before)
-        if (uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || proj.z > 1.0) continue;
-        sel = i; selUv = uv; selDepth = proj.z - bias; break;
-    }
-    if (sel < 0) return 1.0;                                // beyond every cascade => lit (coverage edge)
-
-    // 3x3 PCF within the selected cascade's atlas column. Offsets are in cascade-local UV, and each tap is CLAMPED inside
-    // the column then mapped to atlas U (u = luv.x/count + sel/count) so it never bleeds into a neighbour cascade.
-    float atlasBiasX = float(sel) * atlasScaleX;
+// One cascade's 3x3 PCF average inside its atlas column. uv is cascade-local, depth is already biased. Each
+// tap is CLAMPED inside the column then mapped to atlas U so it never bleeds into a neighbour cascade.
+float pcfCascade(texture2D shadowAtlas, sampler shadowSamp, int cascade, int count, vec2 uv, float depth, float texelStep) {
+    float atlasScaleX = 1.0 / float(count);
+    float atlasBiasX = float(cascade) * atlasScaleX;
     float halfTexel = texelStep * 0.5;
     float lit = 0.0;
     for (int oy = -1; oy <= 1; oy++) {
         for (int ox = -1; ox <= 1; ox++) {
-            vec2 luv = selUv + vec2(float(ox), float(oy)) * texelStep;
+            vec2 luv = uv + vec2(float(ox), float(oy)) * texelStep;
             luv = clamp(luv, vec2(halfTexel), vec2(1.0 - halfTexel));
             vec2 auv = vec2(luv.x * atlasScaleX + atlasBiasX, luv.y);
             float d = texture(sampler2D(shadowAtlas, shadowSamp), auv).r;
-            lit += (selDepth <= d) ? 1.0 : 0.0;             // receiver in front of the stored caster depth => lit
+            lit += (depth <= d) ? 1.0 : 0.0;            // receiver in front of the stored caster depth => lit
         }
     }
-    lit /= 9.0;
+    return lit / 9.0;
+}
 
-    // Edge fade so the coverage limit is invisible: on the OUTERMOST cascade only (it has nothing beyond it), fade the
-    // shadow to fully lit toward its UV border. That border sits at ShadowMaxDistance from the focus, so this is the
-    // beyond-the-coverage-distance fade - precise to the cascade's own extent, no camera-distance guesswork. Inner
-    // cascades hand off to the next (larger) cascade at their border, so they need no fade. A single cascade fades at
-    // its own border (the pre-cascade single map, softened from a hard box edge). ShadowParams2.y (maxDistance) rides
-    // in the UBO as the documented coverage distance for downstream effects. The fade itself is UV-border-driven.
-    float fade = 1.0;
-    if (sel == count - 1) {
-        float border = ShadowParams2.z;
-        float edge = min(min(selUv.x, 1.0 - selUv.x), min(selUv.y, 1.0 - selUv.y));
-        fade = smoothstep(0.0, border, edge);
+float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
+    float strength = ShadowParams.y;
+    if (strength <= 0.0) return 1.0;                    // shadow atlas inactive this frame => fully lit
+    int count = int(ShadowParams.x + 0.5);
+    float texelStep = ShadowParams2.x;                  // 1/perCascadeResolution (a PCF step in cascade-local UV)
+    float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));   // grazing factor: largest where acne is worst
+    float slope = clamp(1.0 - ndl, 0.0, 1.0);
+    float bias = ShadowParams.z + ShadowParams.w * slope;
+    float margin = texelStep * 2.0;
+
+    // Select the tightest cascade containing the fragment (slice cascades ordered near to far => lowest
+    // index wins). A fragment past its slice border falls outward to the next cascade's coverage.
+    int sel = -1; vec2 selUv = vec2(0.0); float selZ = 0.0;
+    for (int i = 0; i < 4; i++) {
+        if (i >= count) break;
+        vec2 uv; float z;
+        if (!projectCascade(i, worldPos, Ngeo, slopeSin, margin, uv, z)) continue;
+        sel = i; selUv = uv; selZ = z; break;
     }
-    // strength 1 removes the key light fully in shadow, <1 leaves a partial key term. Fade eases both to fully lit.
-    return mix(1.0, mix(1.0, lit, strength), fade);
+    if (sel < 0) return 1.0;                            // beyond every cascade => lit (coverage edge)
+
+    float lit = pcfCascade(shadowAtlas, shadowSamp, sel, count, selUv, selZ - bias, texelStep);
+    float edge = min(min(selUv.x, 1.0 - selUv.x), min(selUv.y, 1.0 - selUv.y));
+
+    if (sel == count - 1) {
+        // Outermost cascade: nothing beyond it, so fade to fully lit toward its UV border (the coverage-limit
+        // fade, sitting at ShadowMaxDistance - ShadowParams2.y documents that distance for downstream effects).
+        float border = ShadowParams2.z;
+        float fade = smoothstep(0.0, border, edge);
+        return mix(1.0, mix(1.0, lit, strength), fade);
+    }
+
+    // Inner cascade near its border: cross-fade toward the NEXT cascade's result so the texel-density step at
+    // a hand-off is invisible (the hard cut showed as a square seam sliding with the camera). If the next
+    // cascade does not cover this fragment (a slice-sphere overlap gap at an extreme angle), keep this
+    // cascade's result: a hard fallback beats sampling garbage.
+    float blend = ShadowParams2.w;
+    if (blend > 0.0 && edge < blend) {
+        vec2 uv2; float z2;
+        if (projectCascade(sel + 1, worldPos, Ngeo, slopeSin, margin, uv2, z2)) {
+            float lit2 = pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
+            lit = mix(lit2, lit, smoothstep(0.0, blend, edge));   // at the border (edge 0) fully the next cascade
+        }
+    }
+    // strength 1 removes the key light fully in shadow, below 1 leaves a partial key term, and the fade/blend paths above ease the result toward fully lit.
+    return mix(1.0, lit, strength);
 }
 
 void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
@@ -155,7 +177,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // cascaded shadow tail (offset 688): per-cascade world->light-clip (unused by the vertex stage)
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
 };
 layout(location=0) in vec3 Position;
@@ -208,7 +230,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // per-cascade world->light-clip for the cascaded shadow atlas (offset 688)
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
@@ -298,7 +320,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
@@ -389,7 +411,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     mat4 bones[128];       // offset 976: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
 };
@@ -472,7 +494,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     mat4 bones[128];
 };
@@ -542,7 +564,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];         // per-cascade world->light-clip for the cascaded shadow atlas
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
-    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     mat4 bones[128];
 };
@@ -623,7 +645,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // cascaded shadow tail (offset 688): per-cascade world->light-clip
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 TintTiling[5];   // per-material params appended (offset 992): xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
@@ -690,7 +712,7 @@ layout(set=0, binding=0) uniform U {
     vec4 PointColorIntensity[16];
     mat4 ShadowMat[4];     // per-cascade world->light-clip for the cascaded shadow atlas (offset 688)
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
-    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=reserved
+    vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 992)
     vec4 Roughness;       // x..w = roughness for layers 0..3

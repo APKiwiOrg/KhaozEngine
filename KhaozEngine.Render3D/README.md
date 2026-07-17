@@ -60,23 +60,32 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   repaints a character's legs). Radius follows the caster footprint. Strength fades with height above ground
   (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
   - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast; terrain receives only) into
-  a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` concentric cascades (default 3) side by side in one
-  R32F texture, from the tight near cascade (`ShadowFocusRadius`) out to `ShadowMaxDistance`, texel-snapped per cascade
-  to kill shimmer. The shared lighting block picks the tightest cascade per fragment and PCF-samples it (3x3 +
-  slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH models and terrain, fading the term to lit at
-  the outermost cascade's border so the coverage limit is invisible (no hard box, no sliding coverage). Every drawn mesh
-  casts automatically (no per-frame opt-in). Knobs on `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via
-  `ResolvedCascadeCount`) and `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it
-  `>= ShadowFocusRadius`); `ShadowMapResolution` (default `2048`, now the PER-CASCADE resolution - a construction-time
-  knob alongside `ShadowCascadeCount`, so the atlas is `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes);
-  `ShadowFocusRadius`/`ShadowGroundHeight`, `ShadowStrength`, and the acne biases `ShadowNormalOffset` (default `2.5`
-  texels, the extent-aware normal-offset bias, scaled PER CASCADE so far cascades do not acne and near ones do not
-  detach) plus the tiny residual depth biases `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a
-  device without depth-sample support (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas
-  persists across frames, so the pass **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY
-  cascade's fitted matrix, the rigid caster set/transforms, the resolution, or any animated skinned caster present) and
-  otherwise reuses the prior atlas, so a mostly-static scene stops repainting it every frame. A skipped pass adds zero
-  shadow draw calls to `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
+  a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` cascades (default 3) side by side in one R32F
+  texture, each fitted to the bounding sphere of its own slice of the camera's ACTUAL view frustum (frustum-slice CSM,
+  not a fixed-radius circle around a focus point, so shadow sharpness no longer depends on where the camera looks and
+  there is no gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer. The slices run from the tight
+  near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The shared lighting block picks the tightest cascade
+  per fragment and PCF-samples it (3x3 + slope-scaled bias) to shadow the KEY light's diffuse+spec only for BOTH
+  models and terrain, cross-fading toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade
+  hand-off is invisible instead of a visible square seam, and fading the outermost cascade's term to lit at its border
+  so the coverage limit is invisible (no hard box, no sliding coverage). Caster visibility for the shadow pass unions
+  ALL cascade frustums (a caster camera-culled from the main pass but still inside any cascade still casts its
+  shadow). Every drawn mesh casts automatically (no per-frame opt-in). A degenerate camera makes
+  `ComputeShadowCascades()` return `0` and disables shadows for that frame rather than throwing. Knobs on
+  `ShadowSettings`: `ShadowCascadeCount` (default `3`, `1..4` via `ResolvedCascadeCount`), `ShadowNearDistance`
+  (default `16`, the near cascade's view-depth reach - smaller packs texels onto the near action) and
+  `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it `>= ShadowNearDistance`).
+  `ShadowCascadeBlend` (default `0.15`, the cross-cascade blend band width as a UV fraction, `0` restores the hard
+  cut). `ShadowMapResolution` (default `2048`, now the PER-CASCADE resolution - a construction-time knob alongside
+  `ShadowCascadeCount`, so the atlas is `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes). `ShadowStrength`, and
+  the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias, scaled PER CASCADE
+  so far cascades do not acne and near ones do not detach) plus the tiny residual depth biases
+  `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample support
+  (`GpuCapabilities.SupportsShadowMaps` false) it degrades to `Blob`. The atlas persists across frames, so the pass
+  **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY cascade's fitted matrix, the rigid
+  caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior atlas,
+  so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
+  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.

@@ -139,5 +139,53 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.Equal(0f, d.Runner);
     }
 
+    [Fact]
+    public void World_edge_overrides_map_verbatim_to_the_decal()
+    {
+        var s = TelegraphStyle.Generic;
+        s.EdgeWidthWorld = 0.04f;
+        s.FeatherWidthWorld = 0.02f;
+        // Radius 40: the derived edge would clamp to MaxEdgeWorld 0.3 and the feather fraction
+        // would give 4.0, so the overrides are unmistakably in charge.
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 40f, 0.5f, s);
+        Assert.Equal(0.04f, d.EdgeThickness, 4);
+        Assert.Equal(0.02f, d.FeatherWidth, 4);
+    }
+
+    [Fact]
+    public void World_edge_overrides_apply_to_ring_shape()
+    {
+        var s = TelegraphStyle.Generic;
+        s.EdgeWidthWorld = 0.04f;
+        s.FeatherWidthWorld = 0.02f;
+        var d = GroundTelegraphs.BuildRing(Vector3.Zero, 5.7f, 6f, 1f, s);
+        Assert.Equal(0.04f, d.EdgeThickness, 4);
+        Assert.Equal(0.02f, d.FeatherWidth, 4);
+    }
+
+    [Fact]
+    public void Zero_world_overrides_keep_the_derived_edge_and_feather()
+    {
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, TelegraphStyle.Generic);
+        Assert.Equal(0.2f, d.EdgeThickness, 4);            // clamp(4 * 0.05, 0.03, 0.3)
+        Assert.Equal(4f * TelegraphStyle.Generic.FeatherWidth, d.FeatherWidth, 4);
+    }
+
+    [Fact]
+    public void Edge_and_feather_overrides_gate_independently()
+    {
+        var edgeOnly = TelegraphStyle.Generic;
+        edgeOnly.EdgeWidthWorld = 0.04f;
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, edgeOnly);
+        Assert.Equal(0.04f, d.EdgeThickness, 4);
+        Assert.Equal(4f * TelegraphStyle.Generic.FeatherWidth, d.FeatherWidth, 4);
+
+        var featherOnly = TelegraphStyle.Generic;
+        featherOnly.FeatherWidthWorld = 0.02f;
+        d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, featherOnly);
+        Assert.Equal(0.2f, d.EdgeThickness, 4);
+        Assert.Equal(0.02f, d.FeatherWidth, 4);
+    }
+
     }
 }

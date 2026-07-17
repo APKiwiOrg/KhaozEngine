@@ -59,5 +59,9 @@
     <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
     <!-- RoomDungeon: DungeonGenerator + DungeonStamp for the walkable dungeon-generator demo room. -->
     <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
+    <!-- RoomVfx: the render-free particle sim plus its turn-key Render3D adapter (VfxPresets,
+         ParticleEffectPlayer, the Scene3D DrawEffect extension) for the particles + VFX demo room. -->
+    <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
+    <ProjectReference Include="../KhaozEngine.Particles.Render3D/KhaozEngine.Particles.Render3D.csproj" />
   </ItemGroup>
 </Project>

@@ -33,6 +33,10 @@ namespace KhaozEngine.Telegraphs
         // own world-space edge as a small fraction of the decal's characteristic size (auto-scaling: a big AoE
         // gets a proportionally bigger rim). ResolvedTelegraph.EdgeThickness (the pixel value) is intentionally
         // not used here; it is for TelegraphRenderer2D.
+        // TelegraphStyle.EdgeWidthWorld / FeatherWidthWorld (carried on ResolvedTelegraph) are the
+        // opt-in escape hatch: a positive value pins the edge or feather in world units and skips the
+        // derivation entirely, which is how a consumer draws a thin crisp static ring at a large
+        // radius. Zero keeps the derived auto-scaling path, so existing styles render identically.
         // The per-shape characteristic size used both for the world-space edge width (WorldEdge) and for scaling
         // the modern style knobs (feather fraction, pattern cell density) from shape-relative to world units.
         static float CharSize(DecalShape shape, Vector4 size) => shape switch
@@ -59,13 +63,15 @@ namespace KhaozEngine.Telegraphs
                 Size = size,
                 FillColor = r.FillColor,
                 OutlineColor = r.OutlineColor,
-                EdgeThickness = WorldEdge(shape, size),
+                EdgeThickness = r.EdgeWidthWorld > 0f ? r.EdgeWidthWorld : WorldEdge(shape, size),
                 FillFraction = r.FillFraction,
                 FlashAdd = r.FlashAdd,
                 Blend = Blend(r.Blend),
                 YTolerance = DefaultYTolerance,
                 MaxStep = DefaultMaxStep,
-                FeatherWidth = Math.Clamp(r.FeatherFraction, 0f, 0.5f) * charSize,
+                FeatherWidth = r.FeatherWidthWorld > 0f
+                    ? r.FeatherWidthWorld
+                    : Math.Clamp(r.FeatherFraction, 0f, 0.5f) * charSize,
                 Pattern = (DecalFillPattern)r.Pattern,
                 PatternSpeed = r.PatternSpeed,
                 // Cells-across-the-shape become cells-per-world-unit. Gated on Solid so a fully legacy style

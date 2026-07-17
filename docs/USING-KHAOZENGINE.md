@@ -2557,6 +2557,12 @@ the 3D ground-decal path only, see below):
 - `BaseFill` - fraction of the fill alpha painted across the ENTIRE shape from progress 0,
   independent of the sweep (0 = legacy, nothing shows until the sweep reaches it). Lets the full
   danger extent read immediately, the sweep then brightens across it. Presets use 0.3.
+- `EdgeWidthWorld` - opt-in world-unit override for the outline / AA edge half-width. 0 (default)
+  keeps the derived auto-scaling edge (5% of the shape's characteristic size, clamped to 0.03..0.3
+  world units). A positive value pins the stroke at any shape size. The outline band's solid core
+  renders about twice this value across the boundary.
+- `FeatherWidthWorld` - opt-in world-unit override for the feather band. 0 (default) keeps the
+  shape-relative `FeatherWidth` fraction. A positive value pins the feather in world units.
 
 **Borderless telegraphs**: set `FillMode = FillMode.Fill` (silences the outline band and its rim/
 runner effects) and give the style a nonzero `BaseFill` (all seven presets already do) so the full
@@ -2608,10 +2614,28 @@ The builder is pure and immediate-mode like every other telegraph call, so the C
     if (age01 < 1f)
         scene.GroundResidueCircle(impactPoint, radius, age01, TelegraphStyle.Fire);
 
+**Thin crisp static ring** (a tower range ring, an ability radius indicator): at large radii the
+derived edge auto-scales up (5% of the radius, capped at 0.3 world units) and the preset feather
+adds more on top, so a radius-6 ring renders as a fat soft band. Pin both in world units and strip
+the animation:
+
+    var ring = TelegraphStyle.Generic;              // any preset for the colors
+    ring.FillMode = FillMode.Outline;               // stroke only, no fill
+    ring.Animation = TelegraphAnim.None;            // static: no pulse, sweep, or flash
+    ring.Pattern = TelegraphFillPattern.Solid;
+    ring.FeatherWidth = 0f;                         // kill the shape-relative feather
+    ring.EdgeWidthWorld = 0.04f;                    // ~0.08 world units of solid stroke core
+    ring.FeatherWidthWorld = 0.02f;                 // a whisper of AA softening
+    scene.GroundCircle(towerPos, range, 1f, ring);  // progress is inert with no animation
+
+Both overrides are opt-in: 0 keeps the derived auto-scaling behavior, so existing styles render
+identically.
+
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
 Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-EdgeSparkle, OutlineRunner, and residue) and always renders the flat legacy fill/outline/pulse/flash
-look, picking primitives by `FillMode` directly. They are a 3D ground-decal feature.
+EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, and residue) and always renders the
+flat legacy fill/outline/pulse/flash look, picking primitives by `FillMode` directly. They are a 3D
+ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same
@@ -2650,7 +2674,8 @@ scene.DrawEffect(player, looks);                          // one look per phase,
 ```
 
 Presets: `FireBurst`, `FrostShatter`, `HealMotes`, `EmberDrift`, `SparkShower`, `Shockwave`, `SmokePlume`,
-`ArcaneSparkle`, `HeatHaze`. `looks.Length` must equal `player.PhaseCount`.
+`ArcaneSparkle`, `HeatHaze`. `looks.Length` must equal `player.PhaseCount`. The showcase's "Particles & VFX"
+room (`KhaozEngine.Showcase/RoomVfx.cs`) is the runnable reference, cycling all nine live with bloom/HDR toggles.
 
 **Authoring your own emitter.** `EmitterConfig` grew emission shapes, per-particle variance, life curves, spin, and
 turbulence. Every new field zero-defaults to the legacy look:

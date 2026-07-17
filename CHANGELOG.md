@@ -5,6 +5,44 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 11.3.0
+
+Telegraphs: opt-in world-unit edge and feather overrides for 3D ground decals. `TelegraphStyle`
+gains `EdgeWidthWorld` and `FeatherWidthWorld` (0 = the derived auto-scaling behavior, so existing
+styles render identically and the ground-decal goldens stay byte-exact). `TelegraphResolve` carries
+them through `ResolvedTelegraph` (new `EdgeWidthWorld` / `FeatherWidthWorld` readonly fields and a
+widened constructor, old constructors chain with zeros) and the 3D `GroundTelegraphs` path feeds a
+positive value straight into `GroundDecal.EdgeThickness` / `FeatherWidth` instead of the
+size-derived clamp (5% of characteristic size, 0.03..0.3) and feather fraction. This is what lets a
+consumer draw a thin crisp static range ring at a large radius, the fat-band failure that made
+Hardpoint fall back to `Scene3D.DebugCircle` wireframes for tower range rings. The 2D
+`TelegraphRenderer2D` ignores both fields. Residue marks stay on the derived path. New
+`Showcase_thin_static_ring_dumps` GPU showcase case and a "thin crisp static ring" recipe in
+`docs/USING-KHAOZENGINE.md`.
+
+## 11.2.1
+
+Showcase: a new "Particles & VFX" room demos the modern particle stack, the Catcher mini-game gains
+trauma screen shake, and Room3D's starfield toggle moves off the strafe-left key. No package API
+changed, this release is the `KhaozEngine.Showcase` app plus its docs.
+
+- **Particles & VFX room (`KhaozEngine.Showcase/RoomVfx.cs`).** The nine authored `VfxPresets`
+  (FireBurst through HeatHaze), one `ParticleEffectPlayer` each, cycled live with Left/Right (toasting
+  the effect name), replayed with Space, and auto-replaying hands-off once an effect drains. Bloom is
+  enabled on entry for the authored look, B and H toggle bloom and the HDR chain live, and both are
+  restored to the engine defaults on exit. The chrome status line reports the active effect, its live
+  particle count (summed `ParticleSystem.ActiveCount` across phases), and the bloom state. Registered
+  between the 3D overworld and the networked walk, so the hub menu is an even 2x4 tile grid. The
+  showcase project now references `KhaozEngine.Particles` + `KhaozEngine.Particles.Render3D`, and the
+  adapter README / USING section point at the room as the runnable reference.
+- **Catcher screen shake (`KhaozEngine.Showcase`).** The mini-game demos the trauma-based
+  `ScreenShake` (the retired Effects package's survivor, now in `KhaozEngine.Particles`): a missed
+  block adds trauma, losing adds a bigger kick, and the play field (never the HUD text) rides the
+  decaying noise offset. The shake keeps decaying under the frozen game-over dialog.
+- **Room3D starfield key remap (`KhaozEngine.Showcase`).** The starfield toggle moved from A to N: A
+  is strafe-left in this room (the binding was inherited from Render3DSample, which has no WASD
+  character), so every leftward step flipped the sky. The controls hint line follows.
+
 ## 11.2.0
 
 Step-aware overworld navigation bake: `KhaozEngine.Navigation` gets a per-cell surface height field and

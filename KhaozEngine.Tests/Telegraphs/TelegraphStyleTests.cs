@@ -132,5 +132,16 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.True(TelegraphStyle.Arcane.BaseFill > 0f);
     }
 
+        [Fact]
+        public void Presets_keep_world_edge_overrides_zero()
+        {
+            foreach (var s in new[] { TelegraphStyle.Generic, TelegraphStyle.Fire, TelegraphStyle.Poison,
+                TelegraphStyle.Steel, TelegraphStyle.Frost, TelegraphStyle.Nature, TelegraphStyle.Arcane })
+            {
+                Assert.Equal(0f, s.EdgeWidthWorld);
+                Assert.Equal(0f, s.FeatherWidthWorld);
+            }
+        }
+
     }
 }

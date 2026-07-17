@@ -143,6 +143,81 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(new FileInfo(png).Length > 0, $"expected a PNG dump at {png}");
         }
 
+        /// <summary>
+        /// Thin crisp static ring: the world-unit edge/feather overrides next to the derived default
+        /// for contrast. Left column: derived auto-scaling edge at radius 5 (the fat soft band the
+        /// overrides exist to fix). Right column: the range-ring recipe (FillMode.Outline, no
+        /// animation, EdgeWidthWorld 0.04 / FeatherWidthWorld 0.02), which must read as a thin crisp
+        /// line. Top row uses the Circle shape, bottom row the Ring shape (thin annulus band). Dumped
+        /// to telegraph_thin_ring.png, human-reviewed like the showcases above. The pixel-count
+        /// assertion is the behavioral net: the crisp right column must paint far fewer decal pixels
+        /// than the fat left column.
+        /// </summary>
+        [GpuFact]
+        public void Showcase_thin_static_ring_dumps()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H);
+            preview.Scene.Post.Outline = true;
+            preview.Scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(25f, 1f, 22f));
+            MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(30f, 0.1f));
+
+            // The static range-ring recipe from docs/USING-KHAOZENGINE.md: stroke only, no animation,
+            // solid pattern, feather and edge pinned in world units (0 = keep the derived behavior).
+            static TelegraphStyle RangeRing(float edgeWorld, float featherWorld)
+            {
+                var s = TelegraphStyle.Generic;
+                s.FillMode = FillMode.Outline;
+                s.Animation = TelegraphAnim.None;
+                s.Pattern = TelegraphFillPattern.Solid;
+                if (edgeWorld > 0f) s.FeatherWidth = 0f;
+                s.EdgeWidthWorld = edgeWorld;
+                s.FeatherWidthWorld = featherWorld;
+                return s;
+            }
+
+            const float R = 5f;
+            void DrawScene(Scene3D s)
+            {
+                s.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.12f, 0.12f, 0.15f, 1f));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(new Vector3(-5.75f, 0f, -5.25f), R, 1f, RangeRing(0f, 0f)));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(new Vector3(5.75f, 0f, -5.25f), R, 1f, RangeRing(0.04f, 0.02f)));
+                s.DrawGroundDecal(GroundTelegraphs.BuildRing(new Vector3(-5.75f, 0f, 5.25f), R - 0.3f, R, 1f, RangeRing(0f, 0f)));
+                s.DrawGroundDecal(GroundTelegraphs.BuildRing(new Vector3(5.75f, 0f, 5.25f), R - 0.3f, R, 1f, RangeRing(0.04f, 0.02f)));
+            }
+
+            string dir = Environment.GetEnvironmentVariable("KE_PNG_DUMP_DIR") ?? Path.GetTempPath();
+            Directory.CreateDirectory(dir);
+
+            preview.Scene.EffectTimeSeconds = 0f;
+            byte[] px = Read(gd, preview.Capture(DrawScene));
+            AssertNonBackgroundPixels(px, "thin_ring");
+            string png = Path.Combine(dir, "telegraph_thin_ring.png");
+            PngWriter.Save(png, px, W, H);
+            Assert.True(new FileInfo(png).Length > 0, $"expected a PNG dump at {png}");
+
+            // Behavioral net: count pixels that differ from the flat floor color in each half. The
+            // scene is left/right symmetric except for the stroke widths, so the crisp right column
+            // must paint well under half the decal pixels of the fat left column.
+            long left = 0, right = 0;
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    if (px[i + 3] == 0) continue;                       // background
+                    // Floor material is (0.12, 0.12, 0.15) but the post stack (lighting, outline,
+                    // tone mapping) renders it as (44, 44, 63): measured from an actual dump, not the
+                    // raw material value. Treat anything clearly off that rendered color as decal.
+                    bool decal = Math.Abs(px[i] - 44) > 25 || Math.Abs(px[i + 1] - 44) > 25 || Math.Abs(px[i + 2] - 63) > 25;
+                    if (!decal) continue;
+                    if (x < W / 2) left++; else right++;
+                }
+            Assert.True(right > 0, "expected the crisp override rings to paint some pixels");
+            Assert.True(right < left / 2,
+                $"expected the world-unit override rings (right, {right}px) to be far thinner than the derived default (left, {left}px)");
+        }
+
         // Smoke assertion only: the preview composites with a transparent background, so any covered pixel
         // (the ground tile plus every decal) has nonzero alpha. This just proves something actually rendered.
         // The PNGs dumped above are the real, human-reviewed check.

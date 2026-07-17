@@ -367,8 +367,10 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); _hud.Toast($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
             if (Manager!.Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); _hud.Toast($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
-            // Starfield background (A) and cel-shading bands (C), matching Render3DSample's A and C handlers.
-            if (Manager!.Input.WasPressed(Key.A)) { post.Starfield = !post.Starfield; _hud.Toast($"[post] Starfield = {post.Starfield}"); }
+            // Starfield background (N) and cel-shading bands (C). Render3DSample bound the starfield to A, but this
+            // room has a WASD character, so A is strafe-left: every leftward step would flip the background. N is
+            // the remap (no movement or toggle uses it).
+            if (Manager!.Input.WasPressed(Key.N)) { post.Starfield = !post.Starfield; _hud.Toast($"[post] Starfield = {post.Starfield}"); }
             if (Manager!.Input.WasPressed(Key.C)) { post.CelBands = post.CelBands == 0 ? 4 : 0; _hud.Toast($"[post] CelBands = {post.CelBands}"); }
 
             // Retro combo (R): toggles quantize+dither+pixelated together, cel bands, and the internal render

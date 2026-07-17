@@ -33,6 +33,8 @@ public class PathFollowerTests
     static NavPath Complete(params NavWaypoint[] waypoints) => new NavPath(NavPathStatus.Complete, waypoints);
     static NavPath Partial(params NavWaypoint[] waypoints) => new NavPath(NavPathStatus.Partial, waypoints);
 
+    static NavWaypoint Hop(float x, float y) => new(new Vector2(x, y), 0) { Kind = NavWaypointKind.Hop };
+
     [Fact]
     public void Tick_FirstCall_PlansOnceAndFollowsWaypointZero()
     {
@@ -442,5 +444,204 @@ public class PathFollowerTests
         Assert.Equal(PathFollowState.Arrived, arrived.State);
         Assert.Null(follower.ActivePath);
         Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void Tick_SteeringTowardHopWaypoint_ReturnsHoppingWithSuspendedSteering()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), Hop(10f, 10f)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(10f, 0f, 10f);
+
+        // Tick 1 plans and steers at the takeoff waypoint (5,5).
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        // Tick 2 reaches the takeoff, so the advance-past-reached step moves the index onto the Hop landing.
+        PathFollowOutput hopping = follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(PathFollowState.Hopping, hopping.State);
+        Assert.Equal(Vector2.Zero, hopping.WorldDir);
+        Assert.Equal(new Vector2(5f, 5f), hopping.HopStart);
+        Assert.Equal(new Vector2(10f, 10f), hopping.ActiveWaypoint);
+        // The committed corridor and active index read normally throughout the hop.
+        Assert.NotNull(follower.ActivePath);
+        Assert.Equal(1, follower.ActiveWaypointIndex);
+        Assert.Equal(NavWaypointKind.Hop, follower.ActivePath!.Waypoints[follower.ActiveWaypointIndex].Kind);
+    }
+
+    [Fact]
+    public void Tick_HopFirstSegment_HopStartIsPlanOrigin()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(Hop(10f, 10f)));
+        var follower = new PathFollower(planner);
+
+        // Landing is index 0, so the takeoff is the plan origin (the agent's position when it planned).
+        PathFollowOutput hopping = follower.Tick(new Vector3(0f, 0f, 0f), new Vector3(10f, 0f, 10f), AgentRadius, 0.016f);
+
+        Assert.Equal(PathFollowState.Hopping, hopping.State);
+        Assert.Equal(Vector2.Zero, hopping.WorldDir);
+        Assert.Equal(new Vector2(0f, 0f), hopping.HopStart);
+        Assert.Equal(new Vector2(10f, 10f), hopping.ActiveWaypoint);
+    }
+
+    [Fact]
+    public void Tick_ReachingHopLanding_ResumesFollowingOrArrived()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), Hop(10f, 10f), new NavWaypoint(new Vector2(15f, 15f), 0)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(15f, 0f, 15f);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        PathFollowOutput hopping = follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+        Assert.Equal(PathFollowState.Hopping, hopping.State);
+
+        // Consumer has lunged the agent onto the landing: the follower advances past it and resumes normal
+        // ground steering toward the next waypoint, with HopStart back to zero.
+        PathFollowOutput resumed = follower.Tick(new Vector3(10f, 0f, 10f), goal, AgentRadius, 0.016f);
+
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(PathFollowState.Following, resumed.State);
+        Assert.Equal(new Vector2(15f, 15f), resumed.ActiveWaypoint);
+        Assert.Equal(Vector2.Zero, resumed.HopStart);
+        Assert.Equal(Vector2.Normalize(new Vector2(5f, 5f)), resumed.WorldDir);
+        Assert.Equal(2, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void Tick_HopLandingIsGoal_ArrivesOnReachingLanding()
+    {
+        // The composed case: the planner marked the final waypoint Hop with its position adjusted to the
+        // exact goal. The follower emits Hopping on approach, then Arrived when the landing (the goal) is
+        // reached, caught by the step-2 goal-distance check.
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), Hop(10f, 10f)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(10f, 0f, 10f);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        PathFollowOutput hopping = follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+        Assert.Equal(PathFollowState.Hopping, hopping.State);
+        Assert.Equal(new Vector2(10f, 10f), hopping.ActiveWaypoint);
+
+        PathFollowOutput arrived = follower.Tick(new Vector3(10f, 0f, 10f), goal, AgentRadius, 0.016f);
+
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(PathFollowState.Arrived, arrived.State);
+        Assert.Equal(Vector2.Zero, arrived.WorldDir);
+        Assert.Equal(Vector2.Zero, arrived.ActiveWaypoint);
+        Assert.Equal(Vector2.Zero, arrived.HopStart);
+        Assert.Null(follower.ActivePath);
+    }
+
+    [Fact]
+    public void Tick_HopNotCompleted_ReEmitsHoppingEachTick()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), Hop(10f, 10f)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(10f, 0f, 10f);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+
+        // The consumer never moves the agent off the takeoff. The goal is static so no replan is due, and the
+        // follower owns no hop timer, so it honestly re-emits the same Hopping every tick.
+        for (int i = 0; i < 5; i++)
+        {
+            PathFollowOutput hopping = follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+            Assert.Equal(PathFollowState.Hopping, hopping.State);
+            Assert.Equal(Vector2.Zero, hopping.WorldDir);
+            Assert.Equal(new Vector2(5f, 5f), hopping.HopStart);
+            Assert.Equal(new Vector2(10f, 10f), hopping.ActiveWaypoint);
+        }
+
+        // No replan fired across the stuck ticks.
+        Assert.Equal(1, planner.CallCount);
+    }
+
+    [Fact]
+    public void Tick_ReplanDuringHop_Supersedes()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), Hop(10f, 10f)));
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(25f, 25f), 0)));
+        var config = new PathFollowConfig { GoalRetargetTolerance = 1.5f, ReplanCooldownSeconds = 0.5f };
+        var follower = new PathFollower(planner, config);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), new Vector3(10f, 0f, 10f), AgentRadius, 0.5f);
+        PathFollowOutput hopping = follower.Tick(new Vector3(5f, 0f, 5f), new Vector3(10f, 0f, 10f), AgentRadius, 0.5f);
+        Assert.Equal(PathFollowState.Hopping, hopping.State);
+
+        // The goal drifts far past GoalRetargetTolerance and the cooldown has drained, so the normal replan
+        // trigger fires and supersedes the hop: the fresh route steers on the ground with HopStart zero.
+        PathFollowOutput replanned = follower.Tick(new Vector3(5f, 0f, 5f), new Vector3(25f, 0f, 25f), AgentRadius, 0.5f);
+
+        Assert.Equal(2, planner.CallCount);
+        Assert.Equal(PathFollowState.Following, replanned.State);
+        Assert.Equal(new Vector2(25f, 25f), replanned.ActiveWaypoint);
+        Assert.Equal(Vector2.Zero, replanned.HopStart);
+    }
+
+    [Fact]
+    public void Tick_NonHopWaypoint_HopStartIsZero()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(10f, 10f), 0)));
+        var follower = new PathFollower(planner);
+
+        PathFollowOutput following = follower.Tick(new Vector3(0f, 0f, 0f), new Vector3(10f, 0f, 10f), AgentRadius, 0.016f);
+
+        Assert.Equal(PathFollowState.Following, following.State);
+        Assert.Equal(Vector2.Zero, following.HopStart);
+    }
+
+    [Fact]
+    public void Tick_PathWithoutHopWaypoints_NeverEmitsHopping()
+    {
+        // A plain corridor with no Hop waypoint behaves exactly as before: never Hopping, HopStart always
+        // zero, across the full walk from first waypoint to arrival.
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(19f, 19f), 0)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(20f, 0f, 20f);
+
+        PathFollowOutput a = follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        PathFollowOutput b = follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+        PathFollowOutput c = follower.Tick(new Vector3(19f, 0f, 19f), goal, AgentRadius, 0.016f);
+
+        foreach (PathFollowOutput output in new[] { a, b, c })
+        {
+            Assert.NotEqual(PathFollowState.Hopping, output.State);
+            Assert.Equal(Vector2.Zero, output.HopStart);
+        }
+        Assert.Equal(PathFollowState.Arrived, c.State);
+    }
+
+    [Fact]
+    public void Reset_DuringHop_ClearsState()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), Hop(10f, 10f)));
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), Hop(10f, 10f)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(10f, 0f, 10f);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        PathFollowOutput hopping = follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+        Assert.Equal(PathFollowState.Hopping, hopping.State);
+        Assert.NotNull(follower.ActivePath);
+
+        follower.Reset();
+
+        // Reset clears everything: no committed path, index back to zero, and the next tick plans fresh.
+        Assert.Null(follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+
+        PathFollowOutput afterReset = follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        Assert.Equal(2, planner.CallCount);
+        Assert.Equal(PathFollowState.Following, afterReset.State);
+        Assert.Equal(new Vector2(5f, 5f), afterReset.ActiveWaypoint);
     }
 }

@@ -15,7 +15,7 @@ public enum NavWaypointKind
     Walk,
 
     /// <summary>The landing of a <see cref="NavLinkKind.Hop"/> link. The follower returns
-    /// PathFollowState.Hopping while steering toward it and suspends ground steering.</summary>
+    /// <see cref="PathFollowState.Hopping"/> while steering toward it and suspends ground steering.</summary>
     Hop,
 }
 
@@ -46,7 +46,7 @@ public readonly record struct NavWaypoint(Vector2 Position, int Layer)
 {
     /// <summary>What kind of waypoint this is (default <see cref="NavWaypointKind.Walk"/>). A
     /// <see cref="NavWaypointKind.Hop"/> waypoint is a hop link's landing, which the follower surfaces as
-    /// PathFollowState.Hopping.</summary>
+    /// <see cref="PathFollowState.Hopping"/>.</summary>
     public NavWaypointKind Kind { get; init; }
 }
 

@@ -126,10 +126,12 @@ public abstract class EditorCommand : IEditorCommand
             Tags = new List<string>(s.Tags),
         };
 
-    private protected static void GuardNoRegion(MapDocument doc, string name)
+    /// <summary>Rejects a duplicate region name. <paramref name="exceptIndex"/> excludes the renaming region's own
+    /// index (resolved by its current name at the call site), so a collapsed self-rename stays legal.</summary>
+    private protected static void GuardNoRegion(MapDocument doc, string name, int exceptIndex)
     {
-        foreach (MapRegion r in doc.Regions)
-            if (string.Equals(r.Name, name, StringComparison.Ordinal))
+        for (int i = 0; i < doc.Regions.Count; i++)
+            if (i != exceptIndex && string.Equals(doc.Regions[i].Name, name, StringComparison.Ordinal))
                 throw new InvalidOperationException($"A region named '{name}' already exists in the document.");
     }
 
@@ -197,17 +199,23 @@ public abstract class EditorCommand : IEditorCommand
         throw new InvalidOperationException($"No companion layer named '{name}' in the document.");
     }
 
-    private protected static void GuardNoScatterLayerName(MapDocument doc, string name)
+    /// <summary>Rejects a duplicate scatter layer name. <paramref name="exceptIndex"/> excludes the renaming
+    /// layer's own index (resolved by its current name at the call site), so a collapsed self-rename stays
+    /// legal.</summary>
+    private protected static void GuardNoScatterLayerName(MapDocument doc, string name, int exceptIndex)
     {
-        foreach (MapScatterLayer l in doc.ScatterLayers)
-            if (string.Equals(l.Name, name, StringComparison.Ordinal))
+        for (int i = 0; i < doc.ScatterLayers.Count; i++)
+            if (i != exceptIndex && string.Equals(doc.ScatterLayers[i].Name, name, StringComparison.Ordinal))
                 throw new InvalidOperationException($"A scatter layer named '{name}' already exists in the document.");
     }
 
-    private protected static void GuardNoCompanionLayerName(MapDocument doc, string name)
+    /// <summary>Rejects a duplicate companion layer name. <paramref name="exceptIndex"/> excludes the renaming
+    /// layer's own index (resolved by its current name at the call site), so a collapsed self-rename stays
+    /// legal.</summary>
+    private protected static void GuardNoCompanionLayerName(MapDocument doc, string name, int exceptIndex)
     {
-        foreach (MapCompanionLayer l in doc.CompanionLayers)
-            if (string.Equals(l.Name, name, StringComparison.Ordinal))
+        for (int i = 0; i < doc.CompanionLayers.Count; i++)
+            if (i != exceptIndex && string.Equals(doc.CompanionLayers[i].Name, name, StringComparison.Ordinal))
                 throw new InvalidOperationException($"A companion layer named '{name}' already exists in the document.");
     }
 
@@ -1732,7 +1740,7 @@ public sealed class AddScatterLayerCommand : EditorCommand
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
-        GuardNoScatterLayerName(doc, _layer.Name);   // reject a duplicate name before touching the list
+        GuardNoScatterLayerName(doc, _layer.Name, -1);   // reject a duplicate name before touching the list
         doc.ScatterLayers.Add(_layer);
     }
 
@@ -1861,7 +1869,7 @@ public sealed class RenameScatterLayerCommand : EditorCommand
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
-        GuardNoScatterLayerName(doc, _newName);   // reject a duplicate target before the cascade mutates anything
+        GuardNoScatterLayerName(doc, _newName, IndexOfScatterLayer(doc, _oldName));   // reject a duplicate target before the cascade mutates anything
         Retarget(doc, _oldName, _newName);
     }
 
@@ -1920,7 +1928,7 @@ public sealed class AddCompanionLayerCommand : EditorCommand
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
-        GuardNoCompanionLayerName(doc, _layer.Name);   // reject a duplicate name before touching the list
+        GuardNoCompanionLayerName(doc, _layer.Name, -1);   // reject a duplicate name before touching the list
         doc.CompanionLayers.Add(_layer);
     }
 
@@ -2031,7 +2039,7 @@ public sealed class RenameCompanionLayerCommand : EditorCommand
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
-        GuardNoCompanionLayerName(doc, _newName);   // reject a duplicate target before touching the source
+        GuardNoCompanionLayerName(doc, _newName, IndexOfCompanionLayer(doc, _oldName));   // reject a duplicate target before touching the source
         doc.CompanionLayers[IndexOfCompanionLayer(doc, _oldName)].Name = _newName;
     }
 
@@ -2132,7 +2140,7 @@ public sealed class RenameRegionCommand : EditorCommand, IVisibilityEffect
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
     {
-        GuardNoRegion(doc, _newName);   // reject a duplicate target before touching the source
+        GuardNoRegion(doc, _newName, IndexOfRegion(doc, _oldName));   // reject a duplicate target before touching the source
         doc.Regions[IndexOfRegion(doc, _oldName)].Name = _newName;
     }
 

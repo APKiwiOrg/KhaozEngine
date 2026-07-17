@@ -164,6 +164,31 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void RenameRegion_CollapsedSelfRename_RedoSucceeds()
+        {
+            // #26: a per-keystroke rename chain that returns to its starting name (town -> temp -> town)
+            // coalesces via TryMerge into ONE command whose old and new name are both "town" (the collapsed
+            // self-rename). Before the fix, GuardNoRegion has no except-index, so redoing that command finds
+            // the region still named "town" (the source itself) and throws, corrupting the history stack.
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            ed.Execute(new RenameRegionCommand("town", "temp"));
+            ed.Execute(new RenameRegionCommand("temp", "town"));
+            Assert.Equal(1, ed.History.UndoDepth);   // merged into one step, not two
+            Assert.Equal(before, Save(doc));         // net no-op
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+
+            Assert.True(ed.Redo());
+            Assert.Contains(doc.Regions, r => r.Name == "town");
+            Assert.Equal(before, Save(doc));
+        }
+
+        [Fact]
         public void RenamePlacementCommand_AppliesRevertsAndGuardsDuplicates()
         {
             var doc = Sample();
@@ -1938,6 +1963,31 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void RenameScatterLayer_CollapsedSelfRename_RedoSucceeds()
+        {
+            // #26: a per-keystroke rename chain that returns to its starting name (trees -> temp -> trees)
+            // coalesces via TryMerge into ONE command whose old and new name are both "trees" (the collapsed
+            // self-rename). Before the fix, GuardNoScatterLayerName has no except-index, so redoing that
+            // command finds the layer still named "trees" (the source itself) and throws, corrupting history.
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            ed.Execute(new RenameScatterLayerCommand("trees", "temp"));
+            ed.Execute(new RenameScatterLayerCommand("temp", "trees"));
+            Assert.Equal(1, ed.History.UndoDepth);   // merged into one step, not two
+            Assert.Equal(before, Save(doc));         // cascades reversed symmetrically: net no-op
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+
+            Assert.True(ed.Redo());
+            Assert.Contains(doc.ScatterLayers, l => l.Name == "trees");
+            Assert.Equal(before, Save(doc));
+        }
+
+        [Fact]
         public void CompanionLayer_AddEditRemove_HostLayerValidated()
         {
             // Add a companion round-trips and affects the world.
@@ -1999,6 +2049,32 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.False(ed.WorldRebuildPending);   // a companion rename changes nothing streamed
             Assert.True(ed.Undo());
             Assert.Equal("understory", doc.CompanionLayers[0].Name);
+        }
+
+        [Fact]
+        public void RenameCompanionLayer_CollapsedSelfRename_RedoSucceeds()
+        {
+            // #26: a per-keystroke rename chain that returns to its starting name (understory -> temp ->
+            // understory) coalesces via TryMerge into ONE command whose old and new name are both
+            // "understory" (the collapsed self-rename). Before the fix, GuardNoCompanionLayerName has no
+            // except-index, so redoing that command finds the layer still named "understory" (the source
+            // itself) and throws, corrupting the history stack.
+            var doc = Sample();
+            string before = Save(doc);
+            var ed = new EditorDocument(doc);
+
+            ed.Execute(new RenameCompanionLayerCommand("understory", "temp"));
+            ed.Execute(new RenameCompanionLayerCommand("temp", "understory"));
+            Assert.Equal(1, ed.History.UndoDepth);   // merged into one step, not two
+            Assert.Equal(before, Save(doc));         // net no-op
+
+            Assert.True(ed.Undo());
+            Assert.Equal(before, Save(doc));
+            Assert.False(ed.History.CanUndo);
+
+            Assert.True(ed.Redo());
+            Assert.Contains(doc.CompanionLayers, l => l.Name == "understory");
+            Assert.Equal(before, Save(doc));
         }
 
         // ---- scatter overrides (terrain-scatter affecting) ---------------------------------------------

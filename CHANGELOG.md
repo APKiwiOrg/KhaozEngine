@@ -5,6 +5,77 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 12.1.0
+
+Render3D: ground decals gain an opt-in `VoidFallback`, projecting onto the decal's own horizontal plane where its
+usual paint surface is missing, so a range ring overhanging a floating island's edge reads as a complete ring
+instead of truncating into the void. Additive and zero-neutral: an unflagged decal packs identical instance bytes,
+issues zero extra draws, and never binds the new pipelines.
+
+### The problem
+
+The decal pass reconstructs its paint surface from the scene depth buffer, so a decal larger than the geometry
+under it truncates at the edge. Hardpoint is a floating mesa in space: a sniper tower's range ring overhangs the
+island and vanishes, which reads as a broken indicator rather than a range. 11.9.0 was the prerequisite (the final
+blit used to regenerate the background and discard anything drawn over the void).
+
+### The API
+
+- **`GroundDecal.VoidFallback`** (default `false`) and **`GroundDecal.VoidDim`** (default `0`, an alpha scale
+  applied only to plane-projected pixels so they can read as projected rather than as standing on ground).
+- **`TelegraphStyle.VoidFallback` / `.VoidDim`**, carried through `TelegraphResolve` -> `ResolvedTelegraph` ->
+  `GroundTelegraphs.Base`, so every `Ground*` builder gets it without churning their signatures. Same 3D-only
+  passthrough precedent as `EdgeWidthWorld` / `FeatherWidthWorld`. `TelegraphRenderer2D` ignores both.
+
+### What it actually does, and two corrections to the design
+
+The decal still CONFORMS to any surface that is its ground. The plane is a fallback for the two cases where that
+surface is not there: background, and geometry that is not this decal's ground. **Both halves of the original
+design's rule for the second case were wrong**, and both were caught by looking at the rendered PNGs rather than by
+a failing test. `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md` records the corrected reasoning.
+
+- **Out-of-band geometry is a DEPTH question, not a has-geometry question.** The design said out-of-band geometry
+  must never fall back because "the plane point there is behind the wall", and predicted a small "residual
+  truncation strip" that the consumer signed off on. That premise is INVERTED for an overhang: a ring overhanging a
+  mesa hangs at the top surface's height while the cliff below it recedes AWAY from the camera, so the plane is in
+  FRONT and genuinely visible. Discarding it does not cost a strip, it costs the cliff's whole screen band, which
+  for a 1-unit cliff is most of the ring's near arc. A flagged decal now intersects its plane and compares along the
+  ray: nearer wins. It paints across a cliff it overhangs, and is still occluded (not x-rayed) by a wall standing on
+  its ground. **The ratified near-edge residue does not exist in the shipped feature.**
+- **The Y band cannot tell a cliff from a dip, so the fallback reads the surface NORMAL.** At one pixel, with only
+  depth, a terrain dip `YTolerance` below the plane and the TOP `YTolerance` of a vertical face are the same
+  number, so the band conforms the decal onto the cliff and runs it down the edge instead of leaving it flat.
+  `GroundDecalRenderer` now binds `NormalTex`, and a flagged decal additionally requires `n.y >= 0.5` (slopes up to 60
+  degrees still count as ground) for a surface to be its ground. Gated on the flag, so unflagged decals keep the
+  legacy band-only behaviour, wart and all - that pre-existing wrap-down afflicts every decal today and is left for
+  its own release (`docs/TODO.md`).
+
+### Rendering
+
+- **Four pipelines**, {alpha, additive} x {`Greater`, `Equal`} at z=1. `Greater` is the base pass over every decal
+  (geometry pixels, unchanged). `Equal` is its exact complement over the flagged subset only (background pixels).
+  The hardware split is load-bearing, not stylistic: the depth-colour target is cleared to `BackgroundColor`, not to
+  the far plane, so the shader cannot tell background from geometry on its own.
+- A flagged decal is drawn TWICE, with the void instances **appended after** every base instance, so base bytes
+  never move. `CoalesceVoidRuns` coalesces the flagged subset by blend and returns zero runs when nothing is
+  flagged.
+- **`RenderResources.ResolveColorNormal` split into `ResolveDepthNormal` + `ResolveColor`** (internal). Under MSAA
+  the encoded normal now resolves WITH the depth, before the decal pass that reads it, instead of after. Safe and
+  byte-neutral: every normal writer binds `ModelFB` and is complete by that point, every later pass binds
+  `ColorDepthFB`. The colour, which decals do write, still resolves after them.
+
+### Tests
+
+- **`GroundDecalVoidGoldenTests`** is the net, not the golden: raw-pixel A/B pairs (same scene, one flag) covering
+  the void projection, on-ground byte-identity, painting in front of a cliff, refusing to x-ray a wall, `VoidDim`,
+  a perspective camera, and the flat-disc invariant. Each collapses to two identical renders if the feature is
+  removed, and each carries an anti-vacuity guard. Named `*Golden*` deliberately so the cross-platform matrix runs
+  the ray math on D3D11 and Vulkan.
+- New `telegraph_ground_void` golden (baked on Metal, D3D11 + Vulkan via the CI bake dispatch) and showcase dumps
+  in `TelegraphVoidShowcaseGpuTests`. The golden DOES bite (a sabotage run moves 240 channels past tolerance,
+  unlike the starfield's) but it cannot see the cliff wrap-down at all, which is why the A/B pairs carry the
+  feature. `telegraph_ground` and `telegraph_modern` are byte-exact against their 11.9.0 baselines.
+
 ## 12.0.0
 
 Shadow cascades are now standard frustum-slice CSM: each cascade fits the bounding sphere of its own

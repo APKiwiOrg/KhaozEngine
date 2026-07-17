@@ -231,7 +231,7 @@ namespace KhaozEngine.Tests.Gpu
 
             // Count blue-dominant (ring-fill) pixels. Under the fallback the ring must paint materially more of the
             // frame, because the whole overhanging remainder appears. A per-pixel probe would need the follow camera's
-            // own projection; the population count is the backend-portable statement of the same fact.
+            // own projection. The population count is the backend-portable statement of the same fact.
             Assert.True(RingPixels(on) > RingPixels(off) + (W * H) / 200,
                 $"the perspective render must gain ring pixels under the fallback: {RingPixels(off)} -> {RingPixels(on)}");
         }

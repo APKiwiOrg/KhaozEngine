@@ -279,7 +279,7 @@ Fragment shader branches on `Extra.y`:
   the decal's plane by construction. Apply `VoidDim` to the final alpha. Everything downstream (SDF,
   feather, pattern, energy lanes) is shared.
 
-> **CORRECTED DURING IMPLEMENTATION (11.10.0).** The rule below, and the residue it predicted, were both
+> **CORRECTED DURING IMPLEMENTATION (12.1.0).** The rule below, and the residue it predicted, were both
 > **wrong**, on a premise that is inverted for the exact case this feature exists to serve. It is kept here
 > because the reasoning error is instructive. See "Correction: out-of-band geometry" immediately after it.
 
@@ -302,7 +302,7 @@ Whether the plane is visible is a **depth** question, not a has-geometry questio
 
 - **In band, near-horizontal surface** -> conform to it (today's exact path, byte-for-byte).
 - **Otherwise (out of band, or a near-vertical face)** -> intersect the plane and compare along the ray.
-  Nearer wins. In front of a cliff it paints; behind a wall standing on the decal's ground it discards, so the
+  Nearer wins. In front of a cliff it paints. Behind a wall standing on the decal's ground it discards, so the
   x-ray the original rule feared is still refused, now for the right reason.
 
 The **normal test is not optional**, and this was the second correction. With only depth, a terrain dip

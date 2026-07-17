@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// Human-reviewed PNG dumps of the void ground-decal fallback over <see cref="VoidDecalScene"/>. This test locks
-    /// no pixels beyond a sanity guard; the committed <c>telegraph_ground_void</c> golden and the pixel A/B pairs in
+    /// no pixels beyond a sanity guard. The committed <c>telegraph_ground_void</c> golden and the pixel A/B pairs in
     /// <see cref="GroundDecalVoidGoldenTests"/> are the automated net. What this exists for is the part no automated
     /// check can do: 11.9.0 established that a green suite is not evidence the look is right, so the dumps are here
     /// to be LOOKED AT.
@@ -18,12 +18,12 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <list type="number">
     /// <item><c>_off</c> / <c>_on</c> - the decisive A/B. Same scene, one flag. Off is today's bug (the ring falls off
-    /// the island's edge and survives only where it happens to cross the tile's corners); on is the fix, an UNBROKEN
+    /// the island's edge and survives only where it happens to cross the tile's corners). On is the fix, an UNBROKEN
     /// annulus continuing over the void on its own plane.</item>
     /// <item><c>_edge</c> - zoomed on the CAMERA-FACING +X/+Z edge, where the ring crosses a cliff face below its
     /// plane. The ring hangs in FRONT of that cliff, so it must paint straight across it. This is the region an
     /// earlier cut of this feature got backwards, discarding it as "geometry is present" and losing most of the near
-    /// arc; the dump exists so that failure is visible at a glance if it ever comes back.</item>
+    /// arc. The dump exists so that failure is visible at a glance if it ever comes back.</item>
     /// <item><c>_wall</c> - the mirror. A slab standing on the plane where the ring overhangs: the ring is genuinely
     /// behind it and must stay hidden. Together with <c>_edge</c> this is both signs of the depth comparison.</item>
     /// <item><c>_starfield</c> - the same scene with the background pass on, which is the whole reason release 1 had
@@ -74,7 +74,7 @@ namespace KhaozEngine.Tests.Gpu
             Dump("telegraph_ground_void_on", on);
 
             // Guard, so the dumps can never be two identical pictures a reviewer nods at: the fallback must actually
-            // add ring pixels. The A/B tests say WHERE; this only says the dumps differ enough to be worth reviewing.
+            // add ring pixels. The A/B tests say WHERE. This only says the dumps differ enough to be worth reviewing.
             int gained = RingPixels(on) - RingPixels(off);
             Assert.True(gained > (W * H) / 100,
                 $"the on/off dumps must differ substantially or the showcase is vacuous: gained {gained} ring pixels");

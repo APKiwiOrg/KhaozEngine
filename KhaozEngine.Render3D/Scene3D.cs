@@ -2163,11 +2163,11 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Under MSAA the geometry passes wrote a MULTISAMPLED MRT; resolve the depth AND the encoded normal into
+            // Under MSAA the geometry passes wrote a MULTISAMPLED MRT, so resolve the depth AND the encoded normal into
             // the single-sample DepthColorTex / NormalTex now - before the decals, which SAMPLE both (the depth to
             // reconstruct the surface, the normal so a void-fallback decal can tell a terrain dip from the top of a
             // cliff face), and before the post edge pass which also samples them. Every normal writer binds ModelFB
-            // and is complete by this line; nothing after it does. No-op when not multisampled.
+            // and is complete by this line. Nothing after it does. No-op when not multisampled.
             _res.ResolveDepthNormal(cl);
 
             // Background pass, before the decals: whichever mode is selected paints the no-geometry pixels and marks

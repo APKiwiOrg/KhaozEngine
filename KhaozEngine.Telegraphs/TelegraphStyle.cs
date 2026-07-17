@@ -120,7 +120,7 @@ namespace KhaozEngine.Telegraphs
         /// <summary>Opt-in: the 3D ground decal projects onto its own horizontal plane wherever its usual
         /// paint surface is missing, instead of truncating at the geometry's edge. A range ring
         /// overhanging a floating island's edge keeps reading over the void. The decal still conforms to
-        /// any surface within its Y band; the plane covers background and out-of-band geometry, and is
+        /// any surface within its Y band. The plane covers background and out-of-band geometry, and is
         /// painted there only where a depth comparison says it is genuinely visible (so it crosses in
         /// front of a cliff it overhangs, but is occluded by a wall standing in front of it, never
         /// x-rayed through). Default false keeps the legacy depth-only behaviour. See

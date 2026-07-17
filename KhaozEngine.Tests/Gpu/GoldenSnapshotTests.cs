@@ -228,7 +228,7 @@ namespace KhaozEngine.Tests.Gpu
         // island's edge, projected onto its own plane where there is no geometry instead of truncating. The scene is
         // shared with the raw-pixel A/B (GroundDecalVoidGoldenTests) and the showcase dumps
         // (TelegraphVoidShowcaseGpuTests) - see VoidDecalScene for the geometry's derivation. This grid is a coarse
-        // net by nature (32x18 averaged cells, 0.06 tolerance); the pixel-level statements about WHICH region does
+        // net by nature (32x18 averaged cells, 0.06 tolerance). The pixel-level statements about WHICH region does
         // what live in the A/B tests, which is deliberate after 11.9.0 showed the grid is blind to sparse detail.
         // telegraph_ground and telegraph_modern staying byte-exact is the other half of the contract: they carry no
         // flagged decals and must not move at all.

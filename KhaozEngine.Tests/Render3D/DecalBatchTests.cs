@@ -229,7 +229,7 @@ namespace KhaozEngine.Tests.Render3D
     {
         // A flagged decal's BASE instance is not inert: out-of-band geometry (a cliff face below the decal's plane)
         // must depth-test the plane rather than discard, or an overhanging ring loses everything that hangs in
-        // FRONT of that cliff. Extra.w is what asks for it; Extra.y stays 0 because this is still the geometry pass.
+        // FRONT of that cliff. Extra.w is what asks for it. Extra.y stays 0 because this is still the geometry pass.
         var d = VoidCircle(0f, 0f, voidDim: 0.15f);
         d.BaseFill = 0.3f;
         Assert.Equal(new Vector4(0.3f, 0f, 0.15f, 1f), GroundDecalRenderer.PackInstance(in d, Vector4.Zero).Extra);

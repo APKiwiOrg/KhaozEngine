@@ -80,7 +80,7 @@ namespace KhaozEngine.Tests.Gpu
         public static readonly Vector3 VoidSample = new(-4.3f, PlaneY, 0f);
 
         /// <summary>Near corner (azimuth 45, radius 3.8): on the tile top AND inside the ring band. The base pass
-        /// paints it; the flag must not change one byte here.</summary>
+        /// paints it, and the flag must not change one byte here.</summary>
         public static readonly Vector3 GroundSample = new(2.687f, PlaneY, 2.687f);
 
         /// <summary>Near edge (+X, plane x = 4.0), inside (<see cref="StripStartX"/>, <see cref="CliffEndX"/>): the

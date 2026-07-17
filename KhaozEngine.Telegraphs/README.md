@@ -48,6 +48,15 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   - `FeatherWidthWorld` - opt-in world-unit override for the feather band on the 3D ground-decal
     path. 0 (default) keeps the shape-relative `FeatherWidth` fraction. A positive value pins the
     feather in world units.
+  - `VoidFallback` (since 12.1.0) - opt-in: the 3D ground-decal path projects onto its own
+    horizontal plane wherever its usual paint surface is missing, instead of truncating at the
+    geometry's edge. The decal still conforms to any surface that is its ground. The plane covers
+    background and off-ground surfaces, and paints there only where a depth comparison says it is
+    genuinely visible (crosses in front of a cliff it overhangs, occluded by a wall standing in
+    front of it). `false` (default) keeps the legacy depth-only behavior.
+  - `VoidDim` (since 12.1.0) - alpha scale applied only to the plane-projected pixels of a
+    `VoidFallback` decal, so they read as projected rather than as standing on ground. 0 (default)
+    = no dim, 1 = fully transparent. Ignored unless `VoidFallback` is set.
 - Presets, each a distinct character to reach for by name:
 
   | Preset | Character |
@@ -72,8 +81,8 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only, picking primitives by
   `FillMode` directly. **It reads none of the modern style knobs above** (FeatherWidth,
   Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-  EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld) - those are a
-  `KhaozEngine.Telegraphs.Render3D` ground-decal feature.
+  EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, VoidFallback, VoidDim) - those are
+  a `KhaozEngine.Telegraphs.Render3D` ground-decal feature.
 - `ZoneSense.Safe` is reserved for a future version (v1 renders it exactly like `Danger`).
 
 ```csharp

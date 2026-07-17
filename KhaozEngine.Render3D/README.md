@@ -138,6 +138,18 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   non-`Solid` background always paints alpha 1, so a transparent composite needs
   `Background = BackgroundMode.Solid` set explicitly. `Render3DPreview` already forces `Post.Starfield = false`,
   which resolves to `Solid` through the derived getter.
+- Ground decal void fallback: `GroundDecal.VoidFallback` (default `false`) projects a flagged decal
+  onto its own horizontal plane wherever its usual depth-reconstructed paint surface is missing,
+  instead of truncating at the geometry's edge (a range ring overhanging a floating island's edge
+  reads as a complete ring instead of vanishing at the cliff). The decal still CONFORMS to any
+  surface that is its ground (inside `YTolerance`/`MaxStep` and near-horizontal). The plane is a
+  fallback only for background and for a surface outside that band, and there it paints only where
+  a depth comparison says it is genuinely visible, so it paints across a cliff it overhangs but is
+  occluded (not x-rayed) by a wall standing on its own ground. `GroundDecal.VoidDim` (default `0`)
+  scales alpha on plane-projected pixels only, so they can read as projected rather than as
+  standing on ground (0 = no dim, 1 = fully transparent). Default `false` keeps the legacy
+  depth-only behavior byte-for-byte, with zero extra draws and no new pipeline bound. See
+  `docs/USING-KHAOZENGINE.md`.
 - Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only

@@ -127,7 +127,7 @@ namespace KhaozEngine.Render3D
         public bool VoidFallback;
 
         /// <summary>Alpha scale applied ONLY to plane-projected pixels, so they read as projected rather than as
-        /// standing on ground. 0 (default) = no dim, i.e. projected pixels match ground pixels; 1 = fully
+        /// standing on ground. 0 (default) = no dim, i.e. projected pixels match ground pixels. 1 = fully
         /// transparent. Clamped to [0,1]. Ignored unless <see cref="VoidFallback"/> is set.</summary>
         public float VoidDim;
     }

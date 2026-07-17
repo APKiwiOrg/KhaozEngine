@@ -69,6 +69,14 @@ This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRe
   of the fill alpha painted across the entire shape from progress 0, independent of the sweep, so
   a borderless (`FillMode.Fill`) telegraph's full danger extent reads immediately instead of only
   the swept fraction. 0 (legacy styles that never set it) is inert, byte-identical to before.
+- `VoidFallback` / `VoidDim` on `ResolvedTelegraph` (since 12.1.0) pass straight through to the
+  matching `GroundDecal` fields: an opt-in plane fallback that fills in where the decal's usual
+  depth-reconstructed surface is missing (background, or geometry outside the decal's ground Y
+  band), painted only where a depth comparison says the plane is genuinely visible. A ring
+  overhanging a cliff paints across it, and a wall standing on the decal's ground still occludes
+  it. `VoidDim` scales alpha on the plane-projected pixels only (0 default = no dim). Both are
+  `false`/`0` on every preset, so no existing style opts in on its own. Set them explicitly on a
+  style or a `TelegraphStyle.Generic with { VoidFallback = true, VoidDim = 0.15f }` copy.
 - `Scene3D.DecalQuality` (`GroundDecalQuality.Full` / `.Reduced`) is a scene-wide tier read by
   the decal pass itself, not by this mapping: `Reduced` drops the second noise octave and the
   edge sparkle for weak GPUs. Set it once on the `Scene3D`, not per decal.

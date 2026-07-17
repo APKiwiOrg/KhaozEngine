@@ -2606,6 +2606,9 @@ the 3D ground-decal path only, see below):
   renders about twice this value across the boundary.
 - `FeatherWidthWorld` - opt-in world-unit override for the feather band. 0 (default) keeps the
   shape-relative `FeatherWidth` fraction. A positive value pins the feather in world units.
+- `VoidFallback` / `VoidDim` (since 12.1.0) - opt-in plane fallback for background and off-ground
+  surfaces. 0/false (default) keeps the legacy depth-only behavior. See the dedicated callout
+  below.
 
 **Borderless telegraphs**: set `FillMode = FillMode.Fill` (silences the outline band and its rim/
 runner effects) and give the style a nonzero `BaseFill` (all seven presets already do) so the full
@@ -2674,11 +2677,42 @@ the animation:
 Both overrides are opt-in: 0 keeps the derived auto-scaling behavior, so existing styles render
 identically.
 
+**Void fallback for floating or broken ground** (`VoidFallback` / `VoidDim`, since 12.1.0): opt-in,
+the 3D ground decal projects onto its own horizontal plane wherever its usual paint surface is
+missing, instead of truncating at the geometry's edge. A range ring overhanging a floating
+island's edge keeps reading as a complete ring instead of vanishing past the cliff. The decal
+still CONFORMS to any surface that is its ground, exactly as before (inside the Y band and
+near-horizontal): the plane is only a fallback for the two cases where that surface is not there,
+background and a non-ground surface under the decal. On a non-ground surface the plane is painted
+only where a depth comparison says it is genuinely visible, so it paints across a cliff face the
+decal overhangs (the plane is in front of the cliff and wins the comparison) and is occluded,
+never x-rayed, by a wall standing on the decal's own ground. Default `false` keeps the legacy
+depth-only behavior, byte-for-byte, with zero extra draws.
+
+    var ring = TelegraphStyle.Generic;
+    ring.VoidFallback = true;
+    ring.VoidDim = 0.15f;                            // dim projected pixels so they read as projected
+    scene.GroundRing(towerPos, 0f, range, progress, ring);
+
+The same two fields sit directly on a raw decal too:
+
+    scene.DrawGroundDecal(new GroundDecal
+    {
+        Shape = DecalShape.Circle, Center = center, Size = new Vector4(radius, 0f, 0f, 0f),
+        FillColor = color, YTolerance = 0.5f, MaxStep = 1.5f,
+        VoidFallback = true, VoidDim = 0.15f,
+    });
+
+`VoidDim` scales alpha on plane-projected pixels only (0, the default, means no dim, so a
+projected pixel matches a ground pixel, and 1 is fully transparent). ~0.15 is a plausible
+starting point, just enough for a projected pixel to read as projected without dimming the shape
+toward invisibility.
+
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
 Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
-EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, and residue) and always renders the
-flat legacy fill/outline/pulse/flash look, picking primitives by `FillMode` directly. They are a 3D
-ground-decal feature.
+EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, VoidFallback, VoidDim, and residue)
+and always renders the flat legacy fill/outline/pulse/flash look, picking primitives by `FillMode`
+directly. They are a 3D ground-decal feature.
 
 The ground-decal pass is **batched and footprint-bounded**, so a boss fight with many AoEs (or blob-shadow
 mode with many characters, which funnel through the same pass) scales cheaply. Consecutive decals of the same

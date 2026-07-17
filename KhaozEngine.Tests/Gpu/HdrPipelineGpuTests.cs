@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Gpu
     /// Behavioural GPU proofs of the HDR pipeline (float16 colour chain + pre-tonemap bloom + ACES tonemap) that a
     /// coarse RGB golden grid cannot express: over-range emissive stays separable through the filmic curve, bloom
     /// extracts only over-range highlights, the HDR toggle/rebuild path leaks no state, the float16 MSAA resolve
-    /// works, and the background alpha marker survives the tonemap pass. All scenes are deterministic
+    /// works, and the background pass's starfield survives the tonemap. All scenes are deterministic
     /// (EffectTimeSeconds 0, fixed camera and transforms). Skipped unless KE_GPU_TESTS=1 (needs a Metal device).
     /// </summary>
     [Collection("HdrGpu")]
@@ -196,7 +196,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Hdr_alpha_marker_survives_tonemap()
+        public void Hdr_starfield_survives_tonemap()
         {
             MeshHandle cube = default;
             byte[] rgba = Render3DSnapshot.Capture(W, H,
@@ -205,7 +205,7 @@ namespace KhaozEngine.Tests.Gpu
                     cube = s.LoadMesh(MeshPrimitives.Box(0.3f));
                     s.EffectTimeSeconds = 0f;
                     s.Post.Hdr.Enabled = true;
-                    s.Post.Starfield = true;
+                    s.Post.Background = BackgroundMode.Starfield;
                     s.Post.TransparentBackground = false;
                     s.Post.BackgroundColor = new Color(0.01f, 0.01f, 0.02f, 1f);
                     s.Post.Bloom.Enabled = false;
@@ -214,9 +214,13 @@ namespace KhaozEngine.Tests.Gpu
                 drawFrame: s => s.Draw(cube, Matrix4x4.Identity),
                 frames: 2);
 
-            // The blit injects starfield only where the background alpha marker is set (a < 0.5). Those bright points
-            // showing up means the marker survived the tonemap pass. Count bright pixels OUTSIDE a central box bounding
-            // the small cube, so only stars can be there.
+            // StarfieldRenderer paints bg.rgb + star (alpha 1) into ColorTex before the whole post chain runs, so
+            // with HDR on the stars now flow through the same ACES tonemap as every other scene pixel. That is the
+            // opposite of the deleted mechanism this test used to check: the old final blit painted stars AFTER the
+            // tonemap, from the background alpha marker, so they were immune to it by construction. The real risk
+            // in the new architecture is that a star could get crushed back toward the clear colour by the tonemap
+            // curve instead of surviving as a bright point. Count bright pixels OUTSIDE a central box bounding the
+            // small cube, so only stars can be there.
             int bx0 = W * 35 / 100, bx1 = W * 65 / 100, by0 = H * 35 / 100, by1 = H * 65 / 100;
             int stars = 0;
             for (int y = 0; y < H; y++)
@@ -226,7 +230,7 @@ namespace KhaozEngine.Tests.Gpu
                     int i = (y * W + x) * 4;
                     if (Luma(rgba[i], rgba[i + 1], rgba[i + 2]) > 120f) stars++;
                 }
-            Assert.True(stars > 5, $"starfield should inject bright background pixels through the tonemap (stars={stars})");
+            Assert.True(stars > 5, $"starfield stars should survive the tonemap as bright background pixels (stars={stars})");
         }
     }
 }

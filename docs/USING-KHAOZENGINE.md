@@ -6445,8 +6445,12 @@ credential so the rotated token is the one saved.
   weight only if you use this backend.
 - **`KhaozEngine.Identity.Discord`** - Discord's OAuth2 flow against its fixed authorize/token endpoints
   (no discovery document). `DiscordClientProvider` is the `IIdentityProvider`; `DiscordTokenValidator`
-  verifies the access token by calling Discord's `/users/@me` userinfo endpoint. Opaque-token OAuth2, not
-  OIDC, so this backend has no `Microsoft.IdentityModel` dependency.
+  verifies the access token via Discord's `/oauth2/@me` token-introspection endpoint and rejects any token
+  not minted for the consumer's own client id (a required `expectedClientId` ctor argument, e.g.
+  `new DiscordTokenValidator(discordOptions.ClientId)`). Using the plain `/users/@me` userinfo endpoint would
+  accept a token minted for a *different* Discord app, so the audience check is what makes the verified
+  subject safe to exchange for a session token. Opaque-token OAuth2, not OIDC, so this backend has no
+  `Microsoft.IdentityModel` dependency.
 
 Both backends are opt-in siblings (not in any umbrella); add the one your game's sign-in provider needs.
 See each package's README for the full API and [DEPENDENCY-SEAMS.md](DEPENDENCY-SEAMS.md) for the seam

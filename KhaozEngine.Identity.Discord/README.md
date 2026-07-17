@@ -13,8 +13,13 @@ OAuth2 authorization-code + PKCE flow, using the system browser and a local loop
   status (a 5xx, say) throws `IdentitySignInException` as a transient error to retry later. The interactive
   sign-in code exchange is unchanged: a 400 there is still a hard `IdentitySignInException`.
 - **DiscordTokenValidator** - `IIdentityValidator` implementation that verifies a Discord access
-  token by calling `GET https://discord.com/api/users/@me` and mapping `id`/`username`/`email` to a
-  `VerifiedIdentity`.
+  token by calling `GET https://discord.com/api/oauth2/@me` (token introspection) and mapping the nested
+  `user` object's `id`/`username`/`email` to a `VerifiedIdentity`. It takes a required `expectedClientId`
+  and **rejects any token whose issuing `application.id` is not that id**. This is the audience check that
+  makes the validator safe to exchange for a session token: the plain `users/@me` endpoint answers for ANY
+  application's access token and never names the issuing app, so validating against it would accept a token
+  minted for a *different* Discord app (an account-takeover vector). A non-success response, a token from a
+  different app, or a malformed body all return null (fail-closed).
 - **DiscordProviderOptions** - client id, scopes (default `identify email`), loopback port, and HTTP
   timeout.
 
@@ -48,7 +53,8 @@ DiscordClientProvider provider = new(options, launcher, port => new HttpLoopback
 ProviderCredential credential = await provider.SignInAsync();
 // credential.CredentialToken is the Discord access_token; send it to the server for verification.
 
-DiscordTokenValidator validator = new();
+// Pass the consumer's own Discord client id: the validator rejects any token minted for a different app.
+DiscordTokenValidator validator = new(options.ClientId);
 VerifiedIdentity? identity = await validator.ValidateAsync(credential.CredentialToken);
 ```
 

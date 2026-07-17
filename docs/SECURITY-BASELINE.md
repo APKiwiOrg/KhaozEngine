@@ -107,7 +107,8 @@ authenticated), not something `KhaozEngine.Commerce` verifies itself. Purchases 
 Packages: `KhaozEngine.Identity`, `KhaozEngine.Identity.Oidc`, `KhaozEngine.Identity.Discord`. A provider
 credential (an OIDC id_token, a Discord access_token) is untrusted client input until the server verifies
 it: `IIdentityValidator.ValidateAsync` (`OidcTokenValidator` against the issuer's discovery document + JWKS,
-`DiscordTokenValidator` against Discord's userinfo endpoint) is the only place a subject is established. The
+`DiscordTokenValidator` against Discord's `oauth2/@me` token-introspection endpoint, checking the token's
+issuing `application.id` against the consumer's own client id) is the only place a subject is established. The
 client-side `IIdentityProvider`/`IdentitySession` never asserts a verified identity on its own; it only
 produces the credential the server exchanges. Two hardening details baked into the client flow:
 

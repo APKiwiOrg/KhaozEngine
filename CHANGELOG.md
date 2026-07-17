@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 13.0.0
+
+Security (breaking): `DiscordTokenValidator` now verifies the access token was minted for the consumer's own
+Discord application, closing an account-takeover vector. The validator previously called `GET /users/@me`,
+which answers for ANY application's access token and never names the issuing app, so it accepted a token
+minted for a *different* Discord app as if it were the consumer's own. A server that exchanges the resulting
+identity for a session token (Ruinborne's `/auth/exchange`) would hand an attacker a session for whichever
+victim their own "Login with Discord" app had authorized. Closes #78; unblocks the Ruinborne adopt
+(APKiwiOrg/Ruinborne#1).
+
+- **`DiscordTokenValidator` now validates via `GET https://discord.com/api/oauth2/@me`** (token
+  introspection: returns `{ application: { id }, scopes, expires, user }`) instead of `users/@me`, and
+  rejects any token whose `application.id` is not the expected client id. The identity (`id`/`username`/
+  `email`) now comes from the nested `user` object. A malformed or unparseable body is rejected fail-closed
+  (returns null), matching the non-success and wrong-application paths.
+- **Breaking API:** `DiscordTokenValidator`'s constructor gained a required first parameter,
+  `string expectedClientId` (`new DiscordTokenValidator(clientId)` / `new DiscordTokenValidator(clientId,
+  httpClient)`). It is required by design, so a validator that accepts tokens minted for another app cannot be
+  constructed; an empty id throws `ArgumentException`. Consumers pass their own Discord client id (the same
+  id `DiscordProviderOptions.ClientId` carries on the client side). This is the only breaking change in the
+  release, hence the major bump.
+
 ## 12.1.1
 
 Map editor: three verified history/crash fixes. The add-companion affordance no longer crashes the editor on a

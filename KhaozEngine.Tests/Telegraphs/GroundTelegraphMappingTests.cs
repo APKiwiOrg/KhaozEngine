@@ -171,5 +171,21 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.Equal(4f * TelegraphStyle.Generic.FeatherWidth, d.FeatherWidth, 4);
     }
 
+    [Fact]
+    public void Edge_and_feather_overrides_gate_independently()
+    {
+        var edgeOnly = TelegraphStyle.Generic;
+        edgeOnly.EdgeWidthWorld = 0.04f;
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, edgeOnly);
+        Assert.Equal(0.04f, d.EdgeThickness, 4);
+        Assert.Equal(4f * TelegraphStyle.Generic.FeatherWidth, d.FeatherWidth, 4);
+
+        var featherOnly = TelegraphStyle.Generic;
+        featherOnly.FeatherWidthWorld = 0.02f;
+        d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, featherOnly);
+        Assert.Equal(0.2f, d.EdgeThickness, 4);
+        Assert.Equal(0.02f, d.FeatherWidth, 4);
+    }
+
     }
 }

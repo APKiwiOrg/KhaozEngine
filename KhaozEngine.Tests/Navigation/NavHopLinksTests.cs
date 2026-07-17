@@ -108,7 +108,7 @@ public class NavHopLinksTests
     {
         NavGrid grid = MesaGrid(1.0f);
 
-        Assert.Throws<ArgumentException>(() => NavHopLinks.Generate(grid, stepHeight: 0.5f, jumpHeight: 0.3f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NavHopLinks.Generate(grid, stepHeight: 0.5f, jumpHeight: 0.3f));
     }
 
     [Fact]
@@ -211,9 +211,9 @@ public class NavHopLinksTests
     {
         NavGrid grid = MesaGrid(1.0f);
 
-        Assert.Throws<ArgumentException>(() => NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 1));
-        Assert.Throws<ArgumentException>(() => NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 2, layer: -1));
-        Assert.Throws<ArgumentException>(() => NavHopLinks.Generate(grid, stepHeight: -0.1f, jumpHeight: JumpHeight));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NavHopLinks.Generate(grid, StepHeight, JumpHeight, maxHopCells: 2, layer: -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NavHopLinks.Generate(grid, stepHeight: -0.1f, jumpHeight: JumpHeight));
     }
 
     [Fact]

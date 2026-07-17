@@ -32,17 +32,24 @@ public static class NavHopLinks
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="grid"/> has no surface height field
-    /// (<see cref="NavGrid.HasSurfaceHeights"/> is false), or a numeric argument is out of range.</exception>
+    /// (<see cref="NavGrid.HasSurfaceHeights"/> is false).</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="stepHeight"/> is negative,
+    /// <paramref name="jumpHeight"/> is not greater than <paramref name="stepHeight"/>,
+    /// <paramref name="maxHopCells"/> is less than 2, or <paramref name="layer"/> is negative.</exception>
     public static IReadOnlyList<NavLink> Generate(
         NavGrid grid, float stepHeight, float jumpHeight, int maxHopCells = 2, int layer = 0)
     {
         if (grid is null) throw new ArgumentNullException(nameof(grid));
         if (!grid.HasSurfaceHeights)
             throw new ArgumentException("Grid has no surface height field. Bake it with NavGrid.FromSurfaces.", nameof(grid));
-        if (stepHeight < 0f) throw new ArgumentException("Step height must be non-negative.", nameof(stepHeight));
-        if (jumpHeight <= stepHeight) throw new ArgumentException("Jump height must be greater than step height.", nameof(jumpHeight));
-        if (maxHopCells < 2) throw new ArgumentException("Max hop cells must be at least 2.", nameof(maxHopCells));
-        if (layer < 0) throw new ArgumentException("Layer must be non-negative.", nameof(layer));
+        if (stepHeight < 0f)
+            throw new ArgumentOutOfRangeException(nameof(stepHeight), stepHeight, "Step height must be non-negative.");
+        if (jumpHeight <= stepHeight)
+            throw new ArgumentOutOfRangeException(nameof(jumpHeight), jumpHeight, "Jump height must be greater than step height.");
+        if (maxHopCells < 2)
+            throw new ArgumentOutOfRangeException(nameof(maxHopCells), maxHopCells, "Max hop cells must be at least 2.");
+        if (layer < 0)
+            throw new ArgumentOutOfRangeException(nameof(layer), layer, "Layer must be non-negative.");
 
         var links = new List<NavLink>();
         for (int lz = 0; lz < grid.Height; lz++)

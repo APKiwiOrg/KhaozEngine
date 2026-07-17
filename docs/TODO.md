@@ -67,3 +67,27 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   the cross-mode byte-identity diff, which closes the vacuous-pass hole. A reviewer noted it still only
   establishes the block is mostly covered by geometry, not wholly. Low value, recorded for honesty.
   Evidence: `CHANGELOG.md` 11.9.0.
+- [ ] **Rebake the drifted direct3d11/vulkan goldens before the tolerance margin runs out.** A
+  `workflow_dispatch bake=true` run of `cross-platform-gpu.yml` (run 29567466645, 2026-07-17, on the
+  frustum-slice shadow branch after merging main at 11.9.0) showed 8 scenes whose direct3d11/vulkan
+  goldens have accumulated whole-frame drift versus their checked-in grids that is NOT attributable to
+  the shadow rework: `scene3d`, `scene3d_fill`, `scene3d_hdr_off`, `scene3d_splat`,
+  `scene3d_splat_distance`, `scene3d_textured`, `telegraph_ground`, `telegraph_modern`. 636-1641 of 1728
+  cells changed, max deltas 0.046-0.058 against the 0.06 verify tolerance. Likely source is the 11.9.0
+  background-pass release (or residual 11.7.0 chroma-tonemap drift) shipping without a CI-backend rebake
+  because it stayed sub-tolerance. The verify legs still pass today, but the margin is nearly consumed:
+  any further sub-tolerance change turns main red on those scenes. Task: confirm the drift source from
+  the relevant releases' bake commits, run a fresh `cross-platform-gpu.yml bake=true` on current main,
+  eyeball the bake evidence PNGs per scene (repo rule), then commit the rebaked direct3d11/vulkan
+  goldens with a message attributing the drift. Goldens-only change, no version bump needed.
+- [ ] **Audit whether the golden tests are actually valid, robust, and useful.** The grid-blindness
+  entry and the backend-drift entry above are two symptoms of the same unexamined question: what do the
+  goldens really prove? Known so far: the 32x18 averaged grid cannot see sparse detail at all (a
+  fully deleted starfield still passes), and whole-frame drift accumulates silently right up to the
+  0.06 tolerance so a "green" leg can be one small change away from red. Wanted: a first-principles
+  review of the mechanism, not a patch. Is per-cell averaging with a fixed absolute tolerance the right
+  comparison? Should tolerance be per-backend, or a structural/perceptual metric instead of a mean? How
+  many scenes would still pass with their feature-under-test deleted (the starfield experiment
+  generalized)? Does the suite catch anything the raw-pixel GPU tests do not? Is the per-backend rebake
+  ritual masking real regressions as "driver noise"? Outcome should be a written verdict on what the
+  goldens are for and what tier of test covers what, whether or not the mechanism changes.

@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.Render3D
             var (main, shadow) = Scene3D.ClassifySkinnedVisibility(
                 UnitCubeBounds, Matrix4x4.CreateTranslation(1000f, 0f, 0f),
                 cullMain: false, mainFrustum: default,
-                shadowActive: false, shadowFrustum: default);
+                shadowActive: false, shadowFrustums: default);
 
             Assert.True(main);
             Assert.False(shadow);
@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Render3D
             var (main, _) = Scene3D.ClassifySkinnedVisibility(
                 UnitCubeBounds, Matrix4x4.CreateTranslation(1000f, 0f, 0f),
                 cullMain: false, mainFrustum: default,
-                shadowActive: true, shadowFrustum: shadowFrustum);
+                shadowActive: true, shadowFrustums: new[] { shadowFrustum });
 
             Assert.True(main);
         }
@@ -59,7 +59,7 @@ namespace KhaozEngine.Tests.Render3D
             var (main, shadow) = Scene3D.ClassifySkinnedVisibility(
                 UnitCubeBounds, Matrix4x4.Identity,
                 cullMain: true, mainFrustum: OrthoFrustum(),
-                shadowActive: false, shadowFrustum: default);
+                shadowActive: false, shadowFrustums: default);
 
             Assert.True(main);
             Assert.False(shadow);
@@ -71,7 +71,7 @@ namespace KhaozEngine.Tests.Render3D
             var (main, shadow) = Scene3D.ClassifySkinnedVisibility(
                 UnitCubeBounds, Matrix4x4.CreateTranslation(1000f, 0f, 0f),
                 cullMain: true, mainFrustum: OrthoFrustum(),
-                shadowActive: false, shadowFrustum: default);
+                shadowActive: false, shadowFrustums: default);
 
             Assert.False(main);
             Assert.False(shadow);
@@ -91,7 +91,7 @@ namespace KhaozEngine.Tests.Render3D
             var (main, shadow) = Scene3D.ClassifySkinnedVisibility(
                 UnitCubeBounds, world,
                 cullMain: true, mainFrustum: OrthoFrustum(),
-                shadowActive: true, shadowFrustum: shadowFrustum);
+                shadowActive: true, shadowFrustums: new[] { shadowFrustum });
 
             Assert.False(main);
             Assert.True(shadow);
@@ -107,7 +107,7 @@ namespace KhaozEngine.Tests.Render3D
             var (main, shadow) = Scene3D.ClassifySkinnedVisibility(
                 UnitCubeBounds, world,
                 cullMain: true, mainFrustum: OrthoFrustum(),
-                shadowActive: true, shadowFrustum: shadowFrustum);
+                shadowActive: true, shadowFrustums: new[] { shadowFrustum });
 
             Assert.False(main);
             Assert.False(shadow);
@@ -122,7 +122,7 @@ namespace KhaozEngine.Tests.Render3D
             var (main, shadow) = Scene3D.ClassifySkinnedVisibility(
                 UnitCubeBounds, Matrix4x4.Identity,
                 cullMain: true, mainFrustum: OrthoFrustum(),
-                shadowActive: true, shadowFrustum: shadowFrustum);
+                shadowActive: true, shadowFrustums: new[] { shadowFrustum });
 
             Assert.True(main);
             Assert.True(shadow);
@@ -146,9 +146,33 @@ namespace KhaozEngine.Tests.Render3D
 
             var world = Matrix4x4.CreateTranslation(5f + distanceToFace, 0f, 0f);
             var (main, _) = Scene3D.ClassifySkinnedVisibility(
-                tinyBounds, world, cullMain: true, mainFrustum: OrthoFrustum(), shadowActive: false, shadowFrustum: default);
+                tinyBounds, world, cullMain: true, mainFrustum: OrthoFrustum(), shadowActive: false, shadowFrustums: default);
 
             Assert.True(main, "the safety-inflated sphere should reach back across the frustum face");
+        }
+
+        [Fact]
+        public void SkinnedCaster_InsideNearCascadeOnly_IsStillShadowVisible()
+        {
+            // Under the frustum-slice fit the outer cascade no longer contains the near one, so the
+            // caster-visibility test must union ALL cascades: a caster inside cascade 0's volume but outside
+            // the outer cascade's volume must still be classified a shadow caster.
+            var lightDir = Vector3.Normalize(new Vector3(-0.4f, -0.8f, -0.3f));
+            Matrix4x4 nearVp = ShadowMapMath.BuildLightViewProj(lightDir, new Vector3(0f, 0f, 5f), 8f, 2048);
+            Matrix4x4 farVp = ShadowMapMath.BuildLightViewProj(lightDir, new Vector3(0f, 0f, 90f), 40f, 2048);
+            var frusta = new[] { FrustumPlanes.Extract(nearVp), FrustumPlanes.Extract(farVp) };
+
+            var bounds = new MeshBounds(new Vector3(-0.5f), new Vector3(0.5f));
+            Matrix4x4 world = Matrix4x4.CreateTranslation(0f, 0f, 5f);   // inside near cascade, far from the far one
+
+            var (_, shadow) = Scene3D.ClassifySkinnedVisibility(
+                bounds, world, cullMain: true, mainFrustum: frusta[1] /* anything */, shadowActive: true, frusta);
+            Assert.True(shadow);
+
+            // And against ONLY the far cascade it is invisible, proving the union is what saves it.
+            var (_, shadowFarOnly) = Scene3D.ClassifySkinnedVisibility(
+                bounds, world, cullMain: true, mainFrustum: frusta[1], shadowActive: true, new[] { frusta[1] });
+            Assert.False(shadowFarOnly);
         }
     }
 }

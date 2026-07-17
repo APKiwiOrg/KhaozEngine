@@ -82,6 +82,9 @@ namespace KhaozEngine.Render3D
         // Per-cascade CPU (pre-GPU-clip-correct) fit matrices for THIS frame (0.._cascadeCount-1 valid). The GPU-clip
         // corrected RECEIVER matrices + the column-transformed DEPTH matrices are derived from them each frame.
         readonly Matrix4x4[] _cascadeCpuVps = new Matrix4x4[ShadowSettings.MaxCascades];
+        readonly float[] _cascadeRadii = new float[ShadowSettings.MaxCascades];       // fitted slice-sphere radii (texel world size source)
+        readonly FrustumPlanes[] _shadowFrustums = new FrustumPlanes[ShadowSettings.MaxCascades];
+        readonly Vector3[] _frustumCornersScratch = new Vector3[8];
         readonly Matrix4x4[] _cascadeReceiverVps = new Matrix4x4[ShadowSettings.MaxCascades];  // GPU-clip-corrected, receiver-sampled
         readonly Matrix4x4[] _cascadeDepthVps = new Matrix4x4[ShadowSettings.MaxCascades];      // receiver * atlas-column transform (depth pass)
         readonly float[] _cascadeNormalOffsets = new float[ShadowSettings.MaxCascades];
@@ -1602,25 +1605,51 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> cascades (CPU-authored, NOT
-        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> and return the count. Cascade 0 is the tight near map
-        /// (<see cref="ShadowSettings.ShadowNearDistance"/>) and the rest grow geometrically out to
-        /// <see cref="ShadowSettings.ResolvedMaxDistance"/> (the practical split), each texel-snapped independently so
-        /// none shimmers under a camera pan. Factored out of <see cref="RenderShadowDepthPass"/> so the same matrices
-        /// drive the depth pass, the receiver tail AND the pre-skin-pass caster-visibility test (the outermost cascade
-        /// is the widest shadow volume), so the passes can never disagree on the fit.
+        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> and return the count. Standard frustum-slice
+        /// CSM: the active camera's frustum is split along VIEW DEPTH (near plane, <see cref="ShadowSettings.ShadowNearDistance"/>,
+        /// ... , <see cref="ShadowSettings.ResolvedMaxDistance"/> via the practical split) and each cascade
+        /// frames its slice's bounding sphere, texel-snapped. Texel density therefore follows what is ON
+        /// SCREEN: a visible caster always samples from the tightest cascade covering its view depth, whatever
+        /// the camera is looking at (the old gaze-point focus made shadow sharpness depend on the camera's
+        /// look direction and jumped when the gaze ray left the ground plane). Factored out of
+        /// <see cref="RenderShadowDepthPass"/> so the same matrices drive the depth pass, the receiver tail
+        /// AND the caster-visibility test (which unions ALL cascades: under a slice fit no single cascade
+        /// bounds the rest). Returns 0 for a degenerate (non-invertible) camera, and the caller skips shadows
+        /// that frame.
         /// </summary>
-        int ComputeShadowCascades(Vector3 eye)
+        int ComputeShadowCascades()
         {
             var shadows = Post.Quality.Shadows;
-            // Task 3 replaces this bridge with the frustum-slice fit.
-            Vector3 focus = eye + ActiveCamera.Forward * shadows.ShadowNearDistance;
-            Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
+            if (!Internal.ShadowMapMath.FrustumCornersWorld(ActiveCamera.ViewProjection, _frustumCornersScratch))
+            {
+                _cascadeCount = 0;
+                return 0;
+            }
+            Vector3 eye = ActiveCamera.Eye;
+            Vector3 fwd = ActiveCamera.Forward;
+            // View depths of the near/far planes read off the unprojected corners (camera-type-agnostic: no
+            // reliance on perspective-projection matrix fields, so iso/ortho cameras fit identically).
+            Vector3 nearC = (_frustumCornersScratch[0] + _frustumCornersScratch[1] + _frustumCornersScratch[2] + _frustumCornersScratch[3]) * 0.25f;
+            Vector3 farC = (_frustumCornersScratch[4] + _frustumCornersScratch[5] + _frustumCornersScratch[6] + _frustumCornersScratch[7]) * 0.25f;
+            float camNear = Vector3.Dot(nearC - eye, fwd);
+            float camFar = Vector3.Dot(farC - eye, fwd);
+            float range = MathF.Max(camFar - camNear, 1e-3f);
+
             int res = _model.ShadowMap.Resolution;         // the actual allocated per-cascade resolution (clamped)
             int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
-            Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
-            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
+            Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
+            Internal.ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
+            Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
+            float prev = camNear;
             for (int i = 0; i < count; i++)
-                _cascadeCpuVps[i] = Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, radii[i], res);
+            {
+                float d = Math.Clamp(splits[i], camNear, camFar);
+                Internal.ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
+                    (prev - camNear) / range, (d - camNear) / range, out Vector3 center, out float radius);
+                _cascadeCpuVps[i] = Internal.ShadowMapMath.BuildLightViewProj(lightDir, center, radius, res);
+                _cascadeRadii[i] = radius;
+                prev = MathF.Max(d, prev);
+            }
             _cascadeCount = count;
             return count;
         }
@@ -1641,8 +1670,6 @@ namespace KhaozEngine.Render3D
             int count = _cascadeCount;
             int res = _model.ShadowMap.Resolution;
             float texelStep = 1f / Math.Max(1, res);
-            Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
-            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
             for (int i = 0; i < count; i++)
             {
                 _cascadeReceiverVps[i] = GpuClip.Correct(_cascadeCpuVps[i], _gd.Capabilities);
@@ -1652,7 +1679,8 @@ namespace KhaozEngine.Render3D
                 // Per-cascade normal-offset world size = one cascade texel's world width (2*radius_i/res) x the tunable
                 // ShadowNormalOffset (in texels), so far cascades (bigger texels) offset more and near ones less - the
                 // 10.116.0 normal offset scaled per cascade, which keeps far cascades acne-free and near ones attached.
-                float texelWorld = Internal.ShadowMapMath.TexelWorldSize(radii[i], res);
+                // The radius is the FITTED slice-sphere radius (the split distances are no longer the ortho extents).
+                float texelWorld = Internal.ShadowMapMath.TexelWorldSize(_cascadeRadii[i], res);
                 _cascadeNormalOffsets[i] = texelWorld * MathF.Max(0f, shadows.ShadowNormalOffset);
             }
             // Outermost-cascade UV border fade width (fraction of the map) so the coverage edge fades to lit instead of
@@ -1806,14 +1834,17 @@ namespace KhaozEngine.Render3D
             // off-camera skinned draw's shadow-caster visibility can be decided up front (see
             // ClassifySkinnedVisibility): a character camera-culled from the main pass but still inside the shadow
             // volume must still be CPU-skinned so its shadow lands on-screen. RenderShadowDepthPass (below) reuses the
-            // fitted cascades instead of recomputing them, so the two passes can never disagree on the fit. The
-            // OUTERMOST cascade is the widest shadow volume, so its frustum bounds the caster-visibility test.
+            // fitted cascades instead of recomputing them, so the two passes can never disagree on the fit. Under the
+            // frustum-slice fit no single cascade bounds the rest, so the caster-visibility test unions ALL cascades'
+            // frustums (extracted here), and a degenerate camera (count 0) drops shadows for the frame.
             bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
-            FrustumPlanes shadowFrustum = default;
+            int shadowCascadeCount = 0;
             if (shadowMapActive)
             {
-                int cc = ComputeShadowCascades(eye);
-                shadowFrustum = FrustumPlanes.Extract(_cascadeCpuVps[cc - 1]);
+                shadowCascadeCount = ComputeShadowCascades();
+                if (shadowCascadeCount == 0) shadowMapActive = false;   // degenerate camera: no shadows this frame
+                for (int i = 0; i < shadowCascadeCount; i++)
+                    _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVps[i]);
             }
 
             // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
@@ -1847,7 +1878,7 @@ namespace KhaozEngine.Render3D
                     if (src is null) continue;
 
                     var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(
-                        entry.Bounds, it.World, FrustumCulling, camFrustum, shadowMapActive, shadowFrustum);
+                        entry.Bounds, it.World, FrustumCulling, camFrustum, shadowMapActive, _shadowFrustums.AsSpan(0, shadowCascadeCount));
                     if (!visibleMain && !visibleShadow) { _culledSkinnedInstances++; continue; }
                     if (visibleMain) _drawnSkinnedInstances++; else _culledSkinnedInstances++;
 
@@ -2768,7 +2799,10 @@ namespace KhaozEngine.Render3D
         /// <paramref name="restBounds"/> transformed by its <paramref name="world"/> matrix, inflated by
         /// <see cref="SkinnedCullSafetyFactor"/>. <paramref name="cullMain"/> is <see cref="FrustumCulling"/> (off
         /// = always visible in the main pass, the rigid-instance parity path). <paramref name="shadowActive"/> is
-        /// whether the shadow-map tier is resolved this frame (off = never a shadow caster). Returns
+        /// whether the shadow-map tier is resolved this frame (off = never a shadow caster). The caster is a shadow
+        /// caster when its inflated sphere intersects ANY cascade's ortho volume in <paramref name="shadowFrustums"/>:
+        /// under the frustum-slice fit the cascades no longer nest, so the union of all cascades is what keeps a
+        /// caster inside a near cascade but outside the far one alive for the depth pass. Returns
         /// (VisibleMain, VisibleShadow) - a draw needs CPU skinning + upload iff either is true. Pure
         /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic (both already unit-tested), no GPU,
         /// headless-testable.
@@ -2776,13 +2810,16 @@ namespace KhaozEngine.Render3D
         internal static (bool VisibleMain, bool VisibleShadow) ClassifySkinnedVisibility(
             in MeshBounds restBounds, in Matrix4x4 world,
             bool cullMain, in FrustumPlanes mainFrustum,
-            bool shadowActive, in FrustumPlanes shadowFrustum)
+            bool shadowActive, ReadOnlySpan<FrustumPlanes> shadowFrustums)
         {
             if (!cullMain && !shadowActive) return (true, false);
             restBounds.WorldSphere(world, out Vector3 center, out float radius);
             float r = radius * SkinnedCullSafetyFactor;
             bool visibleMain = !cullMain || mainFrustum.IntersectsSphere(center, r);
-            bool visibleShadow = shadowActive && shadowFrustum.IntersectsSphere(center, r);
+            bool visibleShadow = false;
+            if (shadowActive)
+                for (int i = 0; i < shadowFrustums.Length && !visibleShadow; i++)
+                    visibleShadow = shadowFrustums[i].IntersectsSphere(center, r);
             return (visibleMain, visibleShadow);
         }
 

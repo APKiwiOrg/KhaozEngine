@@ -92,7 +92,7 @@ version/release work.
 - Release ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props` → add the
   `CHANGELOG.md` entry → update the engine-version declarations the
   guard checks (`docs/ROADMAP.md` "Current released version" and
-  the `README.md` `<PackageReference>` example) → backstop-sweep `docs/TODO.md` (delete any resolved
+  EVERY `README.md` `<PackageReference>` example line, one per umbrella) → backstop-sweep `docs/TODO.md` (delete any resolved
   entry that slipped through, per the Discovered work section) → `dotnet pack -c Release -o ./local-feed`
   (cumulative within a release) → commit → `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
   `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
@@ -102,7 +102,10 @@ version/release work.
   `local-feed` may be pruned up to the lowest version any consumer still pins (each consumer's `Directory.Build.props`
   `<KhaozEngineVersion>`; do not prune below it) without losing anything recoverable.
 - **Full doc sweep on EVERY feature / bug / change - not just the guard-checked declarations.**
-  `check-doc-versions.sh` only verifies the 3 version strings; it does NOT catch package/feature docs drifting.
+  `check-doc-versions.sh` verifies the engine-version declarations AND the package inventory (every packable
+  package has a README catalog row and ships its own `<Package>/README.md`). What it does NOT check is whether
+  any of that prose is CORRECT: a stale catalog row, or a package README describing removed API, sails straight
+  through. The sweep below is for content accuracy, which no guard can do for you.
   Each artifact has ONE canonical source - edit that one, the rest point at it:
   - **Package + umbrella catalog -> `README.md`** (the package table + "Umbrella metapackages" table, plus the
     repo-layout block). When a package is ADDED/REMOVED or its summary/deps change, edit the README table.
@@ -122,9 +125,12 @@ version/release work.
   Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`
   recursively** (root, `docs/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
   that should mention it does (and no stale doc still describes what you removed).
-- `scripts/check-doc-versions.sh` enforces those two declarations match the **engine version line**
-  (`<KhaozEngineVersion>`); CI runs it on every push, so a forgotten bump fails the
-  build. Consumer pins are exempt and may lag.
+- `scripts/check-doc-versions.sh` enforces two things. First, that the engine-version declarations
+  (`docs/ROADMAP.md` "Current released version" plus EVERY `README.md` `<PackageReference>` example line, not
+  just one) match the **engine version line** (`<KhaozEngineVersion>`). Second, that every packable package has
+  a README catalog row and ships its own `<Package>/README.md` via `<PackageReadmeFile>`, which is what catches
+  a new package landing undocumented. CI runs it on every push, so a forgotten bump or an undocumented package
+  fails the build. Consumer pins are exempt and may lag.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - **One shared version line - the engine is entirely MonoGame-free.** `Directory.Build.props` carries a single
   `<KhaozEngineVersion>` governing the WHOLE engine; every packable project sets
@@ -134,15 +140,18 @@ version/release work.
   table in `README.md` - not here.** When a package is added/removed or a summary/dep changes, edit the README
   table (the single source) plus that package's own `<Package>/README.md`; this file only points at the README
   catalog. The only package facts kept here are the engine-dev orientation below:
-  - **Dependency layering** (full per-package deps are the README "Depends on" column): `Primitives` is the
-    zero-dependency leaf at the bottom; the render/runtime stack layers `Gpu` -> `Windowing` ->
-    `Render2D`/`Render3D` -> `Gui`/`Game`/`Game.Render3D`; the GPU-free `Foundation` packages (Ecs, Serialization,
-    Content, Diagnostics, App, Locomotion, Persistence, Platform, Updates, Collision,
-    Physics, Social, Terrain, Navigation, Determinism, Progression) sit beside it (9.0.0 folded Pooling into Primitives, Localization into App,
-    and Effects into Particles); `Gui` also references `App` (for the `LocalizedText` localization sink type,
-    acyclic - `App` never references `Gui`); the server/netcode stack layers `Simulation` (a zero-dependency
-    leaf) -> `Netcode`/`Replication`/`Sharding`/`WorldStore` -> `NetWorld`. `Ecs` depends on `Simulation` (acyclic).
-    Opt-in, in NO umbrella, added explicitly: `Physics.Bepu`, `WorldStore.Sqlite`/`.SqlServer`, `Server.Admin`, `Social.Discord`.
+  - **Dependency layering** - the SHAPE only. Which packages exist, which umbrella carries each one, and the
+    full per-package deps are the README catalog and its "Depends on" column. Do not re-enumerate any of that
+    here: the duplicate is what rots, and the README's copy is guard-checked while a copy here is not.
+    `Primitives` sits at the bottom of the render/runtime stack, which layers `Gpu` -> `Windowing` ->
+    `Render2D`/`Render3D` -> `Gui`/`Game`/`Game.Render3D`. The GPU-free `Foundation` packages sit beside it
+    (9.0.0 folded Pooling into Primitives, Localization into App, and Effects into Particles). `Gui` also
+    references `App` (for the `LocalizedText` localization sink type, acyclic - `App` never references `Gui`).
+    `Simulation` sits at the bottom of the server/netcode stack, which layers `Simulation` ->
+    `Netcode`/`Replication`/`Sharding`/`WorldStore` -> `NetWorld`. `Ecs` depends on `Simulation` (acyclic).
+    Not every package is in an umbrella: the opt-in ones (`Physics.Bepu` and the `*.Sqlite`/`*.SqlServer`
+    backends are the usual suspects) must be referenced explicitly. Each umbrella's own csproj
+    `ProjectReference` set is the authority on what it carries - read it, do not trust a prose list.
     A `netstandard2.0` Roslyn analyzer `KhaozEngine.Localization.Analyzers` (KELOC001/002/003) flows to consumers via the `Game2D`/`Game3D` umbrellas.
     The four umbrellas (`Foundation`, `Game2D`, `Game3D`, `Server`) are code-free dependency groups.
   - **Gotchas / history:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would

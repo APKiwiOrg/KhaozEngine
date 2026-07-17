@@ -31,6 +31,19 @@ if printf '%s' "$hs" | grep -Eq '^[a-z0-9][a-z0-9._-]*(\([^)]*\))?: .+$'; then
 fi
 
 area=${1:-}
+# area is one bare conventional-commit word; this script assembles 'area(<version>): summary' itself.
+# Passing that whole canonical string as the single area arg is the obvious mistake (it reads like the
+# thing the docs tell you to produce) and it used to assemble into a doubled message. Reject it here,
+# at the source, where the message can name the right form. Empty is fine: it defaults from HEAD below.
+case "$area" in
+  *'('* | *')'* | *:* | *[[:space:]]*)
+    echo "tag-release: bad area '$area'." >&2
+    echo "             area is one bare word and summary is separate; the 'area($ver): summary' message" >&2
+    echo "             is assembled for you. Do not pass it pre-assembled." >&2
+    echo "             usage: scripts/tag-release.sh <area> <summary...>" >&2
+    echo "             e.g.   scripts/tag-release.sh render \"frustum-slice shadow cascades\"" >&2
+    exit 1 ;;
+esac
 [ $# -gt 0 ] && shift
 summary=${*:-}
 [ -n "$area" ] || area=$harea

@@ -38,5 +38,13 @@ tag_msg_ok() {
   _subj=$1; _ver=$2
   printf '%s' "$_subj" | LC_ALL=C grep -qF -e '—' -e '–' && return 1
   _re=$(printf '%s' "$_ver" | sed 's/\./\\./g')
-  printf '%s' "$_subj" | grep -Eq "^[a-z0-9][a-z0-9._-]*\\(${_re}\\): .+$"
+  printf '%s' "$_subj" | grep -Eq "^[a-z0-9][a-z0-9._-]*\\(${_re}\\): .+$" || return 1
+  # The summary must not carry a SECOND '(<version>): ' segment. That is the signature of the whole
+  # canonical 'area(version): summary' string passed as tag-release.sh's single area arg, which
+  # assembles into 'area(ver): summary(ver): head-subject'. The prefix match above passes it, because
+  # '.+' happily swallows the doubled tail. Pinned to the actual version, not any '(...): ', so a
+  # summary like 'fix the thing (again)' stays legal.
+  _rest=${_subj#*"($_ver): "}
+  printf '%s' "$_rest" | grep -qF "($_ver): " && return 1
+  return 0
 }

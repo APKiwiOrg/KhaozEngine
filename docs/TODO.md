@@ -31,25 +31,6 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   section.
 ## Known gaps
 
-- [ ] **The release-tag guard accepts a malformed doubled message.** `scripts/tag-release.sh` takes
-  `<area> <summary...>` as separate args, but its own header docs describe the canonical tag as
-  `area(version): summary`, so passing that literal string as ONE arg is the obvious mistake. It then
-  assembles `"$area($ver): $summary"` with `summary` defaulted from the HEAD subject, producing e.g.
-  `render(12.1.0): shadow cascades(12.1.0): integrate feature/...`. `tag_msg_ok` in
-  `scripts/tag-standard.sh` does not catch it: its regex `^[a-z0-9][a-z0-9._-]*\(<ver>\): .+$` matches
-  the `render(` prefix and lets `.+$` swallow the second embedded `(<ver>):` segment. `tag_msg_ok` is
-  shared by `.githooks/pre-push` and `tag-release.sh`, so the hole is on both paths. Repro, no tags
-  created: `. scripts/tag-standard.sh && tag_msg_ok "render(1.2.3): x on engine 9.9.9(1.2.3): y" "1.2.3"`
-  exits 0 (accepted). Hit live cutting Ruinborne v0.8.3 on 2026-07-17 (caught by eye, nothing shipped).
-  Fixed in game-template on 2026-07-17 (commit `77d14c5`, `APKiwiOrg/game-template`) and propagated to
-  the 4 game repos: reject an `area` arg containing `(`, `)`, `:` or whitespace, and reject a summary
-  carrying a second `(<ver>): ` segment (pinned to the actual version, so `fix the thing (again)` stays
-  legal). The engine carries its OWN copy of both scripts (byte-identical to the template's pre-fix
-  version apart from the correctly-absent "Template-managed" header) and is outside the game-repo
-  verbatim manifest, so the template propagation does NOT reach it and the bug is still live here. Port
-  the same two-layer fix, which needs its own version bump, `CHANGELOG.md` entry and tag per the release
-  ritual. Recorded 2026-07-17.
-
 - [ ] **Showcase 3D overworld room is not a shadow/day-night testbed.** The 12.0.0 frustum-slice
   shadow rework had to be visually verified without a representative showcase scene: the 3D overworld
   demo room enables no shadows (`ShadowMode` stays `Off`), has no staircase or multi-level geometry

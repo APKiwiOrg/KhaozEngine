@@ -21,7 +21,15 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   Recorded and deliberately not centralized at the time. Evidence: Ruinborne
   `docs/ENGINE-INTEGRATION.md`, "Not centralized (recorded)" note in the NPC follower-integration
   section.
+
 ## Known gaps
+
+- [ ] **View distance vs cell geometry is an undocumented, unguarded coupling.** Sharding is only correct
+  while `InterestRadius <= OverlapMargin`: raise a game's view distance past the cell overlap band and a
+  player sees entities the neighbouring cell has not handed over yet. Nothing states the invariant and
+  nothing asserts it, so a consumer tuning view distance can silently break replication. Wants a documented
+  invariant plus a startup assert or an analyzer. Carried over from the 2026-07-04 MMO architecture review
+  (recorded 2026-07-17).
 
 - [ ] **Showcase 3D overworld room is not a shadow/day-night testbed.** The 12.0.0 frustum-slice
   shadow rework had to be visually verified without a representative showcase scene: the 3D overworld

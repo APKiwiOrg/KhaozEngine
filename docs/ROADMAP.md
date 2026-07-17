@@ -85,6 +85,23 @@ duplicated here.
   entity in full the tick it enters/leaves the interest set, a binary pop at the sharded default
   `InterestRadius` (24). A client-side fade-in/out on enter/leave (the same dissolve the prop fade band
   in Rendering item 2 uses) when a game surfaces it visually.
+- `IWorldStore` batch / compare-and-swap (recorded 2026-07-17, carried over from the 2026-07-04 MMO
+  architecture review): a crash mid cell-handoff can duplicate or lose an entity across the two cell
+  blobs, because the store has no batch or CAS primitive to make the write pair atomic. The
+  corrupt-blob-crashes-every-boot half shipped in 9.33.0 (`TryRestoreCell` + quarantine), this is the
+  remaining correctness half. `KhaozEngine.Commerce` sidesteps it for currency (its `IWalletStore` is its
+  own transactional append-only ledger, depending only on `Progression`), so the gate now applies to
+  world-item and NPC trading rather than to money.
+- Transport encryption + token replay (recorded 2026-07-17, carried over from the same review): auth is a
+  plaintext HMAC bearer token over UDP today, so it is sniffable and replayable on a hostile network.
+  Needs a spec covering the wire encryption and a replay window / nonce.
+- Multi-process sharding (recorded 2026-07-17, carried over from the same review): `ICellLink` is
+  in-process only, so a world cannot span machines. The escape hatch today is independent world instances.
+  Keep the client protocol cell-agnostic so this can land without a client break.
+- Cell unload / hibernation (recorded 2026-07-17, carried over from the same review): cells stay resident
+  once loaded, so a large world's server memory grows with total cells visited rather than with cells
+  currently populated.
+
 ## Overworld / world content
 
 - Animated-creature adoption (game-side, not engine work): the engine animation stack shipped (glTF

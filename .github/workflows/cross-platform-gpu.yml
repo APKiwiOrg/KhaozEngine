@@ -80,12 +80,18 @@ jobs:
           - os: macos-14
             backend: metal
             runner: [self-hosted, macOS, ARM64]
+            blame: ''
           - os: windows-latest
             backend: direct3d11
             runner: windows-latest
+            blame: ''
+          # TEMPORARY: --blame names the test that was running when the native test host crashed (its
+          # Sequence.xml, uploaded below); --blame-crash grabs a dump. lavapipe (software Vulkan) segfaulted
+          # mid-suite with no managed assertion, so this identifies the culprit. Remove once it is guarded/fixed.
           - os: ubuntu-latest
             backend: vulkan
             runner: ubuntu-latest
+            blame: '--blame --blame-crash'
     steps:
       - uses: actions/checkout@v4
 
@@ -159,7 +165,18 @@ jobs:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
-        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
+        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket" ${{ matrix.blame }} --results-directory TestResults
+
+      # TEMPORARY (paired with matrix.blame): on a crash/failure, surface the --blame Sequence.xml (names the
+      # last-started test on the host that died) and any crash dump so the Vulkan native crasher can be
+      # identified from the run. Remove alongside matrix.blame once it is guarded/fixed.
+      - name: Upload blame / crash results
+        if: failure() && matrix.blame != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: blame-${{ matrix.backend }}
+          path: TestResults/
+          if-no-files-found: ignore
 
       # On a verify FAILURE: upload the got/want/diff evidence PNGs the golden compare wrote, so the visual
       # regression can be eyeballed from the run without re-running. ignore = no spurious failure when a leg

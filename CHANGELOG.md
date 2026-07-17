@@ -5,6 +5,76 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 11.9.0
+
+Render3D: the procedural starfield moves out of the final blit into a real background pass, so anything
+drawn at a background pixel composites over it instead of being erased. This unblocks void-projected
+ground decals (the next release) and removes a whole class of bug rather than working around it.
+
+### The problem
+
+The stars were generated in the FINAL BLIT, after the whole post chain, from the colour target's alpha
+marker (`if (starsOn && s.a < 0.5) col = BgColor.rgb + vec3(star);`). A pass that rebuilds the
+background from the clear colour at the very end necessarily DISCARDS whatever was drawn there. The
+alpha marker was doing double duty, answering both "is this background" and implicitly "how covered is
+it", so translucent content over the void was either erased (alpha below 0.5, the blit overwrote it) or
+punched a star-free hole (alpha at or above 0.5, the branch never fired). No alpha value composited
+correctly. `ParticleRenderer` (depth test `LessEqual`) already passes at background pixels and by
+inspection hits the same trap, unnoticed only because nothing currently draws over the void.
+
+### The change
+
+- **New `StarfieldRenderer`**, a sibling of `SkyRenderer` and structurally a clone of it: a fullscreen
+  triangle at the far plane with a read-only `Equal` depth test, which passes ONLY where the stored
+  depth still equals the cleared far plane, i.e. background where no geometry drew. It writes
+  `bg.rgb + star` with alpha 1 into `ColorDepthFB`, at the sky's slot, before the ground decals. The
+  decal pass's `Greater`-at-far test is the exact complement, so the two are disjoint by hardware.
+- **The star function moved verbatim**: the same 220x124 cell grid, the same `step(0.992, ...)`
+  threshold, the same `0.55 + 0.45` spread. Only the UV source changed, from the blit's interpolated
+  `vUv` to `gl_FragCoord * Res`, the backend-independent convention `SkyFrag` and `DecalFrag` use.
+- **The blit's starfield branch is deleted**, along with its `BgColor` uniform. `FinalUbo` shrinks from
+  32 to 16 bytes and its `Params` lanes renumber to `.x = transparentBg, .y = flipV`.
+- **New `BackgroundMode { Solid, Starfield, Sky }`** reached via `PixelPostProcessSettings.Background`.
+  It is a DERIVED view over the existing `Starfield` / `Sky.Enabled` booleans, not new state: the getter
+  encodes the long-standing sky-over-starfield-over-solid precedence in one place, the setter clears the
+  modes it did not select. Nothing is `[Obsolete]`, the booleans keep working unchanged, and there is no
+  owner back-pointer to go stale when a consumer assigns a fresh `SkySettings`.
+
+### BEHAVIOUR CHANGE (not merely additive)
+
+`TransparentBackground = true` combined with the DEFAULT `Starfield = true` on a raw `Scene3D` now
+produces an OPAQUE background. Previously the stars were drawn at `outA = 0` (invisible) and the
+background composited through. The background pass now writes alpha 1, so it hides whatever the caller
+composites over. A transparent composite needs `Background = BackgroundMode.Solid` set explicitly.
+`Render3DPreview` and `UseSmoothPreset` already force starfield off, so neither is affected. Consumers
+building `Scene3D` directly with `TransparentBackground = true` are.
+
+### Stars now flow through the post chain
+
+They stop being pasted on at the end and become ordinary scene content: they quantize and dither with
+the retro chain (previously the one un-pixelated element), they bloom, a ripple over the void now warps
+them (a heat-haze should distort what is behind it), and in HDR they tonemap. Measured on a default
+config, the tonemap is the only change that fires: star count identical (835 of 835, none lost),
+brightest star luma 255 to 205, mean star luma 202.1 to 189.4. The brightest stars stop clipping to pure
+white. `Bloom` defaults off, so nothing compensates and nothing needs to.
+
+### Testing
+
+`StarfieldGpuTests` is new and load-bearing, because the golden suite is measurably BLIND to the
+starfield: `GoldenCompare` averages each render into a 32x18 grid at 0.06/channel tolerance, and a star
+contributes about 0.012 to a cell average. With `_starfield.Draw` commented out entirely, the goldens
+still pass. Zero goldens were rebaked by this release. The new test samples raw pixels and pins star
+placement on background only, that a non-star background pixel still carries the clear colour (a wrong
+`BgColor` was previously caught by nothing), and the alpha 1 write. Each assertion was verified to FAIL
+under deliberate sabotage rather than assumed to have bite.
+
+Two tests had their premise inverted and were rewritten rather than rebaked:
+`Hdr_alpha_marker_survives_tonemap` becomes `Hdr_starfield_survives_tonemap` (stars now go THROUGH the
+tonemap, so surviving it is the new risk), and `Distortion_alpha_marker_survives` becomes
+`Distortion_warps_the_starfield` (the exact opposite assertion, and the correct one).
+
+Design: `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
+
 ## 11.8.0
 
 Navigation: same-grid vertical hop links, so a standable top above the step budget but within a jump

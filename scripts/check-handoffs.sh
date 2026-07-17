@@ -32,7 +32,14 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 todo="$root/docs/TODO.md"
 [ -f "$todo" ] || exit 0
 
-fleet="${KE_FLEET_DIR:-$(dirname "$root")}"
+# Resolve the fleet root from the MAIN checkout, never the current worktree. Inside
+# .claude/worktrees/<name> the toplevel IS the worktree, so its parent is the worktrees
+# dir and every sibling repo looks absent. That silently downgrades a block to a warning
+# in the one place the guard matters most, because all real work happens in a worktree.
+# --porcelain because a repo path may contain spaces.
+main_root=$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1)
+[ -n "$main_root" ] || main_root="$root"
+fleet="${KE_FLEET_DIR:-$(dirname "$main_root")}"
 
 # Pull the handoff target repo and the quoted item title out of one ledger line.
 # Tolerates optional backticks around both the repo name and the docs/TODO.md path.

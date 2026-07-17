@@ -134,6 +134,34 @@ namespace KhaozEngine.Tests.Render3D
             }
         }
 
+        [Fact]
+        public void FactorHalf_EqualsMixOfFactor0AndFactor1_ForUnclippedColours()
+        {
+            // The shader (and Map) blend the two endpoint results raw, then clamp to [0,1]. Pick colours whose
+            // per-channel AND hue-preserving outputs both stay under 1 in every channel (the same set already
+            // proven unclipped in Factor1_PreservesRgbRatios_ForUnclippedColours), so the intermediate factor's
+            // clamp never activates and the blend is a plain linear mix of the two endpoints.
+            var colours = new[]
+            {
+                (0.20f, 0.40f, 0.10f),
+                (0.30f, 0.05f, 0.15f),
+                (0.12f, 0.22f, 0.34f),
+            };
+            foreach (int op in Operators)
+            {
+                foreach (var (r, g, b) in colours)
+                {
+                    var at0 = TonemapMath.Map(r, g, b, 1f, op, 0f);
+                    var at1 = TonemapMath.Map(r, g, b, 1f, op, 1f);
+                    var atHalf = TonemapMath.Map(r, g, b, 1f, op, 0.5f);
+
+                    Assert.Equal(0.5f * at0.R + 0.5f * at1.R, atHalf.R, 5);
+                    Assert.Equal(0.5f * at0.G + 0.5f * at1.G, atHalf.G, 5);
+                    Assert.Equal(0.5f * at0.B + 0.5f * at1.B, atHalf.B, 5);
+                }
+            }
+        }
+
         // ---- Monotonicity: brighter input luminance never darkens the mapped luminance --------------------------
 
         [Fact]

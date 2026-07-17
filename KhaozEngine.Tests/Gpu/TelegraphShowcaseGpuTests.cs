@@ -218,6 +218,81 @@ namespace KhaozEngine.Tests.Gpu
                 $"expected the world-unit override rings (right, {right}px) to be far thinner than the derived default (left, {left}px)");
         }
 
+        static readonly float[] ChromaFactors = { 0f, 0.5f, 0.75f, 0.9f, 1f };
+
+        static string FactorLabel(float chroma) => ((int)MathF.Round(chroma * 100f)).ToString("000");
+
+        // Concatenate same-size RGBA frames left to right into one wide buffer, for a single side-by-side strip PNG.
+        static byte[] HStack(byte[][] frames, int w, int h)
+        {
+            int outW = w * frames.Length;
+            var outPx = new byte[outW * h * 4];
+            for (int f = 0; f < frames.Length; f++)
+                for (int y = 0; y < h; y++)
+                    Array.Copy(frames[f], y * w * 4, outPx, (y * outW + f * w) * 4, w * 4);
+            return outPx;
+        }
+
+        /// <summary>
+        /// ChromaPreservation look-evidence ladder (0 / 0.5 / 0.75 / 0.9 / 1.0, ACES operator) over the same
+        /// 8-preset grid as <see cref="Showcase_preset_grid_dumps_at_two_effect_times"/>, but on a mid-tone floor
+        /// instead of that test's dark one: the presets carry saturated hues (Fire orange, Poison green, Frost
+        /// cyan, Arcane purple), and a brighter background is where a hot core bleaching toward white
+        /// (ChromaPreservation 0) versus holding its tint (1) reads clearest. Dumps chroma_telegraph_&lt;factor&gt;.png
+        /// plus a combined left-to-right strip for one-image comparison. Dump-only, smoke asserts only, per this
+        /// file's convention.
+        /// </summary>
+        [GpuFact]
+        public void Showcase_chroma_preservation_preset_grid_dumps()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H);
+            preview.Scene.Post.Outline = true;
+            preview.Scene.Post.Hdr.Operator = TonemapOperator.AcesFilmic;
+            preview.Scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(26f, 1f, 14f));
+            MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(28f, 0.1f));
+
+            void DrawScene(Scene3D s)
+            {
+                // A mid-tone floor (unlike the dark floor in the primary preset-grid showcase above): bright
+                // enough that the additive telegraphs (Fire, Arcane) sit on a lit ground rather than near-black,
+                // which is where the chroma-preservation knob matters for a shipped scene.
+                s.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.45f, 0.45f, 0.48f, 1f));
+
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(Cell(0), Radius, 0.6f, TelegraphStyle.Generic));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(Cell(1), Radius, 0.6f, TelegraphStyle.Fire));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(Cell(2), Radius, 0.6f, TelegraphStyle.Poison));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(Cell(3), Radius, 0.6f, TelegraphStyle.Steel));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(Cell(4), Radius, 0.6f, TelegraphStyle.Frost));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(Cell(5), Radius, 0.6f, TelegraphStyle.Nature));
+                s.DrawGroundDecal(GroundTelegraphs.BuildCircle(Cell(6), Radius, 0.6f, TelegraphStyle.Arcane));
+                s.DrawGroundDecal(GroundTelegraphs.BuildResidueCircle(Cell(7), Radius, 0.35f, TelegraphStyle.Fire));
+            }
+
+            string dir = Environment.GetEnvironmentVariable("KE_PNG_DUMP_DIR") ?? Path.GetTempPath();
+            Directory.CreateDirectory(dir);
+            preview.Scene.EffectTimeSeconds = 0f;
+
+            var frames = new byte[ChromaFactors.Length][];
+            for (int i = 0; i < ChromaFactors.Length; i++)
+            {
+                float chroma = ChromaFactors[i];
+                preview.Scene.Post.Hdr.ChromaPreservation = chroma;
+                byte[] px = Read(gd, preview.Capture(DrawScene));
+                AssertNonBackgroundPixels(px, $"chroma_{FactorLabel(chroma)}");
+                string png = Path.Combine(dir, $"chroma_telegraph_{FactorLabel(chroma)}.png");
+                PngWriter.Save(png, px, W, H);
+                Assert.True(new FileInfo(png).Length > 0, $"expected a PNG dump at {png}");
+                frames[i] = px;
+            }
+
+            byte[] stripPx = HStack(frames, W, H);
+            string stripPng = Path.Combine(dir, "chroma_telegraph_strip.png");
+            PngWriter.Save(stripPng, stripPx, W * ChromaFactors.Length, H);
+            Assert.True(new FileInfo(stripPng).Length > 0, $"expected a PNG dump at {stripPng}");
+        }
+
         // Smoke assertion only: the preview composites with a transparent background, so any covered pixel
         // (the ground tile plus every decal) has nonzero alpha. This just proves something actually rendered.
         // The PNGs dumped above are the real, human-reviewed check.

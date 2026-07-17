@@ -1669,7 +1669,7 @@ layout(set=0, binding=1) uniform sampler Samp;
 layout(set=0, binding=2) uniform Tone { vec4 Params; }; // Params.x = exposure, .y = operator (0 aces, 1 reinhard, 2 clamp), .z = ChromaPreservation (0..1)
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
-// Rec.601 luma, matching the local luma() the rest of the post chain (EdgeFrag/FxaaFrag/bloom) uses.
+// Rec.601 luma, matching the local luma() the rest of the post chain (FxaaFrag/bloom) uses.
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 // ACES filmic fit (Krzysztof Narkowicz 2015): filmic S-curve with highlight desaturation toward white.
 vec3 acesFilm(vec3 x) {

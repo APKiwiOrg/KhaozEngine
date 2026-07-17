@@ -24,6 +24,17 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
 
 ## Known gaps
 
+- [ ] **Dungeon generator: three deferred follow-ups tracked only in its design doc.** Recorded in
+  [`design/DUNGEON-GENERATOR-DESIGN.md`](design/DUNGEON-GENERATOR-DESIGN.md) "Deferred follow-ups" and
+  nowhere else, so they were invisible to this ledger. The design doc keeps the rationale for why each was
+  deferred, this ledger owns the tracking. (a) An undoable `GenerateDungeonCommand` in MapEditor, which the
+  emitter makes trivial. (b) A grammar/mission layer over the embedder for declarative macro-structure
+  control, wanted only if the growth heuristics (critical-path length target, loop budget, rooms-per-floor)
+  prove insufficient, so this one is conditional and not yet earned. (c) Decoration passes (WFC-style
+  interior detailing, themed clutter) as a possible later layer, explicitly never part of the structural
+  generator. The doc's other two follow-ups need no entry: instanced world spaces is already a ROADMAP item,
+  and Ruinborne adoption is game-side. (recorded 2026-07-17)
+
 - [ ] **View distance vs cell geometry is an undocumented, unguarded coupling.** Sharding is only correct
   while `InterestRadius <= OverlapMargin`: raise a game's view distance past the cell overlap band and a
   player sees entities the neighbouring cell has not handed over yet. Nothing states the invariant and
@@ -83,7 +94,7 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   tolerating driver noise), so this is not a defect in itself, but it means any sparse or fine-detail
   feature has zero golden coverage and needs its own raw-pixel test. `StarfieldGpuTests` is now the only
   net for the starfield. Worth auditing which OTHER features believe they are golden-covered but are not.
-  Evidence: `CHANGELOG.md` 11.9.0, `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
+  Evidence: `CHANGELOG.md` 11.9.0, `docs/design/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
 - [ ] **`StarfieldGpuTests` box-coverage guard proves "mostly covered", not fully.** The guard added in
   11.9.0 asserts the box's centre block is meaningfully brighter than the clear colour before trusting
   the cross-mode byte-identity diff, which closes the vacuous-pass hole. A reviewer noted it still only

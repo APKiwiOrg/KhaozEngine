@@ -3,7 +3,7 @@
 Date: 2026-07-16. Branch: `feature/aaa-vfx-tier1`. Status: approved for implementation (owner-approved
 program, `docs/ROADMAP.md` "AAA VFX program", autonomous session with delegated design authority).
 Builds directly on the 10.126.0 particles modernization
-(`docs/PARTICLES-VFX-DESIGN-2026-07-16.md`).
+(`docs/design/PARTICLES-VFX-DESIGN-2026-07-16.md`).
 
 Three sub-features, shipped as three sequential releases from one worktree, HDR first because the
 other two look dramatically better on top of it:
@@ -100,13 +100,7 @@ precedent) as debugging and stylistic escapes.
 
 ### Compatibility statement
 
-- API purely additive (`HdrSettings`, `TonemapOperator`, `GpuPixelFormat.R16G16B16A16Float`,
-  widened internal `RenderResources` signatures).
-- Default behavior deliberately changes (HDR on): every consumer's rendered output shifts on repin,
-  CHANGELOG carries the callout and the one-line escape hatch. With `Hdr.Enabled = false` output is
-  byte-identical to 10.126.0, golden-proven.
-- The alpha-lane contract, blit paths (MatchViewport mip/trilinear, FixedInternal single-tap),
-  RenderScale semantics, and the post-post overlay/Gui/2D path are unchanged in both modes.
+See CHANGELOG 10.128.0's Compatibility bullet, canonical.
 
 ### Follow-up: additive glow legibility under HDR (RESOLVED)
 
@@ -217,13 +211,7 @@ before and after an atlas is loaded but not used). Every test sheet is generated
 
 ### Compatibility statement
 
-Purely additive. New API: `ParticleFlipbook`, `ParticleSprite.Flipbook` / `FlipbookFrame`,
-`ParticleLook.Flipbook` / `FlipbookMode` / `FlipbookFps` / `FlipbookRandomStart`, `ParticleFlipbookMode`.
-Every field zero-defaults to the procedural path, so a sprite or look that never touches a flipbook renders
-exactly as before (golden-proven). The only non-additive detail is internal: the particle instance stride
-grows from 80 to 96 bytes for the extra `IFlip` vec4, invisible across the public API. Textures ride the
-existing `Scene3D.LoadTexture` / `TextureHandle` registry with per-atlas-pair cached resource sets (the
-textured-billboard precedent), so no new resource-ownership surface. SemVer minor.
+See CHANGELOG 10.129.0's Compatibility bullet, canonical.
 
 ## Screen-space distortion
 
@@ -293,6 +281,14 @@ never hard-edge:
 
 ### D-S5: Own-alpha preservation for the starfield marker
 
+**Superseded in 11.9.0.** The background pass rework (`docs/design/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`
+Release 1) deleted the alpha-lane marker this decision protects: stars are now real background pixels drawn by a
+`StarfieldRenderer` before the distortion pass, not reconstructed from alpha in the final blit. The correct
+behavior inverted along with it, the distortion pass now WARPS the starfield rather than preserving it
+(`Distortion_alpha_marker_survives` was rewritten to `Distortion_warps_the_starfield`, CHANGELOG 11.9.0). Kept
+below verbatim: the reasoning was sound for the marker regime it was written against, and is why the apply pass
+was shaped this way at the time.
+
 The apply pass preserves each destination pixel's OWN alpha: it emits `vec4(warpedColor.rgb, ownSample.a)`,
 sampling the source at `vUv` for the alpha and at the warped `vUv + duv` for the colour. Warping the colour is
 the effect. Warping the alpha-lane background marker (clear a=0, geometry/sky a=1) would corrupt the blit's
@@ -330,10 +326,13 @@ faint additive warm shimmer so the effect reads even on a flat background where 
   GREEN on all three backends with NO rebake. A frame that never queues a distortion sprite is byte-identical to
   before distortion existed, so a golden baked before this release still matches.
 - Behaviour GpuFacts (Metal-local): a `Ripple` sprite displaces pixels while a control region far from it is
-  identical, a wall between camera and sprite occludes the offsets to zero (the depth recipe), a `Heat` sprite
-  over the starfield boundary leaves the background stars and the geometry cells intact (own-alpha preservation),
-  a queued-then-cleared frame is byte-equal to a never-queued one (zero-neutral), and the `Reduced` tier renders
-  without throwing.
+  identical, a wall between camera and sprite occludes the offsets to zero (the depth recipe), a queued-then-cleared
+  frame is byte-equal to a never-queued one (zero-neutral), and the `Reduced` tier renders without throwing.
+  **Superseded in 11.9.0:** this list originally also claimed a `Heat` sprite over the starfield boundary leaves
+  the background stars intact via own-alpha preservation. That assertion was inverted by the background-pass
+  rework, which made the starfield real geometry that distortion SHOULD warp. `Distortion_alpha_marker_survives`
+  was rewritten as `Distortion_warps_the_starfield`, the opposite assertion and the correct one. See the D-S5
+  note above, `CHANGELOG.md` 11.9.0, and [BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md](BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md).
 - New golden `scene3d_distortion` (a textured checkerboard floor plus one `Ripple`, one `Lens`, and one `Heat`
   sprite at fixed positions, frozen effect time and seeds, HDR default on), baked on metal, direct3d11, and
   vulkan. Showcase PNGs (no `Golden` in the name) cover the shockwave, heat-over-a-bloomed-sphere, and lens
@@ -341,8 +340,4 @@ faint additive warm shimmer so the effect reads even on a flat background where 
 
 ### Compatibility statement
 
-Purely additive. New API: `DistortionShape`, `DistortionSprite`, `DistortionQuality`, `Scene3D.DrawDistortion`
-/ `DrawDistortions` / `DistortionQuality`, `GpuPixelFormat.R16G16Float`, and the adapter's `DistortionLook` /
-`ParticleLook.Distortion` / `VfxPresets.HeatHaze`. Nothing existing changes behaviour: with no `DrawDistortion`
-call and an inactive look, output is byte-identical to 10.129.0 (golden-proven). The alpha-lane contract, the
-blit paths, `RenderScale` semantics, and the post-post overlay / Gui / 2D path are untouched. SemVer minor.
+See CHANGELOG 10.130.0's Compatibility bullet, canonical.

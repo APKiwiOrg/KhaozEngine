@@ -9,7 +9,7 @@ explicitly to a game head that wants to edit its zone documents, so a shipping g
 `KhaozEngine.MapEdit.Tool` (the `ke-mapedit` MCP server) is also a consumer of this package, via
 `InternalsVisibleTo` rather than a game head: it reuses `MapEditorScene.ComputeOverlayDrawList`/
 `OverlayDraw` so its `render_topdown` PNGs paint the same exclusion, region, and feature overlays the
-GUI viewport does. See [`docs/MAP-EDITOR-DESIGN.md`](../docs/MAP-EDITOR-DESIGN.md).
+GUI viewport does. See [`docs/design/MAP-EDITOR-DESIGN.md`](../docs/design/MAP-EDITOR-DESIGN.md).
 
 ## Quickstart
 

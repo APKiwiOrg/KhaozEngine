@@ -66,7 +66,7 @@ The world-document program: `KhaozEngine.MapDoc` (zone document format: terrain 
 placements, scatter exclusions and overrides, spawns, regions), the `KhaozEngine.MapEditor` in-engine
 GUI runtime plus per-game editor heads, and the `ke-mapedit` MCP server so AI can edit maps with
 world-aware queries and renders. Ruinborne is the first adopter. Four phases, MapDoc first, GUI and
-MCP in parallel after it. Full design: [MAP-EDITOR-DESIGN.md](MAP-EDITOR-DESIGN.md). Items deferred
+MCP in parallel after it. Full design: [MAP-EDITOR-DESIGN.md](design/MAP-EDITOR-DESIGN.md). Items deferred
 by review across the program's phases are tracked in that doc's Deferred follow-ups section, not
 duplicated here.
 
@@ -194,9 +194,9 @@ Ordered gap list (2026-07-07 feature audit):
 The particles/VFX domain specifically targets modern AAA effect quality (Diablo 4 / PoE2 / Lost Ark class
 impact and ambience) on top of the 10.126.0 modernization (procedural shaped sprites, curves, emission
 shapes, soft particles, effect scheduler, `Particles.Render3D` adapter, design record
-`docs/PARTICLES-VFX-DESIGN-2026-07-16.md`). Ordered by visual impact per engineering cost. Tier 1 shipped as
+`docs/design/PARTICLES-VFX-DESIGN-2026-07-16.md`). Ordered by visual impact per engineering cost. Tier 1 shipped as
 one engine program (HDR pipeline 10.128.0, flipbook particles 10.129.0, screen-space distortion 10.130.0,
-design record `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`), so Tiers 2 and 3 are what remain, Tier 2 next when a
+design record `docs/design/AAA-VFX-TIER1-DESIGN-2026-07-16.md`), so Tiers 2 and 3 are what remain, Tier 2 next when a
 game pulls for it. The general rendering bar above is unchanged, this program is scoped to effects and the
 pipeline pieces they sit on.
 

@@ -122,8 +122,17 @@ version/release work.
     comment that described the OLD behaviour.
   - **Discovered follow-ups -> `docs/TODO.md`.** Anything the change knowingly leaves undone, defers, or
     works around goes in the ledger as you find it, and resolved entries are deleted at release.
+  - **Design rationale -> `docs/design/`, and NOTHING else lives there.** A design doc holds the why: the
+    alternatives weighed, the decisions taken, and the reasoning that a corrected-in-flight implementation
+    proved out. It is not a reference surface, so shipped API and usage move to `CHANGELOG.md` /
+    `docs/USING-KHAOZENGINE.md` / the package README as they land, and it is not a private backlog either: a
+    follow-up recorded only in a design doc is invisible to `docs/TODO.md` and gets lost (the dungeon generator
+    hid three that way). Add a row + a status line to `docs/INDEX.md`'s design table when you add one, or it is
+    orphaned on arrival (three nav docs were). A complete design doc is KEPT as history rather than deleted,
+    because the reasoning behind a shipped decision is the expensive thing to reconstruct. `docs/` root is for
+    the living docs only.
   Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`
-  recursively** (root, `docs/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
+  recursively** (root, `docs/`, `docs/design/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
   that should mention it does (and no stale doc still describes what you removed).
 - `scripts/check-doc-versions.sh` enforces two things. First, that the engine-version declarations
   (`docs/ROADMAP.md` "Current released version" plus EVERY `README.md` `<PackageReference>` example line, not

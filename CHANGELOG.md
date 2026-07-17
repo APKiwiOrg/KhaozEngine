@@ -32,7 +32,7 @@ blit used to regenerate the background and discard anything drawn over the void)
 The decal still CONFORMS to any surface that is its ground. The plane is a fallback for the two cases where that
 surface is not there: background, and geometry that is not this decal's ground. **Both halves of the original
 design's rule for the second case were wrong**, and both were caught by looking at the rendered PNGs rather than by
-a failing test. `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md` records the corrected reasoning.
+a failing test. `docs/design/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md` records the corrected reasoning.
 
 - **Out-of-band geometry is a DEPTH question, not a has-geometry question.** The design said out-of-band geometry
   must never fall back because "the plane point there is behind the wall", and predicted a small "residual
@@ -230,7 +230,7 @@ Two tests had their premise inverted and were rewritten rather than rebaked:
 tonemap, so surviving it is the new risk), and `Distortion_alpha_marker_survives` becomes
 `Distortion_warps_the_starfield` (the exact opposite assertion, and the correct one).
 
-Design: `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
+Design: `docs/design/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
 
 ## 11.8.0
 
@@ -441,7 +441,7 @@ changed, this release is the `KhaozEngine.Showcase` app plus its docs.
 Step-aware overworld navigation bake: `KhaozEngine.Navigation` gets a per-cell surface height field and
 a rise-within-StepHeight walkability rule, so ramps, staircases, and low standable props are walkable
 without leaving a single `NavGrid` layer. Closes the standable-top-props non-goal. Design record:
-`docs/NAV-STEP-SURFACES-DESIGN.md`.
+`docs/design/NAV-STEP-SURFACES-DESIGN.md`.
 
 - **KhaozEngine.Navigation (additive).** `INavSurfaceProvider` (`TrySample(x, z, out height, out
   headroom)`) is the new surface-source seam a bake reads instead of testing a flat band above analytic
@@ -456,7 +456,7 @@ without leaving a single `NavGrid` layer. Closes the standable-top-props non-goa
   wires it end to end: hand it an `INavSurfaceProvider`, a step height, and an agent height, and it bakes
   the region the same way `BakeOverworld` does today.
 - **Closes the standable-top-props non-goal.** Ramps, staircases, and low standable props (rocks,
-  platforms) are now walkable in the overworld bake. See `docs/NPC-NAVIGATION-DESIGN.md`.
+  platforms) are now walkable in the overworld bake. See `docs/design/NPC-NAVIGATION-DESIGN.md`.
 - **Conservatism.** A step taller than the configured step height still blocks its higher side by one
   cell (the standable top itself bakes standable, but the cell one step up from it does not), so a
   too-tall step is impassable rather than only steep. Phase 2 (multi-level layered surfaces, tracked in
@@ -587,7 +587,7 @@ Screen-space distortion pass: distortion sprites (heat haze, refractive shockwav
 accumulate a signed screen-space offset field, and the resolved scene colour re-samples through it as the FIRST
 post-chain pass, so refraction reads as an in-scene phenomenon that warps the pixels behind it. Purely additive,
 gated by a `DistortionQuality` tier knob, and byte-identical when unused. This completes Tier 1 of the AAA VFX
-program, design record `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
+program, design record `docs/design/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
 
 - **KhaozEngine.Render3D (additive API).** New `Scene3D.DrawDistortion(in DistortionSprite)` /
   `DrawDistortions(ReadOnlySpan<DistortionSprite>)` queue heat-haze / refractive-shockwave / splash-lens sprites
@@ -651,7 +651,7 @@ Flipbook particles: the modern particle pass can now play an authored atlas shee
 index) with motion-vector frame interpolation, so offline-simmed smoke, fire, and explosion sheets read fluid at
 low frame counts. Additive over the procedural shapes (procedural stays the identity for sparks, glows, magic,
 rings), purely additive API, and byte-identical when unused. Tier 1 of the AAA VFX program, design record
-`docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
+`docs/design/AAA-VFX-TIER1-DESIGN-2026-07-16.md`.
 
 - **KhaozEngine.Render3D (additive API).** New `ParticleFlipbook` spec (atlas `TextureHandle`, `Columns` x `Rows`
   grid, optional motion-vector `MotionTexture` + `MotionStrength`, `Loop`) plus `ParticleSprite.Flipbook` and a
@@ -704,7 +704,7 @@ rings), purely additive API, and byte-identical when unused. Tier 1 of the AAA V
 HDR rendering pipeline: the internal colour chain now renders at float16 with an ACES filmic tonemap, on by
 default, so shading carries values above 1.0 and hot cores bloom, desaturate, and roll off instead of clipping at
 the old UNorm boundary. A one-line escape hatch (`Post.Hdr.Enabled = false`) restores the exact pre-HDR (10.126.0)
-output, byte-identical and golden-proven. Design record: `docs/AAA-VFX-TIER1-DESIGN-2026-07-16.md` (Tier 1 of the
+output, byte-identical and golden-proven. Design record: `docs/design/AAA-VFX-TIER1-DESIGN-2026-07-16.md` (Tier 1 of the
 AAA VFX program).
 
 - **BREAKING LOOK (default behaviour change, not an API break).** Every consumer's rendered 3D output shifts the
@@ -837,7 +837,7 @@ channels, and real-time auto-dismiss.
 Ground-up particle/VFX modernization: shaped procedural sprites with soft depth fade and velocity
 stretch in a new Render3D particle pass, curve-driven emission-shaped sim in KhaozEngine.Particles,
 an authored-effect scheduling layer, and a new KhaozEngine.Particles.Render3D adapter package with
-eight VFX presets, all fully backward compatible. Design record: `docs/PARTICLES-VFX-DESIGN-2026-07-16.md`.
+eight VFX presets, all fully backward compatible. Design record: `docs/design/PARTICLES-VFX-DESIGN-2026-07-16.md`.
 
 - **KhaozEngine.Particles (additive).** `EmitterConfig` gains curve-driven life (`ParticleCurve`
   with Linear/EaseIn/EaseOut/EaseInOut/Flash/FadeInOut/Pulse kinds remapping the existing
@@ -933,7 +933,7 @@ gizmo, a grouped inspector, an outline category, and two new MCP verbs.
   (`feature`, `exclusion`, `biome_band`), reusing the exact clone and uniquify-name logic
   `EditorToolController.DuplicateSelection` already uses so a GUI-driven and an MCP-driven duplicate can
   never drift apart.
-- **Deferred out of this round**, recorded in `docs/MAP-EDITOR-DESIGN.md`: `DirtyRegion` narrowing for
+- **Deferred out of this round**, recorded in `docs/design/MAP-EDITOR-DESIGN.md`: `DirtyRegion` narrowing for
   override shapes (still full-rebuild, could narrow like feature edits do in a later round), polygon
   override shapes stay MCP-authored and inspector-read-only (same as polygon exclusions and regions), a
   cosmetic MCP `kinds: []` versus GUI `Kinds: null` JSON representation asymmetry (runtime-identical), and
@@ -1144,7 +1144,7 @@ subclasses (the `CheckWorldRebuild` seam, below).
 - **Scope cuts (by design this round).** Exclusion, scatter-layer, companion, and terrain-scalar edits still
   take the full-rebuild path (they report no bounded region, and the dirty-region seam exists so a later
   round can narrow them). `Scene3D.UnloadTexture` has the identical latent post-dispose bug, deliberately
-  left out of scope. Deferred items recorded in `docs/MAP-EDITOR-DESIGN.md` under "Deferred out of this
+  left out of scope. Deferred items recorded in `docs/design/MAP-EDITOR-DESIGN.md` under "Deferred out of this
   round (mapedit-perf)".
 - **Tests.** `TerrainStreamerTests` (rect-to-chunk mapping incl. border touch, loaded-only, current-LOD
   re-issue), `Scene3DChunkSinkTests` (field swap feeds future builds), `FeatureGeometryTests` (per-feature
@@ -2239,7 +2239,7 @@ flatten path is opt-in per material and byte-identical when a material has no te
   preview can show either mode. The `render_view` verb pin (64) is unchanged.
 - **Docs.** Full sweep across `KhaozEngine.Render3D/README.md`, `KhaozEngine.Terrain.Render3D/README.md`,
   `KhaozEngine.MapEditor/README.md`, `KhaozEngine.MapEdit.Tool/README.md`, `docs/USING-KHAOZENGINE.md`,
-  and `docs/MAP-EDITOR-DESIGN.md` for the new API and the editor toggle. `docs/ROADMAP.md` drops the
+  and `docs/design/MAP-EDITOR-DESIGN.md` for the new API and the editor toggle. `docs/ROADMAP.md` drops the
   visual-fidelity item now that textured props have shipped.
 
 ## 10.82.0
@@ -2421,7 +2421,7 @@ An ISOLATED step (a building doorstep, a curb, the first riser of a run before t
 - **Gui inspector primitives (`KhaozEngine.Gui`).** `PropertyRow.Description` (`LocalizedText?`) gives a row an optional tooltip. `PropertyGrid.HoveredRow` tracks the row under the pointer each `Update`, and a new public `RowLabelBounds(int)` lets a host anchor its own `Tooltip` to it, showing the hovered row's `Description` immediately with no delay infrastructure. `HeaderRow` is a full-width, no-input `PropertyRow` (`SpansFullWidth`) used to break a long inspector into named sections. `PropertyGrid.EditorStyle` (default `GuiStyle.Default`) pushes into every row's inner widget as rows are added, so assigning `GuiStyle.Modern` restyles a whole grid's editors in one shot, and `HeaderBandColor` draws through `GuiDraw.FillStyled` against it. `TreeView.ScrollTo(TreeNode)` brings a node into view (expanding collapsed ancestors, clamped scroll), and `TreeView.FindByTag(Func<object?, bool>)` walks `Roots` depth-first for the first node whose `Tag` matches, the pair a selection-sync host uses to re-resolve a caller-owned identity after a rebuild. `TreeView`'s selected-row fill and `PropertyGrid`'s header band now both draw via `GuiDraw.FillStyled` instead of a flat fill, picking up `GuiStyle.Modern`'s rounded corners.
 - **Look and feel: tooltips, grouping, and a wider Modern inspector.** Every inspector row now carries a hover tooltip. Every inspector is grouped into named `HeaderRow` sections (Terrain: Water/Noise/World, a biome band: Range/Shape, a scatter layer: Identity/Placement/Scale/Rules, a companion layer: Identity/Host/Output/Shape, an exclusion or region: Identity/Shape/Targeting, a placement/spawn/player spawn: Identity/Transform/State) instead of one flat row list. The exclusion/region/feature shape editor's disc/rect selector row is now labeled "Kind" (including its read-only polygon and no-shape fallbacks), distinct from the "Shape" group header it sits under. The whole editor now runs `GuiStyle.Modern` (`PropertyGrid.EditorStyle` and every outline/palette `TreeView.Style`), and `InspectorPanelWidth` widens to 340 (from the old shared 260, now independent of `OutlinePanelWidth`) to give the grouped rows room.
 - **`ke-mapedit`: 57 to 63 verbs.** New `player_spawn_add(x, z, yaw?, enabled?, id?, tags?)`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove`, mirroring the GUI's yaw/position command split. `map_summary` reports `PlayerSpawnCount`/`PlayerSpawnIds`, and `placements_in_rect` carries a `PlayerSpawns` entry list. `procedural_info`'s `CompanionLayerInfo` gains a computed `HostKindsMatchHost` bool (true when `HostKinds` is empty or intersects the host layer's kit ids, false only for the silent mismatch case), and `companion_layer_add`/`companion_layer_edit` append ", host kinds match no kind in the host layer" to their result detail when the mismatch applies, mirroring the GUI's warning row.
-- **Full doc sweep.** `docs/USING-KHAOZENGINE.md`, `docs/MAP-EDITOR-DESIGN.md`, and the `KhaozEngine.Gui`/`KhaozEngine.MapDoc`/`KhaozEngine.MapEditor`/`KhaozEngine.MapEdit.Tool`/`KhaozEngine.Terrain` package READMEs all cover the new API, the `playerSpawns` section, the 63-verb surface, and the `HostKinds` semantics change.
+- **Full doc sweep.** `docs/USING-KHAOZENGINE.md`, `docs/design/MAP-EDITOR-DESIGN.md`, and the `KhaozEngine.Gui`/`KhaozEngine.MapDoc`/`KhaozEngine.MapEditor`/`KhaozEngine.MapEdit.Tool`/`KhaozEngine.Terrain` package READMEs all cover the new API, the `playerSpawns` section, the 63-verb surface, and the `HostKinds` semantics change.
 
 ## 10.75.0
 
@@ -2799,7 +2799,7 @@ New `KhaozEngine.Dungeon` package: a deterministic, multi-level procedural dunge
 ## 10.55.0
 
 Map-editor apply-order controls and visibility layers from the fourth playtest round (B2.4 of the
-map-editor program, `docs/MAP-EDITOR-DESIGN.md`): features gain apply-order controls that reorder the
+map-editor program, `docs/design/MAP-EDITOR-DESIGN.md`): features gain apply-order controls that reorder the
 fold order, R snaps the selected placement to the ground, and a session-only visibility system turns the
 empty-selection inspector into a Layers panel with per-selectable Visible toggles.
 
@@ -2815,7 +2815,7 @@ empty-selection inspector into a Layers panel with per-selectable Visible toggle
 ## 10.54.0
 
 Map-editor shape editing from the third playtest round (B2.3 of the map-editor program,
-`docs/MAP-EDITOR-DESIGN.md`): regions and exclusions gain per-parameter inspector rows and a disc/rect
+`docs/design/MAP-EDITOR-DESIGN.md`): regions and exclusions gain per-parameter inspector rows and a disc/rect
 shape-kind selector, overlay picking plus translate and scale gizmos move and resize shapes and features
 from the viewport, the EditFeature tool places registry-listed features, and the Gui inspector gains a
 dropdown-backed `ChoiceRow` with numpad typing.
@@ -2836,12 +2836,12 @@ dropdown-backed `ChoiceRow` with numpad typing.
 - **`MapDocRegistry.FeatureTypes` enumeration (`KhaozEngine.MapDoc`).** The registry now enumerates its
   registered feature types, which the EditFeature tool lists for placement.
 - **Deferred follow-ups are a durable ledger (`docs`).** The map-editor program's cross-phase code-review
-  follow-ups now live as a standing ledger in `docs/MAP-EDITOR-DESIGN.md`, since the per-worktree SDD ledger
+  follow-ups now live as a standing ledger in `docs/design/MAP-EDITOR-DESIGN.md`, since the per-worktree SDD ledger
   is deleted at merge.
 
 ## 10.53.0
 
-Map-editor second-playtest fixes (B2.2 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): the toolbar
+Map-editor second-playtest fixes (B2.2 of the map-editor program, `docs/design/MAP-EDITOR-DESIGN.md`): the toolbar
 tracks one-shot tool returns, the status strip clears a host's bottom readout, the Showcase outline post
 effect defaults off, and exclusions/regions/feature markers show as translucent viewport overlays.
 
@@ -2862,7 +2862,7 @@ effect defaults off, and exclusions/regions/feature markers show as translucent 
 
 ## 10.52.0
 
-Map-editor playtest polish (B2.1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): a categorized
+Map-editor playtest polish (B2.1 of the map-editor program, `docs/design/MAP-EDITOR-DESIGN.md`): a categorized
 collapsible filterable kit palette, one-shot draw tools that snap back to Select, a visible water
 surface with an undoable water level, and inline placement/spawn rename from the inspector.
 
@@ -2896,7 +2896,7 @@ blending stops leaking into opacity the way `* float` does.
 ## 10.50.0
 
 The in-engine map editor runtime lands as the new opt-in `KhaozEngine.MapEditor` package (Phase B2 of
-`docs/MAP-EDITOR-DESIGN.md`): a viewport host, transform gizmos, tool modes, the engine's first
+`docs/design/MAP-EDITOR-DESIGN.md`): a viewport host, transform gizmos, tool modes, the engine's first
 undo/redo command stack, and a turn-key editor scene, plus editor-widget hardening in `KhaozEngine.Gui`
 from the B1 review queue and a `KhaozEngine.Showcase` demo room.
 
@@ -2996,7 +2996,7 @@ close-button tooltip.
 
 ## 10.46.0
 
-Editor building blocks (Phase B1 of the map-editor program, `docs/MAP-EDITOR-DESIGN.md`): new `KhaozEngine.Gui`
+Editor building blocks (Phase B1 of the map-editor program, `docs/design/MAP-EDITOR-DESIGN.md`): new `KhaozEngine.Gui`
 inspector widgets, a free-fly editor camera in `KhaozEngine.Render3D`, and shared picking math. Additive across
 three packages, no breaking change, minor bump.
 
@@ -3055,7 +3055,7 @@ change, minor bump.
 Map document format: new `KhaozEngine.MapDoc` package (the zone/map JSON document: terrain config,
 scatter layers, exclusions/overrides, authored placements, spawns, regions) plus generalized scatter
 exclusion/override shapes on `KhaozEngine.Terrain`. Phase A of the map-editor program
-(docs/MAP-EDITOR-DESIGN.md).
+(docs/design/MAP-EDITOR-DESIGN.md).
 
 - New package `KhaozEngine.MapDoc` (joins the `Foundation` umbrella): versioned, schema-validated,
   JSONC-tolerant zone documents with loud-fail load semantics (a bad document refuses to boot),

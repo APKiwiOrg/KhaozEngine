@@ -1,7 +1,9 @@
 # Map Editor Design (MapDoc + MapEditor + ke-mapedit)
 
-Date: 2026-07-09
-Status: Approved design, pre-implementation
+Approved: 2026-07-09
+Status: **In flight.** Phases A-D shipped 10.44.0-10.67.0, and eight further rounds through 11.4.0. This
+header said "pre-implementation" for 40+ releases after implementation began, so treat any status claim in
+this file as history unless `CHANGELOG.md` agrees. Open work lives in `docs/TODO.md`, not here.
 First adopter: Ruinborne
 
 ## Problem
@@ -99,7 +101,9 @@ asset manifests, archetype ids, and custom document types, and opens the game's 
 ## Document format
 
 One JSON file per zone (for example `assets/maps/valley.map.json`), human-diffable and
-git-committed in the game repo. Sections:
+git-committed in the game repo. Sections as designed (illustrative, not exhaustive: `playerSpawns`
+landed later, 10.76.0, and the list has grown since. `KhaozEngine.MapDoc/README.md`'s "Sections" list
+is the canonical, current field-by-field description):
 
 - **Header**: format version int, zone id, display name, zone bounds.
 - **Terrain**: seed, water level, biome bands, features as a tagged union, for example
@@ -167,14 +171,11 @@ hatch, kept greppable.
 
 ## MCP tool surface
 
-- **Document**: `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary`.
-- **Queries**: `ground_height(x, z)`, `is_walkable(x, z)`, `placements_in_rect`,
-  `scatter_preview_in_rect`, `find_flat_area` (slope/size constrained search).
-- **Mutations**: place/move/remove placements, add/edit terrain features, exclusions,
-  region overrides, spawns, regions, `bake_region`. Every mutation ground-snaps, validates,
-  and returns what changed.
-- **Renders** (GPU): `render_topdown` (orthographic with placement/spawn/region overlay
-  markers), `render_view` (perspective from position toward target). PNG results.
+Four verb groups at design time: document (open/create/save/validate/summary), world queries, mutations
+(placements, terrain, exclusions, regions, bake), and GPU renders. The surface has grown every phase since
+(document, spawns, terrain, and duplicate verbs all landed later) and re-enumerating it here has already
+gone stale once by a factor of 4x. The current, complete verb table is canonical in
+`docs/USING-KHAOZENGINE.md`'s "ke-mapedit" section, not here.
 
 Documents are git-committed JSON, so the human review loop for AI edits is a git diff, and
 the GUI picks up the same file. The two frontends share nothing but the document.
@@ -192,8 +193,8 @@ the GUI picks up the same file. The two frontends share nothing but the document
    server keeps reading SQL when `RUINBORNE_SQL_CONNECTION` is set, and the no-SQL fallback
    switches from code defaults to document spawns. The enabled flag keeps working for
    live-ops. Full retirement of the table is a later decision.
-4. `Ruinborne.Editor` head joins the solution. `docs/ADDING-PROPS.md` and
-   `docs/architecture/WORLD.md` are rewritten around the document workflow.
+4. `Ruinborne.Editor` head joins the solution. Ruinborne's own `docs/ADDING-PROPS.md` and
+   `docs/architecture/WORLD.md` are rewritten around the document workflow (game-side paths, not engine ones).
 
 ## Phasing
 
@@ -260,14 +261,6 @@ questions above, which predate implementation. This section is what later review
 dispatches keep appending to. Same convention as the rest of the roadmap: delete an item
 once it ships, the detail moves to `CHANGELOG.md`.
 
-**Resolved (textured-kits, T3)**: the editor viewport rendered every prop kit flat regardless of a manifest
-entry's `"textured": true` flag. `MapEditorOptions.TexturedProps` (default true, matching gameplay) now gates
-whether `ViewportWorld.LoadKitMeshes` loads a textured entry's multi-material parts (`PropLoader.LoadPropAuto`)
-or its flattened single-part form, surfaced as a "Textured props" `BoolRow` in the Layers panel's new Rendering
-section and threaded to `ke-mapedit`'s `render_topdown`/`render_view` as a `textured` parameter. Both the
-toggle and a scatter-layer visibility toggle rebuild the streamed world (`RebuildWorldForVisibility`), since
-both are read at prop-mesh load time, not live.
-
 **Deferred out of that round**: `ViewportWorld.WithTextured` (the internal helper that overrides one entry's
 `Textured` flag for a single load, when the toggle disagrees with the manifest) copies `AssetEntry` by calling
 its full positional constructor. `AssetEntry` is a plain `readonly struct`, not a record, so it has no `with`
@@ -275,52 +268,6 @@ expression support. A future field added to `AssetEntry` needs a matching update
 silently drops out of the copy (worse if the new parameter is optional-with-default, since the call still
 compiles). Not fixed this round since `AssetEntry` is stable today - flagged so a future `AssetEntry` field
 addition checks this call site.
-
-**Resolved this round (editor-round8)**: per-element hide maintenance is now event-driven from a single
-source. The reorder/remove/rename commands carry an `IVisibilityEffect` (`VisibilityOp`) that the new
-`EditorDocument.CommandApplied`/`CommandUndone`/`CommandRedone` events drive, so the forward remap runs on
-execute/redo and its inverse on undo (`EditorVisibility.RemapIndex`/`RemoveIndex`/`InsertIndex`/`RenameKey`).
-Hides now survive undo and redo of a reorder or delete, and renaming a placement, spawn, player spawn, or
-region moves its hide entry with the key (the old stale-key orphan is gone). The old inline call sites and
-the `EditorToolController.OnIndexRemoved` callback are removed. One residual, by design: a deleted element's
-OWN hide is dropped and not restored on undo (it was never part of the reversible document). Player spawns
-gained their own `VisibilityGroup.PlayerSpawns` (labeled "Player spawns" in the Layers panel, gating both
-the `DrawPlayerSpawnMarkers` draw and the pick, in lockstep with the per-element hide), so mass-hiding every
-player spawn works like the other whole-class toggles. `ke-mapedit` gained the `exclusions_info` and
-`scatter_overrides_info` read verbs (66 to 68), closing the exclusions read-back gap. Engine-misc
-correctness: `RayMath` NaN origin/direction components now miss (the NaN comparisons used to fall through
-every slab test as an always-pass hit) and the zero-length-ray edge is pinned by test, `TerrainRaycast`
-throws `ArgumentOutOfRangeException` on a NaN step or maxDistance (was a silent NaN-poisoned miss) and its
-stall guard is covered by test, `Scene3D.UnloadTexture` is a safe no-op on a stale handle after `Dispose()`
-(the same guard `UnloadSplatMaterial` already had), and the three index-keyed remove commands
-(`RemoveExclusionCommand`/`RemoveScatterOverrideCommand`/`RemoveFeatureCommand`) throw a precise
-`ArgumentOutOfRangeException` on a bad index instead of whatever the raw list indexing surfaced. Editor UX
-smalls: the status line truncates with an ellipsis instead of overflowing the strip
-(`GuiDraw.TruncateWithEllipsis`, now public), a mode swap unfocuses the hidden filter, whitespace-only
-filter edits no longer rebuild, the overlay draw list is a caller-owned reused buffer instead of a per-frame
-allocation, the selected-overlay brighten clamps channels (`Color.ScaleRgbClamped`), the stale exit-chord
-warning-text doc claim is corrected, and the feature-selection highlight, spawn id-gap reuse, and
-polygon-row `Description` gaps are covered by tests.
-
-**Also resolved this round (editor-round8, inspector widgets)**: the three inspector widgets' known gaps are closed. `NumberField`'s
-numeric filter now validates against the buffer `TextEntry.Apply` is accumulating THIS call (not the stale
-pre-frame field), so a multi-key frame or a paste admits at most one dot. Public `Value` is now a property
-whose setter always clamps to `[Min, Max]`, so an out-of-range external value (e.g. a `FloatRow` polling a
-document value) displays clamped instead of raw. Disabling a field mid-edit now cancels (buffer discarded,
-value unchanged) rather than silently committing, and a sub-3px drag that scrubbed a real change no longer
-falls through into typing mode on release. `TreeView` no longer freezes drop geometry while the wheel scrolls
-mid-drag (`RowAt`/`RowBounds` resolve against the live `ScrollOffset`, recomputed the same frame right after
-the wheel updates it), and the caret-zone-at-depth, `RowBounds`, and `VisibleRows` shared-list gaps are now
-covered by tests (no behavior change). `PropertyGrid` clamps a partially-visible row's editor cell to `Bounds`
-before running its `Update`, so a sliver already hidden by the Draw-time scissor can no longer claim a tap or
-drag beyond it. `FloatRow.GestureEnded` (wired to `EditorDocument.SealGesture` through the new
-`AddFloatRow` inspector helper) seals the undo gesture when a scrub or edit commit finishes, so scrubbing one
-terrain field then a different one lands as two undo steps instead of coalescing through
-`EditTerrainCommand.TryMerge`'s any-two-fields union (that command-level merge is unchanged and still correct
-WITHIN one gesture). `TreeView`/`PropertyGrid` wheel scrolling is also now continuous
-(`ScrollDelta * WheelSpeed`, the `ScrollablePanel` idiom) instead of rounding to an integer notch count, with
-both exposing a `WheelSpeed` property for the same idiom. `ChoiceRow`'s overlay-clipping host contract was
-reviewed and left as documented behavior, no code change.
 
 **Deferred out of this round (round8)**: concave polygon overlays still self-overlap through the centroid
 fan (carried from editor-round6, unrelated to this round's widget/visibility work). A richer per-kind kinds
@@ -338,19 +285,6 @@ commands (`RemovePlacementCommand`, `RemoveSpawnCommand`, `RemovePlayerSpawnComm
 lookups (a generic `InvalidOperationException` from the `Find*` helper on a missing id or name), deliberately left
 unguarded this round.
 
-**Resolved this round (editor-round7)**: Shift+Escape used to pop the scene with no way back (a head that
-pushed the editor as its only scene was left with a blank screen once the stack emptied), now goes through
-`MapEditorOptions.RequestQuit` (invoked only when the editor is the bottom scene, otherwise the scene just
-pops), with a per-game head wiring it to its own `GameApp.Quit()`. Saving used to be reachable only through
-Ctrl+S/Cmd+S with no visible affordance, now the toolbar carries an always-visible Save button (`Save*` while
-dirty) beside the existing chord. The old silent double-press discard (a first Shift+Escape armed a
-status-strip warning, a second one discarded and exited, with no dialog and no visible list of the actual
-choices) is replaced by a `PopupPanel`-based modal exit dialog offering Save and Close / Save / Discard /
-Cancel when dirty, Close / Cancel when clean, blocking every other input while open. The engine also gained a
-turn-key `MapEditorLandingScene` (New Map / Open Recent / Quit) a head pushes beneath the editor so Close
-always has somewhere to land, a Ctrl+D duplicate across all nine selectable kinds (mirrored exactly by the
-new `element_duplicate` MCP verb), and session-only camera bookmarks (Shift+1..9 store, bare 1..9 recall).
-
 **Deferred out of this round**: camera bookmarks do not persist across an editor close/reopen (session-only
 by design this round, a future round could ride the same `EditorRecentFiles`/`GameStorage` seam). Autosave
 was proposed and explicitly declined by the user for this round (the exit dialog's Save/Save-and-Close cover
@@ -365,17 +299,6 @@ custom `MapDocRegistry` feature type is only worth adding if `MapEditSession` ev
 `ShapeGeometry.Translated` (disc/rect only, used by the gizmo drag) are two separate shape-translate
 implementations that happen to agree on disc/rect today. Unifying them is future cleanup, not a bug: the
 polygon case `ShapeGeometry.Translated` does not need to handle is why they are not just one function today.
-
-**Resolved this round (editor-round6)**: the outline highlight used to orphan against a node no longer in
-`Roots` on every document edit (`RebuildOutline` news up a fresh `TreeNode` set each time), now fixed by
-`MapEditorScene.SyncOutlineSelection` re-resolving the selection via `TreeView.FindByTag` and `ScrollTo`
-after every rebuild and every selection change, including mid-rename. The companion `HostKinds` empty list
-used to silently mean "match no host" (a companion layer left with an empty list grew nothing, discovered
-live in the `valley.map.json` understory/groundcover mismatch), now means "match every host" at the root
-(`PropScatter.GenerateCompanions`), backed by a host-swap that clears a now-orphaned `HostKinds` in the same
-undo step and a warning row for the populated-but-zero-intersection case. The inspector panel used to share
-one 260-point `PanelWidth` with the outline, cramped for the newly-grouped companion/scatter-layer rows,
-now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340).
 
 - **Format and schema (MapDoc)**: `MapTerrain` duplicates `TerrainConfig` defaults, a drift risk that
   is only partially parity-tested.
@@ -431,25 +354,7 @@ interval-change-mid-gesture tests. Also: scatter-layer, companion, and terrain-s
 still take the full-rebuild path by design this round (the dirty-region seam exists so a later round
 can narrow them), and ridge and rim features always fall back to full rebuild since their reach is
 unbounded. Exclusion edits were narrowed to the dirty-region path by the mapedit-playtest-fixes round
-below (see Resolved).
-
-**Resolved (mapedit-playtest-fixes)**: DirtyRegion narrowing for exclusion and scatter-override shapes,
-deferred by the scatter-overrides round below, now ships. `ShapeGeometry.TryBounds` (a disc/rect/polygon
-AABB) gives every exclusion and scatter-override command a bounded dirty region, padded by a margin the
-command captures at Apply time (`ShapeGeometry.BoundsMarginFor`: a 2 m base constant plus the document's
-largest scatter-layer jitter, because `PropScatter.Generate` assigns a candidate to its chunk by the
-un-jittered cell centre while testing exclusion/override membership at the jittered position, so a shape
-edit reaches up to Jitter beyond the shape and authored jitter has no clamp): the two shape commands
-(`EditExclusionShapeCommand`/`EditScatterOverrideShapeCommand`)
-union old and new shape bounds live (never cached, so a merged drag still covers the latest endpoint),
-add/remove report the touched shape's bounds, the layers/values whole-value commands report their
-(unchanged) shape's bounds, and `ReorderScatterOverrideCommand` unions every override shape across the
-inclusive from..to index range (not just the two endpoints: a reorder also flips first-match-wins
-precedence for every override sandwiched in between, so the whole range is the honest cheap cover).
-Fixes the choppy-drag feel an exclusion or scatter-override gizmo drag used to have (every frame fell to
-the throttled full-rebuild path, same as terrain scalars). Terrain scalars and biome bands are
-unaffected and stay whole-doc (a biome band is bounded only in its world-Z-range slice, a possible
-future narrowing).
+(shipped in 11.4.0, see CHANGELOG).
 
 **Deferred out of this round (scatter-overrides)**: Exclusions were deliberately not added to the
 Ctrl+Up/Down reorder chord: their masks combine

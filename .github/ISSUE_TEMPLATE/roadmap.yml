@@ -8,8 +8,8 @@ body:
       value: |
         Roadmap, not backlog. **If it needs a spec, it is a roadmap item. Otherwise it is a TODO.**
 
-        Priority is the board's column and order, not a field here. Put it on the board and drag
-        it to where it belongs.
+        Priority is a `priority/*` label (`critical` > `high` > `medium` > `low`), applied after
+        filing and mirrored on the board's Priority field, not a board column or its order.
 
   - type: textarea
     id: detail

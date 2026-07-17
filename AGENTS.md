@@ -320,9 +320,10 @@ that. If you are not willing to write the reason, the item is not declined and s
   action it without the chat that found it: paths, symbols, line numbers, what you already ruled out.
   Do not compress what you know into a task title. The next reader has none of your context, and
   re-deriving it costs far more than writing it down did.
-- Priority is the board's order, not a label. Put it on the board and drag it. The roadmap's priority
-  ordering is the org board (https://github.com/orgs/APKiwiOrg/projects/1), which is where the ordered
-  list in `docs/ROADMAP.md` went.
+- Priority is a `priority/*` label (`critical` > `high` > `medium` > `low`), synced fleet-wide by
+  `scripts/sync-labels.sh` and mirrored on the org board's Priority field
+  (https://github.com/orgs/APKiwiOrg/projects/1), not the board's order. The board still tracks status
+  (Todo / In Progress / Done); the ordered `docs/ROADMAP.md` list it replaced is in git history.
 
 ## Localization
 

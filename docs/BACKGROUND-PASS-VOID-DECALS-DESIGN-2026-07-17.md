@@ -101,27 +101,40 @@ default `true` is a reachable state today, and no single enum value means it). T
 documented instead: a non-`Solid` background writes opaque pixels, so `TransparentBackground` only
 takes effect with `Background = Solid`.
 
-The two booleans stay as **computed** `[Obsolete]` aliases over the enum, not as parallel state:
+`Background` is a **derived view** over the existing booleans, not new state:
 
 ```csharp
-[Obsolete("Use Background = BackgroundMode.Starfield. Removed in the next major.")]
-public bool Starfield
+public BackgroundMode Background
 {
-    get => Background == BackgroundMode.Starfield;
-    set => Background = value ? BackgroundMode.Starfield : BackgroundMode.Solid;
+    get => Sky.Enabled ? BackgroundMode.Sky
+         : Starfield   ? BackgroundMode.Starfield
+                       : BackgroundMode.Solid;
+    set { Sky.Enabled = value == BackgroundMode.Sky; Starfield = value == BackgroundMode.Starfield; }
 }
 ```
 
-The aliases are last-writer-wins, where the old booleans had an implicit precedence. The one sequence
-that changes meaning is an explicit `Starfield = true` *after* `Sky.Enabled = true`, which used to
-leave the sky winning and now selects the starfield. That sequence is incoherent on its face, and the
-common shape is unaffected: `Starfield` defaults to `true` and is never explicitly set, so enabling
-the sky simply moves `Background` from `Starfield` to `Sky`. Called out in the `[Obsolete]` message
-and the CHANGELOG.
+An earlier draft made the enum authoritative and demoted the booleans to `[Obsolete]` aliases. That
+does not survive contact with `SkySettings`, which is a `sealed class` held in a reassignable field
+(`public SkySettings Sky = new()`). `Sky.Enabled` could only delegate to an authoritative
+`Post.Background` through an owner back-pointer, which breaks the moment a consumer assigns a fresh
+`SkySettings`, and which couples a "plain settings bag" (its own words, following the
+`ShadowSettings` precedent) to its parent. The alternatives were worse: an `Auto` mode (two sources
+plus a mode switch), or lossy aliases that silently change behaviour.
 
-So the release is additive (minor bump) with no consumer breaks. Warnings are errors engine-wide, so
-the engine's own internal uses migrate to the enum in this release. The obsolete surface exists purely
-for consumers and is deleted at the next major.
+Deriving instead of owning gets the same ergonomics with none of that:
+
+- No new state, no back-pointer, no parallel sources.
+- Lossless. `get(set(x)) == x` for all three values, and `set(get(x))` normalizes a both-true state to
+  exactly today's `sky > starfield > solid` precedence.
+- The getter **is** the precedence, written down in one place instead of implied across three passes.
+- Nothing is `[Obsolete]`, so the ~20 in-tree `Post.Starfield = false` call sites do not churn. With
+  warnings-as-errors that churn would have been mandatory, not optional.
+- Additive (minor bump), no consumer break, no compat risk.
+
+The cost: the booleans remain the storage, so a both-true state is still representable through them.
+It resolves deterministically via the documented precedence, which is exactly today's behaviour.
+Retiring the booleans in favour of a `StarfieldSettings` bag mirroring `SkySettings` is the natural
+next-major move and is out of scope here.
 
 ### Test and golden impact
 

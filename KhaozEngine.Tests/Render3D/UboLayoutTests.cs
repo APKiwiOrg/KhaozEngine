@@ -121,7 +121,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void FinalUbo_MarshalSize_EqualsFinalBufferAllocation()
         {
-            // GLSL: Final { vec4 BgColor; vec4 Params; } = 2 vec4 = 32 bytes (BlitFrag).
+            // GLSL: Final { vec4 Params; } = 1 vec4 = 16 bytes (BlitFrag).
             Assert.Equal(
                 (int)PixelPostProcess.FinalBufferBytes,
                 Marshal.SizeOf<PixelPostProcess.FinalUbo>());

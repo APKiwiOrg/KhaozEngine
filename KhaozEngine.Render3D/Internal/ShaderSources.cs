@@ -1602,32 +1602,27 @@ void main() {
     oColor = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker
 }";
 
-        // ---- Final upscale blit (+ optional procedural starfield in the background) ----
-        // Background is flagged by the color target's alpha (model writes a=1, the clear sets a=0),
-        // which the palette/edge passes preserve. Keeps the blit to a safe 3-binding set (the depth
-        // texture in here tripped a backend/Metal multi-resource binding bug).
+        // ---- Final upscale blit ----
+        // Background is flagged by the color target's alpha (model + the sky/starfield background passes write a=1,
+        // the clear sets a=0), which the palette/edge passes preserve. The starfield USED to be injected here, but a
+        // pass that rebuilds the background AFTER the whole chain necessarily discards whatever was drawn at those
+        // pixels, so it moved to StarfieldRenderer (a real background pass, before the decals). Keeps the blit to a
+        // safe 3-binding set (the depth texture in here tripped a backend/Metal multi-resource binding bug).
         public const string BlitFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn, .y=transparentBg, .z=flipV
+layout(set=0, binding=2) uniform Final { vec4 Params; }; // Params.x=transparentBg, .y=flipV
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
     // Bug A: each fullscreen post pass flips vertically, so the orientation depends on the parity of how many
-    // ran. The blit cancels it (Params.z = flipV) so every config is upright. Starfield stays in screen space.
-    vec2 suv = (Params.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
+    // ran. The blit cancels it (Params.y = flipV) so every config is upright.
+    vec2 suv = (Params.y > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
     vec4 s = texture(sampler2D(Src, Samp), suv);
-    vec3 col = s.rgb;
-    if (Params.x > 0.5 && s.a < 0.5) {                   // background (alpha marker) -> stars
-        vec2 cell = floor(vUv * vec2(220.0, 124.0));
-        float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
-        col = BgColor.rgb + vec3(star);
-    }
-    // Opaque on-screen by default; for an offscreen preview (Params.y) keep the alpha marker so the cleared
+    // Opaque on-screen by default; for an offscreen preview (Params.x) keep the alpha marker so the cleared
     // background composites transparently (geometry a=1 stays opaque, cleared background a=0 stays clear).
-    float outA = (Params.y > 0.5) ? s.a : 1.0;
-    oColor = vec4(col, outA);
+    float outA = (Params.x > 0.5) ? s.a : 1.0;
+    oColor = vec4(s.rgb, outA);
 }";
 
         // ---- Teleport transition: solid fullscreen fill (HardBlink) ----

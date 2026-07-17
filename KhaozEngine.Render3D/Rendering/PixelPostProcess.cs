@@ -19,7 +19,7 @@ namespace KhaozEngine.Render3D.Rendering
     {
         // The typed post UBOs (internal so UboLayoutTests can size-check them against the GPU allocations).
         internal struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; public Vector4 Fade; }
-        internal struct FinalUbo { public Vector4 BgColor; public Vector4 Params; }
+        internal struct FinalUbo { public Vector4 Params; }   // .x=transparentBg, .y=flipV
         internal struct BrightUbo { public Vector4 Params; }       // .x=threshold, .y=knee
         internal struct CompositeUbo { public Vector4 Params; }    // .x=intensity
         internal struct ToneUbo { public Vector4 Params; }         // .x=exposure, .y=operator, .z=chroma preservation
@@ -32,7 +32,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal const int PaletteScratchFloats = (MaxPaletteColors + 1) * 4; // 64 colour vec4 + 1 info vec4 = 260 floats
         internal const uint PaletteBufferBytes = (uint)PaletteScratchFloats * sizeof(float); // 1040 bytes
         internal const uint EdgeBufferBytes = 64;                         // 4 vec4 (EdgeUbo)
-        internal const uint FinalBufferBytes = 32;                        // 2 vec4 (FinalUbo)
+        internal const uint FinalBufferBytes = 16;                        // 1 vec4 (FinalUbo)
         internal const uint FxaaBufferBytes = 16;                         // 1 vec4 (rcpFrame)
         internal const uint BrightBufferBytes = 16;                       // 1 vec4 (BrightUbo)
         internal const uint CompositeBufferBytes = 16;                    // 1 vec4 (CompositeUbo)
@@ -101,7 +101,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             _palBuf = f.CreateBuffer(new GpuBufferDescription(PaletteBufferBytes, GpuBufferUsage.UniformBuffer)); // 64 vec4 + 1 vec4
             _edgeBuf = f.CreateBuffer(new GpuBufferDescription(EdgeBufferBytes, GpuBufferUsage.UniformBuffer)); // 4 vec4
-            _finalBuf = f.CreateBuffer(new GpuBufferDescription(FinalBufferBytes, GpuBufferUsage.UniformBuffer)); // 2 vec4
+            _finalBuf = f.CreateBuffer(new GpuBufferDescription(FinalBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4
             _fxaaBuf = f.CreateBuffer(new GpuBufferDescription(FxaaBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4 (rcpFrame)
             _brightBuf = f.CreateBuffer(new GpuBufferDescription(BrightBufferBytes, GpuBufferUsage.UniformBuffer)); // 1 vec4
             _blurBufH = f.CreateBuffer(new GpuBufferDescription(BlurBufferBytes, GpuBufferUsage.UniformBuffer)); // Texel+Params(H)+Weights
@@ -409,8 +409,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             var final = new FinalUbo
             {
-                BgColor = s.BackgroundColor,
-                Params = new Vector4(s.Starfield ? 1f : 0f, s.TransparentBackground ? 1f : 0f, flipV, 0),
+                Params = new Vector4(s.TransparentBackground ? 1f : 0f, flipV, 0, 0),
             };
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }

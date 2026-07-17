@@ -17,6 +17,17 @@ public class SessionLogTests
         return dir;
     }
 
+    // Reads the session log while SessionLog still holds it open for writing. On Windows a reader must share
+    // write access to open a file that has a live write handle (File.ReadAllText shares only read, so it throws
+    // a sharing violation there). POSIX ignores share modes. This is exactly what a crash reporter / tail tool
+    // does, and the file sink deliberately opens with FileShare.Read so this succeeds.
+    private static string ReadLiveHeldText(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(fs);
+        return reader.ReadToEnd();
+    }
+
     [Fact]
     public void Prune_KeepsNewestRetainedMinusOne_ByLastWrite()
     {
@@ -86,7 +97,7 @@ public class SessionLogTests
             Assert.EndsWith(".log", path);
             Assert.True(File.Exists(path));
 
-            string body = File.ReadAllText(path);
+            string body = ReadLiveHeldText(path);
             Assert.Contains("TestGame.Server", body);
             Assert.Contains("0.4.2", body);          // game build version
             Assert.Contains("KhaozEngine ", body);   // engine version, read off the engine assembly
@@ -104,7 +115,7 @@ public class SessionLogTests
             string path = SessionLog.Configure(dir, "NoVersionGame");
             Log.Flush();
 
-            string body = File.ReadAllText(path);
+            string body = ReadLiveHeldText(path);
             Assert.Contains("NoVersionGame | KhaozEngine ", body); // no build segment between label and engine
         }
         finally { Reset(dir); }
@@ -120,7 +131,7 @@ public class SessionLogTests
             CrashHandler.Report("Unhandled exception (terminating)", new InvalidOperationException("boom"), null);
             Log.Flush();
 
-            string body = File.ReadAllText(path);
+            string body = ReadLiveHeldText(path);
             Assert.Contains("[FATAL]", body);
             Assert.Contains("boom", body);
         }

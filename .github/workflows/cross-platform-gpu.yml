@@ -1,11 +1,15 @@
 # cross-platform-gpu: desktop GPU test matrix (Win D3D11 / Linux Vulkan / macOS Metal).
 #
-# What this does:
-#   * On push / pull_request to main it runs the WHOLE test suite (every [GpuFact], golden and
-#     behavioral, plus the headless suite) on a real runner for each desktop backend, so the golden
-#     snapshots AND every other GPU-backed test class get verified per backend, not just the ones
-#     named "Golden". Committed per-backend goldens live at
-#     KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt.
+# What this does (suite split by leg + trigger, decided from measured cost):
+#   * The self-hosted Metal leg (free) runs the FULL test suite (every [GpuFact], golden and
+#     behavioral, plus the headless suite) on EVERY trigger.
+#   * The GitHub-hosted D3D11 (2x billing) and Vulkan (1x) legs run only the golden tests
+#     (FullyQualifiedName~Golden) on push / pull_request, and the FULL suite on the weekly
+#     schedule and on workflow_dispatch. Rationale: the full suite on hosted Windows measured
+#     17m14s vs the golden-only 7m44s (trial runs 29542939552 / 29545657401), about +19 billed
+#     2x minutes per run - too much per-push for this repo's cost posture, so full hosted
+#     coverage rides the weekly cron (and any manual dispatch) instead.
+#   * Committed per-backend goldens live at KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt.
 #   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
 #     Linux Vulkan (Mesa lavapipe).
 #
@@ -53,6 +57,10 @@ on:
       - '.github/workflows/cross-platform-gpu.yml'
   pull_request:
     branches: [ main ]
+  # Weekly full-suite pass on the hosted legs (Metal runs the full suite on every trigger anyway).
+  # Sunday 18:00 UTC: a quiet slot, and any breakage surfaces before the working week.
+  schedule:
+    - cron: '0 18 * * 0'
   workflow_dispatch:
     inputs:
       bake:
@@ -76,22 +84,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # `hosted` marks the legs that bill GitHub-hosted minutes. Those drop to golden-only on push/PR
+        # (see the test step's filter expression and the cost rationale in the header).
         include:
           - os: macos-14
             backend: metal
             runner: [self-hosted, macOS, ARM64]
-            blame: ''
+            hosted: false
           - os: windows-latest
             backend: direct3d11
             runner: windows-latest
-            blame: ''
-          # TEMPORARY: --blame names the test that was running when the native test host crashed (its
-          # Sequence.xml, uploaded below); --blame-crash grabs a dump. lavapipe (software Vulkan) segfaulted
-          # mid-suite with no managed assertion, so this identifies the culprit. Remove once it is guarded/fixed.
+            hosted: true
           - os: ubuntu-latest
             backend: vulkan
             runner: ubuntu-latest
-            blame: '--blame --blame-crash'
+            hosted: true
     steps:
       - uses: actions/checkout@v4
 
@@ -155,28 +162,21 @@ jobs:
         continue-on-error: true
         run: vulkaninfo --summary || true
 
-      # Runs the FULL test suite (all [GpuFact] tests, golden and behavioral, plus the headless suite)
-      # against this backend, mirroring ci.yml's exclusion. Previously this filtered to
-      # "FullyQualifiedName~Golden", which meant every GpuFact class without "Golden" in its name never
-      # ran on any backend. LiveSocket is excluded here for the same reason ci.yml excludes it (needs a
-      # live network peer, not available on these runners).
-      - name: Run full test suite
+      # Suite selection per leg + trigger (the cost split in the header):
+      #   * Metal (self-hosted, free): the FULL suite on every trigger - "Category!=LiveSocket",
+      #     mirroring ci.yml's exclusion (LiveSocket needs a live network peer, not available here).
+      #   * Hosted D3D11/Vulkan: golden tests only on push/PR ("FullyQualifiedName~Golden"), the FULL
+      #     suite on schedule + workflow_dispatch. Full hosted Windows measured +19 billed 2x minutes
+      #     per run vs golden-only (17m14s vs 7m44s, runs 29542939552 / 29545657401), so per-push
+      #     hosted coverage stays golden-only and the weekly cron carries the full sweep.
+      - name: Run test suite
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
-        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket" ${{ matrix.blame }} --results-directory TestResults
-
-      # TEMPORARY (paired with matrix.blame): on a crash/failure, surface the --blame Sequence.xml (names the
-      # last-started test on the host that died) and any crash dump so the Vulkan native crasher can be
-      # identified from the run. Remove alongside matrix.blame once it is guarded/fixed.
-      - name: Upload blame / crash results
-        if: failure() && matrix.blame != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: blame-${{ matrix.backend }}
-          path: TestResults/
-          if-no-files-found: ignore
+          KE_TEST_FILTER: ${{ (matrix.hosted && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') && 'FullyQualifiedName~Golden' || 'Category!=LiveSocket' }}
+        run: dotnet test -c Release --no-build --filter "$KE_TEST_FILTER"
+        shell: bash
 
       # On a verify FAILURE: upload the got/want/diff evidence PNGs the golden compare wrote, so the visual
       # regression can be eyeballed from the run without re-running. ignore = no spurious failure when a leg

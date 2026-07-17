@@ -41,14 +41,23 @@ fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were gre
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
-Runs the WHOLE test suite (`--filter "Category!=LiveSocket"`, `KE_GPU_TESTS=1`) per OS with its backend,
-`fail-fast: false`. That is every `[GpuFact]` test (golden and behavioral) plus the headless suite,
-matching `ci.yml`'s own `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not
-available on these runners). The test step previously filtered to `FullyQualifiedName~Golden`, so any
-`[GpuFact]` class without "Golden" in its name never ran on any backend (`Scene3DTextureUnloadTests`,
-`WaterQueueTests`, `RenderServiceTests`, and dozens of other classes were never exercised on
-Metal/D3D11/Vulkan). There is no longer a naming contract to police: every GPU test runs on every
-backend regardless of what it is called.
+The suite each leg runs is split by trigger, from measured cost (`KE_GPU_TESTS=1`, `fail-fast: false`):
+
+- **Self-hosted Metal leg (free)**: the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
+  trigger - every `[GpuFact]` test (golden and behavioral) plus the headless suite, matching `ci.yml`'s
+  own `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not available here).
+- **GitHub-hosted D3D11 (2x billing) and Vulkan (1x) legs**: golden tests only
+  (`FullyQualifiedName~Golden`) on `push`/`pull_request`, and the WHOLE suite on the weekly `schedule`
+  (Sunday 18:00 UTC) and on `workflow_dispatch`. The full suite on hosted Windows measured 17m14s vs
+  the golden-only 7m44s, about +19 billed 2x minutes per run - too costly per-push, so full hosted
+  coverage rides the weekly cron and any manual dispatch instead.
+
+Historically the test step filtered every leg to `FullyQualifiedName~Golden`, so any `[GpuFact]` class
+without "Golden" in its name never ran on ANY backend (`Scene3DTextureUnloadTests`, `WaterQueueTests`,
+`RenderServiceTests`, and dozens of other classes were never exercised on Metal/D3D11/Vulkan). Every GPU
+test now runs on every backend (per the schedule above) regardless of what it is called; the name is not
+a CI contract. The first full-suite sweep surfaced 13 real Windows portability bugs and a Vulkan
+dispose-before-submit crash that the golden-only filter had been hiding.
 
 `KE_GPU_TESTS` accepts two values. `1` is strict (CI and the dev Mac): tests run, and a device-creation
 failure is a test error, never a skip, so CI cannot go green with zero GPU coverage. `probe` is for
@@ -68,7 +77,9 @@ not a CI filter contract):
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify** committed goldens for each backend                                 |
+| `push` / `pull_request` on main  | **verify**: Metal runs the full suite; hosted legs run the golden tests only  |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: all three legs run the full suite                           |
+| `workflow_dispatch` `bake=false` | same full sweep as `schedule` (all three legs, full suite)                    |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) and upload per-backend goldens as artifacts |
 
 Software rasterizers on the runners (no real GPU):
@@ -147,9 +158,10 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   per-material data into the frame UBO (the splat pipeline appends its params after the light arrays in one
   combined UBO). See `SplatVert` / `SplatFrag`.
 - **A new render feature needs a pixel-READBACK assertion, not just "it did not throw".** Any `[GpuFact]` test
-  runs per backend in `cross-platform-gpu.yml` regardless of its name, so this is no longer a naming trap, but
-  the underlying lesson stands: the original splat tests asserted no throw with no pixel readback, so the
-  D3D11 leg ran them and still let the white-terrain bug through.
+  runs per backend in `cross-platform-gpu.yml` regardless of its name (every trigger on Metal, weekly/dispatch
+  on the hosted legs), so this is no longer a naming trap, but the underlying lesson stands: the original splat
+  tests asserted no throw with no pixel readback, so the D3D11 leg ran them and still let the white-terrain bug
+  through.
 
 When a backend-specific render bug reproduces ONLY on the CI rasterizer (WARP / lavapipe), dump the SPIRV-Cross
 output locally to read what that backend's compiler receives:

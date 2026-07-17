@@ -1658,7 +1658,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
 - Transparent compositing: set `Post.TransparentBackground = true` (default on for `Render3DPreview`) to emit the
   background as alpha 0 so a captured `Texture2D` overlays a 2D scene; the stylized post chain preserves the
-  per-pixel alpha (geometry opaque, cleared background clear). Leave `Starfield` off when transparent.
+  per-pixel alpha (geometry opaque, cleared background clear). Since 11.9.0, set `Post.Background =
+  BackgroundMode.Solid` when transparent: a non-`Solid` background (the default `Starfield`, or `Sky`) now paints
+  alpha 1 and hides whatever the composite sits over, where the old default used to draw invisible stars at
+  alpha 0. See Background below for the full behaviour change.
 - Internal render-target sizing: `Post.RenderScale`. The default `FixedInternal` renders into a
   fixed `Post.RenderWidth` x `RenderHeight` target (1600x900) and blit-scales it to the window - the retro path
   (small fixed target + `Pixelated`), but on a window bigger than that target the smooth blit UPscales and
@@ -1804,6 +1807,26 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     before either test, since a pose can carry vertices outside the mesh's static rest-pose box (a swung limb, a
     jump). Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
     counterpart of `DrawnInstances`/`CulledInstances` above.
+- **Background** (`Post.Background`, a `BackgroundMode`: `Solid`, `Starfield`, `Sky`, **default `Starfield`**): one
+  knob for what fills a pixel no scene geometry drew. It is a DERIVED view over the existing `Post.Starfield` and
+  `Post.Sky.Enabled` booleans, not new state, so both keep working exactly as before and nothing is `[Obsolete]`.
+  The getter encodes the engine's long-standing precedence, `Sky` over `Starfield` over `Solid`, in one place:
+  reading `Background` after setting both booleans tells you which one actually wins. The setter clears the modes
+  it did not select, so `Post.Background = BackgroundMode.Sky` also turns `Starfield` off.
+  - **Since 11.9.0 the starfield is a real background pass**, not a final-blit trick. `StarfieldRenderer` (a
+    `SkyRenderer` sibling) draws a fullscreen triangle at the far plane with a read-only `Equal` depth test, so it
+    paints ONLY background pixels (where the stored depth still equals the cleared far plane) and writes
+    `alpha = 1`, before the ground decals. Procedural stars are therefore ordinary scene content now: they
+    quantize/dither with the retro passes, bloom, warp under screen-space distortion, and tonemap in HDR, instead
+    of being pasted on after the whole post chain finished.
+  - **`TransparentBackground` interaction.** A non-`Solid` background always paints alpha 1 (opaque), so it hides
+    whatever a transparent composite is layered over. A transparent composite (`Post.TransparentBackground = true`)
+    needs `Post.Background = BackgroundMode.Solid` set explicitly, see "Transparent compositing" above.
+  - **Behaviour change from 11.9.0.** `TransparentBackground = true` with the default `Starfield = true` on a raw
+    `Scene3D` used to composite invisibly (stars drew at `alpha = 0`). It now produces an opaque background,
+    because the background pass writes `alpha = 1`. `Render3DPreview` and `UseSmoothPreset` already force
+    `Starfield` off and are unaffected. A consumer building `Scene3D` directly with `TransparentBackground = true`
+    is not, and needs the explicit `Background = BackgroundMode.Solid` above.
 - **Sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural sky drawn as a background pass behind
   all geometry - a vertical horizon-to-zenith gradient plus an optional sun disc + halo. Default `Sky.Enabled = false`,
   so the background stays the clear colour + starfield and existing scenes are byte-stable; set `Post.Sky.Enabled = true`
@@ -3322,6 +3345,30 @@ interface and never takes a dependency on `KhaozEngine.Physics`. The planner and
 unchanged: a step-aware grid is still one `NavGrid` layer, so `GridPathPlanner` and `PathFollower` need no
 new code to route across a ramp or a low rock.
 
+### Bake vertical hops
+
+A standable top taller than `stepHeight` bakes as an unreachable island under the step bake alone: the
+top is standable, but no walkable step leads onto it. `NavGridBaker.BakeOverworldHops` closes that gap.
+It bakes the step grid exactly as `BakeOverworldSteps` does, then generates same-grid
+`NavLinkKind.Hop` links (`NavHopLinks.Generate`) wherever two standable cells face each other across a
+blocked rim with a rise above `stepHeight` but within `jumpHeight`, and returns a single-layer `NavSpace`
+carrying both:
+
+```csharp
+NavSpace space = NavGridBaker.BakeOverworldHops(
+    provider,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f,
+    jumpHeight: 1.2f, maxHopCells: 2);
+var planner = new GridPathPlanner(space);   // hopCostCells: 4 by default
+```
+
+Opt-in throughout: `BakeOverworldSteps` never generates hop links, and with no hoppable feature in range
+the returned space is identical to `NavSpace.Single(BakeOverworldSteps(...))`. The planner charges a hop
+the constructor's `hopCostCells` (in cells of the source layer, default 4, kept at or above the longest
+hop's octile length so paths stay optimal) and marks each hop landing waypoint `NavWaypointKind.Hop`,
+which the follower surfaces as the `Hopping` state below.
+
 ### Plan a route
 
 `GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an
@@ -3351,9 +3398,26 @@ if (output.State == PathFollowState.Following)
     agent = CharacterMovement.StepTowards(agent, output.WorldDir, run: false, dt,
         terrain.GroundHeight, tuning, world: physics);
 }
+else if (output.State == PathFollowState.Hopping)
+{
+    // A hop link's landing is the active waypoint. Ground steering is suspended (WorldDir is zero):
+    // the game drives its own lunge from HopStart to ActiveWaypoint. Both are world XZ, resolve each
+    // end's Y from the layer's grid, the follower stores no Y.
+    NavGrid layer = space.Layers[0];
+    Vector2 from = output.HopStart;
+    Vector2 to = output.ActiveWaypoint;
+    (int fx, int fz) = layer.CellOf(from.X, from.Y);
+    (int tx, int tz) = layer.CellOf(to.X, to.Y);
+    float fromY = layer.SurfaceHeightAt(fx, fz) ?? terrain.GroundHeight(from.X, from.Y);
+    float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
+    agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
+}
 // Arrived: agent.Position is within AcceptRadius of the goal, output.WorldDir is zero.
 // Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
 ```
+
+The follower owns no hop timer: it re-emits `Hopping` every tick until the agent actually reaches the
+landing (within `AcceptRadius`), then resumes `Following` (or `Arrived` when the landing is the goal).
 
 `output.WorldDir` is the raw follow direction only. A dynamic-avoidance pass (steering around other agents
 or a late-appearing obstacle) is expected to run after the follower and before `StepTowards`, adjusting

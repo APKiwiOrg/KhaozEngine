@@ -6,6 +6,20 @@ using System.Numerics;
 namespace KhaozEngine.Navigation;
 
 /// <summary>
+/// What kind of waypoint this is, so the follower can steer toward a normal point but surface a hop when it
+/// reaches a hop link's landing. New values may be added over time.
+/// </summary>
+public enum NavWaypointKind
+{
+    /// <summary>The default: steer toward this point with ordinary ground movement.</summary>
+    Walk,
+
+    /// <summary>The landing of a <see cref="NavLinkKind.Hop"/> link. The follower returns
+    /// <see cref="PathFollowState.Hopping"/> while steering toward it and suspends ground steering.</summary>
+    Hop,
+}
+
+/// <summary>
 /// Outcome of an <see cref="IPathPlanner.FindPath"/> query.
 /// </summary>
 public enum NavPathStatus
@@ -28,7 +42,13 @@ public enum NavPathStatus
 /// </summary>
 /// <param name="Position">World XZ position of this waypoint.</param>
 /// <param name="Layer">Index into <see cref="NavSpace.Layers"/> this waypoint lives on.</param>
-public readonly record struct NavWaypoint(Vector2 Position, int Layer);
+public readonly record struct NavWaypoint(Vector2 Position, int Layer)
+{
+    /// <summary>What kind of waypoint this is (default <see cref="NavWaypointKind.Walk"/>). A
+    /// <see cref="NavWaypointKind.Hop"/> waypoint is a hop link's landing, which the follower surfaces as
+    /// <see cref="PathFollowState.Hopping"/>.</summary>
+    public NavWaypointKind Kind { get; init; }
+}
 
 /// <summary>
 /// Result of a path query: a <see cref="NavPathStatus"/> plus the waypoints leading toward the goal, in

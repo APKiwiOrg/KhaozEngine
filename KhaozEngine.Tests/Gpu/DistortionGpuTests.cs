@@ -12,12 +12,13 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Behavioural GPU proofs of the screen-space distortion pass that a coarse RGB golden cannot express: a ripple
     /// actually displaces pixels of the scene behind it, geometry occludes the offset field (the depth recipe fades
-    /// it to zero), the apply pass preserves each pixel's own alpha so the background/starfield marker never warps,
-    /// the reduced-quality tier still renders, and the whole feature is zero-neutral (a queued-then-cleared frame is
-    /// byte-identical to one that never queued distortion). Scenes are deterministic (EffectTimeSeconds 0, fixed
-    /// seeds) and asset-free (an in-test checkerboard albedo gives the high-frequency content a warp needs to show).
-    /// Skipped unless KE_GPU_TESTS=1 (needs a Metal device). Joins the serialized HdrGpu collection so it never
-    /// creates a Metal device context concurrently with the other GPU-heavy classes.
+    /// it to zero), a ripple over open background warps the starfield sitting there (see
+    /// docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md), the reduced-quality tier still renders, and the
+    /// whole feature is zero-neutral (a queued-then-cleared frame is byte-identical to one that never queued
+    /// distortion). Scenes are deterministic (EffectTimeSeconds 0, fixed seeds) and asset-free (an in-test
+    /// checkerboard albedo gives the high-frequency content a warp needs to show). Skipped unless KE_GPU_TESTS=1
+    /// (needs a Metal device). Joins the serialized HdrGpu collection so it never creates a Metal device context
+    /// concurrently with the other GPU-heavy classes.
     /// </summary>
     [Collection("HdrGpu")]
     public sealed class DistortionGpuTests
@@ -148,50 +149,57 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Distortion_alpha_marker_survives()
+        public void Distortion_warps_the_starfield()
         {
-            // A lone box against a starfield sky, a Heat sprite over the box. The apply pass preserves each pixel's
-            // OWN alpha, so the alpha marker (background < 0.5) never moves: the sky renders screen-space stars from
-            // the marker, ignoring the warped RGB entirely. Every sky pixel is therefore identical with and without
-            // the distortion (stars intact), while the box interior warps.
-            byte[] plain = RenderAlphaMarker(distort: false);
-            byte[] warped = RenderAlphaMarker(distort: true);
+            // Pre-migration, the starfield was painted in the final blit, AFTER the whole post chain including
+            // distortion, from the colour target's alpha marker. The apply pass resamples RGB at a warped UV but
+            // keeps each pixel's OWN (unwarped) alpha, so the old blit always repainted the same star pattern at
+            // that exact screen pixel regardless of what the warp had done there: the stars were structurally immune
+            // to distortion. That mechanism no longer exists. StarfieldRenderer now paints bg.rgb + star (alpha 1)
+            // into ColorTex BEFORE the post chain runs (see docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md),
+            // so the stars are ordinary scene content by the time distortion's apply pass resamples ColorTex at an
+            // offset UV, exactly as it would for a checkerboard floor. A ripple queued over open background must
+            // therefore perturb the stars behind it. This is correct, not a regression: a heat-haze or ripple
+            // should distort whatever is behind it, and the old immunity was only an artifact of the stars being
+            // pasted on last.
+            byte[] plain = RenderStarfieldDistortion(distort: false);
+            byte[] warped = RenderStarfieldDistortion(distort: true);
 
-            // Sky corners are pure background, far from the central box: identical (the marker survived the warp).
-            int cornerBL = DiffCountRegion(plain, warped, 0, 3 * H / 4, W / 4, H);
-            int cornerTL = DiffCountRegion(plain, warped, 0, 0, W / 4, H / 4);
-            Assert.True(cornerBL < 10 && cornerTL < 10,
-                $"the starfield must survive the warp (own-alpha preserved): BL {cornerBL}, TL {cornerTL} pixels differed");
+            // The sprite is centred on the camera target, which the isometric camera always projects to the exact
+            // viewport centre, so a box around the centre covers its whole footprint (open background all around,
+            // no geometry anywhere in this scene).
+            int centre = DiffCountRegion(plain, warped, W / 2 - 40, H / 2 - 40, W / 2 + 40, H / 2 + 40);
+            Assert.True(centre > 20, $"a ripple over the starfield should perturb it, only {centre} pixels differed");
 
-            // Sanity: the sprite really did warp the box interior (else the test proves nothing).
-            int centreDiff = DiffCountRegion(plain, warped, W / 3, H / 3, 2 * W / 3, 2 * H / 3);
-            Assert.True(centreDiff > 60, $"expected the heat sprite to warp the box, only {centreDiff} pixels differed");
+            // A far corner, well outside the sprite's footprint, stays untouched: proves the perturbation above is
+            // localised to the ripple and not some unrelated frame-to-frame difference.
+            int farCorner = DiffCountRegion(plain, warped, 0, 0, W / 6, H / 6);
+            Assert.True(farCorner < 10, $"the far corner should be untouched by the ripple, {farCorner} pixels differed");
         }
 
-        // A lone box against a starfield sky (no floor), a Heat sprite over the box: the periphery is all background,
-        // so the corners stay pure sky for the own-alpha-preservation check.
-        static byte[] RenderAlphaMarker(bool distort)
+        // A pure starfield background, no geometry at all, with one distortion sprite centred on the camera target
+        // (which always projects to the screen centre for this orthographic camera), so its entire footprint sits
+        // over background pixels. Isolates "does distortion warp the void" from occlusion, which
+        // Distortion_occluded_by_geometry already covers separately.
+        static byte[] RenderStarfieldDistortion(bool distort)
         {
-            MeshHandle box = default;
             return Render3DSnapshot.Capture(W, H,
                 setup: scene =>
                 {
-                    box = scene.LoadMesh(MeshPrimitives.Box(1.6f));
-                    scene.Post.Starfield = true;
+                    scene.Post.Background = BackgroundMode.Starfield;
                     scene.Post.Outline = false;
                     scene.Post.BackgroundColor = new Color(0.02f, 0.02f, 0.05f, 1f);
                     scene.EffectTimeSeconds = 0f;
-                    scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(3.2f, 3.2f, 3.2f));
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(8f, 8f, 8f));
                 },
                 drawFrame: scene =>
                 {
-                    scene.Draw(box, Matrix4x4.CreateTranslation(0f, 0.4f, 0f), new Color(0.85f, 0.35f, 0.2f, 1f));
                     if (distort)
                     {
                         scene.DrawDistortion(new DistortionSprite
                         {
-                            Position = new Vector3(0.3f, 0.7f, 0.9f), Size = 1.4f,
-                            Shape = DistortionShape.Heat, ShapeParam = 0.5f, Strength = 2.5f, Seed = 0.31f,
+                            Position = Vector3.Zero, Size = 2.6f,
+                            Shape = DistortionShape.Ripple, ShapeParam = 0.3f, Strength = 2.5f, Seed = 0.31f,
                         });
                     }
                 },

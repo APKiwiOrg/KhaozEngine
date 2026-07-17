@@ -41,6 +41,7 @@ namespace KhaozEngine.Render3D
         readonly Rendering.ParticleRenderer _particleRenderer;
         readonly Rendering.DistortionRenderer _distortionRenderer;
         readonly Rendering.SkyRenderer _sky;
+        readonly Rendering.StarfieldRenderer _starfield;
         readonly Rendering.WaterRenderer _water;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
         readonly RenderResources _res;
@@ -398,6 +399,10 @@ namespace KhaozEngine.Render3D
             // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
             // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
             _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
+            // Procedural starfield: a background pass at the same slot as the sky (before the decals), so the stars
+            // are part of the scene and anything drawn over the void composites over them. Default on
+            // (Post.Background == BackgroundMode.Starfield).
+            _starfield = new Rendering.StarfieldRenderer(gd, _res.ColorDepthFB.Outputs);
             // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
             // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
             _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -1575,6 +1580,7 @@ namespace KhaozEngine.Render3D
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _particleRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _sky.SetOutputs(_res.ColorDepthFB.Outputs);
+            _starfield.SetOutputs(_res.ColorDepthFB.Outputs);
             _water.SetOutputs(_res.ColorDepthFB.Outputs);
             _depthLines.SetOutputs(_res.ColorDepthFB.Outputs);
         }
@@ -2162,16 +2168,24 @@ namespace KhaozEngine.Render3D
             // edge pass which also samples it). No-op when not multisampled.
             _res.ResolveDepth(cl);
 
-            // Procedural sky: a fullscreen background pass into ColorDepthFB (lit colour + read-only scene depth),
-            // behind all geometry. The far-plane triangle passes the Equal read-only depth test ONLY where the stored
-            // depth still EQUALS the cleared far plane (background where no mesh drew), so it fills the gradient + sun
-            // there and geometry pixels (depth < 1) reject it. It writes only the colour attachment (never the MRT
-            // normal/linear-depth the outline pass reads) with alpha 1 (so the blit's starfield marker skips sky
-            // pixels). Fully skipped when off, so a sky-off frame renders byte-identical to before this pass existed.
-            if (Post.Sky.Enabled)
+            // Background pass, before the decals: whichever mode is selected paints the no-geometry pixels and marks
+            // them alpha 1. Mutually exclusive by construction (Post.Background derives the sky-over-starfield
+            // precedence), so at most one of these runs, and Solid runs neither. The far-plane sky triangle passes
+            // the Equal read-only depth test ONLY where the stored depth still EQUALS the cleared far plane
+            // (background where no mesh drew), so it fills the gradient + sun there and geometry pixels (depth < 1)
+            // reject it. Both passes write only the colour attachment (never the MRT normal/linear-depth the outline
+            // pass reads) with alpha 1, marking those pixels as opaque painted background. Fully skipped when
+            // Solid, so a Solid frame renders byte-identical to before this pass existed.
+            switch (Post.Background)
             {
-                _sky.Draw(cl, _res, ActiveCamera.View, ActiveCamera.Projection, Post.LightDirection, Post.Sky);
-                _frameStats.DrawCalls++;
+                case BackgroundMode.Sky:
+                    _sky.Draw(cl, _res, ActiveCamera.View, ActiveCamera.Projection, Post.LightDirection, Post.Sky);
+                    _frameStats.DrawCalls++;
+                    break;
+                case BackgroundMode.Starfield:
+                    _starfield.Draw(cl, _res, Post.BackgroundColor);
+                    _frameStats.DrawCalls++;
+                    break;
             }
 
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
@@ -2538,6 +2552,7 @@ namespace KhaozEngine.Render3D
             _particleRenderer.Dispose();
             _distortionRenderer.Dispose();
             _sky.Dispose();
+            _starfield.Dispose();
             _water.Dispose();
             _overlayMeshes.Dispose();
             _res.Dispose();

@@ -1502,7 +1502,7 @@ void main() {
         // ---- Screen-space distortion apply: the FIRST post-chain pass (both modes). Re-samples the chain source
         // through the accumulated half-res offset field so refraction warps the scene BEFORE every camera-response
         // pass (bloom halos follow the warped sources, the retro path quantizes the warped image). Preserves each
-        // pixel's OWN alpha so the background/starfield marker never warps (warping it would corrupt the blit's
+        // pixel's OWN alpha so the background marker (transparent background) never warps (warping it would corrupt the blit's
         // marker semantics, D-S5). Only ever run when a distortion sprite was queued this frame
         // (RenderResources.DistortAllocated), so a distortion-free frame is byte-identical to before distortion existed.
         public const string DistortionApplyFrag = @"#version 450
@@ -1624,32 +1624,27 @@ void main() {
     oColor = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker
 }";
 
-        // ---- Final upscale blit (+ optional procedural starfield in the background) ----
-        // Background is flagged by the color target's alpha (model writes a=1, the clear sets a=0),
-        // which the palette/edge passes preserve. Keeps the blit to a safe 3-binding set (the depth
-        // texture in here tripped a backend/Metal multi-resource binding bug).
+        // ---- Final upscale blit ----
+        // Background is flagged by the color target's alpha (model + the sky/starfield background passes write a=1,
+        // the clear sets a=0), which the palette/edge passes preserve. The starfield USED to be injected here, but a
+        // pass that rebuilds the background AFTER the whole chain necessarily discards whatever was drawn at those
+        // pixels, so it moved to StarfieldRenderer (a real background pass, before the decals). Keeps the blit to a
+        // safe 3-binding set (the depth texture in here tripped a backend/Metal multi-resource binding bug).
         public const string BlitFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Final { vec4 BgColor; vec4 Params; }; // Params.x=starsOn, .y=transparentBg, .z=flipV
+layout(set=0, binding=2) uniform Final { vec4 Params; }; // Params.x=transparentBg, .y=flipV
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
     // Bug A: each fullscreen post pass flips vertically, so the orientation depends on the parity of how many
-    // ran. The blit cancels it (Params.z = flipV) so every config is upright. Starfield stays in screen space.
-    vec2 suv = (Params.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
+    // ran. The blit cancels it (Params.y = flipV) so every config is upright.
+    vec2 suv = (Params.y > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;
     vec4 s = texture(sampler2D(Src, Samp), suv);
-    vec3 col = s.rgb;
-    if (Params.x > 0.5 && s.a < 0.5) {                   // background (alpha marker) -> stars
-        vec2 cell = floor(vUv * vec2(220.0, 124.0));
-        float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
-        col = BgColor.rgb + vec3(star);
-    }
-    // Opaque on-screen by default; for an offscreen preview (Params.y) keep the alpha marker so the cleared
+    // Opaque on-screen by default; for an offscreen preview (Params.x) keep the alpha marker so the cleared
     // background composites transparently (geometry a=1 stays opaque, cleared background a=0 stays clear).
-    float outA = (Params.y > 0.5) ? s.a : 1.0;
-    oColor = vec4(col, outA);
+    float outA = (Params.x > 0.5) ? s.a : 1.0;
+    oColor = vec4(s.rgb, outA);
 }";
 
         // ---- Teleport transition: solid fullscreen fill (HardBlink) ----
@@ -1683,7 +1678,7 @@ void main() {
 
         // ---- HDR tonemap: map the float16 over-range scene colour to LDR [0,1] before the retro/AA passes.
         // Runs ONLY in HDR mode, directly after the (pre-tonemap) bloom composite. Preserves the source
-        // alpha untouched so the blit's background marker (alpha < 0.5 -> starfield / transparent) survives.
+        // alpha untouched so the blit's background marker (alpha < 0.5 for transparent background) survives.
         // Operator fit choices are pure ALU (no LUT) so cross-backend goldens stay stable.
         public const string TonemapFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
@@ -1735,7 +1730,7 @@ void main() {
         // The classic Timothy Lottes FXAA3-console pass: read a 3x3 luma neighbourhood, skip near-flat areas
         // (contrast gate), otherwise estimate the edge direction from the luma gradient and blend two/four taps along
         // it. Softens high-contrast edges (geometry silhouettes AND shaded interiors) in one cheap fullscreen pass.
-        // Preserves the CENTRE pixel's alpha so the blit's background marker (a < 0.5 -> starfield / transparent) still
+        // Preserves the CENTRE pixel's alpha so the blit's background marker (a < 0.5 for transparent background) still
         // works. Runs on the internal target BEFORE the blit; like the other post passes it flips V, so the blit's
         // flipV parity counts it. Rcp.xy = 1/targetSize.
         public const string FxaaFrag = @"#version 450
@@ -1837,7 +1832,7 @@ void main() {
         // ---- Bloom composite: additively blend the blurred (half-res, bilinear-upsampled by the sampler) bright
         // target onto the full-res colour chain. Sampled UP FRONT in binding order (Src, Bloom - see the Metal
         // first-sample-order rule in EdgeFrag/ModelFrag). Preserves Src's alpha UNCHANGED so the blit's background
-        // marker (alpha<0.5 -> starfield / TransparentBackground) is untouched - bloom must never resurrect an
+        // marker (alpha < 0.5 for transparent background) is untouched - bloom must never resurrect an
         // alpha-0 background pixel into an opaque one; adding a near-zero (thresholded-out) bloom colour to the
         // background also does not visibly brighten it in practice, since nothing exceeds the bright-pass threshold
         // there.
@@ -2147,13 +2142,54 @@ void main() {
     oColor = vec4(rgb, a);
 }";
 
+        // ---- Procedural starfield. A fullscreen-triangle BACKGROUND pass into the lit colour attachment +
+        //      read-only scene depth (ColorDepthFB), identical in shape to the sky pass: the triangle sits at the
+        //      FAR plane (z=1) and the pipeline uses a read-only Equal depth test, so a fragment passes ONLY where
+        //      the stored depth still EQUALS the cleared far plane, i.e. background pixels where no geometry was
+        //      drawn. Geometry (depth < 1) fails Equal and rejects the stars.
+        //      This USED to live at the end of BlitFrag, which regenerated the background from the clear colour
+        //      after the whole post chain and therefore DISCARDED anything drawn at a background pixel (translucent
+        //      content was erased at alpha < 0.5, or punched a star-free hole at alpha >= 0.5). Painting the stars
+        //      into the scene before the decals means anything over the void composites over them normally, which
+        //      is what release 2's void ground decals need. It also means the stars now flow through the post chain
+        //      (quantize/dither/palette, bloom, distortion, HDR tonemap) like everything else, instead of being the
+        //      one un-pixelated element pasted on at the very end.
+        //      Writes alpha = 1, matching the sky pass, so the background reads as painted for the blit's
+        //      TransparentBackground path.
+        //      No vertex inputs (gl_VertexIndex only), so the HLSL input signature is empty: no gap-free-holes
+        //      hazard (see the D3D11/FXC note on ModelVert).
+        public const string StarfieldVert = @"#version 450
+void main() {
+    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0);   // far plane (z=1): passes the Equal depth test only on background
+}";
+
+        // The star field is the EXACT function BlitFrag carried (same 220x124 cell grid, same 0.992 threshold, same
+        // 0.55 + 0.45 brightness spread), moved verbatim. The only change is where the UV comes from: gl_FragCoord
+        // (upper-left on EVERY backend) times Res.xy = 1/(width,height), the backend-independent convention SkyFrag
+        // and DecalFrag use, rather than an interpolated vUv. The star pattern is value noise, so its orientation
+        // carries no meaning and is not worth preserving bit-for-bit across the move.
+        public const string StarfieldFrag = @"#version 450
+layout(set=0, binding=0) uniform Starfield {
+    vec4 BgColor;   // rgb = the scene clear colour the stars sit on
+    vec4 Res;       // xy = 1/renderWidth, 1/renderHeight
+};
+layout(location=0) out vec4 oColor;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+    vec2 uv = gl_FragCoord.xy * Res.xy;
+    vec2 cell = floor(uv * vec2(220.0, 124.0));
+    float star = step(0.992, hash(cell)) * (0.55 + 0.45 * hash(cell + 3.7));
+    oColor = vec4(BgColor.rgb + vec3(star), 1.0);
+}";
+
         // ---- Procedural sky (gradient + sun disc/halo). A fullscreen-triangle BACKGROUND pass rendered into the lit
         //      colour attachment + read-only scene depth (ColorDepthFB), like the ground-decal pass, but INVERTED: the
-        //      triangle sits at the FAR plane (z=1) and the pipeline uses a GreaterEqual read-only depth test, so a
+        //      triangle sits at the FAR plane (z=1) and the pipeline uses an Equal read-only depth test, so a
         //      fragment passes ONLY where the stored depth is still the cleared far plane - i.e. background pixels
         //      where no geometry was drawn. Geometry (depth < 1) rejects the sky, so it never overwrites the scene and
         //      never touches the MRT normal/linear-depth attachments (ColorDepthFB binds only colour + depth). It
-        //      writes alpha = 1 so the blit's starfield "a < 0.5 == background" marker does not fire over sky pixels.
+        //      writes alpha = 1 as opaque painted background, matching the starfield pass for consistency.
         //      No vertex inputs (gl_VertexIndex only), so the HLSL input signature is empty - no gap-free-holes hazard.
         //      The sky is drawn in SCREEN space (not by a world view ray): under the orthographic iso camera every
         //      view ray is parallel, so a world-ray sky would be a flat colour with no gradient and no localized sun.
@@ -2205,7 +2241,7 @@ void main() {
         float sun = clamp(disc + halo, 0.0, 1.0);
         col = mix(col, SunColor.rgb, sun);
     }
-    oColor = vec4(col, 1.0);   // alpha 1: NOT the starfield/transparent background marker
+    oColor = vec4(col, 1.0);   // alpha 1: opaque painted background (consistent with starfield)
 }";
 
         // ---- Animated water surface (Rendering gap #5). Drawn AFTER the sky and the ground decals into

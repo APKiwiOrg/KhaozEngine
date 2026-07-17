@@ -16,7 +16,14 @@ namespace KhaozEngine.Navigation;
 /// <param name="ToLayer">Index into <see cref="NavSpace.Layers"/> the link ends in.</param>
 /// <param name="ToX">Grid cell X coordinate the link ends at, in <see cref="ToLayer"/>.</param>
 /// <param name="ToZ">Grid cell Z coordinate the link ends at, in <see cref="ToLayer"/>.</param>
-public readonly record struct NavLink(int FromLayer, int FromX, int FromZ, int ToLayer, int ToX, int ToZ);
+public readonly record struct NavLink(int FromLayer, int FromX, int FromZ, int ToLayer, int ToX, int ToZ)
+{
+    /// <summary>What kind of transition this link is (default <see cref="NavLinkKind.Stair"/>). A
+    /// <see cref="NavLinkKind.Hop"/> link is charged the planner's hop cost and surfaces the follower's
+    /// hop seam. Existing six-argument constructions default to <see cref="NavLinkKind.Stair"/>, so shipped
+    /// links (the dungeon stair connections) are unchanged.</summary>
+    public NavLinkKind Kind { get; init; } = NavLinkKind.Stair;
+}
 
 /// <summary>
 /// A multi-layer navigable space: a stack of <see cref="NavGrid"/> layers (each covering its own

@@ -10,15 +10,18 @@ namespace KhaozEngine.Navigation;
 /// both endpoints onto a passable cell, then takes a line-of-sight fast path when the goal is directly
 /// visible on the start's layer, otherwise runs an 8-connected A* search. The search prevents diagonal
 /// corner-cutting (a diagonal step needs both orthogonal companions passable), crosses layers over
-/// <see cref="NavSpace.Links"/> (each link is a graph edge of nominal one-cell cost, its far endpoint
+/// <see cref="NavSpace.Links"/> (each link is a graph edge whose meters cost is precomputed per
+/// <see cref="NavLinkKind"/>: a <see cref="NavLinkKind.Stair"/> costs one cell of its source layer, a
+/// <see cref="NavLinkKind.Hop"/> costs the constructor's <c>hopCostCells</c> cells, its far endpoint
 /// re-checked for the agent radius), caps its work at <see cref="PathQueryBudget.MaxExpandedNodes"/>
 /// expansions, and on an unreachable goal returns a <see cref="NavPathStatus.Partial"/> route to the
 /// closest node it reached (or <see cref="NavPath.Unreachable"/> when it never got past the start).
 /// The raw cell chain is then string-pulled: within each same-layer run it greedily keeps only the
 /// farthest cell still in clear line of sight from the current anchor, collapsing collinear or
 /// diagonally-clear runs to a few turn waypoints. Both endpoints of every link crossing are always
-/// emitted (paths never smooth across a layer change), and a completed path's final waypoint follows
-/// the exact-goal rule from snapping. Node addressing spans every layer
+/// emitted (paths never smooth across a layer change), a <see cref="NavLinkKind.Hop"/> crossing's landing
+/// waypoint carries <see cref="NavWaypointKind.Hop"/>, and a completed path's final waypoint follows
+/// the exact-goal rule from snapping (keeping the replaced waypoint's kind). Node addressing spans every layer
 /// (<c>layerOffset[layer] + z * width + x</c>), so the search, the closed set, and the link map share
 /// one flat index space. Deterministic: fixed neighbor order and a monotone insertion counter break
 /// every tie the same way.
@@ -45,15 +48,36 @@ public sealed class GridPathPlanner : IPathPlanner
     /// <summary>Total node count across every layer, the length of the search's per-node arrays.</summary>
     readonly int _totalNodes;
 
-    /// <summary>Link edges as an adjacency list: source node id to the node ids its links reach.
-    /// Built once from <see cref="NavSpace.Links"/> (directed, so a two-way stair contributes two
-    /// entries). The far endpoint's own passability is still checked at expansion time.</summary>
-    readonly Dictionary<int, List<int>> _linkEdges;
+    /// <summary>Link edges as an adjacency list: source node id to its reachable node ids each paired with
+    /// its precomputed traversal cost in meters. Built once from <see cref="NavSpace.Links"/> (directed, so
+    /// a two-way stair contributes two entries). A <see cref="NavLinkKind.Stair"/> link costs one cell of
+    /// its source layer (<see cref="NavGrid.CellSize"/>, the historical hardcoded value), a
+    /// <see cref="NavLinkKind.Hop"/> link costs <see cref="_hopCostCells"/> of them. The far endpoint's own
+    /// passability is still checked at expansion time.</summary>
+    readonly Dictionary<int, List<(int ToId, float CostMeters)>> _linkEdges;
 
-    /// <summary>Builds a planner that searches <paramref name="space"/>.</summary>
-    public GridPathPlanner(NavSpace space)
+    /// <summary>The directed node-id pairs of every <see cref="NavLinkKind.Hop"/> link, keyed by the same
+    /// flat node ids the adjacency uses. Reconstruction consults this to stamp
+    /// <see cref="NavWaypointKind.Hop"/> on a hop crossing's landing waypoint.</summary>
+    readonly HashSet<(int FromId, int ToId)> _hopEdges;
+
+    /// <summary>Cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
+    /// <see cref="NavGrid.CellSize"/>. Set from the constructor knob.</summary>
+    readonly float _hopCostCells;
+
+    /// <summary>Builds a planner that searches <paramref name="space"/>. <paramref name="hopCostCells"/> is
+    /// the cost of crossing a <see cref="NavLinkKind.Hop"/> link, in multiples of the source layer's
+    /// <see cref="NavGrid.CellSize"/> (default 4). It must be positive. A <see cref="NavLinkKind.Stair"/>
+    /// link keeps its one-cell cost. Keep <paramref name="hopCostCells"/> at or above the longest hop's
+    /// octile displacement (about 2.83 at a two-cell hop) to keep the A* heuristic admissible and the search
+    /// optimal. Below it the search stays correct but may return a valid non-optimal route, the same caveat
+    /// the far-jumping-link heuristic already documents.</summary>
+    public GridPathPlanner(NavSpace space, float hopCostCells = 4f)
     {
         _space = space ?? throw new ArgumentNullException(nameof(space));
+        if (hopCostCells <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(hopCostCells), hopCostCells, "Hop cost cells must be positive.");
+        _hopCostCells = hopCostCells;
 
         IReadOnlyList<NavGrid> layers = _space.Layers;
         _layerOffset = new int[layers.Count];
@@ -65,17 +89,27 @@ public sealed class GridPathPlanner : IPathPlanner
         }
         _totalNodes = total;
 
-        _linkEdges = new Dictionary<int, List<int>>();
+        _linkEdges = new Dictionary<int, List<(int ToId, float CostMeters)>>();
+        _hopEdges = new HashSet<(int FromId, int ToId)>();
         foreach (NavLink link in _space.Links)
         {
             int fromId = _layerOffset[link.FromLayer] + link.FromZ * layers[link.FromLayer].Width + link.FromX;
             int toId = _layerOffset[link.ToLayer] + link.ToZ * layers[link.ToLayer].Width + link.ToX;
-            if (!_linkEdges.TryGetValue(fromId, out List<int>? targets))
+
+            // A Stair keeps exactly the source layer's cell size, the historical hardcoded link cost, so a
+            // hop-free space plans byte-identically. A Hop is charged the knob's multiple of it.
+            float costCells = link.Kind == NavLinkKind.Hop ? _hopCostCells : 1f;
+            float costMeters = costCells * layers[link.FromLayer].CellSize;
+
+            if (!_linkEdges.TryGetValue(fromId, out List<(int ToId, float CostMeters)>? targets))
             {
-                targets = new List<int>();
+                targets = new List<(int ToId, float CostMeters)>();
                 _linkEdges[fromId] = targets;
             }
-            targets.Add(toId);
+            targets.Add((toId, costMeters));
+
+            if (link.Kind == NavLinkKind.Hop)
+                _hopEdges.Add((fromId, toId));
         }
     }
 
@@ -131,9 +165,10 @@ public sealed class GridPathPlanner : IPathPlanner
     /// the closed set, and the link adjacency all index one flat space. Grid step costs are in meters:
     /// an orthogonal step is <see cref="NavGrid.CellSize"/>, a diagonal <see cref="NavGrid.CellSize"/> *
     /// sqrt(2). A diagonal step is taken only when both orthogonal companions are passable, blocking
-    /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at a
-    /// nominal one-cell cost (the source layer's <see cref="NavGrid.CellSize"/>), skipped when the
-    /// link's far endpoint is not passable for the agent radius on its own layer. The heuristic is the
+    /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at its
+    /// precomputed meters cost (a <see cref="NavLinkKind.Stair"/> the source layer's
+    /// <see cref="NavGrid.CellSize"/>, a <see cref="NavLinkKind.Hop"/> the constructor's hop cost), skipped
+    /// when the link's far endpoint is not passable for the agent radius on its own layer. The heuristic is the
     /// octile distance to the goal cell while the node is on the goal's layer, and zero otherwise
     /// (an admissible lower bound across a link, degrading the off-layer search to Dijkstra). Off the
     /// goal layer, the zero heuristic pins the start as the closest-approach minimum, so a cross-layer
@@ -249,12 +284,13 @@ public sealed class GridPathPlanner : IPathPlanner
                 }
             }
 
-            // Cross-layer edges: each link out of this cell costs a nominal one cell of the source
-            // layer. The source endpoint is passable by construction (it is a reached search node). The
-            // far endpoint must still fit the agent on its own layer, else the link is not traversable.
-            if (_linkEdges.TryGetValue(current, out List<int>? links))
+            // Cross-layer (and same-grid hop) edges: each link out of this cell carries its own precomputed
+            // meters cost (a Stair one cell of the source layer, a Hop the knob's multiple). The source
+            // endpoint is passable by construction (it is a reached search node). The far endpoint must
+            // still fit the agent on its own layer, else the link is not traversable.
+            if (_linkEdges.TryGetValue(current, out List<(int ToId, float CostMeters)>? links))
             {
-                foreach (int targetId in links)
+                foreach ((int targetId, float costMeters) in links)
                 {
                     if (closed[targetId])
                     {
@@ -268,7 +304,7 @@ public sealed class GridPathPlanner : IPathPlanner
                         continue;
                     }
 
-                    float tentative = gCurrent + grid.CellSize;
+                    float tentative = gCurrent + costMeters;
                     if (tentative < gScore[targetId])
                     {
                         gScore[targetId] = tentative;
@@ -298,8 +334,11 @@ public sealed class GridPathPlanner : IPathPlanner
     /// run's first cell is never emitted by the pull itself, so the start cell is dropped (matching the
     /// line-of-sight fast path). Both link endpoints are always emitted: a run's last cell falls out of
     /// the pull, and the next run's first cell (the link's far endpoint) is emitted explicitly before
-    /// its pull begins, keeping the pair adjacent and un-smoothed. On a completed path the final
-    /// waypoint is replaced with <paramref name="goalPoint"/> to honor the exact-goal rule. A
+    /// its pull begins, keeping the pair adjacent and un-smoothed. When that boundary edge is a
+    /// <see cref="NavLinkKind.Hop"/> (looked up in the hop-edge set by the two chain node ids), the emitted
+    /// landing carries <see cref="NavWaypointKind.Hop"/>, a stair crossing emits a Walk landing. On a
+    /// completed path the final waypoint is moved to <paramref name="goalPoint"/> to honor the exact-goal
+    /// rule, preserving its kind so a hop landing that is also the goal stays a hop. A
     /// single-cell chain that reached the goal returns exactly that one exact-goal waypoint rather than
     /// indexing an empty list.
     /// </summary>
@@ -337,10 +376,18 @@ public sealed class GridPathPlanner : IPathPlanner
             NavGrid grid = _space.Layers[layer];
 
             // A run after a link crossing opens with its first cell: the link's far endpoint, always a
-            // waypoint so the crossing is never smoothed over.
+            // waypoint so the crossing is never smoothed over. When that boundary edge is a hop, the landing
+            // carries NavWaypointKind.Hop so the follower surfaces the jump. The boundary is the directed
+            // edge the search traversed (cameFrom[chain[runStart]] == chain[runStart - 1]), so the hop set
+            // lookup is by that exact directed node-id pair. A stair crossing emits a Walk landing as before.
             if (!firstRun)
             {
-                waypoints.Add(new NavWaypoint(grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz), layer));
+                Vector2 landing = grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz);
+                bool isHop = _hopEdges.Contains((chain[runStart - 1], chain[runStart]));
+                waypoints.Add(new NavWaypoint(landing, layer)
+                {
+                    Kind = isHop ? NavWaypointKind.Hop : NavWaypointKind.Walk,
+                });
             }
 
             int anchor = runStart;
@@ -370,7 +417,9 @@ public sealed class GridPathPlanner : IPathPlanner
         {
             if (waypoints.Count > 0)
             {
-                waypoints[^1] = new NavWaypoint(goalPoint, waypoints[^1].Layer);
+                // Move the final waypoint to the exact goal while keeping its Layer and Kind, so a hop
+                // landing that is also the goal stays NavWaypointKind.Hop.
+                waypoints[^1] = waypoints[^1] with { Position = goalPoint };
             }
             else
             {

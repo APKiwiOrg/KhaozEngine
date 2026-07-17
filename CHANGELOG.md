@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 11.4.0
+
+Map editor: three playtest fixes, leading with a regression, partial viewport invalidation now
+regenerates scatter props instead of leaving stale trees standing in reshaped terrain.
+
+- **`Scene3DChunkSink` re-LOD adopts fresh scatter props.** The 10.119.0 partial-invalidation path
+  re-LODded meshes in place but never re-ran scatter, so dragging a lake carved the terrain while
+  trees kept standing in the new water. The re-LOD path now adopts the freshly generated props too:
+  byte-identical output for a pure LOD change (scatter is deterministic), freshly correct after a
+  field swap plus invalidate. Prop physics statics refresh on re-LOD when a physics world is wired,
+  same as on load and unload.
+- **Exclusion and scatter-override edits report shape-bounds dirty regions.** Every command (add,
+  remove, shape-edit, layers, values, reorder) now takes the smooth `ViewportWorld.PartialRebuild`
+  path instead of the throttled full rebuild that used to make an exclusion or scatter-override
+  gizmo drag feel choppy. `ShapeGeometry.TryBounds` gives each shape command a disc/rect/polygon
+  AABB, padded by `ShapeGeometry.BoundsMarginFor` (a 2m base constant plus the document's largest
+  scatter-layer jitter, captured at Apply): the real correctness floor is the scatter jitter, since
+  `PropScatter.Generate` assigns a candidate to its chunk by the un-jittered cell centre while
+  testing exclusion/override membership at the jittered position. `ReorderScatterOverrideCommand`
+  unions every override shape across the inclusive from..to index range, since a reorder also flips
+  first-match-wins precedence for every override sandwiched in between.
+- **Biome-band editing honesty.** `TreeView.CanReorder` (new public API, `KhaozEngine.Gui`) is a
+  per-row predicate gating drag arming, consulted at the press-origin row before a drag grabs. The
+  map editor outline wires it so only Feature, Exclusion, and ScatterOverride rows can arm a drag,
+  killing the phantom drag affordance the other outline categories (biome bands included) used to
+  show before being rejected as a no-op after the drop. A selected biome band now draws its finite
+  Start/End edges as world-Z overlay lines in the viewport, every inspector "elevation"/"height"
+  mislabel is corrected to world-space Z (a band is a Z-axis slice blended order-independently, not
+  a height range), and a new read-only "Affects" inspector row states what a band drives today
+  (terrain shaping and biome-keyed scatter, ground tinting not yet wired).
+
 ## 11.3.0
 
 Telegraphs: opt-in world-unit edge and feather overrides for 3D ground decals. `TelegraphStyle`

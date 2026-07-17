@@ -427,10 +427,11 @@ now split into `OutlinePanelWidth` (260) and a wider `InspectorPanelWidth` (340)
 test for `TerrainStreamer.Invalidate`, a device-gated
 kit-mesh/splat retention test that exercises a real `Rebuild`, a direct rim-remove null-`DirtyRegion`
 test, a GPU-built `PartialRebuild` body test, and interleaved sticky-full-vs-throttle plus
-interval-change-mid-gesture tests. Also: exclusion, scatter-layer, companion, and terrain-scalar edits
+interval-change-mid-gesture tests. Also: scatter-layer, companion, and terrain-scalar edits
 still take the full-rebuild path by design this round (the dirty-region seam exists so a later round
 can narrow them), and ridge and rim features always fall back to full rebuild since their reach is
-unbounded.
+unbounded. Exclusion edits were narrowed to the dirty-region path by the mapedit-playtest-fixes round
+below (see Resolved).
 
 **Resolved (mapedit-playtest-fixes)**: DirtyRegion narrowing for exclusion and scatter-override shapes,
 deferred by the scatter-overrides round below, now ships. `ShapeGeometry.TryBounds` (a disc/rect/polygon

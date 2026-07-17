@@ -387,11 +387,14 @@ order genuinely matters: the FIRST matching override wins a patch of ground, so 
 dispatches a selected override to `ReorderScatterOverrideCommand` (Ctrl+Up/Ctrl+Down), the outline drag
 fires the same command through `OnOutlineReordered`, and both are `AffectsWorld` true (a reorder rebuilds
 the streamed world). Exclusions are deliberately left off the Ctrl+Up/Ctrl+Down chord for that reason:
-their order is meaningless, so only the drag exposes it (for a stable authored layout). Every other outline
-category (Placements, Spawns, Regions,
-Terrain) has no list-order semantics, so a drag attempted there is rejected as a no-op. Wheel-scrolling the
-outline while a drag is armed is not yet supported: the drop geometry freezes at the scroll position the
-drag started at.
+their order is meaningless, so only the drag exposes it (for a stable authored layout). Only Feature,
+Exclusion, and ScatterOverride rows can arm a drag at all: `MapEditorScene.OutlineNodeIsReorderable` is
+wired as the outline's `TreeView.CanReorder`, so every other row (Placements, Spawns, Regions, Terrain,
+Biomes, Scatter Layers, Companion Layers, and the category headers and add-actions) is rejected at the
+press-origin gate before it grabs, showing no insertion line and firing no `OnReordered` at all, rather
+than arming and being rejected as a no-op after the drop. `OnOutlineReordered`'s own kind check stays as
+the safety net behind the gate. Wheel-scrolling the outline while a drag is armed is not yet supported:
+the drop geometry freezes at the scroll position the drag started at.
 
 A per-element hide follows the moved, deleted, or renamed element automatically, driven by an
 `IVisibilityEffect` the reorder, remove, and rename commands carry (`VisibilityOp` describing a
@@ -660,13 +663,20 @@ it validates without an extra step (with none yet, `HostLayer` stays empty until
 and picks it through the HostLayer chooser below).
 
 **Biome bands** (`SelectionKind.BiomeBand`, index-keyed, no reorder command) select into an inspector with a
-`Biome` `ChoiceRow` over the `BiomeId` enum names, then the nullable `Start`/`End` edges and the `BaseHeight`/
-`HillAmplitude` scalars. Each nullable edge is a `FloatRow` for the concrete value paired with an "<edge>
-open" `BoolRow` that toggles the null state (open = null = unbounded), mirroring the exclusion "All layers"
+read-only "Affects" row stating what a band drives today (terrain shaping and the scatter rules keyed by
+that biome, ground tinting not yet wired), then a `Biome` `ChoiceRow` over the `BiomeId` enum names, then
+the nullable `Start`/`End` world-Z edges and the `BaseHeight`/`HillAmplitude` scalars (a band is a Z-axis
+slice, not a height range, and its rows and descriptions say Z, not "height", now that the terminology has
+been corrected). Each nullable edge is a `FloatRow` for the concrete value paired with an "<edge> open"
+`BoolRow` that toggles the null state (open = null = unbounded), mirroring the exclusion "All layers"
 null-gate: both rows are always present (no reflow), and editing the `FloatRow` closes an open edge to that
 value. Every edit is a whole-value edit through `EditBiomeBandCommand` (clone the live band, change one
-field, same-index merge coalesces a scrub). Bands carry no name and draw nothing in the viewport, so there
-is no Name row and no Visible row on a band's inspector.
+field, same-index merge coalesces a scrub). Bands carry no name and no authored shape, so there is no Name
+row and no Visible row (visibility is a per-placed-shape concept, and a band is not independently
+hideable). The selected band still draws its finite Start/End edges as full-width world-Z lines in the
+viewport (`MapEditorScene.AddBandEdgeLine`, an always-on aid rather than a toggled overlay element): an
+open edge draws nothing, and only the current selection draws since a band has no other viewport geometry
+and its order is meaningless.
 
 **Scatter layers** (`SelectionKind.ScatterLayer`, name-keyed like placements/spawns/regions) select into an
 inspector with an inline-rename Name row, then the layer scalars (Seed, CellSize, Jitter, ScaleMin/ScaleMax,

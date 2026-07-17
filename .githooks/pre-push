@@ -4,6 +4,9 @@
 # Bypass with `git push --no-verify`.
 fail=0
 
+refs_file=$(mktemp)
+cat > "$refs_file"
+
 # Shared release-tag standard (sourced so pre-push and scripts/tag-release.sh agree on one rule).
 if [ -f scripts/tag-standard.sh ]; then . scripts/tag-standard.sh; have_tagstd=1; else have_tagstd=0; fi
 
@@ -60,7 +63,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
           fi ;;
       esac ;;
   esac
-done
+done < "$refs_file"
 
 if [ -f scripts/check-doc-versions.sh ]; then
   if ! bash scripts/check-doc-versions.sh >/dev/null 2>&1; then
@@ -68,5 +71,13 @@ if [ -f scripts/check-doc-versions.sh ]; then
     fail=1
   fi
 fi
+
+if [ -f scripts/check-handoffs.sh ]; then
+  if ! bash scripts/check-handoffs.sh < "$refs_file"; then
+    fail=1
+  fi
+fi
+
+rm -f "$refs_file"
 
 exit $fail

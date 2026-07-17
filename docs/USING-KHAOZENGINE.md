@@ -3311,6 +3311,30 @@ interface and never takes a dependency on `KhaozEngine.Physics`. The planner and
 unchanged: a step-aware grid is still one `NavGrid` layer, so `GridPathPlanner` and `PathFollower` need no
 new code to route across a ramp or a low rock.
 
+### Bake vertical hops
+
+A standable top taller than `stepHeight` bakes as an unreachable island under the step bake alone: the
+top is standable, but no walkable step leads onto it. `NavGridBaker.BakeOverworldHops` closes that gap.
+It bakes the step grid exactly as `BakeOverworldSteps` does, then generates same-grid
+`NavLinkKind.Hop` links (`NavHopLinks.Generate`) wherever two standable cells face each other across a
+blocked rim with a rise above `stepHeight` but within `jumpHeight`, and returns a single-layer `NavSpace`
+carrying both:
+
+```csharp
+NavSpace space = NavGridBaker.BakeOverworldHops(
+    provider,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f,
+    jumpHeight: 1.2f, maxHopCells: 2);
+var planner = new GridPathPlanner(space);   // hopCostCells: 4 by default
+```
+
+Opt-in throughout: `BakeOverworldSteps` never generates hop links, and with no hoppable feature in range
+the returned space is identical to `NavSpace.Single(BakeOverworldSteps(...))`. The planner charges a hop
+the constructor's `hopCostCells` (in cells of the source layer, default 4, kept at or above the longest
+hop's octile length so paths stay optimal) and marks each hop landing waypoint `NavWaypointKind.Hop`,
+which the follower surfaces as the `Hopping` state below.
+
 ### Plan a route
 
 `GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an
@@ -3340,9 +3364,26 @@ if (output.State == PathFollowState.Following)
     agent = CharacterMovement.StepTowards(agent, output.WorldDir, run: false, dt,
         terrain.GroundHeight, tuning, world: physics);
 }
+else if (output.State == PathFollowState.Hopping)
+{
+    // A hop link's landing is the active waypoint. Ground steering is suspended (WorldDir is zero):
+    // the game drives its own lunge from HopStart to ActiveWaypoint. Both are world XZ, resolve each
+    // end's Y from the layer's grid, the follower stores no Y.
+    NavGrid layer = space.Layers[0];
+    Vector2 from = output.HopStart;
+    Vector2 to = output.ActiveWaypoint;
+    (int fx, int fz) = layer.CellOf(from.X, from.Y);
+    (int tx, int tz) = layer.CellOf(to.X, to.Y);
+    float fromY = layer.SurfaceHeightAt(fx, fz) ?? terrain.GroundHeight(from.X, from.Y);
+    float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
+    agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
+}
 // Arrived: agent.Position is within AcceptRadius of the goal, output.WorldDir is zero.
 // Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
 ```
+
+The follower owns no hop timer: it re-emits `Hopping` every tick until the agent actually reaches the
+landing (within `AcceptRadius`), then resumes `Following` (or `Arrived` when the landing is the goal).
 
 `output.WorldDir` is the raw follow direction only. A dynamic-avoidance pass (steering around other agents
 or a late-appearing obstacle) is expected to run after the follower and before `StepTowards`, adjusting

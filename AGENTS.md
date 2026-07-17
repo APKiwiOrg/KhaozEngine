@@ -91,9 +91,10 @@ version/release work.
   next FREE version for your bump + tag (and rebase your `CHANGELOG.md` entry onto it).
 - Release ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props` → add the
   `CHANGELOG.md` entry → update the engine-version declarations the
-  guard checks (`docs/ROADMAP.md` "Current released version" and
-  EVERY `README.md` `<PackageReference>` example line, one per umbrella) → backstop-sweep `docs/TODO.md` (delete any resolved
-  entry that slipped through, per the Discovered work section) → `dotnet pack -c Release -o ./local-feed`
+  guard checks (EVERY `README.md` `<PackageReference>` example line, one per umbrella) →
+  close any issue this release resolved (`gh issue close`, or `Closes #123` in the commit) if it is
+  somehow still open, a backstop only: that should already have happened when the work landed, per the
+  Discovered work section → `dotnet pack -c Release -o ./local-feed`
   (cumulative within a release) → commit → `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
   `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
   lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags) →
@@ -120,14 +121,17 @@ version/release work.
     `docs/DEPENDENCY-SEAMS.md`** whenever a dependency edge or a seam member changed.
   - **`CHANGELOG.md`** + the version bump as before; for a behaviour/bug change also fix any doc, README, or code
     comment that described the OLD behaviour.
-  - **Discovered follow-ups -> `docs/TODO.md`.** Anything the change knowingly leaves undone, defers, or
-    works around goes in the ledger as you find it, and resolved entries are deleted at release.
+  - **Discovered follow-ups -> a GitHub issue.** Anything the change knowingly leaves undone, defers, or
+    works around is filed as you find it, with a `confidence/*` label, and any issue the change resolves
+    is closed as it lands.
   Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`
   recursively** (root, `docs/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
   that should mention it does (and no stale doc still describes what you removed).
 - `scripts/check-doc-versions.sh` enforces two things. First, that the engine-version declarations
-  (`docs/ROADMAP.md` "Current released version" plus EVERY `README.md` `<PackageReference>` example line, not
-  just one) match the **engine version line** (`<KhaozEngineVersion>`). Second, that every packable package has
+  (EVERY `README.md` `<PackageReference>` example line, not just one) match the **engine version line**
+  (`<KhaozEngineVersion>`). `docs/ROADMAP.md` "Current released version" was checked here too and is not
+  any more: the roadmap is issues now, the file is gone, and no prose copy of the version is left to
+  drift. Second, that every packable package has
   a README catalog row and ships its own `<Package>/README.md` via `<PackageReadmeFile>`, which is what catches
   a new package landing undocumented. CI runs it on every push, so a forgotten bump or an undocumented package
   fails the build. Consumer pins are exempt and may lag.
@@ -171,12 +175,38 @@ version/release work.
   package, so the engine version does not creep through a run of one-line releases. A FINISHED feature
   still auto-publishes right away (merge + tag + push, don't hold) - batching is about not fragmenting one
   unit of work across several tiny releases, never about holding a finished feature.
+- **The batch gate: this one specific call is the user's, so ASK.** Check, at the point of bumping,
+  whether a bump is already in flight but unreleased (the current `<KhaozEngineVersion>` is ahead of the
+  newest `vX.Y.Z` tag: staged, not yet tagged). If it is, and your change is small enough that it could
+  ride that version instead of minting a new one, **stop and ask the user which**. Do not decide it
+  yourself.
+
+  Riding an in-flight version means appending your notes to its existing `CHANGELOG.md` entry rather than
+  bumping again. Whether that is right turns on what the user intends to release and when, which is not
+  visible from the repo: you can see that `<KhaozEngineVersion>` is ahead of the newest tag, but not
+  whether that staged version is minutes from tagging or parked pending a bake, nor whether your change
+  belongs in the same entry as what is already sitting there. Guessing silently either creeps the version
+  through a swarm of tiny releases or smuggles an unrelated change into someone's staged release.
+
+  Ask ONLY at that moment. Not on every bump. When `<KhaozEngineVersion>` is already tagged (nothing in
+  flight), cut a fresh version and carry on without asking, exactly as before. A change substantial enough
+  to stand alone also just takes its own version, no question needed. The gate is about which version a
+  small change rides, never about whether to publish: a finished feature still auto-publishes without
+  asking, per the concurrent-dev rule above.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
-- **pre-push blocks a one-sided cross-repo handoff.** A **Handed off:** line in `docs/TODO.md` whose
-  target repo has no matching entry fails the push, via `scripts/check-handoffs.sh`. Pre-existing
-  one-sided handoffs and unresolvable targets warn instead of blocking. Override with `HANDOFF_CHECK_OK=1`.
-- **SessionStart injects the discovered-work ledger** into every session: open follow-up count plus
-  every handoff line, via `scripts/session-context.sh`. Informational, never blocks.
+- **SessionStart injects the discovered-work ledger** into every session: the open backlog count, via
+  `scripts/session-context.sh` on top of `scripts/ledger.sh`. Informational, never blocks. There is no
+  handoff-reciprocity guard any more (`scripts/check-handoffs.sh` and `HANDOFF_CHECK_OK` are both retired):
+  a cross-repo handoff is an issue reference now, and GitHub backlinks it for free, so there is no
+  one-sided handoff left to block.
+- **The ledger needs a token, and it will tell you so.** The backlog is GitHub Issues in a private repo,
+  so there is no anonymous read: `scripts/ledger.sh` needs `gh auth login` or `GH_TOKEN` exported. Codex
+  and CI generally need the env var. When it cannot read, it says `BACKLOG: UNKNOWN` or `STALE MIRROR` and
+  names the fix. **It never says `0`.** That is deliberate and is the one invariant worth protecting here:
+  `gh issue list` exits non-zero with empty stdout on dead auth, and the obvious `gh issue list | jq length`
+  renders that as `0 open`, which is not a degraded answer but an inverted one. "0 open" reads as "the
+  sweep is clean" at the precise moment the tool has no idea what is open. So a count is only ever printed
+  when it was actually read, and everything else is loud.
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).
 
@@ -198,15 +228,28 @@ Only a push hardens the work.
 
 ### The ledger
 
-Work you notice but do not do goes in [`docs/TODO.md`](docs/TODO.md) before you carry on. Not in your
-head, not only in a chat chip. A chip is a notification, its id does not survive a restart, and the chat
-that finds a problem is usually not the chat that fixes it. The file is the only durable record.
+Work you notice but do not do becomes a **GitHub issue** before you carry on. Not your head, not only a
+chat chip. A chip is a notification, its id does not survive a restart, and the chat that finds a
+problem is usually not the chat that fixes it. The issue is the only durable record. There is no
+`docs/TODO.md` and no `docs/ROADMAP.md` any more, and no file to keep in sync.
+
+```
+gh issue create --label kind/backlog --label confidence/lead --title "..." --body "..."
+scripts/ledger.sh search <term>    # prior art, INCLUDING closed issues. Use before filing.
+scripts/ledger.sh status           # what the open pile looks like right now
+```
+
+**Search before you file.** `ledger.sh search` greps a local mirror of every issue, open and closed.
+Use it, not GitHub's search box: GitHub tokenizes, so it will not reliably find `WorldColliders` or
+`KELOC001`, and those identifiers are exactly how you look things up. A hit on a *closed* issue is the
+most valuable result it can give you, because it usually means "this was investigated and declined,
+here is why".
 
 **Raise it at discovery.** The moment you notice it (something you would spawn a chip for, a TODO you
-would otherwise leave in code, a gap a playtest exposes, a workaround you accept to keep moving), write
-the entry. Do it before you continue the current task, not at the end. The end of a task is where
+would otherwise leave in code, a gap a bake or a consumer adopt exposes, a workaround you accept to keep
+moving), file it. Before you continue the current task, not at the end. The end of a task is where
 context runs out and the item evaporates. Spawning a chip does not discharge this. The chip is the
-notification, the file is the record, so do both.
+notification, the issue is the record, so do both.
 
 **Never action it mid-task.** A discovered item must NEVER redefine the scope of the work in flight.
 That is how a chat sent to fix X quietly ships Y instead. Action open items at your next checkpoint,
@@ -219,46 +262,52 @@ At the checkpoint, anything small and self-contained is a subagent job, so do it
 Anything needing its own design, its own release, or another repo is handed off and reported, not
 started.
 
-**A handoff writes both sides.** An item parked as waiting on someone else needs a matching entry on
-that side pointing back, or the other side never learns it is blocking anyone. Two shapes, and they are
-not interchangeable:
+**Say how much to trust it.** Every backlog issue carries a `confidence/*` label, and it is required
+(`.github/workflows/issue-confidence.yml` flags anything filed without one, CLI included). This is the
+thing most often lost: a checked finding and an unverified guess look identical once they are both just
+an issue in a list, and acting on a guess as though it were a finding wastes exactly the time the guess
+was meant to save. `confidence/verified` = checked against the code. `confidence/lead` = surfaced, not
+checked, may well be wrong. `confidence/authored` = written deliberately, with the context.
 
-- `**Handed off:** <repo> docs/TODO.md "<title>" (<date>)` for a cross-repo handoff. The reciprocal
-  entry on that side is mandatory. Write it in the same sitting or you have not handed anything off.
-- `**Blocked on:** <branch or chat or person> (<date>)` for a pointer that cannot answer back.
+**A handoff is a cross-repo issue reference**, and it writes both sides for free: mention the other
+repo's issue (`APKiwiOrg/Nullwake#45`) and GitHub backlinks it there. Label yours `needs/upstream`.
+That is the whole mechanism, and there is nothing left to keep reciprocal by hand. This is the common
+direction here: the engine is upstream of four games, so a consumer-side item the engine is blocking
+(or a game-side gap an engine change creates) is a reference, not a pair of hand-written entries. For
+something that cannot answer back (a branch, a chat, a person), just say so in the body. A branch is
+not a party, and a scoping prompt pasted into another chat is not a handoff either, because that chat
+can drift and nothing records that it was ever asked.
 
-Never use **Handed off** for a branch or a chat. A branch is not a party and cannot write a reciprocal
-entry, and a scoping prompt pasted into another chat is not a handoff either, because that chat can
-drift and nothing records that it was ever asked.
+**Resolved means CLOSED, on the spot. Close it, do not delete it.** The moment an item is done, close
+the issue, in the same sitting, ideally from the commit that resolved it (`Closes #123`). Closing is
+what a tick could never be: it takes the item out of the open pile AND keeps the whole record
+searchable forever. That is the one real gain of issues over a file, so do not throw it away by
+deleting anything.
 
-**Resolved means DELETED, on the spot. Never leave a finished item ticked.** The moment an item is
-done, delete the entry, in the same sitting and ideally the same commit that resolved it. Do not tick it
-and leave it for a later sweep to collect: a done item sitting in the backlog still reads as work, it
-pads the open pile, and the sweep that was supposed to collect it only runs at a release, which most
-sessions never reach. Shipped detail lives in the changelog and the commit, so a finished item has no
-reason to remain here. The release sweep is the BACKSTOP for whatever slipped through, not the mechanism.
+**A decline is CLOSED AS NOT PLANNED, with the reason in the issue and `confidence/refuted` on it.**
+Never silently. "Forgotten" is not a disposition. Write what you ruled out and why, in the issue, then
+close it as not planned. It stays greppable via `ledger.sh search`, which is the entire point: an item
+declined once and then unfindable gets re-raised by the next agent that reads the same suggestive
+comment, and then again by the one after that. Four separate agents re-raised the same `SwingCooldowns`
+non-bug because the record of the first decline had been deleted. Closed-with-a-reason is what stops
+that. If you are not willing to write the reason, the item is not declined and stays open.
 
-**"Forgotten" is not a disposition, so a decline is deleted WITH its reason written down.** A declined
-item leaves this file exactly like a finished one, but never silently: the commit that removes it must
-say what was declined and why (`docs(todo): drop <item>, wontfix: <reason>`), so
-`git log -- docs/TODO.md` still answers "why is this not here any more" six weeks on. Written-then-deleted
-is the disposition. Deleting an entry with a bare "cleanup" message is the one thing that IS forgetting
-it, and if you are not willing to write the reason, the item is not declined and stays open.
+### Filing
 
-### Entry format
-
-Deliberately minimal. These files already differ across repos and that is fine.
-
-- A plain `-` bullet or `- [ ]` is an open item. Both are fine, match the file you are already in.
-- `- [~]` is in progress.
-- That is the whole format. **There is no `- [x]` and no done marker of any kind**, because a resolved
-  item is deleted and so is a declined one. If you are reaching for a tick, you are doing it wrong:
-  delete the entry and put the detail in the commit.
-- Bold title, then enough context and file links to action it without the chat that found it.
-
-**TODO vs ROADMAP.** [`docs/TODO.md`](docs/TODO.md) is the chip pile. [`docs/ROADMAP.md`](docs/ROADMAP.md)
-is the program list: anything that earns its own design spec and its own release. If it needs a spec, it
-is a roadmap item. Otherwise it is a TODO.
+- Use the issue forms (**Backlog item** / **Roadmap item**). Blank issues are off, because a blank issue
+  cannot carry a confidence rating.
+- **Backlog vs roadmap** is the old TODO-vs-ROADMAP split, now two labels instead of two files.
+  `kind/backlog` is the chip pile. `kind/roadmap` is the program list: anything that earns its own design
+  spec and its own release. **If it needs a spec, it is a roadmap item. Otherwise it is a TODO.** That is
+  the whole test, and it did not change when the files went away. A roadmap item's spec still lands as a
+  `docs/*-DESIGN.md` in this repo, with the issue pointing at it.
+- Title it the way you would say it out loud. Then, in the body, write enough context and file links to
+  action it without the chat that found it: paths, symbols, line numbers, what you already ruled out.
+  Do not compress what you know into a task title. The next reader has none of your context, and
+  re-deriving it costs far more than writing it down did.
+- Priority is the board's order, not a label. Put it on the board and drag it. The roadmap's priority
+  ordering is the org board (https://github.com/orgs/APKiwiOrg/projects/1), which is where the ordered
+  list in `docs/ROADMAP.md` went.
 
 ## Localization
 

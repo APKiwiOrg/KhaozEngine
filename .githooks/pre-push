@@ -72,12 +72,6 @@ if [ -f scripts/check-doc-versions.sh ]; then
   fi
 fi
 
-if [ -f scripts/check-handoffs.sh ]; then
-  if ! bash scripts/check-handoffs.sh < "$refs_file"; then
-    fail=1
-  fi
-fi
-
 rm -f "$refs_file"
 
 exit $fail

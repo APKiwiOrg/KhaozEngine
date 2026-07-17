@@ -1,0 +1,44 @@
+name: Roadmap item
+description: A program. Something that earns its own design spec and its own release.
+title: "<short title, the way you would say it out loud>"
+labels: ["kind/roadmap"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Roadmap, not backlog. **If it needs a spec, it is a roadmap item. Otherwise it is a TODO.**
+
+        Priority is the board's column and order, not a field here. Put it on the board and drag
+        it to where it belongs.
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: What this is
+      description: >
+        The shape of the work, what already exists to build on, and what is deliberately out of
+        scope. Prose is fine and usually better than bullets here.
+    validations:
+      required: true
+
+  - type: input
+    id: spec
+    attributes:
+      label: Design spec
+      description: >
+        Link the spec if it exists. If it does not exist yet, say "not written yet" - that is a
+        legitimate state for a scheduled item, and an empty box is not.
+      placeholder: docs/MAP-EDITOR-DESIGN.md, or "not written yet"
+    validations:
+      required: true
+
+  - type: textarea
+    id: gate
+    attributes:
+      label: What it is waiting on
+      description: >
+        Optional. Pull-gated items should say which concrete game need unblocks them, so that
+        "deferred" stays a decision rather than decaying into "forgotten".
+      placeholder: "Waits for a concrete game pull. Trigger: the first game that needs X."
+    validations:
+      required: false

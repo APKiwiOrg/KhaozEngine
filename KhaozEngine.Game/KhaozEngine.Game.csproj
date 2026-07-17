@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Game</PackageId>
-    <!-- Shared 5.x experimental line (see docs/ROADMAP.md "The post-MonoGame pivot"). -->
+    <!-- Shared engine version line: <KhaozEngineVersion> in Directory.Build.props. -->
     <Version>$(KhaozEngineVersion)</Version>
     <Description>2D game-loop facade on the custom MonoGame-free foundation. GameApp is an abstract base that owns the per-frame composition + ordering (clock, design viewport, pointer, 2D batch) so games override OnLoad/OnUpdate/OnDraw2D/OnResize instead of hand-wiring AppWindow.Run, with an OnRenderWorld seam for a subclass that renders a world first. Renderer-agnostic beyond Render2D (no Render3D dependency, so a 2D game pulls no 3D renderer); the 3D scene integration lives in KhaozEngine.Game.Render3D. Sits above KhaozEngine.Windowing + Render2D + Gui; the lower-level AppWindow.Run path stays available. Also a game scene/state stack (SceneManager + GameScene) so games stop hand-rolling an AppState enum: a GameScene owns its update + 2D HUD + lifecycle, and the manager runs a stack with overlay support (pause over a frozen scene), deferred transitions, and enter/exit - distinct from and composable with the Gui ScreenStack.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

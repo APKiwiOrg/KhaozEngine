@@ -97,7 +97,8 @@ follower need no per-edge logic and no changes. One v1 conservatism: a step tall
 blocks its higher side by one cell (the standable top itself bakes standable, but the cell one step up
 from it does not), so under the step bake alone a too-tall step is impassable from either direction
 rather than merely steep. When the rise is within a jump budget, the hop bake below closes exactly this
-gap with a `Hop` link. A later phase (multi-level layered surfaces, `docs/ROADMAP.md`) handles rises
+gap with a `Hop` link. A later phase (multi-level layered surfaces,
+https://github.com/APKiwiOrg/KhaozEngine/issues/30) handles rises
 beyond any jump budget by giving the tall side its own layer.
 
 `NavGrid.FromSurfaces` is the lower-level entry point `BakeOverworldSteps` calls: it rasterizes a

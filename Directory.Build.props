@@ -13,8 +13,8 @@
 
     <!-- The legacy 4.x MonoGame line is GONE: its six packages (Graphics/Input/Screens/Sprites/Time/UI) were
          deleted once SpaceGame, the last consumer, migrated off MonoGame. The engine is now
-         entirely MonoGame-free, so there is a single shared version line below. (History: docs/ROADMAP.md
-         "The post-MonoGame pivot".) -->
+         entirely MonoGame-free, so there is a single shared version line below. (History: see CHANGELOG.md;
+         the roadmap section that described the pivot is long gone, the pivot shipped.) -->
     <!-- Shared version for the engine (the WHOLE engine). Every packable package sets
          <Version>$(KhaozEngineVersion)</Version> in its csproj: the custom render/runtime stack (Gpu,
          Windowing, Render2D, Render3D, Gui, Audio, Particles, Game) plus the graduated MonoGame-free

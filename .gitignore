@@ -50,3 +50,8 @@ local-feed/
 networked-walk-world.db
 networked-walk-world.db-wal
 networked-walk-world.db-shm
+
+# Local mirror of the GitHub Issues backlog (scripts/ledger.sh sync). Derived, never a source of
+# truth, and per-checkout. Kept out of git on purpose: a committed copy would drift and re-create
+# the docs/TODO.md sync problem that moving to Issues was meant to end.
+.ledger/

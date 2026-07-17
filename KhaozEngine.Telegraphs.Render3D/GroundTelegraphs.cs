@@ -122,8 +122,9 @@ namespace KhaozEngine.Telegraphs
         /// KNOWN GAP: this builder composes its decal directly rather than through <c>Base()</c>, so it does NOT
         /// carry <see cref="TelegraphStyle.VoidFallback"/> / <see cref="TelegraphStyle.VoidDim"/> - a residue mark
         /// overhanging an island's edge still truncates even when its style opted in. Deliberate for 12.1.0 (a
-        /// scorch mark is a mark ON ground, so projecting it into the void is not obviously wanted) and recorded in
-        /// <c>docs/TODO.md</c> rather than left silent. Set the fields on the returned decal to opt in per call.
+        /// scorch mark is a mark ON ground, so projecting it into the void is not obviously wanted) and tracked at
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/12"/> rather than left silent. Set the fields
+        /// on the returned decal to opt in per call.
         /// </para></summary>
         public static GroundDecal BuildResidueCircle(Vector3 center, float radius, float age01, in TelegraphStyle style)
         {

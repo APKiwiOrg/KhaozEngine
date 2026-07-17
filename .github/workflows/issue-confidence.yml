@@ -1,0 +1,92 @@
+#
+# Keeps the confidence rating on every kind/backlog issue, whoever filed it and however.
+#
+# The issue form makes Confidence a required dropdown, but a form only governs the web UI:
+# `gh issue create --title ... --body ...` skips it entirely, and that is how agents file issues.
+# So the form alone would mean the rating holds for humans and silently rots for everything else.
+# This runs server-side on every issue, so the path of least resistance and the enforced rule are
+# the same thing.
+#
+# Turns the form's dropdown answer into a confidence/* label, and flags anything that arrived
+# without one. It labels and comments; it never closes or edits the issue text.
+name: issue confidence
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled]
+
+permissions:
+  issues: write
+
+jobs:
+  confidence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply or demand a confidence label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUM: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.issue.body }}
+          LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+
+          case ",$LABELS," in
+            *,kind/backlog,*) ;;
+            *) echo "not a kind/backlog issue; nothing to do"; exit 0 ;;
+          esac
+
+          # Already rated? Leave it alone. A human relabeling is the authority, not this job.
+          case "$LABELS" in
+            *confidence/*) echo "already carries a confidence label";
+                           gh issue edit "$NUM" --repo "$REPO" --remove-label needs/confidence 2>/dev/null || true
+                           exit 0 ;;
+          esac
+
+          # Read the issue form's dropdown answer out of the rendered body.
+          want=""
+          answer=$(printf '%s' "$BODY" | awk '
+            /^###[[:space:]]+Confidence[[:space:]]*$/ { grab = 1; next }
+            /^###/ { grab = 0 }
+            grab && NF { print; exit }
+          ')
+          case "$answer" in
+            Verified*) want="confidence/verified" ;;
+            Lead*)     want="confidence/lead" ;;
+            Authored*) want="confidence/authored" ;;
+          esac
+
+          if [ -n "$want" ]; then
+            echo "form answer '$answer' -> $want"
+            gh issue edit "$NUM" --repo "$REPO" --add-label "$want" --remove-label needs/confidence
+            exit 0
+          fi
+
+          # No form answer and no label: filed by CLI or API. Flag it rather than guessing, because
+          # guessing is the exact failure this field exists to prevent.
+          echo "no confidence rating found; flagging"
+          gh issue edit "$NUM" --repo "$REPO" --add-label needs/confidence
+
+          marker="<!-- confidence-nag -->"
+          if gh issue view "$NUM" --repo "$REPO" --json comments \
+               -q '.comments[].body' 2>/dev/null | grep -qF "$marker"; then
+            echo "already asked once; not repeating"
+            exit 0
+          fi
+
+          # Heredoc, not an inline multi-line string: every line here sits at the YAML block's
+          # indent (a line at column 0 would end the block scalar early), and `sed` takes the
+          # remaining 2 spaces back off so the comment renders as markdown, not as an indented
+          # block. YAML strips the block's own 10-space indent first, hence 2 and not 12.
+          sed 's/^  //' > /tmp/nag.md <<EOF
+            $marker
+            This backlog item has no **confidence** rating, so the next reader cannot tell a checked finding from an unverified guess. Add one label:
+
+            - \`confidence/verified\` - checked against the code, act on it
+            - \`confidence/lead\` - surfaced but not checked, confirm before acting
+            - \`confidence/authored\` - written deliberately with the context, act on it
+
+            \`gh issue edit $NUM --add-label confidence/lead\`
+          EOF
+          gh issue comment "$NUM" --repo "$REPO" --body-file /tmp/nag.md

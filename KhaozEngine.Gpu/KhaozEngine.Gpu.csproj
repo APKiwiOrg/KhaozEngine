@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Gpu</PackageId>
-    <!-- Shared 5.x custom-stack line (see docs/ROADMAP.md "The post-MonoGame pivot"). -->
+    <!-- Shared engine version line: <KhaozEngineVersion> in Directory.Build.props. -->
     <Version>$(KhaozEngineVersion)</Version>
     <Description>GPU backend seam for the custom MonoGame-free stack. Owns backend selection (GpuBackendSelector: RuntimeInformation probe with a KE_GRAPHICS_BACKEND override), GpuCapabilities (clip-space-Y / depth-range), and a GpuDeviceContext that wraps Veldrid device creation (windowed via CreateForWindow from a native window handle, headless via GraphicsDevice.CreateMetal) so the 5.x renderers stop hard-coding GraphicsBackend.Metal. Renderers consume the engine-owned IGpuDevice (GpuDevice); the raw Veldrid device is a private implementation detail of the context. Veldrid deps are confined here.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

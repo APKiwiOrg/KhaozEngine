@@ -12,7 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// WHY RAW PIXELS AND NOT JUST THE COMMITTED GOLDEN. <c>GoldenCompare</c> averages the frame into a 32x18 grid
     /// with a 0.06/channel tolerance, and 11.9.0 proved that grid cannot see fine or sparse detail at all (the
-    /// starfield golden passed with the starfield pass commented out entirely - see <c>docs/TODO.md</c>). The ring
+    /// starfield golden passed with the starfield pass commented out entirely, see
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/19"/>). The ring
     /// here is coarse enough that <c>telegraph_ground_void</c> does bite, and a sabotage check is part of this
     /// release's verification rather than an assumption, but a committed grid can only ever say "the picture moved",
     /// never "the void projected and the strip did not". These A/B pairs say exactly that, and each one FAILS if the

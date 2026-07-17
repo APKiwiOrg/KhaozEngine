@@ -1,0 +1,5 @@
+#
+# No blank issues. Every issue is a backlog item or a roadmap item, and a blank one cannot carry
+# the confidence rating that tells the next reader whether it is a finding or a guess. The CLI
+# still bypasses the forms, so .github/workflows/issue-confidence.yml backstops this server-side.
+blank_issues_enabled: false

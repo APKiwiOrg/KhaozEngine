@@ -2028,7 +2028,7 @@ void main() {
         // the only thing that separates them, so a fallback decal additionally requires a near-horizontal surface.
         // Gated on the flag: an unflagged decal never samples this and keeps the legacy band-only behaviour, wart and
         // all, so the zero-neutral contract holds. (That legacy wrap-down is a pre-existing artifact on any sharp
-        // edge - see docs/TODO.md.)
+        // edge - see https://github.com/APKiwiOrg/KhaozEngine/issues/11.)
         if (isGround && Extra.w > 0.5) {
             vec3 nrm = texelFetch(sampler2D(NormalTex, Samp), ivec2(gl_FragCoord.xy), 0).xyz * 2.0 - 1.0;
             isGround = nrm.y >= GroundNormalMinY;

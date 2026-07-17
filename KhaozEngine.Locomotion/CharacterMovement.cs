@@ -1499,7 +1499,8 @@ public static class CharacterMovement
     /// pin). KNOWN LIMITATION: the up-tilted-lip near-floor gate keys off the ANALYTIC terrain height only, so a short
     /// lip sitting on TOP of a prop platform more than a StepHeight above terrain fails the gate and still dead-stalls
     /// (pre-existing behaviour - narrowed by this widening, not regressed; the near-vertical band above is unaffected).
-    /// The proper fix is to gate on elevation above the current SUPPORT floor including props, tracked in docs/ROADMAP.md.
+    /// The proper fix is to gate on elevation above the current SUPPORT floor including props, tracked at
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/31.
     /// <paramref name="cosMaxSlope"/> is the walkable slope gate; <paramref name="groundHeight"/> the analytic
     /// terrain sampler.</summary>
     private static bool StepUpEligible(float ny, in Vector3 pos, in MoveTuning t, float cosMaxSlope,

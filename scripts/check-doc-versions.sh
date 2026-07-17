@@ -43,10 +43,11 @@ expect() {
   fi
 }
 
-# docs/ROADMAP.md  ->  Current released version: **X.Y.Z**
-r=$(grep -oE 'Current released version: \*\*[^*]+\*\*' docs/ROADMAP.md | grep -oE '\*\*[^*]+\*\*' | tr -d '*' | head -1 || true)
-expect docs/ROADMAP.md "current released version" "$r"
-
+# docs/ROADMAP.md used to declare "Current released version: **X.Y.Z**" and was checked here. The
+# roadmap is now GitHub issues (label kind/roadmap) and the file is gone, so there is no longer a
+# prose copy of the version to drift. Deliberately NOT repointed at Directory.Build.props: that is
+# where $ver is already read from, so the check would compare the file to itself and pass forever.
+#
 # README.md  ->  the copy-paste <PackageReference> example (shows the current release)
 while read -r v; do
   expect README.md "PackageReference example version" "$v"

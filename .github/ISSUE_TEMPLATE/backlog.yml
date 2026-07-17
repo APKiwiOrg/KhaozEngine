@@ -1,0 +1,52 @@
+name: Backlog item
+description: Something noticed and not done. A gap, a polish item, a follow-up, a lead from a review.
+title: "<short title, the way you would say it out loud>"
+labels: ["kind/backlog"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Backlog, not roadmap. **If it needs a spec, it is a roadmap item. Otherwise it is a TODO.**
+
+        Write it now, before you carry on with what you were doing. The end of a task is where
+        context runs out and the item evaporates.
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: What and where
+      description: >
+        Enough context and file links to action this without the chat that found it. Paths, symbols,
+        line numbers. Say what you already know, do not compress it into a task title: the next
+        reader has none of your context, and re-deriving it costs more than writing it down did.
+      placeholder: |
+        `SqlContentCatalogStore.cs:152`'s update branch returns `@id` unconditionally, so
+        UpsertNpcSpawnAsync reports success even when zero rows matched.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Confidence
+      description: >
+        How much should the next reader trust that this is real, as written? This is required
+        because it is the thing most often lost. A finding and an unverified guess look identical
+        once they are both just an issue in a list, and acting on a guess as though it were a
+        finding wastes the time the guess was supposed to save.
+      options:
+        - "Verified - I checked it against the code. Act on it."
+        - "Lead - surfaced but not checked. May be wrong. Confirm before acting."
+        - "Authored - I wrote this deliberately, with the context. Act on it."
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: >
+        Optional. Prior art, a related issue, why the obvious fix is wrong, what you already ruled
+        out. If you ruled something out, say so here, so nobody re-raises it later.
+    validations:
+      required: false

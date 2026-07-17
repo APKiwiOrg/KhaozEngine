@@ -1872,7 +1872,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     points somewhere downward instead of flipping to darkness. The key light dips to zero across the horizon
     crossing so the 180 degree azimuth flip between sun and moon is never visible. `AmbientColor` never reaches
     pure black, so night stays playable. A visible moon disc and a secondary night key light are deferred
-    follow-ups, see `docs/ROADMAP.md`.
+    follow-ups, see https://github.com/APKiwiOrg/KhaozEngine/issues/50.
   - **Palettes are calibrated, not fixed.** `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette` (each a
     `SunCyclePalette`) default to the engine's existing look (`DefaultDay()` reproduces the stock `Sky`/`Post`
     defaults exactly), blended by sun elevation rather than time of day so one setup works at any latitude or day

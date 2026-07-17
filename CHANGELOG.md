@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
 `docs/ROADMAP.md`.
 
+## 12.1.1
+
+Map editor: three verified history/crash fixes. The add-companion affordance no longer crashes the editor on a
+document with no scatter layers, a rename that returns to its starting name no longer corrupts the undo history on
+redo, and undoing an Add after a values edit no longer strands a ghost scatter override. No public API change,
+internal command and scene logic only.
+
+### #25 add-companion crash on zero scatter layers
+
+`MapEditorScene` emitted the "[+ add companion]" outline action node unconditionally. With no scatter layers,
+activating it committed a companion whose `HostLayer` was empty, and the same-frame world rebuild threw
+`MapDocumentException` out of `OnUpdate`, crashing the editor on a fresh session. The affordance is now gated on
+`ScatterLayers.Count > 0`: a companion rings a host scatter layer's placements, so it is meaningless (and unsafe)
+without one. Existing companion nodes are still listed regardless of scatter-layer count, only the trailing add
+action is gated.
+
+### #26 rename-to-self corrupts redo
+
+The scatter-layer, companion-layer, and region rename guards (`GuardNoScatterLayerName`,
+`GuardNoCompanionLayerName`, `GuardNoRegion`) matched the source object itself. A per-keystroke rename that
+collapses to `oldName == newName` (type "2" then backspace, coalesced by `TryMerge`) threw on redo with no
+try/catch, corrupting the history stack. The three guards gained the `int exceptIndex` self-exclusion their sibling
+guards (`GuardNoFeatureName` and the rest) already carried: Add callers pass `-1`, the rename `Apply`s pass the
+source index. A collapsed self-rename now applies as a no-op, a genuine duplicate is still rejected.
+
+### #24 stray scatter override on undo
+
+`AddScatterOverrideCommand.Revert` removed the override by reference, but an intervening
+`EditScatterOverrideValuesCommand` restores a deep clone, so the reference `Remove` found nothing and left a ghost
+override (count off by one) while `IsDirty` reported clean. Revert now captures the insertion index at `Apply` and
+removes via `RemoveAt`, identity-independent, mirroring `RemoveScatterOverrideCommand`. The latent
+`AddScatterLayerCommand` / `EditScatterLayerCommand` pair (not divergent under today's callers, but the same
+shape) got the identical hardening.
+
 ## 12.1.0
 
 Render3D: ground decals gain an opt-in `VoidFallback`, projecting onto the decal's own horizontal plane where its

@@ -9,14 +9,17 @@
 #     17m14s vs the golden-only 7m44s (trial runs 29542939552 / 29545657401), about +19 billed
 #     2x minutes per run - too much per-push for this repo's cost posture, so full hosted
 #     coverage rides the weekly cron (and any manual dispatch) instead.
-#   * The GitHub-hosted Vulkan leg (1x) runs the golden tests ONLY, on every trigger. The full
-#     suite on Mesa lavapipe crashes the test host natively at a NONDETERMINISTIC point (three
-#     dispatch runs died in three unrelated GpuFact classes: VfxGpuTests, BootScreenVisualTests,
-#     Scene3DPassTimingsGpuTests, the last with zero managed failures. Mesa 25.2.8, silent
-#     segfault, no managed stack). WARP and Metal run the identical full suite green, so this is
-#     a lavapipe/Veldrid native-layer instability under parallel headless-device churn, tracked
-#     as a follow-up (first lead: serialize xUnit collections on this leg). The golden subset is
-#     the configuration lavapipe has run green for months.
+#   * The GitHub-hosted Vulkan leg (1x) runs only the golden tests on push/pull_request, and the
+#     FULL suite on the weekly schedule and on workflow_dispatch, same tier as D3D11. Chasing this
+#     leg's full-suite crashes surfaced four real engine defects, all fixed: concurrent device
+#     creation racing the Vulkan loader (serialized process-wide in GpuDeviceContext), mid-life
+#     resource disposal racing queued async work (drained via WaitForIdle before disposing), and a
+#     teardown-order pair where a wrapper outliving its device drained or destroyed against the
+#     dead device (latched by a shared DeviceLiveness token). The full PARALLEL suite on lavapipe
+#     still exhibits residual driver-side instability with delayed-corruption symptoms (a CoreCLR
+#     fatal, deliberately not chased), so the full-suite runs serialize xUnit test collections via
+#     KE_TEST_EXTRA_ARGS, one live device at a time (~22 min serialized in the validation container
+#     vs minutes parallel). Golden-only runs keep their months-green parallel configuration.
 #   * Committed per-backend goldens live at KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt.
 #   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
 #     Linux Vulkan (Mesa lavapipe).
@@ -67,9 +70,8 @@ on:
       - '.github/workflows/cross-platform-gpu.yml'
   pull_request:
     branches: [ main ]
-  # Weekly full-suite pass on the hosted D3D11 leg (Metal runs the full suite on every trigger anyway,
-  # and Vulkan stays golden-only per the header). Sunday 18:00 UTC: a quiet slot, and any breakage
-  # surfaces before the working week.
+  # Weekly full-suite pass on the hosted D3D11 and Vulkan legs (Metal runs the full suite on every
+  # trigger anyway). Sunday 18:00 UTC: a quiet slot, and any breakage surfaces before the working week.
   schedule:
     - cron: '0 18 * * 0'
   workflow_dispatch:
@@ -98,9 +100,9 @@ jobs:
         # `fullSuite` picks when a leg runs the whole suite vs the golden subset (see the test step's
         # filter expression, plus the cost + lavapipe-stability rationale in the header):
         #   always    - every trigger (self-hosted Metal, free)
-        #   scheduled - weekly schedule + workflow_dispatch only (hosted D3D11, bills 2x)
-        #   never     - golden subset on every trigger (hosted Vulkan: the full suite crashes lavapipe,
-        #               see the header and the tracked follow-up)
+        #   scheduled - weekly schedule + workflow_dispatch only (hosted D3D11 bills 2x, hosted
+        #               Vulkan bills 1x, golden subset only on push/pull_request). Vulkan full-suite
+        #               runs additionally serialize xUnit collections (KE_TEST_EXTRA_ARGS, header).
         include:
           - os: macos-14
             backend: metal
@@ -113,7 +115,7 @@ jobs:
           - os: ubuntu-latest
             backend: vulkan
             runner: ubuntu-latest
-            fullSuite: never
+            fullSuite: scheduled
     steps:
       - uses: actions/checkout@v4
 
@@ -180,23 +182,28 @@ jobs:
       # Suite selection per leg + trigger (the cost + stability split in the header):
       #   * fullSuite: always (Metal): the FULL suite on every trigger - "Category!=LiveSocket",
       #     mirroring ci.yml's exclusion (LiveSocket needs a live network peer, not available here).
-      #   * fullSuite: scheduled (D3D11): golden tests only on push/PR ("FullyQualifiedName~Golden"),
-      #     the FULL suite on schedule + workflow_dispatch. Full hosted Windows measured +19 billed 2x
-      #     minutes per run vs golden-only (17m14s vs 7m44s, runs 29542939552 / 29545657401), so
-      #     per-push hosted coverage stays golden-only and the weekly cron carries the full sweep.
-      #   * fullSuite: never (Vulkan): golden tests only on EVERY trigger - the full suite crashes the
-      #     lavapipe test host nondeterministically (header + follow-up).
+      #   * fullSuite: scheduled (D3D11, Vulkan): golden tests only on push/PR ("FullyQualifiedName~Golden"),
+      #     the FULL suite on schedule + workflow_dispatch. D3D11: full hosted Windows measured +19 billed
+      #     2x minutes per run vs golden-only (17m14s vs 7m44s, runs 29542939552 / 29545657401), so
+      #     per-push hosted coverage stays golden-only and the weekly cron carries the full sweep. Vulkan:
+      #     the same tier, and its full-suite runs serialize xUnit test collections (KE_TEST_EXTRA_ARGS
+      #     below) because lavapipe under full parallel load still shows residual driver-side
+      #     instability after the four engine-defect fixes (see the header).
       - name: Run test suite
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden' }}
+          # Vulkan full-suite runs only: serialize xUnit collections, one live device at a time
+          # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
+          # golden-only runs (months of parallel green history).
+          KE_TEST_EXTRA_ARGS: ${{ (matrix.backend == 'vulkan' && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-- xUnit.ParallelizeTestCollections=false' || '' }}
         # Plain --blame (no --blame-crash) is kept permanently: it only writes a tiny Sequence.xml naming the
         # last-started test if the host dies (no dump utility attached, no measurable overhead), and a lavapipe
         # native crash without it is unattributable - an unnamed crash on the unattended weekly cron would cost
         # a full diagnostic re-run. The 200MB dump collection (--blame-crash) stays off.
-        run: dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults
+        run: dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_EXTRA_ARGS
         shell: bash
 
       # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).

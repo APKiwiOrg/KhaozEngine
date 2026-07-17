@@ -18,7 +18,10 @@
   as a `Primitives.RenderFrameStats`), reset each `NewFrame` and read after the frame's draws.
 - `Camera2D` - position/zoom/rotation 2D camera (headless, unit-tested) + the camera-feel layer (follow,
   look-ahead, eased blends, room cameras, parallax).
-- `Texture2D` - GPU texture; PNG load via StbImageSharp.
+- `Texture2D` - GPU texture. PNG load via StbImageSharp. Dispose drains the device (`WaitForIdle`) before
+  freeing the handle when the texture carries a device reference (every engine loader: `LoadTexture`,
+  `RenderToTexture`, `SpriteFont`'s atlas), since a queued upload may still reference it. A texture obtained
+  via the public `Wrap(...)` factory has no device to hand it, so it disposes immediately.
 - `ImageRgba` - CPU-side RGBA8 image (no GPU): `Load`/`Decode`, `AlphaAt`/`IsOpaqueAt` for opaque-pixel masks.
 - `SpriteFont` - runtime TrueType text (stb_truetype glyph atlas), `DrawString` / `Measure`. `Measure` has a
   `ReadOnlySpan<char>` overload alongside the `string` one (declared on `ITextMeasurer` as a default interface

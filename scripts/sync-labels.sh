@@ -15,6 +15,9 @@
 #   needs/*       this item is waiting on something. needs/upstream replaces the old
 #                 **Handed off:** ledger line, which needed a reciprocity guard to stay honest;
 #                 a cross-repo issue reference backlinks both sides by itself.
+#   priority/*    how urgent, as an explicit tier. Replaces the old "priority is the board's
+#                 order" convention, which the Projects v2 API never actually exposed.
+#                 critical > high > medium > low. medium is the default.
 #
 # Usage: scripts/sync-labels.sh [--repo OWNER/NAME] [--dry-run]
 
@@ -26,7 +29,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --repo) repo="${2:-}"; shift 2 ;;
     --dry-run) dry=1; shift ;;
-    -h|--help) sed -n '4,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '4,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -47,6 +50,10 @@ confidence/authored|c5def5|Written deliberately by someone with the context. Act
 confidence/refuted|b60205|Investigated and found not to be real. Closed, and kept so it is not re-raised.
 needs/confidence|d93f0b|Backlog item with no confidence rating. Add one; see the issue comment.
 needs/upstream|5319e7|Waiting on another repo. Cross-reference the upstream issue so both sides backlink.
+priority/critical|b60205|Actively harmful now: prod security, data loss, common-path crashes, progress-losing bugs.
+priority/high|d93f0b|Confirmed and important: verified bugs with real impact, reachable security, explicit near-term.
+priority/medium|fbca04|Worth doing, not urgent. Clear-value features/polish and plausible leads. The default tier.
+priority/low|ededed|Nice-to-have, speculative, or deferred: pull-gated, possible non-bug, cosmetic, someday.
 '
 
 printf 'sync-labels: %s\n' "$repo"

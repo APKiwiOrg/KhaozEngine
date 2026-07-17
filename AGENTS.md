@@ -163,6 +163,11 @@ version/release work.
   still auto-publishes right away (merge + tag + push, don't hold) - batching is about not fragmenting one
   unit of work across several tiny releases, never about holding a finished feature.
 - `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
+- **pre-push blocks a one-sided cross-repo handoff.** A **Handed off:** line in `docs/TODO.md` whose
+  target repo has no matching entry fails the push, via `scripts/check-handoffs.sh`. Pre-existing
+  one-sided handoffs and unresolvable targets warn instead of blocking. Override with `HANDOFF_CHECK_OK=1`.
+- **SessionStart injects the discovered-work ledger** into every session: open follow-up count plus
+  every handoff line, via `scripts/session-context.sh`. Informational, never blocks.
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).
 

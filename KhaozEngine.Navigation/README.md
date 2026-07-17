@@ -172,6 +172,39 @@ fresh route. `WorldDir` is the raw follow direction only: a dynamic-avoidance la
 agents or late-appearing obstacles) is expected to run after the follower and before
 `CharacterMovement.StepTowards`, adjusting `WorldDir` without touching the follower's own path state.
 
+### Reading the committed corridor
+
+To draw or log the whole route an agent is following (a debug overlay, an analytics log), read
+`PathFollower.ActivePath` (`NavPath?`) and `PathFollower.ActiveWaypointIndex` (`int`) instead of re-running
+`FindPath` yourself, which would risk a route that diverges from the one the follower committed inside its
+replan cooldown. `ActivePath` is the committed `NavPath` the planner returned, and its `Waypoints` is a
+read-only view that cannot be downcast to mutable storage (guaranteed by the `NavPath` constructor), so
+this is a genuine read-only view with no path back into follower state. `ActiveWaypointIndex` is the index
+of the waypoint currently being steered to, so `ActivePath.Waypoints[ActiveWaypointIndex]` onward is the
+corridor still ahead of the agent. Both are allocation-free getters over existing state, so the `Tick` path
+is untouched and there is zero cost when unused.
+
+`ActivePath` is `null` when the follower is following no corridor: before the first `Tick` plans, after
+`Reset`, once the goal is reached (`Arrived`), while the goal is `Unreachable`, and for the single gap tick
+after a fully consumed `NavPathStatus.Partial` path, where the follower clears the exhausted path and
+steers straight at the raw goal (still `Following`) until the next replan picks up a fresh route. While a
+replan is merely due but still gated by `ReplanCooldownSeconds`, it stays the previously committed path, so
+you always read the route the agent is steering on, never a mid-cooldown re-plan. When non-null it always
+carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints` (zero, and
+not meaningful, when `ActivePath` is `null`).
+
+```csharp
+if (follower.ActivePath is { } corridor)
+{
+    // Draw the remaining corridor: the segment from the agent through every waypoint still ahead.
+    for (int i = follower.ActiveWaypointIndex; i < corridor.Waypoints.Count; i++)
+    {
+        Vector2 p = corridor.Waypoints[i].Position;   // world XZ
+        // ... plot p ...
+    }
+}
+```
+
 ```csharp
 using KhaozEngine.Navigation;
 using KhaozEngine.Locomotion;

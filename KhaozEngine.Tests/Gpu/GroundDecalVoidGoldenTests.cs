@@ -65,6 +65,47 @@ namespace KhaozEngine.Tests.Gpu
         /// The ring's fill is emphatically blue (its b-r gap is ~114 against the island's ~14), so gate on the GAP.</summary>
         static bool IsRing((byte r, byte g, byte b) c) => c.b - c.r > 60;
 
+        // Headless, no GPU: pins VoidDecalScene's DERIVED constants against the real camera. Every sample point in
+        // this file is placed by that arithmetic, so if the camera's defaults ever move, the samples silently drift
+        // onto the wrong surface and the GPU assertions above start measuring something else while still passing.
+        // This is the test the RayDyDx comment claims exists.
+        [Fact]
+        public void Void_scene_geometry_constants_match_the_real_camera()
+        {
+            var cam = new IsoCamera3D();
+            // The iso camera's view ray, in world space. Forward = -DirToEye at the default azimuth 45 / elevation
+            // atan(0.5). RayDyDx is how far it falls in y per unit travelled in -x.
+            Vector3 fwd = cam.Forward;
+            Assert.Equal(VoidDecalScene.RayDyDx, MathF.Abs(fwd.Y / fwd.X), 4);
+
+            // The cliff occupies plane-x (TileHalf, CliffEndX): a ray reaching the plane at CliffEndX grazes the
+            // cliff's BASE (y = 0) exactly, so anything beyond is true background.
+            Assert.Equal(0f, VoidDecalScene.PlaneY - (VoidDecalScene.CliffEndX - VoidDecalScene.TileHalf) * VoidDecalScene.RayDyDx, 4);
+            // StripStartX is where the cliff pixel's reconstructed y crosses the decal's Y gate floor.
+            Assert.Equal(VoidDecalScene.PlaneY - VoidDecalScene.YTolerance,
+                VoidDecalScene.PlaneY - (VoidDecalScene.StripStartX - VoidDecalScene.TileHalf) * VoidDecalScene.RayDyDx, 4);
+
+            // The samples must land in the regions their names claim.
+            //
+            // VoidSample is on the FAR (-X) side, and CliffEndX deliberately does NOT apply to it: that bound is
+            // about the CAMERA-FACING (+X) cliff. On the far side the ray travelling toward the eye gains x AND y
+            // together, so by the time it reaches the tile's -X edge it is already ABOVE the top surface and clears
+            // the island entirely. Any far-side point beyond the edge is therefore true background, however close
+            // to the edge it sits. (The near side is the constrained one, hence CliffFrontSample below.)
+            Assert.True(VoidDecalScene.VoidSample.X < -VoidDecalScene.TileHalf, "VoidSample must be beyond the far edge");
+            float riseAtEdge = (MathF.Abs(VoidDecalScene.VoidSample.X) - VoidDecalScene.TileHalf) * VoidDecalScene.RayDyDx;
+            Assert.True(riseAtEdge > 0f, "the far-side ray must rise above the tile top before reaching it, so nothing occludes the plane");
+            Assert.InRange(VoidDecalScene.CliffFrontSample.X, VoidDecalScene.StripStartX, VoidDecalScene.CliffEndX);
+            // GroundSample must be ON the tile top AND inside the ring band, or the byte-identity test is vacuous.
+            Assert.True(MathF.Abs(VoidDecalScene.GroundSample.X) < VoidDecalScene.TileHalf
+                     && MathF.Abs(VoidDecalScene.GroundSample.Z) < VoidDecalScene.TileHalf, "GroundSample must be on the tile top");
+            float gr = new Vector2(VoidDecalScene.GroundSample.X, VoidDecalScene.GroundSample.Z).Length();
+            Assert.InRange(gr, VoidDecalScene.RingInner, VoidDecalScene.RingOuter);
+            // Every sample sits on the decal's plane, or it is not testing the projection.
+            foreach (var s in new[] { VoidDecalScene.VoidSample, VoidDecalScene.GroundSample, VoidDecalScene.CliffFrontSample, VoidDecalScene.BehindWallSample })
+                Assert.Equal(VoidDecalScene.PlaneY, s.Y, 4);
+        }
+
         [GpuFact]
         public void Golden_void_fallback_paints_the_ring_past_the_islands_edge()
         {

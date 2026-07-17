@@ -194,17 +194,32 @@ namespace KhaozEngine.Render3D.Internal
             }
         }
 
+        /// <summary>Resolve the multisampled MRT's depth into the single-sample <see cref="DepthColorTex"/> that the
+        /// ground-decal pass + post edge pass sample. Call after the geometry passes that matter to the caller, before
+        /// a decal pass. Does NOT touch <see cref="NormalTex"/> - see <see cref="ResolveDepthNormal"/> for why that
+        /// distinction is load-bearing. No-op when not <see cref="Msaa"/>.</summary>
+        public void ResolveDepth(IGpuCommandList cl)
+        {
+            if (Msaa) cl.ResolveTexture(MsDepthColor!, DepthColorTex);
+        }
+
         /// <summary>Resolve the multisampled MRT's depth AND encoded normal into the single-sample
         /// <see cref="DepthColorTex"/> / <see cref="NormalTex"/> that the ground-decal pass + post edge pass sample.
-        /// Call after the geometry passes, before the decal pass. No-op when not <see cref="Msaa"/>.
+        /// No-op when not <see cref="Msaa"/>.
         /// <para>
         /// The NORMAL is resolved here, with the depth, rather than later with the colour: the ground-decal pass reads
         /// it (a void-fallback decal needs the surface orientation to tell a terrain dip from the top of a cliff face)
-        /// and would otherwise sample a stale resolve under MSAA. This is safe because only the MRT passes write the
-        /// normal attachment - model, textured billboards, beams, trails and overlay meshes all bind ModelFB and are
-        /// complete by this point, while every LATER pass (sky/starfield, decals, water, particles) binds ColorDepthFB
-        /// and cannot touch it. The colour, which the decals DO write, still resolves after them in
-        /// <see cref="ResolveColor"/>.
+        /// and would otherwise sample a stale resolve under MSAA. The colour, which the decals DO write, still
+        /// resolves after them in <see cref="ResolveColor"/>.
+        /// </para>
+        /// <para>
+        /// CALL THIS ONLY WHERE EVERY NORMAL WRITER IS DONE. Model, textured billboards, beams, trails and overlay
+        /// meshes all bind ModelFB and write the normal attachment; every later pass (sky/starfield, decals, water,
+        /// particles) binds ColorDepthFB and cannot. The MAIN decal pass sits after all of them, so it gets this.
+        /// The blob-shadow decal pass does NOT: it runs early, before the billboards/beams/trails/overlay meshes, so
+        /// resolving the normal there would publish an incomplete one. It calls <see cref="ResolveDepth"/> instead,
+        /// which is correct because a blob-shadow decal is engine-built and never sets VoidFallback, so it never
+        /// reads the normal.
         /// </para></summary>
         public void ResolveDepthNormal(IGpuCommandList cl)
         {

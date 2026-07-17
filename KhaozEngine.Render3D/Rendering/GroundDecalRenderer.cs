@@ -55,7 +55,8 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Gate;          // x=groundY, y=yTol, z=maxStep, w=featherWidth
             public Vector4 PatternP;      // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
             public Vector4 Energy;        // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
-            public Vector4 Extra;         // x=baseFill, y=voidPath (0=depth-reconstruct, 1=plane-project), z=voidDim, w reserved 0
+            public Vector4 Extra;         // x=baseFill, y=voidPath (0=depth-reconstruct, 1=plane-project), z=voidDim,
+                                          // w=wantsFallback (geometry-pass instance of a VoidFallback decal). NOT reserved.
         }
 
         /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). ONE uniform buffer

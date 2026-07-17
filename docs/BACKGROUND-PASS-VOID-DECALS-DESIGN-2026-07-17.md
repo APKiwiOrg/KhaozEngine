@@ -264,7 +264,9 @@ Two new pipelines (alpha and additive at `Equal`), giving four total. A flagged 
 
 Instance packing appends the void instances after the base ones, so base bytes never move:
 
-- Base instance: `Extra = (BaseFill, 0, 0, 0)`, identical to today's packing.
+- Base instance: `Extra = (BaseFill, 0, 0, 0)` for an UNFLAGGED decal, identical to today's packing (this is the
+  zero-neutral lock). A FLAGGED decal's base instance is `Extra = (BaseFill, 0, VoidDim, 1)`: the `w` lane asks the
+  geometry path for the fallback, which the correction above made necessary. An unflagged decal cannot reach it.
 - Void instance: `Extra = (BaseFill, 1, VoidDim, 0)`, with its screen rect computed over the flat
   AABB at `Center.Y` (a tighter, correct bound than the Y-gate band).
 

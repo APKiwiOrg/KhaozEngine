@@ -56,6 +56,13 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   0.5 threshold (60-degree slopes still count as ground) is the constant to reuse. Evidence: `CHANGELOG.md`
   12.1.0, `KhaozEngine.Tests/Gpu/GroundDecalVoidGoldenTests.Golden_void_fallback_keeps_the_disc_flat_across_a_cliff_face`
   (its legacy-delta control measures exactly this artifact).
+- [ ] **`GroundTelegraphs.BuildResidueCircle` drops `VoidFallback` / `VoidDim`.** It composes its `GroundDecal`
+  directly instead of through `Base()`, so a residue mark whose style opted into the void fallback still truncates
+  at an island's edge while every other `Ground*` shape projects. Deliberate for 12.1.0 (a scorch mark is a mark ON
+  ground, so projecting it into the void is not obviously wanted) and documented on the builder, but the asymmetry
+  is a trap: the flag is on the shared `TelegraphStyle` and silently does nothing here. Either route the builder
+  through `Base()` or split residue onto its own style type. Evidence: `CHANGELOG.md` 12.1.0,
+  `KhaozEngine.Telegraphs.Render3D/GroundTelegraphs.cs` `BuildResidueCircle`.
 - [ ] **HDR chroma preservation is partial.** A saturated channel that clips at the display ceiling
   before the rescale still desaturates, even at `ChromaPreservation = 1`. Evidence: `CHANGELOG.md`
   11.7.0.

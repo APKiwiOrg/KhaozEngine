@@ -117,7 +117,14 @@ namespace KhaozEngine.Telegraphs
 
         /// <summary>One-shot impact residue: a fading, slightly expanding scorch/frost mark for the
         /// moment after a telegraph resolves. The CONSUMER tracks age01 (0 = just resolved,
-        /// 1 = gone), the builder stays pure and immediate-mode like every other telegraph.</summary>
+        /// 1 = gone), the builder stays pure and immediate-mode like every other telegraph.
+        /// <para>
+        /// KNOWN GAP: this builder composes its decal directly rather than through <c>Base()</c>, so it does NOT
+        /// carry <see cref="TelegraphStyle.VoidFallback"/> / <see cref="TelegraphStyle.VoidDim"/> - a residue mark
+        /// overhanging an island's edge still truncates even when its style opted in. Deliberate for 12.1.0 (a
+        /// scorch mark is a mark ON ground, so projecting it into the void is not obviously wanted) and recorded in
+        /// <c>docs/TODO.md</c> rather than left silent. Set the fields on the returned decal to opt in per call.
+        /// </para></summary>
         public static GroundDecal BuildResidueCircle(Vector3 center, float radius, float age01, in TelegraphStyle style)
         {
             float age = Math.Clamp(age01, 0f, 1f);

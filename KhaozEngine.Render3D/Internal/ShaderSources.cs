@@ -1886,7 +1886,7 @@ layout(location=5) in vec4 IParams;
 layout(location=6) in vec4 IGate;
 layout(location=7) in vec4 IPattern;   // x=pattern index, y=speed, z=cells per world unit, w=0
 layout(location=8) in vec4 IEnergy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
-layout(location=9) in vec4 IExtra;     // x=baseFill, y=voidPath (0/1), z=voidDim, w reserved 0
+layout(location=9) in vec4 IExtra;     // x=baseFill, y=voidPath (0/1), z=voidDim, w=wantsFallback (0/1)
 layout(location=0) out vec4 vCenter;
 layout(location=1) out vec4 vSize;
 layout(location=2) out vec4 vFill;
@@ -1939,7 +1939,8 @@ layout(location=4) in vec4 Params;    // x=edgeThickness, y=fillFraction, z=flas
 layout(location=5) in vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=featherWidth (world units)
 layout(location=6) in vec4 PatternP;  // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
 layout(location=7) in vec4 Energy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
-layout(location=8) in vec4 Extra;     // x=baseFill, y=voidPath (0 = depth-reconstruct, 1 = plane-project), z=voidDim, w reserved 0
+layout(location=8) in vec4 Extra;     // x=baseFill, y=voidPath (0 = depth-reconstruct, 1 = plane-project), z=voidDim,
+                                      // w = wantsFallback: this decal asked for the plane fallback (geometry pass only)
 layout(location=0) out vec4 oColor;
 
 // 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).

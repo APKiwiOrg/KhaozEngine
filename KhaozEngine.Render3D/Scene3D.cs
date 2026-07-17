@@ -2054,7 +2054,12 @@ namespace KhaozEngine.Render3D
                         _shadowDecals.Add(blobDecal);
                 if (_shadowDecals.Count > 0)
                 {
-                    _res.ResolveDepthNormal(cl);
+                    // DEPTH ONLY, deliberately. This pass runs early, before the textured billboards / beams / trails /
+                    // overlay meshes have written the MRT normal, so resolving the normal here would publish an
+                    // incomplete one. Safe because a blob-shadow decal is engine-built (Shadows.TryBuildDecal) and
+                    // never sets VoidFallback, so it never samples NormalTex. The MAIN decal pass, which sits after
+                    // every normal writer, takes ResolveDepthNormal instead.
+                    _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
                     _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_shadowDecals));
@@ -2242,8 +2247,9 @@ namespace KhaozEngine.Render3D
                 _frameStats.DrawCalls++;
             }
 
-            // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
-            // samples (after ALL MRT writers: geometry + decals + water). No-op when not multisampled.
+            // Resolve the multisampled lit COLOUR into the single-sample target the post chain samples (after all
+            // colour writers: geometry + decals + water). The encoded normal is NOT resolved here: it lands earlier,
+            // with the depth, because the ground-decal pass reads it. No-op when not multisampled.
             _res.ResolveColor(cl);
             // ColorTex now holds this frame's resolved colour: mark it so next frame's crossfade capture knows a real
             // previous frame exists (guards against sampling a blank target the frame right after a resize).

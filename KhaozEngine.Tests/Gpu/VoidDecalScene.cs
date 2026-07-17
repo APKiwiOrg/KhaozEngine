@@ -60,7 +60,9 @@ namespace KhaozEngine.Tests.Gpu
         public const float YTolerance = 0.3f;   // GroundTelegraphs.DefaultYTolerance, mirrored so the math below is checkable
 
         /// <summary>How far the iso camera's ray falls in y per unit travelled in -x: sin(E) / (cos(E) * sin(A)) at
-        /// the default azimuth 45 / elevation atan(0.5). Pinned by a test against the real camera.</summary>
+        /// the default azimuth 45 / elevation atan(0.5). Pinned against the real camera by
+        /// <c>GroundDecalVoidGoldenTests.Void_scene_geometry_constants_match_the_real_camera</c>, which also checks
+        /// every sample below still lands in the region its name claims.</summary>
         public const float RayDyDx = 0.70710678f;
 
         /// <summary>Plane x past which a pixel is no longer showing the +X cliff, i.e. where true background begins.

@@ -187,5 +187,47 @@ namespace KhaozEngine.Tests.Telegraphs
         Assert.Equal(0.02f, d.FeatherWidth, 4);
     }
 
+    [Fact]
+    public void Void_fallback_maps_verbatim_to_the_decal()
+    {
+        var s = TelegraphStyle.Generic;
+        s.VoidFallback = true;
+        s.VoidDim = 0.15f;
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s);
+        Assert.True(d.VoidFallback);
+        Assert.Equal(0.15f, d.VoidDim, 4);
+    }
+
+    [Fact]
+    public void Void_fallback_maps_through_every_shape_builder()
+    {
+        // Hardpoint's ask is the range RING, but the flag lives on the shared Base() mapping, so every shape gets it.
+        // If a builder ever stops routing through Base, this is what catches it.
+        var s = TelegraphStyle.Generic;
+        s.VoidFallback = true;
+        s.VoidDim = 0.25f;
+        var built = new[]
+        {
+            GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, s),
+            GroundTelegraphs.BuildRing(Vector3.Zero, 2f, 4f, 0.5f, s),
+            GroundTelegraphs.BuildBeam(Vector3.Zero, new Vector2(1f, 0f), 6f, 1f, 0.5f, s),
+            GroundTelegraphs.BuildCone(Vector3.Zero, new Vector2(1f, 0f), 0.5f, 5f, 0.5f, s),
+            GroundTelegraphs.BuildArc(Vector3.Zero, 4f, 0.5f, 0f, 1.5f, 0.5f, s),
+        };
+        foreach (var d in built)
+        {
+            Assert.True(d.VoidFallback);
+            Assert.Equal(0.25f, d.VoidDim, 4);
+        }
+    }
+
+    [Fact]
+    public void Void_fallback_defaults_off_for_an_untouched_style()
+    {
+        var d = GroundTelegraphs.BuildCircle(Vector3.Zero, 4f, 0.5f, TelegraphStyle.Generic);
+        Assert.False(d.VoidFallback);
+        Assert.Equal(0f, d.VoidDim);
+    }
+
     }
 }

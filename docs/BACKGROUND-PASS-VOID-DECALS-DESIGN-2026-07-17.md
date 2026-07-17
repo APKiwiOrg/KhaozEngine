@@ -279,10 +279,42 @@ Fragment shader branches on `Extra.y`:
   the decal's plane by construction. Apply `VoidDim` to the final alpha. Everything downstream (SDF,
   feather, pattern, energy lanes) is shared.
 
-Geometry that exists but sits outside the Y band (a wall face, a lower ledge) keeps today's behaviour
+> **CORRECTED DURING IMPLEMENTATION (11.10.0).** The rule below, and the residue it predicted, were both
+> **wrong**, on a premise that is inverted for the exact case this feature exists to serve. It is kept here
+> because the reasoning error is instructive. See "Correction: out-of-band geometry" immediately after it.
+
+~~Geometry that exists but sits outside the Y band (a wall face, a lower ledge) keeps today's behaviour
 and discards. It does **not** fall back to the plane: the plane point there is *behind* the wall, so
 painting it would draw an x-ray decal through solid geometry. The fallback is for absent geometry
-only, which is exactly Hardpoint's island-edge case.
+only, which is exactly Hardpoint's island-edge case.~~
+
+### Correction: out-of-band geometry
+
+"The plane point there is *behind* the wall" does not hold for an overhang, which is the whole point of the
+feature. A ring overhanging a mesa hangs at the **top surface's height**, while the cliff below it *recedes away
+from the camera*. The plane point is **in front of** the cliff and genuinely visible. Discarding it does not
+leave "a residual truncation strip": it throws away every pixel in the cliff's **screen band**, which for a
+1-unit cliff under the iso camera is ~1.4 units of plane space, i.e. most of the ring's near arc. The
+consumer-ratified "near-edge residue" was therefore an artifact of the same error and does not exist in the
+shipped feature.
+
+Whether the plane is visible is a **depth** question, not a has-geometry question. The shipped rule:
+
+- **In band, near-horizontal surface** -> conform to it (today's exact path, byte-for-byte).
+- **Otherwise (out of band, or a near-vertical face)** -> intersect the plane and compare along the ray.
+  Nearer wins. In front of a cliff it paints; behind a wall standing on the decal's ground it discards, so the
+  x-ray the original rule feared is still refused, now for the right reason.
+
+The **normal test is not optional**, and this was the second correction. With only depth, a terrain dip
+`YTolerance` below the plane and the **top `YTolerance` of a vertical cliff face** are arithmetically identical
+at a single pixel, so the band alone conforms the decal onto the cliff and runs it down the edge. The geometric
+normal is the only signal that separates them, so `GroundDecalRenderer` binds `NormalTex` and a flagged decal
+additionally requires `n.y >= 0.5` for a surface to count as its ground. Gated on the flag, so the zero-neutral
+contract survives intact. (The same wart afflicts unflagged decals today and is left alone: `docs/TODO.md`.)
+
+Because the decal pass now samples the normal target, the MSAA resolve of that target moves earlier, from
+`ResolveColorNormal` (after the decals) to `ResolveDepthNormal` (with the depth, before them). Safe: every
+normal writer binds `ModelFB` and is complete by that point, and every later pass binds `ColorDepthFB`.
 
 ### Zero-neutral contract
 
@@ -292,10 +324,18 @@ their release-1 baselines) and are the net.
 
 ### Showcase and golden
 
-New `telegraph_ground_void` golden: a small island (`MeshPrimitives.Tile`) with a `GroundCircle`
-whose radius overhangs the edge, framed so the void projection is visible continuing past the
-geometry. Baked on Metal locally, D3D11 + Vulkan via the `cross-platform-gpu.yml` bake dispatch. A
-showcase PNG dump alongside it, in the `TelegraphShowcaseGpuTests` style, for human review.
+New `telegraph_ground_void` golden: a small island (`MeshPrimitives.Tile`) with an overhanging ring,
+framed so the plane projection is visible continuing past the geometry. Baked on Metal locally, D3D11 +
+Vulkan via the `cross-platform-gpu.yml` bake dispatch. Showcase PNG dumps alongside it, in the
+`TelegraphShowcaseGpuTests` style, for human review.
+
+**The golden is NOT the net, and this was measured, not assumed.** It does bite (a sabotage run moves 240
+channels past tolerance, unlike the starfield's), but it CANNOT see the cliff wrap-down at all: the normal-gate
+fix moves zero cells past the 32x18 grid's 0.06 tolerance. `GroundDecalVoidGoldenTests` carries the feature -
+raw-pixel A/B pairs, each of which collapses to two identical renders if the feature is removed, plus an
+anti-vacuity control on every one. That is the 11.9.0 lesson applied rather than restated: a green grid is not
+evidence, and neither is a green suite. **Both defects in this release were found by looking at the PNGs**, not
+by a failing test.
 
 ### Docs
 

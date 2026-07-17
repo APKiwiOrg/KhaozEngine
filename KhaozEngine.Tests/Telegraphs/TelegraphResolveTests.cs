@@ -260,5 +260,54 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(0f, r.FeatherWidthWorld);
         }
 
+        [Fact]
+        public void Void_fallback_carries_through_resolve_and_clamps_the_dim()
+        {
+            var s = TelegraphStyle.Generic;
+            s.VoidFallback = true;
+            s.VoidDim = 0.15f;
+            var r = TelegraphResolve.Resolve(0.5f, s);
+            Assert.True(r.VoidFallback);
+            Assert.Equal(0.15f, r.VoidDim, 4);
+
+            s.VoidDim = -1f;
+            Assert.Equal(0f, TelegraphResolve.Resolve(0.5f, s).VoidDim);
+            s.VoidDim = 3f;
+            Assert.Equal(1f, TelegraphResolve.Resolve(0.5f, s).VoidDim);
+        }
+
+        [Fact]
+        public void Void_fallback_defaults_off_on_every_preset()
+        {
+            // The whole design leans on this: an existing style renders exactly as it did. A preset that quietly
+            // opted in would silently change every consumer's telegraphs over the void.
+            foreach (var s in new[]
+            {
+                TelegraphStyle.Generic, TelegraphStyle.Fire, TelegraphStyle.Poison, TelegraphStyle.Steel,
+                TelegraphStyle.Frost, TelegraphStyle.Nature, TelegraphStyle.Arcane,
+            })
+            {
+                var r = TelegraphResolve.Resolve(0.5f, s);
+                Assert.False(r.VoidFallback);
+                Assert.Equal(0f, r.VoidDim);
+            }
+        }
+
+        [Fact]
+        public void Void_fallback_is_independent_of_progress()
+        {
+            // A passthrough knob, not an animated one: it must not wobble with the cast, or a ring would pop in and
+            // out of the void across the window.
+            var s = TelegraphStyle.Generic;
+            s.VoidFallback = true;
+            s.VoidDim = 0.2f;
+            foreach (float p in new[] { 0f, 0.25f, 0.5f, 0.75f, 1f })
+            {
+                var r = TelegraphResolve.Resolve(p, s);
+                Assert.True(r.VoidFallback);
+                Assert.Equal(0.2f, r.VoidDim, 4);
+            }
+        }
+
     }
 }

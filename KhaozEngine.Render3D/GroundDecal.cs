@@ -94,5 +94,41 @@ namespace KhaozEngine.Render3D
         /// (0 = legacy, fill shows only where the sweep has reached). Lets the full extent read without an
         /// outline. 0 (default) = inert.</summary>
         public float BaseFill;
+
+        /// <summary>
+        /// Project onto the virtual horizontal plane at <see cref="Center"/>.Y wherever the decal's usual paint
+        /// surface is missing, instead of leaving the decal truncated at the geometry's edge. A range ring
+        /// overhanging a floating island's edge keeps reading over the void rather than vanishing. false (default)
+        /// keeps the legacy depth-only behaviour, byte-for-byte.
+        /// </summary>
+        /// <remarks>
+        /// The decal still CONFORMS to any surface inside its Y band (<see cref="YTolerance"/> / <see cref="MaxStep"/>),
+        /// exactly as it always did. The plane is a fallback for the two cases where that surface is not there:
+        /// background (no geometry at all) and geometry outside the band (a cliff face below the decal, a lower
+        /// ledge).
+        /// <para>
+        /// In the out-of-band case the plane is painted only where it is genuinely VISIBLE, decided by a depth
+        /// comparison against the surface actually at that pixel, not by whether geometry is present. Both answers
+        /// occur, and the difference is not cosmetic:
+        /// </para>
+        /// <list type="bullet">
+        /// <item>A ring overhanging a mesa hangs at the top surface's height while the cliff recedes BELOW and behind
+        /// it, so the plane is nearer and is painted. The ring crosses the cliff unbroken. (Treating "geometry is
+        /// present" as "do not project" instead costs the whole screen band the cliff covers, which for a typical
+        /// mesa is most of the ring's near arc.)</item>
+        /// <item>A wall standing ON the decal's ground, with the decal passing under it, puts real geometry in FRONT
+        /// of the plane. The plane is discarded there, so the decal is occluded rather than x-rayed through solid.</item>
+        /// </list>
+        /// <para>
+        /// Both are pinned by <c>GroundDecalVoidGoldenTests</c> and shown in the <c>telegraph_ground_void_edge</c> and
+        /// <c>telegraph_ground_void_wall</c> showcase dumps.
+        /// </para>
+        /// </remarks>
+        public bool VoidFallback;
+
+        /// <summary>Alpha scale applied ONLY to plane-projected pixels, so they read as projected rather than as
+        /// standing on ground. 0 (default) = no dim, i.e. projected pixels match ground pixels; 1 = fully
+        /// transparent. Clamped to [0,1]. Ignored unless <see cref="VoidFallback"/> is set.</summary>
+        public float VoidDim;
     }
 }

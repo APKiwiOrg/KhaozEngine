@@ -2036,7 +2036,7 @@ namespace KhaozEngine.Render3D
                         _shadowDecals.Add(blobDecal);
                 if (_shadowDecals.Count > 0)
                 {
-                    _res.ResolveDepth(cl);
+                    _res.ResolveDepthNormal(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
                     _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_shadowDecals));
@@ -2145,10 +2145,12 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Under MSAA the geometry passes wrote a MULTISAMPLED MRT; resolve the linear-depth into the single-sample
-            // DepthColorTex now (before the decals, which SAMPLE it to reconstruct the surface, and before the post
-            // edge pass which also samples it). No-op when not multisampled.
-            _res.ResolveDepth(cl);
+            // Under MSAA the geometry passes wrote a MULTISAMPLED MRT; resolve the depth AND the encoded normal into
+            // the single-sample DepthColorTex / NormalTex now - before the decals, which SAMPLE both (the depth to
+            // reconstruct the surface, the normal so a void-fallback decal can tell a terrain dip from the top of a
+            // cliff face), and before the post edge pass which also samples them. Every normal writer binds ModelFB
+            // and is complete by this line; nothing after it does. No-op when not multisampled.
+            _res.ResolveDepthNormal(cl);
 
             // Background pass, before the decals: whichever mode is selected paints the no-geometry pixels and marks
             // them alpha 1. Mutually exclusive by construction (Post.Background derives the sky-over-starfield
@@ -2178,7 +2180,7 @@ namespace KhaozEngine.Render3D
                 _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
-            // (already valid via the ResolveDepth call above the sky pass) for the shore fade. Depth test ON (so
+            // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so
             // terrain/props above the surface occlude it) but depth WRITE off (so it never touches the normal/
             // linear-depth MRT the outline pass reads below) - see Rendering.WaterRenderer / ShaderSources.WaterVert
             // for the full reasoning. Fully skipped when nothing is queued, so a frame with no DrawWater call
@@ -2194,7 +2196,7 @@ namespace KhaozEngine.Render3D
             // before the post chain, into ColorDepthFB with the depth test on (no write) so geometry occludes
             // them. ONE premultiplied instanced draw over the back-to-front sorted queue: alpha smoke and additive
             // glow interleave correctly, and additive energy feeds bloom. The fragment samples the resolved
-            // DepthColorTex (valid via the ResolveDepth call above the sky pass) for the soft fade, skipping
+            // DepthColorTex (valid via the ResolveDepthNormal call above the sky pass) for the soft fade, skipping
             // samples that equal the background clear marker (Post.BackgroundColor red channel) so sprites never
             // dim against empty sky. Fully skipped when nothing is queued, so a frame with no DrawParticle call
             // renders byte-identical to before this pass existed.
@@ -2224,13 +2226,13 @@ namespace KhaozEngine.Render3D
 
             // Resolve the multisampled lit colour + encoded normal into the single-sample targets the post chain
             // samples (after ALL MRT writers: geometry + decals + water). No-op when not multisampled.
-            _res.ResolveColorNormal(cl);
+            _res.ResolveColor(cl);
             // ColorTex now holds this frame's resolved colour: mark it so next frame's crossfade capture knows a real
             // previous frame exists (guards against sampling a blank target the frame right after a resize).
             _transitions.NoteFrameResolved();
 
             // Screen-space distortion offset field: accumulate the queued distortion sprites into the (lazily
-            // allocated above) half/quarter-res target, reading the resolved scene depth (via the ResolveDepth above
+            // allocated above) half/quarter-res target, reading the resolved scene depth (via the ResolveDepthNormal above
             // the sky pass) for occlusion, BEFORE the post chain re-samples the scene colour through it (the apply
             // pass is _post.Run's FIRST pass). Same camera basis + background marker as the particle pass. resRatio
             // (the full-res/offset-res divisor) matches EnsureDistortion's divisor so the fragment scales its

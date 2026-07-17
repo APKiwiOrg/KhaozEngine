@@ -143,7 +143,7 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Marks that a full frame has resolved into <c>ColorTex</c> at the current size. Call once per frame
-        /// AFTER <c>ResolveColorNormal</c>, so the NEXT frame's <see cref="BeginFrame"/> knows <c>ColorTex</c> holds a
+        /// AFTER <c>ResolveColor</c>, so the NEXT frame's <see cref="BeginFrame"/> knows <c>ColorTex</c> holds a
         /// real previous frame (not a blank post-resize target).</summary>
         public void NoteFrameResolved() => _haveResolvedFrame = true;
 

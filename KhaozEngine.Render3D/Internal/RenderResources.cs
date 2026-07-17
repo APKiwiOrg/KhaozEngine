@@ -194,22 +194,32 @@ namespace KhaozEngine.Render3D.Internal
             }
         }
 
-        /// <summary>Resolve the multisampled MRT's linear-depth into the single-sample <see cref="DepthColorTex"/> the
-        /// ground-decal pass + post edge pass sample. Call after the geometry passes, before the decal pass. No-op
-        /// when not <see cref="Msaa"/>.</summary>
-        public void ResolveDepth(IGpuCommandList cl)
-        {
-            if (Msaa) cl.ResolveTexture(MsDepthColor!, DepthColorTex);
-        }
-
-        /// <summary>Resolve the multisampled lit colour + encoded normal into the single-sample targets the post
-        /// chain samples. Call after all MRT writers (geometry + decals), before the post chain. No-op when not
-        /// <see cref="Msaa"/>.</summary>
-        public void ResolveColorNormal(IGpuCommandList cl)
+        /// <summary>Resolve the multisampled MRT's depth AND encoded normal into the single-sample
+        /// <see cref="DepthColorTex"/> / <see cref="NormalTex"/> that the ground-decal pass + post edge pass sample.
+        /// Call after the geometry passes, before the decal pass. No-op when not <see cref="Msaa"/>.
+        /// <para>
+        /// The NORMAL is resolved here, with the depth, rather than later with the colour: the ground-decal pass reads
+        /// it (a void-fallback decal needs the surface orientation to tell a terrain dip from the top of a cliff face)
+        /// and would otherwise sample a stale resolve under MSAA. This is safe because only the MRT passes write the
+        /// normal attachment - model, textured billboards, beams, trails and overlay meshes all bind ModelFB and are
+        /// complete by this point, while every LATER pass (sky/starfield, decals, water, particles) binds ColorDepthFB
+        /// and cannot touch it. The colour, which the decals DO write, still resolves after them in
+        /// <see cref="ResolveColor"/>.
+        /// </para></summary>
+        public void ResolveDepthNormal(IGpuCommandList cl)
         {
             if (!Msaa) return;
-            cl.ResolveTexture(MsColor!, ColorTex);
+            cl.ResolveTexture(MsDepthColor!, DepthColorTex);
             cl.ResolveTexture(MsNormal!, NormalTex);
+        }
+
+        /// <summary>Resolve the multisampled lit colour into the single-sample target the post chain samples. Call
+        /// after all colour writers (geometry + decals + water + particles), before the post chain. The normal is NOT
+        /// resolved here - it lands earlier, in <see cref="ResolveDepthNormal"/>, because the decal pass reads it.
+        /// No-op when not <see cref="Msaa"/>.</summary>
+        public void ResolveColor(IGpuCommandList cl)
+        {
+            if (Msaa) cl.ResolveTexture(MsColor!, ColorTex);
         }
 
         /// <summary>Lazily (re)allocate or free the distortion offset target (<c>R16G16Float</c>) to match

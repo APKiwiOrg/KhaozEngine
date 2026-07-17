@@ -85,6 +85,8 @@ namespace KhaozEngine.Telegraphs
                 InteriorDim = r.InteriorDim,
                 Runner = r.Runner,
                 BaseFill = r.BaseFill,
+                VoidFallback = r.VoidFallback,
+                VoidDim = r.VoidDim,
             };
         }
 

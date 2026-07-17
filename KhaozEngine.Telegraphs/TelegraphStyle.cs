@@ -117,6 +117,22 @@ namespace KhaozEngine.Telegraphs
         /// ignores this field.</summary>
         public float FeatherWidthWorld;
 
+        /// <summary>Opt-in: the 3D ground decal projects onto its own horizontal plane wherever its usual
+        /// paint surface is missing, instead of truncating at the geometry's edge. A range ring
+        /// overhanging a floating island's edge keeps reading over the void. The decal still conforms to
+        /// any surface within its Y band; the plane covers background and out-of-band geometry, and is
+        /// painted there only where a depth comparison says it is genuinely visible (so it crosses in
+        /// front of a cliff it overhangs, but is occluded by a wall standing in front of it, never
+        /// x-rayed through). Default false keeps the legacy depth-only behaviour. See
+        /// <c>GroundDecal.VoidFallback</c>. The 2D <c>TelegraphRenderer2D</c> ignores this field.</summary>
+        public bool VoidFallback;
+
+        /// <summary>Alpha scale applied only to the plane-projected pixels of a <see cref="VoidFallback"/>
+        /// decal, so they read as projected rather than as standing on ground. 0 (default) = no dim,
+        /// 1 = fully transparent. Clamped to 0..1. Ignored unless <see cref="VoidFallback"/> is set. The
+        /// 2D <c>TelegraphRenderer2D</c> ignores this field.</summary>
+        public float VoidDim;
+
         /// <summary>Neutral red-orange danger zone: alpha-blended outline + fill, all animations on.</summary>
         public static TelegraphStyle Generic => new()
         {

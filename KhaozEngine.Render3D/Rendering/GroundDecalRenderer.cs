@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -14,7 +15,16 @@ namespace KhaozEngine.Render3D.Rendering
     /// (ColorDepthFB), sampling the linear depth to reconstruct each pixel's surface world position and painting the
     /// decal's analytic shape onto the ground/terrain. Runs after the model+beam passes and before the post chain, so
     /// decals are occluded by geometry (the read-only depth test rejects no-geometry background, the Y-band gate keeps
-    /// shapes off vertical faces) and flow through quantize/blit. Two pipelines: alpha and additive.
+    /// shapes off vertical faces) and flow through quantize/blit.
+    /// <para>
+    /// FOUR PIPELINES: {alpha, additive} x {Greater, Equal}. The Greater pair is the base pass and paints every decal
+    /// on GEOMETRY pixels. The Equal pair is its exact complement and paints only the
+    /// <see cref="GroundDecal.VoidFallback"/>-flagged subset, on BACKGROUND pixels, projecting onto the decal's own
+    /// horizontal plane so an overhanging shape reads over the void instead of truncating at the geometry's edge. A
+    /// flagged decal is therefore drawn TWICE, once per pass, which is safe because the two depth tests partition the
+    /// screen with no overlap and no gaps. Zero-neutral: with no flagged decals the instance bytes are identical, the
+    /// void run list is empty, and the Equal pipelines are never bound.
+    /// </para>
     /// </summary>
     /// <remarks>
     /// BATCHED + FOOTPRINT-BOUNDED. Consecutive decals of the same blend are coalesced into runs (see
@@ -45,7 +55,7 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Gate;          // x=groundY, y=yTol, z=maxStep, w=featherWidth
             public Vector4 PatternP;      // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
             public Vector4 Energy;        // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
-            public Vector4 Extra;         // x=baseFill, yzw reserved 0
+            public Vector4 Extra;         // x=baseFill, y=voidPath (0=depth-reconstruct, 1=plane-project), z=voidDim, w reserved 0
         }
 
         /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). ONE uniform buffer
@@ -78,13 +88,17 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
-        IGpuPipeline _alphaPipe, _additivePipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
+        // Greater at z=1: every decal, on GEOMETRY pixels. Rebuilt by SetOutputs when the MRT sample count (MSAA) changes.
+        IGpuPipeline _alphaPipe, _additivePipe;
+        // Equal at z=1: the exact complement, on BACKGROUND pixels. Bound only when a flagged decal is in the frame.
+        IGpuPipeline _voidAlphaPipe, _voidAdditivePipe;
         readonly List<IDisposable> _retired = new();
         readonly IGpuBuffer _frameUbo;            // 80 bytes: RAW inverse view-projection + time/quality, shared by every decal
         IGpuBuffer? _instances;                   // per-instance attribute stream, grown geometrically (old one retired)
         int _capacity;
         DecalInstance[] _packed = Array.Empty<DecalInstance>();   // reused CPU scratch, sized with the buffer
-        readonly List<DecalRun> _runs = new();
+        readonly List<DecalRun> _runs = new();        // base pass, over every decal
+        readonly List<DecalRun> _voidRuns = new();    // void pass, over the flagged subset only (empty = zero extra draws)
         IGpuResourceSet? _set;
         RenderResources? _bound;
         int _boundGen;
@@ -103,13 +117,16 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.DecalVert, ShaderSources.DecalFrag);
+            // Still ONE uniform buffer (the Metal invariant); the extra TEXTURE is fine. NormalTex is appended last so
+            // the existing bindings do not renumber. Only the void-fallback path reads it, to reject a near-vertical
+            // face as "not this decal's ground" - the Y band alone cannot tell the top of a cliff from a terrain dip.
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("NormalTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
             _frameUbo = f.CreateBuffer(new GpuBufferDescription(80, GpuBufferUsage.UniformBuffer));
-            _alphaPipe = Pipe(f, colorOutput, GpuBlendAttachment.AlphaBlend);
-            _additivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive);
+            BuildPipelines(f, colorOutput);
         }
 
         /// <summary>Rebuild the pipelines for a new colour-target output description (e.g. the MRT became multisampled
@@ -117,20 +134,35 @@ namespace KhaozEngine.Render3D.Rendering
         public void SetOutputs(GpuOutputDescription colorOutput)
         {
             _alphaPipe.Dispose(); _additivePipe.Dispose();
-            var f = _gd.Factory;
-            _alphaPipe = Pipe(f, colorOutput, GpuBlendAttachment.AlphaBlend);
-            _additivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive);
+            _voidAlphaPipe.Dispose(); _voidAdditivePipe.Dispose();
+            BuildPipelines(_gd.Factory, colorOutput);
         }
 
-        IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs, GpuBlendAttachment blend) =>
+        /// <summary>The four pipelines: {alpha, additive} x {Greater = geometry, Equal = background}. The Equal pair is
+        /// created unconditionally but bound only when the frame carries a flagged decal.</summary>
+        [MemberNotNull(nameof(_alphaPipe), nameof(_additivePipe), nameof(_voidAlphaPipe), nameof(_voidAdditivePipe))]
+        void BuildPipelines(IGpuResourceFactory f, GpuOutputDescription colorOutput)
+        {
+            _alphaPipe = Pipe(f, colorOutput, GpuBlendAttachment.AlphaBlend, GpuComparison.Greater);
+            _additivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive, GpuComparison.Greater);
+            _voidAlphaPipe = Pipe(f, colorOutput, GpuBlendAttachment.AlphaBlend, GpuComparison.Equal);
+            _voidAdditivePipe = Pipe(f, colorOutput, GpuBlendAttachment.Additive, GpuComparison.Equal);
+        }
+
+        IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs, GpuBlendAttachment blend, GpuComparison depth) =>
             f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = new[] { blend },
-                // Read-only depth test: the far-plane quad (DecalVert emits z=1) passes Greater only where stored depth
-                // is nearer than the far plane, i.e. only on scene geometry. Background (cleared far) is rejected. No
-                // depth write, so the scene depth is untouched for any later pass.
-                DepthStencil = new GpuDepthStencilState(depthTestEnabled: true, depthWriteEnabled: false, GpuComparison.Greater),
+                // Read-only depth test on the far-plane quad (DecalVert emits z=1), one of an exact complementary pair:
+                //   Greater - stored depth is NEARER than the far plane, i.e. scene GEOMETRY only (background rejected).
+                //   Equal   - stored depth still EQUALS the cleared far plane, i.e. BACKGROUND only (geometry rejected),
+                //             the same selection SkyRenderer and StarfieldRenderer use for their background passes.
+                // Together they partition the screen with no overlap and no gaps, which is what lets a flagged decal be
+                // drawn twice (once per pass) without any double-blending. GreaterEqual would be wrong for the void
+                // pipeline: 1 >= any storedZ, so it would paint over ALL geometry. No depth write in either, so the
+                // scene depth is untouched for any later pass.
+                DepthStencil = new GpuDepthStencilState(depthTestEnabled: true, depthWriteEnabled: false, depth),
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
@@ -164,7 +196,7 @@ namespace KhaozEngine.Render3D.Rendering
             // does not churn on instance-buffer regrowth the way the old dynamic-offset set did).
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             _set?.Dispose();
-            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex, _gd.PointSampler, _frameUbo));
+            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex, _gd.PointSampler, _frameUbo, res.NormalTex));
             _bound = res; _boundGen = res.Generation;
         }
 
@@ -180,7 +212,9 @@ namespace KhaozEngine.Render3D.Rendering
             if (_packed.Length < _capacity) _packed = new DecalInstance[_capacity];
         }
 
-        /// <summary>Pure: pack a decal + its computed NDC footprint rect into the per-instance attribute struct.</summary>
+        /// <summary>Pure: pack a decal + its computed NDC footprint rect into the per-instance attribute struct. This
+        /// is the GEOMETRY-pass instance. The void lanes stay ZERO for an unflagged decal, whatever else is set on it,
+        /// so its bytes are exactly what they were before the fallback existed - the zero-neutral contract.</summary>
         public static DecalInstance PackInstance(in GroundDecal d, in Vector4 screenRect) => new()
         {
             ScreenRect = screenRect,
@@ -192,8 +226,28 @@ namespace KhaozEngine.Render3D.Rendering
             Gate = new Vector4(d.Center.Y, d.YTolerance, d.MaxStep, d.FeatherWidth),
             PatternP = new Vector4((int)d.Pattern, d.PatternSpeed, d.PatternScale, d.InteriorDim),
             Energy = new Vector4(d.RimGlow, d.SweepGlow, d.Sparkle, d.Runner),
-            Extra = new Vector4(d.BaseFill, 0f, 0f, 0f),
+            // y = 0: this instance reads real geometry. w = 1 asks the geometry path to fall back to the decal's own
+            // plane where the surface it finds is OUT of the Y band but the plane is nearer than that surface (an
+            // overhanging ring hanging in front of the cliff below it). Both void lanes are gated on the flag, so an
+            // unflagged decal packs (baseFill, 0, 0, 0) exactly as it always did, even if VoidDim was left set.
+            Extra = new Vector4(d.BaseFill, 0f, VoidDimOf(d), d.VoidFallback ? 1f : 0f),
         };
+
+        /// <summary>The clamped void dim, or 0 when the decal did not opt in (so an authored-but-unused VoidDim can
+        /// never move an unflagged decal's bytes).</summary>
+        static float VoidDimOf(in GroundDecal d) => d.VoidFallback ? Math.Clamp(d.VoidDim, 0f, 1f) : 0f;
+
+        /// <summary>Pure: pack a flagged decal's BACKGROUND instance - byte-for-byte <see cref="PackInstance"/> except
+        /// the Extra lane, which raises the background marker (y=1) the fragment shader branches on. Delegates so the
+        /// base packing stays the single source of truth: a new per-decal field only ever has to be added in one
+        /// place. The caller passes the FLAT screen rect (<see cref="TryComputeScreenRectFlat"/>), not the Y-band one.
+        /// The fallback-request lane (w) is cleared: this instance IS the plane path, it does not ask for it.</summary>
+        public static DecalInstance PackVoidInstance(in GroundDecal d, in Vector4 screenRect)
+        {
+            DecalInstance inst = PackInstance(d, screenRect);
+            inst.Extra = new Vector4(d.BaseFill, 1f, VoidDimOf(d), 0f);
+            return inst;
+        }
 
         /// <summary>World-space bounding radius of a decal's painted shape about its <see cref="GroundDecal.Center"/>
         /// (rotation-invariant, since every shape rotates about +Y): the max radial extent any painted texel can
@@ -219,12 +273,26 @@ namespace KhaozEngine.Render3D.Rendering
         /// </summary>
         internal static bool TryComputeScreenRect(in GroundDecal d, in Matrix4x4 clipVp, float ndcMargin, out Vector4 rect)
         {
+            float minY = d.Center.Y - d.YTolerance, maxY = d.Center.Y + d.MaxStep;
+            if (maxY < minY) (minY, maxY) = (maxY, minY);   // a negative-authored band still yields a valid AABB
+            return TryComputeScreenRectCore(d, clipVp, ndcMargin, minY, maxY, out rect);
+        }
+
+        /// <summary>The VOID pass's footprint rect: the same AABB FLATTENED onto the decal's own plane
+        /// (minY = maxY = <see cref="GroundDecal.Center"/>.Y), which is exactly where the void path projects. Tighter
+        /// than, and correct where the Y-gate band is not: the plane projection never leaves y = Center.Y, so the
+        /// gate band would only inflate the quad with pixels the shader discards anyway. Same camera-straddle
+        /// fullscreen fallback contract as <see cref="TryComputeScreenRect"/>. Pure, headless-testable.</summary>
+        internal static bool TryComputeScreenRectFlat(in GroundDecal d, in Matrix4x4 clipVp, float ndcMargin, out Vector4 rect)
+            => TryComputeScreenRectCore(d, clipVp, ndcMargin, d.Center.Y, d.Center.Y, out rect);
+
+        /// <summary>Shared core of the two rect builders, parameterized on the AABB's Y span.</summary>
+        static bool TryComputeScreenRectCore(in GroundDecal d, in Matrix4x4 clipVp, float ndcMargin, float minY, float maxY, out Vector4 rect)
+        {
             rect = FullScreenRect;
             float r = BoundingRadius(d) + 2f * MathF.Max(d.EdgeThickness, 1e-4f);   // include the outline/AA band
             float minX = d.Center.X - r, maxX = d.Center.X + r;
             float minZ = d.Center.Z - r, maxZ = d.Center.Z + r;
-            float minY = d.Center.Y - d.YTolerance, maxY = d.Center.Y + d.MaxStep;
-            if (maxY < minY) (minY, maxY) = (maxY, minY);   // a negative-authored band still yields a valid AABB
 
             float nx0 = float.MaxValue, ny0 = float.MaxValue, nx1 = float.MinValue, ny1 = float.MinValue;
             const float wEps = 1e-4f;
@@ -266,6 +334,40 @@ namespace KhaozEngine.Render3D.Rendering
             }
         }
 
+        /// <summary>
+        /// Coalesce the <see cref="GroundDecal.VoidFallback"/>-flagged SUBSET of <paramref name="decals"/> (in
+        /// submission order) into <paramref name="runs"/>. Start indices address the void instances APPENDED after
+        /// every base instance, so they begin at <paramref name="baseOffset"/> (= the decal count). Void slots are
+        /// contiguous by construction, so - exactly like <see cref="CoalesceDecalRuns"/> - a run breaks only on a
+        /// blend change and submission order is preserved. Unflagged decals contribute nothing, so a frame with none
+        /// yields ZERO runs and therefore zero extra draws and zero Equal-pipeline binds: the zero-neutral contract.
+        /// Pure + headless-testable. <paramref name="runs"/> is Cleared and refilled.
+        /// </summary>
+        internal static void CoalesceVoidRuns(ReadOnlySpan<GroundDecal> decals, int baseOffset, List<DecalRun> runs)
+        {
+            runs.Clear();
+            int slot = baseOffset;
+            for (int i = 0; i < decals.Length; i++)
+            {
+                if (!decals[i].VoidFallback) continue;
+                DecalBlend blend = decals[i].Blend;
+                if (runs.Count > 0 && runs[^1].Blend == blend)
+                    runs[^1] = new DecalRun(blend, runs[^1].Start, runs[^1].Count + 1);
+                else
+                    runs.Add(new DecalRun(blend, slot, 1));
+                slot++;
+            }
+        }
+
+        /// <summary>Count the void-flagged decals in <paramref name="decals"/>: how many instances the void pass
+        /// appends, and thus how far past the decal count the instance buffer must reach.</summary>
+        internal static int CountVoidDecals(ReadOnlySpan<GroundDecal> decals)
+        {
+            int n = 0;
+            for (int i = 0; i < decals.Length; i++) if (decals[i].VoidFallback) n++;
+            return n;
+        }
+
         /// <summary>Draw all queued decals into ColorDepthFB (lit color + read-only scene depth) as one instanced draw
         /// per blend run. <paramref name="timeSeconds"/> drives the animated noise + edge energy and
         /// <paramref name="quality"/> folds into the Frame UBO's quality lane (Reduced drops the second noise octave and
@@ -277,7 +379,8 @@ namespace KhaozEngine.Render3D.Rendering
         public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, ReadOnlySpan<GroundDecal> decals)
         {
             if (decals.Length == 0) return 0;
-            EnsureCapacity(decals.Length);
+            int voidCount = CountVoidDecals(decals);
+            EnsureCapacity(decals.Length + voidCount);
             BindTargets(res);
             // Reconstruct with the RAW view-projection inverse (NOT GpuClip-corrected): the decal frag unprojects
             // screen->world like Camera.ScreenToRay picking, which is CPU/backend-independent. The clip-CORRECTED
@@ -300,9 +403,20 @@ namespace KhaozEngine.Render3D.Rendering
                     ? r : FullScreenRect;
                 _packed[i] = PackInstance(decals[i], rect);
             }
-            cl.UpdateBuffer(_instances!, 0, ((ReadOnlySpan<DecalInstance>)_packed).Slice(0, decals.Length));
+            // Void instances are APPENDED after every base instance, never interleaved, so the base slice's bytes are
+            // exactly what they were before this feature existed and an unflagged frame packs identically.
+            int slot = decals.Length;
+            for (int i = 0; i < decals.Length; i++)
+            {
+                if (!decals[i].VoidFallback) continue;
+                Vector4 rect = (!ForceFullscreenQuads && TryComputeScreenRectFlat(decals[i], clipVp, NdcMargin, out Vector4 r))
+                    ? r : FullScreenRect;
+                _packed[slot++] = PackVoidInstance(decals[i], rect);
+            }
+            cl.UpdateBuffer(_instances!, 0, ((ReadOnlySpan<DecalInstance>)_packed).Slice(0, decals.Length + voidCount));
 
             CoalesceDecalRuns(decals, _runs);
+            CoalesceVoidRuns(decals, decals.Length, _voidRuns);
             cl.SetFramebuffer(res.ColorDepthFB);
             cl.SetVertexBuffer(0, _instances!);
             foreach (var run in _runs)
@@ -313,13 +427,23 @@ namespace KhaozEngine.Render3D.Rendering
                 // slice of the shared instance buffer (the same base-instance path the model/shadow instanced draws use).
                 cl.Draw(6, (uint)run.Count, 0, (uint)run.Start);
             }
-            return _runs.Count;
+            // Void pass: the Equal-at-far complement, over the flagged subset only. Empty for an unflagged frame, so
+            // this loop binds nothing and issues nothing. The two passes are disjoint by hardware (Greater and Equal at
+            // z=1 partition the screen), so running it second is bookkeeping, not a blend-order decision.
+            foreach (var run in _voidRuns)
+            {
+                cl.SetPipeline(run.Blend == DecalBlend.Additive ? _voidAdditivePipe : _voidAlphaPipe);
+                cl.SetGraphicsResourceSet(0, _set!);
+                cl.Draw(6, (uint)run.Count, 0, (uint)run.Start);
+            }
+            return _runs.Count + _voidRuns.Count;
         }
 
         public void Dispose()
         {
             _set?.Dispose();
             _alphaPipe.Dispose(); _additivePipe.Dispose();
+            _voidAlphaPipe.Dispose(); _voidAdditivePipe.Dispose();
             _layout.Dispose(); _shaders.Dispose();
             _frameUbo.Dispose();
             _instances?.Dispose();

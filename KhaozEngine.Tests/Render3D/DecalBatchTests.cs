@@ -201,5 +201,188 @@ namespace KhaozEngine.Tests.Render3D
         Assert.Equal(new Vector4(0.3f, 0f, 0f, 0f), i.Extra);
     }
 
+    // ---- Void fallback (GroundDecal.VoidFallback / VoidDim) ----
+    // The feature's whole safety argument is that it is opt-in and additive: a decal that does not ask for it packs
+    // and draws exactly what it did before. These tests are that contract.
+
+    static GroundDecal VoidCircle(float cx, float cz, DecalBlend blend = DecalBlend.Alpha, float voidDim = 0f) => new()
+    {
+        Shape = DecalShape.Circle, Center = new Vector3(cx, 1f, cz), Size = new Vector4(2f, 0, 0, 0),
+        FillColor = new Color(1f, 0.2f, 0.1f, 0.6f), OutlineColor = new Color(1f, 0.9f, 0.2f, 0.9f),
+        EdgeThickness = 0.08f, FillFraction = 1f, Blend = blend, YTolerance = 0.3f, MaxStep = 0.4f,
+        VoidFallback = true, VoidDim = voidDim,
+    };
+
+    [Fact]
+    public void PackInstance_keeps_the_void_lanes_zero_for_an_unflagged_decal()
+    {
+        // The zero-neutral lock. An unflagged decal packs the pre-feature bytes even if VoidDim was authored, so a
+        // stray VoidDim on a style that never opted in cannot move a single byte of the geometry pass.
+        var d = VoidCircle(0f, 0f, voidDim: 0.4f);
+        d.VoidFallback = false;
+        d.BaseFill = 0.3f;
+        Assert.Equal(new Vector4(0.3f, 0f, 0f, 0f), GroundDecalRenderer.PackInstance(in d, Vector4.Zero).Extra);
+    }
+
+    [Fact]
+    public void PackInstance_asks_the_geometry_path_for_the_fallback_when_flagged()
+    {
+        // A flagged decal's BASE instance is not inert: out-of-band geometry (a cliff face below the decal's plane)
+        // must depth-test the plane rather than discard, or an overhanging ring loses everything that hangs in
+        // FRONT of that cliff. Extra.w is what asks for it; Extra.y stays 0 because this is still the geometry pass.
+        var d = VoidCircle(0f, 0f, voidDim: 0.15f);
+        d.BaseFill = 0.3f;
+        Assert.Equal(new Vector4(0.3f, 0f, 0.15f, 1f), GroundDecalRenderer.PackInstance(in d, Vector4.Zero).Extra);
+    }
+
+    [Fact]
+    public void PackVoidInstance_raises_the_background_marker_and_carries_the_dim()
+    {
+        var d = VoidCircle(0f, 0f, voidDim: 0.15f);
+        d.BaseFill = 0.3f;
+        var i = GroundDecalRenderer.PackVoidInstance(in d, Vector4.Zero);
+        Assert.Equal(new Vector4(0.3f, 1f, 0.15f, 0f), i.Extra);
+    }
+
+    [Fact]
+    public void PackVoidInstance_differs_from_the_base_instance_only_in_the_extra_lane()
+    {
+        var d = VoidCircle(2f, -3f, DecalBlend.Additive, voidDim: 0.2f);
+        var rect = new Vector4(-0.5f, -0.25f, 0.5f, 0.25f);
+        var b = GroundDecalRenderer.PackInstance(in d, rect);
+        var v = GroundDecalRenderer.PackVoidInstance(in d, rect);
+        Assert.Equal(b.ScreenRect, v.ScreenRect);
+        Assert.Equal(b.Center, v.Center);
+        Assert.Equal(b.Size, v.Size);
+        Assert.Equal(b.Fill, v.Fill);
+        Assert.Equal(b.Outline, v.Outline);
+        Assert.Equal(b.Params, v.Params);
+        Assert.Equal(b.Gate, v.Gate);
+        Assert.Equal(b.PatternP, v.PatternP);
+        Assert.Equal(b.Energy, v.Energy);
+        Assert.NotEqual(b.Extra, v.Extra);
+    }
+
+    [Theory]
+    [InlineData(-0.5f, 0f)]
+    [InlineData(1.6f, 1f)]
+    public void PackVoidInstance_clamps_the_dim(float authored, float expected)
+    {
+        var d = VoidCircle(0f, 0f, voidDim: authored);
+        Assert.Equal(expected, GroundDecalRenderer.PackVoidInstance(in d, Vector4.Zero).Extra.Z);
+    }
+
+    [Fact]
+    public void ScreenRectFlat_is_the_footprint_rect_flattened_onto_the_decal_plane()
+    {
+        // A decal with a TALL Y gate: the band rect must be strictly taller on screen than the flat one, because the
+        // iso camera projects the AABB's Y extent into screen Y. The flat rect is the tighter, correct void bound.
+        var d = VoidCircle(0f, 0f);
+        d.YTolerance = 4f;
+        d.MaxStep = 4f;
+        Matrix4x4 vp = IsoVp();
+
+        Assert.True(GroundDecalRenderer.TryComputeScreenRect(in d, vp, 0.02f, out Vector4 band));
+        Assert.True(GroundDecalRenderer.TryComputeScreenRectFlat(in d, vp, 0.02f, out Vector4 flat));
+        Assert.True(flat.W - flat.Y < band.W - band.Y, "the flat rect must be tighter in screen Y than the Y-gate band rect");
+        Assert.Equal(band.X, flat.X, 3);   // X extent is unaffected: only the Y span of the AABB changed
+        Assert.Equal(band.Z, flat.Z, 3);
+    }
+
+    [Fact]
+    public void ScreenRectFlat_ignores_the_y_gate_entirely()
+    {
+        // Two decals identical but for their Y gate must yield the same FLAT rect: the plane projection never leaves
+        // y = Center.Y, so the gate cannot legitimately influence its bound.
+        var a = VoidCircle(0f, 0f);
+        a.YTolerance = 0.3f; a.MaxStep = 0.4f;
+        var b = a;
+        b.YTolerance = 9f; b.MaxStep = 12f;
+        Matrix4x4 vp = IsoVp();
+
+        Assert.True(GroundDecalRenderer.TryComputeScreenRectFlat(in a, vp, 0.02f, out Vector4 ra));
+        Assert.True(GroundDecalRenderer.TryComputeScreenRectFlat(in b, vp, 0.02f, out Vector4 rb));
+        Assert.Equal(ra, rb);
+    }
+
+    static Matrix4x4 IsoVp()
+    {
+        var cam = new KhaozEngine.Render3D.IsoCamera3D();
+        return cam.ViewProjection;
+    }
+
+    static List<DecalRun> VoidRuns(params GroundDecal[] decals)
+    {
+        var runs = new List<DecalRun>();
+        GroundDecalRenderer.CoalesceVoidRuns(decals, decals.Length, runs);
+        return runs;
+    }
+
+    [Fact]
+    public void CoalesceVoidRuns_is_empty_when_nothing_is_flagged()
+    {
+        // THE zero-neutral assertion: no flagged decals means no void runs, which means no extra draws and the Equal
+        // pipelines are never bound.
+        Assert.Empty(VoidRuns(Circle(0, 0, 1f), Circle(2, 0, 1f, DecalBlend.Additive), Circle(4, 0, 1f)));
+        var runs = new List<DecalRun>();
+        GroundDecalRenderer.CoalesceVoidRuns(System.ReadOnlySpan<GroundDecal>.Empty, 0, runs);
+        Assert.Empty(runs);
+    }
+
+    [Fact]
+    public void CoalesceVoidRuns_addresses_instances_appended_after_the_base_ones()
+    {
+        // Three decals, the outer two flagged. Base instances occupy 0..2, so the void instances start at 3 and the
+        // run must point there, NOT at the flagged decals' own indices.
+        var decals = new[] { VoidCircle(0, 0), Circle(2, 0, 1f), VoidCircle(4, 0) };
+        var runs = VoidRuns(decals);
+        Assert.Single(runs);
+        Assert.Equal((DecalBlend.Alpha, 3, 2), (runs[0].Blend, runs[0].Start, runs[0].Count));
+    }
+
+    [Fact]
+    public void CoalesceVoidRuns_splits_at_blend_boundaries_preserving_submission_order()
+    {
+        var decals = new[]
+        {
+            VoidCircle(0, 0), VoidCircle(2, 0),
+            VoidCircle(4, 0, DecalBlend.Additive),
+            VoidCircle(6, 0),
+        };
+        var runs = VoidRuns(decals);
+        Assert.Equal(3, runs.Count);
+        Assert.Equal((DecalBlend.Alpha, 4, 2), (runs[0].Blend, runs[0].Start, runs[0].Count));
+        Assert.Equal((DecalBlend.Additive, 6, 1), (runs[1].Blend, runs[1].Start, runs[1].Count));
+        Assert.Equal((DecalBlend.Alpha, 7, 1), (runs[2].Blend, runs[2].Start, runs[2].Count));
+    }
+
+    [Fact]
+    public void CoalesceVoidRuns_skips_unflagged_decals_when_coalescing()
+    {
+        // An UNFLAGGED additive decal between two flagged alpha ones must not split the void run: it contributes no
+        // void instance, so the two flagged instances are still adjacent in the buffer.
+        var decals = new[] { VoidCircle(0, 0), Circle(2, 0, 1f, DecalBlend.Additive), VoidCircle(4, 0) };
+        var runs = VoidRuns(decals);
+        Assert.Single(runs);
+        Assert.Equal(2, runs[0].Count);
+    }
+
+    [Fact]
+    public void CountVoidDecals_counts_only_the_flagged()
+    {
+        Assert.Equal(0, GroundDecalRenderer.CountVoidDecals(new[] { Circle(0, 0, 1f), Circle(2, 0, 1f) }));
+        Assert.Equal(2, GroundDecalRenderer.CountVoidDecals(new[] { VoidCircle(0, 0), Circle(2, 0, 1f), VoidCircle(4, 0) }));
+    }
+
+    [Fact]
+    public void CoalesceDecalRuns_is_unaffected_by_the_void_flag()
+    {
+        // The base pass must not learn about the flag: run structure stays a pure function of the blend sequence.
+        var runs = new List<DecalRun>();
+        GroundDecalRenderer.CoalesceDecalRuns(new[] { VoidCircle(0, 0), Circle(2, 0, 1f), VoidCircle(4, 0) }, runs);
+        Assert.Single(runs);
+        Assert.Equal((DecalBlend.Alpha, 0, 3), (runs[0].Blend, runs[0].Start, runs[0].Count));
+    }
+
     }
 }

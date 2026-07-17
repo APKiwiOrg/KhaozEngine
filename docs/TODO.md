@@ -40,6 +40,20 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   also carries commit `4f056153` widening the Vulkan CI leg to the full-suite tier, which would
   reintroduce the flake if merged before mode 2 is fixed.
   **Blocked on:** branch `fix/vulkan-lavapipe-full-suite` (2026-07-17)
+- [ ] **Ground decals wrap down a sharp edge's vertical face (legacy, unflagged decals).** The Y-band gate is
+  `[Center.Y - YTolerance, Center.Y + MaxStep]` and `GroundTelegraphs` hardcodes `YTolerance = 0.3`, so the TOP
+  0.3 of any vertical face is inside the band and the decal conforms ONTO it, evaluated at that face's XZ
+  (pinned at the edge) instead of the decal's own. A range ring overhanging a mesa visibly drips down the cliff.
+  The gate's stated purpose is "conform to terrain, not walls" (`DecalFrag`), which it fails at the top of a
+  wall: at one pixel, with only depth, a terrain dip 0.3 below the plane and the top 0.3 of a cliff face are
+  arithmetically identical. The geometric normal is the only signal that separates them. 11.10.0 fixed this for
+  `VoidFallback` decals ONLY (normal-gated, so the release stayed zero-neutral for everyone else) and left the
+  legacy path alone: `GroundDecalRenderer` now binds `NormalTex`, so making it universal is a shader-side
+  `if` plus a golden rebake sweep, but it CHANGES existing decal rendering for every consumer and so wants its
+  own release and its own windowed A/B. Reproduced with the fallback off during 11.10.0; the `GroundNormalMinY`
+  0.5 threshold (60-degree slopes still count as ground) is the constant to reuse. Evidence: `CHANGELOG.md`
+  11.10.0, `KhaozEngine.Tests/Gpu/GroundDecalVoidGoldenTests.Golden_void_fallback_keeps_the_disc_flat_across_a_cliff_face`
+  (its legacy-delta control measures exactly this artifact).
 - [ ] **HDR chroma preservation is partial.** A saturated channel that clips at the display ceiling
   before the rescale still desaturates, even at `ChromaPreservation = 1`. Evidence: `CHANGELOG.md`
   11.7.0.

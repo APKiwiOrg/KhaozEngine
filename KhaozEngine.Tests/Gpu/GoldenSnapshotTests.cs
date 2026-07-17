@@ -224,6 +224,27 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("telegraph_modern", rgba, W, H);
         }
 
+        // Pins the opt-in void/plane fallback (GroundDecal.VoidFallback): a range ring overhanging a floating
+        // island's edge, projected onto its own plane where there is no geometry instead of truncating. The scene is
+        // shared with the raw-pixel A/B (GroundDecalVoidGoldenTests) and the showcase dumps
+        // (TelegraphVoidShowcaseGpuTests) - see VoidDecalScene for the geometry's derivation. This grid is a coarse
+        // net by nature (32x18 averaged cells, 0.06 tolerance); the pixel-level statements about WHICH region does
+        // what live in the A/B tests, which is deliberate after 11.9.0 showed the grid is blind to sparse detail.
+        // telegraph_ground and telegraph_modern staying byte-exact is the other half of the contract: they carry no
+        // flagged decals and must not move at all.
+        [GpuFact]
+        public void Golden3D_TelegraphGroundVoid()
+        {
+            MeshHandle island = default;
+
+            byte[] rgba = Render3DSnapshot.Capture(VoidDecalScene.W, VoidDecalScene.H,
+                setup: scene => island = VoidDecalScene.Setup(scene),
+                drawFrame: scene => VoidDecalScene.Draw(scene, island, voidFallback: true),
+                frames: 2);
+
+            GoldenCompare.AssertOrUpdate("telegraph_ground_void", rgba, VoidDecalScene.W, VoidDecalScene.H);
+        }
+
         // Shadows gap #1, blob tier: three meshes at different heights over a tile floor with ShadowMode.Blob on.
         // Each mesh submits a ShadowBlob at its footprint; the two grounded meshes drop a full soft dark blob, the
         // raised sphere drops a shrunk, lighter one (the height fade). Locks the blob grounding + the height-fade

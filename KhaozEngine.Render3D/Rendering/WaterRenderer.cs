@@ -11,7 +11,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>
     /// Draws the queued <see cref="WaterPlane"/> as an animated, flat, alpha-blended surface into the lit color
     /// attachment + read-only scene depth (ColorDepthFB), sampling the resolved scene depth to soften the alpha
-    /// near the shore. Runs AFTER the sky and the ground-decal passes and BEFORE <see cref="RenderResources.ResolveColorNormal"/>,
+    /// near the shore. Runs AFTER the sky and the ground-decal passes and BEFORE <see cref="RenderResources.ResolveColor"/>,
     /// so it is occluded by geometry above it (depth test ON) but never corrupts the normal/linear-depth MRT the
     /// outline pass reads (depth WRITE off - see the in-source note on <see cref="ShaderSources.WaterVert"/>). One
     /// draw per queued plane (its own dynamic-offset UBO slot, mirroring <see cref="GroundDecalRenderer"/>'s

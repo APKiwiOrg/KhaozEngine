@@ -1849,6 +1849,11 @@ void main() {
         // nearer than the far plane - i.e. only on scene geometry (background at the cleared far plane fails). The
         // bounded quad only shrinks the RASTERIZED area (the fullscreen version discarded every pixel outside the
         // footprint anyway), so the shaded output is identical while fill scales with decal area, not viewport area.
+        // ONE VERTEX SHADER, TWO PIPELINES: a decal with GroundDecal.VoidFallback set is drawn a SECOND time by an
+        // otherwise identical pipeline whose depth test is Equal at z=1 - the exact complement of Greater at z=1, so
+        // it passes on BACKGROUND only. That instance carries IExtra.y = 1 and the fragment shader projects onto the
+        // decal's own plane instead of reconstructing from depth. Unflagged decals emit no such instance, so the
+        // Equal pipelines are never bound and the pass is bit-identical to the pre-feature one.
         public const string DecalVert = @"#version 450
 layout(location=0) in vec4 IScreenRect;  // per-instance ndc footprint rect (minX, minY, maxX, maxY)
 layout(location=1) in vec4 ICenter;      // xyz world center, w = rotation
@@ -1859,7 +1864,7 @@ layout(location=5) in vec4 IParams;
 layout(location=6) in vec4 IGate;
 layout(location=7) in vec4 IPattern;   // x=pattern index, y=speed, z=cells per world unit, w=0
 layout(location=8) in vec4 IEnergy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
-layout(location=9) in vec4 IExtra;     // x=baseFill, yzw reserved 0
+layout(location=9) in vec4 IExtra;     // x=baseFill, y=voidPath (0/1), z=voidDim, w reserved 0
 layout(location=0) out vec4 vCenter;
 layout(location=1) out vec4 vSize;
 layout(location=2) out vec4 vFill;
@@ -1897,6 +1902,13 @@ layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
     vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w reserved
 };
+// GEOMETRIC world normal, encoded *0.5+0.5 by the model pass. Read ONLY by the void-fallback path (see below).
+layout(set=0, binding=3) uniform texture2D NormalTex;
+
+// Minimum world-up component for a surface to count as a decal's GROUND rather than a wall. n.y is cos(angle from
+// vertical): 1 = flat, 0 = a vertical face. 0.5 admits slopes up to 60 degrees, so real terrain still receives the
+// decal while a cliff or wall face never does.
+const float GroundNormalMinY = 0.5;
 layout(location=0) in vec4 Center;    // xyz world center, w = rotation (radians about +Y)
 layout(location=1) in vec4 Size;      // per-shape params (see GroundDecal.Size)
 layout(location=2) in vec4 Fill;      // rgb, a = fill alpha (already opacity-scaled)
@@ -1905,13 +1917,32 @@ layout(location=4) in vec4 Params;    // x=edgeThickness, y=fillFraction, z=flas
 layout(location=5) in vec4 Gate;      // x=groundY, y=yTolerance, z=maxStep, w=featherWidth (world units)
 layout(location=6) in vec4 PatternP;  // x=pattern index, y=speed (cycles/s), z=cells per world unit, w=interiorDim
 layout(location=7) in vec4 Energy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
-layout(location=8) in vec4 Extra;     // x=baseFill, yzw reserved 0
+layout(location=8) in vec4 Extra;     // x=baseFill, y=voidPath (0 = depth-reconstruct, 1 = plane-project), z=voidDim, w reserved 0
 layout(location=0) out vec4 oColor;
 
 // 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).
 float sdCircle(vec2 p, float r) { return length(p) - r; }
 float sdRing(vec2 p, float ri, float ro) { float d = length(p); return max(ri - d, d - ro); }
 float sdBox(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+
+// Intersect this pixel's camera ray with the horizontal plane y = planeY. The ray is built exactly the way
+// Camera.ScreenToRay builds it (unproject at NDC depth 0 and 1, direction = far - near, NOT normalized), which is
+// correct for both the orthographic iso camera (constant direction) and a perspective one (the w-divide fans it out).
+// Returns false when the ray is parallel to the plane or the plane lies behind the eye. tOut is the hit's parameter
+// along near->far, so it is directly comparable against ANY other point's parameter on the SAME ray - which is how
+// the geometry path below depth-tests the plane against a real surface.
+bool planeHit(vec2 ndcXY, float planeY, out vec3 hit, out float tOut, out vec3 ro, out vec3 rd)
+{
+    vec4 n4 = InvViewProj * vec4(ndcXY, 0.0, 1.0);
+    vec4 f4 = InvViewProj * vec4(ndcXY, 1.0, 1.0);
+    ro = n4.xyz / n4.w;
+    rd = f4.xyz / f4.w - ro;
+    if (abs(rd.y) < 1e-6) return false;
+    tOut = (planeY - ro.y) / rd.y;
+    if (tOut < 0.0) return false;
+    hit = ro + rd * tOut;
+    return true;
+}
 
 // Texture-free value noise for the animated fill patterns + sparkle. hash21 hashes a cell corner to a [0,1) scalar.
 // vnoise smoothly interpolates the four corners of the unit cell containing p (Perlin-style smootherstep weights).
@@ -1929,29 +1960,80 @@ float vnoise(vec2 p)
 }
 
 void main() {
-    // Skip pixels with no scene geometry. The single-channel depth target carries no usable alpha marker
-    // (sampling R32F returns a=1 by default), and its .r at the background is just the clear color, so
-    // reconstructing from it lands at arbitrary world points that smear the decal across the background. The
-    // normal target IS RGBA8 and the model writes its alpha = 1 on geometry (the clear leaves 0), so use it.
-    // No-geometry background pixels are already rejected by the hardware depth test (see DecalVert). Reconstruct
-    // the surface world position from the linear depth. Sample by integer pixel (texelFetch at gl_FragCoord) and
-    // build NDC from gl_FragCoord, NOT from an interpolated UV: render-target texture SAMPLING has a
+    // Build NDC from gl_FragCoord, NOT from an interpolated UV: render-target texture SAMPLING has a
     // backend-dependent Y origin (Veldrid does not normalize it; the post passes hide this because they sample and
     // write at the same UV so any flip cancels, but a reconstruction does not), whereas gl_FragCoord is upper-left
-    // on every backend. Reconstruct with the RAW (un-clip-corrected) inverse view-projection, matching the
-    // backend-independent Camera.ScreenToRay picking convention. This keeps the decal identical on Metal/D3D11/Vulkan.
+    // on every backend. Both paths below unproject with the RAW (un-clip-corrected) inverse view-projection,
+    // matching the backend-independent Camera.ScreenToRay picking convention, so the decal is identical on
+    // Metal/D3D11/Vulkan.
     ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
-    float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
-    vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, depth, 1.0);
-    vec4 wp = InvViewProj * ndc;
-    vec3 world = wp.xyz / wp.w;
+    vec2 ndcXY = vec2(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0);
+    vec3 world = vec3(0.0);
+    bool onPlane = false;   // this fragment paints the VIRTUAL plane rather than a real surface, so VoidDim applies
 
-    // Y-band gate: only paint surfaces near the ground plane (conform to terrain, not walls).
-    float gateLo = Gate.x - Gate.y;
-    float gateHi = Gate.x + Gate.z;
-    if (world.y < gateLo || world.y > gateHi) discard;
+    // WHICH SURFACE THIS FRAGMENT PAINTS. Extra.y says which PIPELINE drew this instance, and the two are disjoint
+    // by hardware: base instances draw with a Greater depth test at z=1 (passes on GEOMETRY only), void instances
+    // with the exact complement, an Equal test at z=1 (passes on BACKGROUND only, where the stored depth still
+    // equals the cleared far plane). That hardware split is not a nicety: the depth-colour target is CLEARED TO THE
+    // BACKGROUND COLOUR, not to the far plane, so its .r at a background pixel is an arbitrary value and the shader
+    // cannot tell background from geometry on its own. Only the depth test can.
+    if (Extra.y > 0.5) {
+        // BACKGROUND (flagged decals only). Nothing is drawn here at all, so the decal's own plane is visible
+        // wherever the ray reaches it. No depth comparison is possible or needed.
+        vec3 hit, ro, rd; float t;
+        if (!planeHit(ndcXY, Center.y, hit, t, ro, rd)) discard;
+        world = hit;
+        onPlane = true;
+        // No Y-band gate: the hit IS on the decal's plane by construction, so the gate is a tautology that only
+        // float error at grazing angles could fail.
+    } else {
+        // GEOMETRY. Reconstruct the real surface world position from the stored depth. Sample by integer pixel
+        // (texelFetch at gl_FragCoord). Background pixels never reach here, the hardware Greater test rejected them.
+        float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+        vec4 wp = InvViewProj * vec4(ndcXY, depth, 1.0);
+        vec3 g = wp.xyz / wp.w;
 
-    // Into shape-local XZ (translate by center, rotate by -rotation so +x is the facing axis).
+        // Y-band gate: only conform to surfaces near the decal's ground height (terrain, not walls).
+        float gateLo = Gate.x - Gate.y;
+        float gateHi = Gate.x + Gate.z;
+        bool isGround = (g.y >= gateLo && g.y <= gateHi);
+
+        // The band alone CANNOT tell a terrain dip YTolerance below the plane from the TOP YTolerance of a vertical
+        // cliff face - at one pixel, with only depth, those are the same number. Conforming onto the latter runs the
+        // decal down the cliff (evaluated at the cliff's XZ, pinned at the edge) instead of leaving it flat, which is
+        // exactly wrong for a decal whose whole point is to be a flat disc at its own height. The geometric normal is
+        // the only thing that separates them, so a fallback decal additionally requires a near-horizontal surface.
+        // Gated on the flag: an unflagged decal never samples this and keeps the legacy band-only behaviour, wart and
+        // all, so the zero-neutral contract holds. (That legacy wrap-down is a pre-existing artifact on any sharp
+        // edge - see docs/TODO.md.)
+        if (isGround && Extra.w > 0.5) {
+            vec3 nrm = texelFetch(sampler2D(NormalTex, Samp), ivec2(gl_FragCoord.xy), 0).xyz * 2.0 - 1.0;
+            isGround = nrm.y >= GroundNormalMinY;
+        }
+
+        if (isGround) {
+            world = g;                  // this decal's ground: today's exact path, byte-for-byte
+        } else if (Extra.w > 0.5) {
+            // NOT THIS DECAL'S GROUND, on a FALLBACK decal: either out of the Y band, or a wall/cliff face the
+            // normal test just rejected. The decal's own plane may still be genuinely VISIBLE in front of it: a
+            // ring overhanging a mesa's edge hangs at the top surface's height, so the cliff below and behind it
+            // does not hide it. Whether it does is a DEPTH question, not a has-geometry question, so compare the
+            // plane hit against this surface along the ray. Nearer wins. If the plane is behind (a wall standing on
+            // the decal's ground, the decal passing under it), the geometry occludes it and we discard rather than
+            // x-ray through solid.
+            vec3 hit, ro, rd; float t;
+            if (!planeHit(ndcXY, Center.y, hit, t, ro, rd)) discard;
+            float tGeom = (g.y - ro.y) / rd.y;   // same ray, same basis, so the parameters are directly comparable
+            if (t > tGeom) discard;              // plane is further along the ray than the surface: occluded
+            world = hit;
+            onPlane = true;
+        } else {
+            discard;                    // legacy: out of band and no fallback asked for
+        }
+    }
+
+    // Into shape-local XZ (translate by center, rotate by -rotation so +x is the facing axis). Everything from
+    // here down (SDF, feather, pattern, base fill, interior dim, energy lanes) is SHARED by both paths.
     vec2 q = world.xz - Center.xz;
     float c = cos(-Center.w), s = sin(-Center.w);
     vec2 local = vec2(q.x * c - q.y * s, q.x * s + q.y * c);
@@ -2112,6 +2194,10 @@ void main() {
     // Impact flash: brighten toward white. Kept exactly where the legacy shader had it.
     rgb = clamp(rgb + Params.z, 0.0, TimeQ.z);
 
+    // Void dim (Extra.z), applied to PLANE-projected pixels only, so a projection can read as projected rather than
+    // as standing on ground. Both plane paths set onPlane, and an unflagged decal can never reach either, so this is
+    // zero-neutral. Applied BEFORE the discard test so a fully dimmed (Extra.z = 1) plane pixel drops out entirely.
+    if (onPlane) a *= 1.0 - Extra.z;
     if (a <= 0.001) discard;
     // Edge-energy lanes (rim/sweep glow, max-composited) can push a above 1 on float render targets. Legacy
     // decals (all-new lanes zero) already keep a = max(fillA, outlineA) in [0,1], so this clamp is an identity
@@ -2227,7 +2313,7 @@ void main() {
         //      at the plane's world height. Depth test ON (Less, standard, so terrain/props above the surface occlude
         //      it, matching the textured-billboard/beam depth-interleave convention) but depth WRITE OFF: the outline
         //      pass reads the resolved normal/linear-depth MRT (ColorTex's siblings), and those are captured by the
-        //      OPAQUE model pass alone (see RenderResources.ResolveDepth/ResolveColorNormal, which run BEFORE this
+        //      OPAQUE model pass alone (see RenderResources.ResolveDepthNormal/ResolveColor, which run BEFORE this
         //      pass in Scene3D.RenderInternal) - a water depth WRITE would need its own MRT write to keep that
         //      buffer meaningful, which reflections/probes (out of scope, roadmap #9) would want but this LDR pass
         //      does not attempt. No-write keeps the edge outline tracing the solid geometry's silhouette (a

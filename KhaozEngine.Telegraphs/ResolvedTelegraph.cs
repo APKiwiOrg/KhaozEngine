@@ -83,6 +83,15 @@ namespace KhaozEngine.Telegraphs
         /// clamped to non-negative. The 2D renderer ignores it.</summary>
         public readonly float FeatherWidthWorld;
 
+        /// <summary>Whether the 3D ground decal projects onto its own horizontal plane where there is no
+        /// scene geometry, instead of truncating at the geometry's edge. Carried through from the style
+        /// unchanged. The 2D renderer ignores it.</summary>
+        public readonly bool VoidFallback;
+
+        /// <summary>Alpha scale applied only to void-projected pixels of a <see cref="VoidFallback"/> decal.
+        /// 0 = no dim. Carried through from the style clamped to 0..1. The 2D renderer ignores it.</summary>
+        public readonly float VoidDim;
+
         public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
             float edgeThickness, FillMode fillMode, TelegraphBlend blend)
             : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
@@ -126,6 +135,18 @@ namespace KhaozEngine.Telegraphs
             float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
             float patternScale, float rimGlow, float sweepGlow, float sparkle,
             float interiorDim, float runner, float baseFill, float edgeWidthWorld, float featherWidthWorld)
+            : this(fillColor, outlineColor, fillFraction, flashAdd, edgeThickness, fillMode, blend,
+                featherFraction, pattern, patternSpeed, patternScale, rimGlow, sweepGlow, sparkle,
+                interiorDim, runner, baseFill, edgeWidthWorld, featherWidthWorld, false, 0f)
+        {
+        }
+
+        public ResolvedTelegraph(Color fillColor, Color outlineColor, float fillFraction, float flashAdd,
+            float edgeThickness, FillMode fillMode, TelegraphBlend blend,
+            float featherFraction, TelegraphFillPattern pattern, float patternSpeed,
+            float patternScale, float rimGlow, float sweepGlow, float sparkle,
+            float interiorDim, float runner, float baseFill, float edgeWidthWorld, float featherWidthWorld,
+            bool voidFallback, float voidDim)
         {
             FillColor = fillColor;
             OutlineColor = outlineColor;
@@ -146,6 +167,8 @@ namespace KhaozEngine.Telegraphs
             BaseFill = baseFill;
             EdgeWidthWorld = edgeWidthWorld;
             FeatherWidthWorld = featherWidthWorld;
+            VoidFallback = voidFallback;
+            VoidDim = voidDim;
         }
     }
 }

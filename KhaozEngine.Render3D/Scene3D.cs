@@ -1601,10 +1601,9 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> concentric cascades (CPU-authored, NOT
-        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> and return the count. Every cascade centres on the
-        /// same ground point the camera is looking at. Cascade 0 is the tight near map
-        /// (<see cref="ShadowSettings.ShadowFocusRadius"/>) and the rest grow geometrically out to
+        /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> cascades (CPU-authored, NOT
+        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> and return the count. Cascade 0 is the tight near map
+        /// (<see cref="ShadowSettings.ShadowNearDistance"/>) and the rest grow geometrically out to
         /// <see cref="ShadowSettings.ResolvedMaxDistance"/> (the practical split), each texel-snapped independently so
         /// none shimmers under a camera pan. Factored out of <see cref="RenderShadowDepthPass"/> so the same matrices
         /// drive the depth pass, the receiver tail AND the pre-skin-pass caster-visibility test (the outermost cascade
@@ -1613,26 +1612,13 @@ namespace KhaozEngine.Render3D
         int ComputeShadowCascades(Vector3 eye)
         {
             var shadows = Post.Quality.Shadows;
-            // Focus the cascades on the ground the camera looks at: intersect the view-forward ray with the ground
-            // plane (y = ShadowGroundHeight). This centres the maps on the scene under the camera, not on the eye. If
-            // the ray is near-parallel to the ground (looking along the horizon), fall back to a fixed distance ahead.
-            Vector3 fwd = ActiveCamera.Forward;
-            Vector3 focus;
-            if (fwd.Y < -1e-3f)
-            {
-                float t = (shadows.ShadowGroundHeight - eye.Y) / fwd.Y;   // eye.Y + t*fwd.Y = groundHeight
-                t = Math.Clamp(t, 0f, shadows.ShadowFocusDistance * 4f + 1f);
-                focus = eye + fwd * t;
-            }
-            else
-            {
-                focus = eye + fwd * shadows.ShadowFocusDistance;
-            }
+            // Task 3 replaces this bridge with the frustum-slice fit.
+            Vector3 focus = eye + ActiveCamera.Forward * shadows.ShadowNearDistance;
             Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
             int res = _model.ShadowMap.Resolution;         // the actual allocated per-cascade resolution (clamped)
             int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
             Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
-            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
+            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
             for (int i = 0; i < count; i++)
                 _cascadeCpuVps[i] = Internal.ShadowMapMath.BuildLightViewProj(lightDir, focus, radii[i], res);
             _cascadeCount = count;
@@ -1656,7 +1642,7 @@ namespace KhaozEngine.Render3D
             int res = _model.ShadowMap.Resolution;
             float texelStep = 1f / Math.Max(1, res);
             Span<float> radii = stackalloc float[ShadowSettings.MaxCascades];
-            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowFocusRadius, shadows.ResolvedMaxDistance);
+            Internal.ShadowMapMath.FillCascadeSplits(radii, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
             for (int i = 0; i < count; i++)
             {
                 _cascadeReceiverVps[i] = GpuClip.Correct(_cascadeCpuVps[i], _gd.Capabilities);
@@ -1671,9 +1657,9 @@ namespace KhaozEngine.Render3D
             }
             // Outermost-cascade UV border fade width (fraction of the map) so the coverage edge fades to lit instead of
             // a hard box. maxDistance (the outer cascade's coverage reach = ShadowMaxDistance for count>1, else the
-            // focus radius) rides in the UBO as the documented coverage distance. The fade itself is UV-border-driven.
+            // near distance) rides in the UBO as the documented coverage distance. The fade itself is UV-border-driven.
             float border = 0.12f;
-            float maxDist = count > 1 ? shadows.ResolvedMaxDistance : shadows.ShadowFocusRadius;
+            float maxDist = count > 1 ? shadows.ResolvedMaxDistance : shadows.ShadowNearDistance;
             _model.SetShadowUniforms(_cascadeReceiverVps.AsSpan(0, count), count, texelStep,
                 shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength,
                 maxDist, border, _cascadeNormalOffsets.AsSpan(0, count));

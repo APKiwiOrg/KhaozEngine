@@ -33,10 +33,10 @@ namespace KhaozEngine.Tests.Gpu
             SkinnedGltfMesh tube = Tube();   // same layout, for the rest pose
             scene.FrustumCulling = true;
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-            scene.Post.Quality.Shadows.ShadowFocusRadius = 10f;
+            scene.Post.Quality.Shadows.ShadowNearDistance = 10f;
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
             // Frame a small region near the origin. The skinned caster at x=-10 sits outside this camera frustum
-            // but inside the ShadowFocusRadius=10 ortho volume centred near the camera's ground focus.
+            // but inside the ShadowNearDistance=10 ortho volume centred near the camera's ground focus.
             scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(5f, 4f, 5f));
             var casterPos = Matrix4x4.CreateTranslation(-10f, 0.9f, 0f);
 
@@ -76,7 +76,7 @@ namespace KhaozEngine.Tests.Gpu
             SkinnedGltfMesh tube = Tube();
             scene.FrustumCulling = true;
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-            scene.Post.Quality.Shadows.ShadowFocusRadius = 6f;   // narrower than the caster's distance below
+            scene.Post.Quality.Shadows.ShadowNearDistance = 6f;   // narrower than the caster's distance below
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
             scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(5f, 4f, 5f));
             // Far enough that it is outside BOTH the camera frustum AND the narrow shadow ortho volume.

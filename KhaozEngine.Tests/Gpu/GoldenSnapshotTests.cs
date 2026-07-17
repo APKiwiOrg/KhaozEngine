@@ -295,7 +295,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
                     scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
                     // A tight focus so the map packs texels onto this small scene (crisp shadows at 480x320).
-                    scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
+                    scene.Post.Quality.Shadows.ShadowNearDistance = 5f;
                     // Key light travelling down-and-to-the-right (-x, -y, -z) so shadows fall toward +x/+z, clearly
                     // on one side of each caster.
                     scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
@@ -355,7 +355,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Sky.HaloFalloff = 0.22f;
                     // Shadows ON (the cohesive pairing).
                     scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-                    scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
+                    scene.Post.Quality.Shadows.ShadowNearDistance = 5f;
                     // Key light travelling down-and-to-the-right (-x, -y, -z): shadows fall toward +x/+z, and the sun
                     // (its opposite) sits up + toward +x/+z, so it lands in the upper background of this framing.
                     scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
@@ -628,7 +628,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Outline = true;
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
                     scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-                    scene.Post.Quality.Shadows.ShadowFocusRadius = 5f;
+                    scene.Post.Quality.Shadows.ShadowNearDistance = 5f;
                     scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
                     scene.Camera.Frame(new Vector3(0.2f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
                 },

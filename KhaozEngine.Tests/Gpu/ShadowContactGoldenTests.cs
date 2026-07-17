@@ -54,7 +54,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.BackgroundColor = new Color(0.02f, 0.03f, 0.05f, 1f);
                     scene.Post.LightDirection = light;
                     scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
-                    scene.Post.Quality.Shadows.ShadowFocusRadius = Radius;
+                    scene.Post.Quality.Shadows.ShadowNearDistance = Radius;
                     // Bias knobs are LEFT AT DEFAULTS on purpose: this test guards the shipped defaults.
                     scene.Camera.Azimuth = CamAz;
                     scene.Camera.Elevation = CamEl;

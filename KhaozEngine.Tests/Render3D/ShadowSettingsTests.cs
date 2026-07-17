@@ -173,10 +173,24 @@ namespace KhaozEngine.Tests.Render3D
         public void ResolvedMaxDistance_never_below_focus_radius()
         {
             // The outer cascade must never fit tighter than the near cascade.
-            var s = new ShadowSettings { ShadowFocusRadius = 20f, ShadowMaxDistance = 5f };
+            var s = new ShadowSettings { ShadowNearDistance = 20f, ShadowMaxDistance = 5f };
             Assert.Equal(20f, s.ResolvedMaxDistance, 3);
-            var ok = new ShadowSettings { ShadowFocusRadius = 16f, ShadowMaxDistance = 130f };
+            var ok = new ShadowSettings { ShadowNearDistance = 16f, ShadowMaxDistance = 130f };
             Assert.Equal(130f, ok.ResolvedMaxDistance, 3);
+        }
+
+        [Fact]
+        public void CascadeBlend_DefaultIsSoftBand()
+        {
+            var s = new ShadowSettings();
+            Assert.Equal(0.15f, s.ShadowCascadeBlend);
+        }
+
+        [Fact]
+        public void ResolvedMaxDistance_ClampsToNearDistance()
+        {
+            var s = new ShadowSettings { ShadowNearDistance = 20f, ShadowMaxDistance = 5f };
+            Assert.Equal(20f, s.ResolvedMaxDistance);
         }
     }
 }

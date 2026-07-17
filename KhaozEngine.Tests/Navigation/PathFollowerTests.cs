@@ -232,4 +232,145 @@ public class PathFollowerTests
         Assert.Equal(PathFollowState.Following, afterReset.State);
         Assert.Equal(new Vector2(5f, 5f), afterReset.ActiveWaypoint);
     }
+
+    [Fact]
+    public void ActivePath_BeforeAnyTick_IsNullWithIndexZero()
+    {
+        var follower = new PathFollower(new FakePlanner());
+
+        Assert.Null(follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void ActivePath_AfterTickThatPlans_ExposesTheCommittedCorridorReadOnly()
+    {
+        var planner = new FakePlanner();
+        NavPath committed = Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(10f, 10f), 0));
+        planner.Enqueue(committed);
+        var follower = new PathFollower(planner);
+
+        PathFollowOutput output = follower.Tick(new Vector3(0f, 0f, 0f), new Vector3(10f, 0f, 10f), AgentRadius, 0.016f);
+
+        // The accessor hands back the exact NavPath the planner committed - no copy, no re-run of the
+        // planner (CallCount stays 1 no matter how often the corridor is read).
+        Assert.Same(committed, follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+        Assert.Equal(1, planner.CallCount);
+        _ = follower.ActivePath;
+        _ = follower.ActiveWaypointIndex;
+        Assert.Equal(1, planner.CallCount);
+        // The waypoint at ActiveWaypointIndex agrees with the tick's ActiveWaypoint output.
+        Assert.Equal(output.ActiveWaypoint, follower.ActivePath!.Waypoints[follower.ActiveWaypointIndex].Position);
+    }
+
+    [Fact]
+    public void ActiveWaypointIndex_AdvancesAsWaypointsAreConsumed()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(20f, 20f), 0)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(20f, 0f, 20f);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+        Assert.Equal(new Vector2(5f, 5f), follower.ActivePath!.Waypoints[follower.ActiveWaypointIndex].Position);
+
+        // Step within AcceptRadius of waypoint 0: the follower advances to waypoint 1 without replanning.
+        follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(1, follower.ActiveWaypointIndex);
+        Assert.Equal(new Vector2(20f, 20f), follower.ActivePath!.Waypoints[follower.ActiveWaypointIndex].Position);
+    }
+
+    [Fact]
+    public void ActivePath_AfterReset_IsNullWithIndexZero()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(20f, 20f), 0)));
+        var follower = new PathFollower(planner);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), new Vector3(20f, 0f, 20f), AgentRadius, 0.016f);
+        Assert.NotNull(follower.ActivePath);
+
+        follower.Reset();
+
+        Assert.Null(follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void ActivePath_WhileReplanDueButCooldownGating_StaysTheCommittedCorridor()
+    {
+        var planner = new FakePlanner();
+        NavPath first = Complete(new NavWaypoint(new Vector2(5f, 5f), 0));
+        planner.Enqueue(first);
+        var config = new PathFollowConfig { GoalRetargetTolerance = 1.5f, ReplanCooldownSeconds = 0.5f };
+        var follower = new PathFollower(planner, config);
+        Vector3 position = new Vector3(0f, 0f, 0f);
+
+        follower.Tick(position, new Vector3(10f, 0f, 10f), AgentRadius, 0.1f);
+        Assert.Same(first, follower.ActivePath);
+
+        // Goal drifts well past GoalRetargetTolerance so a replan is due, but the cooldown is still hot.
+        // The corridor read stays the committed path, never a re-run of the planner mid-cooldown.
+        follower.Tick(position, new Vector3(30f, 0f, 30f), AgentRadius, 0.1f);
+        Assert.Equal(1, planner.CallCount);
+        Assert.Same(first, follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void ActivePath_ReflectsAReplanWhenGoalMovesBeyondRetargetTolerance()
+    {
+        var planner = new FakePlanner();
+        NavPath first = Complete(new NavWaypoint(new Vector2(5f, 5f), 0));
+        NavPath second = Complete(new NavWaypoint(new Vector2(28f, 28f), 0), new NavWaypoint(new Vector2(30f, 30f), 0));
+        planner.Enqueue(first);
+        planner.Enqueue(second);
+        var config = new PathFollowConfig { GoalRetargetTolerance = 1.5f, ReplanCooldownSeconds = 0.5f };
+        var follower = new PathFollower(planner, config);
+        Vector3 position = new Vector3(0f, 0f, 0f);
+
+        follower.Tick(position, new Vector3(10f, 0f, 10f), AgentRadius, 0.1f);
+        Assert.Same(first, follower.ActivePath);
+
+        // Cooldown (0.5 after the first plan) drains fully and the drifted goal forces a replan: the
+        // corridor accessor swaps to the fresh committed path and the index resets to zero.
+        follower.Tick(position, new Vector3(30f, 0f, 30f), AgentRadius, 0.5f);
+        Assert.Equal(2, planner.CallCount);
+        Assert.Same(second, follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void ActivePath_WhenPlannerReturnsUnreachable_IsNull()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(NavPath.Unreachable);
+        var follower = new PathFollower(planner);
+
+        PathFollowOutput output = follower.Tick(new Vector3(0f, 0f, 0f), new Vector3(10f, 0f, 10f), AgentRadius, 0.016f);
+
+        Assert.Equal(PathFollowState.Unreachable, output.State);
+        Assert.Null(follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void ActivePath_AfterArrival_IsNull()
+    {
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(5f, 5f), 0), new NavWaypoint(new Vector2(19f, 19f), 0)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(20f, 0f, 20f);
+
+        follower.Tick(new Vector3(0f, 0f, 0f), goal, AgentRadius, 0.016f);
+        follower.Tick(new Vector3(5f, 0f, 5f), goal, AgentRadius, 0.016f);
+        PathFollowOutput arrived = follower.Tick(new Vector3(19f, 0f, 19f), goal, AgentRadius, 0.016f);
+
+        Assert.Equal(PathFollowState.Arrived, arrived.State);
+        Assert.Null(follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
 }

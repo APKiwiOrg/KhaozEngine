@@ -301,7 +301,7 @@ namespace KhaozEngine.Tests.Render3D
             // exactly the way Scene3D does (corners, splits, slice spheres, BuildLightViewProj) for a camera
             // pitched gently down whose gaze-ground intersection is ~70 units out, with the point of interest
             // 6 units ahead near the lower frustum edge. The old gaze-focus fit put such a point in the
-            // OUTER cascade (or off coverage); the slice fit must select cascade 0.
+            // OUTER cascade (or off coverage). The slice fit must select cascade 0.
             var eye = new Vector3(0f, 4f, 0f);
             var target = eye + new Vector3(0f, -0.055f, 1f);   // gaze hits y=0 ground ~72 units out
             const float near = 0.5f, far = 300f;

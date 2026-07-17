@@ -30,12 +30,16 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
   with per-instance tint + `Material`), per-mesh albedo textures, lighting, camera-facing billboards, an
   immediate-mode debug-draw overlay (line/ray/box/grid/axes/circle) plus depth-tested debug wire volumes
-  (sphere/dome/cylinder/circle), composited into the window.
+  (sphere/dome/cylinder/circle), composited into the window. `UnloadTexture`/`UnloadMesh`/`UnloadSkinnedMesh`/
+  `UnloadSplatMaterial` drain the device (`IGpuDevice.WaitForIdle`) before disposing GPU resources, since a
+  queued upload or draw may still reference them.
 - `Render3DPreview(AppWindow, width, height)` - live render-to-texture: render a model into a sampleable
   `Render2D.Texture2D` on the same device and draw it inside a 2D `SpriteBatch`/Gui panel (unit inspectors, shop
   previews, item icons). Load meshes + frame the camera once via `.Scene`, then call `Capture(drawFrame)` each
   frame (target reused, no per-frame allocation). Transparent background by default
-  (`PixelPostProcessSettings.TransparentBackground`) so it composites cleanly.
+  (`PixelPostProcessSettings.TransparentBackground`) so it composites cleanly. `Resize` drains the device
+  before disposing the old target/framebuffer, since the previous frame's queued render may still reference
+  them.
 - `PixelPostProcessSettings` / `Palette` / `Palettes` - palette quantization, Bayer dither, depth/normal
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
 - Anti-aliasing: `PixelPostProcessSettings.Quality.AntiAliasing` (a `RenderQuality` container) is the AA dropdown

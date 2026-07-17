@@ -166,7 +166,9 @@ namespace KhaozEngine.Gpu
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,
     /// buffer/texture updates, submission, and staging map/unmap. Engine mirror of Veldrid <c>GraphicsDevice</c>
-    /// (the subset the 5.x renderers use). Veldrid is hidden inside the impl.</summary>
+    /// (the subset the 5.x renderers use). Veldrid is hidden inside the impl. Disposing any resource created
+    /// by this device AFTER the device itself is disposed is a safe no-op, since device destruction already
+    /// freed all child objects (teardown-order stragglers cannot destroy against a dead device).</summary>
     public interface IGpuDevice : IDisposable
     {
         /// <summary>The active backend.</summary>
@@ -184,7 +186,10 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Submit a finished command list for execution.</summary>
         void Submit(IGpuCommandList cl);
-        /// <summary>Block until the GPU is idle.</summary>
+        /// <summary>Block until the GPU is idle. After the device is disposed this is a safe no-op (a dead
+        /// device has nothing to wait for), so a resource wrapper draining before its own disposal stays safe
+        /// when it outlives the device at teardown. Calling it concurrently WITH device disposal remains a
+        /// consumer ordering error.</summary>
         void WaitForIdle();
 
         /// <summary>Upload a span of unmanaged elements into a buffer at <paramref name="offsetBytes"/>.</summary>

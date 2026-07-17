@@ -26,7 +26,11 @@ What it owns today:
   + swapchain for a Silk.NET/GLFW window; the vsync flag feeds both the device options and the swapchain, since
   9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`,
   `Capabilities`, and (**transitionally**) the raw Veldrid `GraphicsDevice` so the existing renderers keep
-  working unchanged.
+  working unchanged. Device creation and disposal are serialized process-wide behind a single static gate, on
+  every backend: concurrent device creation races the Vulkan loader's dispatch setup (observed as
+  `vkGetDeviceQueue` aborts on Mesa lavapipe under full test-suite parallelism), and creation/disposal are rare
+  enough that the serialization costs nothing measurable. Callers see no API change, it only affects the
+  interleaving of concurrent create/dispose calls across threads.
 - **`IGpuDevice.SyncToVerticalBlank`** (settable, since 9.24.0) - flip vsync on a live windowed device: it
   reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
   reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device (Veldrid throws setting

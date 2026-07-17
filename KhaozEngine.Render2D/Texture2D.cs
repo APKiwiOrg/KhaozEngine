@@ -10,13 +10,21 @@ namespace KhaozEngine.Render2D
         public int Width { get; }
         public int Height { get; }
         readonly bool _ownsHandle;
+        readonly IGpuDevice? _gd;
 
         internal Texture2D(IGpuTexture handle, int width, int height)
             : this(handle, width, height, ownsHandle: true) { }
 
         internal Texture2D(IGpuTexture handle, int width, int height, bool ownsHandle)
+            : this(null, handle, width, height, ownsHandle) { }
+
+        // The gd-carrying ctor makes Dispose drain the device before freeing the handle: a texture created via
+        // CreateTexture/LoadTexture (or SpriteFont's atlas) may still have a queued UpdateTexture staging copy in
+        // flight when the caller disposes it mid-game. Internal creation sites pass their device. The public
+        // Wrap(...) below does not know one, so it keeps the pre-existing immediate-dispose behaviour.
+        internal Texture2D(IGpuDevice? gd, IGpuTexture handle, int width, int height, bool ownsHandle)
         {
-            Handle = handle; Width = width; Height = height; _ownsHandle = ownsHandle;
+            _gd = gd; Handle = handle; Width = width; Height = height; _ownsHandle = ownsHandle;
         }
 
         /// <summary>
@@ -32,7 +40,11 @@ namespace KhaozEngine.Render2D
 
         public void Dispose()
         {
-            if (_ownsHandle) Handle.Dispose();
+            if (!_ownsHandle) return;
+            // Queued GPU work (an upload still in flight, a queued draw) may reference the handle, so drain
+            // the device before destroying it when we have one.
+            _gd?.WaitForIdle();
+            Handle.Dispose();
         }
     }
 }

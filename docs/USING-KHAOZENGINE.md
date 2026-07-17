@@ -6544,6 +6544,37 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 
 ---
 
+## Drain before mid-life GPU resource disposal (`IGpuDevice.WaitForIdle`)
+
+Disposing a GPU resource (texture, buffer, resource set) while queued GPU work might still reference it
+is a use-after-free. Most hardware drivers absorb it silently, but Mesa lavapipe's async queue-submit
+thread crashes on it, which is how the engine found this class of bug. Any MID-LIFE disposal (an
+unload, a resize, a cache eviction: anything that is not part of full device teardown already guarded
+by a drain) must call `IGpuDevice.WaitForIdle()` first, then dispose:
+
+```csharp
+IGpuTexture old = _texture;
+_texture = gd.Factory.CreateTexture(newDescription);
+gd.WaitForIdle();   // a queued upload or draw may still reference the old texture
+old.Dispose();
+```
+
+Drain once per unload/resize operation, not per resource (draining an already-idle device is
+near-free), and run the operation's cheap no-op checks first so nothing drains unless something will
+actually be disposed. Teardown order is latched by `GpuDeviceContext.Dispose`: after the device itself
+is disposed, `WaitForIdle` is a safe no-op AND disposing any resource the device created is a safe
+no-op (device destruction already freed all child objects), so a wrapper that outlives its device at
+teardown can neither drain nor destroy against a dead device. Veldrid's deferred-disposal path was
+evaluated as a non-stalling alternative and rejected:
+under Mesa's threaded queue its disposal flush can lose a wakeup and hang the process, so the engine
+drains instead. The engine's own renderers follow this rule for texture/mesh unload
+(`Scene3D.UnloadTexture` and siblings), resize-driven render target replacement (`RenderResources`,
+`Render3DPreview.Resize`), and sprite-batch set eviction and buffer growth (`SpriteBatch`). A custom
+renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule
+for anything it frees outside of full teardown.
+
+---
+
 ## Headless snapshots / screenshots (`KhaozEngine.Snapshot`)
 
 For an art/UI screenshot tool, you only want to write the *scenes* - not the capture/encode/write/log boilerplate

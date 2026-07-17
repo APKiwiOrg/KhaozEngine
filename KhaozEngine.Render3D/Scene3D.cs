@@ -723,8 +723,13 @@ namespace KhaozEngine.Render3D
             _slots.Free(h.Index, h.Generation);     // throws on stale/invalid
             var m = _meshes[h.Index];
             // Dispose the per-mesh material set alongside the buffers, but NOT the texture: it is owned in
-            // _textures and may be shared by other meshes (freed in Dispose).
-            if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
+            // _textures and may be shared by other meshes (freed in Dispose). Queued GPU work may still
+            // reference these resources, so drain the device before destroying them.
+            if (m is { } mesh)
+            {
+                _gd.WaitForIdle();
+                mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose();
+            }
             _meshes[h.Index] = null;
         }
 
@@ -738,7 +743,8 @@ namespace KhaozEngine.Render3D
         {
             if (!h.IsValid || h.ListIndex >= _splatMaterials.Count) return;
             var m = _splatMaterials[h.ListIndex];
-            m?.Dispose();
+            // Queued GPU work may still reference the material's arrays/UBO/set, so drain the device first.
+            if (m != null) { _gd.WaitForIdle(); m.Dispose(); }
             _splatMaterials[h.ListIndex] = null;
         }
 
@@ -806,6 +812,11 @@ namespace KhaozEngine.Render3D
         {
             if (!h.IsValid || h.ListIndex >= _textures.Count) return;
             int i = h.ListIndex;
+            // The 1-mip LoadTexture path returns with its UpdateTexture staging copy still queued on the
+            // device (the mips>1 path already flushes via Submit+WaitForIdle). Destroying the texture while
+            // that copy is in flight is a use-after-free the driver may survive silently (hardware) or crash
+            // on (Mesa lavapipe's async queue thread segfaults executing the stale copy). Drain, then dispose.
+            if (_textures[i] != null) _gd.WaitForIdle();
             _textures[i]?.Dispose();
             _textures[i] = null;
             if (i < _texBillboardSets.Count) { _texBillboardSets[i]?.Dispose(); _texBillboardSets[i] = null; }
@@ -938,7 +949,12 @@ namespace KhaozEngine.Render3D
             if (h.Generation == 0) return;
             _skinnedSlots.Free(h.Index, h.Generation);
             var m = _skinnedMeshes[h.Index];
-            if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose(); }
+            // Queued GPU work may still reference these resources, so drain the device before destroying them.
+            if (m is { } e)
+            {
+                _gd.WaitForIdle();
+                e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose();
+            }
             _skinnedMeshes[h.Index] = null;
             _skinnedCpuVerts[h.Index] = null;
         }
@@ -2546,6 +2562,10 @@ namespace KhaozEngine.Render3D
 
         public void Dispose()
         {
+            // Drain in-flight GPU work before destroying anything: a test or streaming path may Dispose the
+            // scene with uploads/draws still queued on the device's async submission thread (Mesa lavapipe
+            // executes queued commands on its own thread and segfaults on destroyed resources).
+            _gd.WaitForIdle();
             _model.Dispose();
             _post.Dispose();
             _lines.Dispose();

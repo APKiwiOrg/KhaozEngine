@@ -8,7 +8,9 @@ namespace KhaozEngine.Tests.Render3D
 {
     // Scene3D's ctor needs a GPU device, so these run gated behind KE_GPU_TESTS=1 (mirrors Scene3DBeamQueueTests).
     // They prove UnloadTexture frees the texture slot so a long-lived scene that streams textured assets doesn't
-    // accumulate native textures (previously they only freed at Dispose).
+    // accumulate native textures (previously they only freed at Dispose). LoadUnloadCycles_DoNotAccumulate is also
+    // the lavapipe sentinel for the mid-life-dispose use-after-free (see GpuDeviceContext remarks). The drain
+    // contract (WaitForIdle before disposing) is covered separately in Scene3DUnloadDrainTests.
     public sealed class Scene3DTextureUnloadTests
     {
         static void WithScene(Action<Scene3D> body)

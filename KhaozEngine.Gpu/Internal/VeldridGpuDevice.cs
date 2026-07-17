@@ -35,18 +35,32 @@ namespace KhaozEngine.Gpu.Internal
                 supportsShadowMaps: VeldridMap.SupportsShadowMaps(gd));
             // Wrap the device-owned swapchain framebuffer + shared samplers (no-dispose: the device owns them).
             _swapchainFb = gd.MainSwapchain != null
-                ? new VeldridGpuFramebuffer(gd.MainSwapchain.Framebuffer, ownsFramebuffer: false)
+                ? new VeldridGpuFramebuffer(_liveness, gd.MainSwapchain.Framebuffer, ownsFramebuffer: false)
                 : null;
-            _pointSampler = new VeldridGpuSampler(gd.PointSampler, ownsSampler: false);
-            _linearSampler = new VeldridGpuSampler(gd.LinearSampler, ownsSampler: false);
+            _pointSampler = new VeldridGpuSampler(_liveness, gd.PointSampler, ownsSampler: false);
+            _linearSampler = new VeldridGpuSampler(_liveness, gd.LinearSampler, ownsSampler: false);
         }
+
+        // Disposed latch: flipped (inside GpuDeviceContext's lifecycle gate) when the underlying device is
+        // destroyed. Shared with every resource wrapper this device creates, so a straggling drain OR a
+        // resource disposal from a wrapper that outlives the device (teardown-order hazard) no-ops instead of
+        // calling into a dead device (the Vulkan loader aborts vkQueueWaitIdle and vkDestroy* against a
+        // destroyed device, and device destruction already freed all child objects anyway).
+        readonly DeviceLiveness _liveness = new();
+
+        // Called by GpuDeviceContext.Dispose (inside the lifecycle gate) just before it destroys the device.
+        internal void MarkDeviceDisposed() => _liveness.Dead = true;
 
         // ---- IGpuDevice ----
 
         public void Submit(IGpuCommandList cl)
             => GraphicsDevice.SubmitCommands(((VeldridGpuCommandList)cl).CommandList);
 
-        public void WaitForIdle() => GraphicsDevice.WaitForIdle();
+        public void WaitForIdle()
+        {
+            if (_liveness.Dead) return;   // a dead device has nothing to wait for (see the latch above)
+            GraphicsDevice.WaitForIdle();
+        }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
             => GraphicsDevice.UpdateBuffer(((VeldridGpuBuffer)b).Buffer, offsetBytes, data);
@@ -99,7 +113,7 @@ namespace KhaozEngine.Gpu.Internal
             // change so SwapchainFramebuffer never hands back a disposed framebuffer (the Windows black-screen
             // after going fullscreen / maximising / drag-resizing), and Metal keeps its stable wrapper.
             if (!ReferenceEquals(_swapchainFb?.Framebuffer, sc.Framebuffer))
-                _swapchainFb = new VeldridGpuFramebuffer(sc.Framebuffer, ownsFramebuffer: false);
+                _swapchainFb = new VeldridGpuFramebuffer(_liveness, sc.Framebuffer, ownsFramebuffer: false);
         }
 
         bool _capturing;
@@ -138,11 +152,11 @@ namespace KhaozEngine.Gpu.Internal
         // ---- IGpuResourceFactory ----
 
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
-            => new VeldridGpuBuffer(GraphicsDevice.ResourceFactory.CreateBuffer(
+            => new VeldridGpuBuffer(_liveness, GraphicsDevice.ResourceFactory.CreateBuffer(
                 new BufferDescription(d.SizeInBytes, VeldridMap.ToVeldrid(d.Usage), d.StructureByteStride)));
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
-            => new VeldridGpuTexture(GraphicsDevice.ResourceFactory.CreateTexture(new TextureDescription(
+            => new VeldridGpuTexture(_liveness, GraphicsDevice.ResourceFactory.CreateTexture(new TextureDescription(
                 d.Width, d.Height, 1, d.MipLevels, d.ArrayLayers,
                 VeldridMap.ToVeldrid(d.Format), VeldridMap.ToVeldrid(d.Usage), TextureType.Texture2D,
                 VeldridMap.ToVeldrid(d.SampleCount))));
@@ -152,7 +166,7 @@ namespace KhaozEngine.Gpu.Internal
             Texture? d = depth != null ? ((VeldridGpuTexture)depth).Texture : null;
             var c = new Texture[colour.Length];
             for (int i = 0; i < colour.Length; i++) c[i] = ((VeldridGpuTexture)colour[i]).Texture;
-            return new VeldridGpuFramebuffer(
+            return new VeldridGpuFramebuffer(_liveness,
                 GraphicsDevice.ResourceFactory.CreateFramebuffer(new FramebufferDescription(d, c)));
         }
 
@@ -174,7 +188,7 @@ namespace KhaozEngine.Gpu.Internal
             var desc = new SamplerDescription(
                 VeldridMap.ToVeldrid(d.AddressModeU), VeldridMap.ToVeldrid(d.AddressModeV), VeldridMap.ToVeldrid(d.AddressModeW),
                 VeldridMap.ToVeldrid(filter), null, maxAniso, 0, uint.MaxValue, lodBias, SamplerBorderColor.TransparentBlack);
-            return new VeldridGpuSampler(GraphicsDevice.ResourceFactory.CreateSampler(desc));
+            return new VeldridGpuSampler(_liveness, GraphicsDevice.ResourceFactory.CreateSampler(desc));
         }
 
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
@@ -187,7 +201,7 @@ namespace KhaozEngine.Gpu.Internal
                 var options = e.Dynamic ? ResourceLayoutElementOptions.DynamicBinding : ResourceLayoutElementOptions.None;
                 elems[i] = new ResourceLayoutElementDescription(e.Name, VeldridMap.ToVeldrid(e.Kind), VeldridMap.ToVeldrid(e.Stages), options);
             }
-            return new VeldridGpuResourceLayout(
+            return new VeldridGpuResourceLayout(_liveness,
                 GraphicsDevice.ResourceFactory.CreateResourceLayout(new ResourceLayoutDescription(elems)));
         }
 
@@ -197,7 +211,7 @@ namespace KhaozEngine.Gpu.Internal
             for (int i = 0; i < bound.Length; i++)
                 bound[i] = ToVeldridBindable(d.Resources[i]);
             var desc = new ResourceSetDescription(((VeldridGpuResourceLayout)d.Layout).Layout, bound);
-            return new VeldridGpuResourceSet(GraphicsDevice.ResourceFactory.CreateResourceSet(desc));
+            return new VeldridGpuResourceSet(_liveness, GraphicsDevice.ResourceFactory.CreateResourceSet(desc));
         }
 
         static BindableResource ToVeldridBindable(IGpuBindableResource r) => r switch
@@ -214,7 +228,7 @@ namespace KhaozEngine.Gpu.Internal
             Shader[] shaders = GraphicsDevice.ResourceFactory.CreateFromSpirv(
                 new ShaderDescription(ShaderStages.Vertex, Encoding.UTF8.GetBytes(vertGlsl), "main"),
                 new ShaderDescription(ShaderStages.Fragment, Encoding.UTF8.GetBytes(fragGlsl), "main"));
-            return new VeldridGpuShaderSet(shaders);
+            return new VeldridGpuShaderSet(_liveness, shaders);
         }
 
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
@@ -251,7 +265,7 @@ namespace KhaozEngine.Gpu.Internal
                 ShaderSet = new ShaderSetDescription(vls, ((VeldridGpuShaderSet)d.ShaderSet).Shaders),
                 Outputs = VeldridMap.ToVeldrid(d.Outputs),
             };
-            return new VeldridGpuPipeline(GraphicsDevice.ResourceFactory.CreateGraphicsPipeline(pd));
+            return new VeldridGpuPipeline(_liveness, GraphicsDevice.ResourceFactory.CreateGraphicsPipeline(pd));
         }
 
         static VertexLayoutDescription ToVeldridVertexLayout(in GpuVertexLayoutDescription vl)
@@ -270,11 +284,11 @@ namespace KhaozEngine.Gpu.Internal
         }
 
         public IGpuCommandList CreateCommandList()
-            => new VeldridGpuCommandList(GraphicsDevice.ResourceFactory.CreateCommandList());
+            => new VeldridGpuCommandList(_liveness, GraphicsDevice.ResourceFactory.CreateCommandList());
 
         public void Dispose()
         {
-            if (_ownsDevice) GraphicsDevice.Dispose();
+            if (_ownsDevice) { _liveness.Dead = true; GraphicsDevice.Dispose(); }
         }
     }
 }

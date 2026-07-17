@@ -33,15 +33,6 @@ report back), never mid-task. Resolved entries are deleted by the release sweep.
   and the dirty-skip path. Makes the showcase the one-click windowed verification surface for every
   future shadow/lighting change. Recorded 2026-07-17 from the 12.0.0 release retro.
 
-- [ ] **Vulkan/lavapipe full-suite crash, mode 2 (use-after-free).** `UnloadTexture` disposes GPU
-  resources while an unfenced staging upload is still queued. Metal and WARP absorb it silently,
-  lavapipe segfaults. A prototype fix (`IGpuDevice.DisposeWhenIdle` across 11 disposal sites in
-  Render2D/Render3D, including render-target resize and SpriteBatch set eviction) was validated only in
-  a throwaway container and does not exist in the repo. Mode 1 (concurrent device create racing the
-  Vulkan loader) is fixed on branch `fix/vulkan-lavapipe-full-suite` (commit `0b7831af`). That branch
-  also carries commit `4f056153` widening the Vulkan CI leg to the full-suite tier, which would
-  reintroduce the flake if merged before mode 2 is fixed.
-  **Blocked on:** branch `fix/vulkan-lavapipe-full-suite` (2026-07-17)
 - [ ] **Ground decals wrap down a sharp edge's vertical face (legacy, unflagged decals).** The Y-band gate is
   `[Center.Y - YTolerance, Center.Y + MaxStep]` and `GroundTelegraphs` hardcodes `YTolerance = 0.3`, so the TOP
   0.3 of any vertical face is inside the band and the decal conforms ONTO it, evaluated at that face's XZ

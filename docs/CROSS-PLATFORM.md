@@ -41,7 +41,7 @@ fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were gre
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
-The suite each leg runs is split by trigger, from measured cost and lavapipe stability
+The suite each leg runs is split by trigger, from measured hosted-runner cost
 (`KE_GPU_TESTS=1`, `fail-fast: false`):
 
 - **Self-hosted Metal leg (free)**: the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
@@ -52,20 +52,32 @@ The suite each leg runs is split by trigger, from measured cost and lavapipe sta
   `workflow_dispatch`. The full suite on hosted Windows measured 17m14s vs the golden-only 7m44s, about
   +19 billed 2x minutes per run - too costly per-push, so full hosted coverage rides the weekly cron and
   any manual dispatch instead.
-- **GitHub-hosted Vulkan leg (1x)**: golden tests only, on EVERY trigger. The full suite on Mesa
-  lavapipe crashes the test host natively at a nondeterministic point (three consecutive dispatch runs
-  died in three unrelated GpuFact classes, the last with zero managed failures. Silent segfault, Mesa
-  25.2.8). WARP and Metal run the identical full suite green, so this is lavapipe/Veldrid native-layer
-  instability under parallel headless-device churn, tracked as a follow-up (first lead: serialize xUnit
-  collections on that leg). The golden subset is the configuration lavapipe has run green for months.
+- **GitHub-hosted Vulkan leg (1x)**: golden tests only (`FullyQualifiedName~Golden`) on
+  `push`/`pull_request`, and the WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, the
+  same tier as D3D11, with the full-suite runs serializing xUnit test collections
+  (`-- xUnit.ParallelizeTestCollections=false`, one live device at a time). Chasing this leg's
+  full-suite crashes (reproduced 4/4 in an amd64 container running the exact CI Mesa version, 25.2.8)
+  surfaced four real engine defects, all fixed: concurrent device creation racing the Vulkan loader's
+  dispatch setup (fixed by serializing device create/dispose process-wide in
+  `KhaozEngine.Gpu.GpuDeviceContext`), mid-life GPU resource disposal racing queued async work (fixed
+  by draining the device via `IGpuDevice.WaitForIdle` before every mid-life disposal, the drain rule is
+  documented in `docs/USING-KHAOZENGINE.md`), and a teardown-order pair where a resource wrapper
+  outliving its device drained or destroyed against the destroyed device (fixed by a shared liveness
+  latch). The full PARALLEL suite on lavapipe still exhibits residual driver-side instability with
+  delayed-corruption symptoms (a CoreCLR fatal, deliberately not chased), so the weekly full suite runs
+  serialized, measured ~22 min in the validation container versus minutes parallel. Golden-only runs
+  keep their months-green parallel configuration.
 
 Historically the test step filtered every leg to `FullyQualifiedName~Golden`, so any `[GpuFact]` class
 without "Golden" in its name never ran on ANY backend (`Scene3DTextureUnloadTests`, `WaterQueueTests`,
 `RenderServiceTests`, and dozens of other classes were never exercised on Metal/D3D11/Vulkan). Every GPU
-test now runs on Metal (every trigger) and D3D11 (weekly + dispatch) regardless of what it is called. The
-name is not a CI contract. The first full-suite sweeps surfaced 13 real Windows portability bugs, a
-dispose-before-submit contract violation in three test classes that only Vulkan enforces, and the
-lavapipe host-crash instability above - all of which the golden-only filter had been hiding.
+test now runs on Metal (every trigger), D3D11, and Vulkan (both weekly + dispatch) regardless of what it
+is called. The name is not a CI contract, and neither is the directory: `[GpuFact]` classes live across
+many namespaces (Render3D, Terrain, MapEditor, MapEditTool, ParticlesRender3D, Snapshot, and more, some
+25 files outside `KhaozEngine.Tests/Gpu` alone), so a path or name filter is not a coverage contract
+either. The first full-suite sweeps surfaced 13 real Windows portability bugs, a dispose-before-submit
+contract violation in three test classes that only Vulkan enforces, and the lavapipe host-crash
+instability above - all of which the golden-only filter had been hiding.
 
 `KE_GPU_TESTS` accepts two values. `1` is strict (CI and the dev Mac): tests run, and a device-creation
 failure is a test error, never a skip, so CI cannot go green with zero GPU coverage. `probe` is for
@@ -86,8 +98,8 @@ not a CI filter contract):
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
 | `push` / `pull_request` on main  | **verify**: Metal runs the full suite. D3D11 and Vulkan run the golden tests only |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + D3D11 run the full suite. Vulkan stays golden-only  |
-| `workflow_dispatch` `bake=false` | same as `schedule` (Metal + D3D11 full suite, Vulkan golden-only)             |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: Metal + D3D11 + Vulkan all run the full suite (Vulkan serialized) |
+| `workflow_dispatch` `bake=false` | same as `schedule` (Metal + D3D11 + Vulkan full suite, Vulkan serialized)     |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) and upload per-backend goldens as artifacts |
 
 Software rasterizers on the runners (no real GPU):

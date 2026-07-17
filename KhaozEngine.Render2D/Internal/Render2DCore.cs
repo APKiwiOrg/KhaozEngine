@@ -25,7 +25,7 @@ namespace KhaozEngine.Render2D.Internal
             var t = Gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
                 (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             Gd.UpdateTexture(t, rgba, 0, 0, (uint)width, (uint)height);
-            return new Texture2D(t, width, height);
+            return new Texture2D(Gd, t, width, height, ownsHandle: true);
         }
 
         public Texture2D LoadTexture(string pngPath)
@@ -97,7 +97,7 @@ namespace KhaozEngine.Render2D.Internal
                 fb.Dispose();
             }
 
-            return new Texture2D(target, width, height);
+            return new Texture2D(gd, target, width, height, ownsHandle: true);
         }
 
         /// <summary>

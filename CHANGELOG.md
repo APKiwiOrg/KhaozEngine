@@ -75,6 +75,48 @@ a failing test. `docs/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md` records 
   in `TelegraphVoidShowcaseGpuTests`. The golden DOES bite (a sabotage run moves 240 channels past tolerance,
   unlike the starfield's) but it cannot see the cliff wrap-down at all, which is why the A/B pairs carry the
   feature. `telegraph_ground` and `telegraph_modern` are byte-exact against their 11.9.0 baselines.
+## 12.0.1
+
+Widening the Vulkan CI leg to run the full test suite on Mesa lavapipe surfaced four real GPU-device
+lifetime defects, all fixed, and hardened the consumer contract so disposing a GPU resource after its
+device is now a safe no-op and every mid-life unload drains the device first.
+
+- **FIX: concurrent GPU device create/dispose is serialized process-wide.** Two threads simultaneously
+  inside `vkCreateDevice`/`vkGetDeviceQueue` made the Vulkan loader on Mesa lavapipe see a just-created
+  device as invalid and abort. `GpuDeviceContext` now holds a single static lock around the
+  `GraphicsDevice` create switch in `CreateForWindow`/`CreateHeadless` and around `Dispose`, on every
+  backend. Device create/dispose is rare relative to render work, so the serialization costs nothing
+  measurable. No API change, it only affects the interleaving of concurrent create/dispose calls.
+- **FIX: mid-life GPU resource disposal drains the device first.** Several engine sites disposed a GPU
+  resource on unload while a queued upload or draw could still reference it. Mesa lavapipe runs
+  submissions on its own async queue thread and segfaults on the use-after-free (hardware drivers mostly
+  absorbed the race silently). Every mid-life disposal site now drains the device via
+  `IGpuDevice.WaitForIdle` before disposing, one drain per unload/resize operation with the operation's
+  cheap no-op checks running first so nothing drains unless something will actually be freed:
+  `Scene3D.UnloadTexture`/`UnloadMesh`/`UnloadSkinnedMesh`/`UnloadSplatMaterial` and `Scene3D.Dispose`,
+  `Render3DPreview.Resize`, the `ParticleRenderer`/`RenderResources` resize and distortion teardown
+  paths, `SpriteBatch`'s stale-set eviction and flush-buffer grow path, and `Texture2D` (which now
+  carries an optional device reference set at every internal creation site so consumer-owned mid-game
+  disposal and font-atlas rebake eviction drain too). The public `Texture2D.Wrap(...)` factory has no
+  device to hand the wrapper, so that path keeps disposing immediately, unchanged.
+- **FIX: draining or destroying a resource after its device is destroyed is a safe no-op.** A resource
+  wrapper disposed AFTER its owning `GpuDeviceContext` would otherwise drain a destroyed device (the
+  loader aborts `vkQueueWaitIdle`) and then destroy its Veldrid object against that destroyed device
+  (the loader aborts `vkDestroyImage`), both observed at suite teardown on lavapipe with every test
+  passed. `GpuDeviceContext.Dispose` now flips a shared `DeviceLiveness` token inside the lifecycle
+  gate: `WaitForIdle` after device death is a no-op (a dead device has nothing to wait for), and every
+  `VeldridGpu*` resource wrapper checks the token so destroying a resource whose device already died is
+  a no-op too (device destruction already freed the child objects).
+- **CONTRACT (consumer-facing):** disposing a GPU resource after its device is disposed is now a safe
+  no-op, and every engine mid-life unload/resize drains the device before freeing GPU resources. The
+  drain rule and the teardown-order no-op latch are documented in `docs/USING-KHAOZENGINE.md`.
+- **CI: the Vulkan leg joins the weekly full-suite tier, serialized.** The old `cross-platform-gpu.yml`
+  golden-only carve-out for Vulkan is gone. It now runs golden tests on `push`/`pull_request` and the
+  WHOLE suite on the weekly `schedule` and on `workflow_dispatch`, the same tier as D3D11, with the
+  full-suite runs serializing xUnit test collections (one live device at a time) because the parallel
+  full suite on lavapipe still exhibits residual driver-side instability with delayed-corruption
+  symptoms (a CoreCLR fatal, deliberately not chased). Golden-only runs keep their months-green parallel
+  configuration. The split rationale is rewritten in `docs/CROSS-PLATFORM.md`.
 
 ## 12.0.0
 

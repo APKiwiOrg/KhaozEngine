@@ -378,13 +378,19 @@ namespace KhaozEngine.Tests.Gpu
 
             // Regression guard: a background-only image (the pre-fix GreaterEqual sky painted over ALL geometry) must
             // never silently re-bake again. The procedural sky is a purely blue-dominant gradient - EVERY sky cell has
-            // blue as the strictly largest channel. Foreground here is not blue-dominant: the white floor is R==G==B
-            // and the coloured/lit meshes are red/green-led. So counting cells where blue is NOT the dominant channel
-            // separates the two cleanly: a correct render (floor + three meshes occluding the sky) shows ~200 such
-            // cells, while a flat background-only image shows only ~6 (a few antialiased horizon fringes). Require a
-            // healthy floor of 120 - well above the background-only handful, well below the ~200 the correct image
-            // shows - so any future flat-sky regression trips this before the golden compare. (A blue<0.68 count is
-            // NOT usable here: the white floor's blue is ~1.0, so the correct image has only ~31 such cells.)
+            // blue as the strictly largest channel. Counting cells where blue is NOT the dominant channel used to
+            // separate the two cleanly at the pre-chroma tonemap default (floor read as achromatic, ~200 foreground
+            // cells for a correct render vs ~6 for a background-only one). At the ChromaPreservation 0.75 default the
+            // floor no longer reads achromatic: its lit colour is albedo*(Ambient+diffuse), and the ambient term
+            // (PixelPostProcessSettings.AmbientColor, blue-leaning at (0.16,0.19,0.30)) now keeps its blue lean
+            // through the hue-preserving rescale instead of being bleached toward white by the old per-channel curve.
+            // So most of the floor now counts as "blue-dominant" too, and the only reliable signal left is the
+            // saturated meshes (green/red boxes, blue sphere rim). Measured on real Metal hardware at the 0.75
+            // default: a correct render (floor + three meshes occluding the sky) shows 34 such cells. The broken
+            // background-only baseline (same scene, geometry omitted, sky painting over everything) shows 5. Require
+            // a floor of 15 - comfortably above the 5-cell broken baseline, comfortably below the 34-cell correct
+            // render - so any future flat-sky regression still trips this before the golden compare, at the new,
+            // narrower (mesh-only) margin the chroma-preserved floor leaves available.
             // Downsampled on the same 32x18 grid the golden uses; tolerant of backend noise.
             float[] guardGrid = GoldenCompare.Downsample(rgba, W, H);
             int foregroundCells = 0;
@@ -393,11 +399,12 @@ namespace KhaozEngine.Tests.Gpu
                 float r = guardGrid[cell * 3], g = guardGrid[cell * 3 + 1], b = guardGrid[cell * 3 + 2];
                 if (b <= MathF.Max(r, g) + 0.02f) foregroundCells++;   // not blue-dominant => foreground, not sky
             }
-            Assert.True(foregroundCells >= 120,
+            Assert.True(foregroundCells >= 15,
                 $"scene3d_sky has only {foregroundCells} foreground cells (blue not the dominant channel) of " +
                 $"{guardGrid.Length / 3}; the sky pass is painting over the scene (background-only image). Expected " +
-                "the floor + meshes to occlude the sky (~200 cells). Check the SkyRenderer depth test is Equal, not " +
-                "GreaterEqual (GreaterEqual passes on every pixel under the [0,1]/LessEqual depth convention).");
+                "the coloured meshes to occlude the sky (~34 cells at the chroma-preserved floor's reduced margin). " +
+                "Check the SkyRenderer depth test is Equal, not GreaterEqual (GreaterEqual passes on every pixel " +
+                "under the [0,1]/LessEqual depth convention).");
 
             GoldenCompare.AssertOrUpdate("scene3d_sky", rgba, W, H);
         }

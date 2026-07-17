@@ -178,10 +178,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   render shifts on repin. `Hdr.Enabled = false` restores the exact legacy UNorm chain and pass order BYTE-IDENTICAL
   to the pre-HDR output (golden-proven via `scene3d_hdr_off`). Formats: only the colour targets flip, the
   encoded-normal/linear-depth MRTs, the swapchain, and everything post-blit stay LDR.
-  `Hdr.ChromaPreservation` (`0..1`, default `0`) controls how much highlight colour survives the roll-off: `0` applies
-  the operator per channel (the historical look, hot cores desaturate toward white), `1` maps luminance only and
-  rescales RGB so hue is fully preserved (a coloured glow stays chromatic into its core), in between blends. At `0` the
-  tonemap short-circuits to the exact per-channel expression, so the default is byte-identical to the pre-chroma
+  `Hdr.ChromaPreservation` (`0..1`, default `0.75`) controls how much highlight colour survives the roll-off: `0`
+  applies the operator per channel (the historical look, hot cores desaturate toward white), `1` maps luminance only
+  and rescales RGB so hue is fully preserved (a coloured glow stays chromatic into its core), in between blends. The
+  `0.75` default is the user-approved balance from the look-evidence ladder review: saturated preset colours stay
+  legible against the filmic roll-off while the hottest cores still read as hot. Hue is preserved except where a
+  saturated channel clips at the display ceiling before the rescale, where a partial desaturating shift remains even
+  at `1`. At `0` the tonemap short-circuits to the exact per-channel expression, byte-identical to the pre-chroma
   output. The mapping is mirrored headlessly by `Internal.TonemapMath` (kept in sync with the GLSL `TonemapFrag`).
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus
   `PixelPostProcessSettings.Water` (a `WaterSettings`, **default no request queued = no pass, no cost**) draws an

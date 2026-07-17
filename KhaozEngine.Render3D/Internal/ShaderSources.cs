@@ -1666,21 +1666,46 @@ void main() {
         public const string TonemapFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
-layout(set=0, binding=2) uniform Tone { vec4 Params; }; // Params.x = exposure, .y = operator (0 aces, 1 reinhard, 2 clamp)
+layout(set=0, binding=2) uniform Tone { vec4 Params; }; // Params.x = exposure, .y = operator (0 aces, 1 reinhard, 2 clamp), .z = ChromaPreservation (0..1)
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
+// Rec.601 luma, matching the local luma() the rest of the post chain (EdgeFrag/FxaaFrag/bloom) uses.
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 // ACES filmic fit (Krzysztof Narkowicz 2015): filmic S-curve with highlight desaturation toward white.
 vec3 acesFilm(vec3 x) {
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
+float acesFilm(float x) {
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+// Mirrors KhaozEngine.Render3D.Internal.TonemapMath (keep the curve dispatch, luma, rescale, mix, and the
+// factor-0 short-circuit in sync). This is the engine's most-shipped pixel: at Params.z == 0 the output must
+// stay byte-identical to the pre-chroma tonemap, which the Metal golden gate proves on real hardware.
 void main() {
     vec4 s = texture(sampler2D(Src, Samp), vUv);
     vec3 c = max(s.rgb, vec3(0.0)) * Params.x;
     int op = int(Params.y + 0.5);
-    vec3 mapped;
-    if (op == 0) mapped = acesFilm(c);
-    else if (op == 1) mapped = c / (vec3(1.0) + c);
-    else mapped = clamp(c, 0.0, 1.0);
+    // Per-channel operator: the historical look. An over-range core desaturates toward white as its
+    // brightest channel saturates first.
+    vec3 perChannel;
+    if (op == 0) perChannel = acesFilm(c);
+    else if (op == 1) perChannel = c / (vec3(1.0) + c);
+    else perChannel = clamp(c, 0.0, 1.0);
+    // Params.z == 0 short-circuits to the EXACT per-channel expression above (a uniform branch, no divergence)
+    // so the default output carries no blend re-association and stays byte-identical.
+    if (Params.z <= 0.0) {
+        oColor = vec4(perChannel, s.a);
+        return;
+    }
+    // Hue-preserving path: map luminance through the same operator, then rescale RGB by mappedLuma / luma so
+    // only brightness rolls off and the chromaticity (hue + saturation direction) is held.
+    float l = luma(c);
+    float lm;
+    if (op == 0) lm = acesFilm(l);
+    else if (op == 1) lm = l / (1.0 + l);
+    else lm = clamp(l, 0.0, 1.0);
+    vec3 huePreserving = c * (lm / max(l, 1e-5));
+    vec3 mapped = clamp(mix(perChannel, huePreserving, Params.z), 0.0, 1.0);
     oColor = vec4(mapped, s.a);
 }";
 

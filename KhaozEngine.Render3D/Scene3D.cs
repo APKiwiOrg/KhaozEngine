@@ -1688,9 +1688,10 @@ namespace KhaozEngine.Render3D
             // near distance) rides in the UBO as the documented coverage distance. The fade itself is UV-border-driven.
             float border = 0.12f;
             float maxDist = count > 1 ? shadows.ResolvedMaxDistance : shadows.ShadowNearDistance;
+            float blend = Math.Clamp(shadows.ShadowCascadeBlend, 0f, 0.49f);
             _model.SetShadowUniforms(_cascadeReceiverVps.AsSpan(0, count), count, texelStep,
                 shadows.ShadowConstantBias, shadows.ShadowSlopeBias, shadows.ShadowStrength,
-                maxDist, border, _cascadeNormalOffsets.AsSpan(0, count));
+                maxDist, border, blend, _cascadeNormalOffsets.AsSpan(0, count));
         }
 
         /// <summary>

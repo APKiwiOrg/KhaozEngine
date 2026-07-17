@@ -79,7 +79,20 @@ living in the scene. They are all consequences of the fix, not incidental damage
 | Stars flow through the distortion pass | A ripple over the void now warps the stars behind it | Fix. Heat-haze should distort what is behind it. |
 | Stars tonemap in HDR | Slightly dimmer than today's post-tonemap injection | Accepted. The new bloom compensates. Verified in the A/B, not assumed. |
 | Stars render at internal resolution | Cell grid is the same in NDC, so the pattern is unchanged, but per-star pixel size and crispness shift | Accepted. |
-| Stars now make background pixels opaque | `TransparentBackground` + stars previously composited through, drawing stars at `outA = 0` (invisible) | Accepted. That combination was already nonsense, and `Render3DPreview` plus `UseSmoothPreset` both already force starfield off for exactly this reason. Documented: a transparent composite needs `Background = Solid`. |
+| Stars now make background pixels opaque | `TransparentBackground = true` combined with the DEFAULT `Starfield = true` on a raw `Scene3D` previously composited invisibly (stars drawn at `outA = 0`). Now the background pass writes `alpha = 1`, so the background is fully OPAQUE and hides whatever the caller composites it over | Accepted, but a real behaviour change on reachable public API, not just a look change. See the note below the table. |
+
+`TransparentBackground = true` with the default `Starfield = true` is reachable on any raw `Scene3D`,
+not a contrived state, and its behaviour genuinely changes: invisible stars over a transparent
+background become an opaque starfield covering the composite. `Render3DPreview` and
+`UseSmoothPreset` both already force starfield off, which is why neither is exposed, but a consumer
+that builds `Scene3D` directly with `TransparentBackground = true` is not protected by either.
+SpaceGame is the concrete near miss: it sets `Scene.Post.TransparentBackground = true` and never
+touches `Starfield`, and is saved only because its one 3D path, `Render3DPreview`, forces
+`Post.Starfield = false` in its constructor (`Render3DPreview.cs:74`). Had SpaceGame instead built a
+raw `Scene3D` the way its 2D path does, this release would have shipped an opaque starfield silently
+covering its 2D backdrop. This must be called out in `CHANGELOG.md` as a BEHAVIOUR CHANGE, not folded
+into an "additive, minor" description: a transparent composite now needs `Background = Solid` set
+explicitly, where before the default was already safe for that combination.
 
 ### The API: one concern, one knob
 
@@ -174,20 +187,13 @@ Two non-golden tests have their premise inverted and are rewritten against the n
   **because** they are painted after distortion. Post-migration they are in `ColorTex` before the
   post chain, so it becomes `Distortion_warps_the_starfield`, the opposite assertion.
 
-Two non-golden tests have their premise inverted and are rewritten against the new pass, not merely
-rebaked:
-
-- `HdrPipelineGpuTests.Hdr_alpha_marker_survives_tonemap` asserts the blit injects stars only where
-  `a < 0.5`. That mechanism is being deleted. It becomes an assertion that the background pass's
-  stars survive the tonemap.
-- `DistortionGpuTests.Distortion_alpha_marker_survives` asserts stars are unaffected by a ripple
-  **because** they are painted after distortion. Post-migration they are in `ColorTex` before the
-  post chain, so it becomes the opposite assertion: a ripple over the void warps the stars.
-
-New headless tests cover the mode enum and its aliases: each alias round-trips, every old
-boolean-pair sequence used in-tree resolves to the expected mode, and the last-writer-wins semantics
-are pinned so the one changed sequence is a deliberate, asserted choice rather than a surprise. New
-GPU test: stars land only on background pixels and never on geometry.
+New headless tests (`BackgroundModeTests`) pin the derived enum itself, not aliases: there are none,
+per the design above. They cover the default (`Background` starts at `Starfield`), that every mode
+round-trips through set-then-get, that setting one mode clears the other two booleans (mode
+exclusivity), that a both-true state normalizes to `Sky` (the legacy sky-over-starfield precedence),
+that normalizing is idempotent, and that reassigning `Post.Sky` to a fresh `SkySettings` instance
+still resolves correctly through the derived getter. New GPU test: stars land only on background
+pixels and never on geometry.
 
 ### Verification
 
@@ -195,10 +201,13 @@ GPU test: stars land only on background pixels and never on geometry.
 2. `StarfieldGpuTests` passing, and confirmed to FAIL when the pass is sabotaged. Since the goldens
    cannot see the starfield, this test carries the entire automated net and its bite is verified
    rather than assumed.
-3. **Windowed A/B in Hardpoint and SpaceGame before merge. This is the hard gate.** The goldens being
-   blind to the starfield raises rather than lowers the stakes here: no automated check can tell us
-   whether bloomed, quantized, tonemapped, distortable stars read better than the pasted-on ones. A
-   fully green suite is not evidence the look is right. Only a human looking at the two games is.
+3. **Windowed A/B in Hardpoint before merge. This is the hard gate.** The goldens being blind to the
+   starfield raises rather than lowers the stakes here: no automated check can tell us whether
+   bloomed, quantized, tonemapped, distortable stars read better than the pasted-on ones. A fully
+   green suite is not evidence the look is right. Only a human looking at the game is. SpaceGame is
+   not a valid target for this gate: its only 3D path is `Render3DPreview`, whose constructor forces
+   `Post.Starfield = false` (`Render3DPreview.cs:74`), so it always renders `BackgroundMode.Solid` and
+   can never show a star.
 
 ## Release 2: opt-in void fallback for ground decals
 
@@ -253,7 +262,7 @@ Instance packing appends the void instances after the base ones, so base bytes n
 - Void instance: `Extra = (BaseFill, 1, VoidDim, 0)`, with its screen rect computed over the flat
   AABB at `Center.Y` (a tighter, correct bound than the Y-gate band).
 
-`CoalesceDecalRuns` is unchanged for the base pass; the void pass coalesces its own subset by blend.
+`CoalesceDecalRuns` is unchanged for the base pass. The void pass coalesces its own subset by blend.
 
 Fragment shader branches on `Extra.y`:
 

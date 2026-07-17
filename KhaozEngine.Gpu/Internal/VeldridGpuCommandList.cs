@@ -8,8 +8,12 @@ namespace KhaozEngine.Gpu.Internal
     internal sealed class VeldridGpuCommandList : IGpuCommandList
     {
         internal CommandList CommandList { get; }
+        readonly DeviceLiveness _liveness;
         readonly bool _owns;
-        public VeldridGpuCommandList(CommandList cl, bool owns = true) { CommandList = cl; _owns = owns; }
+        public VeldridGpuCommandList(DeviceLiveness liveness, CommandList cl, bool owns = true)
+        {
+            _liveness = liveness; CommandList = cl; _owns = owns;
+        }
 
         public void Begin() => CommandList.Begin();
         public void End() => CommandList.End();
@@ -73,6 +77,6 @@ namespace KhaozEngine.Gpu.Internal
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
             => CommandList.ResolveTexture(((VeldridGpuTexture)src).Texture, ((VeldridGpuTexture)dst).Texture);
 
-        public void Dispose() { if (_owns) CommandList.Dispose(); }
+        public void Dispose() { if (_owns && !_liveness.Dead) CommandList.Dispose(); }
     }
 }

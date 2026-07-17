@@ -162,6 +162,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         void ClearSets()
         {
+            // A cached set may still be referenced by queued draws (Scene3D calls this mid-life from
+            // UnloadTexture), so drain the device before disposing.
+            if (_sets.Count > 0) _gd.WaitForIdle();
             foreach (var kv in _sets) kv.Value.Dispose();
             _sets.Clear();
         }

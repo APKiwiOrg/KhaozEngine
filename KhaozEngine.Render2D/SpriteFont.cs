@@ -120,7 +120,10 @@ namespace KhaozEngine.Render2D
                 (uint)baked.AtlasW, (uint)baked.AtlasH, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             gd.UpdateTexture(tex, baked.Atlas, 0, 0, (uint)baked.AtlasW, (uint)baked.AtlasH);
 
-            var font = new SpriteFont(new Texture2D(tex, baked.AtlasW, baked.AtlasH),
+            // gd-carrying wrapper: a DpiFont rebake evicts and disposes the previous scale's SpriteFont (and this
+            // atlas) mid-life, while a fresh atlas upload may still be queued on the device, so the wrapper's
+            // Dispose drains the device before freeing the handle (see Texture2D's gd-carrying ctor).
+            var font = new SpriteFont(new Texture2D(gd, tex, baked.AtlasW, baked.AtlasH, ownsHandle: true),
                 baked.AtlasW, baked.AtlasH, baked.Ascent, baked.LineHeight, baked.RenderScale);
             foreach (var kv in baked.Glyphs) font.Glyphs[kv.Key] = kv.Value;
             return font;

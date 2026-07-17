@@ -356,6 +356,8 @@ void main() {
             _evictScratch.Clear();
             foreach (var kv in _texLastUsedFrame)
                 if (kv.Value <= cutoff) _evictScratch.Add(kv.Key);
+            // An evicted set may still be referenced by queued draws, so drain the device once before disposing.
+            if (_evictScratch.Count > 0) _gd.WaitForIdle();
             foreach (IGpuTexture tex in _evictScratch)
             {
                 if (_sets.Remove((tex, _linearSampler), out IGpuResourceSet? s1)) s1.Dispose();
@@ -773,7 +775,9 @@ void main() {
             while (vbs.Count <= i) { vbs.Add(null!); caps.Add(0); }
             if (vbs[i] == null || caps[i] < bytesNeeded)
             {
-                vbs[i]?.Dispose();
+                // The old buffer was last used RingDepth frames ago CPU-side, but on a driver with an async
+                // submission thread (lavapipe) that is no guarantee the GPU is done with it, so drain first.
+                if (vbs[i] is { } old) { _gd.WaitForIdle(); old.Dispose(); }
                 uint cap = Math.Max(bytesNeeded, caps[i] == 0 ? 4096u : caps[i] * 2);
                 vbs[i] = _gd.Factory.CreateBuffer(new GpuBufferDescription(cap, GpuBufferUsage.VertexBuffer));
                 caps[i] = cap;

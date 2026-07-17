@@ -128,7 +128,14 @@ namespace KhaozEngine.Gpu
 
         public void Dispose()
         {
-            if (_ownsDevice) lock (_lifecycleGate) _device.Dispose();
+            if (!_ownsDevice) return;
+            lock (_lifecycleGate)
+            {
+                // Latch the wrapper first (still inside the gate) so any later straggling drain from a
+                // resource wrapper disposed after this context no-ops instead of waiting on a dead device.
+                ((VeldridGpuDevice)GpuDevice).MarkDeviceDisposed();
+                _device.Dispose();
+            }
         }
     }
 }

@@ -241,10 +241,15 @@ namespace KhaozEngine.Render3D.Internal
             }
         }
 
+        // These methods run MID-LIFE on a resize or divisor change, when the previous frame's queued rendering
+        // may still reference the old targets (Mesa lavapipe executes submissions on its own thread and
+        // segfaults on destroyed resources), so each drains the device once before destroying anything.
+
         // Free the distortion target and reset its bookkeeping. Called by EnsureDistortion (on a free / size or
         // divisor change) and by DisposeTargets (a resize disposes it, the next frame's EnsureDistortion re-lazies).
         void DisposeDistortion()
         {
+            if (DistortFB != null || DistortTex != null) _gd.WaitForIdle();
             DistortFB?.Dispose(); DistortTex?.Dispose();
             DistortFB = null; DistortTex = null;
             DistortWidth = 0; DistortHeight = 0; _distortDivisor = 0;
@@ -253,6 +258,7 @@ namespace KhaozEngine.Render3D.Internal
 
         void DisposeTargets()
         {
+            if (ModelFB != null) _gd.WaitForIdle();   // drain only when targets exist to dispose
             DisposeDistortion();
             ModelFB?.Dispose(); ColorDepthFB?.Dispose(); PingAFB?.Dispose(); PingBFB?.Dispose();
             ColorTex?.Dispose(); NormalTex?.Dispose(); DepthColorTex?.Dispose(); DepthStencil?.Dispose();

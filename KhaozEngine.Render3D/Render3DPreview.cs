@@ -96,6 +96,8 @@ namespace KhaozEngine.Render3D
             var (w, h) = ClampSize(width, height);
             if (w == Width && h == Height) return;
             _texture.Dispose();                 // non-owning wrapper: frees nothing, just drops the stale wrapper
+            // The previous frame's queued render may still reference the old target, so drain the device first.
+            _gd.WaitForIdle();
             _fb.Dispose();
             _target.Dispose();
             Width = w; Height = h;

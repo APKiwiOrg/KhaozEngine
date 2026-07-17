@@ -2168,7 +2168,7 @@ void main() {
 
         // ---- Procedural sky (gradient + sun disc/halo). A fullscreen-triangle BACKGROUND pass rendered into the lit
         //      colour attachment + read-only scene depth (ColorDepthFB), like the ground-decal pass, but INVERTED: the
-        //      triangle sits at the FAR plane (z=1) and the pipeline uses a GreaterEqual read-only depth test, so a
+        //      triangle sits at the FAR plane (z=1) and the pipeline uses an Equal read-only depth test, so a
         //      fragment passes ONLY where the stored depth is still the cleared far plane - i.e. background pixels
         //      where no geometry was drawn. Geometry (depth < 1) rejects the sky, so it never overwrites the scene and
         //      never touches the MRT normal/linear-depth attachments (ColorDepthFB binds only colour + depth). It

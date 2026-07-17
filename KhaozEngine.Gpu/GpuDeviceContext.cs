@@ -10,8 +10,19 @@ namespace KhaozEngine.Gpu
     /// <c>GraphicsBackend.Metal</c>) and surfaces <see cref="GpuCapabilities"/>. Renderers consume
     /// <see cref="GpuDevice"/>; the raw Veldrid device stays a private implementation detail of this context.
     /// </summary>
+    /// <remarks>
+    /// Device creation and disposal are serialized process-wide behind a single static gate, on every backend.
+    /// Concurrent device creation races the Vulkan loader's dispatch setup: on Mesa 25.2.8 lavapipe under
+    /// full test-suite parallelism, two threads simultaneously inside <c>vkCreateDevice</c> /
+    /// <c>vkGetDeviceQueue</c> made the loader see a just-created device as invalid and abort. Creation and
+    /// disposal are rare relative to render work, so serializing them process-wide costs nothing measurable.
+    /// </remarks>
     public sealed class GpuDeviceContext : IDisposable
     {
+        // Serializes GraphicsDevice creation and disposal across every thread and every backend. See the class
+        // remarks for why: it closes the concurrent-device-creation race that aborts the Vulkan loader on lavapipe.
+        static readonly object _lifecycleGate = new();
+
         readonly bool _ownsDevice;
         readonly GraphicsDevice _device;
 
@@ -72,15 +83,19 @@ namespace KhaozEngine.Gpu
             var scDesc = new SwapchainDescription(source, width, height, null, syncToVerticalBlank, false);
 
             GpuBackendKind kind = GpuBackendSelector.Select();
-            GraphicsDevice gd = kind switch
+            GraphicsDevice gd;
+            lock (_lifecycleGate)
             {
-                GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
-                GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
-                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, scDesc),
-                GpuBackendKind.OpenGL => throw new NotSupportedException(
-                    "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
-                _ => GraphicsDevice.CreateMetal(opts, scDesc),
-            };
+                gd = kind switch
+                {
+                    GpuBackendKind.Metal => GraphicsDevice.CreateMetal(opts, scDesc),
+                    GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(opts, scDesc),
+                    GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(opts, scDesc),
+                    GpuBackendKind.OpenGL => throw new NotSupportedException(
+                        "Windowed OpenGL device-from-handle is not supported (Silk would need to own the GL context)."),
+                    _ => GraphicsDevice.CreateMetal(opts, scDesc),
+                };
+            }
             return new GpuDeviceContext(gd, kind, ownsDevice: true);
         }
 
@@ -95,21 +110,25 @@ namespace KhaozEngine.Gpu
         internal static GpuDeviceContext CreateHeadless(GraphicsDeviceOptions options)
         {
             GpuBackendKind kind = GpuBackendSelector.Select();
-            GraphicsDevice gd = kind switch
+            GraphicsDevice gd;
+            lock (_lifecycleGate)
             {
-                GpuBackendKind.Metal => GraphicsDevice.CreateMetal(options),
-                GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(options),
-                GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(options),
-                GpuBackendKind.OpenGL => throw new NotSupportedException(
-                    "Headless OpenGL device creation is not supported in Phase 3a (needs a context surface)."),
-                _ => GraphicsDevice.CreateMetal(options),
-            };
+                gd = kind switch
+                {
+                    GpuBackendKind.Metal => GraphicsDevice.CreateMetal(options),
+                    GpuBackendKind.Vulkan => GraphicsDevice.CreateVulkan(options),
+                    GpuBackendKind.Direct3D11 => GraphicsDevice.CreateD3D11(options),
+                    GpuBackendKind.OpenGL => throw new NotSupportedException(
+                        "Headless OpenGL device creation is not supported in Phase 3a (needs a context surface)."),
+                    _ => GraphicsDevice.CreateMetal(options),
+                };
+            }
             return new GpuDeviceContext(gd, kind, ownsDevice: true);
         }
 
         public void Dispose()
         {
-            if (_ownsDevice) _device.Dispose();
+            if (_ownsDevice) lock (_lifecycleGate) _device.Dispose();
         }
     }
 }

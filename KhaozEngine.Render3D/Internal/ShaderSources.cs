@@ -1480,7 +1480,7 @@ void main() {
         // ---- Screen-space distortion apply: the FIRST post-chain pass (both modes). Re-samples the chain source
         // through the accumulated half-res offset field so refraction warps the scene BEFORE every camera-response
         // pass (bloom halos follow the warped sources, the retro path quantizes the warped image). Preserves each
-        // pixel's OWN alpha so the background/starfield marker never warps (warping it would corrupt the blit's
+        // pixel's OWN alpha so the background marker (transparent background) never warps (warping it would corrupt the blit's
         // marker semantics, D-S5). Only ever run when a distortion sprite was queued this frame
         // (RenderResources.DistortAllocated), so a distortion-free frame is byte-identical to before distortion existed.
         public const string DistortionApplyFrag = @"#version 450
@@ -1656,7 +1656,7 @@ void main() {
 
         // ---- HDR tonemap: map the float16 over-range scene colour to LDR [0,1] before the retro/AA passes.
         // Runs ONLY in HDR mode, directly after the (pre-tonemap) bloom composite. Preserves the source
-        // alpha untouched so the blit's background marker (alpha < 0.5 -> starfield / transparent) survives.
+        // alpha untouched so the blit's background marker (alpha < 0.5 for transparent background) survives.
         // Operator fit choices are pure ALU (no LUT) so cross-backend goldens stay stable.
         public const string TonemapFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
@@ -1708,7 +1708,7 @@ void main() {
         // The classic Timothy Lottes FXAA3-console pass: read a 3x3 luma neighbourhood, skip near-flat areas
         // (contrast gate), otherwise estimate the edge direction from the luma gradient and blend two/four taps along
         // it. Softens high-contrast edges (geometry silhouettes AND shaded interiors) in one cheap fullscreen pass.
-        // Preserves the CENTRE pixel's alpha so the blit's background marker (a < 0.5 -> starfield / transparent) still
+        // Preserves the CENTRE pixel's alpha so the blit's background marker (a < 0.5 for transparent background) still
         // works. Runs on the internal target BEFORE the blit; like the other post passes it flips V, so the blit's
         // flipV parity counts it. Rcp.xy = 1/targetSize.
         public const string FxaaFrag = @"#version 450
@@ -1810,7 +1810,7 @@ void main() {
         // ---- Bloom composite: additively blend the blurred (half-res, bilinear-upsampled by the sampler) bright
         // target onto the full-res colour chain. Sampled UP FRONT in binding order (Src, Bloom - see the Metal
         // first-sample-order rule in EdgeFrag/ModelFrag). Preserves Src's alpha UNCHANGED so the blit's background
-        // marker (alpha<0.5 -> starfield / TransparentBackground) is untouched - bloom must never resurrect an
+        // marker (alpha < 0.5 for transparent background) is untouched - bloom must never resurrect an
         // alpha-0 background pixel into an opaque one; adding a near-zero (thresholded-out) bloom colour to the
         // background also does not visibly brighten it in practice, since nothing exceeds the bright-pass threshold
         // there.
@@ -2167,7 +2167,7 @@ void main() {
         //      fragment passes ONLY where the stored depth is still the cleared far plane - i.e. background pixels
         //      where no geometry was drawn. Geometry (depth < 1) rejects the sky, so it never overwrites the scene and
         //      never touches the MRT normal/linear-depth attachments (ColorDepthFB binds only colour + depth). It
-        //      writes alpha = 1 so the blit's starfield "a < 0.5 == background" marker does not fire over sky pixels.
+        //      writes alpha = 1 as opaque painted background, matching the starfield pass for consistency.
         //      No vertex inputs (gl_VertexIndex only), so the HLSL input signature is empty - no gap-free-holes hazard.
         //      The sky is drawn in SCREEN space (not by a world view ray): under the orthographic iso camera every
         //      view ray is parallel, so a world-ray sky would be a flat colour with no gradient and no localized sun.
@@ -2219,7 +2219,7 @@ void main() {
         float sun = clamp(disc + halo, 0.0, 1.0);
         col = mix(col, SunColor.rgb, sun);
     }
-    oColor = vec4(col, 1.0);   // alpha 1: NOT the starfield/transparent background marker
+    oColor = vec4(col, 1.0);   // alpha 1: opaque painted background (consistent with starfield)
 }";
 
         // ---- Animated water surface (Rendering gap #5). Drawn AFTER the sky and the ground decals into

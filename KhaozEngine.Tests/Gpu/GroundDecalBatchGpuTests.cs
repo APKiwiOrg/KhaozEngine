@@ -72,6 +72,14 @@ namespace KhaozEngine.Tests.Gpu
             IGpuDevice gd = ctx.GpuDevice;
             using var preview = new Render3DPreview(gd, W, H);
             preview.Scene.Post.Outline = true;
+            // Pin the legacy (non-HDR) post chain. This test proves the decal BATCH path: footprint bounding is
+            // pixel-neutral and the per-instance attributes carry each decal's own colour (the additive green run,
+            // split mid-order between two alpha runs, is the canary). Both are independent of the post tonemap. The
+            // ACES tonemap (HDR is on by default since 906c1df3, which landed a day after this test) desaturates this
+            // near-white lit-floor scene wholesale, dropping the additive green's colour-dominance below the check
+            // below - the batch itself is correct (LDR renders all three decals distinctly). Render LDR so the
+            // assertions measure the decal path, not the tonemap curve (which has its own goldens).
+            preview.Scene.Post.Hdr.Enabled = false;
             preview.Scene.Camera.Frame(new Vector3(0f, 0.2f, 0f), new Vector3(6f, 4.5f, 6f));
             MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(8f, 0.1f));
 

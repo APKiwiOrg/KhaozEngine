@@ -39,7 +39,8 @@ process entry point. `SessionLog.Configure` collapses it into one call and stand
 session log** shape: it prunes old session files, opens one fresh timestamped `session-{yyyyMMdd-HHmmss}.log`,
 adds a console sink, adopts the pair as the ambient `Log`, installs `CrashHandler`, and writes one self-identifying
 startup line (optional game build version + the engine version read off the engine assembly). It returns the path
-of the file it opened.
+of the file it opened. `FileSink` opens the session log with an explicit `FileShare.Read`, so a crash reporter or
+tail tool can read the file live for the whole process lifetime while it is held open for writing.
 
 ```csharp
 using KhaozEngine.App;          // AppDataPaths

@@ -203,7 +203,9 @@ record) encode and decode through a source-generated `System.Text.Json` context,
 `PublishAot` without reflection. The context runs in metadata mode, so the encoding is byte-for-byte identical to
 the previous reflection output - records already stored via `IWorldStore` keep loading, and a null game blob still
 encodes as `null`. The gate is `KhaozEngine.Server.AotProbe`, which exercises these round-trips in its published
-native run.
+native run. `NewLine` is pinned to `"\n"`, matching `JsonDefaults.IndentedWrite`, so a persisted record is
+canonical LF on every OS rather than the platform newline (Windows previously persisted CRLF). Existing CRLF
+blobs still read fine and rewrite to LF the next time they are saved.
 
 The **`ServerAdmin`** facade composes an `IAdminControllable` server, an optional `IBanStore`, and an optional
 `IEnumerableWorldStore`: `BanAsync` persists and kicks if the account is online; `ListAccountsAsync(prefix)`

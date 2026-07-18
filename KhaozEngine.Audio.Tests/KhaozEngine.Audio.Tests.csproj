@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces, consistent with every other split
+         test project. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <!-- The Sfx folder tests the KhaozEngine.Sfx.Tool asset-baking CLI (Exe output), a different physical
+         assembly from the KhaozEngine.Audio-hosted runtime Sfx backend, referenced directly. -->
+    <ProjectReference Include="../KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+  </ItemGroup>
+</Project>

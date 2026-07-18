@@ -35,7 +35,7 @@ error, and print the worst diff, the offender count, and the top 8 cells like a 
 dotnet run --project SnapshotTool -- diff a.png b.png --tolerance 0.06 --grid 32x18 --out heat.png
 
 # Score a rendered PNG against a committed golden grid txt (dimensions read from its header).
-dotnet run --project SnapshotTool -- score render.png ../KhaozEngine.Tests/Gpu/goldens/scene3d.metal.txt
+dotnet run --project SnapshotTool -- score render.png ../KhaozEngine.Render.Tests/Gpu/goldens/scene3d.metal.txt
 ```
 
 `diff` requires equal dimensions; `score` reads the golden's `WxH` header and downsamples to match. The

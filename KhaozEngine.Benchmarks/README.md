@@ -11,7 +11,7 @@ Without the benchmark we'd optimize blind, so it landed first.
 
 Not a shipped package (`IsPackable=false`) and not on the engine version line. The timing loop only runs via
 `dotnet run`; CI's `dotnet test` never invokes it, so it stays out of CI's timed path. The harness's deterministic
-and structural behaviour *is* covered by `KhaozEngine.Tests/Benchmarks/ServerTickBenchmarkTests.cs`, which run in CI.
+and structural behaviour *is* covered by `KhaozEngine.Server.Tests/Benchmarks/ServerTickBenchmarkTests.cs`, which run in CI.
 
 ## What it measures
 

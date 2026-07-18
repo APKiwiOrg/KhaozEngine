@@ -20,7 +20,7 @@ Backend selection is centralized in `KhaozEngine.Gpu.GpuBackendSelector`:
 
 ## Backend-aware goldens
 
-`GoldenCompare.GoldenPath(name)` resolves `KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt` where
+`GoldenCompare.GoldenPath(name)` resolves `KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt` where
 `<backend>` = `GpuBackendSelector.Select().ToString().ToLowerInvariant()`. Each backend has its own reference
 grid because a software rasterizer (lavapipe, WARP) does not match Apple Metal pixel-for-pixel; per-backend
 goldens absorb that while still catching real shader / UBO / blend / winding / orientation regressions (coarse
@@ -31,10 +31,12 @@ The Metal goldens (`scene2d.metal.txt`, `scene3d.metal.txt`), the Direct3D11 gol
 (`scene2d.vulkan.txt`, `scene3d.vulkan.txt`, baked on lavapipe) are all committed and verified on every macOS /
 Windows / Linux run respectively.
 
-The 2D golden loads a libre font bundled in the test project (`KhaozEngine.Tests/Assets/Roboto-Regular.ttf`,
+The 2D golden loads a libre font bundled in the test project (`KhaozEngine.Render.Tests/Assets/Roboto-Regular.ttf`,
 Apache-2.0) rather than an OS system-font path, so its glyph input is identical on every runner.
 
-`KhaozEngine.Tests/Gpu/goldens/*.txt` is pinned `text eol=lf` in `.gitattributes`. The goldens are machine-generated
+`KhaozEngine.Render.Tests/Gpu/goldens/*.txt` is meant to be pinned `text eol=lf` in `.gitattributes`, though the
+pin still names the pre-split `KhaozEngine.Tests/Gpu/goldens/*.txt` path today, tracked as
+[#213](https://github.com/APKiwiOrg/KhaozEngine/issues/213). The goldens are machine-generated
 LF text, and a Windows checkout with `autocrlf` on would otherwise convert them to CRLF, breaking the byte-identity
 contract between the committed file and `GoldenGrid.Serialize`'s LF output. This exact failure shipped and was
 fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were green, only the endings differed).
@@ -74,7 +76,7 @@ without "Golden" in its name never ran on ANY backend (`Scene3DTextureUnloadTest
 test now runs on Metal (every trigger), D3D11, and Vulkan (both weekly + dispatch) regardless of what it
 is called. The name is not a CI contract, and neither is the directory: `[GpuFact]` classes live across
 many namespaces (Render3D, Terrain, MapEditor, MapEditTool, ParticlesRender3D, Snapshot, and more, some
-25 files outside `KhaozEngine.Tests/Gpu` alone), so a path or name filter is not a coverage contract
+25 files outside `KhaozEngine.Render.Tests/Gpu` alone), so a path or name filter is not a coverage contract
 either. The first full-suite sweeps surfaced 13 real Windows portability bugs, a dispose-before-submit
 contract violation in three test classes that only Vulkan enforces, and the lavapipe host-crash
 instability above - all of which the golden-only filter had been hiding.
@@ -121,14 +123,14 @@ and Vulkan (Linux/lavapipe). The overall workflow is green only when all three v
 2. **Generate a new backend's goldens:** run the workflow manually with `bake = true`. The bake legs render
    with `KE_UPDATE_GOLDENS=1` and upload artifacts named `goldens-<backend>`
    (`scene2d.<backend>.txt`, `scene3d.<backend>.txt`).
-3. **Commit them:** download the artifacts, drop the files into `KhaozEngine.Tests/Gpu/goldens/`, commit.
+3. **Commit them:** download the artifacts, drop the files into `KhaozEngine.Render.Tests/Gpu/goldens/`, commit.
    (Metal and D3D11 goldens are already committed this way; the D3D11 set was baked on the WARP runner.)
 4. After that, the push/PR legs verify those backends instead of failing.
 
 ### Failure-evidence PNGs
 
 A float-delta list tells you a cell moved but not what rendered. So on any non-trivial outcome the golden compare
-also writes viewable PNGs (via the BCL-only `KhaozEngine.Imaging.PngWriter`) to `KhaozEngine.Tests/Gpu/goldens-evidence/`
+also writes viewable PNGs (via the BCL-only `KhaozEngine.Imaging.PngWriter`) to `KhaozEngine.Render.Tests/Gpu/goldens-evidence/`
 (gitignored; override the dir with `KE_GOLDEN_EVIDENCE_DIR`). Filenames are `<name>.<backend>.<kind>.png`:
 
 - **compare failure** writes three, all at the captured `w`x`h`: `.got.png` (the frame as rendered), `.want.png`

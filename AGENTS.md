@@ -53,13 +53,24 @@ version/release work.
   statics. Everything else reads the immutable `InputState` snapshot (handed in via `Frame.Input`)
   through `InputManager`/`Pointer` - keeps input headless-testable. (There is no `MonoGameRawInput`
   or `IRawInput` any more; the engine is MonoGame-free.)
-- New behaviour ships with a headless test in `KhaozEngine.Tests` (construct an `InputState`
-  frame-by-frame and feed `InputManager.Update(input, viewport?)`; `dt` is a plain `float` in seconds,
-  no `GameTime`).
+- New behaviour ships with a headless test in the matching per-area test project
+  (`KhaozEngine.<Area>.Tests`), or the rump `KhaozEngine.Tests` when it is genuinely cross-cutting
+  (construct an `InputState` frame-by-frame and feed `InputManager.Update(input, viewport?)` -
+  `dt` is a plain `float` in seconds, no `GameTime`). A test project references ONLY the engine
+  projects its tests use - push CI selects test projects by the reference graph, so an over-broad
+  reference silently degrades selection. Declared test namespaces stay `KhaozEngine.Tests.*`
+  (`RootNamespace` is pinned in every split project), and a new test project needs an explicit
+  `<IsPackable>false</IsPackable>`.
 - Hit-test via `InputManager`/`Pointer` bounds helpers (`IsTapIn`, etc.), never raw position + button.
 
 ## Build / test / release
-- `dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj` - every new behaviour ships with a headless test.
+- `dotnet test` (root, runs `KhaozEngine.slnx` - all 16 test assemblies) - every new behaviour ships with a headless test in its matching per-area project.
+- **`ci.yml` runs two paths.** Tag pushes and `workflow_dispatch` run the full sequence (restore, build,
+  full test, determinism double-pass, pack, publish). Ordinary pushes and PRs run
+  `scripts/ci-selective-test.sh`, which builds and tests only the test projects `dotnet-affected` marks
+  affected by the diff, skips entirely on a docs-only diff, and forces full on a
+  workflow/scripts/props/slnx/tool-manifest change or a missing base sha. See
+  `docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md` for the full design.
 - **Private repo, one self-hosted leg.** `KhaozEngine` is a private repo under the `APKiwiOrg` org, so
   GitHub-hosted minutes bill (Linux 1x, Windows 2x, macOS 10x). The only expensive work is the macOS
   Metal golden leg at 10x, so that ONE leg is self-hosted on the native `mac-native-arm64` runner (real

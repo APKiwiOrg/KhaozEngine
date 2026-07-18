@@ -154,10 +154,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="13.0.1" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="13.0.1" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="13.0.1" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="13.0.1" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="13.0.3" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="13.0.3" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="13.0.3" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="13.0.3" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -168,13 +168,14 @@ packages (e.g. `KhaozEngine.Game2D` + `KhaozEngine.Netcode.LiteNetLib` for a 2D 
 
 ## Testability standard
 
-Every input and routing path is covered by `KhaozEngine.Tests` (xUnit), headless, by constructing `InputState`
-snapshots frame-by-frame and feeding them to `InputManager.Update` (`dt` is a plain `float` in seconds). New
-behaviour added to the library ships with a headless test. This is the standard, not a nicety - it's the reason
-the raw read sits behind the `AppWindow`/`InputState` seam.
+Every input and routing path is covered by headless xUnit tests (split per area, e.g. `KhaozEngine.Render.Tests`
+for `Windowing`/`InputManager`), by constructing `InputState` snapshots frame-by-frame and feeding them to
+`InputManager.Update` (`dt` is a plain `float` in seconds). New behaviour ships with a headless test in its
+matching per-area project, or the rump `KhaozEngine.Tests` when genuinely cross-cutting. This is the standard,
+not a nicety - it's the reason the raw read sits behind the `AppWindow`/`InputState` seam.
 
 ```bash
-dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
+dotnet test
 ```
 
 ## Repo layout
@@ -204,7 +205,8 @@ KhaozEngine.Server.Admin/      Opt-in HTTPS admin endpoint (Kestrel) over Server
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools
-KhaozEngine.Tests/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk, map-editor rooms)
+KhaozEngine.<Area>.Tests/ (Foundation, Simulation, Server, Render, Gui, MapEditor, Game, Audio, Particles)   KhaozEngine.Tests/ (rump, cross-cutting only)
+KhaozEngine.TestSupport/   KhaozEngine.TestSupport.Services/   KhaozEngine.TestSupport.Gpu/   KhaozEngine.Showcase/ (menu hub: 2D, GUI, input, mini-game, 3D-world, networked-walk, map-editor rooms)
 SnapshotTool/ (also GPU-free `diff`/`score` subcommands)   MmoServerSample/ (reference dedicated MMO server)
 KhaozEngine.Updates.Tool/ (ke-updater)   KhaozEngine.Sfx.Tool/ (ke-sfxbake)   KhaozEngine.PropSurface.Tool/ (ke-propbake)
 KhaozEngine.MapEdit.Tool/ (ke-mapedit)

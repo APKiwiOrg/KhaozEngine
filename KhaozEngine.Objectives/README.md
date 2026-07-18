@@ -121,11 +121,11 @@ Temporal / sequential conditions ("X then Y within 10s") and any reward / curren
 
 ## Testing
 
-Fully headless. See `KhaozEngine.Tests/Objectives/` (accumulation + Observe-max across scopes, ResetScope
+Fully headless. See `KhaozEngine.Game.Tests/Objectives/` (accumulation + Observe-max across scopes, ResetScope
 clears Session not Persistent, each condition kind + AND-composition, completion fires exactly once and does not
 re-fire after Restore, snapshot round-trip, index-by-key guard, progress introspection, and the Nullwake
 reference consumer).
 
 ```bash
-dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj
+dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj
 ```

@@ -1,6 +1,6 @@
 # CI Selective Tests Design (2026-07-18)
 
-Status: in progress on `feature/ci-selective-tests`. Program issue: [#207](https://github.com/APKiwiOrg/KhaozEngine/issues/207)
+Status: complete, shipped in 13.0.3. Program issue: [#207](https://github.com/APKiwiOrg/KhaozEngine/issues/207)
 (which also records the rejected alternatives: per-area workflow files, consumer smoke leg).
 
 ## Problem
@@ -25,9 +25,10 @@ workflow files (rejected in #207, hand path gates rot: the 10.18.1 miss).
 
 ## Decision 1: cluster set
 
-`KhaozEngine.Tests` splits into nine per-area test projects plus a small rump plus a shared-helper
-project. Folder assignments (recon verifies each folder's dominant references and corrects
-mismatches before the move):
+`KhaozEngine.Tests` splits into nine per-area test projects plus a small rump plus shared-helper
+projects (three as implemented: `TestSupport`, `TestSupport.Services`, and `TestSupport.Gpu`, the
+last split out mid-implementation, see "As implemented" below). Folder assignments (recon verifies
+each folder's dominant references and corrects mismatches before the move):
 
 | New project | Monolith folders |
 |---|---|
@@ -41,7 +42,7 @@ mismatches before the move):
 | `KhaozEngine.Audio.Tests` | Audio, Sfx (Sfx tests the `KhaozEngine.Sfx.Tool` exe, referenced directly) |
 | `KhaozEngine.Particles.Tests` | Particles |
 | `KhaozEngine.Tests` (rump) | ArchitectureTests and the genuinely cross-cutting remainder, kept deliberately small |
-| `KhaozEngine.TestSupport` (new, no tests) | Shared fixtures, builders, custom attributes (e.g. `GpuFact`, the `AllocSensitive` fixture) used by 2+ clusters. Hard rule: references nothing beyond `KhaozEngine.Primitives`, because every test project references it and its dependencies would poison selection for all of them |
+| `KhaozEngine.TestSupport` (new, no tests) | Planned as shared fixtures/builders/custom attributes (e.g. `GpuFact`, the `AllocSensitive` fixture) used by 2+ clusters, referencing nothing beyond `KhaozEngine.Primitives`. As implemented it ended dependency-free instead, see "As implemented" below |
 | `KhaozEngine.TestSupport.Services` (new, no tests) | The package-coupled cross-cluster fakes (Updates, ServerStatus). References those two leaf packages, and is referenced ONLY by the test projects that need the fakes (Foundation, Gui, Game, Server) |
 
 ### Recon corrections (what moved relative to the first cut)
@@ -65,10 +66,16 @@ membership). Consequences, all deliberate:
 
 - Every `FullyQualifiedName`-based filter survives untouched: `~DeterministicFp` in ci.yml,
   `~Golden` in cross-platform-gpu.yml.
-- Assembly names DO change, so every `InternalsVisibleTo Include="KhaozEngine.Tests"` grant (~20
-  csprojs) is retargeted to the new owning test project in the same commit as that cluster's move.
-  Three grants are dead (`Particles.Render3D`, `Telegraphs.Render3D`, `Terrain.Render3D`, zero
-  internal consumers) and are removed, not retargeted.
+- Assembly names DO change, so every `InternalsVisibleTo Include="KhaozEngine.Tests"` grant is
+  retargeted to the new owning test project in the same commit as that cluster's move, or dropped
+  where compilation proves it dead. The final sweep found 45 csprojs plus one source-level attribute
+  carrying the old grant, well past the ~20 guessed here. Of the three `.Render3D` companion grants
+  guessed dead in this paragraph, two were refuted: `Particles.Render3D` and `Terrain.Render3D`
+  compile internal-facing types into their companion assemblies under base namespaces
+  (`ParticleSceneExtensions`, `Scene3DChunkSink`), so wave 3 retargeted them to
+  `KhaozEngine.Render.Tests` (`Terrain.Render3D` also picked up `KhaozEngine.Game.Tests` in the Game
+  wave). The third, `Telegraphs.Render3D`, was genuinely dead: its one public type (`GroundTelegraphs`)
+  needs no internals grant, so the stale grant was dropped, exactly as planned here.
 - Every split project pins `<RootNamespace>KhaozEngine.Tests</RootNamespace>`. Two test files load
   embedded resources by their `KhaozEngine.Tests.*` manifest names (Localization coverage, Gui
   patch-notes parser), and manifest names derive from RootNamespace, not AssemblyName. Pinning it
@@ -84,9 +91,12 @@ membership). Consequences, all deliberate:
 
 Each new test csproj references ONLY the engine projects its tests use (recon computes the union per
 cluster from using directives, compile errors at the green gates catch the misses). This is the whole
-point of the split: selection precision comes from honest reference sets. The rump may reference
-whatever `ArchitectureTests` needs (potentially everything) and therefore runs on nearly every
-selective run. That is acceptable because it stays small and fast.
+point of the split: selection precision comes from honest reference sets. The rump ended with ZERO
+`ProjectReference`s instead of the "potentially everything" guessed here: `ArchitectureTests` parses
+`*.csproj` XML directly rather than compiling against the projects it checks, so it needs no reference-
+graph edge to do its job. That is the opposite of the prediction above: the rump now runs only when its
+own files change, not on nearly every selective run, which under-selects it for a csproj-only change
+elsewhere that its rules would have caught. Tracked as #212.
 
 `KhaozEngine.TestSupport` is `IsPackable=false`, ships nothing, and is exempt from the README catalog
 and `check-doc-versions.sh` (the guard checks packable projects only, verified during
@@ -166,3 +176,32 @@ Each stage gates on a local full suite. After merge and release: the main push r
 selective path (expected FULL, the bump is in the diff), the tag run must run full and publish, and
 the next natural docs-only push demonstrates the fast path. All three watched to green before the
 issue closes.
+
+## As implemented
+
+`KhaozEngine.TestSupport` ended dependency-free: zero `ProjectReference`s, not even the `Primitives`
+ceiling planned in Decision 1. `GpuFactAttribute` was the reason a ceiling was planned at all, and it
+needs `KhaozEngine.Gpu` (`GpuDeviceContext.CreateHeadless`), so it moved to a third helper project,
+`KhaozEngine.TestSupport.Gpu`, discovered mid-implementation rather than planned. That project also
+needs `<IsTestProject>false</IsTestProject>`: without it, solution-level `dotnet test` discovers the
+xunit-referencing assembly as a test project, spins a testhost against a DLL with no test adapter, and
+that testhost crashes, an artifact confirmed unrelated to the split and unchanged by it. No other
+helper qualified for `TestSupport` either (the `AllocSensitive` collection markers are empty
+`[CollectionDefinition]` classes with no shared state, so each landing assembly just carries its own
+trivial copy rather than referencing one), so `TestSupport` itself holds only an anchor class.
+
+Three sanctioned byte-identical duplications, chosen over a cross-test-project reference because each
+fixture is small, self-contained, and shared by only 2 clusters, so a reference would cost more
+selection precision than the duplication costs in upkeep: `DictionaryCatalog` (`IStringCatalog` test
+double, `Foundation.Tests` + `Gui.Tests`), `FakeAppDataEnvironment` (`IAppDataEnvironment` test double,
+`Foundation.Tests` + `MapEditor.Tests`), and `GltfTriangleFixtures` (headless SharpGLTF triangle-glb
+writers, `Render.Tests` + `MapEditor.Tests`). Each copy carries an in-file comment naming its sibling.
+
+Two known selection imprecisions surfaced after the split, both verified, neither actioned:
+
+- **#211, over-selection.** `KhaozEngine.Render.Tests` references `KhaozEngine.Showcase` for one
+  kit-asset test (`DungeonKitAssetTests.cs`), and `Showcase` references `KhaozEngine.Audio` for its
+  demo, so an Audio-only change drags the heaviest test project (2,124 tests) into the affected set.
+- **#212, under-selection.** The rump ended with zero `ProjectReference`s (see the Decision 3
+  correction above), so a csproj-only change elsewhere that `ArchitectureTests` would flag does not
+  mark the rump affected, and is caught only at the next full run, not the push that introduced it.

@@ -111,4 +111,4 @@ as fine in an overlay render but fails live (measured on the Ruinborne town set)
 
 A proxy is good when a capsule scanned over a grid of stand/jump/walk spots in and around it finds ~0 WEDGES (a
 spot it can neither walk nor jump out of) while the body + furniture stay standable. See the engine test
-`KhaozEngine.Tests/Physics/RealBuildingCollisionTests.cs` (the blacksmith proxy fixture).
+`KhaozEngine.Game.Tests/Physics/RealBuildingCollisionTests.cs` (the blacksmith proxy fixture).

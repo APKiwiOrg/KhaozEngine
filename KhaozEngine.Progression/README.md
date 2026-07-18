@@ -72,4 +72,4 @@ interval.
 
 Because the current instant is a plain method parameter (no ambient clock), the type is trivially
 unit-testable with fixed `DateTimeOffset` values - no clock injection needed. See
-`WallClockRewardScheduleTests` in `KhaozEngine.Tests`.
+`WallClockRewardScheduleTests` in `KhaozEngine.Game.Tests`.

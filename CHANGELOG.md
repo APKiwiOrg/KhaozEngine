@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.0.3
+
+CI: split the `KhaozEngine.Tests` monolith into nine per-area test projects plus a small cross-cutting
+rump, and switched push/PR CI to build and test only what the diff affects. Tag runs and the weekly
+hosted sweep still run everything. Closes #207.
+
+- **Nine new per-area test projects** (`KhaozEngine.Foundation.Tests`, `Simulation.Tests`,
+  `Server.Tests`, `Render.Tests`, `Gui.Tests`, `MapEditor.Tests`, `Game.Tests`, `Audio.Tests`,
+  `Particles.Tests`), aligned to the package dependency layering, plus three new helper libraries
+  (`KhaozEngine.TestSupport`, dependency-free, `TestSupport.Services` for the Updates/ServerStatus
+  cross-cluster fakes, and `TestSupport.Gpu` for `GpuFactAttribute`, marked
+  `<IsTestProject>false</IsTestProject>` so solution-level `dotnet test` does not spin a testhost
+  against it and crash). `KhaozEngine.Tests` itself is now the rump: `ArchitectureTests.cs` and
+  `CetCompatDefaultTests.cs`, the two genuinely cross-cutting files, with zero `ProjectReference`s.
+  6,860 tests preserved exactly across the 16 resulting assemblies. Namespaces move unchanged
+  (`RootNamespace` pinned to `KhaozEngine.Tests` on every split project), so fully-qualified test
+  names and embedded-resource manifest names are unaffected.
+- **Selective push/PR CI.** `scripts/ci-selective-test.sh` runs `dotnet-affected` (a committed local
+  tool via `.config/dotnet-tools.json`) to compute the affected project set from the diff, intersects
+  it with the test projects in `KhaozEngine.slnx`, and builds and tests only that set. A docs-only
+  diff skips build and test entirely. A change to a workflow file, a script, `Directory.Build.props`,
+  `nuget.config`, a `.slnx`, or the tool manifest forces a full run, and so does a missing or unusable
+  base sha. The determinism double-pass runs only when `KhaozEngine.Foundation.Tests` (home of the
+  `DeterministicFp` tests) is itself affected. Tag pushes and `workflow_dispatch` are unchanged: full
+  restore, build, test, determinism pass, pack, and publish.
+- **GPU goldens and the cross-platform workflow move with Render.** Goldens now live at
+  `KhaozEngine.Render.Tests/Gpu/goldens/`, and `cross-platform-gpu.yml`'s path gates move from
+  `KhaozEngine.Tests/Gpu/**` and `KhaozEngine.Tests/Imaging/**` to `KhaozEngine.Render.Tests/**`. No
+  change to legs, tiers, filters, or the weekly schedule.
+- **`InternalsVisibleTo` retargeted, 46 stale grants removed.** Every grant targeting the old
+  `KhaozEngine.Tests` assembly name is retargeted to its new owning per-area project in the same
+  commit as that cluster's move. 46 grants (45 csprojs plus one source-level attribute) that no
+  longer had a live consumer after the split are removed outright rather than retargeted.
+- Test and CI restructure only. No package API or runtime behavior changed.
+
 ## 13.0.1
 
 Fix (Gui): the in-game update overlay no longer pauses the whole game for an OPTIONAL update. `UpdateOverlayScreen`

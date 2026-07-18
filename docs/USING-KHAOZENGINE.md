@@ -6554,9 +6554,10 @@ im.Update(MouseAt(20, 20, down: false));   // release → IsTapIn(rect over 20,2
 Assert.True(im.IsTapIn(new Rect(0, 0, 40, 40)));
 ```
 
-New behaviour added to the library ships with a headless test in `KhaozEngine.Tests`. This is the standard, not
-a nicety - it's the reason the raw read sits behind the `AppWindow`/`InputState` seam. See the test project for
-the `InputState` builder patterns.
+New behaviour ships with a headless test in its matching per-area project, or the rump `KhaozEngine.Tests`
+when genuinely cross-cutting. This is the standard, not a nicety - it's the reason the raw read sits behind
+the `AppWindow`/`InputState` seam. See `KhaozEngine.Render.Tests/Windowing` and `KhaozEngine.Gui.Tests/Gui`
+for the `InputState` builder patterns.
 
 ### Localization coverage (`KhaozEngine.Localization.TestKit`)
 
@@ -6738,7 +6739,7 @@ original render form, unchanged.
 dotnet run --project SnapshotTool -- diff a.png b.png --tolerance 0.06 --grid 32x18 --out heat.png
 
 # Score a rendered PNG against a committed golden grid txt (dimensions read from its header).
-dotnet run --project SnapshotTool -- score render.png KhaozEngine.Tests/Gpu/goldens/scene3d.metal.txt
+dotnet run --project SnapshotTool -- score render.png KhaozEngine.Render.Tests/Gpu/goldens/scene3d.metal.txt
 ```
 
 `diff` requires equal dimensions and downsamples both to the grid; `score` deserializes the golden, reads its

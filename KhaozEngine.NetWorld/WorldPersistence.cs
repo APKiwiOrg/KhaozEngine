@@ -132,7 +132,9 @@ public sealed class WorldPersistence
     /// when a loaded record failed validation and was quarantined WHOLE: (accountId, reason). The raw record has been
     /// copied to the quarantine key by the time this fires, the player keeps its default spawn, and the primary record
     /// will be overwritten by the fresh state on the next dirty pass. The reason is the bounds/blob/decode message, for
-    /// logging or alerting.</summary>
+    /// logging or alerting. On the <see cref="FlushAsync"/> path the invoking continuation may run on a thread-pool
+    /// thread rather than the true server thread, under FlushAsync's own documented precondition that it only be
+    /// invoked when the server loop is idle.</summary>
     public event Action<string, string>? OnRecordQuarantined;
 
     // A loaded record marshalled to the server thread for validation + apply. Raw is the exact stored bytes (copied
@@ -333,9 +335,20 @@ public sealed class WorldPersistence
     /// tests) to reach a quiescent, fully-persisted point. Invoke from the server thread / when the loop is idle.</summary>
     public async Task FlushAsync()
     {
-        Task[] tasks;
-        lock (pendingLock) { tasks = pending.ToArray(); pending.Clear(); }
-        await Task.WhenAll(tasks).ConfigureAwait(false);
-        DrainApplyQueue();
+        // Loop rather than a single drain-then-await: DrainApplyQueue can itself Track a quarantine SaveAsync (a
+        // loaded record that fails validation), and awaiting pending can complete a LoadOnJoinAsync that enqueues a
+        // fresh applyQueue item. Either one leaves work this call has not yet awaited/applied, so keep going until a
+        // drain finds nothing new to track - only then is the call actually quiescent, mirroring CellPersistence's
+        // FlushAsync shape.
+        while (true)
+        {
+            DrainApplyQueue();
+
+            Task[] tasks;
+            lock (pendingLock) { tasks = pending.ToArray(); pending.Clear(); }
+            if (tasks.Length == 0) break;
+
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
     }
 }

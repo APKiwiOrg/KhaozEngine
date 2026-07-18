@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
 using System.Threading;
@@ -72,6 +73,65 @@ public class WorldPersistenceValidationTests
         public Task SaveAsync(string key, byte[] data, CancellationToken ct = default) => inner.SaveAsync(key, data, ct);
         public Task<bool> DeleteAsync(string key, CancellationToken ct = default) => inner.DeleteAsync(key, ct);
         public Task<bool> ExistsAsync(string key, CancellationToken ct = default) => inner.ExistsAsync(key, ct);
+    }
+
+    // A minimal IWorldPersistenceHost that only raises PlayerJoined synchronously, no real WorldServer/transport.
+    // Used only by FlushAsync_AwaitsDrainGeneratedQuarantineWrite below, which needs the load-on-join task tracked
+    // without ever calling Persistence.Update - the real Harness's PumpUntil always calls Update, which would drain
+    // the apply queue itself before FlushAsync gets a chance to.
+    private sealed class FakeHost : IWorldPersistenceHost
+    {
+        public event Action<int, string>? PlayerJoined;
+        public event Action<int, string, PlayerMoveState>? PlayerLeaving;
+        public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false) { }
+        public IReadOnlyCollection<int> JoinedSlots => Array.Empty<int>();
+        public bool TryGetAccountId(int slot, out string accountId) { accountId = string.Empty; return false; }
+        public bool TryGetPlayerState(int slot, out PlayerMoveState state) { state = default; return false; }
+        public void Join(int slot, string accountId) => PlayerJoined?.Invoke(slot, accountId);
+        // Unused by this test (only join-time behavior is exercised) but kept so the event is not flagged CS0067.
+        public void Leave(int slot, string accountId, PlayerMoveState state) => PlayerLeaving?.Invoke(slot, accountId, state);
+    }
+
+    // Wraps a store whose LoadAsync passes straight through (synchronously complete, like InMemoryWorldStore) but
+    // whose SaveAsync genuinely takes real asynchronous time. A synchronous SaveAsync would land before FlushAsync
+    // even returns regardless of whether it is awaited, which is why InMemoryWorldStore alone can't expose this bug.
+    private sealed class DelayedSaveWorldStore : IWorldStore
+    {
+        private readonly IWorldStore inner;
+        public DelayedSaveWorldStore(IWorldStore inner) => this.inner = inner;
+        public Task<byte[]?> LoadAsync(string key, CancellationToken ct = default) => inner.LoadAsync(key, ct);
+        public async Task SaveAsync(string key, byte[] data, CancellationToken ct = default)
+        {
+            await Task.Delay(25, ct).ConfigureAwait(false);
+            await inner.SaveAsync(key, data, ct).ConfigureAwait(false);
+        }
+        public Task<bool> DeleteAsync(string key, CancellationToken ct = default) => inner.DeleteAsync(key, ct);
+        public Task<bool> ExistsAsync(string key, CancellationToken ct = default) => inner.ExistsAsync(key, ct);
+    }
+
+    // Locks the FlushAsync loop shape itself: its own final DrainApplyQueue can Track a fresh quarantine SaveAsync
+    // (a record that only just finished loading), and that write must be awaited by THIS FlushAsync call, not left
+    // for the caller's next one. A synchronous store can't tell a fixed one-shot drain-then-await apart from a loop
+    // that keeps going until quiescent, since either way the save lands before anyone checks - hence DelayedSaveWorldStore.
+    [Fact]
+    public async Task FlushAsync_AwaitsDrainGeneratedQuarantineWrite()
+    {
+        IWorldStore inner = new InMemoryWorldStore();
+        byte[] original = PlayerRecord.From(new PlayerMoveState { Position = new Vector3(500f, 0f, 0f) }).Encode();
+        await inner.SaveAsync("player:hero", original);
+        var store = new DelayedSaveWorldStore(inner);
+
+        var pcfg = new WorldPersistenceConfig { Bounds = new RectBounds(-10f, -10f, 10f, 10f) };
+        var host = new FakeHost();
+        var persistence = new WorldPersistence(host, store, pcfg);
+
+        host.Join(0, "hero");   // load-on-join runs synchronously (LoadAsync passes through) and enqueues the out-of-bounds record
+
+        // No Persistence.Update() call: the loaded record sits in the apply queue exactly as FlushAsync's own final
+        // drain would find it, so this exercises the drain-generated quarantine write, not one Update already applied.
+        await persistence.FlushAsync();
+
+        Assert.Equal(original, await inner.LoadAsync("quarantine:player:hero"));   // landed before FlushAsync returned, not after
     }
 
     [Fact]

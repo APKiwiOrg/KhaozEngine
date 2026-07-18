@@ -299,6 +299,26 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   Rebalance a warm amber) with a `Default` preset; `PatchNotesStrings` supplies the chrome text (title/close/
   empty-state, per-category labels) as `StringId`s with a built-in English `IStringCatalog` fallback so an
   unlocalized build renders correctly.
+- **Connection-outage screen (`ConnectionStatusController`/`ConnectionStatusPolicyOptions` +
+  `ConnectionStatusSignals`/`ConnectionStatusView` + `ReconnectScreen`/`ReconnectAction` +
+  `ReconnectScreenTheme`/`ReconnectStrings`).** A reusable takeover for a dropped or updating server connection,
+  split model/view like `PatchNotesLoader`/`PatchNotesView`. `ConnectionStatusController` is the headless brain:
+  feed it a primitive `ConnectionStatusSignals` (`Phase`, `PlannedUpdate`, `EtaUtc`, `Attempt`,
+  `SecondsUntilRetry`, an optional message `StringId`) every frame via `Update(signals, dt)`, and it returns a
+  `ConnectionStatusView` whose `Mode` is `None`, `Banner` (the consumer draws its own, none ships), or `Screen`.
+  A planned update escalates to `Screen` immediately, a generic drop shows `Banner` and escalates only past
+  `ConnectionStatusPolicyOptions.EscalateAfterSeconds` (default 6s), and `MinScreenDurationSeconds` (default
+  1.5s) holds the screen once shown so a sub-second reflap cannot flicker it away and back. The controller is
+  netcode-free, with no dependency on `NetWorld`/`Netcode`/`ServerStatus`. `ReconnectScreen` is the matching
+  `Screen` for `ScreenStack`, drawn from only a 1x1 white texture and a `SpriteFont`: a full-window scrim, a
+  title chosen by `Kind`, a large m:ss countdown while a future `EtaUtc` holds (clamped at zero back to the
+  reconnecting title), attempt/retry lines otherwise, a reassurance line, an asset-free dot-ring spinner, and an
+  optional `ReconnectAction` button row. `Create(white, font, viewport, currentView, theme?, actions?)` polls
+  `currentView` every frame rather than gating on `Mode`, so the caller controls visibility by push/pop on the
+  stack. `ReconnectScreenTheme` (a settable class, `Default` derived from `GuiTheme.Default`) carries the scrim
+  colour and alpha, every text and spinner colour, the titles and reassurance as `LocalizedText`, the
+  attempt/retry format keys, an optional `DrawBackground` hook, and the button/layout metrics.
+  `ReconnectStrings` supplies the engine-owned `reconnect.*` keys with a built-in English fallback.
 - `DiagnosticsOverlay` (+ `DiagnosticsOverlayTheme`, `OverlayRow`/`OverlaySection`) - a reusable in-game
   telemetry HUD, a pure presenter modeled on `UpdateOverlayView`. The game assembles sections each frame and
   feeds them via `SetSections`, or registers a provider once with `SetSectionsProvider(provider, refreshInterval)`

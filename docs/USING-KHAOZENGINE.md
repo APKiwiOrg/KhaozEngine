@@ -22,6 +22,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Version comparison (`VersionComparer`)](#version-comparison-versioncomparer)
 - [Compile-time localization enforcement (`StringId` / `LocalizedText`)](#compile-time-localization-enforcement-stringid-localizedtext)
 - [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader-patchnotesview-patchnotesscreen-10450)
+- [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect-connection-outage-screen-connectionstatuscontroller-reconnectscreen-1320)
 - [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
 - [DPI-aware / crisp UI (the point-space path)](#dpi-aware-crisp-ui-the-point-space-path)
 - [Render3D (`KhaozEngine.Render3D`)](#render3d-khaozenginerender3d)
@@ -1331,6 +1332,75 @@ panel/header fills, body/muted text, the code-span accent, and `CategoryColor(Pa
 badge colors (Rebalance is a warm amber, distinct from the Bug red). `PatchNotesStrings` supplies the chrome text
 (title, close, empty-state, the six category labels) as `StringId`s; a built-in English `IStringCatalog`
 fallback means the panel renders correctly even before a game wires its own localization catalog.
+
+---
+
+## Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)
+
+A reusable connection-outage UI primitive, split the same way as `PatchNotesLoader`/`PatchNotesView`: a headless
+model decides what to show, and a separate presenter renders it. `ConnectionStatusController` is the model: feed
+it a primitive `ConnectionStatusSignals` (phase, planned-update flag, `EtaUtc`, attempt, seconds-until-retry, an
+optional server message key) every frame and it hands back a `ConnectionStatusView` whose `Mode` is `None`,
+`Banner`, or `Screen`. It is netcode-free: a consumer maps its own transport/server-status types onto the
+signals, so `Gui` gains no dependency on `NetWorld`, `Netcode`, or `ServerStatus`.
+
+```csharp
+readonly ConnectionStatusController _connection = new();   // pass ConnectionStatusPolicyOptions to tune the defaults
+ConnectionStatusView _connectionView;
+ReconnectScreen? _reconnectScreen;
+
+// Every frame: map your transport/status types onto the primitive signals and advance the controller.
+_connectionView = _connection.Update(new ConnectionStatusSignals
+{
+    Phase = client.ConnectionState == WorldConnectionState.Reconnecting
+        ? ConnectionPhase.Reconnecting : ConnectionPhase.Connected,
+    Attempt = client.ReconnectAttempt,
+    SecondsUntilRetry = client.SecondsUntilNextRetry,
+}, dt);
+
+// Push/pop the screen by latch, so it keeps rendering through its own exit transition.
+bool wantsScreen = _connectionView.Mode == ConnectionUiMode.Screen;
+if (wantsScreen && _reconnectScreen is null)
+{
+    _reconnectScreen = ReconnectScreen.Create(white, font, viewport, () => _connectionView,
+        actions: new[] { new ReconnectAction(Strings.QuitToMenu, QuitToMenu) });
+    screens.Add(_reconnectScreen);
+}
+else if (!wantsScreen && _reconnectScreen is { } exiting)
+{
+    exiting.ExitScreen();   // animates out over TransitionOffDuration, then self-removes
+    _reconnectScreen = null;
+}
+
+if (_connectionView.Mode == ConnectionUiMode.Banner)
+    DrawMyOwnBanner(_connectionView);   // the engine ships no banner, draw your own
+```
+
+The policy: a planned update (`PlannedUpdate = true`) escalates straight to `Screen`. A generic drop shows
+`Banner` and escalates to `Screen` only once the outage persists past `EscalateAfterSeconds` (default 6s), so a
+sub-second blip never flashes the takeover. Once shown, `MinScreenDurationSeconds` (default 1.5s) holds the
+screen up even if the connection recovers sooner, so a quick reflap cannot flicker it away and back. Both
+tunables live on `ConnectionStatusPolicyOptions`, passed to the `ConnectionStatusController` constructor. No
+banner ships: `Mode == Banner` means the consumer draws its own, for example with a `ToastStack` sticky toast.
+
+`ReconnectScreen` is the matching visual, a modal `Screen` for the `ScreenStack` drawn from only a 1x1 white
+texture and a `SpriteFont` (no bundled art). Each frame it paints a full-window scrim over the frozen world,
+then a title (the planned-update copy only while a live countdown is showing, the reconnecting title otherwise,
+so an expired or absent `EtaUtc` never leaves a stale countdown on screen), a large m:ss countdown while that
+`EtaUtc` is still in the future, attempt/retry lines once it is not, a reassurance sub-line, an asset-free
+dot-ring spinner, and an optional row of `ReconnectAction` buttons for a Cancel/Quit affordance. It sits at
+`DrawOrder = 9_000`, below `UpdateOverlayScreen`'s `10_000`, so a required client update still wins over a
+connection takeover, and it is modal (`PassUpdateThrough = false`), so world input is suppressed while it is up.
+`Create` polls `currentView` every frame rather than gating its own drawing on `Mode`, so visibility is entirely
+the caller's push/pop on the `ScreenStack`.
+
+Restyle without forking via `ReconnectScreenTheme` (a settable class, `ReconnectScreenTheme.Default` derived from
+`GuiTheme.Default`): the scrim colour and alpha, every text and spinner colour, the titles and reassurance line
+as `LocalizedText`, the attempt/retry format templates as `StringId`, an optional `DrawBackground` hook painted
+after the scrim and before the content (for custom art or a logo), and the button/layout metrics.
+`ReconnectStrings` supplies the engine-owned `reconnect.*` keys (title, planned-update title, reassurance,
+attempt, retry) with a built-in English fallback, so the screen renders correctly before a game wires its own
+localization catalog.
 
 ---
 

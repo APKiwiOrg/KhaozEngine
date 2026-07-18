@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.2.0
+
+Gui: a reusable connection-outage primitive, a headless policy controller plus an asset-free themeable
+full-screen reconnect takeover, so every networked game stops hand-rolling one. Closes #219.
+
+- **`ConnectionStatusController`** (`KhaozEngine.Gui`, files under `Connection/`) decides how much outage
+  UI to show. It takes primitive per-frame `ConnectionStatusSignals` (phase, planned-update flag,
+  `EtaUtc`, attempt, seconds-until-retry, optional message key) and returns a `ConnectionStatusView` whose
+  `Mode` is `None`, `Banner`, or `Screen`. It references no netcode types, so `Gui` gains no dependency on
+  `NetWorld`/`Netcode`/`ServerStatus` and the policy is headless-testable. A planned update escalates to
+  the full screen immediately. An unplanned drop shows a banner and escalates only once it persists past
+  `EscalateAfterSeconds` (default 6s), so a quick blip never flashes a takeover, and a
+  `MinScreenDurationSeconds` floor (default 1.5s) holds the screen once shown so a sub-second reflap
+  cannot flash it away and back. The drop timer is a bounded accumulator that resets on reconnect, and the
+  countdown is recomputed from the absolute `EtaUtc` every frame rather than accumulated, so it cannot
+  drift or freeze.
+- **`ReconnectScreen`** is the matching visual, a modal `Screen` for the `ScreenStack` drawn from only a
+  1x1 white texture and a `SpriteFont` (no bundled art): a full-window scrim over the frozen world, a
+  title chosen by kind, a large m:ss countdown when a future ETA is present (clamped at zero back to the
+  reconnecting title, never a negative timer), attempt/retry lines otherwise, a reassurance sub-line, an
+  asset-free dot-ring spinner, and an optional row of `ReconnectAction` buttons (the escape hatch a game
+  wires to its own leave-to-menu teardown). Create it with
+  `ReconnectScreen.Create(white, font, viewport, currentView, theme, actions)`, where `currentView` is
+  polled every frame so the countdown ticks.
+- **`ReconnectScreenTheme`** carries the whole look: the scrim colour AND alpha (alpha 1 gives an opaque
+  maintenance-page look, a lower value lets the world show dimly through), the title/countdown/body/
+  spinner colours, the titles and reassurance as `LocalizedText`, the attempt/retry format keys, a
+  `DrawBackground` hook for custom art or a logo painted over the scrim, and the layout metrics.
+  `ReconnectStrings` ships the engine-owned `reconnect.*` keys with a built-in English fallback, so the
+  screen reads correctly before a game wires its own catalog.
+- No banner ships. `Mode == Banner` means the consumer draws its own, which is deliberate: consumers
+  already have good ones, and standardising the banner into the engine is a separate call.
+- Design rationale in `docs/design/RECONNECT-SCREEN-DESIGN-2026-07-18.md`. Consumer adoption is tracked
+  as APKiwiOrg/Ruinborne#108.
+
 ## 13.1.0
 
 Day/night cycle gets a real, decoupled moon and shadows get a moving-sun de-shimmer knob. Two additive

@@ -10,7 +10,6 @@
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

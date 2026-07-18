@@ -16,7 +16,6 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEdit.Tool" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
   </ItemGroup>

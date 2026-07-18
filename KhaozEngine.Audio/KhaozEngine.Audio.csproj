@@ -16,7 +16,6 @@
     <PackageReference Include="NLayer" />
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Audio.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

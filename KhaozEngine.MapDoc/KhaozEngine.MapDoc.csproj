@@ -12,7 +12,6 @@
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEdit.Tool" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />

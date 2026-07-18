@@ -4,7 +4,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("KhaozEngine.Tests")]
 [assembly: InternalsVisibleTo("KhaozEngine.Simulation.Tests")]
 
 namespace KhaozEngine.Ecs;

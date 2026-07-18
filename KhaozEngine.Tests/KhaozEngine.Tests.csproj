@@ -7,81 +7,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="SharpGLTF.Toolkit" />
-    <PackageReference Include="BepuPhysics" />
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
-    <ProjectReference Include="../KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
-    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
-    <ProjectReference Include="../KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
-    <ProjectReference Include="../KhaozEngine.Commerce.Sqlite/KhaozEngine.Commerce.Sqlite.csproj" />
-    <ProjectReference Include="../KhaozEngine.Commerce.SqlServer/KhaozEngine.Commerce.SqlServer.csproj" />
-    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
-    <ProjectReference Include="../KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
-    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
-    <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
-    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
-    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
-    <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
-    <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
-    <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
-    <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
-    <ProjectReference Include="../KhaozEngine.Identity.Discord/KhaozEngine.Identity.Discord.csproj" />
-    <ProjectReference Include="../KhaozEngine.Identity.Oidc/KhaozEngine.Identity.Oidc.csproj" />
-    <ProjectReference Include="../KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj" />
-    <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
-    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
-    <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
-    <ProjectReference Include="../KhaozEngine.MapEdit.Tool/KhaozEngine.MapEdit.Tool.csproj" />
-    <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
-    <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
-    <ProjectReference Include="../KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj" />
-    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
-    <ProjectReference Include="../KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />
-    <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />
-    <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
-    <ProjectReference Include="../KhaozEngine.Particles.Render3D/KhaozEngine.Particles.Render3D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
-    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
-    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
-    <ProjectReference Include="../KhaozEngine.Progression/KhaozEngine.Progression.csproj" />
-    <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
-    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
-    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
-    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Telegraphs/KhaozEngine.Telegraphs.csproj" />
-    <ProjectReference Include="../KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
-    <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
-    <ProjectReference Include="../KhaozEngine.Snapshot.Render3D/KhaozEngine.Snapshot.Render3D.csproj" />
-    <!-- Exposes SnapshotTool.DiffCommands for the headless diff/score command-layer tests. -->
-    <ProjectReference Include="../SnapshotTool/SnapshotTool.csproj" />
-    <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
-    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
-    <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
-    <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
-    <ProjectReference Include="../KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj" />
-    <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
-    <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
-    <ProjectReference Include="../KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />
-    <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
-    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
-    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
-    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
-    <ProjectReference Include="../KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj" />
-    <ProjectReference Include="../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
-    <ProjectReference Include="../MmoServerSample/MmoServerSample.csproj" />
-    <ProjectReference Include="../KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
-    <!-- Cross-cluster fakes (FakeUpdateSource/FakeUpdateStatus, FakeServerStatusSource) moved out to
-         TestSupport.Services in the wave-1 split; the Game/Gui tests still in this project consume them via
-         their unchanged KhaozEngine.Tests.Updates / KhaozEngine.Tests.ServerStatus namespaces (ServerStatus
-         itself moved to KhaozEngine.Server.Tests in wave 2, Game/BootPipelineTests.cs is the remaining
-         FakeServerStatusSource consumer here). -->
-    <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
-  </ItemGroup>
+  <!-- No ProjectReference to any KhaozEngine.* package: the rump is ArchitectureTests.cs (pure XML parsing of
+       every *.csproj) and CetCompatDefaultTests.cs (pure file/XML parsing of KhaozEngine.Foundation's packaging
+       assets via a repo-root-relative path), neither of which has a single `using KhaozEngine.*` directive. -->
 </Project>

@@ -29,7 +29,6 @@
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
   </ItemGroup>

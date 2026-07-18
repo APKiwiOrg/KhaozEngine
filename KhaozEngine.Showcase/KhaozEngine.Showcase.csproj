@@ -33,7 +33,6 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Let the engine test project verify the localization catalog (ShowcaseStrings + resx) resolves. -->
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <!-- Run the localization analyzer on the showcase (the worked example) so KELOC001/002 are enforced here
          in-repo, proving the diagnostics fire on real consumer-style code. -->

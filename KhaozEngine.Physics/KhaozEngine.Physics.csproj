@@ -6,7 +6,6 @@
     <Description>Dependency-free 3D physics seam for KhaozEngine: IPhysicsWorld (static bodies + dynamic rigid bodies under gravity + Step + raycast/sweep/overlap queries), value-type shapes (sphere/capsule/box/cylinder/convex hull/triangle mesh/compound), poses, materials, and query filters. The render-free, headless contract the character controller and netcode resolve against; backends (e.g. KhaozEngine.Physics.Bepu) implement it. Depends only on System.Numerics. Authoritative + client-predicted, not lockstep.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

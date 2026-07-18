@@ -11,6 +11,5 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
-    <InternalsVisibleTo Include="KhaozEngine.Tests" />
   </ItemGroup>
 </Project>

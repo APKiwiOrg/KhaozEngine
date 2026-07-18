@@ -4,11 +4,10 @@ using KhaozEngine.App;
 
 namespace KhaozEngine.Tests;
 
-// Wave-1 split duplication. The canonical copy is embedded in
+// Wave-3 split duplication. The canonical copy is embedded in
 // KhaozEngine.Foundation.Tests/AppDataPathsTests.cs (consumed by the Foundation persistence/app tests).
-// The monolith keeps its own copy because MapEditor/EditorRecentFilesTests.cs (still here) consumes it,
-// and it depends on KhaozEngine.App (IAppDataEnvironment) so it cannot live in KhaozEngine.TestSupport
-// (Primitives-only). When MapEditor.Tests is extracted in a later wave this copy moves with it.
+// MapEditor.Tests keeps its own copy because EditorRecentFilesTests.cs consumes it, and it depends on
+// KhaozEngine.App (IAppDataEnvironment) so it cannot live in KhaozEngine.TestSupport (Primitives-only).
 
 /// <summary>Test double for <see cref="IAppDataEnvironment"/> - all facts are settable.</summary>
 internal sealed class FakeAppDataEnvironment : IAppDataEnvironment

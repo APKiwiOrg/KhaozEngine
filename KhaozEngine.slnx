@@ -80,6 +80,7 @@
   <Project Path="KhaozEngine.Particles.Tests/KhaozEngine.Particles.Tests.csproj" />
   <Project Path="KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" />
   <Project Path="KhaozEngine.Gui.Tests/KhaozEngine.Gui.Tests.csproj" />
+  <Project Path="KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />

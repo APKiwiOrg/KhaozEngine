@@ -15,5 +15,6 @@
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Foundation.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
   </ItemGroup>
 </Project>

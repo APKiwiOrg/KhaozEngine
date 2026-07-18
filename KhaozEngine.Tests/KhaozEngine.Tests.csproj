@@ -106,8 +106,5 @@
          itself moved to KhaozEngine.Server.Tests in wave 2, Game/BootPipelineTests.cs is the remaining
          FakeServerStatusSource consumer here). -->
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
-    <!-- Transitional (wave 3): GpuFactAttribute moved to TestSupport.Gpu, but MapEditor/MapEditTool [GpuFact]
-         tests still live here until MapEditor.Tests is extracted; this reference goes away with them. -->
-    <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
 </Project>

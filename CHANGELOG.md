@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.0.0
+
+Render3D shadows (breaking removal): the orphaned light-direction quantization + temporal step-blend family
+is gone. No consumer fleet-wide ever enabled it (Ruinborne pinned the two knobs to 0/0 then un-adopted,
+Hardpoint/Nullwake/SpaceGame never referenced it), and the step-blend carried a structural flaw for any game
+with moving casters: the outgoing atlas is frozen at the step, so a dynamic caster that moves mid-fade ghosts,
+which makes future adoption unlikely. Dormant, it still cost a `mat4[4]` + `vec4` in every Render3D frame UBO,
+a `ShadowMapPrev` texture in every material set, a shader sampling path, the prev-atlas provisioning, and their
+tests and docs. Full record: https://github.com/APKiwiOrg/Ruinborne/issues/105 (final comment) and #227.
+Closes #233.
+
+- **Removed public API (breaking).** `ShadowSettings.ShadowLightQuantizeDegrees` and
+  `ShadowSettings.ShadowStepBlendSeconds` (both `float` fields), and `ShadowMapMath.QuantizeDirection`. A
+  consumer that set either knob no longer compiles. Both defaulted to `0` (off), so nothing that left them
+  alone changes at runtime.
+- **Removed internals.** `Internal.ShadowStepBlend` (the pure cross-fade bookkeeping), the prev-atlas
+  machinery (`ShadowMapRenderer.ShadowTexturePrev` / `CopyLiveToPrev` / `StepBlendProvisioned`,
+  `ModelRenderer.SetShadowBlend` / `CopyShadowAtlasToPrev` / `StepBlendProvisioned`), the
+  `sampleKeyShadowBlended` shader entry + the `ShadowMapPrev` binding in every material set, and the
+  quantized-fit branch in `Scene3D.ComputeShadowCascades`.
+- **Frame UBO reverts to the pre-13.3.0 layout (1264 -> 992 bytes).** The `mat4 ShadowMatPrev[4]` + `vec4
+  ShadowBlend` tail the cross-fade appended is dropped, so the cascaded shadow tail is back to 304 bytes (the
+  live cascade set only) and the frame UBO to 992. The shader source is byte-identical to the pre-cross-fade
+  version, so every committed Metal shadow golden (`scene3d_shadow_map`, `scene3d_cascade_wide`,
+  `scene3d_cascade_handoff`, `scene3d_splat_shadow`, `scene3d_shadow_blob`) passes unchanged with no re-bake.
+  The family was always off on the default path, so the rendered bytes never depended on it.
+- **Kept untouched.** The 13.3.0 construction seam that makes `ShadowMapResolution` / `ShadowCascadeCount`
+  take effect (the `ShadowSettings?` ctor parameter on Render3DSurface / Render3DPreview / Render3DSnapshot /
+  GameApp3D, the post-commit throw, `CommitAtlas`), `SunCycle`'s `NightKeyMode` + moon track, and every
+  reach / bias / cascade-blend-band shadow knob that predates the arc. Only the step-blend provisioning was
+  removed from inside the construction seam.
+- **Removed tests.** `ShadowStepBlendTests`, `ShadowStepBlendGpuTests`, the freeze/step `ShadowSettingsTests`
+  cases, and the `QuantizeDirection` `ShadowMapMathTests`. The `UboLayoutTests` shadow-tail assertions revert
+  to the 992-byte layout. No consumer changes are needed now (none referenced the API). Ruinborne deletes its
+  two dormant `0f` lines at its next natural engine repin, where the missing fields make the deletion
+  self-enforcing.
+
 ## 13.7.0
 
 `KhaozEngine.Gui` gains the composition unit below `Screen`: `IScreenComponent` (one HUD element, overlay, input

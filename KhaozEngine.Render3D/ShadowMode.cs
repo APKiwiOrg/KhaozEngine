@@ -202,65 +202,6 @@ namespace KhaozEngine.Render3D
         /// as shade, not black. Default <c>0.85</c>.</summary>
         public float ShadowStrength = 0.85f;
 
-        /// <summary>Angular lattice, in degrees, the key-light direction is SNAPPED to before the cascades are fitted,
-        /// so a slowly rotating sun (a day/night cycle) stops shimmering shadow edges. Default <c>0</c> = off (the fit
-        /// consumes the raw <see cref="PixelPostProcessSettings.LightDirection"/>, byte-identical to before). When
-        /// &gt; 0 the fit quantizes the normalized light direction onto steps of this many degrees in azimuth and
-        /// elevation (<see cref="Internal.ShadowMapMath.QuantizeDirection"/>): the light-space basis then holds
-        /// constant between steps, so the texel-snapped fit is bit-identical frame to frame (edges rock solid, and the
-        /// atlas dirty-skip reuses the depth pass instead of re-rendering every frame under a moving sun), and the
-        /// edges step once per this many degrees of travel. Trade: one small discrete edge nudge per step (a few
-        /// texels, softened by the 3x3 PCF) in place of a continuous sub-texel swim. Consumer guidance: ~0.25 to 0.5
-        /// degrees. ONLY the shadow fit sees the quantized direction; shading, the sky, and the sun disc keep the
-        /// smooth raw direction. Only used when <see cref="Mode"/> resolves to <see cref="ShadowMode.ShadowMap"/>.</summary>
-        public float ShadowLightQuantizeDegrees = 0f;
-
-        float _shadowStepBlendSeconds = 0f;
-
-        /// <summary>Temporal cross-fade duration CLAMP MAX, in seconds, for easing a <see cref="ShadowLightQuantizeDegrees"/>
-        /// step. Default <c>0</c> = off entirely (byte-stable, no extra atlas). Only meaningful when
-        /// <see cref="ShadowLightQuantizeDegrees"/> &gt; 0: quantization stops the per-frame edge shimmer but trades it
-        /// for a discrete jump every step, and this eases that jump. When the quantized light direction steps, the
-        /// OUTGOING step's shadow atlas + receiver matrices are kept alive (frozen) while the INCOMING step renders, and
-        /// the receivers lerp the two PCF results from fully-outgoing to fully-incoming, then retire the old set. So a
-        /// step reads as a soft settle instead of a snap.
-        /// <para><b>Adaptive duration (issue #227).</b> This is NOT a fixed window: each fade runs for
-        /// <c>min(observed inter-step interval, ShadowStepBlendSeconds)</c>, so it tracks the sun's speed. A fixed window
-        /// under-fills a slow sun (the fade covers only the first slice of a long inter-step gap, then the edge holds
-        /// still until the next step: "slide-then-hold", read as ticking) and truncates a fast one. With this
-        /// <b>clamp set at or above the step interval</b>, each new atlas starts fading on arrival and lands exactly as
-        /// the next step is due, so the shadow edge is in continuous motion, one step latent. A smaller clamp retains the
-        /// old slide-then-hold (the clamp caps the fade below the interval), so the default and small values stay
-        /// byte-stable and a consumer opts into continuous motion by raising the clamp above the step interval. The FIRST
-        /// step after a scene start (no interval observed yet) uses the clamp as its duration. Consumer guidance under a
-        /// moving sun: set it at or above your worst-case step interval (roughly <c>ShadowLightQuantizeDegrees</c> /
-        /// sun-deg-per-second) for continuous motion, e.g. ~0.5 to 2 s for a normal day/night pace.</para>
-        /// <para><b>Per-frame bypass (issue #227).</b> When the sun outruns the frame rate (the observed interval drops
-        /// below ~2 frames' worth of scene time, e.g. a heavily accelerated world clock) a fade cannot chain, so the fit
-        /// automatically stops quantizing and refits per frame from the raw direction (continuous sub-texel motion, no
-        /// blend) until the interval climbs back past a comfortably higher threshold. This is hysteretic (it does not
-        /// flap) and needs no configuration.</para>
-        /// The blend clock advances on <see cref="Scene3D.EffectTimeSeconds"/>, so a scene using step-blend must keep
-        /// that advancing (as an animated day/night scene already does).
-        /// <para><b>Construction-time provisioning.</b> The second (cross-fade) atlas doubles the shadow VRAM, so it is
-        /// reserved only when this is &gt; 0 <em>at construction</em> (the opt-in cost). Once reserved, the value is
-        /// freely runtime-tunable (set <c>0</c> to pause the fade, back to a positive clamp to resume). Turning it
-        /// ON after construction (0 at build, &gt; 0 later) cannot reserve the atlas, so it throws
-        /// <see cref="InvalidOperationException"/> rather than silently failing to blend.</para></summary>
-        public float ShadowStepBlendSeconds
-        {
-            get => _shadowStepBlendSeconds;
-            set
-            {
-                if (_atlasCommitted && !_stepBlendProvisioned && value > 0f)
-                    throw new InvalidOperationException(
-                        "ShadowSettings.ShadowStepBlendSeconds must be > 0 at scene construction to reserve the temporal " +
-                        "cross-fade atlas. Enabling it after construction is not supported. Pass it via the ShadowSettings " +
-                        "handed to the Render3DSurface / Render3DPreview / Render3DSnapshot / GameApp3D construction seam.");
-                _shadowStepBlendSeconds = value;
-            }
-        }
-
         /// <summary>Minimum cascade count (the single-map path). See <see cref="ShadowCascadeCount"/>.</summary>
         public const int MinCascades = 1;
         /// <summary>Maximum cascade count (matches the fixed-size cascade arrays in the frame UBO / shaders).</summary>
@@ -276,28 +217,20 @@ namespace KhaozEngine.Render3D
         /// the near distance (equivalent to a single cascade). Pure.</summary>
         public float ResolvedMaxDistance => MathF.Max(ShadowMaxDistance, ShadowNearDistance);
 
-        // The three atlas-shaping knobs (ShadowMapResolution, ShadowCascadeCount, and whether ShadowStepBlendSeconds
-        // reserved the cross-fade atlas) are read ONCE when the scene builds its shadow atlas. Scene3D calls CommitAtlas
-        // right after, freezing them so a later write fails loudly instead of silently no-opping (issue #27).
+        // The two atlas-shaping knobs (ShadowMapResolution, ShadowCascadeCount) are read ONCE when the scene builds its
+        // shadow atlas. Scene3D calls CommitAtlas right after, freezing them so a later write fails loudly instead of
+        // silently no-opping (issue #27).
         bool _atlasCommitted;
-        bool _stepBlendProvisioned;
 
         /// <summary>True once the owning scene has built its shadow atlas from these settings and the atlas-shaping
         /// knobs are frozen. Set by <see cref="CommitAtlas"/>. Internal (a diagnostic, and the guard the throwing
         /// setters read).</summary>
         internal bool AtlasCommitted => _atlasCommitted;
 
-        /// <summary>Whether the temporal cross-fade atlas was reserved at construction (<see cref="ShadowStepBlendSeconds"/>
-        /// was &gt; 0 when <see cref="CommitAtlas"/> ran). The renderer reserves the second atlas only then, and only a
-        /// provisioned scene may blend.</summary>
-        internal bool StepBlendProvisioned => _stepBlendProvisioned;
-
-        /// <summary>Freeze the construction-time atlas knobs after the scene has sized its atlas from them. Records
-        /// whether step-blend was provisioned (so a provisioned scene may still runtime-tune the duration, while an
-        /// unprovisioned one refuses to turn blending on). Idempotent. Called by <see cref="Scene3D"/> only.</summary>
+        /// <summary>Freeze the construction-time atlas knobs after the scene has sized its atlas from them. Idempotent.
+        /// Called by <see cref="Scene3D"/> only.</summary>
         internal void CommitAtlas()
         {
-            _stepBlendProvisioned = _shadowStepBlendSeconds > 0f;
             _atlasCommitted = true;
         }
 

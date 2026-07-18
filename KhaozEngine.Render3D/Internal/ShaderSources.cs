@@ -39,20 +39,13 @@ namespace KhaozEngine.Render3D.Internal
 // twice, once for the selected cascade and once more for its neighbour inside the blend band. It reads the frame
 // UBO shadow tail directly (like computeLighting): ShadowMat[4] = per-cascade world->light-clip, ShadowParams =
 // (cascadeCount, strength, constBias, slopeBias), ShadowParams2 = (texelStep, maxDistance, borderFrac,
-// cascadeBlendFrac), ShadowNormalOffsets = per-cascade normal-offset world size. ShadowMatPrev[4] + ShadowBlend.x are
-// the temporal cross-fade set (issue #225): sampleKeyShadow takes a matSet arg (0 = live ShadowMat, 1 = frozen
-// ShadowMatPrev), and sampleKeyShadowBlended lerps the two by ShadowBlend.x. Only the atlas texture + sampler are
-// parameters, because their set/binding differ per fragment and GLSL cannot reference a fragment's own bindings from a
-// shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the point of use inside.
-// GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
-// Pick the LIVE (matSet 0) or the OUTGOING cross-fade (matSet 1, issue #225) per-cascade world->light-clip matrix.
-// The two sets share the same cascade count / texelStep / biases / normal offsets (the atlas size is fixed at
-// construction), so only the matrices + the sampled atlas differ between them.
-mat4 cascadeMat(int matSet, int i) { return matSet == 0 ? ShadowMat[i] : ShadowMatPrev[i]; }
-
-bool projectCascade(int matSet, int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margin, out vec2 uv, out float z) {
+// cascadeBlendFrac), ShadowNormalOffsets = per-cascade normal-offset world size. Only the atlas texture + sampler
+// are parameters, because their set/binding differ per fragment and GLSL cannot reference a fragment's own
+// bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and combined at the
+// point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
+bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margin, out vec2 uv, out float z) {
     vec3 samplePos = worldPos + Ngeo * (ShadowNormalOffsets[i] * slopeSin);
-    vec4 lc = cascadeMat(matSet, i) * vec4(samplePos, 1.0);
+    vec4 lc = ShadowMat[i] * vec4(samplePos, 1.0);
     uv = vec2(0.0); z = 0.0;
     if (lc.w <= 0.0) return false;
     vec3 proj = lc.xyz / lc.w;                          // light-clip - xy in [-1,1], z in [0,1]
@@ -82,7 +75,7 @@ float pcfCascade(texture2D shadowAtlas, sampler shadowSamp, int cascade, int cou
     return lit / 9.0;
 }
 
-float sampleKeyShadow(int matSet, texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
+float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
     float strength = ShadowParams.y;
     if (strength <= 0.0) return 1.0;                    // shadow atlas inactive this frame => fully lit
     int count = int(ShadowParams.x + 0.5);
@@ -98,7 +91,7 @@ float sampleKeyShadow(int matSet, texture2D shadowAtlas, sampler shadowSamp, vec
     for (int i = 0; i < 4; i++) {
         if (i >= count) break;
         vec2 uv; float z;
-        if (!projectCascade(matSet, i, worldPos, Ngeo, slopeSin, margin, uv, z)) continue;
+        if (!projectCascade(i, worldPos, Ngeo, slopeSin, margin, uv, z)) continue;
         sel = i; selUv = uv; selZ = z; break;
     }
     if (sel < 0) return 1.0;                            // beyond every cascade => lit (coverage edge)
@@ -121,26 +114,13 @@ float sampleKeyShadow(int matSet, texture2D shadowAtlas, sampler shadowSamp, vec
     float blend = ShadowParams2.w;
     if (blend > 0.0 && edge < blend) {
         vec2 uv2; float z2;
-        if (projectCascade(matSet, sel + 1, worldPos, Ngeo, slopeSin, margin, uv2, z2)) {
+        if (projectCascade(sel + 1, worldPos, Ngeo, slopeSin, margin, uv2, z2)) {
             float lit2 = pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
             lit = mix(lit2, lit, smoothstep(0.0, blend, edge));   // at the border (edge 0) fully the next cascade
         }
     }
     // strength 1 removes the key light fully in shadow, below 1 leaves a partial key term, and the fade/blend paths above ease the result toward fully lit.
     return mix(1.0, lit, strength);
-}
-
-// Temporal cross-fade entry (issue #225): sample the LIVE atlas (incoming step) and, only while a cross-fade is in
-// flight (ShadowBlend.x < 1), the OUTGOING step's frozen atlas, and lerp the two PCF results by the weight (0 = fully
-// outgoing, 1 = fully incoming). With blending off ShadowBlend.x is 1, so this returns the live result unchanged and
-// the frozen atlas is never sampled - byte-identical to calling sampleKeyShadow(ShadowMap, ...) directly.
-float sampleKeyShadowBlended(texture2D liveAtlas, sampler liveSamp, texture2D prevAtlas, sampler prevSamp,
-                             vec3 worldPos, vec3 Ngeo, float ndl) {
-    float live = sampleKeyShadow(0, liveAtlas, liveSamp, worldPos, Ngeo, ndl);
-    float w = ShadowBlend.x;
-    if (w >= 1.0) return live;                                   // no cross-fade in flight: skip the frozen sample
-    float prev = sampleKeyShadow(1, prevAtlas, prevSamp, worldPos, Ngeo, ndl);
-    return mix(prev, live, w);                                   // w:0 -> outgoing (old), 1 -> incoming (new)
 }
 
 void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
@@ -199,8 +179,6 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -254,8 +232,6 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
@@ -263,7 +239,6 @@ layout(set=0, binding=3) uniform texture2D RoughnessMap; // 1x1 zero default => 
 layout(set=0, binding=4) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
 layout(set=0, binding=5) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the material maps (Metal first-sample-order rule); 1x1 default when shadows off
 layout(set=0, binding=6) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
-layout(set=0, binding=7) uniform texture2D ShadowMapPrev;  // cross-fade OUTGOING-step atlas (issue #225); inert while ShadowBlend.x==1
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
@@ -315,7 +290,7 @@ void main() {
     // Key-light shadow: sampled AFTER the material maps (Metal first-sample-order: ShadowMap is binding 5, sampled
     // last). N.L to the key light scales the slope bias. keyShadow == 1 when the map is off (byte-stable with Off).
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadowBlended(ShadowMap, ShadowSamp, ShadowMapPrev, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
@@ -347,8 +322,6 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
 layout(set=0, binding=2) uniform texture2D NormalMap;
@@ -356,7 +329,6 @@ layout(set=0, binding=3) uniform texture2D RoughnessMap;
 layout(set=0, binding=4) uniform sampler Samp;
 layout(set=0, binding=5) uniform texture2D ShadowMap;
 layout(set=0, binding=6) uniform sampler ShadowSamp;
-layout(set=0, binding=7) uniform texture2D ShadowMapPrev;  // cross-fade OUTGOING-step atlas (issue #225); inert while ShadowBlend.x==1
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
@@ -402,7 +374,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadowBlended(ShadowMap, ShadowSamp, ShadowMapPrev, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
@@ -441,9 +413,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
-    mat4 bones[128];       // offset 1456: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
+    mat4 bones[128];       // offset 976: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -526,8 +496,6 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -536,7 +504,6 @@ layout(set=1, binding=2) uniform texture2D RoughnessMap;
 layout(set=1, binding=3) uniform sampler Samp;
 layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
-layout(set=1, binding=6) uniform texture2D ShadowMapPrev;  // cross-fade OUTGOING-step atlas (issue #225); inert while ShadowBlend.x==1
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
@@ -569,7 +536,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadowBlended(ShadowMap, ShadowSamp, ShadowMapPrev, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
@@ -599,8 +566,6 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -609,7 +574,6 @@ layout(set=1, binding=2) uniform texture2D RoughnessMap;
 layout(set=1, binding=3) uniform sampler Samp;
 layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
-layout(set=1, binding=6) uniform texture2D ShadowMapPrev;  // cross-fade OUTGOING-step atlas (issue #225); inert while ShadowBlend.x==1
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vDepth;
@@ -655,7 +619,7 @@ void main() {
     float specStrength = vSpecParams.x * (1.0 - rough);
     float specExp = max(mix(vSpecParams.y, 8.0, rough), 1.0);
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadowBlended(ShadowMap, ShadowSamp, ShadowMapPrev, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
@@ -683,9 +647,7 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
-    vec4 TintTiling[5];   // per-material params appended (offset 1264): xyz = tint, w = tiles/metre
+    vec4 TintTiling[5];   // per-material params appended (offset 992): xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -752,9 +714,7 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
-    mat4 ShadowMatPrev[4];    // cross-fade OUTGOING-step matrices (issue #225): ShadowMat's frozen counterpart
-    vec4 ShadowBlend;         // x = cross-fade weight (1 = no cross-fade, the frozen sample is skipped)
-    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 1264)
+    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 992)
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -763,7 +723,6 @@ layout(set=0, binding=2) uniform texture2DArray NormalArray;
 layout(set=0, binding=3) uniform sampler Samp;
 layout(set=0, binding=4) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the terrain arrays (Metal first-sample-order rule)
 layout(set=0, binding=5) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
-layout(set=0, binding=6) uniform texture2D ShadowMapPrev;  // cross-fade OUTGOING-step atlas (issue #225); inert while ShadowBlend.x==1
 // Declare ONLY the interpolants this fragment reads, as a CONTIGUOUS 0..5 block (no gap). SplatVert emits these
 // same six at 0..5 and the fragment-unused vUv/vSpecParams/vTangent at 6..8 (which this shader does not declare).
 // A hole in the pixel-input semantics (e.g. declaring vUv@4 but never using it) makes FXC/WARP miscompile and the
@@ -862,7 +821,7 @@ void main() {
     // Key-light shadow: sampled AFTER the terrain arrays (Metal first-sample-order: ShadowMap is binding 4, last).
     // Terrain RECEIVES shadows identically to models via the same shared helper. keyShadow == 1 when the map is off.
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
-    float keyShadow = sampleKeyShadowBlended(ShadowMap, ShadowSamp, ShadowMapPrev, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
+    float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;

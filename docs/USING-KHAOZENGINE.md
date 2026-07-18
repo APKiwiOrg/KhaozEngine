@@ -1968,39 +1968,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       low-end profile. Recreate the scene to change atlas sizing at runtime.
     - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
-      cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`). `ShadowLightQuantizeDegrees`
-      (default `0` = off): a moving-sun de-shimmer knob. A slowly rotating key light (a `SunCycle` day/night
-      cycle) rotates the texel-snapped light grid every frame, so shadow edges swim and the atlas dirty-skip
-      never reuses a frame. Set this `> 0` to snap the FIT's light direction onto an angular lattice of that
-      many degrees (azimuth + elevation) so the fit holds constant between steps: edges hold rock-solid and
-      the atlas reuse returns, at the cost of one small discrete edge nudge per step (a few texels, softened
-      by the 3x3 PCF). Only the shadow fit sees the quantized direction; shading, the sky, and the sun disc
-      keep the smooth raw `Post.LightDirection`. Guidance ~0.25 to 0.5 degrees under a moving sun.
-    - **Temporal cross-fade** `ShadowStepBlendSeconds` (default `0` = off, opt-in; only meaningful with
-      `ShadowLightQuantizeDegrees > 0`): eases the discrete jump quantization trades the shimmer for. When the quantized
-      direction steps, the OUTGOING step's atlas + receiver matrices are kept alive while the INCOMING step renders, and
-      the receivers lerp the two PCF results from fully-outgoing to fully-incoming, then retire the old set - so a step
-      reads as a soft settle instead of a snap.
-      **This value is now the fade-duration CLAMP MAX, not a fixed window** (issue #227): each fade runs for
-      `min(observed inter-step interval, ShadowStepBlendSeconds)`, so it tracks the sun's speed. A fixed window
-      under-fills a slow sun - the fade covers only the first slice of a long inter-step gap, then the edge holds still
-      until the next step ("slide-then-hold", which reads as the shadow ticking every couple of seconds) - and truncates
-      a fast one. **Set the clamp at or above your worst-case step interval** (roughly `ShadowLightQuantizeDegrees` /
-      sun-degrees-per-second) and each new atlas starts fading on arrival and lands exactly as the next step is due, so
-      the edge is in continuous motion, one step latent. A small clamp keeps the old slide-then-hold (it caps the fade
-      below the interval), so the default and small values stay byte-stable; you opt into continuity by raising the
-      clamp. The FIRST step after a scene start (no interval observed yet) uses the clamp as its duration. Guidance under
-      a moving day/night sun: ~0.5 to 2 s (was ~0.25 to 0.5 when it was a fixed window). If the sun ever outruns the
-      frame rate (an accelerated world clock, steps under ~2 frames apart), the fit automatically stops quantizing and
-      refits per frame from the raw direction (continuous sub-texel motion, no blend) until it slows back down -
-      hysteretic, so it does not flap, and needs no configuration.
-      **The cross-fade needs a second shadow atlas (2x shadow VRAM), reserved
-      only when this is `> 0` at construction** - so set it via the same `ShadowSettings` construction seam as the atlas
-      knobs above. Once reserved it is freely runtime-tunable (set `0` to pause the fade, back to positive to resume);
-      turning it on for the first time after construction throws. The fade clock advances on
-      `Scene3D.EffectTimeSeconds`, so keep that advancing (as an animated day/night scene already does). The outgoing set
-      is frozen at the step and never re-fit, so a camera pan during a fade rides the baked matrices (like the atlas
-      dirty-skip).
+      cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the

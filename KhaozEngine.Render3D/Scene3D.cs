@@ -90,16 +90,6 @@ namespace KhaozEngine.Render3D
         readonly Matrix4x4[] _cascadeDepthVps = new Matrix4x4[ShadowSettings.MaxCascades];      // receiver * atlas-column transform (depth pass)
         readonly float[] _cascadeNormalOffsets = new float[ShadowSettings.MaxCascades];
         int _cascadeCount;                    // active cascade count this frame
-        // Temporal shadow cross-fade (issue #225) + adaptive duration & per-frame bypass (issue #227). The pure
-        // step-blend state machine, the QUANTIZED direction it watches for steps (which is the fitted direction too,
-        // except while BypassQuantization is set and the fit falls back to the raw direction for continuous per-frame
-        // motion), the EffectTimeSeconds sample it derives dt from, and the FROZEN outgoing-step receiver matrices +
-        // count it holds across a fade (captured at the step from _lastCascadeCpuVps, never re-fit as the camera moves).
-        Internal.ShadowStepBlend _stepBlend;
-        Vector3 _shadowFitLightDir;
-        float _blendClockSeconds;
-        readonly Matrix4x4[] _cascadeReceiverVpsPrev = new Matrix4x4[ShadowSettings.MaxCascades];
-        int _blendPrevCount;
         readonly Matrix4x4[] _lastCascadeCpuVps = new Matrix4x4[ShadowSettings.MaxCascades];    // last rendered pass's per-cascade CPU fit
         int _lastShadowCascadeCount;          // last rendered pass's cascade count
         int _lastShadowResolution;            // allocated per-cascade shadow-map resolution at the last rendered pass
@@ -373,16 +363,16 @@ namespace KhaozEngine.Render3D
         {
             _gd = gd;
             _targetOutput = targetOutput;
-            // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count, plus the
-            // step-blend cross-fade atlas), and its handle is bound into every material set, so those knobs can only be
-            // honoured if supplied BEFORE this point. A caller seeds them by passing an initialShadows through the
+            // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
+            // handle is bound into every material set, so those knobs can only be honoured if supplied BEFORE this
+            // point. A caller seeds them by passing an initialShadows through the
             // Render3DSurface/Render3DPreview/Render3DSnapshot ctor. After the atlas is built we commit the settings, so
             // a later write to a construction-time knob throws instead of silently no-opping (the old inert behaviour).
             if (initialShadows != null) Post.Quality.Shadows = initialShadows;
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled);
             ShadowSettings shadow0 = Post.Quality.Shadows;
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs,
-                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount, provisionStepBlend: shadow0.ShadowStepBlendSeconds > 0f);
+                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount);
             shadow0.CommitAtlas();
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
@@ -1676,23 +1666,7 @@ namespace KhaozEngine.Render3D
             int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
             Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
             Internal.ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
-            Vector3 rawDir = Vector3.Normalize(Post.LightDirection);
-            // A slowly rotating sun rotates the whole texel-snapped light grid every frame, so shadow edges swim and
-            // the atlas dirty-skip never reuses a frame. Snap ONLY the FIT's light direction onto an angular lattice
-            // when enabled, so the fit holds constant between steps; shading and the sky keep the raw Post.LightDirection.
-            // The step-blend bookkeeping ALWAYS watches the quantized direction (_shadowFitLightDir) so it keeps
-            // measuring the inter-step cadence, but when it reports the sun has outrun the frame rate (BypassQuantization,
-            // issue #227) the fit falls back to the RAW direction for continuous per-frame motion. BypassQuantization
-            // reflects the previous frame's Advance (this fit runs before it), a harmless one-frame lag for a latch.
-            Vector3 lightDir = rawDir;
-            if (shadows.ShadowLightQuantizeDegrees > 0f)
-            {
-                Vector3 quantized = Internal.ShadowMapMath.QuantizeDirection(rawDir, shadows.ShadowLightQuantizeDegrees);
-                _shadowFitLightDir = quantized;                                    // watched for a step, regardless of bypass
-                lightDir = _stepBlend.BypassQuantization ? rawDir : quantized;     // bypass => per-frame refit from raw
-            }
-            else
-                _shadowFitLightDir = rawDir;   // quantization off: the fit already tracks the raw direction each frame
+            Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
             float prev = camNear;
             for (int i = 0; i < count; i++)
             {
@@ -1998,45 +1972,10 @@ namespace KhaozEngine.Render3D
             if (shadowMapActive)
             {
                 timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-
-                // Temporal shadow cross-fade (issue #225) + adaptive duration & bypass (issue #227): advance the pure
-                // step-blend state machine on this frame's quantized fit direction. The fade runs only when the second
-                // atlas was provisioned AND the light is quantized AND the clamp is positive; ShadowStepBlendSeconds is
-                // now the fade-duration CLAMP MAX (each fade lasts min(observed inter-step interval, clamp)), and 0 still
-                // means off entirely, so a paused/off fade is reset (bypass off, quantized fit, byte-stable). On a STEP
-                // the live atlas + its receiver matrices still hold the OUTGOING quantization step, so freeze both before
-                // the incoming step re-renders the live atlas: the frozen matrices come from the last committed fit
-                // (_lastCascadeCpuVps) and are HELD for the whole fade (never re-fit, so a camera pan during the fade
-                // rides the baked outgoing matrices, exactly as the dirty-skip already reuses a stale atlas).
-                float clampSeconds = (_model.StepBlendProvisioned && Post.Quality.Shadows.ShadowLightQuantizeDegrees > 0f)
-                    ? MathF.Max(0f, Post.Quality.Shadows.ShadowStepBlendSeconds)
-                    : 0f;
-                float blendDt = Math.Clamp(EffectTimeSeconds - _blendClockSeconds, 0f, 0.25f);
-                _blendClockSeconds = EffectTimeSeconds;
-                bool stepped;
-                if (clampSeconds > 0f)
-                    stepped = _stepBlend.Advance(_shadowFitLightDir, blendDt, clampSeconds);
-                else
-                {
-                    _stepBlend.Reset();   // fade off/paused: no adaptive blend, no bypass, quantized fit as before (byte-stable)
-                    stepped = false;
-                }
-                bool freezeOutgoing = stepped && _shadowPassRendered;
-                if (freezeOutgoing)
-                {
-                    _blendPrevCount = _lastShadowCascadeCount;
-                    for (int i = 0; i < _blendPrevCount; i++)
-                        _cascadeReceiverVpsPrev[i] = GpuClip.Correct(_lastCascadeCpuVps[i], _gd.Capabilities);
-                }
-                else if (stepped)
-                    _stepBlend.Reset();   // no prior atlas to freeze (unreachable after the first committed frame); drop the fade cleanly
-
                 // Always set the receiver tail so the model + splat fragments sample the atlas (whether or not its depth
                 // is re-rendered this frame). Then decide whether the depth pass must actually re-run: the atlas
                 // persists across frames, so an unchanged static scene reuses it and skips every caster draw.
                 SetShadowReceiverTail();
-                if (_stepBlend.Blending)
-                    _model.SetShadowBlend(_cascadeReceiverVpsPrev.AsSpan(0, _blendPrevCount), _blendPrevCount, _stepBlend.Weight);
                 CaptureShadowCasters(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
                 bool dirty = ShadowDepthPassDirty(
                     hadPrevious: _shadowPassRendered,
@@ -2048,10 +1987,6 @@ namespace KhaozEngine.Render3D
                         _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels));
                 if (dirty)
                 {
-                    // Freeze the outgoing atlas into the cross-fade atlas BEFORE the incoming step re-renders the live
-                    // one. Recorded outside the depth render pass (the copy precedes BeginDepthPass's SetFramebuffer). A
-                    // step always dirties the fit, so this only ever runs as part of a real re-render.
-                    if (freezeOutgoing) _model.CopyShadowAtlasToPrev(cl);
                     RenderShadowDepthPass(cl);
                     // Commit this frame's signature as next frame's reference. Swap the reused buffers (no copy/alloc):
                     // the scratch now holds the just-rendered casters, so make it the kept copy and reuse the old kept
@@ -2068,11 +2003,7 @@ namespace KhaozEngine.Render3D
                 if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
             }
             else
-            {
                 _model.ClearShadowUniforms();
-                _stepBlend.Reset();                    // shadows off: cancel any fade so re-enabling does not spuriously step
-                _blendClockSeconds = EffectTimeSeconds;
-            }
 
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _model.BeginModelPass(cl, _res, Post);

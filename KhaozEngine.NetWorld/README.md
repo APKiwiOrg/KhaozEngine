@@ -77,6 +77,31 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `OnStoreError` surfaces a faulted background load/save (store outage). The periodic pass batches every dirty
   player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player. A faulted batch
   leaves every player in it dirty for the next pass (save-on-leave still uses a single-record `SaveAsync`).
+  - **Load validation and quarantine.** Two optional hooks on `WorldPersistenceConfig`, both evaluated on the
+    server thread inside the load-on-join apply step: **`Bounds`** (`WorldBounds`, the same type the movement
+    clamp uses) rejects a loaded position outside the play area. **`ValidateGameState`**
+    (`PlayerGameStateValidate`, handed the same `PlayerPersistenceContext` plus the raw blob, returning a
+    `PlayerGameStateVerdict.Valid()`/`Invalid(reason)`) is the game's plausibility check on its durable blob
+    (schema parse, stat clamps, inventory sanity), only invoked when the record actually carries a blob. A
+    record that fails either check is quarantined WHOLE rather than partially applied: its raw, undecoded bytes
+    are copied verbatim to `{QuarantineKeyPrefix}{KeyPrefix}{accountId}` (default
+    `quarantine:player:{accountId}`, where `QuarantineKeyPrefix` defaults to `"quarantine:"`) in the same
+    `IWorldStore`, the player is left at its default spawn (a **fresh spawn** - never placed from the bad
+    record), and **`OnRecordQuarantined`** (`event Action<string, string>`, accountId + reason) fires. The
+    `lastSaved` dirty-tracking baseline is deliberately NOT advanced for a quarantined record (it only advances
+    on a successful apply), so the fresh-spawn state stays dirty against the store and the **next periodic save
+    overwrites the bad primary** record, while the quarantine copy survives untouched as a **forensic copy**
+    (never itself restored automatically) for offline inspection. The `loadsInFlight` guard clears on
+    quarantine exactly as it does on a successful apply, so persistence resumes for that account immediately.
+  - **Undecodable record vs. store outage.** A record whose stored JSON fails to parse (`PlayerRecord.Decode`
+    throws) is NOT treated as a store fault: it read fine, it just will not decode, so it routes straight into
+    the quarantine path above (clearing the `loadsInFlight` guard, so the account resumes persisting on its
+    next dirty pass) instead of faulting the load task. A genuine store READ failure (an outage) is different
+    and is deliberately left unresolved: the guard stays set so the intact stored record remains protected from
+    a clobbering save until a later rejoin retries the load, and the fault surfaces through `OnStoreError`
+    rather than `OnRecordQuarantined`. Before this, an undecodable record took the outage path too, which left
+    the guard set forever for a record that could never successfully decode on any retry, silently stopping
+    that player's persistence for the rest of the session.
 - **`CellPersistence`** (+ `CellPersistenceConfig`, `WorldMetaRecord`) wires an
   [`IWorldStore`](../KhaozEngine.WorldStore) into a [`Sharding`](../KhaozEngine.Sharding) `ShardHost`-based server
   through **`ICellPersistenceHost`** (the surface `ShardedWorldServer` implements) so a cell's authoritative

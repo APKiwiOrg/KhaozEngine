@@ -6589,15 +6589,18 @@ save editor and detects corruption. It does not stop a player willing to read th
 backup generation in order, and returns the first valid candidate, or a fresh default if none are.
 `LoadWithOutcome<T>` reports which path was taken via `SaveLoadOutcome`: `Loaded` (clean primary),
 `FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under a configured
-encoder - a subsequent save re-encodes it), `RecoveredFromBackup` (the primary failed but a backup loaded,
-and `SaveLoadResult<T>.RecoveredGeneration` names which one), and `RejectedAndDefaulted` (something was on
-disk but every candidate was invalid). A save whose HMAC does not verify is rejected under
-`GameStorageOptions.TamperPolicy.Strict` (the default) and recovered under `.Lenient` - the dev escape
-hatch for hand-editing saves during balancing, which still reports a `Detail` naming the mismatch rather
-than accepting it silently. `AcceptLegacyPlaintext` (default true) lets a shipped game's existing install
-base upgrade transparently. Set it false once you no longer need to accept an unenveloped save. `Load`/
-`LoadWithOutcome` accept the same optional `MigrationChain<T>` as `SettingsManager<T>` - see "Versioned
-save migrations" below.
+encoder - a subsequent default-on save re-encodes it, though a file the game keeps writing with
+`Encode = false` stays plaintext deliberately and is never re-encoded this way), `RecoveredFromBackup`
+(the primary failed but a backup loaded, and `SaveLoadResult<T>.RecoveredGeneration` names which one), and
+`RejectedAndDefaulted` (something was on disk but every candidate was invalid). A save whose HMAC does not
+verify is rejected under `GameStorageOptions.TamperPolicy.Strict` (the default) and recovered under
+`.Lenient` - the dev escape hatch for hand-editing saves during balancing, which still reports a `Detail`
+naming the mismatch rather than accepting it silently. `AcceptLegacyPlaintext` (default true) lets a
+shipped game's existing install base upgrade transparently. Set it false once you no longer need to accept
+an unenveloped save, but note it rejects ALL plaintext, including a deliberate `Encode = false` file, so a
+game hardening its real saves this way should keep hand-editable files out of that storage, or leave the
+flag true. `Load`/`LoadWithOutcome` accept the same optional `MigrationChain<T>` as `SettingsManager<T>` -
+see "Versioned save migrations" below.
 
 **Generation restore.** `ListGenerations(fileName)` reports the primary plus every backup
 (`GameStorageOptions.BackupGenerations`, default 2) as `SaveGenerationInfo` entries - path, last-write

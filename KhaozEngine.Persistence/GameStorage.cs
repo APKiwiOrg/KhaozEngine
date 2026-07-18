@@ -55,7 +55,10 @@ public sealed class GameStorage : IDisposable
         Paths = paths;
         tamperPolicy = options.TamperPolicy;
         acceptLegacyPlaintext = options.AcceptLegacyPlaintext;
-        backupGenerations = options.BackupGenerations;
+        // Clamp a negative BackupGenerations to 0 rather than skipping the loop entirely, so a
+        // misconfigured value still probes the primary instead of silently defaulting (parity with
+        // FileSettingsStorage.LoadSettingsDetailed's own clamp).
+        backupGenerations = Math.Max(0, options.BackupGenerations);
         gameVersion = options.GameVersion;
         WriteQueue = new PersistenceQueue(options.Logger, options.MaxWriteAttempts, options.RetryDelay, backupGenerations);
         Settings = new FileSettingsStorage(Paths, WriteQueue);
@@ -201,6 +204,10 @@ public sealed class GameStorage : IDisposable
             else
             {
                 outcome = SaveLoadOutcome.RecoveredFromBackup;
+                // Surface why the primary (or an earlier generation) was skipped, so the recovery Warn
+                // names a reason instead of trailing off. Null only when every skipped generation was
+                // simply Missing rather than invalid, which LogLoadOutcome accounts for separately.
+                detail = firstFailureDetail;
             }
 
             SaveLoadResult<T> loaded = new()
@@ -239,7 +246,9 @@ public sealed class GameStorage : IDisposable
         switch (result.Outcome)
         {
             case SaveLoadOutcome.RecoveredFromBackup:
-                logger.Warn($"'{fullPath}' recovered from backup generation {result.RecoveredGeneration} after the primary failed: {result.Detail}");
+                logger.Warn(result.Detail is not null
+                    ? $"'{fullPath}' recovered from backup generation {result.RecoveredGeneration} after the primary failed: {result.Detail}"
+                    : $"'{fullPath}' recovered from backup generation {result.RecoveredGeneration}, primary missing");
                 break;
             case SaveLoadOutcome.RejectedAndDefaulted:
                 logger.Error($"'{fullPath}' rejected, every candidate was invalid, defaulted: {result.Detail}");

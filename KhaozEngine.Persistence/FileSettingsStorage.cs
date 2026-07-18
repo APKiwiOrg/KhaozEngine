@@ -83,6 +83,9 @@ public sealed class FileSettingsStorage : ISettingsStorage
                 {
                     Value = value,
                     Outcome = gen == 0 ? SaveLoadOutcome.Loaded : SaveLoadOutcome.RecoveredFromBackup,
+                    // Attach the first failure so a recovered result names why the primary was skipped
+                    // instead of leaving the recovery Warn to trail off with nothing after the colon.
+                    Detail = gen == 0 ? null : firstFailureDetail,
                     RecoveredGeneration = gen,
                 };
             }

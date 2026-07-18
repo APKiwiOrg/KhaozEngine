@@ -343,7 +343,12 @@ public class GameStorageTests
         SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
 
         Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, r.Outcome);
-        Assert.Contains(log.Entries, e => e.Level == LogLevel.Warn);
+        // The primary actually failed here (corrupted, not missing), so the recovered result must carry
+        // why, and the Warn it produces must not trail off with a dangling colon.
+        Assert.NotNull(r.Detail);
+        FakeLogger.Entry warn = Assert.Single(log.Entries, e => e.Level == LogLevel.Warn);
+        Assert.Contains(r.Detail!, warn.Message);
+        Assert.DoesNotMatch(@":\s*$", warn.Message);
     }
 
     [Fact]
@@ -363,7 +368,7 @@ public class GameStorageTests
     [Fact]
     public void Load_CorruptPrimaryNoBackups_DoesNotThrow_ReturnsDefaults()
     {
-        using GameStorage storage = CreateStorage(out string dir);   // no encoder, BackupGenerations = 0 via options
+        using GameStorage storage = CreateStorage(out string dir);   // no encoder, BackupGenerations = 2 via options
         File.WriteAllText(Path.Combine(dir, "c.json"), "{ not json !!");
 
         TestSave v = storage.Load<TestSave>("c.json");   // issue #148: this used to throw JsonException
@@ -417,6 +422,21 @@ public class GameStorageTests
         Assert.Equal(SaveLoadOutcome.RejectedAndDefaulted, r.Outcome);
         Assert.NotNull(r.Detail);
         Assert.Equal(0, r.Value.Score);
+    }
+
+    [Fact]
+    public void LoadWithOutcome_NegativeBackupGenerations_StillProbesPrimary()
+    {
+        using GameStorage storage = CreateStorage(out string dir, o => o.BackupGenerations = -1);
+        storage.Save("s.json", new TestSave { Score = 7 });
+        storage.Flush();
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        // A negative BackupGenerations must not skip generation 0 (the primary): clamped to 0, not
+        // treated as "probe nothing" (parity with FileSettingsStorage's own clamp).
+        Assert.Equal(SaveLoadOutcome.Loaded, r.Outcome);
+        Assert.Equal(7, r.Value.Score);
     }
 
     [Fact]

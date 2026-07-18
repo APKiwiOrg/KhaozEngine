@@ -107,7 +107,9 @@ public sealed class SettingsManager<T> where T : new()
             switch (result.Outcome)
             {
                 case SaveLoadOutcome.RecoveredFromBackup:
-                    logger.Warn($"settings recovered from backup generation {result.RecoveredGeneration}: {result.Detail}");
+                    logger.Warn(result.Detail is not null
+                        ? $"settings recovered from backup generation {result.RecoveredGeneration}: {result.Detail}"
+                        : $"settings recovered from backup generation {result.RecoveredGeneration}, primary missing");
                     break;
                 case SaveLoadOutcome.RejectedAndDefaulted:
                     logger.Error($"settings rejected, every candidate was invalid, defaulted: {result.Detail}");

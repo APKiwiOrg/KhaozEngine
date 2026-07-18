@@ -90,7 +90,9 @@ resolved via `SaveLoadResult<T>` (`Value`, `Outcome`, `Detail`, `RecoveredGenera
 - **`FreshDefault`** - nothing existed on disk. A fresh default was returned and stamped current via
   `migrations` rather than migrated (see `MigrationChain<T>.StampCurrent` below).
 - **`LoadedLegacyPlaintext`** - the primary was a valid plaintext save read under a configured encoder (a
-  pre-upgrade or hand-edited save). A subsequent `Save` re-encodes it.
+  pre-upgrade or hand-edited save). A subsequent default-on `Save` re-encodes it, but a file the game keeps
+  writing with `Encode = false` (`SaveWriteOptions`) stays plaintext deliberately and is never re-encoded
+  this way.
 - **`RecoveredFromBackup`** - the primary was invalid but a backup generation loaded, and
   `RecoveredGeneration` names which one.
 - **`RejectedAndDefaulted`** - at least one candidate existed but every generation was invalid, and a
@@ -103,7 +105,9 @@ naming the mismatch rather than accepting it silently. `RecoveredFromBackup` and
 plus a lenient tamper-accept, are logged (`Warn`/`Error`) through the facade's logger. `Loaded` (with no
 detail), `FreshDefault`, and `LoadedLegacyPlaintext` stay quiet, since those are the expected path, not a
 recovery. `AcceptLegacyPlaintext` (default true) lets a shipped game's existing install base upgrade
-transparently from an unenveloped save. Set it false once you no longer need to accept one.
+transparently from an unenveloped save. Set it false once you no longer need to accept one, but note it
+rejects ALL plaintext, including a deliberate `Encode = false` file, so a game hardening its real saves
+this way should keep hand-editable files out of that storage, or leave the flag true.
 
 ### Backup generations
 

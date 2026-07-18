@@ -129,12 +129,14 @@ public sealed class WorldPersistence
     public event Action<Exception>? OnStoreError;
 
     /// <summary>Raised on the server thread (from <see cref="Update"/> / <see cref="FlushAsync"/> via the apply drain)
-    /// when a loaded record failed validation and was quarantined WHOLE: (accountId, reason). The raw record has been
-    /// copied to the quarantine key by the time this fires, the player keeps its default spawn, and the primary record
-    /// will be overwritten by the fresh state on the next dirty pass. The reason is the bounds/blob/decode message, for
-    /// logging or alerting. On the <see cref="FlushAsync"/> path the invoking continuation may run on a thread-pool
-    /// thread rather than the true server thread, under FlushAsync's own documented precondition that it only be
-    /// invoked when the server loop is idle.</summary>
+    /// when a loaded record failed validation and was quarantined WHOLE: (accountId, reason). The raw record's copy
+    /// to the quarantine key has only been queued (a Tracked <c>SaveAsync</c>) by the time this fires, not
+    /// necessarily completed: an async store may still be writing it, though <see cref="FlushAsync"/> awaits that
+    /// write before it returns. The player keeps its default spawn, and the primary record will be overwritten by the
+    /// fresh state on the next dirty pass. The reason is the bounds/blob/decode message, for logging or alerting. On
+    /// the <see cref="FlushAsync"/> path the invoking continuation may run on a thread-pool thread rather than the
+    /// true server thread, under FlushAsync's own documented precondition that it only be invoked when the server
+    /// loop is idle.</summary>
     public event Action<string, string>? OnRecordQuarantined;
 
     // A loaded record marshalled to the server thread for validation + apply. Raw is the exact stored bytes (copied

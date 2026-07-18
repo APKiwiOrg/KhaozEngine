@@ -180,7 +180,10 @@ public class SettingsManagerTests
 
             Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, manager.LastLoadOutcome);
             Assert.Equal(1, manager.Settings.Volume);
-            Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warn);
+            // The primary here is genuinely corrupt (not merely missing), so the Warn must name why
+            // instead of trailing off with a dangling colon.
+            FakeLogger.Entry warn = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warn);
+            Assert.Matches(@":\s*\S", warn.Message);
         }
         finally
         {

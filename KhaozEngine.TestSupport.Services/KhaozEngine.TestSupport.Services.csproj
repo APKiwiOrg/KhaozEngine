@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Not a test project and ships nothing: excluded from the doc-version guard's packable-package
+         catalog check (it greps for this literal tag). -->
+    <IsPackable>false</IsPackable>
+    <!-- The fakes keep their KhaozEngine.Tests.Updates / KhaozEngine.Tests.ServerStatus namespaces so the
+         consuming test files resolve them unchanged. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
+  </ItemGroup>
+</Project>

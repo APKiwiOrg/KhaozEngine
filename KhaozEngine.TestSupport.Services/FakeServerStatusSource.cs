@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.ServerStatus;
 /// results (a report on success, null on a miss), repeating the last scripted result once the queue drains,
 /// and counts fetches. No sockets, no real HTTP.
 /// </summary>
-internal sealed class FakeServerStatusSource : IServerStatusSource
+public sealed class FakeServerStatusSource : IServerStatusSource
 {
     private readonly Queue<ServerStatusReport?> results = new();
     private ServerStatusReport? lastResult;

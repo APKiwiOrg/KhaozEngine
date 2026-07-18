@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces AND embedded resources keep their
+         KhaozEngine.Tests.*-derived manifest names (Localization/Fixtures/*.resx and Fixtures/sample.json are
+         loaded by those names, with no LogicalName override). -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures/sample.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
+    <ProjectReference Include="../KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
+    <ProjectReference Include="../KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj" />
+    <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
+    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <!-- Primitives/MathUtilTests.cs cross-checks MathUtil.SmoothStep against KhaozEngine.Terrain.TerrainNoise
+         (a fully-qualified reference, so it does not show up as a using directive). Compile-revealed. -->
+    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
+    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
+  </ItemGroup>
+</Project>

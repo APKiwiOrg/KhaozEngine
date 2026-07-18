@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Updates;
 /// manifest, streams file bytes from a dictionary, and can serve corrupt bytes (once or always) to
 /// exercise the SHA256 verify/retry path. File "URLs" are just the relative paths.
 /// </summary>
-internal sealed class FakeUpdateSource : IUpdateSource
+public sealed class FakeUpdateSource : IUpdateSource
 {
     public LatestVersionInfo? Latest;
     public UpdateManifest? RemoteManifest;

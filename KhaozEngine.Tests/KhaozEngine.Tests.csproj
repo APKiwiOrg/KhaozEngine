@@ -12,7 +12,6 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Fixtures/sample.json" />
     <!-- A real player-facing changelog (Ruinborne's docs/PLAY_CHANGELOG.md, copied in rather than referenced by
          path) so PatchNotesParserTests exercises the parser against real authored content, not just synthetic
          samples. -->
@@ -119,5 +118,9 @@
     <ProjectReference Include="../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
     <ProjectReference Include="../MmoServerSample/MmoServerSample.csproj" />
     <ProjectReference Include="../KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
+    <!-- Cross-cluster fakes (FakeUpdateSource/FakeUpdateStatus, FakeServerStatusSource) moved out to
+         TestSupport.Services in the wave-1 split; the Game/Gui/ServerStatus tests still in this project
+         consume them via their unchanged KhaozEngine.Tests.Updates / KhaozEngine.Tests.ServerStatus namespaces. -->
+    <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
   </ItemGroup>
 </Project>

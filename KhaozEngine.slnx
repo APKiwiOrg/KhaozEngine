@@ -70,6 +70,9 @@
   <Project Path="KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
   <Project Path="KhaozEngine.Snapshot.Render3D/KhaozEngine.Snapshot.Render3D.csproj" />
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
+  <Project Path="KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+  <Project Path="KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
+  <Project Path="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />

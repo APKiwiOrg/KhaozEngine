@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Not a test project and ships nothing: excluded from the doc-version guard's packable-package
+         catalog check (it greps for this literal tag). -->
+    <IsPackable>false</IsPackable>
+    <!-- Moved files keep their KhaozEngine.Tests.* namespaces, and embedded-resource manifest names
+         derive from RootNamespace, so every split project pins it to KhaozEngine.Tests. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+</Project>

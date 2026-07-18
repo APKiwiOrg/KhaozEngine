@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Foundation.Tests" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

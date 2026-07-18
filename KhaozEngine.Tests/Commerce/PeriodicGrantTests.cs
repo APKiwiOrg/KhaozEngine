@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Commerce;
 using Xunit;
@@ -59,6 +62,11 @@ public class PeriodicGrantTests
         Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
         PeriodicGrant grant = new(wallet, store, TimeSpan.FromHours(24), "dailyShard", Shard, 1);
 
+        // Seed a persisted schedule so this exercises the steady-state path, not the bootstrap claim (whose
+        // key is a fixed per-(account, reward) sentinel, not the instant's ticks). Here the claim reads a
+        // stored instant and keys on its ticks.
+        await store.SetNextAvailableAsync(A, "dailyShard", T0);
+
         PeriodicGrantResult first = await grant.TryClaimAsync(A, T0);
         Assert.True(first.Granted);
         Assert.Equal(1, await wallet.BalanceAsync(A, Shard));
@@ -71,5 +79,99 @@ public class PeriodicGrantTests
         PeriodicGrantResult replay = await grant.TryClaimAsync(A, T0);
         Assert.False(replay.Granted);                       // wallet detected the duplicate key
         Assert.Equal(1, await wallet.BalanceAsync(A, Shard)); // credited once, not twice
+    }
+
+    [Fact]
+    public async Task First_claim_credits_once_when_the_schedule_write_is_not_visible_to_the_second_read()
+    {
+        // The bootstrap race, modelled with no threads: a schedule store whose write is never visible to a
+        // second read (it returns null both times), so both first claims take the bootstrap path. Two claims
+        // a tick apart must still credit once. The wallet idempotency key is the guard, so the bootstrap key
+        // cannot depend on the caller's serverNowUtc, or two concurrent first claims derive two keys and both
+        // credit (real currency duplication).
+        AlwaysNullScheduleStore schedules = new();
+        InMemoryWalletStore store = new();
+        Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
+        PeriodicGrant grant = new(wallet, schedules, TimeSpan.FromHours(24), "dailyShard", Shard, 1);
+
+        PeriodicGrantResult a = await grant.TryClaimAsync(A, T0);
+        PeriodicGrantResult b = await grant.TryClaimAsync(A, T0.AddTicks(1));
+
+        Assert.Equal(1, await wallet.BalanceAsync(A, Shard)); // one grant, not two
+        Assert.True(a.Granted);
+        Assert.False(b.Granted);                             // the duplicate first claim is a replay, not a grant
+    }
+
+    [Fact]
+    public async Task Concurrent_first_claims_credit_exactly_once()
+    {
+        // Drive the real concurrency window deterministically, many iterations to guard both directions:
+        // two first-ever claims a tick apart both park at the schedule read and resolve to the same
+        // pre-write snapshot (null), so neither's write is visible to the other's read, then they race for
+        // the store lock on the credit. Exactly one grant must land.
+        for (int i = 0; i < 20; i++)
+        {
+            InMemoryWalletStore store = new();
+            Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
+            GatedGrantScheduleStore gated = new(store);
+            PeriodicGrant grant = new(wallet, gated, TimeSpan.FromHours(24), "dailyShard", Shard, 1);
+
+            Task<PeriodicGrantResult> t1 = grant.TryClaimAsync(A, T0);
+            Task<PeriodicGrantResult> t2 = grant.TryClaimAsync(A, T0.AddTicks(1));
+
+            Assert.Equal(2, gated.PendingReads);             // both parked at the schedule read, before any write
+            await gated.ReleaseReadsAsync(A, "dailyShard");  // both observe the same null snapshot -> both bootstrap
+
+            PeriodicGrantResult[] results = await Task.WhenAll(t1, t2);
+
+            Assert.Equal(1, await wallet.BalanceAsync(A, Shard)); // exactly one grant credited
+            Assert.Equal(1, results.Count(r => r.Granted));       // exactly one claim reports Granted
+        }
+    }
+
+    /// <summary>A schedule store whose write is never visible to a later read: models the bootstrap window
+    /// where a concurrent first claim's <c>SetNextAvailableAsync</c> has not landed yet, so both reads see null.</summary>
+    private sealed class AlwaysNullScheduleStore : IGrantScheduleStore
+    {
+        public Task<DateTimeOffset?> GetNextAvailableAsync(AccountId account, string rewardId, CancellationToken ct = default)
+            => Task.FromResult<DateTimeOffset?>(null);
+
+        public Task SetNextAvailableAsync(AccountId account, string rewardId, DateTimeOffset nextUtc, CancellationToken ct = default)
+            => Task.CompletedTask;
+    }
+
+    /// <summary>Wraps an <see cref="IGrantScheduleStore"/> and parks every <see cref="GetNextAvailableAsync"/>
+    /// read until the test releases them together, all resolving to a single inner snapshot taken at release.
+    /// That pins the bootstrap race deterministically: two concurrent first claims observe the same pre-write
+    /// state, so the faster claim's write cannot change what the slower claim's read returns. Writes pass
+    /// straight through (last-write-wins). Same TaskCompletionSource idiom as GatedWorldStore.</summary>
+    private sealed class GatedGrantScheduleStore : IGrantScheduleStore
+    {
+        private readonly IGrantScheduleStore inner;
+        private readonly List<TaskCompletionSource<DateTimeOffset?>> readGates = new();
+
+        public GatedGrantScheduleStore(IGrantScheduleStore inner) => this.inner = inner;
+
+        /// <summary>How many reads are currently parked, waiting for <see cref="ReleaseReadsAsync"/>.</summary>
+        public int PendingReads { get { lock (readGates) return readGates.Count; } }
+
+        /// <summary>Snapshots the inner value once and completes every parked read with that same snapshot.</summary>
+        public async Task ReleaseReadsAsync(AccountId account, string rewardId, CancellationToken ct = default)
+        {
+            DateTimeOffset? snapshot = await inner.GetNextAvailableAsync(account, rewardId, ct).ConfigureAwait(false);
+            TaskCompletionSource<DateTimeOffset?>[] gates;
+            lock (readGates) { gates = readGates.ToArray(); readGates.Clear(); }
+            foreach (TaskCompletionSource<DateTimeOffset?> g in gates) g.SetResult(snapshot);
+        }
+
+        public Task<DateTimeOffset?> GetNextAvailableAsync(AccountId account, string rewardId, CancellationToken ct = default)
+        {
+            TaskCompletionSource<DateTimeOffset?> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (readGates) readGates.Add(gate);
+            return gate.Task;
+        }
+
+        public Task SetNextAvailableAsync(AccountId account, string rewardId, DateTimeOffset nextUtc, CancellationToken ct = default)
+            => inner.SetNextAvailableAsync(account, rewardId, nextUtc, ct);
     }
 }

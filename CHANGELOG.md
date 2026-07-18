@@ -5,6 +5,69 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.6.0
+
+`KhaozEngine.Gui` gains the composition unit below `Screen`: `IScreenComponent` (one HUD element, overlay, input
+controller, or presenter) plus `ScreenComponentList`, the fan-out a host loops once per lifecycle moment instead
+of hand-wiring every collaborator into every moment. The component's `Update` bool means CONSUMED INPUT, the
+`Screen.Update` contract one level down, and NOT "am I visible", which is what the engine's existing views happen
+to return. Deliberately not a UI framework, and deliberately not a fix for the service-locator problem a large
+screen also has. Closes #226.
+
+- **`IScreenComponent`.** `bool Update(float dt, bool receivesInput, Rect bounds, InputManager input)` +
+  `void Draw(SpriteBatch batch, Rect bounds)`, with `LoadContent`/`UnloadContent` as DEFAULT interface members so a
+  component owning no assets omits them entirely. An interface, not a base class, mirroring
+  `KhaozEngine.Ecs.ISystem`'s role below `World`: it does not consume a consumer's single base-class slot, so an
+  existing local base (SpaceGame's `RunPopup`, the Showcase's `ToolkitPage`) keeps its own domain lifecycle and adds
+  the engine contract on top. The `receivesInput`/return pair is copied verbatim from `Screen.Update`, including the
+  rule that a component MUST return false whenever `receivesInput` is false: a component that returns a bare `true`
+  starves every component below it and then every screen below its screen.
+- **`bounds` is a per-call parameter on both `Update` and `Draw`, never a property.** A host re-reads its viewport
+  each frame and passes what it reads, so a resize or a letterbox change is picked up with no `OnResize` hook to
+  forget. That is why `GameScene.OnResize` exists and why this type does not need an equivalent. `Rect` is a
+  `readonly record struct`, so passing it every frame is free.
+- **`ScreenComponentList`, the fan-out.** `Add<T>` (returns `T`, so a host registers and keeps a typed reference in
+  one line), `Remove`, `Clear`, `Update`, `Draw`. Registration order IS z order, matching `ISystem`'s
+  registration-order rule with no separate sort key: first added draws underneath and is offered input last.
+  `Update` runs top-down and stops input at the first component that consumes it, `Draw` runs bottom-up. The
+  routing is `ScreenStack`'s, one level down, including the guarded latch (a component that violates the contract
+  and returns true while blocked cannot poison the loop for the ones below it) and the scratch-copy iteration (a
+  component may add or remove itself during its own `Update`). Loads before inserting and unloads before removing,
+  as `ScreenStack.Add`/`Remove` do.
+- **`Screen` is NOT modified, deliberately.** A host composes a `ScreenComponentList` as a field and forwards to it
+  from its own overrides, four lines that do not grow with the component count. A built-in `Screen.Components`
+  would have to be torn down from the `virtual UnloadContent`, so any subclass that overrides it and forgets
+  `base.UnloadContent()` would silently leak every component's assets with no compiler help. Composition also keeps
+  the list usable from a `GameScene`, from a non-`Screen` host, and in a test with no stack at all. Adding
+  `Screen.Components` later stays additive if it is ever wanted.
+- **No `SpriteFont` / `Texture2D white` on `Draw`.** Components take resources in their own constructor, as every
+  engine screen already does. Fonts and textures are stable for a component's lifetime, a non-null font forces
+  text-free components to accept one, and carrying two of the six things a large screen actually smuggles downward
+  would invite a context object, which is the framework this is not.
+- **The three engine `Screen`+`View` pairs are NOT migrated, on purpose.** `UpdateOverlayView`, `PatchNotesView`
+  and `ConnectionStatusController` each have exactly ONE collaborator and their screens are already 56 to 62 lines,
+  so none of them has the problem this type solves. Two would additionally be breaking public API changes for zero
+  lines saved (their `Update` signatures carry a per-call status model and an `ITextMeasurer`, and their bools mean
+  "visible" and "still open", not "consumed"). `ConnectionStatusController` is not a Screen+View pair at all: it has
+  no `Draw` and returns a view-model struct.
+- **Proven instead against `KhaozEngine.Showcase`'s `ToolkitPage`,** the engine's own hand-rolled version of this
+  interface, with five real implementations. It now implements `IScreenComponent` while keeping its `Activated`/
+  `Deactivated` tab lifecycle, which is the intended layering demonstrated end to end. Its captured `Content` field
+  is gone in favour of the per-call `bounds`, with widget construction (`OnLoad`) split from placement (`OnLayout`,
+  re-run only when the bounds change) so a page keeps its typed text, scroll offset and field values across a
+  re-layout. The tab host keeps its own array rather than a `ScreenComponentList`, because mutually exclusive tabs
+  are the wrong shape for a fan-out: the interface is the contract, the list is one collection over it.
+- **Out of scope, so nobody expects it.** This does not address the service-locator / closure-smuggling problem a
+  large screen also has (the lambdas and multi-argument asset records that tunnel a font, a white pixel, a
+  `GuiSurface`, a viewport, content loading and a service provider downward). That needs a context object, which
+  would make this a UI framework. Also excluded and recorded: layout/anchoring on the interface (`Layout.Resolve`
+  already covers it), a widget tree, data binding, a `Bounds` property, `Enabled`/`Visible` flags, a `DrawOrder`
+  sort key, a modal flag or `AlwaysReceivesInput` analogue (a component that stops its own siblings updating is
+  incoherent, and it would re-create the dormant-overlay starvation trap one level down), a `Resize` hook, and
+  async lifecycle.
+- Design rationale in `docs/design/SCREEN-COMPONENT-DESIGN-2026-07-18.md`. Consumer adoption is tracked as
+  https://github.com/APKiwiOrg/SpaceGame/issues/69.
+
 ## 13.4.0
 
 Ground decals: the `MoltenCracks` Voronoi fill pattern and noise-eroded silhouettes (`EdgeErosion`), the

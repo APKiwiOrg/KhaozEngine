@@ -176,7 +176,14 @@ namespace KhaozEngine.Showcase
 
     /// <summary>The room's single root screen: an opaque backdrop, a <see cref="TabBar"/> at the top, and one of
     /// five <see cref="ToolkitPage"/>s below it. Tab / Shift+Tab (or a click on the bar) switches pages, and the
-    /// modal demos push real screens on top of this one.</summary>
+    /// modal demos push real screens on top of this one.
+    /// <para>
+    /// Deliberately NOT a <see cref="ScreenComponentList"/>, even though every page is an
+    /// <see cref="IScreenComponent"/>: the pages are mutually exclusive TABS, exactly one of which runs, and a
+    /// fan-out list is for the many-at-once case. The list would update and draw all five. This is the useful
+    /// half of the distinction: the interface is the per-component contract, the list is one collection over it,
+    /// and a host with different collection semantics keeps its own array and still speaks the same contract.
+    /// </para></summary>
     sealed class ToolkitHostScreen : Screen
     {
         readonly GuiAssets _a;
@@ -184,7 +191,6 @@ namespace KhaozEngine.Showcase
         ToolkitPage[] _pages = null!;
         bool[] _loaded = null!;
         int _active;
-        Rect _content;
 
         public ToolkitHostScreen(GuiAssets a)
         {
@@ -208,7 +214,6 @@ namespace KhaozEngine.Showcase
                 },
                 _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f));
 
-            _content = new Rect((db.Width - 920f) * 0.5f, 112f, 920f, db.Height - 112f - 16f);
             _pages = new ToolkitPage[]
             {
                 new WidgetsPage(), new SpritesTextPage(), new InputAudioPage(), new ImmediatePage(), new ScreensPage(),
@@ -238,21 +243,34 @@ namespace KhaozEngine.Showcase
             }
 
             if (_tabs.ActiveIndex != prev) SetActive(_tabs.ActiveIndex);
-            _pages[_active].Update(dt);
+            // The page's own consumed flag is deliberately discarded: this screen is modal by construction
+            // (PassUpdateThrough = false above), so it owns input whenever it is the top screen and nothing
+            // below it can be starved by the answer either way.
+            _ = _pages[_active].Update(dt, receivesInput, PageBounds(), Manager.InputManager);
             return true;
         }
 
         public override void Draw(SpriteBatch batch)
         {
             DrawBackground(batch, _a.White, _a.Vp);
-            _pages[_active].Draw(batch);
+            _pages[_active].Draw(batch, PageBounds());
             _tabs.Draw(batch, _a.White);   // crisp strip on top of the page
         }
 
         public override void UnloadContent()
         {
             for (int i = 0; i < _pages.Length; i++)
-                if (_loaded[i]) _pages[i].Unload();
+                if (_loaded[i]) _pages[i].UnloadContent();
+        }
+
+        /// <summary>The region a page lays out inside, resolved fresh every frame off the viewport and handed
+        /// down as the <see cref="IScreenComponent"/> bounds argument rather than captured at load. That is what
+        /// lets a page drop its resize handling entirely: whatever the viewport reports this frame is what it
+        /// lays out against.</summary>
+        Rect PageBounds()
+        {
+            Rect db = _a.Vp.DesignBounds;
+            return new Rect((db.Width - 920f) * 0.5f, 112f, 920f, db.Height - 112f - 16f);
         }
 
         void SetActive(int index)
@@ -267,31 +285,83 @@ namespace KhaozEngine.Showcase
         void EnsureLoaded(int index)
         {
             if (_loaded[index]) return;
-            _pages[index].Load(_a, _content, Manager);
+            _pages[index].Load(_a, Manager);
             _loaded[index] = true;
         }
     }
 
-    /// <summary>Base for one tab page: laid out inside <see cref="Content"/>, driving the shared stack's pointer /
-    /// input. Loaded lazily on its first activation, unloaded once when the room leaves.</summary>
-    abstract class ToolkitPage
+    /// <summary>Base for one tab page: an <see cref="IScreenComponent"/> laid out inside the bounds the host
+    /// hands down every frame, driving the shared stack's pointer / input. Loaded lazily on its first
+    /// activation, unloaded once when the room leaves.
+    /// <para>
+    /// This is the intended layering, and the reason <see cref="IScreenComponent"/> is an interface rather than
+    /// a base class: the page keeps its own <see cref="A"/> / <see cref="Stack"/> fields and its
+    /// <see cref="Activated"/> / <see cref="Deactivated"/> tab lifecycle, and gains the engine contract on top
+    /// instead of having to reparent onto it. A consumer's own abstract base adds domain lifecycle ABOVE the
+    /// interface; the interface never competes for the single base-class slot.
+    /// </para>
+    /// <para>
+    /// Construction and placement are split for the same reason bounds is a per-call parameter: widgets are
+    /// built once in <see cref="OnLoad"/>, before any bounds exist, and placed in <see cref="OnLayout"/>, which
+    /// re-runs whenever the bounds change. So the page keeps its widget state (typed text, scroll offset, field
+    /// values) across a re-layout and needs no resize hook at all.
+    /// </para></summary>
+    abstract class ToolkitPage : IScreenComponent
     {
         protected GuiAssets A = null!;
-        protected Rect Content;
         protected ScreenStack Stack = null!;
 
-        public void Load(GuiAssets a, Rect content, ScreenStack stack)
+        Rect _laidOut;
+        bool _hasLayout;
+
+        /// <summary>Bind the shared assets + owning stack and build the page. Bounds are NOT passed here: they
+        /// arrive per frame, so anything positional belongs in <see cref="OnLayout"/>.</summary>
+        public void Load(GuiAssets a, ScreenStack stack)
         {
-            A = a; Content = content; Stack = stack;
+            A = a; Stack = stack;
             OnLoad();
         }
 
+        /// <summary>Construct widgets and acquire page-owned assets. Runs once, before any bounds are known.</summary>
         protected abstract void OnLoad();
+
+        /// <summary>Place (or re-place) everything positional inside <paramref name="bounds"/>. Runs before the
+        /// page's first update or draw, and again only when the bounds actually change.</summary>
+        protected virtual void OnLayout(Rect bounds) { }
+
         public virtual void Activated() { }
         public virtual void Deactivated() { }
-        public abstract void Update(float dt);
-        public abstract void Draw(SpriteBatch batch);
-        public virtual void Unload() { }
+
+        public bool Update(float dt, bool receivesInput, Rect bounds, InputManager input)
+        {
+            EnsureLayout(bounds);
+            return OnUpdate(dt, receivesInput, bounds, input);
+        }
+
+        public void Draw(SpriteBatch batch, Rect bounds)
+        {
+            EnsureLayout(bounds);
+            OnDraw(batch, bounds);
+        }
+
+        /// <summary>Per-frame update, layout already resolved for <paramref name="bounds"/>. Return whether the
+        /// page CONSUMED input, never a bare true (see <see cref="IScreenComponent.Update"/>).</summary>
+        protected abstract bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input);
+
+        /// <summary>Per-frame draw, layout already resolved for <paramref name="bounds"/>.</summary>
+        protected abstract void OnDraw(SpriteBatch batch, Rect bounds);
+
+        /// <summary>Release page-owned assets. Declared here (rather than left as the <see cref="IScreenComponent"/>
+        /// default) so the host can call it through <c>ToolkitPage</c>; pages owning nothing leave it alone.</summary>
+        public virtual void UnloadContent() { }
+
+        void EnsureLayout(Rect bounds)
+        {
+            if (_hasLayout && _laidOut == bounds) return;
+            _laidOut = bounds;
+            _hasLayout = true;
+            OnLayout(bounds);
+        }
 
         // A section header (accent) plus a 1px accent underline across the section width, the shared vertical
         // rhythm the widgets/sprites pages open each column or card with.
@@ -325,24 +395,25 @@ namespace KhaozEngine.Showcase
 
         float _ax, _bx, _cx, _top;
 
+        // Widgets are built here with placeholder bounds and PLACED in OnLayout, so the page survives a bounds
+        // change with its typed text, scroll offset and field values intact.
         protected override void OnLoad()
         {
-            _ax = Content.X; _bx = Content.X + 320f; _cx = Content.X + 640f; _top = Content.Y;
             Rect db = A.Vp.DesignBounds;
 
             // Column A: form widgets.
-            _name = new TextInput(new Rect(_ax, _top + 56f, ColW, 32f), A.Small)
+            _name = new TextInput(default, A.Small)
             { PlaceholderContent = ShowcaseStrings.WidgetsNamePlaceholder, MaxLength = 16 };
             _difficulty = new Dropdown(
                 new[] { new DropdownOption("Easy", 0), new DropdownOption("Normal", 1), new DropdownOption("Hard", 2) },
-                new Rect(_ax, _top + 122f, 200f, 30f));
+                default);
             _difficulty.SelectByValue(1);
-            _partySize = new NumberField(new Rect(_ax, _top + 188f, 120f, 30f), 4f)
+            _partySize = new NumberField(default, 4f)
             { Min = 1f, Max = 8f, Decimals = 0, DragScale = 0.05f };
-            _list = new ScrollablePanel(new Rect(_ax, _top + 254f, ColW, 170f)) { ItemCount = 24, ItemHeight = 30, ItemSpacing = 4 };
+            _list = new ScrollablePanel(default) { ItemCount = 24, ItemHeight = 30, ItemSpacing = 4 };
 
             // Column B: HUD widgets.
-            _slots = new SlotGrid(new Rect(_bx, _top + 56f, 0, 0), count: 10, columns: 5)
+            _slots = new SlotGrid(default, count: 10, columns: 5)
             {
                 SlotSize = 32f,
                 Spacing = 4f,
@@ -355,17 +426,17 @@ namespace KhaozEngine.Showcase
                 Color c = slot == 0 ? new Color(0.4f, 0.7f, 1f, 1f) : new Color(0.9f, 0.6f, 0.3f, 1f);
                 b.Draw(A.White, new Vector4(rect.X + 8, rect.Y + 8, rect.Width - 16, rect.Height - 16), c);
             };
-            _progress = new ProgressBar(new Rect(_bx, _top + 134f, 260f, 16f), 0.65f)
+            _progress = new ProgressBar(default, 0.65f)
             { OverlayText = LocalizedText.Of(ShowcaseStrings.WidgetsLoading, 65) };
 
             var accent = new Vector4(0.35f, 0.85f, 1f, 1f);
-            _segContinuous = new ProgressBar(new Rect(_bx, _top + 184f, 260f, 12f), 0.6f)
+            _segContinuous = new ProgressBar(default, 0.6f)
             { SegmentCount = 6, SegmentSpacing = 3f, FillColor = accent };
-            _segDiscrete = new ProgressBar(new Rect(_bx, _top + 230f, 260f, 12f), 0.6f)
+            _segDiscrete = new ProgressBar(default, 0.6f)
             { SegmentCount = 5, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete, FillColor = new Vector4(1f, 0.8f, 0.3f, 1f) };
-            _vertBar = new ProgressBar(new Rect(_bx, _top + 276f, 14f, 42f), 0.5f)
+            _vertBar = new ProgressBar(default, 0.5f)
             { FillDirection = FillDirection.BottomToTop, FillColor = new Vector4(0.5f, 1f, 0.6f, 1f) };
-            _vertPips = new ProgressBar(new Rect(_bx + 22f, _top + 276f, 14f, 42f), 0.5f)
+            _vertPips = new ProgressBar(default, 0.5f)
             {
                 FillDirection = FillDirection.BottomToTop,
                 SegmentCount = 4, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete,
@@ -374,31 +445,61 @@ namespace KhaozEngine.Showcase
 
             // Column C: skinned nine-slice chrome + the primary Confirm at the column bottom.
             GuiStyle skinStyle = A.SkinStyle;
-            _skinButton = new Button(new Rect(_cx, _top + 36f, 160f, 32f), ShowcaseStrings.WidgetsSkinButton, A.Small) { Style = skinStyle };
-            _skinPanel = new Panel(new Rect(_cx, _top + 84f, 160f, 40f)) { Style = skinStyle, Color = Vector4.One };
-            _skinPanelLabel = new Label(new Rect(_cx, _top + 84f, 160f, 40f), ShowcaseStrings.WidgetsSkinPanel, A.Small)
+            _skinButton = new Button(default, ShowcaseStrings.WidgetsSkinButton, A.Small) { Style = skinStyle };
+            _skinPanel = new Panel(default) { Style = skinStyle, Color = Vector4.One };
+            _skinPanelLabel = new Label(default, ShowcaseStrings.WidgetsSkinPanel, A.Small)
             { Align = TextAlign.Center, Color = new Vector4(0.98f, 0.94f, 0.78f, 1f) };
-            _skinBar = new ProgressBar(new Rect(_cx, _top + 140f, 160f, 34f), 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
-            _info = new Button(new Rect(_cx, _top + 190f, 160f, 32f), ShowcaseStrings.WidgetsHoverForTip, A.Small);
-            // Anchored low as the column's primary action, but kept clear of the shared chrome's translucent
-            // controls band (which the point-space hud draws over the bottom ~64 design points).
-            _confirm = new Button(new Rect(_cx, Content.Bottom - 100f, 160f, 48f), ShowcaseStrings.WidgetsConfirm, A.Small,
+            _skinBar = new ProgressBar(default, 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
+            _info = new Button(default, ShowcaseStrings.WidgetsHoverForTip, A.Small);
+            _confirm = new Button(default, ShowcaseStrings.WidgetsConfirm, A.Small,
                 () => Stack.Add(new PopupScreen(A, _name.Text, _difficulty.SelectedLabel))) { Style = GuiStyle.Primary };
 
             _tip = new Tooltip(A.Small, A.Small) { Viewport = new Vector2(db.Width, db.Height) };
         }
 
-        public override void Update(float dt)
+        protected override void OnLayout(Rect bounds)
         {
-            Pointer p = Stack.Pointer;
-            _name.Update(p, Stack.Input, dt);
-            _difficulty.Update(p);
-            _partySize.Update(Stack.InputManager, dt);
-            _list.Update(p, Stack.Input);
-            _info.Update(p);
-            _confirm.Update(p);
-            _slots.Update(p);
-            _skinButton.Update(p);
+            _ax = bounds.X; _bx = bounds.X + 320f; _cx = bounds.X + 640f; _top = bounds.Y;
+
+            // Column A: form widgets.
+            _name.Bounds = new Rect(_ax, _top + 56f, ColW, 32f);
+            _difficulty.TriggerBounds = new Rect(_ax, _top + 122f, 200f, 30f);
+            _partySize.Bounds = new Rect(_ax, _top + 188f, 120f, 30f);
+            _list.Bounds = new Rect(_ax, _top + 254f, ColW, 170f);
+
+            // Column B: HUD widgets. The slot grid sizes itself from SlotSize/Spacing, so only its origin matters.
+            _slots.Bounds = new Rect(_bx, _top + 56f, 0, 0);
+            _progress.Bounds = new Rect(_bx, _top + 134f, 260f, 16f);
+            _segContinuous.Bounds = new Rect(_bx, _top + 184f, 260f, 12f);
+            _segDiscrete.Bounds = new Rect(_bx, _top + 230f, 260f, 12f);
+            _vertBar.Bounds = new Rect(_bx, _top + 276f, 14f, 42f);
+            _vertPips.Bounds = new Rect(_bx + 22f, _top + 276f, 14f, 42f);
+
+            // Column C: skinned nine-slice chrome + the primary Confirm at the column bottom.
+            _skinButton.Bounds = new Rect(_cx, _top + 36f, 160f, 32f);
+            _skinPanel.Bounds = new Rect(_cx, _top + 84f, 160f, 40f);
+            _skinPanelLabel.Bounds = new Rect(_cx, _top + 84f, 160f, 40f);
+            _skinBar.Bounds = new Rect(_cx, _top + 140f, 160f, 34f);
+            _info.Bounds = new Rect(_cx, _top + 190f, 160f, 32f);
+            // Anchored low as the column's primary action, but kept clear of the shared chrome's translucent
+            // controls band (which the point-space hud draws over the bottom ~64 design points).
+            _confirm.Bounds = new Rect(_cx, bounds.Bottom - 100f, 160f, 48f);
+        }
+
+        protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input)
+        {
+            // Every widget still ticks each frame (caret blink, hover, scroll) whether or not this page may act
+            // on input, and the consumed answer is gated on receivesInput at the end. That is the
+            // IScreenComponent contract, identical to Screen.Update's one level up.
+            Pointer p = input.Pointer;
+            bool consumed = _name.Update(p, input.State, dt);   // true while focused: the field owns the keyboard
+            consumed |= _difficulty.Update(p);
+            consumed |= _partySize.Update(input, dt);
+            _list.Update(p, input.State);
+            consumed |= _info.Update(p);
+            consumed |= _confirm.Update(p);
+            consumed |= _slots.Update(p) >= 0;
+            consumed |= _skinButton.Update(p);
 
             if (p.IsHoveringIn(_info.Bounds))
                 _tip.Show(ShowcaseStrings.WidgetsTipTitle,
@@ -409,9 +510,11 @@ namespace KhaozEngine.Showcase
                     },
                     new Vector2(_info.Bounds.X + _info.Bounds.Width * 0.5f, _info.Bounds.Y));
             else _tip.Hide();
+
+            return receivesInput && consumed;
         }
 
-        public override void Draw(SpriteBatch batch)
+        protected override void OnDraw(SpriteBatch batch, Rect bounds)
         {
             Texture2D white = A.White;
             SpriteFont font = A.Small;
@@ -475,25 +578,32 @@ namespace KhaozEngine.Showcase
 
         protected override void OnLoad()
         {
-            float x = Content.X, w = Content.Width;
-            _spriteHeaderY = Content.Y;
-            _spriteCard = new Panel(new Rect(x, Content.Y + 28f, w, 176f)) { BorderThickness = 1f };
-            _textHeaderY = _spriteCard.Bounds.Bottom + 20f;
-            _textCard = new Panel(new Rect(x, _textHeaderY + 28f, w, 176f)) { BorderThickness = 1f };
+            _spriteCard = new Panel(default) { BorderThickness = 1f };
+            _textCard = new Panel(default) { BorderThickness = 1f };
         }
 
-        public override void Update(float dt) { }   // no interactive widgets
+        protected override void OnLayout(Rect bounds)
+        {
+            float x = bounds.X, w = bounds.Width;
+            _spriteHeaderY = bounds.Y;
+            _spriteCard.Bounds = new Rect(x, bounds.Y + 28f, w, 176f);
+            _textHeaderY = _spriteCard.Bounds.Bottom + 20f;
+            _textCard.Bounds = new Rect(x, _textHeaderY + 28f, w, 176f);
+        }
+
+        // No interactive widgets, so it never consumes input: a bare `true` here would starve everything below.
+        protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input) => false;
 
         // The four text-specimen lines are runtime TTF type specimens (not player copy), so the raw DrawString
         // literals are the intentional escape hatch. The section headers and sprite captions resolve through
         // StringIds in the same method.
         [LocalizationExempt]
-        public override void Draw(SpriteBatch batch)
+        protected override void OnDraw(SpriteBatch batch, Rect bounds)
         {
             Texture2D white = A.White;
 
             // Card 1: textured sprites, three bottom-aligned groups (scale / tint / alpha) with a caption each.
-            DrawSectionHeader(batch, ShowcaseStrings.SpritesSectionSprites, Content.X, _spriteHeaderY, Content.Width);
+            DrawSectionHeader(batch, ShowcaseStrings.SpritesSectionSprites, bounds.X, _spriteHeaderY, bounds.Width);
             _spriteCard.Draw(batch, white);
             Rect card = _spriteCard.Bounds;
             float baseline = card.Y + 118f;
@@ -523,7 +633,7 @@ namespace KhaozEngine.Showcase
             batch.DrawString(A.Small, Res(ShowcaseStrings.SpritesCaptionAlpha), new Vector2(g3, capY), (Color)caption);
 
             // Card 2: runtime TTF text specimen (raw literals: these are type samples, not copy).
-            DrawSectionHeader(batch, ShowcaseStrings.SpritesSectionText, Content.X, _textHeaderY, Content.Width);
+            DrawSectionHeader(batch, ShowcaseStrings.SpritesSectionText, bounds.X, _textHeaderY, bounds.Width);
             _textCard.Draw(batch, white);
             Rect t = _textCard.Bounds;
             batch.DrawString(A.Big, "KhaozEngine.Render2D", new Vector2(t.X + 24f, t.Y + 16f), (Color)GuiTheme.Default.Text);
@@ -546,6 +656,7 @@ namespace KhaozEngine.Showcase
         Rect _playground, _card;
         Vector2 _box, _boxHome, _orbitCenter;
         bool _grabbed;
+        bool _boxPlaced;
         float _orbit;
 
         AudioSystem _audio = null!;
@@ -555,13 +666,8 @@ namespace KhaozEngine.Showcase
 
         protected override void OnLoad()
         {
-            _playground = new Rect(Content.X, Content.Y, 560f, 400f);
-            _panel = new Panel(_playground) { BorderThickness = 1f };
-            _card = new Rect(Content.X + 580f, Content.Y, 320f, 400f);
-            _statusCard = new Panel(_card) { BorderThickness = 1f };
-            _boxHome = new Vector2(_playground.X + _playground.Width * 0.28f, _playground.Y + _playground.Height * 0.5f);
-            _orbitCenter = new Vector2(_playground.X + _playground.Width * 0.72f, _playground.Y + _playground.Height * 0.30f);
-            _box = _boxHome;
+            _panel = new Panel(default) { BorderThickness = 1f };
+            _statusCard = new Panel(default) { BorderThickness = 1f };
 
             // SFX: synth a couple of placeholder sounds into a temp dir, then load + play through the real OpenAL
             // path (same recipe as the old input room). Falls back to a silent backend headless, so this never
@@ -576,26 +682,39 @@ namespace KhaozEngine.Showcase
             _audio.SetListener(Vector3.Zero, new Vector3(0, 0, -1), new Vector3(0, 1, 0));
         }
 
-        public override void Unload() => _audio.Dispose();
-
-        public override void Update(float dt)
+        protected override void OnLayout(Rect bounds)
         {
-            Pointer pointer = Stack.Pointer;
-            InputState input = Stack.Input;
+            _playground = new Rect(bounds.X, bounds.Y, 560f, 400f);
+            _panel.Bounds = _playground;
+            _card = new Rect(bounds.X + 580f, bounds.Y, 320f, 400f);
+            _statusCard.Bounds = _card;
+            _boxHome = new Vector2(_playground.X + _playground.Width * 0.28f, _playground.Y + _playground.Height * 0.5f);
+            _orbitCenter = new Vector2(_playground.X + _playground.Width * 0.72f, _playground.Y + _playground.Height * 0.30f);
+            // Only park the box on the FIRST layout. A later re-layout leaves the player's dragged position
+            // alone; Update's clamp pulls it back inside the moved playground on its own.
+            if (!_boxPlaced) { _box = _boxHome; _boxPlaced = true; }
+        }
+
+        public override void UnloadContent() => _audio.Dispose();
+
+        protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input)
+        {
+            Pointer pointer = input.Pointer;
+            InputState state = input.State;
             _gestures.Update(pointer, dt);   // gestures use REAL dt
 
             // Clock controls: Space pauses, 1/2/3 set slow/normal/fast.
-            if (input.WasPressed(Key.Space)) { if (_clock.IsPaused) _clock.Resume(); else _clock.Pause(); }
-            if (input.WasPressed(Key.D1)) _clock.TimeScale = 0.5f;
-            if (input.WasPressed(Key.D2)) _clock.TimeScale = 1f;
-            if (input.WasPressed(Key.D3)) _clock.TimeScale = 2f;
+            if (state.WasPressed(Key.Space)) { if (_clock.IsPaused) _clock.Resume(); else _clock.Pause(); }
+            if (state.WasPressed(Key.D1)) _clock.TimeScale = 0.5f;
+            if (state.WasPressed(Key.D2)) _clock.TimeScale = 1f;
+            if (state.WasPressed(Key.D3)) _clock.TimeScale = 2f;
 
             // SFX one-shots: Z = non-positional blip, X = positional thud 8 units to the listener's right.
-            if (input.WasPressed(Key.Z)) { _audio.PlaySfx("blip"); _lastSfx = "blip"; }
-            if (input.WasPressed(Key.X)) { _audio.PlaySfx3D("thud", new Vector3(8, 0, 0)); _lastSfx = "thud (3D)"; }
+            if (state.WasPressed(Key.Z)) { _audio.PlaySfx("blip"); _lastSfx = "blip"; }
+            if (state.WasPressed(Key.X)) { _audio.PlaySfx3D("thud", new Vector3(8, 0, 0)); _lastSfx = "thud (3D)"; }
 
             // Clipboard: C writes a known string and reads it back (self round-trip). V pastes the OS clipboard.
-            if (input.WasPressed(Key.C))
+            if (state.WasPressed(Key.C))
             {
                 string payload = $"KhaozEngine clipboard {_clock.ElapsedScaledSeconds:0.0}s";
                 bool setOk = Clipboard.TrySetClipboardText(payload);
@@ -603,7 +722,7 @@ namespace KhaozEngine.Showcase
                 bool roundTrip = setOk && readBack == payload;
                 _clipboardStatus = $"copy {(setOk ? "ok" : "FAIL")}, round-trip {(roundTrip ? "PASS" : "FAIL")}: \"{readBack}\"";
             }
-            if (input.WasPressed(Key.V))
+            if (state.WasPressed(Key.V))
             {
                 string pasted = Clipboard.TryGetClipboardText();
                 _clipboardStatus = string.IsNullOrEmpty(pasted) ? "paste: <empty / unavailable>" : $"paste: \"{pasted}\"";
@@ -614,7 +733,7 @@ namespace KhaozEngine.Showcase
             _orbit += _clock.ScaledDeltaSeconds * 1.6f;   // animation runs on SCALED time (freezes when paused)
 
             // Gamepad (best-effort): left stick nudges the box, A resets it. No-op with no controller connected.
-            var pad = input.PrimaryGamepad;
+            var pad = state.PrimaryGamepad;
             if (pad.IsConnected)
             {
                 _box += pad.LeftStickDeadzoned(0.2f) * (260f * dt);
@@ -641,12 +760,16 @@ namespace KhaozEngine.Showcase
                 mk.life -= dt * 1.2f;
                 if (mk.life <= 0f) _marks.RemoveAt(i); else _marks[i] = mk;
             }
+
+            // Consumed only while a drag it started is actually in hand. Hovering, or a drag that began
+            // elsewhere, leaves input alone.
+            return receivesInput && _grabbed;
         }
 
         // The "drag me" box label is demo chrome (a raw literal, the intentional escape hatch). The status labels
         // and keys caption in the same method resolve through StringIds, and the diagnostic values are raw by design.
         [LocalizationExempt]
-        public override void Draw(SpriteBatch batch)
+        protected override void OnDraw(SpriteBatch batch, Rect bounds)
         {
             Texture2D white = A.White;
             SpriteFont font = A.Small;
@@ -670,7 +793,7 @@ namespace KhaozEngine.Showcase
             float pdy = Math.Clamp(pointer.Position.Y, _playground.Y, _playground.Bottom);
             batch.Draw(white, new Vector4(pdx - 3, pdy - 3, 6, 6), new Color(0.4f, 0.95f, 0.7f, 1f));
 
-            batch.DrawString(font, Res(ShowcaseStrings.InputKeys), new Vector2(Content.X, _playground.Bottom + 8f),
+            batch.DrawString(font, Res(ShowcaseStrings.InputKeys), new Vector2(bounds.X, _playground.Bottom + 8f),
                 (Color)GuiTheme.Default.TextMuted);
 
             // Status card: static labels from the catalog, raw diagnostic values (clipboard wraps inside the card).
@@ -706,15 +829,20 @@ namespace KhaozEngine.Showcase
 
         protected override void OnLoad() => _ui = new GuiSurface(A.White);
 
-        public override void Update(float dt) { }
+        // Immediate mode: nothing is retained, so there is nothing to lay out and nothing to consume here. The
+        // widgets are issued (and hit-tested) inside OnDraw.
+        protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input) => false;
 
-        public override void Draw(SpriteBatch batch)
+        protected override void OnDraw(SpriteBatch batch, Rect bounds)
         {
-            float x = Content.X;
+            float x = bounds.X;
+            // Draw carries no input parameter by design, so an immediate-mode surface reads the pointer from the
+            // page's own host reference. That is exactly why the fan-out contract stays free of resource and
+            // input arguments: a component that needs more takes it in its constructor or from its own host.
             _ui.Begin(batch, Stack.Pointer);
 
             // Titled intro card.
-            var card = new Rect(x, Content.Y, Content.Width, 92f);
+            var card = new Rect(x, bounds.Y, bounds.Width, 92f);
             _ui.Panel(card, new Vector4(0.11f, 0.14f, 0.20f, 1f), new Vector4(0.30f, 0.38f, 0.52f, 1f));
             _ui.Label(A.Big, LocalizedText.Raw("Immediate-mode GuiSurface"), new Vector2(card.X + 18, card.Y + 14), Vector4.One);
             _ui.Label(A.Small, LocalizedText.Raw("One call per widget inside Draw - no retained instances."),
@@ -725,14 +853,14 @@ namespace KhaozEngine.Showcase
             var cellFill = new Vector4(0.10f, 0.12f, 0.17f, 1f);
             for (int i = 0; i < 3; i++)
             {
-                var cell = new Rect(x + i * 300f, Content.Y + 118f, 280f, 36f);
+                var cell = new Rect(x + i * 300f, bounds.Y + 118f, 280f, 36f);
                 _ui.Panel(cell, cellFill);
                 var align = (GuiAlign)i;
                 _ui.Label(A.Small, cell, LocalizedText.Raw(align.ToString()), labelColor, align);
             }
 
             // A row of 4 colour swatches.
-            _ui.Label(A.Small, LocalizedText.Raw("Swatches"), new Vector2(x, Content.Y + 174f), labelColor);
+            _ui.Label(A.Small, LocalizedText.Raw("Swatches"), new Vector2(x, bounds.Y + 174f), labelColor);
             Vector4[] cols =
             {
                 new(0.85f, 0.30f, 0.32f, 1f),
@@ -741,10 +869,10 @@ namespace KhaozEngine.Showcase
                 new(0.92f, 0.78f, 0.30f, 1f),
             };
             for (int i = 0; i < cols.Length; i++)
-                _ui.Swatch(new Rect(x + i * 56f, Content.Y + 200f, 48f, 48f), cols[i]);
+                _ui.Swatch(new Rect(x + i * 56f, bounds.Y + 200f, 48f, 48f), cols[i]);
 
             // Semantic button presets (crisp theme): Primary/Secondary/Danger/Active + one disabled.
-            float by = Content.Y + 272f;
+            float by = bounds.Y + 272f;
             if (_ui.Button(A.Small, new Rect(x, by, 150f, 44f), LocalizedText.Raw(_toggled ? "PRIMARY ON" : "PRIMARY"), GuiStyle.Primary))
                 _toggled = !_toggled;
             _ui.Button(A.Small, new Rect(x + 165f, by, 150f, 44f), LocalizedText.Raw("Secondary"), GuiStyle.Secondary);
@@ -754,7 +882,7 @@ namespace KhaozEngine.Showcase
 
             // Capture-flag readout.
             _ui.Label(A.Small, LocalizedText.Raw($"PointerCaptured: {_ui.PointerCaptured}"),
-                new Vector2(x, Content.Y + 344f), new Vector4(0.6f, 0.7f, 0.85f, 1f));
+                new Vector2(x, bounds.Y + 344f), new Vector4(0.6f, 0.7f, 0.85f, 1f));
         }
     }
 
@@ -767,34 +895,45 @@ namespace KhaozEngine.Showcase
 
         protected override void OnLoad()
         {
-            float x = Content.X, w = 260f;
-            _settings = new Button(new Rect(x, Content.Y + 74f, w, 44f), ShowcaseStrings.ScreensSettings, A.Small,
+            _settings = new Button(default, ShowcaseStrings.ScreensSettings, A.Small,
                 () => Stack.Add(new SettingsScreen(A)));
-            _overlay = new Button(new Rect(x, Content.Y + 138f, w, 44f), ShowcaseStrings.ScreensOverlay, A.Small,
+            _overlay = new Button(default, ShowcaseStrings.ScreensOverlay, A.Small,
                 () => Stack.Add(new OverlayScreen(A)));
-            _patchNotes = new Button(new Rect(x, Content.Y + 202f, w, 44f), ShowcaseStrings.ScreensPatchNotes, A.Small,
+            _patchNotes = new Button(default, ShowcaseStrings.ScreensPatchNotes, A.Small,
                 () => Stack.Add(new PatchNotesScreen(PatchNotesLoader.Load(typeof(Room2DGui).Assembly), A.Small, A.White, A.Vp)));
-            _toasts = new Button(new Rect(x, Content.Y + 266f, w, 44f), ShowcaseStrings.ScreensToasts, A.Small,
+            _toasts = new Button(default, ShowcaseStrings.ScreensToasts, A.Small,
                 () => Stack.Add(new ToastsScreen(A, A.Toasts)));
         }
 
-        public override void Update(float dt)
+        protected override void OnLayout(Rect bounds)
         {
-            Pointer p = Stack.Pointer;
-            _settings.Update(p);
-            _overlay.Update(p);
-            _patchNotes.Update(p);
-            _toasts.Update(p);
+            float x = bounds.X, w = 260f;
+            _settings.Bounds = new Rect(x, bounds.Y + 74f, w, 44f);
+            _overlay.Bounds = new Rect(x, bounds.Y + 138f, w, 44f);
+            _patchNotes.Bounds = new Rect(x, bounds.Y + 202f, w, 44f);
+            _toasts.Bounds = new Rect(x, bounds.Y + 266f, w, 44f);
         }
 
-        public override void Draw(SpriteBatch batch)
+        protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input)
+        {
+            // Button.Update returns whether it was clicked, so the page's consumed answer is simply "did one of
+            // my buttons take this frame's tap". Never a bare true just because buttons exist.
+            Pointer p = input.Pointer;
+            bool consumed = _settings.Update(p);
+            consumed |= _overlay.Update(p);
+            consumed |= _patchNotes.Update(p);
+            consumed |= _toasts.Update(p);
+            return receivesInput && consumed;
+        }
+
+        protected override void OnDraw(SpriteBatch batch, Rect bounds)
         {
             Texture2D white = A.White;
             SpriteFont font = A.Small;
             var muted = GuiTheme.Default.TextMuted;
-            float capX = Content.X + 280f;
+            float capX = bounds.X + 280f;
 
-            batch.DrawString(font, Res(ShowcaseStrings.ScreensIntro), new Vector2(Content.X, Content.Y + 24f), (Color)GuiTheme.Default.Text);
+            batch.DrawString(font, Res(ShowcaseStrings.ScreensIntro), new Vector2(bounds.X, bounds.Y + 24f), (Color)GuiTheme.Default.Text);
 
             _settings.Draw(batch, white);
             batch.DrawString(font, Res(ShowcaseStrings.ScreensSettingsCaption), new Vector2(capX, _settings.Bounds.Y + 12f), (Color)muted);

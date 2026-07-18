@@ -33,6 +33,20 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   whether it must be modal each frame, a required update or the apply step rather than mere visibility, and returns
   consumed only when modal or when its trigger fired); see `Screen.Update`'s XML doc and
   `docs/USING-KHAOZENGINE.md` for the full contract.
+- `IScreenComponent` + `ScreenComponentList` (13.6.0) - the composition unit BELOW `Screen`, mirroring what
+  `Ecs.ISystem` is below `World`. A component is one HUD element / overlay / input controller / presenter:
+  `bool Update(dt, receivesInput, bounds, input)` + `void Draw(batch, bounds)`, with `LoadContent`/`UnloadContent`
+  as DEFAULT interface members so a component owning no assets omits them. A host holds a `ScreenComponentList`
+  and fans out to it once per lifecycle moment, so a screen's size stops being a function of how many
+  collaborators it has. Registration order IS z order (first added draws underneath and is offered input last),
+  `Update` runs top-down and stops at the first component that consumes input, `Draw` runs bottom-up: the same
+  routing `ScreenStack` applies between screens, one level down, guarded latch included. **The `Update` bool means
+  CONSUMED INPUT, not "am I visible"** - the same dormant-overlay trap as `Screen` above, one level down, and a
+  component that returns a bare `true` starves every component below it and then every screen below its screen.
+  `bounds` is a per-call parameter rather than a property, so a host that re-reads its viewport each frame needs no
+  resize hook. It is an INTERFACE, not a base class, so a consumer keeps its own domain base and adds this on top.
+  Not a widget layer: the retained widgets and `GuiSurface` are still the leaf level and a component typically owns
+  several of them. `Screen` itself is unchanged, hosts compose the list as a field.
 - **Theming (`GuiTheme` + `GuiStyle`).** Since 10.11.0 the default widget look is crisp: a neutral-dark palette
   with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). `GuiTheme` is the
   central semantic palette every retained widget reads at construction (`Surface`/`Accent`/`Border`/`Text`/... plus

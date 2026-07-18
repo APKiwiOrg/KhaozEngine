@@ -781,6 +781,78 @@ visibility) and returns consumed only when modal or when its trigger fired, neve
 reading it; it was removed in 10.111.0 as dead API - the bool-return contract above, sharpened in the `Screen.Update`
 XML doc, is the actual mechanism. See `CHANGELOG.md`.)
 
+**`IScreenComponent` + `ScreenComponentList` (13.6.0)** - the composition unit BELOW `Screen`, which is to `Screen`
+what `Ecs.ISystem` is to `World`. Reach for it when a screen has grown many collaborators: without it the screen
+must hand-wire each one into every lifecycle moment, so its size becomes a function of how many it has (an N
+collaborators by M moments cross product). A component is one HUD element, overlay, input controller or presenter:
+
+```csharp
+sealed class HealthBarComponent : IScreenComponent   // resources in the ctor, as every engine screen already does
+{
+    readonly SpriteFont _font;
+    readonly Texture2D _white;
+    public HealthBarComponent(SpriteFont font, Texture2D white) { _font = font; _white = white; }
+
+    public bool Update(float dt, bool receivesInput, Rect bounds, InputManager input) => false;  // consumes nothing
+    public void Draw(SpriteBatch batch, Rect bounds) { /* Layout.Resolve against bounds, then draw */ }
+    // LoadContent / UnloadContent are DEFAULT interface members: omit them when you own no assets.
+}
+```
+
+The host composes a list as a FIELD and forwards from its own overrides. `Screen` is deliberately unmodified, so
+this works just as well inside a `GameScene`, a non-`Screen` host, or a test with no stack at all:
+
+```csharp
+sealed class HudScreen : Screen
+{
+    readonly ScreenComponentList _components = new();
+    readonly IDesignViewport _viewport;
+    readonly SpriteFont _font;
+    readonly Texture2D _white;
+
+    public HudScreen(IDesignViewport viewport, SpriteFont font, Texture2D white)
+    {
+        _viewport = viewport; _font = font; _white = white;
+    }
+
+    public override void LoadContent()
+    {
+        _components.Add(new HealthBarComponent(_font, _white));
+        _components.Add(new MinimapComponent(_white));
+        _components.Add(new ChatComponent(_font, _white));   // added last, so on top and offered input first
+    }
+
+    public override void UnloadContent() => _components.Clear();
+
+    public override bool Update(float dt, bool receivesInput) =>
+        _components.Update(dt, receivesInput, _viewport.WindowBounds, Manager.InputManager);
+
+    public override void Draw(SpriteBatch batch) =>
+        _components.Draw(batch, _viewport.WindowBounds);
+}
+```
+
+Four lines of wiring for N components, and none of them grows when N does. Points worth knowing:
+
+- **The bool is CONSUMED INPUT, not "am I visible".** It is the dormant-overlay trap above, one level down and
+  with a wider blast radius: a component returning a bare `true` starves every component below it AND then every
+  screen below its screen. `receivesInput` and the return value carry exactly the `Screen.Update` contract, so a
+  component still updates every frame regardless, and must return false whenever `receivesInput` is false.
+- **Registration order IS z order.** First added draws underneath and is offered input last, matching `ISystem`'s
+  registration-order rule. There is no `DrawOrder` sort key: `ScreenStack` needs one because screens are pushed
+  from unrelated places, whereas a screen builds its own components in one place, in the order it wants.
+- **`bounds` is per-call, never a property.** Re-read the viewport each frame and pass what you read, and a resize
+  or letterbox change is picked up with no `OnResize` hook to forget.
+- **It is an interface, so it does not take your base-class slot.** A consumer with an existing local base keeps
+  it and adds the contract on top: the consumer's abstract base carries domain lifecycle ABOVE the interface.
+  `KhaozEngine.Showcase`'s `ToolkitPage` is the worked example (five implementations, its own `Activated`/
+  `Deactivated` tab lifecycle, plus `IScreenComponent`).
+- **Not a widget layer and not a UI framework.** The retained widgets and `GuiSurface` are still the leaf level,
+  and a component typically owns several of them. No tree, no layout pass (use `Layout.Resolve` against
+  `bounds`), no data binding, no modal flag (something needing to be modal should be a `Screen`), and no context
+  or services object. A component that wants children holds its own `ScreenComponentList` and forwards, which
+  composes recursively at zero API cost.
+
 **Theming: `GuiTheme` + `GuiStyle` (crisp default, 10.11.0)** - the default widget look is crisp: a neutral-dark
 palette with a blue accent, subtle 3px corners, 1px hairline borders, no bloom. `GuiTheme` is the central semantic
 palette every retained widget reads at construction. Rebrand the whole UI in one line at startup (before building

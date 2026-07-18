@@ -31,17 +31,29 @@ mismatches before the move):
 
 | New project | Monolith folders |
 |---|---|
-| `KhaozEngine.Foundation.Tests` | Primitives, App, Localization, Logging, Platform, Http, Content, Persistence, Diagnostics, Benchmarks + root foundation/determinism files |
-| `KhaozEngine.Simulation.Tests` | Ecs, Simulation + root ECS files |
-| `KhaozEngine.Server.Tests` | Netcode, Replication, Sharding, WorldStore, NetWorld, ServerStatus, ServerAdminEndpoint, Identity, Social, Commerce |
-| `KhaozEngine.Render.Tests` | Gpu, Render2D, Render3D, Windowing, Snapshot, Terrain, Telegraphs, ParticlesRender3D, Imaging, Showcase (owns `Gpu/goldens/`) |
-| `KhaozEngine.Gui.Tests` | Gui, Updates |
+| `KhaozEngine.Foundation.Tests` | Primitives, App, Localization, Logging, Platform, Http, Content, Persistence, Diagnostics, Updates + root foundation/determinism files |
+| `KhaozEngine.Simulation.Tests` | Ecs, Simulation + root ECS files (except the Netcode-coupled integration file, which goes to Server) |
+| `KhaozEngine.Server.Tests` | Netcode, Replication, Sharding, WorldStore, NetWorld, ServerStatus, ServerAdminEndpoint, Identity, Social, Commerce, Benchmarks + `Simulation/FixedTickHostSimulatorIntegrationTests.cs` |
+| `KhaozEngine.Render.Tests` | Gpu, Render2D, Render3D, Windowing, Snapshot, Terrain, Telegraphs, ParticlesRender3D, Imaging, Showcase (owns `Gpu/goldens/`) + `Dungeon/DungeonKitAssetTests.cs` (validates Showcase kit content) |
+| `KhaozEngine.Gui.Tests` | Gui |
 | `KhaozEngine.MapEditor.Tests` | MapEditor, MapEditTool, MapDoc |
-| `KhaozEngine.Game.Tests` | Game, Locomotion, Navigation, Dungeon, Collision, Physics, Objectives, Progression + root collision files |
-| `KhaozEngine.Audio.Tests` | Audio, Sfx |
+| `KhaozEngine.Game.Tests` | Game, Locomotion, Navigation, Dungeon (minus the kit-asset file), Collision, Physics, Objectives, Progression + root collision files |
+| `KhaozEngine.Audio.Tests` | Audio, Sfx (Sfx tests the `KhaozEngine.Sfx.Tool` exe, referenced directly) |
 | `KhaozEngine.Particles.Tests` | Particles |
 | `KhaozEngine.Tests` (rump) | ArchitectureTests and the genuinely cross-cutting remainder, kept deliberately small |
-| `KhaozEngine.TestSupport` (new, no tests) | Shared fixtures, builders, custom attributes (e.g. `GpuFact`) used by 2+ clusters |
+| `KhaozEngine.TestSupport` (new, no tests) | Shared fixtures, builders, custom attributes (e.g. `GpuFact`, the `AllocSensitive` fixture) used by 2+ clusters. Hard rule: references nothing beyond `KhaozEngine.Primitives`, because every test project references it and its dependencies would poison selection for all of them |
+| `KhaozEngine.TestSupport.Services` (new, no tests) | The package-coupled cross-cluster fakes (Updates, ServerStatus). References those two leaf packages, and is referenced ONLY by the test projects that need the fakes (Foundation, Gui, Game, Server) |
+
+### Recon corrections (what moved relative to the first cut)
+
+The mapping recon (835 files scanned, full tables in the working notes) corrected the priors:
+Benchmarks benchmark Ecs+Replication+Sharding tick perf, so they live with Server, not Foundation.
+Updates has zero package dependency on Gui (it was grouped by folder adjacency only), so it lives
+with Foundation and its fakes go to `TestSupport.Services` (Gui and Game consume them
+cross-cluster). One Simulation file pulls in Netcode and moves to Server. One Dungeon file
+validates Showcase kit assets and moves to Render. `ParticlesRender3D` stays in Render (it is the
+Particles-to-Render3D seam and needs both). Real test count is ~5,867: 240 `[GpuFact]` and 17
+`[SqlServerFact]` sit on custom Fact subclasses on top of the 5,610 plain `[Fact]`/`[Theory]`.
 
 The existing satellites (`Localization.Analyzers.Tests`, both `DecouplingTests`,
 `Physics.HeadlessLoaderTests`, `tools/*.Tests`) are untouched.
@@ -55,8 +67,18 @@ membership). Consequences, all deliberate:
   `~Golden` in cross-platform-gpu.yml.
 - Assembly names DO change, so every `InternalsVisibleTo Include="KhaozEngine.Tests"` grant (~20
   csprojs) is retargeted to the new owning test project in the same commit as that cluster's move.
-- xUnit collection definitions are per-assembly. Any `[Collection]` used from folders that land in
-  different clusters gets a duplicate `[CollectionDefinition]` per cluster (recon inventories these).
+  Three grants are dead (`Particles.Render3D`, `Telegraphs.Render3D`, `Terrain.Render3D`, zero
+  internal consumers) and are removed, not retargeted.
+- Every split project pins `<RootNamespace>KhaozEngine.Tests</RootNamespace>`. Two test files load
+  embedded resources by their `KhaozEngine.Tests.*` manifest names (Localization coverage, Gui
+  patch-notes parser), and manifest names derive from RootNamespace, not AssemblyName. Pinning it
+  everywhere keeps resource names and future namespace inference consistent with the preserved
+  namespaces.
+- xUnit collection definitions are per-assembly. Three collections cross clusters (`AllocSensitive`
+  spans five, `ClipboardSerial` and `AmbientLocalization` span Foundation+Gui): each landing
+  assembly gets its own thin `[CollectionDefinition]`, with any shared fixture class in
+  `TestSupport`. Cross-assembly serialization is not needed because `dotnet test` runs assemblies
+  sequentially.
 
 ## Decision 3: minimal references per test project
 

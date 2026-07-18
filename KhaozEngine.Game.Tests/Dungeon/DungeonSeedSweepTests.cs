@@ -68,9 +68,13 @@ namespace KhaozEngine.Tests.Dungeon
             stopwatch.Stop();
             _out.WriteLine($"Swept {SeedCount} seeds (0..{SeedCount - 1}) in {stopwatch.ElapsedMilliseconds} ms.");
 
+            // 180s, not 60: since the 13.0.3 test split, dotnet test runs the 16 test assemblies in
+            // parallel, so this sweep competes with the live-GPU Render suite on the Metal leg (worst
+            // observed there: 78.5s). The guard exists to catch algorithmic blowups, which cost minutes,
+            // not seconds, so the headroom keeps the tripwire meaningful under the new profile (#217).
             Assert.True(
-                stopwatch.Elapsed.TotalSeconds < 60,
-                $"sweep of {SeedCount} seeds took {stopwatch.Elapsed.TotalSeconds:F1}s, exceeding the 60s runtime guard.");
+                stopwatch.Elapsed.TotalSeconds < 180,
+                $"sweep of {SeedCount} seeds took {stopwatch.Elapsed.TotalSeconds:F1}s, exceeding the 180s runtime guard.");
         }
 
         [Fact]

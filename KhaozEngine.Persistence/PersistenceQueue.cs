@@ -173,8 +173,9 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
                 // latch and wake Flush waiters.
                 if (pending.Count > 0)
                 {
-                    // The tail worker inherits the queued failures. Raising them on this thread
-                    // instead would run handlers concurrently with the tail drain and its raises.
+                    // The tail worker inherits the queued failures so the single notifier delivers
+                    // them serially and in order. Raising them on this thread instead would run
+                    // handlers concurrently with the tail drain.
                     ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
                 }
                 else

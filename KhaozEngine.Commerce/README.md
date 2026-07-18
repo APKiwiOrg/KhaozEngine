@@ -11,7 +11,7 @@ Provides a foundational wallet system with:
 - `Wallet`: grant (free credit), spend (debit), and redeem (purchase entitlement) over the store
 - A source-agnostic entitlement pipeline: `VerifiedEntitlement`, `EntitlementProof`, `IEntitlementValidator` (no default implementation; the proof format and trust decision are the consumer's)
 - `IProductCatalog` / `InMemoryProductCatalog`: maps a store product id to the currency + amount it grants
-- `PeriodicGrant` + `IGrantScheduleStore`: a server-clock daily/periodic reward routed through the wallet, built on `KhaozEngine.Progression`'s `WallClockRewardSchedule`
+- `PeriodicGrant` + `IGrantScheduleStore`: a server-clock daily/periodic reward routed through the wallet, built on `KhaozEngine.Progression`'s `WallClockRewardSchedule`. The first-ever claim per `(account, reward)` is a permanent one-shot keyed in the wallet ledger, so do not clear the schedule store while retaining the wallet ledger unless denying the re-grant is intended
 - Zero external dependencies (no SQL, no netcode)
 
 ## Public API

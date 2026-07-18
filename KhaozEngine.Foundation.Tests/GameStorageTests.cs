@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Persistence;
@@ -431,5 +433,79 @@ public class GameStorageTests
         Assert.Equal(SaveLoadOutcome.Loaded, r.Outcome);
         Assert.NotNull(r.Detail);
         Assert.Equal(5, r.Value.Score);   // tampered payload still recovered under the lenient policy
+    }
+
+    [Fact]
+    public void ListGenerations_ValidityMatrix()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir);
+        storage.Save("s.json", new TestSave { Score = 1 });
+        storage.Flush();
+        storage.Save("s.json", new TestSave { Score = 2 });   // rotation: score 1 now in .bak1
+        storage.Flush();
+        string path = Path.Combine(dir, "s.json");
+        File.WriteAllText(path, File.ReadAllText(path)[..^4] + "AAA=");   // corrupt the payload tail
+
+        IReadOnlyList<SaveGenerationInfo> generations = storage.ListGenerations("s.json");
+
+        Assert.Equal(3, generations.Count);   // BackupGenerations = 2 -> 3 entries
+        Assert.Equal(0, generations[0].Generation);
+        Assert.Equal(SaveGenerationValidity.Tampered, generations[0].Validity);
+        Assert.Equal(1, generations[1].Generation);
+        Assert.Equal(SaveGenerationValidity.Valid, generations[1].Validity);
+        Assert.NotNull(generations[1].Metadata);
+        Assert.Equal(2, generations[2].Generation);
+        Assert.Equal(SaveGenerationValidity.Missing, generations[2].Validity);
+        Assert.Null(generations[2].LastWriteTimeUtc);
+        Assert.Null(generations[2].Metadata);
+    }
+
+    [Fact]
+    public void RestoreGeneration_PromotesBackup_KeepsCurrentAsBak1()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir);
+        storage.Save("s.json", new TestSave { Score = 1 });
+        storage.Flush();
+        storage.Save("s.json", new TestSave { Score = 2 });   // rotation: score 1 now in .bak1
+        storage.Flush();
+
+        bool restored = storage.RestoreGeneration("s.json", 1);
+
+        Assert.True(restored);
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+        Assert.Equal(SaveLoadOutcome.Loaded, r.Outcome);
+        Assert.Equal(1, r.Value.Score);
+
+        IReadOnlyList<SaveGenerationInfo> generations = storage.ListGenerations("s.json");
+        Assert.Equal(SaveGenerationValidity.Valid, generations[1].Validity);
+
+        // The pre-restore primary (score 2) must now be sitting in .bak1, not discarded.
+        string bak1Raw = File.ReadAllText(Path.Combine(dir, "s.json.bak1"));
+        SaveDecodeResult decoded = encoder.TryDecode(bak1Raw);
+        Assert.Equal(SaveDecodeVerdict.Ok, decoded.Verdict);
+        TestSave bak1Value = JsonSerializer.Deserialize<TestSave>(decoded.Json!)!;
+        Assert.Equal(2, bak1Value.Score);
+    }
+
+    [Fact]
+    public void RestoreGeneration_MissingGeneration_ReturnsFalse()
+    {
+        using GameStorage storage = CreateStorage(out string dir);
+        storage.Save("s.json", new TestSave { Score = 1 });
+        storage.Flush();
+        // Only the primary exists, generation 1 (.bak1) was never written.
+
+        bool restored = storage.RestoreGeneration("s.json", 1);
+
+        Assert.False(restored);
+    }
+
+    [Fact]
+    public void RestoreGeneration_ZeroOrTooHigh_Throws()
+    {
+        using GameStorage storage = CreateStorage(out string dir);   // BackupGenerations = 2
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => storage.RestoreGeneration("s.json", 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => storage.RestoreGeneration("s.json", 3));
     }
 }

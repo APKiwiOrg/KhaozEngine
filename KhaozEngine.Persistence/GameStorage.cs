@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using KhaozEngine.App;
@@ -321,6 +322,62 @@ public sealed class GameStorage : IDisposable
             LegacyPlaintext = legacyPlaintext,
             TamperAccepted = tamperAccepted,
         };
+    }
+
+    /// <summary>
+    /// Flushes pending writes, then probes the primary and every backup generation of
+    /// <paramref name="fileName"/> and reports what each one is. Always returns exactly
+    /// <c>backupGenerations + 1</c> entries, generation 0 (the primary) first. A missing generation
+    /// carries a null <see cref="SaveGenerationInfo.LastWriteTimeUtc"/> and
+    /// <see cref="SaveGenerationInfo.Metadata"/>, everything else reflects what the probe found there, so
+    /// a caller can surface which slots are usable without decoding to a concrete type.
+    /// </summary>
+    public IReadOnlyList<SaveGenerationInfo> ListGenerations(string fileName)
+    {
+        Flush();
+
+        string fullPath = Paths.GetFilePath(fileName);
+        var generations = new List<SaveGenerationInfo>(backupGenerations + 1);
+        for (int gen = 0; gen <= backupGenerations; gen++)
+        {
+            string path = SaveBackups.GenerationPath(fullPath, gen);
+            SaveCandidate candidate = ProbeCandidate(path);
+            DateTime? lastWriteTimeUtc = candidate.Validity == SaveGenerationValidity.Missing
+                ? null
+                : File.GetLastWriteTimeUtc(path);
+            generations.Add(new SaveGenerationInfo(gen, path, lastWriteTimeUtc, candidate.Validity, candidate.Metadata));
+        }
+        return generations;
+    }
+
+    /// <summary>
+    /// Flushes pending writes, then promotes backup <paramref name="generation"/> of
+    /// <paramref name="fileName"/> to the primary. The current primary is rotated into generation 1 (via
+    /// <see cref="SaveBackups.Rotate"/>) rather than overwritten, so nothing already on disk is destroyed,
+    /// then the requested backup's content is written to the primary path. Returns false, leaving
+    /// everything untouched, when the requested generation's file does not exist.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="generation"/> is outside <c>1..backupGenerations</c>.</exception>
+    public bool RestoreGeneration(string fileName, int generation)
+    {
+        if (generation < 1 || generation > backupGenerations)
+        {
+            throw new ArgumentOutOfRangeException(nameof(generation), generation, $"generation must be between 1 and {backupGenerations}, inclusive.");
+        }
+
+        Flush();
+
+        string fullPath = Paths.GetFilePath(fileName);
+        string backupPath = SaveBackups.GenerationPath(fullPath, generation);
+        if (!File.Exists(backupPath))
+        {
+            return false;
+        }
+
+        string content = File.ReadAllText(backupPath);
+        SaveBackups.Rotate(fullPath, backupGenerations);
+        AtomicJsonWriter.WriteText(fullPath, content);
+        return true;
     }
 
     /// <summary>True when <paramref name="fileName"/> exists in the app-data directory.</summary>

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
@@ -130,12 +132,17 @@ public class PersistenceQueueTests
 
             var log = new FakeLogger();
             using var queue = new PersistenceQueue(log, maxAttempts: 2, retryDelay: TimeSpan.FromMilliseconds(1));
+            using var notified = new ManualResetEventSlim(false);
             PersistenceWriteFailedEventArgs? failure = null;
-            queue.WriteFailed += (_, e) => failure = e;
+            queue.WriteFailed += (_, e) => { failure = e; notified.Set(); };
 
             queue.Enqueue(badPath, "data"); // must not throw
             queue.Flush();
 
+            // WriteFailed is raised on the drain thread just after the queue latch is released (so a
+            // handler can safely call Flush/Dispose, see issue #150), which can land a hair after
+            // Flush() returns. Wait for the notification deterministically rather than racing it.
+            Assert.True(notified.Wait(TimeSpan.FromSeconds(5)), "WriteFailed was not raised");
             Assert.NotNull(failure);
             Assert.Equal(badPath, failure!.Path);
             Assert.Equal(2, failure.AttemptCount);
@@ -164,6 +171,150 @@ public class PersistenceQueueTests
             queue.Flush();
 
             Assert.Equal("ok", File.ReadAllText(goodPath));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public async Task WriteFailed_HandlerCallsFlush_DoesNotDeadlock()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            // Make the parent path a FILE so every write attempt fails and the handler fires.
+            string blocker = Path.Combine(root, "blocker");
+            File.WriteAllText(blocker, "x");
+            string badPath = Path.Combine(blocker, "save.json");
+            string goodPath = Path.Combine(root, "good.json");
+
+            var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            try
+            {
+                using var handlerReturned = new ManualResetEventSlim(false);
+                queue.WriteFailed += (_, _) =>
+                {
+                    // A re-entrant Flush() from inside the failure handler must not self-deadlock (issue #150).
+                    queue.Flush();
+                    handlerReturned.Set();
+                };
+
+                queue.Enqueue(badPath, "data");
+
+                bool returned = handlerReturned.Wait(TimeSpan.FromSeconds(5));
+                Assert.True(returned, "WriteFailed handler calling Flush() deadlocked the drain thread");
+
+                // The queue must not be wedged after a handler-triggered flush: a fresh write still lands.
+                queue.Enqueue(goodPath, "ok");
+                var flushTask = Task.Run(() => queue.Flush());
+                bool flushed = await Task.WhenAny(flushTask, Task.Delay(TimeSpan.FromSeconds(5))) == flushTask;
+                Assert.True(flushed, "Flush() after a handler-flush wedged");
+                await flushTask;   // observe any exception thrown by Flush()
+                Assert.Equal("ok", File.ReadAllText(goodPath));
+            }
+            finally
+            {
+                // Dispose deterministically on every path, but through a timeout guard rather than
+                // a using: on a regression the queue is wedged and a bare Dispose() here would hang
+                // the runner right after the timeout assert above reported the failure.
+                var disposeTask = Task.Run(() => queue.Dispose());
+                if (await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(5))) == disposeTask)
+                {
+                    await disposeTask;   // observe any exception thrown by Dispose()
+                }
+            }
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void WriteFailed_HandlerCallsDispose_DoesNotDeadlock()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string blocker = Path.Combine(root, "blocker");
+            File.WriteAllText(blocker, "x");
+            string badPath = Path.Combine(blocker, "save.json");
+
+            var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            using var handlerReturned = new ManualResetEventSlim(false);
+            queue.WriteFailed += (_, _) =>
+            {
+                // Dispose() calls Flush() internally, so it must be safe from within the handler too (issue #150).
+                queue.Dispose();
+                handlerReturned.Set();
+            };
+
+            queue.Enqueue(badPath, "data");
+
+            bool returned = handlerReturned.Wait(TimeSpan.FromSeconds(5));
+            Assert.True(returned, "WriteFailed handler calling Dispose() deadlocked the drain thread");
+            Assert.Throws<ObjectDisposedException>(() => queue.Enqueue(badPath, "more"));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void WriteFailed_SecondFailureDuringHandler_DeliveredSeriallyInOrder()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string blocker = Path.Combine(root, "blocker");
+            File.WriteAllText(blocker, "x");
+            string badA = Path.Combine(blocker, "a.json");
+            string badB = Path.Combine(blocker, "b.json");
+
+            using var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            using var allDelivered = new ManualResetEventSlim(false);
+            var delivered = new List<string>();
+            int active = 0;
+            int overlapped = 0;
+            bool bDeliveredDuringA = false;
+
+            queue.WriteFailed += (_, e) =>
+            {
+                if (Interlocked.Increment(ref active) > 1)
+                {
+                    Interlocked.Exchange(ref overlapped, 1);
+                }
+
+                lock (delivered)
+                {
+                    delivered.Add(e.Path);
+                }
+
+                if (e.Path == badA)
+                {
+                    // From inside the first notification, produce a second failure and wait for its
+                    // drain to finish: Flush() returns only once the tail worker has drained badB
+                    // and released the latch, so badB's failure is already queued for delivery
+                    // while this handler is still running. Serial delivery means it must not have
+                    // been raised yet (issue #150 review: no concurrent or reordered handlers).
+                    queue.Enqueue(badB, "data-b");
+                    queue.Flush();
+                    lock (delivered)
+                    {
+                        bDeliveredDuringA = delivered.Contains(badB);
+                    }
+                }
+                else if (e.Path == badB)
+                {
+                    allDelivered.Set();
+                }
+
+                Interlocked.Decrement(ref active);
+            };
+
+            queue.Enqueue(badA, "data-a");
+
+            Assert.True(allDelivered.Wait(TimeSpan.FromSeconds(10)), "not every failure notification was delivered");
+            Assert.Equal(0, overlapped);
+            Assert.False(bDeliveredDuringA, "badB's failure was delivered while badA's handler was still running");
+            lock (delivered)
+            {
+                Assert.Equal(new[] { badA, badB }, delivered);
+            }
         }
         finally { Cleanup(root); }
     }

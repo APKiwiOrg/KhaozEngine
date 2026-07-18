@@ -201,6 +201,91 @@ namespace KhaozEngine.Tests.Render3D
         Assert.Equal(new Vector4(0.3f, 0f, 0f, 0f), i.Extra);
     }
 
+    // ---- MoltenCracks / EdgeErosion (GroundDecal.AccentColor / PatternParam / EdgeErosion) ----
+    // Same opt-in-and-additive contract as the void lanes: a decal that does not opt in packs the pre-feature
+    // bytes in the new lanes (all zero), whatever was authored on it.
+
+    [Fact]
+    public void PackInstance_carries_accent_and_pattern_param_for_molten_cracks()
+    {
+        var d = new GroundDecal
+        {
+            Shape = DecalShape.Beam,
+            Size = new Vector4(4f, 1.5f, 0f, 0f),
+            FillColor = new Color(0.05f, 0.03f, 0.03f, 0.95f),
+            AccentColor = new Color(1f, 0.55f, 0.15f, 0.9f),
+            Pattern = DecalFillPattern.MoltenCracks,
+            PatternSpeed = 0.3f,
+            PatternScale = 1.2f,
+            PatternParam = 0.35f,
+        };
+        var i = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+        Assert.Equal(3f, i.PatternP.X);                                   // MoltenCracks index
+        Assert.Equal(new Vector4(1f, 0.55f, 0.15f, 0.9f), i.Accent);
+        Assert.Equal(0.35f, i.Misc.X);                                    // PatternParam
+    }
+
+    [Fact]
+    public void PackInstance_carries_edge_erosion_for_any_pattern()
+    {
+        // EdgeErosion is shape/pattern-agnostic: it must pack even on a Solid legacy-style decal.
+        var d = new GroundDecal { Shape = DecalShape.Circle, Size = new Vector4(3f, 0f, 0f, 0f), EdgeErosion = 0.6f };
+        var i = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+        Assert.Equal(0.6f, i.Misc.Y);
+    }
+
+    [Fact]
+    public void PackInstance_legacy_decal_packs_zero_accent_and_misc_lanes()
+    {
+        var d = new GroundDecal { Shape = DecalShape.Ring, Size = new Vector4(1f, 2f, 0f, 0f) };
+        var i = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+        Assert.Equal(Vector4.Zero, i.Accent);
+        Assert.Equal(Vector4.Zero, i.Misc);
+    }
+
+    [Fact]
+    public void PackInstance_zeroes_accent_and_pattern_param_when_the_pattern_does_not_use_them()
+    {
+        // The VoidDim precedent: an authored-but-unused value can never move a non-opting decal's bytes. Accent
+        // and PatternParam are read only by MoltenCracks today, so any other pattern packs them as zero.
+        var d = new GroundDecal
+        {
+            Shape = DecalShape.Circle, Size = new Vector4(3f, 0f, 0f, 0f),
+            Pattern = DecalFillPattern.ScrollingNoise,
+            AccentColor = new Color(1f, 0.5f, 0.1f, 1f),
+            PatternParam = 0.4f,
+        };
+        var i = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+        Assert.Equal(Vector4.Zero, i.Accent);
+        Assert.Equal(0f, i.Misc.X);
+    }
+
+    [Theory]
+    [InlineData(-0.5f, 0f)]
+    [InlineData(1.6f, 1f)]
+    public void PackInstance_clamps_edge_erosion(float authored, float expected)
+    {
+        var d = new GroundDecal { Shape = DecalShape.Circle, Size = new Vector4(3f, 0f, 0f, 0f), EdgeErosion = authored };
+        Assert.Equal(expected, GroundDecalRenderer.PackInstance(in d, Vector4.Zero).Misc.Y);
+    }
+
+    [Fact]
+    public void PackVoidInstance_carries_the_accent_and_misc_lanes_unchanged()
+    {
+        // The void instance delegates to PackInstance, so a molten decal overhanging a void keeps its cracks.
+        var d = new GroundDecal
+        {
+            Shape = DecalShape.Circle, Center = new Vector3(0f, 1f, 0f), Size = new Vector4(2f, 0f, 0f, 0f),
+            Pattern = DecalFillPattern.MoltenCracks,
+            AccentColor = new Color(1f, 0.55f, 0.15f, 0.9f), PatternParam = 0.3f, EdgeErosion = 0.5f,
+            VoidFallback = true,
+        };
+        var b = GroundDecalRenderer.PackInstance(in d, Vector4.Zero);
+        var v = GroundDecalRenderer.PackVoidInstance(in d, Vector4.Zero);
+        Assert.Equal(b.Accent, v.Accent);
+        Assert.Equal(b.Misc, v.Misc);
+    }
+
     // ---- Void fallback (GroundDecal.VoidFallback / VoidDim) ----
     // The feature's whole safety argument is that it is opt-in and additive: a decal that does not ask for it packs
     // and draws exactly what it did before. These tests are that contract.

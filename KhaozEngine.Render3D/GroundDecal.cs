@@ -11,7 +11,8 @@ namespace KhaozEngine.Render3D
 
     /// <summary>How a <see cref="GroundDecal"/>'s fill is textured by the decal shader. Mirrors the telegraph-side
     /// fill pattern the way <see cref="DecalBlend"/> mirrors the telegraph blend. <see cref="Solid"/> (0) is the
-    /// legacy flat fill. The noise variants animate a procedural value-noise mask over the fill (no textures).</summary>
+    /// legacy flat fill. The noise variants animate a procedural value-noise mask over the fill, and
+    /// <see cref="MoltenCracks"/> paints its own two-tone cellular field (no textures anywhere).</summary>
     public enum DecalFillPattern
     {
         /// <summary>Flat fill, no procedural texture (legacy default).</summary>
@@ -22,6 +23,14 @@ namespace KhaozEngine.Render3D
         /// <summary>Cartesian vortex swirl: spiral arms orbiting the decal center over time, no polar
         /// singularity at the center.</summary>
         RadialNoise = 2,
+        /// <summary>Animated Voronoi/cellular crack web: a near-white hot core at each cell border falling off
+        /// through an <see cref="GroundDecal.AccentColor"/> glow into the dark <see cref="GroundDecal.FillColor"/>
+        /// field between cells (molten-slam aftermath, ice fracture, corruption ground). Deterministic per
+        /// position. <see cref="GroundDecal.PatternSpeed"/> drives a slow per-cell breathing, not a scroll.
+        /// <see cref="GroundDecal.PatternParam"/> widens/narrows the cracks. Under
+        /// <see cref="GroundDecalQuality.Reduced"/> the border distance drops to the cheaper single-pass
+        /// F2-F1 approximation.</summary>
+        MoltenCracks = 3,
     }
 
     /// <summary>Quality tier for the ground-decal pass, folded into the pass's Frame uniform. <see cref="Reduced"/>
@@ -69,11 +78,13 @@ namespace KhaozEngine.Render3D
         /// <summary>Procedural fill texture applied by the decal shader. <see cref="DecalFillPattern.Solid"/> (the
         /// default) is the legacy flat fill. The noise variants modulate the fill alpha with animated value noise.</summary>
         public DecalFillPattern Pattern;
-        /// <summary>Pattern animation rate in cycles per second (scrolls the noise field). Only used when
-        /// <see cref="Pattern"/> is a noise variant. Default 0 = a static noise field.</summary>
+        /// <summary>Pattern animation rate in cycles per second (scrolls the noise field, breathes the
+        /// <see cref="DecalFillPattern.MoltenCracks"/> web). Only used when <see cref="Pattern"/> is not
+        /// <see cref="DecalFillPattern.Solid"/>. Default 0 = a static pattern.</summary>
         public float PatternSpeed;
-        /// <summary>Pattern frequency in NOISE CELLS PER WORLD UNIT (higher = finer grain). Only used when
-        /// <see cref="Pattern"/> is a noise variant. Default 0 falls back to 1 cell/unit in the shader.</summary>
+        /// <summary>Pattern frequency in CELLS PER WORLD UNIT (higher = finer grain). Only used when
+        /// <see cref="Pattern"/> is not <see cref="DecalFillPattern.Solid"/>. Default 0 falls back to
+        /// 1 cell/unit in the shader.</summary>
         public float PatternScale;
         /// <summary>Rim glow energy: brightens a band straddling the full shape boundary toward the outline colour,
         /// with a subtle time shimmer. 0 (default) = inert.</summary>
@@ -94,6 +105,26 @@ namespace KhaozEngine.Render3D
         /// (0 = legacy, fill shows only where the sweep has reached). Lets the full extent read without an
         /// outline. 0 (default) = inert.</summary>
         public float BaseFill;
+
+        /// <summary>Second, "hot" colour for patterns that paint two-tone fields - today only
+        /// <see cref="DecalFillPattern.MoltenCracks"/>, where rgb tints the crack glow (the core lifts toward
+        /// white on top of it) and alpha scales the crack opacity independently of <see cref="FillColor"/>.a,
+        /// so the dark field can sit near-opaque while the cracks stay bright. Ignored (and never packed) for
+        /// every other pattern. <see cref="FlashAdd"/> still lifts the whole decal on top.</summary>
+        public Color AccentColor;
+
+        /// <summary>Pattern-specific shape control, meaning owned by the active <see cref="Pattern"/>. For
+        /// <see cref="DecalFillPattern.MoltenCracks"/> it is the crack width in CELL-SPACE units (roughly the
+        /// fraction of a cell the glow spans, 0 = the shader default 0.22). Ignored (and never packed) for
+        /// patterns that define no parameter.</summary>
+        public float PatternParam;
+
+        /// <summary>Noise-modulated silhouette breakup at the analytic shape edge, for every shape and pattern:
+        /// 0 (default) = the exact analytic boundary, 1 = fully eroded fingers biting up to ~35% of the shape's
+        /// half-thickness inward. The erosion field is stable value noise in decal-local space (no time, no RNG),
+        /// so the silhouette is identical frame to frame and across clients. Erodes first, then
+        /// <see cref="FeatherWidth"/> feathers the surviving boundary. Clamped to [0,1].</summary>
+        public float EdgeErosion;
 
         /// <summary>
         /// Project onto the virtual horizontal plane at <see cref="Center"/>.Y wherever the decal's usual paint

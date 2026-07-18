@@ -42,7 +42,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class GroundDecalRenderer : IDisposable
     {
         /// <summary>Per-instance decal attributes, matching the <c>I*</c> inputs of <see cref="ShaderSources.DecalVert"/>
-        /// (9 x vec4 = 160 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
+        /// (12 x vec4 = 192 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
         /// instance vertex buffer each frame.</summary>
         public struct DecalInstance
         {
@@ -57,6 +57,8 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Energy;        // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
             public Vector4 Extra;         // x=baseFill, y=voidPath (0=depth-reconstruct, 1=plane-project), z=voidDim,
                                           // w=wantsFallback (geometry-pass instance of a VoidFallback decal). NOT reserved.
+            public Vector4 Accent;        // MoltenCracks hot colour (rgb = crack glow tint, a = crack alpha); zero otherwise
+            public Vector4 Misc;          // x=patternParam (pattern-owned), y=edgeErosion (0..1), z/w reserved (zero)
         }
 
         /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). ONE uniform buffer
@@ -168,7 +170,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _shaders,
-                // One instance-rate vertex stream carrying the nine per-decal vec4 attributes (locations 0..8, no holes).
+                // One instance-rate vertex stream carrying the twelve per-decal vec4 attributes (locations 0..11, no holes).
                 VertexLayouts = new List<GpuVertexLayoutDescription>
                 {
                     new GpuVertexLayoutDescription(
@@ -186,6 +188,8 @@ namespace KhaozEngine.Render3D.Rendering
                             new GpuVertexElement("IPattern", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IEnergy", GpuVertexElementFormat.Float4),
                             new GpuVertexElement("IExtra", GpuVertexElementFormat.Float4),
+                            new GpuVertexElement("IAccent", GpuVertexElementFormat.Float4),
+                            new GpuVertexElement("IMisc", GpuVertexElementFormat.Float4),
                         }),
                 },
                 Outputs = outputs,
@@ -232,6 +236,13 @@ namespace KhaozEngine.Render3D.Rendering
             // overhanging ring hanging in front of the cliff below it). Both void lanes are gated on the flag, so an
             // unflagged decal packs (baseFill, 0, 0, 0) exactly as it always did, even if VoidDim was left set.
             Extra = new Vector4(d.BaseFill, 0f, VoidDimOf(d), d.VoidFallback ? 1f : 0f),
+            // Accent + PatternParam are read only by MoltenCracks, so any other pattern packs them as zero (the
+            // VoidDim precedent: authored-but-unused values never move a non-opting decal's bytes). EdgeErosion is
+            // pattern-agnostic and packs whenever set. The shader gates on > 0 so a zero lane is arithmetically inert.
+            Accent = d.Pattern == DecalFillPattern.MoltenCracks ? (Vector4)d.AccentColor : Vector4.Zero,
+            Misc = new Vector4(
+                d.Pattern == DecalFillPattern.MoltenCracks ? d.PatternParam : 0f,
+                Math.Clamp(d.EdgeErosion, 0f, 1f), 0f, 0f),
         };
 
         /// <summary>The clamped void dim, or 0 when the decal did not opt in (so an authored-but-unused VoidDim can

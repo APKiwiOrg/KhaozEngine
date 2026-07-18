@@ -1925,9 +1925,11 @@ layout(location=3) in vec4 IFill;
 layout(location=4) in vec4 IOutline;
 layout(location=5) in vec4 IParams;
 layout(location=6) in vec4 IGate;
-layout(location=7) in vec4 IPattern;   // x=pattern index, y=speed, z=cells per world unit, w=0
+layout(location=7) in vec4 IPattern;   // x=pattern index, y=speed, z=cells per world unit, w=interiorDim
 layout(location=8) in vec4 IEnergy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
 layout(location=9) in vec4 IExtra;     // x=baseFill, y=voidPath (0/1), z=voidDim, w=wantsFallback (0/1)
+layout(location=10) in vec4 IAccent;   // MoltenCracks hot colour (rgb + a), zero for every other pattern
+layout(location=11) in vec4 IMisc;     // x=patternParam, y=edgeErosion, z/w reserved
 layout(location=0) out vec4 vCenter;
 layout(location=1) out vec4 vSize;
 layout(location=2) out vec4 vFill;
@@ -1937,6 +1939,8 @@ layout(location=5) out vec4 vGate;
 layout(location=6) out vec4 vPattern;
 layout(location=7) out vec4 vEnergy;
 layout(location=8) out vec4 vExtra;
+layout(location=9) out vec4 vAccent;
+layout(location=10) out vec4 vMisc;
 void main() {
     // Two-triangle quad (gl_VertexIndex 0..5) spanning the instance's NDC footprint rect. Each per-instance attribute
     // is identical across the quad's six vertices, so the smooth varyings deliver the exact per-instance value to the
@@ -1954,6 +1958,8 @@ void main() {
     vPattern = IPattern;
     vEnergy = IEnergy;
     vExtra = IExtra;
+    vAccent = IAccent;
+    vMisc = IMisc;
 }";
 
         public const string DecalFrag = @"#version 450
@@ -1982,6 +1988,8 @@ layout(location=6) in vec4 PatternP;  // x=pattern index, y=speed (cycles/s), z=
 layout(location=7) in vec4 Energy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
 layout(location=8) in vec4 Extra;     // x=baseFill, y=voidPath (0 = depth-reconstruct, 1 = plane-project), z=voidDim,
                                       // w = wantsFallback: this decal asked for the plane fallback (geometry pass only)
+layout(location=9) in vec4 Accent;    // MoltenCracks hot colour (rgb = crack glow tint, a = crack alpha); zero otherwise
+layout(location=10) in vec4 Misc;     // x=patternParam (MoltenCracks: crack width in cell units), y=edgeErosion, z/w reserved
 layout(location=0) out vec4 oColor;
 
 // 2D SDFs in shape-local space (origin at decal center, +x along the decal's facing for oriented shapes).
@@ -2021,6 +2029,62 @@ float vnoise(vec2 p)
     float c = hash21(i + vec2(0.0, 1.0));
     float d = hash21(i + vec2(1.0, 1.0));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// MoltenCracks feature point for a Voronoi cell, in cell space. Deterministic per cell (hash of the integer cell
+// id only) with a slow sinusoidal drift around the cell centre - the ""molten breathing"". Every client evaluating
+// the same cell at the same effect time gets the same point, so the crack web is multiplayer-consistent.
+vec2 crackPoint(vec2 cell, float t)
+{
+    vec2 h = vec2(hash21(cell), hash21(cell + 91.7));
+    return cell + 0.5 + 0.42 * sin(6.2831853 * h + t * vec2(3.1, 2.3));
+}
+
+// Distance from qp (cell space) to the nearest Voronoi CELL BORDER, the two-pass exact form (Quilez's
+// voronoiDistance): pass 1 finds the nearest feature point, pass 2 measures the distance to the perpendicular
+// bisector between it and each neighbour. outCell returns the owning cell id for the per-cell heat pulse.
+float crackBorderDist(vec2 qp, float t, out vec2 outCell)
+{
+    vec2 n = floor(qp);
+    vec2 mg = vec2(0.0), mr = vec2(0.0);
+    float md = 8.0;
+    for (int j = -1; j <= 1; j++)
+    for (int i = -1; i <= 1; i++)
+    {
+        vec2 g = vec2(float(i), float(j));
+        vec2 r = crackPoint(n + g, t) - qp;
+        float d = dot(r, r);
+        if (d < md) { md = d; mr = r; mg = g; }
+    }
+    outCell = n + mg;
+    md = 8.0;
+    for (int j = -2; j <= 2; j++)
+    for (int i = -2; i <= 2; i++)
+    {
+        vec2 g = mg + vec2(float(i), float(j));
+        vec2 r = crackPoint(n + g, t) - qp;
+        if (dot(mr - r, mr - r) > 1e-5)
+            md = min(md, dot(0.5 * (mr + r), normalize(r - mr)));
+    }
+    return md;
+}
+
+// The Reduced-quality neighbourhood: ONE 3x3 pass tracking the nearest two feature-point distances, border
+// ~ (F2 - F1) * 0.5. Softer and occasionally wrong near cell corners, at a third of the point evaluations.
+float crackBorderDistCheap(vec2 qp, float t, out vec2 outCell)
+{
+    vec2 n = floor(qp);
+    float f1 = 8.0, f2 = 8.0;
+    outCell = n;
+    for (int j = -1; j <= 1; j++)
+    for (int i = -1; i <= 1; i++)
+    {
+        vec2 g = vec2(float(i), float(j));
+        float d = length(crackPoint(n + g, t) - qp);
+        if (d < f1) { f2 = f1; f1 = d; outCell = n + g; }
+        else if (d < f2) { f2 = d; }
+    }
+    return (f2 - f1) * 0.5;
 }
 
 void main() {
@@ -2107,24 +2171,29 @@ void main() {
     float fillFrac = clamp(Params.y, 0.0, 1.0);
     float sd;        // signed distance to the shape boundary (negative inside)
     float swept;     // signed distance to the swept (animated) fill boundary
+    float halfDim;   // approximate half-thickness (boundary to medial axis), the edge-erosion depth reference
 
     if (shape == 0) {              // Circle: Size.x = radius
         sd = sdCircle(local, Size.x);
         swept = sdCircle(local, Size.x * fillFrac);
+        halfDim = Size.x;
     } else if (shape == 1) {       // Ring: Size.x=innerR, Size.y=outerR
         sd = sdRing(local, Size.x, Size.y);
         swept = sdRing(local, Size.x, Size.x + (Size.y - Size.x) * fillFrac);
+        halfDim = (Size.y - Size.x) * 0.5;
     } else if (shape == 2) {       // Beam: Size.x=halfLength, Size.y=halfWidth (origin at one end -> shift by halfLength)
         vec2 b = vec2(Size.x, Size.y);
         vec2 p = local - vec2(Size.x, 0.0);
         sd = sdBox(p, b);
         swept = sdBox(p, vec2(Size.x * fillFrac, Size.y));
+        halfDim = Size.y;
     } else if (shape == 3) {       // Cone: Size.x=range, Size.y=halfAngle. Sector via radius + angle test.
         float ang = atan(local.y, local.x);
         float inAng = abs(ang) - Size.y;             // <=0 inside the angular wedge
         float inRad = length(local) - Size.x;        // <=0 inside the range
         sd = max(inRad, inAng);
         swept = max(length(local) - Size.x * fillFrac, inAng);
+        halfDim = Size.x * 0.5;
     } else {                       // Arc: Size.x=radius, Size.y=halfBandWidth, Size.z=startAngle, Size.w=sweep
         float ang = atan(local.y, local.x) - Size.z;
         ang = mod(ang + 6.2831853, 6.2831853);       // 0..2pi from start
@@ -2134,14 +2203,36 @@ void main() {
         sd = max(band, inAng);
         float sweptHalf = (Size.w * fillFrac) * 0.5;
         swept = max(band, abs(ang - sweptHalf) - sweptHalf);
+        halfDim = Size.y;
+    }
+
+    // Edge erosion (Misc.y, 0 = the exact analytic boundary, gated so it is zero-neutral): bite the boundary
+    // INWARD by up to 35% of the shape's half-thickness, modulated by STABLE value noise in decal-local space (no
+    // time term, no RNG - the silhouette is identical frame to frame and across clients). Equivalent to the
+    // margin form: a pixel at depth d inside the band survives iff noise > 1 - d/bite, a threshold rising toward
+    // the analytic edge, so the smooth boundary breaks into organic fingers. Inward-only on purpose: the CPU-side
+    // footprint quad is sized to the analytic bounds, so an outward push would clip at the quad edge. Both sd and
+    // swept shift by the same field, so the fill, its sweep front, the outline band, and every boundary-anchored
+    // energy lane follow the eroded silhouette. Feather then softens the survivors (erode first, then feather).
+    // Reduced quality drops the second octave, like the fill patterns.
+    float ero = Misc.y;
+    if (ero > 0.0)
+    {
+        float en = vnoise(local * 2.7 + 31.7);
+        if (TimeQ.y > 0.5) en = 0.65 * en + 0.35 * vnoise(local * 6.1 + 7.9);
+        float bite = ero * 0.35 * max(halfDim, 0.0) * (1.0 - en);
+        sd += bite;
+        swept += bite;
     }
 
     // Feathered coverage. feather (Gate.w, world units) softens both boundaries. ZERO-NEUTRAL: with feather == 0,
     // smoothstep(-0.0, edge, swept) == smoothstep(0.0, edge, swept) and (edge * 2.0 + 0.0) == edge * 2.0, so these are
     // IEEE-identical to the legacy hard-edge lines - the committed telegraph_ground goldens depend on that.
     float feather = max(Gate.w, 0.0);
-    // Fill: inside the swept boundary, AA across one edge width (widened by feather).
-    float fillA = (1.0 - smoothstep(-feather, edge + feather, swept)) * Fill.a;
+    // Fill: inside the swept boundary, AA across one edge width (widened by feather). cover is the Fill.a-free
+    // shape coverage - MoltenCracks keys its crack alpha off it so the cracks stay independent of the field alpha.
+    float cover = 1.0 - smoothstep(-feather, edge + feather, swept);
+    float fillA = cover * Fill.a;
     // Outline: a band straddling the FULL shape boundary. The feather contribution is halved so soft styles do
     // not grow fat borders (feather == 0 keeps the exact legacy band, the zero-neutral contract).
     float outlineA = (1.0 - smoothstep(edge, edge * 2.0 + feather * 0.5, abs(sd))) * Outline.a;
@@ -2151,14 +2242,41 @@ void main() {
     // full danger extent immediately, the sweep then brightens across it.
     if (Extra.x > 0.0)
     {
-        float baseA = (1.0 - smoothstep(-feather, edge + feather, sd)) * Fill.a * Extra.x;
+        float baseCover = 1.0 - smoothstep(-feather, edge + feather, sd);
+        float baseA = baseCover * Fill.a * Extra.x;
         fillA = max(fillA, baseA);
+        cover = max(cover, baseCover * Extra.x);
     }
 
-    // Animated noise fill. Gated on pattern index > 0 (Solid == 0 leaves fillA untouched, so zero-neutral) and a
-    // non-empty fill. Reduced quality (TimeQ.y <= 0.5) drops the second octave.
+    // Animated fill patterns. MoltenCracks (3) paints a two-tone field of its own. The noise variants (1, 2)
+    // modulate fillA exactly as before. Gated on the pattern index (Solid == 0 touches nothing, so zero-neutral).
+    // Reduced quality (TimeQ.y <= 0.5) drops the second octave / the exact Voronoi neighbourhood.
+    vec3 fillRgb = Fill.rgb;
     float patIdx = PatternP.x;
-    if (patIdx > 0.5 && fillA > 0.0)
+    if (patIdx > 2.5 && cover > 0.0)
+    {
+        // MoltenCracks: an animated Voronoi crack web in decal-local XZ. Edge distance to the cell borders maps
+        // through a heat ramp: a thin near-white core AT the border, an Accent-coloured glow falling off around
+        // it, and the dark Fill colour field between cells. The field alpha rides Fill.a (near-opaque scorch)
+        // while the crack alpha rides cover * Accent.a, so each is authorable independently. FlashAdd still
+        // lifts everything at the end of the shader as the global pulse hook.
+        float cells = PatternP.z > 0.0 ? PatternP.z : 1.0;
+        float t = TimeQ.x * PatternP.y;
+        vec2 qp = local * cells;
+        vec2 cellId;
+        float bd = TimeQ.y > 0.5 ? crackBorderDist(qp, t, cellId) : crackBorderDistCheap(qp, t, cellId);
+        float w = Misc.x > 0.0 ? Misc.x : 0.22;           // crack width, cell-space units (PatternParam)
+        // Slow per-cell heat swell on top of the point drift: [0.78, 1.0], breathing, never blinking off.
+        float pulse = 0.89 + 0.11 * sin(6.2831853 * (t + hash21(cellId + 7.3)));
+        float glow = (1.0 - smoothstep(0.0, w, bd)) * pulse;
+        float core = 1.0 - smoothstep(0.0, w * 0.35, bd);
+        // The core lifts toward white on top of the Accent tint, then over-drives: LDR clamps it to near-white,
+        // HDR carries the over-range energy into bloom (the TimeQ.z ceiling below).
+        vec3 crackRgb = mix(Accent.rgb, vec3(1.0), 0.75 * core) * (1.0 + 1.5 * core * pulse);
+        fillRgb = mix(Fill.rgb, crackRgb, clamp(glow, 0.0, 1.0));
+        fillA = max(fillA, cover * Accent.a * glow);
+    }
+    else if (patIdx > 0.5 && fillA > 0.0)
     {
         float cells = PatternP.z > 0.0 ? PatternP.z : 1.0;
         float t = TimeQ.x * PatternP.y;
@@ -2204,7 +2322,7 @@ void main() {
         fillA *= 1.0 - PatternP.w * depthIn * depthIn;
     }
 
-    vec3 rgb = Fill.rgb;
+    vec3 rgb = fillRgb;   // Fill.rgb for every pattern but MoltenCracks, which paints its two-tone field into it
     float a = fillA;
     // Composite the outline over the fill.
     rgb = mix(rgb, Outline.rgb, outlineA <= 0.0 ? 0.0 : outlineA / max(outlineA + fillA, 1e-4));

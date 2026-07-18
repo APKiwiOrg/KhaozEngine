@@ -2885,6 +2885,45 @@ projected pixel matches a ground pixel, and 1 is fully transparent). ~0.15 is a 
 starting point, just enough for a projected pixel to read as projected without dimming the shape
 toward invisibility.
 
+**Molten cracks + edge erosion** (raw `GroundDecal` fields, since 13.4.0): two opt-in additions
+for hazard-aftermath ground effects (a molten slam scar, ice fracture, corruption ground). Both
+default off and leave non-opting decals byte-identical.
+
+`DecalFillPattern.MoltenCracks` paints an animated Voronoi/cellular crack web in decal-local XZ:
+a thin near-white core at each cell border, an `AccentColor` glow falling off around it, and the
+dark `FillColor` field between cells. The field alpha rides `FillColor.A` (sit it near-opaque
+near-black for scorch) while the crack alpha rides `AccentColor.A` independently, so the cracks
+stay bright and tintable over an opaque field. `PatternScale` is cells per world unit,
+`PatternSpeed` drives a slow per-cell breathing (feature-point drift + heat swell, not a scroll),
+and `PatternParam` is the crack width in cell units (0 = the default 0.22). The web is
+deterministic per position, so every client sees the same cracks at the same effect time.
+`FlashAdd` still lifts the whole decal, the hook to pulse on a damage tick. Under
+`GroundDecalQuality.Reduced` the exact two-pass Voronoi border distance drops to a cheaper
+single-pass approximation (softer, slightly fatter cracks).
+
+`GroundDecal.EdgeErosion` (0..1, default 0) breaks the analytic silhouette into organic
+per-pixel fingers, for EVERY shape and pattern: stable value noise (keyed to decal-local
+position, no time term, no RNG) thresholds against a margin rising toward the edge, biting
+inward by up to ~35% of the shape's half-thickness at 1. Erosion applies first, then
+`FeatherWidth` feathers the surviving boundary. The outline band and every boundary-anchored
+energy lane follow the eroded edge.
+
+    scene.DrawGroundDecal(new GroundDecal
+    {
+        Shape = DecalShape.Beam, Center = impactPoint, Rotation = angle,
+        Size = new Vector4(3.5f, 1.2f, 0f, 0f),
+        FillColor = new Color(0.05f, 0.03f, 0.03f, 0.95f),   // near-opaque scorch field
+        AccentColor = new Color(1f, 0.45f, 0.1f, 0.9f),      // the hot crack colour
+        Pattern = DecalFillPattern.MoltenCracks,
+        PatternScale = 1.2f, PatternSpeed = 0.25f,
+        EdgeErosion = 0.6f, FeatherWidth = 0.15f,
+        FillFraction = 1f, YTolerance = 0.3f, MaxStep = 0.4f,
+    });
+
+These are raw-decal fields only for now: `TelegraphStyle` does not expose them yet, so build the
+`GroundDecal` directly (as above) rather than through `GroundTelegraphs`. The
+`MoltenCracksShowcaseGpuTests` PNG dumps are the reference look.
+
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
 Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,
 EdgeSparkle, OutlineRunner, EdgeWidthWorld, FeatherWidthWorld, VoidFallback, VoidDim, and residue)

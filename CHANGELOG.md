@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.4.0
+
+Ground decals: the `MoltenCracks` Voronoi fill pattern and noise-eroded silhouettes (`EdgeErosion`), the
+per-pixel shader work Ruinborne's sunder ground effect commissioned. Closes #228.
+
+- **`DecalFillPattern.MoltenCracks` (issue #228).** An animated Voronoi/cellular crack web in decal-local XZ:
+  edge distance to the cell borders maps through a heat ramp - a thin near-white core at the border, a
+  `GroundDecal.AccentColor` glow falling off around it, the dark `FillColor` field between cells. New
+  `GroundDecal.AccentColor` carries the hot colour: rgb is the glow tint (the core lifts toward white and
+  over-drives into HDR bloom), alpha is the crack opacity, independent of `FillColor.A` so a near-opaque
+  near-black field keeps bright tintable cracks. New `GroundDecal.PatternParam` is the pattern-owned shape control, for
+  MoltenCracks the crack width in cell units (0 = the 0.22 default). `PatternScale` = cells per world unit,
+  `PatternSpeed` = slow molten breathing (deterministic per-cell feature-point drift + heat swell, not a
+  scroll), `FlashAdd` keeps working as the global brightness lift for damage-tick pulses. Full quality uses
+  the exact two-pass Voronoi border distance (Quilez). `GroundDecalQuality.Reduced` swaps in a single-pass
+  F2-F1 approximation at a third of the point evaluations (softer, slightly fatter cracks).
+- **`GroundDecal.EdgeErosion` (float 0..1, default 0, issue #228).** Noise-modulated silhouette breakup at the
+  analytic shape edge, for every shape and pattern: stable two-octave value noise in decal-local space (no
+  time term, no RNG - identical frame to frame and across clients) thresholds against a margin rising toward
+  the edge, so the smooth boundary breaks into organic per-pixel fingers biting inward by up to ~35% of the
+  shape's half-thickness. Inward-only by contract (the CPU footprint quad is sized to the analytic bounds).
+  Composes with `FeatherWidth` (erode first, then feather the survivors); the outline band and the
+  boundary-anchored energy lanes follow the eroded edge. `Reduced` quality drops the second octave.
+- **Plumbing.** The per-instance decal stream grew two vec4 lanes, `IAccent` and `IMisc` (12 x vec4 = 192
+  bytes, locations 0..11 gap-free). Both features are strictly opt-in and zero-neutral: a decal that does not opt in
+  packs zero in the new lanes (`AccentColor`/`PatternParam` pack only for `MoltenCracks`, the `VoidDim`
+  precedent) and renders byte-identically - the committed decal goldens pin it.
+- **Showcase.** `MoltenCracksShowcaseGpuTests` dumps the human-review grid (plain / eroded / the Ruinborne
+  sunder-beam recipe / wide cracks, plus an erosion sweep) at two effect times and at `Reduced` quality, with
+  A/B guards for breathing, the cheap neighbourhood, inward-only erosion, and frame-to-frame stability.
+
 ## 13.3.0
 
 Render3D shadows: a construction seam so `ShadowMapResolution` / `ShadowCascadeCount` can finally take effect,

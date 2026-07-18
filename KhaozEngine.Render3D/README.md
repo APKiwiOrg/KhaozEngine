@@ -170,6 +170,19 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   standing on ground (0 = no dim, 1 = fully transparent). Default `false` keeps the legacy
   depth-only behavior byte-for-byte, with zero extra draws and no new pipeline bound. See
   `docs/USING-KHAOZENGINE.md`.
+- Molten cracks + edge erosion (since 13.4.0, both opt-in and byte-neutral when unset):
+  `DecalFillPattern.MoltenCracks` is an animated Voronoi crack web in decal-local XZ - a near-white
+  core at each cell border falling off through a `GroundDecal.AccentColor` glow into the dark
+  `FillColor` field between cells. Field alpha rides `FillColor.A` (near-opaque scorch), crack
+  alpha rides `AccentColor.A` independently, `FlashAdd` stays the global brightness lift.
+  `PatternScale` = cells per world unit, `PatternSpeed` = slow per-cell breathing (drift + heat
+  swell, not a scroll), `GroundDecal.PatternParam` = crack width in cell units (0 = 0.22 default).
+  Deterministic per position, and `GroundDecalQuality.Reduced` swaps the exact two-pass Voronoi border
+  distance for a cheaper single-pass approximation. `GroundDecal.EdgeErosion` (0..1, default 0)
+  breaks the analytic silhouette into stable organic fingers for every shape and pattern (value
+  noise thresholded against a margin rising toward the edge, biting inward up to ~35% of the
+  shape's half-thickness), then `FeatherWidth` feathers the survivors. See
+  `docs/USING-KHAOZENGINE.md`.
 - Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only

@@ -379,10 +379,13 @@ binding 0. Fold everything any stage needs from a UBO - the vertex's ViewProj / 
 transforms AND the fragment's frame/lighting/shadow uniforms - into that single buffer, declared
 identically in both stages (each stage uses its slice). Keep per-mesh TEXTURES at set 1 and up (fragment).
 
-The model and splat-terrain passes follow this: the shadow-map matrix and the per-material splat params
-ride in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform buffer
-(see the splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the `SplatVert`
-comment in `../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The modern particle pass follows it too: its
+The model and splat-terrain passes follow this: the shadow-map matrices (the live cascade set AND, since
+13.3.0, the temporal cross-fade set + blend weight, issue #225) and the per-material splat params all ride
+in the SAME frame UBO after the point-light arrays, so each pass binds exactly one uniform buffer (see the
+splat-params note in `../KhaozEngine.Render3D/Rendering/ModelRenderer.cs` and the `SplatVert` comment in
+`../KhaozEngine.Render3D/Internal/ShaderSources.cs`). The cross-fade's second (outgoing) shadow atlas is a
+TEXTURE (`ShadowMapPrev`), so it sits alongside the live atlas in the material set exactly as the other
+per-mesh textures do, rather than adding a second UBO the Metal path would mis-bind. The modern particle pass follows it too: its
 single set-0 frame UBO carries the clip-corrected ViewProj, the raw InvViewProj, the camera basis + eye, the
 effect time, and the soft-fade / quality params, while every per-sprite value rides an instanced
 vertex-attribute stream and the textures sit at set 0 bindings 1..5, sampled statically in binding order (the

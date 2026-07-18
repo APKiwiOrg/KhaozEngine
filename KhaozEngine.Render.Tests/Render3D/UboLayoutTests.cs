@@ -49,12 +49,13 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void ShadowTail_MarshalSize_And_Offset_MatchConstants()
         {
-            // The cascaded shadow tail (mat4 ShadowMat[MaxCascades] + vec4 Params + vec4 Params2 + vec4 NormalOffsets)
-            // is 304 bytes, appended right after the two light arrays at offset 688. If the ShadowUbo struct or the
-            // constants drift apart the shadow-tail upload (WriteFrameUniformsTo -> UpdateBuffer at ShadowTailOffset)
-            // smears the splat params that follow.
+            // The cascaded shadow tail is the LIVE set (mat4 ShadowMat[MaxCascades] + vec4 Params + vec4 Params2 + vec4
+            // NormalOffsets) plus the temporal cross-fade set (mat4 ShadowMatPrev[MaxCascades] + vec4 ShadowBlend) = 576
+            // bytes, appended right after the two light arrays at offset 688. If the ShadowUbo struct or the constants
+            // drift apart the shadow-tail upload (WriteFrameUniformsTo -> UpdateBuffer at ShadowTailOffset) smears the
+            // splat params that follow.
             Assert.Equal((int)ModelRenderer.ShadowTailBytes, Marshal.SizeOf<ModelRenderer.ShadowUbo>());
-            Assert.Equal(ModelRenderer.MaxCascades * 64 + 3 * 16, (int)ModelRenderer.ShadowTailBytes);
+            Assert.Equal(ModelRenderer.MaxCascades * 64 + 3 * 16 + ModelRenderer.MaxCascades * 64 + 16, (int)ModelRenderer.ShadowTailBytes);
             Assert.Equal(ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes, ModelRenderer.ShadowTailOffset);
             Assert.Equal(688u, ModelRenderer.ShadowTailOffset);
         }
@@ -69,11 +70,11 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is992_TheDocumentedCombinedSize()
+        public void UboBytes_Is1264_TheDocumentedCombinedSize()
         {
-            // 176 + 2*256 + 304 = 992. The value the comments/docs quote, a sanity anchor on the derived arithmetic
-            // (header + both point-light arrays + the cascaded shadow tail = mat4[4] + 3*vec4).
-            Assert.Equal(992u, ModelRenderer.UboBytes);
+            // 176 + 2*256 + 576 = 1264. The value the comments/docs quote, a sanity anchor on the derived arithmetic
+            // (header + both point-light arrays + the cascaded shadow tail = live mat4[4] + 3*vec4 + cross-fade mat4[4] + vec4).
+            Assert.Equal(1264u, ModelRenderer.UboBytes);
         }
 
         // ---- Splat material params tail ----
@@ -310,6 +311,12 @@ namespace KhaozEngine.Tests.Render3D
                     $"{name} lost 'vec4 ShadowParams2;': the shadow tail dropped from the frame UBO block. Fix ShaderSources.{name}.");
                 Assert.True(src.Contains("vec4 ShadowNormalOffsets;"),
                     $"{name} lost 'vec4 ShadowNormalOffsets;': the per-cascade normal-offset vec4 dropped from the frame UBO block; the splat params tail now lands at the wrong offset. Fix ShaderSources.{name}.");
+                // The temporal cross-fade set (issue #225) is appended after the live tail, so it too must be present in
+                // every block or the splat params tail (and the skinned bones array) land at the wrong offset.
+                Assert.True(src.Contains("mat4 ShadowMatPrev[" + ModelRenderer.MaxCascades + "];"),
+                    $"{name} lost the cross-fade 'mat4 ShadowMatPrev[{ModelRenderer.MaxCascades}];': the frozen-set matrices dropped or mis-sized in the frame UBO block. Fix ShaderSources.{name} or ModelRenderer.MaxCascades.");
+                Assert.True(src.Contains("vec4 ShadowBlend;"),
+                    $"{name} lost 'vec4 ShadowBlend;': the cross-fade weight dropped from the frame UBO block. Fix ShaderSources.{name}.");
             }
         }
 
@@ -318,9 +325,9 @@ namespace KhaozEngine.Tests.Render3D
         {
             // Both fragments must call the single-sourced PCF helper so model + terrain shadow IDENTICALLY. If either
             // stops calling it, that surface silently stops receiving shadows (the lockstep invariant breaks).
-            Assert.Contains("sampleKeyShadow(", ShaderSources.LightingCommonGlsl);
-            Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.ModelFrag);
-            Assert.Contains("sampleKeyShadow(ShadowMap, ShadowSamp", ShaderSources.SplatFrag);
+            Assert.Contains("sampleKeyShadowBlended(", ShaderSources.LightingCommonGlsl);
+            Assert.Contains("sampleKeyShadowBlended(ShadowMap, ShadowSamp, ShadowMapPrev, ShadowSamp", ShaderSources.ModelFrag);
+            Assert.Contains("sampleKeyShadowBlended(ShadowMap, ShadowSamp, ShadowMapPrev, ShadowSamp", ShaderSources.SplatFrag);
         }
 
         // ---- Sky background pass UBO (SkyRenderer) ----

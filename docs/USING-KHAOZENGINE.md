@@ -1885,9 +1885,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       invisible instead of a hard seam. `0` restores the hard cut. `ShadowMapResolution` is the **per-cascade**
       resolution, so the atlas costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) -
       drop the count or the resolution for a lower-end profile.
-    - Other knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`, per cascade; a **construction-time**
-      knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
-      material set - drop to 1024/512 on low-end). `ShadowNearDistance` (default `16`, the near cascade's view-depth
+    - **Construction-time atlas knobs.** `ShadowMapResolution` (default `2048`, per cascade) and `ShadowCascadeCount`
+      size the shadow atlas ONCE as the `Scene3D` allocates it, and its handle is bound into every material set, so they
+      must be supplied BEFORE construction rather than set on `Scene.Post` afterwards: pass a `ShadowSettings` to
+      `new Render3DSurface(window, shadows)` / `Render3DPreview` / `Render3DSnapshot.Capture(..., shadows)`, or for a
+      `GameApp3D` game to the `base(options, shadows)` ctor (e.g. `new ShadowSettings { Mode = ShadowMode.ShadowMap,
+      ShadowCascadeCount = 4 }`). Writing `ShadowMapResolution` or `ShadowCascadeCount` on a live scene's `ShadowSettings`
+      now throws `InvalidOperationException` instead of silently no-opping. Drop the count or resolution to 1024/512 for a
+      low-end profile. Recreate the scene to change atlas sizing at runtime.
+    - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`). `ShadowLightQuantizeDegrees`
       (default `0` = off): a moving-sun de-shimmer knob. A slowly rotating key light (a `SunCycle` day/night
@@ -1897,6 +1903,18 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       the atlas reuse returns, at the cost of one small discrete edge nudge per step (a few texels, softened
       by the 3x3 PCF). Only the shadow fit sees the quantized direction; shading, the sky, and the sun disc
       keep the smooth raw `Post.LightDirection`. Guidance ~0.25 to 0.5 degrees under a moving sun.
+    - **Temporal cross-fade** `ShadowStepBlendSeconds` (default `0` = off, opt-in; only meaningful with
+      `ShadowLightQuantizeDegrees > 0`): eases the discrete jump quantization trades the shimmer for. When the quantized
+      direction steps, the OUTGOING step's atlas + receiver matrices are kept alive while the INCOMING step renders, and
+      for this many seconds the receivers lerp the two PCF results from fully-outgoing to fully-incoming, then retire the
+      old set - so a step reads as a soft settle instead of a snap. With the jump softened the step can grow (0.5 to 1
+      deg), so the atlas re-renders LESS often. **The cross-fade needs a second shadow atlas (2x shadow VRAM), reserved
+      only when this is `> 0` at construction** - so set it via the same `ShadowSettings` construction seam as the atlas
+      knobs above. Once reserved it is freely runtime-tunable (set `0` to pause the fade, back to positive to resume);
+      turning it on for the first time after construction throws. The fade clock advances on
+      `Scene3D.EffectTimeSeconds`, so keep that advancing (as an animated day/night scene already does). The outgoing set
+      is frozen at the step and never re-fit, so a camera pan during a fade rides the baked matrices (like the atlas
+      dirty-skip). Guidance ~0.25 to 0.5.
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the

@@ -10,7 +10,7 @@ namespace KhaozEngine.Snapshot
     public static class SnapshotRunner3DExtensions
     {
         /// <summary>
-        /// Capture a 3D scene via <see cref="Render3DSnapshot.Capture(int,int,Action{Scene3D},Action{Scene3D},int)"/>
+        /// Capture a 3D scene via <see cref="Render3DSnapshot.Capture(int,int,Action{Scene3D},Action{Scene3D},int,ShadowSettings)"/>
         /// (<paramref name="setup"/> runs once; <paramref name="drawFrame"/> per frame) and save it as
         /// <c>&lt;OutDir&gt;/&lt;name&gt;.png</c>; returns the written path.
         /// </summary>

@@ -5,6 +5,51 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.3.0
+
+Render3D shadows: a construction seam so `ShadowMapResolution` / `ShadowCascadeCount` can finally take effect,
+and an opt-in temporal cross-fade that eases the discrete jump quantized shadows trade shimmer for. Closes #27
+and #225.
+
+- **Shadow atlas is now a construction-time seam (issue #27).** `ShadowMapResolution` and `ShadowCascadeCount`
+  were documented knobs that could never take effect: the atlas is sized inside `Scene3D` construction from a
+  freshly-defaulted `Post` before any consumer code runs, and its handle is bound into every material set, so a
+  post-construction write was silently ignored. A caller now seeds the settings through the ctor:
+  `Render3DSurface(AppWindow, ShadowSettings?)`, `Render3DPreview(AppWindow, int, int, ShadowSettings?)`,
+  `Render3DSnapshot.Capture(..., ShadowSettings? shadows = null)`, and `GameApp3D(in GameAppOptions,
+  ShadowSettings?)` all forward an optional `ShadowSettings` that `Scene3D` applies to `Post.Quality.Shadows`
+  BEFORE it allocates the atlas. A consumer can now request e.g. 4 cascades at 2048 and `ComputeShadowCascades`
+  actually runs 4. **These three atlas knobs are frozen after construction:** writing `ShadowMapResolution` or
+  `ShadowCascadeCount` on a live scene's `ShadowSettings` now throws `InvalidOperationException` instead of
+  silently no-opping (the sibling fields `ShadowNearDistance`/`ShadowMaxDistance` etc. stay live-tunable as
+  before). `ShadowSettings.ShadowMapResolution`/`ShadowCascadeCount` became properties over backing fields to
+  carry the guard; the defaults are unchanged (3 cascades x 2048). Recreate the scene to change atlas sizing at
+  runtime.
+- **Temporal shadow cross-fade `ShadowSettings.ShadowStepBlendSeconds` (issue #225).** Opt-in `float`, default
+  `0` (off), meaningful only with `ShadowLightQuantizeDegrees > 0`. Quantization (13.1.0) killed the per-frame
+  edge shimmer under a moving sun but traded it for a discrete jump every step. With a positive
+  `ShadowStepBlendSeconds`, a step keeps the OUTGOING quantization step's shadow atlas + receiver matrices alive
+  while the INCOMING step renders, and for that window the receivers lerp the two PCF results from
+  fully-outgoing to fully-incoming, then retire the old set, so a step reads as a soft settle instead of a snap.
+  With the jump softened the quantization step can grow (0.5 to 1 deg), so the atlas re-renders LESS often. The
+  outgoing set is frozen at the step and never re-fit, so a camera pan during a fade rides the baked matrices
+  exactly as the atlas dirty-skip already reuses a stale atlas. The fade advances on
+  `Scene3D.EffectTimeSeconds`, so a scene using it must keep that clock advancing (as an animated day/night
+  scene already does).
+- **Cost + provisioning.** The cross-fade needs a second shadow atlas (2x shadow VRAM). It is opt-in: reserved
+  only when `ShadowStepBlendSeconds > 0` at construction. Once reserved, the duration is freely runtime-tunable
+  (set `0` to pause the fade, back to a positive value to resume); turning it on for the first time after
+  construction throws (it cannot reserve the atlas then). The frozen matrices + the blend weight ride the
+  existing frame UBO (grown 992 -> 1264 bytes: a `mat4[4]` + a `vec4` appended to the shadow tail), because a
+  second UBO mis-binds on Metal. The frozen atlas binds as `ShadowMapPrev` alongside the live atlas in every
+  material set, and the shared PCF helper `sampleKeyShadow` gained a matrix-set argument plus a
+  `sampleKeyShadowBlended` entry point that lerps live and frozen.
+- **Default-off is byte-stable.** With `ShadowStepBlendSeconds == 0` the blend weight is 1, so the shader skips
+  the frozen sample entirely and every pre-existing shadow-tail field keeps its offset. The committed Metal
+  shadow goldens (`scene3d_shadow_map`, `scene3d_cascade_wide`, `scene3d_cascade_handoff`, `scene3d_splat_shadow`,
+  `scene3d_shadow_blob`) pass unchanged (no re-bake). The two-set bookkeeping (step detection, weight ramp,
+  retirement, mid-fade restart) is a pure `ShadowStepBlend` value type, headless-tested in `ShadowStepBlendTests`.
+
 ## 13.2.0
 
 Gui: a reusable connection-outage primitive, a headless policy controller plus an asset-free themeable

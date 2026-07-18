@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces AND the patch-notes parser test's
+         embedded fixture keeps its KhaozEngine.Tests.Gui.Fixtures.* manifest name (PatchNotesParserTests loads
+         it by that computed name, no LogicalName override). -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A real player-facing changelog (Ruinborne's docs/PLAY_CHANGELOG.md, copied in rather than referenced by
+         path) so PatchNotesParserTests exercises the parser against real authored content, not just synthetic
+         samples. Loaded by its namespace-derived manifest name (RootNamespace pin above keeps it stable). -->
+    <EmbeddedResource Include="Gui/Fixtures/RuinbornePlayChangelog.md" />
+    <!-- PatchNotesLoaderTests' embedded-fallback fixture: PatchNotesLoader looks up the resource by its
+         fixed, unqualified logical name (PatchNotesLoader.ResourceName), so LogicalName strips the default
+         folder-derived namespace prefix to match exactly what production code (and a real game's own
+         assembly) would embed it as. -->
+    <EmbeddedResource Include="Gui/Fixtures/PLAY_CHANGELOG.md">
+      <LogicalName>PLAY_CHANGELOG.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+    <!-- UpdateOverlay*Tests consume FakeUpdateSource/FakeUpdateStatus, which live in TestSupport.Services. -->
+    <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
+  </ItemGroup>
+</Project>

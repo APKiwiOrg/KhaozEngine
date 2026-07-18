@@ -12,17 +12,6 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
-    <!-- A real player-facing changelog (Ruinborne's docs/PLAY_CHANGELOG.md, copied in rather than referenced by
-         path) so PatchNotesParserTests exercises the parser against real authored content, not just synthetic
-         samples. -->
-    <EmbeddedResource Include="Gui/Fixtures/RuinbornePlayChangelog.md" />
-    <!-- PatchNotesLoaderTests' embedded-fallback fixture: PatchNotesLoader looks up the resource by its
-         fixed, unqualified logical name (PatchNotesLoader.ResourceName), so LogicalName strips the default
-         folder-derived namespace prefix to match exactly what production code (and a real game's own
-         assembly) would embed it as. -->
-    <EmbeddedResource Include="Gui/Fixtures/PLAY_CHANGELOG.md">
-      <LogicalName>PLAY_CHANGELOG.md</LogicalName>
-    </EmbeddedResource>
     <!-- A captured real one-sided building collision mesh (a Ruinborne house with eaves/overhangs), used as a
          realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
          the resolver's one-sided-mesh handling must not pin or float the capsule. -->

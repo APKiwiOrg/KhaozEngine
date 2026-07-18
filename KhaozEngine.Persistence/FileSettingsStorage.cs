@@ -62,7 +62,10 @@ public sealed class FileSettingsStorage : ISettingsStorage
         string? firstFailureDetail = null;
         bool anyCandidateExisted = false;
 
-        for (int gen = 0; gen <= BackupGenerations; gen++)
+        // Clamp a negative BackupGenerations to 0 rather than skipping the loop entirely, so a
+        // misconfigured value still probes the primary instead of silently defaulting.
+        int maxGeneration = Math.Max(0, BackupGenerations);
+        for (int gen = 0; gen <= maxGeneration; gen++)
         {
             string path = SaveBackups.GenerationPath(primaryPath, gen);
             if (!File.Exists(path))

@@ -203,7 +203,7 @@ public sealed class GameStorage : IDisposable
                 outcome = SaveLoadOutcome.RecoveredFromBackup;
             }
 
-            return new SaveLoadResult<T>
+            SaveLoadResult<T> loaded = new()
             {
                 Value = value,
                 Outcome = outcome,
@@ -211,6 +211,8 @@ public sealed class GameStorage : IDisposable
                 RecoveredGeneration = gen,
                 Metadata = candidate.Metadata,
             };
+            LogLoadOutcome(fullPath, loaded);
+            return loaded;
         }
 
         T fresh = new();
@@ -219,12 +221,33 @@ public sealed class GameStorage : IDisposable
             fresh = migrations.StampCurrent(fresh);
         }
 
-        return new SaveLoadResult<T>
+        SaveLoadResult<T> defaulted = new()
         {
             Value = fresh,
             Outcome = anyCandidateExisted ? SaveLoadOutcome.RejectedAndDefaulted : SaveLoadOutcome.FreshDefault,
             Detail = firstFailureDetail,
         };
+        LogLoadOutcome(fullPath, defaulted);
+        return defaulted;
+    }
+
+    // Logs the recovery-ladder outcomes that would otherwise resolve silently. A clean Loaded, a fresh
+    // default, and a legacy-plaintext read stay quiet, those are the expected path, not a recovery. Kept
+    // in one place so every LoadWithOutcome return goes through the same observability.
+    private void LogLoadOutcome<T>(string fullPath, SaveLoadResult<T> result)
+    {
+        switch (result.Outcome)
+        {
+            case SaveLoadOutcome.RecoveredFromBackup:
+                logger.Warn($"'{fullPath}' recovered from backup generation {result.RecoveredGeneration} after the primary failed: {result.Detail}");
+                break;
+            case SaveLoadOutcome.RejectedAndDefaulted:
+                logger.Error($"'{fullPath}' rejected, every candidate was invalid, defaulted: {result.Detail}");
+                break;
+            case SaveLoadOutcome.Loaded when result.Detail is not null:
+                logger.Warn($"'{fullPath}' loaded despite a tamper-integrity mismatch accepted under the lenient policy: {result.Detail}");
+                break;
+        }
     }
 
     // A single probed save generation: its validity plus whatever decoded content and flags the ladder needs

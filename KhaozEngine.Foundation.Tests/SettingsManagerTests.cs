@@ -144,11 +144,43 @@ public class SettingsManagerTests
             var manager = new SettingsManager<Prefs>(storage, logger);
 
             // Task 8 (#152): the ladder now recovers/reports this itself rather than throwing, so it is a
-            // reported outcome, not a logged error. This test previously froze the pre-fix behavior
-            // (corrupt settings threw out of storage and the manager's catch block logged it).
+            // reported outcome, not a thrown exception. The manager still observes a RejectedAndDefaulted
+            // outcome with an Error entry (restored by the review-follow-up in this same task), just via
+            // the outcome-level log below the ladder rather than the ctor's own catch block.
             Assert.Equal(0, manager.Settings.Volume);   // defaults despite corrupt file
             Assert.Equal(SaveLoadOutcome.RejectedAndDefaulted, manager.LastLoadOutcome);
-            Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Error);
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_RecoveredFromBackupThroughRealStorage_LogsWarn()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-item10-recover-warn-" + Path.GetRandomFileName());
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsMacOS = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("APKiwi", "Item10SettingsRecoverWarn", env);
+
+            using var queue = new PersistenceQueue(backupGenerations: 2);
+            var storage = new FileSettingsStorage(paths, queue);
+            storage.SaveSettings(new Prefs { Volume = 1 });
+            queue.Flush();
+            storage.SaveSettings(new Prefs { Volume = 2 });   // rotation: Volume 1 now in .bak1
+            queue.Flush();
+            File.WriteAllText(paths.GetFilePath("settings.json"), "{ garbage");
+
+            var logger = new FakeLogger();
+            var manager = new SettingsManager<Prefs>(storage, logger);
+
+            Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, manager.LastLoadOutcome);
+            Assert.Equal(1, manager.Settings.Volume);
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warn);
         }
         finally
         {

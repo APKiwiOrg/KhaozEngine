@@ -329,6 +329,38 @@ public class GameStorageTests
     }
 
     [Fact]
+    public void LoadWithOutcome_RecoveredFromBackup_LogsWarn()
+    {
+        var log = new FakeLogger();
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir, o => o.Logger = log);
+        storage.Save("s.json", new TestSave { Score = 1 });
+        storage.Flush();
+        storage.Save("s.json", new TestSave { Score = 2 });   // rotation: score 1 now in .bak1
+        storage.Flush();
+        string path = Path.Combine(dir, "s.json");
+        File.WriteAllText(path, File.ReadAllText(path)[..^4] + "AAA=");   // corrupt the payload tail
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, r.Outcome);
+        Assert.Contains(log.Entries, e => e.Level == LogLevel.Warn);
+    }
+
+    [Fact]
+    public void LoadWithOutcome_RejectedAndDefaulted_LogsError()
+    {
+        var log = new FakeLogger();
+        using GameStorage storage = CreateStorage(out string dir, o => o.Logger = log);
+        File.WriteAllText(Path.Combine(dir, "s.json"), "{ broken");
+        File.WriteAllText(Path.Combine(dir, "s.json.bak1"), "also broken }");
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        Assert.Equal(SaveLoadOutcome.RejectedAndDefaulted, r.Outcome);
+        Assert.Contains(log.Entries, e => e.Level == LogLevel.Error);
+    }
+
+    [Fact]
     public void Load_CorruptPrimaryNoBackups_DoesNotThrow_ReturnsDefaults()
     {
         using GameStorage storage = CreateStorage(out string dir);   // no encoder, BackupGenerations = 0 via options

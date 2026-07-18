@@ -195,6 +195,29 @@ public class FileSettingsStorageTests
         finally { Cleanup(root); }
     }
 
+    [Fact]
+    public void LoadSettingsDetailed_NegativeBackupGenerations_StillProbesPrimary()
+    {
+        AppDataPaths paths = TempPaths(out string root);
+        try
+        {
+            var storage = new FileSettingsStorage(paths, new RecordingQueue()) { BackupGenerations = -1 };
+            using var queue = new PersistenceQueue();
+            var writingStorage = new FileSettingsStorage(paths, queue);
+            writingStorage.SaveSettings(new Sample { Score = 3, Name = "primary" });
+            queue.Flush();
+
+            SaveLoadResult<Sample> result = storage.LoadSettingsDetailed<Sample>();
+
+            // A negative BackupGenerations must not skip generation 0 (the primary): clamped to 0, not
+            // treated as "probe nothing".
+            Assert.Equal(SaveLoadOutcome.Loaded, result.Outcome);
+            Assert.Equal(3, result.Value.Score);
+            Assert.Equal("primary", result.Value.Name);
+        }
+        finally { Cleanup(root); }
+    }
+
     private static void Cleanup(string root)
     {
         if (Directory.Exists(root)) Directory.Delete(root, recursive: true);

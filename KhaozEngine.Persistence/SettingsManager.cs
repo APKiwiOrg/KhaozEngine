@@ -85,6 +85,7 @@ public sealed class SettingsManager<T> where T : new()
     public void Load()
     {
         SaveLoadResult<T> result;
+        bool loadThrew = false;
         try
         {
             result = storage.LoadSettingsDetailed<T>();
@@ -93,9 +94,27 @@ public sealed class SettingsManager<T> where T : new()
         {
             logger.Error("Failed to load settings; using defaults.", ex);
             result = new SaveLoadResult<T> { Value = new T(), Outcome = SaveLoadOutcome.RejectedAndDefaulted, Detail = ex.Message };
+            loadThrew = true;
         }
 
         LastLoadOutcome = result.Outcome;
+
+        // A thrown load already logged an Error above (with the exception attached). Only log here for
+        // the recovery-ladder outcomes storage.LoadSettingsDetailed itself returns without throwing, so
+        // the exception path never logs twice.
+        if (!loadThrew)
+        {
+            switch (result.Outcome)
+            {
+                case SaveLoadOutcome.RecoveredFromBackup:
+                    logger.Warn($"settings recovered from backup generation {result.RecoveredGeneration}: {result.Detail}");
+                    break;
+                case SaveLoadOutcome.RejectedAndDefaulted:
+                    logger.Error($"settings rejected, every candidate was invalid, defaulted: {result.Detail}");
+                    break;
+            }
+        }
+
         T loaded = result.Value ?? new T();
 
         if (migrations is not null)

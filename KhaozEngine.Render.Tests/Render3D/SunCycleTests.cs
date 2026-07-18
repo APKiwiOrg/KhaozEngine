@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -250,6 +251,178 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(radiusBefore, post.Sky.SunRadius);
             Assert.Equal(haloBefore, post.Sky.HaloStrength);
             Assert.Equal(fillDirBefore, post.FillLightDirection);
+        }
+
+        // ---- Night-key modes (NightKeyMode: the real decoupled moon track) ---------------------------------------
+
+        static float KeyMagnitude(SunCycleState st) => st.LightColor.R + st.LightColor.G + st.LightColor.B;
+
+        [Fact]
+        public void Default_night_key_mode_is_the_legacy_anti_solar_moon()
+        {
+            // The out-of-box night track is the historical virtual moon (byte-stable). All the pre-existing tests run
+            // on this default; this pins that the enum default did not shift.
+            Assert.Equal(NightKeyMode.AntiSolarMoon, new SunCycleSettings().NightKey);
+
+            var midnight = SunCycle.Evaluate(0f, new SunCycleSettings());
+            Assert.True(midnight.LightDirection.Y < -0.3f, $"legacy midnight key should point downward, got {midnight.LightDirection}");
+            Assert.False(midnight.SunEnabled);
+            Assert.Equal(KeyLightSource.None, midnight.ActiveSource);   // no real body owns the disc at legacy night
+            Assert.Null(midnight.DiscDirectionOverride);
+
+            var noon = SunCycle.Evaluate(0.5f, new SunCycleSettings());
+            Assert.Equal(KeyLightSource.Sun, noon.ActiveSource);
+        }
+
+        [Fact]
+        public void None_mode_is_keyless_below_the_horizon_and_matches_legacy_above_it()
+        {
+            var none = new SunCycleSettings { NightKey = NightKeyMode.None };
+            var legacy = new SunCycleSettings();   // AntiSolarMoon
+
+            // Below the horizon: the key is black (no cast key at night), the disc is hidden.
+            var midnight = SunCycle.Evaluate(0f, none);
+            Assert.True(KeyMagnitude(midnight) < 1e-4f, $"None-mode night key should be black, got {midnight.LightColor}");
+            Assert.False(midnight.SunEnabled);
+            Assert.Equal(KeyLightSource.None, midnight.ActiveSource);
+
+            // Above the horizon: identical to the legacy path (same key + direction + disc).
+            foreach (float t in new[] { 0.35f, 0.5f, 0.65f })
+            {
+                var n = SunCycle.Evaluate(t, none);
+                var l = SunCycle.Evaluate(t, legacy);
+                Assert.Equal(l.LightDirection, n.LightDirection);
+                AssertColorEqual(l.LightColor, n.LightColor);
+                AssertColorEqual(l.SunColor, n.SunColor);
+                Assert.Equal(l.SunEnabled, n.SunEnabled);
+            }
+        }
+
+        [Fact]
+        public void None_mode_key_direction_never_reverses_while_lit()
+        {
+            // Default lat/dec: the sun peaks at 70 degrees (no zenith singularity). None mode holds the sun's TRUE
+            // direction all day (no anti-solar flip), so whenever the key is lit the horizontal direction never
+            // reverses between adjacent samples.
+            var s = new SunCycleSettings { NightKey = NightKeyMode.None };
+            var prev = SunCycle.Evaluate(0f, s);
+            for (float t = 0.001f; t <= 1f; t += 0.001f)
+            {
+                var cur = SunCycle.Evaluate(t, s);
+                if (KeyMagnitude(prev) > 1e-3f && KeyMagnitude(cur) > 1e-3f)
+                {
+                    var a = new Vector2(prev.LightDirection.X, prev.LightDirection.Z);
+                    var b = new Vector2(cur.LightDirection.X, cur.LightDirection.Z);
+                    Assert.True(Vector2.Dot(a, b) > 0f, $"None-mode key direction reversed while lit at t={t}: {prev.LightDirection} -> {cur.LightDirection}");
+                }
+                prev = cur;
+            }
+        }
+
+        // A clean opposition config: at the equator with matching declinations and a 12h offset the moon is the exact
+        // anti-phase of the sun (MoonElevation == -SunElevation), the two share their horizon crossings (t=0.25/0.75),
+        // and the 75-degree peak keeps both bodies clear of the zenith azimuth singularity.
+        static SunCycleSettings OppositionMoon() => new()
+        {
+            NightKey = NightKeyMode.Moon,
+            LatitudeDegrees = 0f,
+            SolarDeclinationDegrees = 15f,
+            MoonDeclinationDegrees = 15f,
+            MoonHourOffset = 12f,
+        };
+
+        [Fact]
+        public void Moon_mode_moon_opposes_the_sun_and_owns_the_night()
+        {
+            var s = OppositionMoon();
+            for (float t = 0f; t <= 1f; t += 0.01f)
+            {
+                var st = SunCycle.Evaluate(t, s);
+                Assert.Equal(-st.SunElevationDegrees, st.MoonElevationDegrees, 1e-2);
+            }
+
+            // Midnight: sun down, moon up and owning the key + disc, disc pointed at the moon.
+            var midnight = SunCycle.Evaluate(0f, s);
+            Assert.True(midnight.SunElevationDegrees < 0f && midnight.MoonElevationDegrees > 0f);
+            Assert.Equal(KeyLightSource.Moon, midnight.ActiveSource);
+            Assert.True(midnight.SunEnabled, "moon disc should be up at midnight");
+            Assert.NotNull(midnight.DiscDirectionOverride);
+
+            // Noon: sun up and owning; moon down; no disc override (the disc derives from the key light).
+            var noon = SunCycle.Evaluate(0.5f, s);
+            Assert.Equal(KeyLightSource.Sun, noon.ActiveSource);
+            Assert.True(noon.MoonElevationDegrees < 0f);
+            Assert.Null(noon.DiscDirectionOverride);
+        }
+
+        [Fact]
+        public void Moon_mode_source_switch_happens_through_black_and_direction_never_reverses_while_lit()
+        {
+            var s = OppositionMoon();
+
+            // At the shared crossing (t=0.25) the sun sets as the moon rises: both keys are dipped to black, so the
+            // handover is through black.
+            var atCrossing = SunCycle.Evaluate(0.25f, s);
+            Assert.True(KeyMagnitude(atCrossing) < 1e-4f, $"sun/moon handover should be through a black key, got {atCrossing.LightColor}");
+
+            // The source flips from moon (just before sunrise) to sun (just after) around the crossing.
+            Assert.Equal(KeyLightSource.Moon, SunCycle.Evaluate(0.24f, s).ActiveSource);
+            Assert.Equal(KeyLightSource.Sun, SunCycle.Evaluate(0.26f, s).ActiveSource);
+
+            // Full-day invariant: no adjacent pair with BOTH keys visibly lit straddles an azimuth reversal. The
+            // direction only ever reverses at a sun<->moon handover, and the key is black there (fine sampling lands
+            // any straddling pair deep in the shared dip), so it is skipped.
+            var prev = SunCycle.Evaluate(0f, s);
+            for (float t = 0.0002f; t <= 1f; t += 0.0002f)
+            {
+                var cur = SunCycle.Evaluate(t, s);
+                if (KeyMagnitude(prev) > 0.05f && KeyMagnitude(cur) > 0.05f)
+                {
+                    var a = new Vector2(prev.LightDirection.X, prev.LightDirection.Z);
+                    var b = new Vector2(cur.LightDirection.X, cur.LightDirection.Z);
+                    Assert.True(Vector2.Dot(a, b) > 0f, $"key direction reversed while lit at t={t}: {prev.LightDirection} -> {cur.LightDirection}");
+                }
+                prev = cur;
+            }
+        }
+
+        [Fact]
+        public void Moon_mode_decorative_moon_shows_a_disc_with_a_black_key()
+        {
+            // A game can have a moon that casts nothing but still hangs in the sky: black key, bright independent disc.
+            var s = OppositionMoon();
+            s.MoonKeyColor = new Color(0f, 0f, 0f, 1f);
+            s.MoonDiscColor = new Color(0.9f, 0.9f, 1f, 1f);
+
+            var midnight = SunCycle.Evaluate(0f, s);   // moon high, sun down
+            Assert.Equal(KeyLightSource.Moon, midnight.ActiveSource);
+            Assert.True(KeyMagnitude(midnight) < 1e-4f, $"decorative moon key should be black, got {midnight.LightColor}");
+
+            // The disc slot is visible with the moon's own color, pointed at the moon.
+            Assert.True(midnight.SunEnabled);
+            Assert.True(midnight.SunColor.R + midnight.SunColor.G + midnight.SunColor.B > 1f, $"decorative moon disc should be visible, got {midnight.SunColor}");
+            Assert.NotNull(midnight.DiscDirectionOverride);
+
+            // Apply routes the disc override + color to the sky's single disc slot, and writes a black key light.
+            var post = new PixelPostProcessSettings();
+            SunCycle.Apply(midnight, post);
+            Assert.Equal(midnight.DiscDirectionOverride, post.Sky.SunDirectionOverride);
+            Assert.Equal(midnight.SunColor, post.Sky.SunColor);
+            Assert.True(post.Sky.SunEnabled);
+            Assert.True(post.LightColor.R + post.LightColor.G + post.LightColor.B < 1e-4f);
+        }
+
+        [Fact]
+        public void Apply_clears_the_sun_direction_override_when_the_sun_owns_the_disc()
+        {
+            // A stale moon override from a previous frame must be cleared once the sun owns the disc, so the disc
+            // derives from the key light again.
+            var post = new PixelPostProcessSettings();
+            post.Sky.SunDirectionOverride = new Vector3(1f, 2f, 3f);
+            var noon = SunCycle.Evaluate(0.5f, new SunCycleSettings { NightKey = NightKeyMode.Moon });
+            Assert.Equal(KeyLightSource.Sun, noon.ActiveSource);
+            SunCycle.Apply(noon, post);
+            Assert.Null(post.Sky.SunDirectionOverride);
         }
     }
 }

@@ -5,6 +5,49 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.1.0
+
+Day/night cycle gets a real, decoupled moon and shadows get a moving-sun de-shimmer knob. Two additive
+`Render3D` features for a continuous sun: `SunCycle` grows a `NightKeyMode` (a real moon track that fixes
+the pre-dawn 180-degree shadow flip and can hang a decorative moon), and `ShadowSettings` grows a
+light-direction quantization step that stops a slowly-rotating sun shimmering the shadow edges. Both default
+off / to the historical behaviour, so existing scenes and goldens are byte-stable. Closes #215, #216.
+
+- **`ShadowSettings.ShadowLightQuantizeDegrees`** (`float`, default `0` = off). When `> 0`, `Scene3D`'s
+  cascade fit snaps the key-light direction onto an angular lattice of this many degrees (azimuth +
+  elevation) before fitting, so a continuously rotating sun (a day/night cycle) no longer rotates the
+  texel-snapped light grid every frame. The fitted matrices are then bit-identical between steps, so shadow
+  edges hold rock-solid and the atlas dirty-skip reuses the depth pass instead of re-rendering every frame,
+  and the edges step once per this many degrees of travel (a few texels, softened by the 3x3 PCF) instead of
+  a continuous sub-texel swim. Only the shadow fit sees the quantized direction; shading, the sky, and the
+  sun disc keep the smooth raw `Post.LightDirection`. Consumer guidance ~0.25 to 0.5 degrees.
+- **`ShadowMapMath.QuantizeDirection(Vector3 dir, float stepDegrees)`** (public, pure): normalizes, snaps
+  azimuth and elevation onto the `stepDegrees` lattice, and rebuilds the unit vector. `stepDegrees <= 0` is
+  an exact passthrough; a zero/near-zero input falls back to straight-down (mirroring `BuildLightViewProj`),
+  and a near-vertical (pole) direction is handled without NaNing. Directions inside one lattice cell map to
+  the bit-identical vector; crossing a cell boundary changes the output once.
+- **`SunCycle` `NightKeyMode` enum** on `SunCycleSettings.NightKey`, default `AntiSolarMoon`:
+  - `AntiSolarMoon` (default): the historical virtual moon (key flips to the anti-solar point below the
+    horizon, dipped to black across the crossing). Byte-identical to before; the existing `SunCycleTests`
+    pass unchanged as the compatibility proof.
+  - `None`: keyless nights. Below the horizon the key color is black and the light direction stays the sun's
+    true direction (no anti-solar flip), so it is continuous through the crossing. Above the horizon it is
+    identical to the legacy path.
+  - `Moon`: a real, decoupled second body running the same arc math as the sun with its own hour offset
+    (`MoonHourOffset`, default 12h = opposition), declination (`MoonDeclinationDegrees`), key color
+    (`MoonKeyColor`), disc color (`MoonDiscColor`), and horizon dip (`MoonHorizonKeyDipDegrees`). Key
+    handover: the sun while the sun is up, else the moon while the moon is up, else black. Each body fades to
+    black at its own crossing, so a source switch only ever happens through black and the direction is
+    continuous within each body (killing the pre-dawn 180-degree flip). The single disc slot follows the
+    active body, and the moon's disc color is independent of its key, so a decorative moon can show a bright
+    disc while casting a black key.
+- **`SunCycleState` additive fields** (all readonly): `MoonElevationDegrees`, `MoonDirection` (the moon's key
+  travel direction, always evaluated), `ActiveSource` (a new `KeyLightSource` enum: `Sun` / `Moon` / `None`),
+  and `DiscDirectionOverride` (the direction to the disc body when the moon owns the slot, else null). The
+  disc-slot fields `SunColor` / `SunEnabled` now carry the active body's disc. `SunCycle.Apply` now also
+  writes `Sky.SunDirectionOverride` (pointed at the moon when the moon owns the disc, cleared to null when the
+  sun does). `SunCycle.SolarDirection(...)` is exposed as the shared arc helper both bodies run through.
+
 ## 13.0.3
 
 CI: split the `KhaozEngine.Tests` monolith into nine per-area test projects plus a small cross-cutting

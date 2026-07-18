@@ -27,6 +27,9 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>A stable fallback light direction (straight down) when the caller's is degenerate/zero.</summary>
         static readonly Vector3 FallbackLightDir = new(0f, -1f, 0f);
 
+        /// <summary>Degrees-to-radians, for the light-direction quantization lattice.</summary>
+        const float Deg2Rad = MathF.PI / 180f;
+
         /// <summary>Blend weight (0 = uniform/linear split, 1 = logarithmic split) for the practical cascade split.
         /// A logarithmic split packs texels onto the near cascades (where the eye is closest to the ground and needs
         /// the most resolution) but leaves the far cascade too coarse, and a uniform split wastes near texels. The
@@ -221,6 +224,43 @@ namespace KhaozEngine.Render3D.Internal
             // Ortho covering [-r, r] in X/Y; near 0 at the eye, far spanning eye->focus->far side of the sphere.
             Matrix4x4 proj = Matrix4x4.CreateOrthographic(2f * r, 2f * r, 0f, depthExtent + 2f * r);
             return view * proj;
+        }
+
+        /// <summary>
+        /// Snap a light direction onto a fixed angular lattice of <paramref name="stepDegrees"/>-degree steps in
+        /// azimuth (around world-up Y) and elevation, returning the unit vector on the nearest lattice node. This is
+        /// the moving-sun shadow-shimmer fix: a continuously rotating key light (a day/night cycle) rotates the whole
+        /// texel-snapped light-space grid every frame, so every shadow edge re-rasterizes with a sub-texel offset and
+        /// the atlas dirty-skip (which compares the fitted matrices) never reuses a frame. Feeding the shadow fit a
+        /// QUANTIZED direction holds the light basis constant between steps, so the fitted matrices are bit-identical
+        /// across a sub-step rotation (edges rock solid, atlas reuse returns) and only step once per
+        /// <paramref name="stepDegrees"/> of travel. Quantize ONLY the shadow-fit input; the raw direction still
+        /// drives shading and the sky disc.
+        /// <para>
+        /// <paramref name="stepDegrees"/> &lt;= 0 returns <paramref name="dir"/> unchanged (quantization off, an exact
+        /// passthrough). A degenerate input (zero or near-zero length) falls back to the straight-down
+        /// <see cref="FallbackLightDir"/>, mirroring <see cref="BuildLightViewProj"/>, and a near-vertical direction
+        /// (azimuth ill-defined at the pole) is handled by the plain <c>Atan2</c> without NaNing. Pure.
+        /// </para>
+        /// </summary>
+        public static Vector3 QuantizeDirection(Vector3 dir, float stepDegrees)
+        {
+            if (stepDegrees <= 0f) return dir;                          // off: exact passthrough
+            if (dir.LengthSquared() <= 1e-8f) return FallbackLightDir;  // degenerate: same fallback as the fit
+            Vector3 n = Vector3.Normalize(dir);
+
+            float step = stepDegrees * Deg2Rad;
+            // Spherical decomposition around world-up Y: elevation off the horizontal plane, azimuth around it.
+            float el = MathF.Asin(Math.Clamp(n.Y, -1f, 1f));
+            float az = MathF.Atan2(n.X, n.Z);                           // ill-defined at the pole; Atan2(0,0)=0, no NaN
+
+            float azSnapped = MathF.Round(az / step) * step;
+            float elSnapped = Math.Clamp(MathF.Round(el / step) * step, -MathF.PI / 2f, MathF.PI / 2f);
+
+            float cosEl = MathF.Cos(elSnapped);
+            // Rebuild the unit vector on the lattice node (X = sin(az)cosEl, Y = sinEl, Z = cos(az)cosEl matches the
+            // Atan2(X, Z) decomposition above). Unit by the sin^2+cos^2 identity, so the fit's re-normalize is a no-op.
+            return new Vector3(MathF.Sin(azSnapped) * cosEl, MathF.Sin(elSnapped), MathF.Cos(azSnapped) * cosEl);
         }
     }
 }

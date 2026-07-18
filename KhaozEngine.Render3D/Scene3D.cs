@@ -1662,6 +1662,11 @@ namespace KhaozEngine.Render3D
             Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
             Internal.ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
             Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
+            // A slowly rotating sun rotates the whole texel-snapped light grid every frame, so shadow edges swim and
+            // the atlas dirty-skip never reuses a frame. Snap ONLY the FIT's light direction onto an angular lattice
+            // when enabled, so the fit holds constant between steps; shading and the sky keep the raw Post.LightDirection.
+            if (shadows.ShadowLightQuantizeDegrees > 0f)
+                lightDir = Internal.ShadowMapMath.QuantizeDirection(lightDir, shadows.ShadowLightQuantizeDegrees);
             float prev = camNear;
             for (int i = 0; i < count; i++)
             {

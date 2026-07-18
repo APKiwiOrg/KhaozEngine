@@ -89,7 +89,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   **dirty-skips**: it re-renders only when a shadow-relevant input changed (ANY cascade's fitted matrix, the rigid
   caster set/transforms, the resolution, or any animated skinned caster present) and otherwise reuses the prior atlas,
   so a mostly-static scene stops repainting it every frame. A skipped pass adds zero shadow draw calls to
-  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal.
+  `LastFrameStats`. Read `Scene3D.ShadowPassSkippedLastFrame` for a diagnostics signal. `ShadowLightQuantizeDegrees`
+  (default `0` = off) is the moving-sun de-shimmer knob: a slowly rotating key light (a `SunCycle` day/night cycle)
+  rotates the texel-snapped light grid every frame, so edges swim and the dirty-skip never fires. Set it `> 0` to snap
+  the fit's light direction onto an angular lattice of that many degrees (azimuth + elevation) so the fit holds
+  constant between steps (`ShadowMapMath.QuantizeDirection`) - edges rock-solid, dirty-skip reuse restored, at the cost
+  of one small discrete edge nudge per step. Only the fit sees it; shading/sky keep the raw `Post.LightDirection`.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
@@ -175,10 +180,16 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (three `SunCyclePalette` anchors) keyed on sun elevation, not time, so the same settings work at any
   latitude or day length. `SunCycle.Apply(state, scene.Post)` writes it onto `Post.LightDirection`/
   `LightColor`/`AmbientColor`/`FillLightColor` and `Post.Sky.HorizonColor`/`ZenithColor`/`SunColor`/
-  `SunEnabled`. Below the horizon the key light comes from a virtual moon placed opposite the sun, dipping to
-  zero across the crossing so the direction flip is invisible, and the night ambient floor stays above black
-  so scenes remain playable. The engine owns no clock: feed it your own game time (an MMO replicates it from
-  the server) each frame.
+  `SunEnabled`, plus `Post.Sky.SunDirectionOverride`. The night key follows `SunCycleSettings.NightKey`
+  (`NightKeyMode`, default `AntiSolarMoon`): `AntiSolarMoon` is the historical virtual moon opposite the sun,
+  dipping to zero across the crossing so the direction flip is invisible; `None` is a keyless night (black key,
+  the sun's true direction held); `Moon` is a real decoupled moon body (own `MoonHourOffset`/`MoonDeclinationDegrees`/
+  `MoonKeyColor`/`MoonDiscColor`/`MoonHorizonKeyDipDegrees`) that owns the key + single disc slot while it is up,
+  each body fading to black at its own crossing so a switch is always through black, with an independent disc color
+  so a decorative moon can cast a black key. `SunCycleState` exposes `MoonElevationDegrees`/`MoonDirection`/
+  `ActiveSource` (`KeyLightSource`)/`DiscDirectionOverride`. The night ambient floor stays above black so scenes
+  remain playable. The engine owns no clock: feed it your own game time (an MMO replicates it from the server)
+  each frame.
 
   ```csharp
   var cycle = new SunCycleSettings();

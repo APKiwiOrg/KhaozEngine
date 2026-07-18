@@ -1819,7 +1819,14 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
       material set - drop to 1024/512 on low-end). `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
-      cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
+      cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`). `ShadowLightQuantizeDegrees`
+      (default `0` = off): a moving-sun de-shimmer knob. A slowly rotating key light (a `SunCycle` day/night
+      cycle) rotates the texel-snapped light grid every frame, so shadow edges swim and the atlas dirty-skip
+      never reuses a frame. Set this `> 0` to snap the FIT's light direction onto an angular lattice of that
+      many degrees (azimuth + elevation) so the fit holds constant between steps: edges hold rock-solid and
+      the atlas reuse returns, at the cost of one small discrete edge nudge per step (a few texels, softened
+      by the 3x3 PCF). Only the shadow fit sees the quantized direction; shading, the sky, and the sun disc
+      keep the smooth raw `Post.LightDirection`. Guidance ~0.25 to 0.5 degrees under a moving sun.
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
@@ -1939,12 +1946,22 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     noon, any value wraps) and `SunCycleSettings` (latitude/declination/heading shape the sun arc, plus the
     twilight/night elevation bands). The game owns the clock, ticks it, and decides how it advances, and in an MMO
     the server replicates the time to clients so every player sees the same sky.
-  - **Night handling.** Below the horizon the sun disc hides (`Sky.SunEnabled = false`, `Sky.SunColor` faded to
-    black) and the key light switches to a virtual moon placed opposite the sun, so `Post.LightDirection` still
-    points somewhere downward instead of flipping to darkness. The key light dips to zero across the horizon
-    crossing so the 180 degree azimuth flip between sun and moon is never visible. `AmbientColor` never reaches
-    pure black, so night stays playable. A visible moon disc and a secondary night key light are deferred
-    follow-ups, see https://github.com/APKiwiOrg/KhaozEngine/issues/50.
+  - **Night handling (`NightKeyMode`, on `SunCycleSettings.NightKey`).** How the key light behaves below the
+    sun's horizon. `AmbientColor` never reaches pure black in any mode, so night stays playable.
+    - `AntiSolarMoon` (**default**, byte-stable): the key switches to a virtual moon placed exactly opposite
+      the sun, so `Post.LightDirection` still points somewhere downward instead of flipping to darkness, and
+      the key dips to zero across the horizon crossing so the 180-degree azimuth flip is never visible. The
+      sun disc hides at night (`Sky.SunEnabled = false`, `Sky.SunColor` faded to black).
+    - `None`: keyless nights. Below the horizon the key color is black and the direction stays the sun's true
+      direction (no anti-solar flip). For night lit by ambient + fill only.
+    - `Moon`: a real, decoupled moon track (`MoonHourOffset` default 12h = opposition, `MoonDeclinationDegrees`,
+      `MoonKeyColor`, `MoonDiscColor`, `MoonHorizonKeyDipDegrees`). The key is the sun while the sun is up, else
+      the moon while the moon is up, else black; each body fades to black at its own crossing, so a switch is
+      always through black and the direction is continuous within each body (this kills the pre-dawn flip). The
+      single disc slot follows the active body, and the moon disc color is independent of its key, so a
+      decorative moon can hang a bright disc while casting a black key. `Apply` manages `Sky.SunDirectionOverride`
+      (pointed at the moon when the moon owns the disc, cleared for the sun). Read `state.ActiveSource`
+      (`KeyLightSource.Sun`/`Moon`/`None`) and `state.MoonElevationDegrees`/`MoonDirection` to drive custom sinks.
   - **Palettes are calibrated, not fixed.** `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette` (each a
     `SunCyclePalette`) default to the engine's existing look (`DefaultDay()` reproduces the stock `Sky`/`Post`
     defaults exactly), blended by sun elevation rather than time of day so one setup works at any latitude or day

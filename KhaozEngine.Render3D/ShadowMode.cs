@@ -183,6 +183,19 @@ namespace KhaozEngine.Render3D
         /// as shade, not black. Default <c>0.85</c>.</summary>
         public float ShadowStrength = 0.85f;
 
+        /// <summary>Angular lattice, in degrees, the key-light direction is SNAPPED to before the cascades are fitted,
+        /// so a slowly rotating sun (a day/night cycle) stops shimmering shadow edges. Default <c>0</c> = off (the fit
+        /// consumes the raw <see cref="PixelPostProcessSettings.LightDirection"/>, byte-identical to before). When
+        /// &gt; 0 the fit quantizes the normalized light direction onto steps of this many degrees in azimuth and
+        /// elevation (<see cref="Internal.ShadowMapMath.QuantizeDirection"/>): the light-space basis then holds
+        /// constant between steps, so the texel-snapped fit is bit-identical frame to frame (edges rock solid, and the
+        /// atlas dirty-skip reuses the depth pass instead of re-rendering every frame under a moving sun), and the
+        /// edges step once per this many degrees of travel. Trade: one small discrete edge nudge per step (a few
+        /// texels, softened by the 3x3 PCF) in place of a continuous sub-texel swim. Consumer guidance: ~0.25 to 0.5
+        /// degrees. ONLY the shadow fit sees the quantized direction; shading, the sky, and the sun disc keep the
+        /// smooth raw direction. Only used when <see cref="Mode"/> resolves to <see cref="ShadowMode.ShadowMap"/>.</summary>
+        public float ShadowLightQuantizeDegrees = 0f;
+
         /// <summary>Minimum cascade count (the single-map path). See <see cref="ShadowCascadeCount"/>.</summary>
         public const int MinCascades = 1;
         /// <summary>Maximum cascade count (matches the fixed-size cascade arrays in the frame UBO / shaders).</summary>

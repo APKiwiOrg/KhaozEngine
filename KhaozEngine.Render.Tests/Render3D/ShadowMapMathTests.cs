@@ -334,5 +334,76 @@ namespace KhaozEngine.Tests.Render3D
             Vector3 pFar = eye + fwd * 200f;
             Assert.Equal(2, ShadowMapMath.SelectCascade(mats, 3, pFar));
         }
+
+        // ---- Light-direction quantization (the moving-sun shimmer fix) --------------------------------------------
+
+        // A unit direction from azimuth (around Y) + elevation degrees, matching QuantizeDirection's Atan2(X,Z) basis.
+        static Vector3 DirFromAzEl(float azDeg, float elDeg)
+        {
+            float az = azDeg * MathF.PI / 180f, el = elDeg * MathF.PI / 180f;
+            float cosEl = MathF.Cos(el);
+            return new Vector3(MathF.Sin(az) * cosEl, MathF.Sin(el), MathF.Cos(az) * cosEl);
+        }
+
+        [Fact]
+        public void Quantize_StepZeroOrNegative_IsExactPassthrough()
+        {
+            // Default 0 (and any non-positive step) returns the input untouched, so the fit is byte-identical to before.
+            var dir = Vector3.Normalize(new Vector3(0.3f, -0.7f, 0.2f));
+            Assert.Equal(dir, ShadowMapMath.QuantizeDirection(dir, 0f));
+            Assert.Equal(dir, ShadowMapMath.QuantizeDirection(dir, -5f));
+        }
+
+        [Fact]
+        public void Quantize_WithinOneCell_YieldsIdenticalVectorAndFitMatrices()
+        {
+            // Two directions inside the SAME lattice cell (az node 10, el node -40 at a 5-degree step) must snap to the
+            // bit-identical vector, so BuildLightViewProj yields bit-identical matrices for a sub-step light rotation.
+            const float step = 5f;
+            Vector3 qa = ShadowMapMath.QuantizeDirection(DirFromAzEl(10.4f, -39.3f), step);
+            Vector3 qb = ShadowMapMath.QuantizeDirection(DirFromAzEl(11.2f, -41.1f), step);
+            Assert.Equal(qa, qb);
+
+            var focus = new Vector3(2f, 1f, -3f);
+            Matrix4x4 ma = ShadowMapMath.BuildLightViewProj(qa, focus, radius: 7f, resolution: 2048);
+            Matrix4x4 mb = ShadowMapMath.BuildLightViewProj(qb, focus, radius: 7f, resolution: 2048);
+            Assert.Equal(ma, mb);
+        }
+
+        [Fact]
+        public void Quantize_CrossingStepBoundary_ChangesOutputExactlyOnce()
+        {
+            // Sweeping azimuth across a single lattice boundary (12.5 deg, between the 10 and 15 nodes at a 5-degree
+            // step) flips the snapped output exactly once - discrete steps, not a continuous slide.
+            const float step = 5f;
+            Vector3? prev = null;
+            int transitions = 0;
+            for (float azDeg = 11f; azDeg <= 14f + 1e-4f; azDeg += 0.1f)
+            {
+                Vector3 q = ShadowMapMath.QuantizeDirection(DirFromAzEl(azDeg, -40f), step);
+                if (prev is { } p && q != p) transitions++;
+                prev = q;
+            }
+            Assert.Equal(1, transitions);
+        }
+
+        [Fact]
+        public void Quantize_DegenerateInputs_DoNotThrowOrNaN()
+        {
+            // Zero, near-zero, and the two poles (azimuth ill-defined) must return a finite unit-ish vector, never NaN.
+            foreach ((Vector3 dir, float step) in new (Vector3, float)[]
+            {
+                (Vector3.Zero, 5f),
+                (new Vector3(1e-9f, 1e-9f, 1e-9f), 5f),
+                (new Vector3(0f, 1f, 0f), 5f),
+                (new Vector3(0f, -1f, 0f), 5f),
+                (new Vector3(0.01f, 0.9999f, 0f), 3f),
+            })
+            {
+                Vector3 q = ShadowMapMath.QuantizeDirection(dir, step);
+                Assert.True(float.IsFinite(q.X) && float.IsFinite(q.Y) && float.IsFinite(q.Z), $"NaN for {dir}: {q}");
+                Assert.True(q.Length() > 0.5f, $"degenerate quantize should stay a unit-ish vector, got {q}");
+            }
+        }
     }
 }

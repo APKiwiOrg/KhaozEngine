@@ -62,6 +62,54 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>
+    /// How the key light behaves at night (below the sun's horizon). Selects the night track on
+    /// <see cref="SunCycleSettings.NightKey"/>. <see cref="AntiSolarMoon"/> is the DEFAULT so existing scenes are
+    /// byte-stable (the historical virtual-moon behaviour is unchanged out of the box).
+    /// </summary>
+    public enum NightKeyMode
+    {
+        /// <summary>The legacy virtual moon: below the horizon the key light comes from a point exactly OPPOSITE the
+        /// sun (<c>-sunToward</c> flips to <c>+sunToward</c>), dipped to black across the crossing so the 180-degree
+        /// azimuth flip is hidden. The DEFAULT: today's behaviour, byte-stable. The disc is hidden at night.</summary>
+        AntiSolarMoon,
+
+        /// <summary>Keyless nights: below the horizon the key color is BLACK and the light direction stays the sun's
+        /// TRUE travel direction (<c>-sunToward</c>, no anti-solar flip), so the direction is continuous through the
+        /// crossing. Above the horizon this is identical to <see cref="AntiSolarMoon"/> (the same day/dusk key with the
+        /// horizon dip). For games that want night lit by ambient + fill only, with no cast key at night.</summary>
+        None,
+
+        /// <summary>A real, decoupled moon track: a second body running the same arc math as the sun with its own hour
+        /// offset (<see cref="SunCycleSettings.MoonHourOffset"/>, default 12h = opposition), its own declination
+        /// (<see cref="SunCycleSettings.MoonDeclinationDegrees"/>), its own key color
+        /// (<see cref="SunCycleSettings.MoonKeyColor"/>) and its own horizon dip
+        /// (<see cref="SunCycleSettings.MoonHorizonKeyDipDegrees"/>). The key is the sun while the sun is up, else the
+        /// moon while the moon is up, else black; each body fades to black at its OWN crossing, so a source switch
+        /// only ever happens through black and the direction is continuous within each body. The disc follows the
+        /// active body (sun when up, else moon when up) and can show a decorative moon that casts no key. Kills the
+        /// pre-dawn 180-degree flip: below the horizon the sun is simply never the key.</summary>
+        Moon,
+    }
+
+    /// <summary>
+    /// Which celestial body owns the key light and the single disc slot this frame (see
+    /// <see cref="SunCycleState.ActiveSource"/>). <see cref="Sun"/> while the sun is above the horizon;
+    /// <see cref="Moon"/> only under <see cref="NightKeyMode.Moon"/> while the sun is down and the moon is up;
+    /// <see cref="None"/> otherwise (a keyless/discless stretch of night). The key COLOR can still be black while a
+    /// body is the source (a decorative moon casts no key), so read <see cref="SunCycleState.LightColor"/> for the
+    /// key strength and this for the active body.
+    /// </summary>
+    public enum KeyLightSource
+    {
+        /// <summary>No body owns the slot: the disc is hidden and the key is black (ambient/fill only).</summary>
+        None,
+        /// <summary>The sun owns the key + disc (it is above the horizon).</summary>
+        Sun,
+        /// <summary>The moon owns the key + disc (<see cref="NightKeyMode.Moon"/>, sun down, moon up).</summary>
+        Moon,
+    }
+
+    /// <summary>
     /// Configuration for the day/night cycle mapping. Time of day is a normalized float where
     /// 0 is midnight and 0.5 is solar noon. The caller owns the clock, the engine only maps.
     /// </summary>
@@ -85,8 +133,37 @@ namespace KhaozEngine.Render3D
         /// <summary>Half-width in degrees of the key-light dip that hides the direction flip at the horizon crossing.</summary>
         public float HorizonKeyDipDegrees { get; set; } = 2f;
 
-        /// <summary>Elevation in degrees over which the sun disc color fades in from the horizon.</summary>
+        /// <summary>Elevation in degrees over which the sun disc color fades in from the horizon. The moon disc reuses this width against the moon's elevation.</summary>
         public float SunDiscFadeElevationDegrees { get; set; } = 4f;
+
+        /// <summary>Which night track the key light follows below the sun's horizon. Default
+        /// <see cref="NightKeyMode.AntiSolarMoon"/> (the legacy virtual moon), so existing scenes are byte-stable.</summary>
+        public NightKeyMode NightKey { get; set; } = NightKeyMode.AntiSolarMoon;
+
+        /// <summary>Moon time offset from the sun, in HOURS on a 24-hour day (the moon runs the same arc math as the
+        /// sun, shifted by this much). Default <c>12</c> = opposition (the moon rises as the sun sets), which lines
+        /// the two crossings up so the sun-to-moon handover happens through black. Only used under
+        /// <see cref="NightKeyMode.Moon"/>.</summary>
+        public float MoonHourOffset { get; set; } = 12f;
+
+        /// <summary>The moon's own declination in degrees (its arc's seasonal tilt), independent of
+        /// <see cref="SolarDeclinationDegrees"/> so the moon track is genuinely decoupled from the sun's. Default
+        /// <c>15</c>. Only used under <see cref="NightKeyMode.Moon"/>.</summary>
+        public float MoonDeclinationDegrees { get; set; } = 15f;
+
+        /// <summary>The moon's key light color (magnitude = intensity), independent of the disc color so a game can
+        /// have a decorative moon that casts nothing (set this to black, keep <see cref="MoonDiscColor"/> bright).
+        /// Default a dim cool moonlight. Only used under <see cref="NightKeyMode.Moon"/>.</summary>
+        public Color MoonKeyColor { get; set; } = new Color(0.16f, 0.22f, 0.38f, 1f);
+
+        /// <summary>The moon disc + halo color (the single disc slot, when the moon owns it), independent of
+        /// <see cref="MoonKeyColor"/>. Default a pale silver. Only used under <see cref="NightKeyMode.Moon"/>.</summary>
+        public Color MoonDiscColor { get; set; } = new Color(0.85f, 0.88f, 0.95f, 1f);
+
+        /// <summary>Half-width in degrees of the MOON's key-light dip at its own horizon crossing, so the moon key
+        /// fades to black as the moon sets/rises (the sun's counterpart is <see cref="HorizonKeyDipDegrees"/>).
+        /// Default <c>2</c>. Only used under <see cref="NightKeyMode.Moon"/>.</summary>
+        public float MoonHorizonKeyDipDegrees { get; set; } = 2f;
 
         /// <summary>Palette used when the sun is high.</summary>
         public SunCyclePalette DayPalette { get; set; } = SunCyclePalette.DefaultDay();
@@ -104,7 +181,10 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public readonly struct SunCycleState
     {
-        /// <summary>Creates a state from its evaluated components.</summary>
+        /// <summary>Creates a state from its evaluated components. The moon/source fields
+        /// (<paramref name="moonElevationDegrees"/>, <paramref name="moonDirection"/>, <paramref name="activeSource"/>,
+        /// <paramref name="discDirectionOverride"/>) are optional additive fields for the real-moon night track; the
+        /// legacy modes leave them at their defaults.</summary>
         public SunCycleState(
             Vector3 lightDirection,
             float sunElevationDegrees,
@@ -114,7 +194,11 @@ namespace KhaozEngine.Render3D
             bool sunEnabled,
             Color lightColor,
             Color ambientColor,
-            Color fillLightColor)
+            Color fillLightColor,
+            float moonElevationDegrees = 0f,
+            Vector3 moonDirection = default,
+            KeyLightSource activeSource = KeyLightSource.Sun,
+            Vector3? discDirectionOverride = null)
         {
             LightDirection = lightDirection;
             SunElevationDegrees = sunElevationDegrees;
@@ -125,9 +209,17 @@ namespace KhaozEngine.Render3D
             LightColor = lightColor;
             AmbientColor = ambientColor;
             FillLightColor = fillLightColor;
+            MoonElevationDegrees = moonElevationDegrees;
+            MoonDirection = moonDirection;
+            ActiveSource = activeSource;
+            DiscDirectionOverride = discDirectionOverride;
         }
 
-        /// <summary>Direction the key light travels, following <see cref="PixelPostProcessSettings.LightDirection"/> semantics (from the sun toward the scene). Below the horizon it comes from a virtual moon placed opposite the sun.</summary>
+        /// <summary>Direction the key light travels, following <see cref="PixelPostProcessSettings.LightDirection"/>
+        /// semantics (from the light toward the scene). Under <see cref="NightKeyMode.AntiSolarMoon"/> it flips to the
+        /// anti-solar point below the horizon; under <see cref="NightKeyMode.None"/> it stays the sun's true direction
+        /// (the key just goes black); under <see cref="NightKeyMode.Moon"/> it is the moon's travel direction while the
+        /// moon owns the key. Continuous within each source (any switch happens through a black key).</summary>
         public Vector3 LightDirection { get; }
 
         /// <summary>Sun elevation above the horizon in degrees. Negative below the horizon.</summary>
@@ -139,13 +231,19 @@ namespace KhaozEngine.Render3D
         /// <summary>Sky gradient color at the zenith.</summary>
         public Color ZenithColor { get; }
 
-        /// <summary>Sun disc and halo color, faded to black as the disc drops to the horizon.</summary>
+        /// <summary>The single disc slot's color (disc + halo), faded to black as the active body drops to the horizon.
+        /// Carries the sun's disc color while the sun is up, else the moon's disc color while the moon owns the slot
+        /// (<see cref="NightKeyMode.Moon"/>). Independent of <see cref="LightColor"/>, so a decorative moon can show a
+        /// bright disc while casting a black key.</summary>
         public Color SunColor { get; }
 
-        /// <summary>Whether the sun disc should be drawn. False below the horizon.</summary>
+        /// <summary>Whether the disc should be drawn. True while a body owns the slot (the sun above the horizon, or
+        /// the moon under <see cref="NightKeyMode.Moon"/>); false in a keyless/discless stretch of night.</summary>
         public bool SunEnabled { get; }
 
-        /// <summary>Key light color, dipped to black across the horizon crossing to hide the direction flip.</summary>
+        /// <summary>Key light color. Dipped to black across a body's own horizon crossing to hide the direction change,
+        /// and black outright during a keyless night (<see cref="NightKeyMode.None"/> below the horizon, or
+        /// <see cref="NightKeyMode.Moon"/> with no body up / a decorative black-key moon).</summary>
         public Color LightColor { get; }
 
         /// <summary>Ambient light color, the playable floor that keeps night from going pitch black.</summary>
@@ -153,6 +251,25 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Fill light color.</summary>
         public Color FillLightColor { get; }
+
+        /// <summary>Moon elevation above the horizon in degrees (negative below). Always evaluated (the moon arc runs
+        /// in every mode); only DRIVES the key/disc under <see cref="NightKeyMode.Moon"/>.</summary>
+        public float MoonElevationDegrees { get; }
+
+        /// <summary>Direction the MOON's light travels (from the moon toward the scene), following the same semantics
+        /// as <see cref="LightDirection"/>. Always evaluated; equals <see cref="LightDirection"/> while the moon owns
+        /// the key.</summary>
+        public Vector3 MoonDirection { get; }
+
+        /// <summary>Which body owns the key + disc slot this frame. Drives the disc handover and tells a custom sink
+        /// whether it is looking at a sun-lit, moon-lit, or keyless frame.</summary>
+        public KeyLightSource ActiveSource { get; }
+
+        /// <summary>Direction TO the active disc body when the disc is NOT the sun (i.e. the moon owns the slot):
+        /// the world-space direction the sky's sun-disc override should point at. <c>null</c> when the sun owns the
+        /// slot (the disc derives from the key light) or nothing does. <see cref="SunCycle.Apply"/> writes it straight
+        /// to <see cref="SkySettings.SunDirectionOverride"/>.</summary>
+        public Vector3? DiscDirectionOverride { get; }
     }
 
     /// <summary>
@@ -164,14 +281,145 @@ namespace KhaozEngine.Render3D
     {
         private const float Deg2Rad = MathF.PI / 180f;
         private const float Rad2Deg = 180f / MathF.PI;
+        private static readonly Color Black = new(0f, 0f, 0f, 1f);
 
         /// <summary>Evaluates the lighting state for a time of day (0 is midnight, 0.5 is solar noon, any float wraps).</summary>
         public static SunCycleState Evaluate(float timeOfDay, SunCycleSettings settings)
         {
+            // Sun arc (the historical computation, now shared with the moon via SolarDirection).
+            Vector3 sunToward = SolarDirection(
+                timeOfDay, settings.LatitudeDegrees, settings.SolarDeclinationDegrees, settings.HeadingDegrees, out float elDeg);
+
+            // Moon arc: the same math, offset in time and with its own declination. Always evaluated so the state's
+            // moon fields are populated in every mode; only the Moon night track consumes it for the key/disc.
+            Vector3 moonToward = SolarDirection(
+                timeOfDay + settings.MoonHourOffset / 24f, settings.LatitudeDegrees, settings.MoonDeclinationDegrees,
+                settings.HeadingDegrees, out float moonElDeg);
+            Vector3 moonLightDir = -moonToward;
+
+            // Elevation-keyed palette blend (identical in every mode: this is the SKY/ambient/fill, driven by the sun).
+            float twilightBand = MathF.Max(1e-3f, settings.TwilightStartElevationDegrees);
+            float nightBand = MathF.Max(1e-3f, MathF.Abs(settings.NightFullElevationDegrees));
+            SunCyclePalette from = settings.DuskPalette;
+            SunCyclePalette to;
+            float s;
+            if (elDeg >= 0f)
+            {
+                to = settings.DayPalette;
+                s = MathUtil.SmoothStep(0f, twilightBand, elDeg);
+            }
+            else
+            {
+                to = settings.NightPalette;
+                s = MathUtil.SmoothStep(0f, nightBand, -elDeg);
+            }
+
+            Color horizon = Color.Lerp(from.HorizonColor, to.HorizonColor, s);
+            Color zenith = Color.Lerp(from.ZenithColor, to.ZenithColor, s);
+            Color ambient = Color.Lerp(from.AmbientColor, to.AmbientColor, s);
+            Color fill = Color.Lerp(from.FillColor, to.FillColor, s);
+            Color baseKey = Color.Lerp(from.LightColor, to.LightColor, s);
+            Color baseSun = Color.Lerp(from.SunColor, to.SunColor, s);
+
+            // The sun's own key dip + disc fade at its horizon crossing.
+            float sunKeyDip = MathUtil.SmoothStep(
+                0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
+            float sunDiscFade = MathUtil.SmoothStep(
+                0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), elDeg);
+
+            // The sun-owned disc (shared by AntiSolarMoon and None; the sun's disc is hidden below the horizon).
+            Color sunDisc = baseSun.ScaleRgb(sunDiscFade);
+            bool sunUp = elDeg > 0f;
+
+            Vector3 lightDir;
+            Color key;
+            Color disc;
+            bool discEnabled;
+            Vector3? discOverride;
+            KeyLightSource source;
+
+            switch (settings.NightKey)
+            {
+                case NightKeyMode.None:
+                    // Keyless nights: direction stays the sun's TRUE travel dir (no anti-solar flip); the key just
+                    // goes black below the horizon. Above the horizon this is identical to the legacy path.
+                    lightDir = -sunToward;
+                    key = sunUp ? baseKey.ScaleRgb(sunKeyDip) : Black;
+                    disc = sunDisc;
+                    discEnabled = sunUp;
+                    discOverride = null;
+                    source = sunUp ? KeyLightSource.Sun : KeyLightSource.None;
+                    break;
+
+                case NightKeyMode.Moon:
+                    if (sunUp)
+                    {
+                        // Sun owns the key + disc.
+                        lightDir = -sunToward;
+                        key = baseKey.ScaleRgb(sunKeyDip);
+                        disc = sunDisc;
+                        discEnabled = true;
+                        discOverride = null;
+                        source = KeyLightSource.Sun;
+                    }
+                    else if (moonElDeg > 0f)
+                    {
+                        // Moon owns the key + disc: its own key color/dip and its own disc color/fade, disc pointed at
+                        // the moon. The key can be black (decorative moon) while the disc stays visible.
+                        float moonKeyDip = MathUtil.SmoothStep(
+                            0f, MathF.Max(1e-3f, settings.MoonHorizonKeyDipDegrees), MathF.Abs(moonElDeg));
+                        float moonDiscFade = MathUtil.SmoothStep(
+                            0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), moonElDeg);
+                        lightDir = moonLightDir;
+                        key = settings.MoonKeyColor.ScaleRgb(moonKeyDip);
+                        disc = settings.MoonDiscColor.ScaleRgb(moonDiscFade);
+                        discEnabled = true;
+                        discOverride = moonToward;   // direction TO the moon (the moon light travels -moonToward)
+                        source = KeyLightSource.Moon;
+                    }
+                    else
+                    {
+                        // Neither body up: keyless, discless. Hold the sun's true direction for continuity (the key is
+                        // black, so a switch through this state is invisible).
+                        lightDir = -sunToward;
+                        key = Black;
+                        disc = Black;
+                        discEnabled = false;
+                        discOverride = null;
+                        source = KeyLightSource.None;
+                    }
+                    break;
+
+                default: // NightKeyMode.AntiSolarMoon - the legacy virtual moon (byte-identical to the historical path).
+                    lightDir = sunUp ? -sunToward : sunToward;
+                    key = baseKey.ScaleRgb(sunKeyDip);
+                    disc = sunDisc;
+                    discEnabled = sunUp;
+                    discOverride = null;
+                    source = sunUp ? KeyLightSource.Sun : KeyLightSource.None;
+                    break;
+            }
+
+            return new SunCycleState(
+                lightDir, elDeg, horizon, zenith, disc, discEnabled, key, ambient, fill,
+                moonElDeg, moonLightDir, source, discOverride);
+        }
+
+        /// <summary>
+        /// The unit direction TOWARD a body on the analytic sun arc for a normalized <paramref name="timeOfDay"/>
+        /// (0 = midnight, 0.5 = solar noon, any value wraps), given the observer <paramref name="latitudeDegrees"/>,
+        /// the body's <paramref name="declinationDegrees"/>, and the path <paramref name="headingDegrees"/>. Both the
+        /// sun and the (offset, own-declination) moon run through this, so their arcs are identical geometry. Y-up
+        /// world, north is -Z, east is +X; <paramref name="elevationDegrees"/> is the body's elevation above the
+        /// horizon (negative below).
+        /// </summary>
+        public static Vector3 SolarDirection(
+            float timeOfDay, float latitudeDegrees, float declinationDegrees, float headingDegrees, out float elevationDegrees)
+        {
             float t = timeOfDay - MathF.Floor(timeOfDay);
             float h = (t - 0.5f) * MathF.Tau;
-            float lat = settings.LatitudeDegrees * Deg2Rad;
-            float dec = settings.SolarDeclinationDegrees * Deg2Rad;
+            float lat = latitudeDegrees * Deg2Rad;
+            float dec = declinationDegrees * Deg2Rad;
             float sinEl = Math.Clamp(
                 MathF.Sin(lat) * MathF.Sin(dec) + MathF.Cos(lat) * MathF.Cos(dec) * MathF.Cos(h),
                 -1f, 1f);
@@ -193,56 +441,19 @@ namespace KhaozEngine.Render3D
                 az = MathF.Acos(cosAz);
                 if (MathF.Sin(h) > 0f) az = MathF.Tau - az;
             }
-            az += settings.HeadingDegrees * Deg2Rad;
+            az += headingDegrees * Deg2Rad;
 
             // Y-up world, north is -Z, east is +X.
-            var sunToward = new Vector3(MathF.Sin(az) * cosEl, sinEl, -MathF.Cos(az) * cosEl);
-            float elDeg = el * Rad2Deg;
-
-            // Below the horizon a virtual moon opposite the sun keeps a downward key light.
-            // The key dips to zero at the crossing so the 180 degree azimuth flip is invisible.
-            Vector3 lightDir = elDeg > 0f ? -sunToward : sunToward;
-
-            float twilightBand = MathF.Max(1e-3f, settings.TwilightStartElevationDegrees);
-            float nightBand = MathF.Max(1e-3f, MathF.Abs(settings.NightFullElevationDegrees));
-            SunCyclePalette from = settings.DuskPalette;
-            SunCyclePalette to;
-            float s;
-            if (elDeg >= 0f)
-            {
-                to = settings.DayPalette;
-                s = MathUtil.SmoothStep(0f, twilightBand, elDeg);
-            }
-            else
-            {
-                to = settings.NightPalette;
-                s = MathUtil.SmoothStep(0f, nightBand, -elDeg);
-            }
-
-            Color horizon = Color.Lerp(from.HorizonColor, to.HorizonColor, s);
-            Color zenith = Color.Lerp(from.ZenithColor, to.ZenithColor, s);
-            Color ambient = Color.Lerp(from.AmbientColor, to.AmbientColor, s);
-            Color fill = Color.Lerp(from.FillColor, to.FillColor, s);
-            Color key = Color.Lerp(from.LightColor, to.LightColor, s);
-            Color sun = Color.Lerp(from.SunColor, to.SunColor, s);
-
-            float keyDip = MathUtil.SmoothStep(
-                0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
-            key = key.ScaleRgb(keyDip);
-
-            bool sunEnabled = elDeg > 0f;
-            float discFade = MathUtil.SmoothStep(
-                0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), elDeg);
-            sun = sun.ScaleRgb(discFade);
-
-            return new SunCycleState(lightDir, elDeg, horizon, zenith, sun, sunEnabled, key, ambient, fill);
+            elevationDegrees = el * Rad2Deg;
+            return new Vector3(MathF.Sin(az) * cosEl, sinEl, -MathF.Cos(az) * cosEl);
         }
 
         /// <summary>
         /// Writes a state to the scene's lighting and sky settings. Touches exactly the key light
-        /// direction and color, ambient, fill color, sky gradient, sun disc color, and sun disc
-        /// visibility. Leaves Sky.Enabled, the anchor, halo shape, radius, and the fill direction
-        /// to the caller.
+        /// direction and color, ambient, fill color, sky gradient, sun disc color, sun disc
+        /// visibility, and the sky's sun-direction override (pointed at the moon when the moon owns
+        /// the disc, cleared to null when the sun does). Leaves Sky.Enabled, the anchor, halo shape,
+        /// radius, and the fill direction to the caller.
         /// </summary>
         public static void Apply(in SunCycleState state, PixelPostProcessSettings post)
         {
@@ -254,6 +465,7 @@ namespace KhaozEngine.Render3D
             post.Sky.ZenithColor = state.ZenithColor;
             post.Sky.SunColor = state.SunColor;
             post.Sky.SunEnabled = state.SunEnabled;
+            post.Sky.SunDirectionOverride = state.DiscDirectionOverride;
         }
     }
 }

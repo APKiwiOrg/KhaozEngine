@@ -336,11 +336,12 @@ public class SettingsManagerTests
 
             var loaded = storage.Load<SaveDoc>("nosave.json", chain);
 
-            // Absent file => new SaveDoc() at SchemaVersion 0, which predates the chain's oldest
-            // step (1); the chain leaves it untouched per the "predates oldest step" policy.
+            // Absent file => new SaveDoc(), StampCurrent-ed to the chain's current version (#155). A first
+            // boot is not a pre-migration save, so no step runs (Items stays empty) and it is marked current
+            // rather than left at version 0 and warned through the "predates oldest step" path.
             Assert.NotNull(loaded);
             Assert.Empty(loaded.Items);
-            Assert.Equal(0, loaded.SchemaVersion);
+            Assert.Equal(2, loaded.SchemaVersion);
         }
         finally
         {

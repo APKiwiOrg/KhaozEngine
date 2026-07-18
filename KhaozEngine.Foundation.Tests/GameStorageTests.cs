@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using KhaozEngine.App;
+using KhaozEngine.Diagnostics;
 using KhaozEngine.Persistence;
 using Xunit;
 
@@ -22,6 +23,14 @@ public class GameStorageTests
 
     public sealed class TestSave
     {
+        public int Score { get; set; }
+    }
+
+    // Schema-versioned type for the StampCurrent (#155) regression: a fresh default must be stamped to
+    // the current version without running (and warning through) the migration chain.
+    public sealed class VersionedSave : ISchemaVersioned
+    {
+        public int SchemaVersion { get; set; }
         public int Score { get; set; }
     }
 
@@ -297,5 +306,130 @@ public class GameStorageTests
         using GameStorage storage = CreateStorage(out string dir);
         Assert.Throws<InvalidOperationException>(() =>
             storage.Save("slot.json", new TestSave { Score = 1 }, true));
+    }
+
+    [Fact]
+    public void LoadWithOutcome_TamperedPrimary_RecoversFromBak1()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir);
+        storage.Save("s.json", new TestSave { Score = 1 });
+        storage.Flush();
+        storage.Save("s.json", new TestSave { Score = 2 });   // rotation: score 1 now in .bak1
+        storage.Flush();
+        string path = Path.Combine(dir, "s.json");
+        File.WriteAllText(path, File.ReadAllText(path)[..^4] + "AAA=");   // corrupt the payload tail
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, r.Outcome);
+        Assert.Equal(1, r.RecoveredGeneration);
+        Assert.Equal(1, r.Value.Score);
+    }
+
+    [Fact]
+    public void Load_CorruptPrimaryNoBackups_DoesNotThrow_ReturnsDefaults()
+    {
+        using GameStorage storage = CreateStorage(out string dir);   // no encoder, BackupGenerations = 0 via options
+        File.WriteAllText(Path.Combine(dir, "c.json"), "{ not json !!");
+
+        TestSave v = storage.Load<TestSave>("c.json");   // issue #148: this used to throw JsonException
+
+        Assert.Equal(0, v.Score);
+    }
+
+    [Fact]
+    public void LoadWithOutcome_MissingFile_FreshDefault_StampsCurrentVersion()
+    {
+        var log = new FakeLogger();
+        using GameStorage storage = CreateStorage(out string dir, o => o.Logger = log);
+        MigrationChain<VersionedSave> chain = MigrationChain.For<VersionedSave>()
+            .Step(1, v => v)
+            .Step(2, v => v)
+            .Build(3);
+
+        SaveLoadResult<VersionedSave> r = storage.LoadWithOutcome<VersionedSave>("missing.json", chain);
+
+        Assert.Equal(SaveLoadOutcome.FreshDefault, r.Outcome);
+        Assert.Equal(3, r.Value.SchemaVersion);
+        // #155: a fresh default must be StampCurrent-ed, not migrated, so no pre-migration Warn fires.
+        Assert.DoesNotContain(log.Entries, e => e.Level == LogLevel.Warn);
+    }
+
+    [Fact]
+    public void LoadWithOutcome_ValidPrimary_Loaded()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir, o => o.GameVersion = "4.2.0");
+        storage.Save("s.json", new TestSave { Score = 42 }, new SaveWriteOptions { Summary = "chapter 3" });
+        storage.Flush();
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        Assert.Equal(SaveLoadOutcome.Loaded, r.Outcome);
+        Assert.Equal(42, r.Value.Score);
+        Assert.NotNull(r.Metadata);
+        Assert.Equal("4.2.0", r.Metadata!.GameVersion);
+        Assert.Equal("chapter 3", r.Metadata.Summary);
+    }
+
+    [Fact]
+    public void LoadWithOutcome_AllCandidatesBad_RejectedAndDefaulted()
+    {
+        using GameStorage storage = CreateStorage(out string dir);
+        File.WriteAllText(Path.Combine(dir, "s.json"), "{ broken");
+        File.WriteAllText(Path.Combine(dir, "s.json.bak1"), "also broken }");
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        Assert.Equal(SaveLoadOutcome.RejectedAndDefaulted, r.Outcome);
+        Assert.NotNull(r.Detail);
+        Assert.Equal(0, r.Value.Score);
+    }
+
+    [Fact]
+    public void LoadWithOutcome_LegacyPlaintext_ReportsLegacy_ThenReencodesOnNextSave()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir);
+        string path = Path.Combine(dir, "s.json");
+        File.WriteAllText(path, "{\"Score\":11}");   // hand-written plaintext, encoder configured
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+        Assert.Equal(SaveLoadOutcome.LoadedLegacyPlaintext, r.Outcome);
+        Assert.Equal(11, r.Value.Score);
+
+        storage.Save("s.json", r.Value);   // default-on encode
+        storage.Flush();
+        Assert.True(encoder.IsEncoded(File.ReadAllText(path)));
+    }
+
+    [Fact]
+    public void LoadWithOutcome_AcceptLegacyPlaintextFalse_Rejects()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir, o => o.AcceptLegacyPlaintext = false);
+        File.WriteAllText(Path.Combine(dir, "s.json"), "{\"Score\":11}");
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        Assert.Equal(SaveLoadOutcome.RejectedAndDefaulted, r.Outcome);
+        Assert.Equal(0, r.Value.Score);
+    }
+
+    [Fact]
+    public void LoadWithOutcome_LenientPolicy_TamperedLoads_WithDetail()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir, o => o.TamperPolicy = TamperPolicy.Lenient);
+        storage.Save("s.json", new TestSave { Score = 5 });
+        storage.Flush();
+        string path = Path.Combine(dir, "s.json");
+        string encoded = File.ReadAllText(path);
+        // Flip one HMAC hex char: the payload still decodes to valid JSON, only the integrity tag fails.
+        int h = encoded.IndexOf(":v2:", StringComparison.Ordinal) + 4;
+        char repl = encoded[h] == '0' ? '1' : '0';
+        File.WriteAllText(path, encoded[..h] + repl + encoded[(h + 1)..]);
+
+        SaveLoadResult<TestSave> r = storage.LoadWithOutcome<TestSave>("s.json");
+
+        Assert.Equal(SaveLoadOutcome.Loaded, r.Outcome);
+        Assert.NotNull(r.Detail);
+        Assert.Equal(5, r.Value.Score);   // tampered payload still recovered under the lenient policy
     }
 }

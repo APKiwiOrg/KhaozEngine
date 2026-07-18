@@ -117,31 +117,210 @@ public sealed class GameStorage : IDisposable
     /// <summary>
     /// Loads <paramref name="fileName"/> and deserializes to <typeparamref name="T"/>, then runs the optional
     /// <paramref name="migrations"/> chain. Returns a new <typeparamref name="T"/> if the file is absent. If an
-    /// encoder is configured and the content is encoded, it is decoded transparently first (lenient: recovers
-    /// JSON even on HMAC mismatch). Reads committed on-disk state, so after a <see cref="Save{T}(string, T)"/>
-    /// call <see cref="Flush"/> before loading the same file. Parsing tolerates comments and trailing commas (saves
-    /// are written as human-editable indented JSON).
+    /// encoder is configured and the content is encoded, it is decoded transparently first. A corrupt, tampered,
+    /// or otherwise unloadable primary never throws: it falls back through the backup generations and, failing
+    /// that, to a fresh default. This is the value of <see cref="LoadWithOutcome{T}"/>. Call that overload when
+    /// you need to know which recovery path was taken. Reads committed on-disk state, so after a
+    /// <see cref="Save{T}(string, T)"/> call <see cref="Flush"/> before loading the same file. Parsing tolerates
+    /// comments and trailing commas (saves are written as human-editable indented JSON).
     /// </summary>
     public T Load<T>(string fileName, MigrationChain<T>? migrations = null) where T : new()
+        => LoadWithOutcome(fileName, migrations).Value;
+
+    /// <summary>
+    /// Loads <paramref name="fileName"/> and reports how the load resolved. Probes the primary and each backup
+    /// generation in order, returning the first valid one: the primary as <see cref="SaveLoadOutcome.Loaded"/>
+    /// (or <see cref="SaveLoadOutcome.LoadedLegacyPlaintext"/> for a plaintext save read under a configured
+    /// encoder), a backup as <see cref="SaveLoadOutcome.RecoveredFromBackup"/>. A tampered save is rejected under
+    /// <see cref="TamperPolicy.Strict"/> and recovered under <see cref="TamperPolicy.Lenient"/>. When nothing
+    /// loads, a fresh default is returned and stamped current via <paramref name="migrations"/>, as either
+    /// <see cref="SaveLoadOutcome.FreshDefault"/> (nothing on disk) or <see cref="SaveLoadOutcome.RejectedAndDefaulted"/>
+    /// (something on disk, all of it invalid). Never throws on a bad save. Reads committed on-disk state, so
+    /// <see cref="Flush"/> after a save before loading the same file.
+    /// </summary>
+    public SaveLoadResult<T> LoadWithOutcome<T>(string fileName, MigrationChain<T>? migrations = null) where T : new()
     {
-        string path = Paths.GetFilePath(fileName);
-        T value;
+        string fullPath = Paths.GetFilePath(fileName);
+        string? firstFailureDetail = null;
+        bool anyCandidateExisted = false;
+
+        for (int gen = 0; gen <= backupGenerations; gen++)
+        {
+            string path = SaveBackups.GenerationPath(fullPath, gen);
+            SaveCandidate candidate = ProbeCandidate(path);
+
+            if (candidate.Validity == SaveGenerationValidity.Missing)
+            {
+                continue;
+            }
+
+            anyCandidateExisted = true;
+
+            if (candidate.Validity != SaveGenerationValidity.Valid)
+            {
+                firstFailureDetail ??= candidate.Detail;
+                continue;
+            }
+
+            T value;
+            try
+            {
+                value = JsonSerializer.Deserialize<T>(candidate.Json!, JsonDefaults.TolerantRead) ?? new T();
+            }
+            catch (JsonException ex)
+            {
+                // A candidate that decoded and structurally parsed can still fail to bind to T. Treat it as
+                // invalid and keep looking, recording the reason as the first failure.
+                firstFailureDetail ??= ex.Message;
+                continue;
+            }
+
+            if (migrations is not null)
+            {
+                value = migrations.Migrate(value, logger);
+            }
+
+            SaveLoadOutcome outcome;
+            string? detail = null;
+            if (gen == 0)
+            {
+                if (candidate.LegacyPlaintext)
+                {
+                    outcome = SaveLoadOutcome.LoadedLegacyPlaintext;
+                }
+                else
+                {
+                    outcome = SaveLoadOutcome.Loaded;
+                    if (candidate.TamperAccepted)
+                    {
+                        detail = candidate.Detail;
+                    }
+                }
+            }
+            else
+            {
+                outcome = SaveLoadOutcome.RecoveredFromBackup;
+            }
+
+            return new SaveLoadResult<T>
+            {
+                Value = value,
+                Outcome = outcome,
+                Detail = detail,
+                RecoveredGeneration = gen,
+                Metadata = candidate.Metadata,
+            };
+        }
+
+        T fresh = new();
+        if (migrations is not null)
+        {
+            fresh = migrations.StampCurrent(fresh);
+        }
+
+        return new SaveLoadResult<T>
+        {
+            Value = fresh,
+            Outcome = anyCandidateExisted ? SaveLoadOutcome.RejectedAndDefaulted : SaveLoadOutcome.FreshDefault,
+            Detail = firstFailureDetail,
+        };
+    }
+
+    // A single probed save generation: its validity plus whatever decoded content and flags the ladder needs
+    // to decide the outcome. Reused by the generation-listing surface. Init-only so it stays a value snapshot.
+    private readonly struct SaveCandidate
+    {
+        public SaveGenerationValidity Validity { get; init; }
+        public string? Json { get; init; }
+        public SaveMetadata? Metadata { get; init; }
+        public string? Detail { get; init; }
+        public bool LegacyPlaintext { get; init; }
+        public bool TamperAccepted { get; init; }
+    }
+
+    // Probes one file path and classifies it, without deserializing to T. The six rules mirror the load
+    // contract: missing, unreadable, encoded (decode + tamper policy), plaintext-under-encoder (legacy policy),
+    // no-encoder, and a final JSON-parse guard that downgrades a structurally broken payload to Corrupt.
+    private SaveCandidate ProbeCandidate(string path)
+    {
         if (!File.Exists(path))
         {
-            value = new T();
+            return new SaveCandidate { Validity = SaveGenerationValidity.Missing };
+        }
+
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (IOException ex)
+        {
+            return new SaveCandidate { Validity = SaveGenerationValidity.Corrupt, Detail = ex.Message };
+        }
+
+        string json;
+        SaveMetadata? metadata = null;
+        string? detail = null;
+        bool legacyPlaintext = false;
+        bool tamperAccepted = false;
+
+        if (Encoder is not null && Encoder.IsEncoded(text))
+        {
+            SaveDecodeResult decoded = Encoder.TryDecode(text);
+            if (decoded.Verdict == SaveDecodeVerdict.Ok)
+            {
+                json = decoded.Json!;
+                metadata = decoded.Metadata;
+            }
+            else if (decoded.Verdict == SaveDecodeVerdict.TamperMismatch && tamperPolicy == TamperPolicy.Lenient)
+            {
+                json = decoded.Json!;
+                metadata = decoded.Metadata;
+                detail = decoded.Detail;
+                tamperAccepted = true;
+            }
+            else if (decoded.Verdict == SaveDecodeVerdict.TamperMismatch)
+            {
+                return new SaveCandidate { Validity = SaveGenerationValidity.Tampered, Detail = decoded.Detail };
+            }
+            else
+            {
+                // Malformed (an unexpected NotEncoded cannot reach here since IsEncoded was true): structural damage.
+                return new SaveCandidate { Validity = SaveGenerationValidity.Corrupt, Detail = decoded.Detail };
+            }
+        }
+        else if (Encoder is not null)
+        {
+            if (!acceptLegacyPlaintext)
+            {
+                return new SaveCandidate { Validity = SaveGenerationValidity.Tampered, Detail = "plaintext save rejected (AcceptLegacyPlaintext = false)" };
+            }
+            json = text;
+            legacyPlaintext = true;
         }
         else
         {
-            string content = File.ReadAllText(path);
-            if (Encoder is not null && Encoder.IsEncoded(content))
-            {
-                content = Encoder.Decode(content) ?? content;
-            }
-
-            value = JsonSerializer.Deserialize<T>(content, JsonDefaults.TolerantRead) ?? new T();
+            json = text;
         }
 
-        return migrations is null ? value : migrations.Migrate(value, logger);
+        try
+        {
+            using JsonDocument _ = JsonDocument.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            return new SaveCandidate { Validity = SaveGenerationValidity.Corrupt, Detail = ex.Message };
+        }
+
+        return new SaveCandidate
+        {
+            Validity = SaveGenerationValidity.Valid,
+            Json = json,
+            Metadata = metadata,
+            Detail = detail,
+            LegacyPlaintext = legacyPlaintext,
+            TamperAccepted = tamperAccepted,
+        };
     }
 
     /// <summary>True when <paramref name="fileName"/> exists in the app-data directory.</summary>

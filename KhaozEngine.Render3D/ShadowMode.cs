@@ -217,19 +217,34 @@ namespace KhaozEngine.Render3D
 
         float _shadowStepBlendSeconds = 0f;
 
-        /// <summary>Temporal cross-fade window, in seconds, over which a <see cref="ShadowLightQuantizeDegrees"/> step is
-        /// blended in. Default <c>0</c> = off (byte-stable, no extra atlas). Only meaningful when
+        /// <summary>Temporal cross-fade duration CLAMP MAX, in seconds, for easing a <see cref="ShadowLightQuantizeDegrees"/>
+        /// step. Default <c>0</c> = off entirely (byte-stable, no extra atlas). Only meaningful when
         /// <see cref="ShadowLightQuantizeDegrees"/> &gt; 0: quantization stops the per-frame edge shimmer but trades it
         /// for a discrete jump every step, and this eases that jump. When the quantized light direction steps, the
-        /// OUTGOING step's shadow atlas + receiver matrices are kept alive (frozen) while the INCOMING step renders,
-        /// and for this many seconds the receivers lerp the two PCF results from fully-outgoing to fully-incoming, then
-        /// retire the old set. So a step reads as a soft settle instead of a snap. With the jump softened, the step
-        /// size can grow (0.5 to 1 deg), so the atlas re-renders LESS often and the perf balance can come out ahead.
-        /// Consumer guidance: ~0.25 to 0.5. The blend clock advances on <see cref="Scene3D.EffectTimeSeconds"/>, so a
-        /// scene using step-blend must keep that advancing (as an animated day/night scene already does).
+        /// OUTGOING step's shadow atlas + receiver matrices are kept alive (frozen) while the INCOMING step renders, and
+        /// the receivers lerp the two PCF results from fully-outgoing to fully-incoming, then retire the old set. So a
+        /// step reads as a soft settle instead of a snap.
+        /// <para><b>Adaptive duration (issue #227).</b> This is NOT a fixed window: each fade runs for
+        /// <c>min(observed inter-step interval, ShadowStepBlendSeconds)</c>, so it tracks the sun's speed. A fixed window
+        /// under-fills a slow sun (the fade covers only the first slice of a long inter-step gap, then the edge holds
+        /// still until the next step: "slide-then-hold", read as ticking) and truncates a fast one. With this
+        /// <b>clamp set at or above the step interval</b>, each new atlas starts fading on arrival and lands exactly as
+        /// the next step is due, so the shadow edge is in continuous motion, one step latent. A smaller clamp retains the
+        /// old slide-then-hold (the clamp caps the fade below the interval), so the default and small values stay
+        /// byte-stable and a consumer opts into continuous motion by raising the clamp above the step interval. The FIRST
+        /// step after a scene start (no interval observed yet) uses the clamp as its duration. Consumer guidance under a
+        /// moving sun: set it at or above your worst-case step interval (roughly <c>ShadowLightQuantizeDegrees</c> /
+        /// sun-deg-per-second) for continuous motion, e.g. ~0.5 to 2 s for a normal day/night pace.</para>
+        /// <para><b>Per-frame bypass (issue #227).</b> When the sun outruns the frame rate (the observed interval drops
+        /// below ~2 frames' worth of scene time, e.g. a heavily accelerated world clock) a fade cannot chain, so the fit
+        /// automatically stops quantizing and refits per frame from the raw direction (continuous sub-texel motion, no
+        /// blend) until the interval climbs back past a comfortably higher threshold. This is hysteretic (it does not
+        /// flap) and needs no configuration.</para>
+        /// The blend clock advances on <see cref="Scene3D.EffectTimeSeconds"/>, so a scene using step-blend must keep
+        /// that advancing (as an animated day/night scene already does).
         /// <para><b>Construction-time provisioning.</b> The second (cross-fade) atlas doubles the shadow VRAM, so it is
         /// reserved only when this is &gt; 0 <em>at construction</em> (the opt-in cost). Once reserved, the value is
-        /// freely runtime-tunable (set <c>0</c> to pause the fade, back to a positive duration to resume). Turning it
+        /// freely runtime-tunable (set <c>0</c> to pause the fade, back to a positive clamp to resume). Turning it
         /// ON after construction (0 at build, &gt; 0 later) cannot reserve the atlas, so it throws
         /// <see cref="InvalidOperationException"/> rather than silently failing to blend.</para></summary>
         public float ShadowStepBlendSeconds

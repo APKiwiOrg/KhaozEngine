@@ -55,19 +55,20 @@ namespace KhaozEngine.Render3D
         public Texture2D Texture => _texture;
 
         /// <summary>Create a preview on the window's live GPU device at <paramref name="width"/> x
-        /// <paramref name="height"/> (clamped via <see cref="ClampSize"/>).</summary>
-        public Render3DPreview(AppWindow window, int width, int height)
-            : this(window.GpuDevice, width, height) { }
+        /// <paramref name="height"/> (clamped via <see cref="ClampSize"/>). <paramref name="shadows"/> (optional) seeds
+        /// the scene's construction-time shadow settings (see <see cref="Render3DSurface"/>).</summary>
+        public Render3DPreview(AppWindow window, int width, int height, ShadowSettings? shadows = null)
+            : this(window.GpuDevice, width, height, shadows) { }
 
         // Device ctor: lets headless tests build a preview without a window (the public surface goes through
         // AppWindow, mirroring Render3DSurface).
-        internal Render3DPreview(IGpuDevice gd, int width, int height)
+        internal Render3DPreview(IGpuDevice gd, int width, int height, ShadowSettings? shadows = null)
         {
             _gd = gd;
             (Width, Height) = ClampSize(width, height);
             _cl = gd.Factory.CreateCommandList();
             AllocTarget(Width, Height);
-            Scene = new Scene3D(gd, _fb.Outputs);
+            Scene = new Scene3D(gd, _fb.Outputs, shadows);
             // Sensible preview defaults: composite transparently into a panel; the starfield would fill the
             // background opaquely, so leave it off (callers can re-enable any post setting on Scene.Post).
             Scene.Post.TransparentBackground = true;

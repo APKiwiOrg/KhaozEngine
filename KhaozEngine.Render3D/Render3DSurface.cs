@@ -16,10 +16,15 @@ namespace KhaozEngine.Render3D
 
         public Scene3D Scene { get; }
 
-        public Render3DSurface(AppWindow window)
+        /// <summary>Build the 3D surface on the window's GPU device. <paramref name="shadows"/> (optional) seeds the
+        /// scene's construction-time shadow settings (issue #27): the atlas resolution / cascade count / step-blend
+        /// provisioning are read ONCE as the scene allocates its atlas, so they must be supplied here rather than set on
+        /// <c>Scene.Post.Quality.Shadows</c> afterwards (which throws for those knobs). All other shadow tuning stays
+        /// runtime-mutable on <c>Scene.Post</c>.</summary>
+        public Render3DSurface(AppWindow window, ShadowSettings? shadows = null)
         {
             _window = window;
-            Scene = new Scene3D(window.GpuDevice, window.GpuDevice.SwapchainFramebuffer!.Outputs);
+            Scene = new Scene3D(window.GpuDevice, window.GpuDevice.SwapchainFramebuffer!.Outputs, shadows);
         }
 
         /// <summary>Record the queued 3D scene into this frame's command list, ending on the window framebuffer.</summary>

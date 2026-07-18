@@ -80,8 +80,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (default `16`, the near cascade's view-depth reach - smaller packs texels onto the near action) and
   `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it `>= ShadowNearDistance`).
   `ShadowCascadeBlend` (default `0.15`, the cross-cascade blend band width as a UV fraction, `0` restores the hard
-  cut). `ShadowMapResolution` (default `2048`, now the PER-CASCADE resolution - a construction-time knob alongside
-  `ShadowCascadeCount`, so the atlas is `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes). `ShadowStrength`, and
+  cut). `ShadowMapResolution` (default `2048`, the PER-CASCADE resolution, so the atlas is `ShadowCascadeCount *
+  ShadowMapResolution^2 * 4` bytes). `ShadowMapResolution` and `ShadowCascadeCount` are **construction-time** knobs sized
+  as the scene builds its atlas (its handle is bound into every material set), so pass them through the `ShadowSettings`
+  construction seam - `new Render3DSurface(window, shadows)` / `Render3DPreview` / `Render3DSnapshot.Capture(..., shadows)`
+  / `GameApp3D` `base(options, shadows)` - and a write to either on a live scene throws instead of silently no-opping.
+  `ShadowStrength`, and
   the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias, scaled PER CASCADE
   so far cascades do not acne and near ones do not detach) plus the tiny residual depth biases
   `ShadowConstantBias`/`ShadowSlopeBias` (defaults `0.0004`/`0.0015`). On a device without depth-sample support
@@ -95,6 +99,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the fit's light direction onto an angular lattice of that many degrees (azimuth + elevation) so the fit holds
   constant between steps (`ShadowMapMath.QuantizeDirection`) - edges rock-solid, dirty-skip reuse restored, at the cost
   of one small discrete edge nudge per step. Only the fit sees it; shading/sky keep the raw `Post.LightDirection`.
+  `ShadowStepBlendSeconds` (default `0` = off, opt-in; only with `ShadowLightQuantizeDegrees > 0`) eases that per-step
+  nudge: on a step the OUTGOING atlas + receiver matrices stay alive while the INCOMING step renders, the receivers lerp
+  the two PCF results from outgoing to incoming, then retire the old set, so a step reads as a soft settle. It is now the
+  fade-duration CLAMP MAX, not a fixed window (issue #227): each fade runs `min(observed inter-step interval, clamp)`, so
+  with the clamp at or above the step interval the shadow edge moves continuously (one step latent) instead of
+  slide-then-hold; the first step (no interval yet) uses the clamp, small clamps stay byte-stable, and a sun that outruns
+  the frame rate auto-bypasses to per-frame refit (hysteretic). It needs a SECOND shadow atlas (2x shadow VRAM), reserved
+  only when `> 0` at construction, so set it via the same `ShadowSettings` construction seam; once reserved the clamp is
+  runtime-tunable (0 pauses, positive resumes). The outgoing set is frozen at the step and never re-fit (a camera pan
+  rides the baked matrices, like the dirty-skip), and the fade advances on `Scene3D.EffectTimeSeconds`. The pure step
+  bookkeeping is `Internal.ShadowStepBlend`.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
@@ -158,6 +173,19 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   scales alpha on plane-projected pixels only, so they can read as projected rather than as
   standing on ground (0 = no dim, 1 = fully transparent). Default `false` keeps the legacy
   depth-only behavior byte-for-byte, with zero extra draws and no new pipeline bound. See
+  `docs/USING-KHAOZENGINE.md`.
+- Molten cracks + edge erosion (since 13.4.0, both opt-in and byte-neutral when unset):
+  `DecalFillPattern.MoltenCracks` is an animated Voronoi crack web in decal-local XZ - a near-white
+  core at each cell border falling off through a `GroundDecal.AccentColor` glow into the dark
+  `FillColor` field between cells. Field alpha rides `FillColor.A` (near-opaque scorch), crack
+  alpha rides `AccentColor.A` independently, `FlashAdd` stays the global brightness lift.
+  `PatternScale` = cells per world unit, `PatternSpeed` = slow per-cell breathing (drift + heat
+  swell, not a scroll), `GroundDecal.PatternParam` = crack width in cell units (0 = 0.22 default).
+  Deterministic per position, and `GroundDecalQuality.Reduced` swaps the exact two-pass Voronoi border
+  distance for a cheaper single-pass approximation. `GroundDecal.EdgeErosion` (0..1, default 0)
+  breaks the analytic silhouette into stable organic fingers for every shape and pattern (value
+  noise thresholded against a margin rising toward the edge, biting inward up to ~35% of the
+  shape's half-thickness), then `FeatherWidth` feathers the survivors. See
   `docs/USING-KHAOZENGINE.md`.
 - Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
   geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,

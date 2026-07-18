@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
@@ -156,6 +157,60 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(3, s.ResolvedCascadeCount);
             Assert.Equal(130f, s.ShadowMaxDistance, 3);
             Assert.Equal(2048, s.ShadowMapResolution);   // per-cascade resolution unchanged
+        }
+
+        [Fact]
+        public void StepBlend_defaults_off()
+        {
+            // Issue #225: temporal cross-fade is opt-in, default 0 (byte-stable, no second atlas).
+            Assert.Equal(0f, new ShadowSettings().ShadowStepBlendSeconds);
+        }
+
+        [Fact]
+        public void Atlas_knobs_are_settable_before_commit()
+        {
+            // Before the scene commits its atlas, the construction-time knobs (issue #27) are freely settable.
+            var s = new ShadowSettings { ShadowMapResolution = 1024, ShadowCascadeCount = 4, ShadowStepBlendSeconds = 0.3f };
+            Assert.Equal(1024, s.ShadowMapResolution);
+            Assert.Equal(4, s.ShadowCascadeCount);
+            Assert.Equal(0.3f, s.ShadowStepBlendSeconds);
+        }
+
+        [Fact]
+        public void Atlas_knobs_throw_after_commit()
+        {
+            // After CommitAtlas (the scene has sized its atlas), a write to a construction-time knob fails loudly rather
+            // than silently no-opping - the old inert behaviour issue #27 was filed against.
+            var s = new ShadowSettings { ShadowMapResolution = 2048, ShadowCascadeCount = 3 };
+            s.CommitAtlas();
+            Assert.Throws<InvalidOperationException>(() => s.ShadowMapResolution = 1024);
+            Assert.Throws<InvalidOperationException>(() => s.ShadowCascadeCount = 4);
+            // The knobs keep the values they were built with (the throw did not corrupt them).
+            Assert.Equal(2048, s.ShadowMapResolution);
+            Assert.Equal(3, s.ShadowCascadeCount);
+        }
+
+        [Fact]
+        public void StepBlend_seconds_tunable_after_commit_when_provisioned()
+        {
+            // Reserved at construction (> 0 at commit), so the duration is freely runtime-tunable: pause (0) and resume.
+            var s = new ShadowSettings { ShadowStepBlendSeconds = 0.25f };
+            s.CommitAtlas();
+            Assert.True(s.StepBlendProvisioned);
+            s.ShadowStepBlendSeconds = 0f;      // pausing the fade is allowed
+            s.ShadowStepBlendSeconds = 0.5f;    // resuming is allowed (the atlas is already reserved)
+            Assert.Equal(0.5f, s.ShadowStepBlendSeconds);
+        }
+
+        [Fact]
+        public void StepBlend_throws_when_enabled_after_commit_unprovisioned()
+        {
+            // Not reserved at construction (0 at commit), so turning it on afterwards cannot reserve the atlas: fail loudly.
+            var s = new ShadowSettings();   // ShadowStepBlendSeconds == 0 at commit
+            s.CommitAtlas();
+            Assert.False(s.StepBlendProvisioned);
+            Assert.Throws<InvalidOperationException>(() => s.ShadowStepBlendSeconds = 0.25f);
+            Assert.Equal(0f, s.ShadowStepBlendSeconds);
         }
 
         [Fact]

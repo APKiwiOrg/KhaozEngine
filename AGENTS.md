@@ -295,9 +295,14 @@ an issue in a list, and acting on a guess as though it were a finding wastes exa
 was meant to save. `confidence/verified` = checked against the code. `confidence/lead` = surfaced, not
 checked, may well be wrong. `confidence/authored` = written deliberately, with the context.
 
-**A handoff is a cross-repo issue reference**, and it writes both sides for free: mention the other
-repo's issue (`APKiwiOrg/Nullwake#45`) and GitHub backlinks it there. Label yours `needs/upstream`.
-That is the whole mechanism, and there is nothing left to keep reciprocal by hand. This is the common
+**A handoff is a cross-repo issue reference, and you write it as a full URL**
+(`https://github.com/APKiwiOrg/Nullwake/issues/45`), never the short `APKiwiOrg/Nullwake#45` form. The
+short form renders as a link and creates NO backlink between these private repos, so the handoff reads
+as filed while being invisible from the other end. That is not hypothetical: SpaceGame#69 sat on
+`needs/upstream` pointing at nothing for exactly this reason, and `scripts/check-handoffs.sh` was
+retired on the belief that the short form linked both sides. Plain `#123` is still correct WITHIN one
+repo. Written as a URL it does backlink both sides, so there is nothing left to keep reciprocal by
+hand. Label yours `needs/upstream`. This is the common
 direction here: the engine is upstream of four games, so a consumer-side item the engine is blocking
 (or a game-side gap an engine change creates) is a reference, not a pair of hand-written entries. For
 something that cannot answer back (a branch, a chat, a person), just say so in the body. A branch is

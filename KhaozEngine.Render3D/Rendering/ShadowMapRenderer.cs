@@ -63,6 +63,11 @@ namespace KhaozEngine.Render3D.Rendering
         readonly Matrix4x4[] _skinnedScratch = new Matrix4x4[1 + SkinningMath.MaxBonesPerDraw];
 
         IGpuTexture _atlas = null!;             // R32F: all cascades' light-space depth side by side (the map the receivers sample)
+        // Second atlas for the temporal cross-fade (issue #225): holds the OUTGOING quantization step while the live
+        // atlas renders the INCOMING one. Allocated ONLY when step-blend is provisioned at construction (opt-in 2x
+        // shadow VRAM); null otherwise, and the receivers then bind the live atlas as an inert ShadowMapPrev dummy.
+        IGpuTexture? _atlasPrev;
+        readonly bool _provisionStepBlend;
         IGpuTexture _depthStencil = null!;      // depth-test buffer for the depth pass (never sampled), atlas-sized
         IGpuFramebuffer _fb = null!;
         int _perCascadeRes;
@@ -71,6 +76,14 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>The shadow atlas the receivers sample (R32F light-space depth, <see cref="CascadeCount"/> columns).
         /// Stable handle across frames, reallocated only on a resolution/count change (see <see cref="EnsureLayout"/>).</summary>
         public IGpuTexture ShadowTexture => _atlas;
+
+        /// <summary>The OUTGOING-step atlas the receivers sample during a temporal cross-fade (issue #225). Falls back to
+        /// the live <see cref="ShadowTexture"/> when step-blend was not provisioned, so a material set always binds a
+        /// valid texture and the shader gates the frozen sample on the blend weight (inert when not blending).</summary>
+        public IGpuTexture ShadowTexturePrev => _atlasPrev ?? _atlas;
+
+        /// <summary>Whether the second (cross-fade) atlas was reserved at construction, so this renderer can blend.</summary>
+        public bool StepBlendProvisioned => _atlasPrev != null;
 
         /// <summary>The clamp/linear sampler the receivers PCF-sample the atlas with (owned here).</summary>
         public IGpuSampler ShadowSampler => _sampler;
@@ -81,9 +94,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>The current number of cascade columns in the atlas.</summary>
         public int CascadeCount => _cascadeCount;
 
-        public ShadowMapRenderer(IGpuDevice gd, int resolution, int cascadeCount)
+        public ShadowMapRenderer(IGpuDevice gd, int resolution, int cascadeCount, bool provisionStepBlend)
         {
             _gd = gd;
+            _provisionStepBlend = provisionStepBlend;
             var f = gd.Factory;
 
             _shaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthVert, ShaderSources.ShadowDepthFrag);
@@ -126,6 +140,7 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _atlas?.Dispose();
+            _atlasPrev?.Dispose();
             _depthStencil?.Dispose();
 
             _perCascadeRes = res;
@@ -135,6 +150,11 @@ namespace KhaozEngine.Render3D.Rendering
             var f = _gd.Factory;
             _atlas = f.CreateTexture(GpuTextureDescription.Texture2D(
                 w, h, GpuPixelFormat.R32Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            // Cross-fade atlas (issue #225): same R32F size as the live one, Sampled only (never rendered into - it
+            // receives the outgoing content by CopyTexture at a step). Allocated only when step-blend is provisioned.
+            _atlasPrev = _provisionStepBlend
+                ? f.CreateTexture(GpuTextureDescription.Texture2D(w, h, GpuPixelFormat.R32Float, GpuTextureUsage.Sampled))
+                : null;
             _depthStencil = f.CreateTexture(GpuTextureDescription.Texture2D(
                 w, h, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil));
             _fb = f.CreateFramebuffer(_depthStencil, _atlas);
@@ -212,6 +232,15 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = outputs,
             });
+        }
+
+        /// <summary>Freeze the current live atlas into the cross-fade atlas (issue #225): copy the OUTGOING quantization
+        /// step's fully-rendered depth (including cleared far-plane texels) into <see cref="ShadowTexturePrev"/> before
+        /// the live atlas is re-rendered with the INCOMING step. A no-op when step-blend was not provisioned. Must be
+        /// recorded BEFORE <see cref="BeginDepthPass"/> (the copy runs outside the depth render pass).</summary>
+        public void CopyLiveToPrev(IGpuCommandList cl)
+        {
+            if (_atlasPrev != null) cl.CopyTexture(_atlas, _atlasPrev);
         }
 
         /// <summary>Begin the cascaded depth pass: bind + clear the whole atlas, upload each cascade's DEPTH matrix
@@ -332,6 +361,7 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedPipeline?.Dispose();
             _fb?.Dispose();
             _atlas?.Dispose();
+            _atlasPrev?.Dispose();
             _depthStencil?.Dispose();
             _set.Dispose();
             _lightUbo.Dispose();

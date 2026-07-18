@@ -1886,9 +1886,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       invisible instead of a hard seam. `0` restores the hard cut. `ShadowMapResolution` is the **per-cascade**
       resolution, so the atlas costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) -
       drop the count or the resolution for a lower-end profile.
-    - Other knobs (all on `ShadowSettings`): `ShadowMapResolution` (default `2048`, per cascade; a **construction-time**
-      knob alongside `ShadowCascadeCount` - set both before creating the `Scene3D`, since the atlas is bound into every
-      material set - drop to 1024/512 on low-end). `ShadowNearDistance` (default `16`, the near cascade's view-depth
+    - **Construction-time atlas knobs.** `ShadowMapResolution` (default `2048`, per cascade) and `ShadowCascadeCount`
+      size the shadow atlas ONCE as the `Scene3D` allocates it, and its handle is bound into every material set, so they
+      must be supplied BEFORE construction rather than set on `Scene.Post` afterwards: pass a `ShadowSettings` to
+      `new Render3DSurface(window, shadows)` / `Render3DPreview` / `Render3DSnapshot.Capture(..., shadows)`, or for a
+      `GameApp3D` game to the `base(options, shadows)` ctor (e.g. `new ShadowSettings { Mode = ShadowMode.ShadowMap,
+      ShadowCascadeCount = 4 }`). Writing `ShadowMapResolution` or `ShadowCascadeCount` on a live scene's `ShadowSettings`
+      now throws `InvalidOperationException` instead of silently no-opping. Drop the count or resolution to 1024/512 for a
+      low-end profile. Recreate the scene to change atlas sizing at runtime.
+    - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`). `ShadowLightQuantizeDegrees`
       (default `0` = off): a moving-sun de-shimmer knob. A slowly rotating key light (a `SunCycle` day/night
@@ -1898,6 +1904,31 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       the atlas reuse returns, at the cost of one small discrete edge nudge per step (a few texels, softened
       by the 3x3 PCF). Only the shadow fit sees the quantized direction; shading, the sky, and the sun disc
       keep the smooth raw `Post.LightDirection`. Guidance ~0.25 to 0.5 degrees under a moving sun.
+    - **Temporal cross-fade** `ShadowStepBlendSeconds` (default `0` = off, opt-in; only meaningful with
+      `ShadowLightQuantizeDegrees > 0`): eases the discrete jump quantization trades the shimmer for. When the quantized
+      direction steps, the OUTGOING step's atlas + receiver matrices are kept alive while the INCOMING step renders, and
+      the receivers lerp the two PCF results from fully-outgoing to fully-incoming, then retire the old set - so a step
+      reads as a soft settle instead of a snap.
+      **This value is now the fade-duration CLAMP MAX, not a fixed window** (issue #227): each fade runs for
+      `min(observed inter-step interval, ShadowStepBlendSeconds)`, so it tracks the sun's speed. A fixed window
+      under-fills a slow sun - the fade covers only the first slice of a long inter-step gap, then the edge holds still
+      until the next step ("slide-then-hold", which reads as the shadow ticking every couple of seconds) - and truncates
+      a fast one. **Set the clamp at or above your worst-case step interval** (roughly `ShadowLightQuantizeDegrees` /
+      sun-degrees-per-second) and each new atlas starts fading on arrival and lands exactly as the next step is due, so
+      the edge is in continuous motion, one step latent. A small clamp keeps the old slide-then-hold (it caps the fade
+      below the interval), so the default and small values stay byte-stable; you opt into continuity by raising the
+      clamp. The FIRST step after a scene start (no interval observed yet) uses the clamp as its duration. Guidance under
+      a moving day/night sun: ~0.5 to 2 s (was ~0.25 to 0.5 when it was a fixed window). If the sun ever outruns the
+      frame rate (an accelerated world clock, steps under ~2 frames apart), the fit automatically stops quantizing and
+      refits per frame from the raw direction (continuous sub-texel motion, no blend) until it slows back down -
+      hysteretic, so it does not flap, and needs no configuration.
+      **The cross-fade needs a second shadow atlas (2x shadow VRAM), reserved
+      only when this is `> 0` at construction** - so set it via the same `ShadowSettings` construction seam as the atlas
+      knobs above. Once reserved it is freely runtime-tunable (set `0` to pause the fade, back to positive to resume);
+      turning it on for the first time after construction throws. The fade clock advances on
+      `Scene3D.EffectTimeSeconds`, so keep that advancing (as an animated day/night scene already does). The outgoing set
+      is frozen at the step and never re-fit, so a camera pan during a fade rides the baked matrices (like the atlas
+      dirty-skip).
     - **Bias tuning** (`ShadowNormalOffset` default `2.5`, `ShadowConstantBias` default `0.0004`, `ShadowSlopeBias`
       default `0.0015`): together these defeat self-shadow acne without detaching the shadow from the caster's feet
       (**peter-panning**). `ShadowNormalOffset` is the primary defence: it pushes the receiver's sample point off the
@@ -2867,6 +2898,45 @@ The same two fields sit directly on a raw decal too:
 projected pixel matches a ground pixel, and 1 is fully transparent). ~0.15 is a plausible
 starting point, just enough for a projected pixel to read as projected without dimming the shape
 toward invisibility.
+
+**Molten cracks + edge erosion** (raw `GroundDecal` fields, since 13.4.0): two opt-in additions
+for hazard-aftermath ground effects (a molten slam scar, ice fracture, corruption ground). Both
+default off and leave non-opting decals byte-identical.
+
+`DecalFillPattern.MoltenCracks` paints an animated Voronoi/cellular crack web in decal-local XZ:
+a thin near-white core at each cell border, an `AccentColor` glow falling off around it, and the
+dark `FillColor` field between cells. The field alpha rides `FillColor.A` (sit it near-opaque
+near-black for scorch) while the crack alpha rides `AccentColor.A` independently, so the cracks
+stay bright and tintable over an opaque field. `PatternScale` is cells per world unit,
+`PatternSpeed` drives a slow per-cell breathing (feature-point drift + heat swell, not a scroll),
+and `PatternParam` is the crack width in cell units (0 = the default 0.22). The web is
+deterministic per position, so every client sees the same cracks at the same effect time.
+`FlashAdd` still lifts the whole decal, the hook to pulse on a damage tick. Under
+`GroundDecalQuality.Reduced` the exact two-pass Voronoi border distance drops to a cheaper
+single-pass approximation (softer, slightly fatter cracks).
+
+`GroundDecal.EdgeErosion` (0..1, default 0) breaks the analytic silhouette into organic
+per-pixel fingers, for EVERY shape and pattern: stable value noise (keyed to decal-local
+position, no time term, no RNG) thresholds against a margin rising toward the edge, biting
+inward by up to ~35% of the shape's half-thickness at 1. Erosion applies first, then
+`FeatherWidth` feathers the surviving boundary. The outline band and every boundary-anchored
+energy lane follow the eroded edge.
+
+    scene.DrawGroundDecal(new GroundDecal
+    {
+        Shape = DecalShape.Beam, Center = impactPoint, Rotation = angle,
+        Size = new Vector4(3.5f, 1.2f, 0f, 0f),
+        FillColor = new Color(0.05f, 0.03f, 0.03f, 0.95f),   // near-opaque scorch field
+        AccentColor = new Color(1f, 0.45f, 0.1f, 0.9f),      // the hot crack colour
+        Pattern = DecalFillPattern.MoltenCracks,
+        PatternScale = 1.2f, PatternSpeed = 0.25f,
+        EdgeErosion = 0.6f, FeatherWidth = 0.15f,
+        FillFraction = 1f, YTolerance = 0.3f, MaxStep = 0.4f,
+    });
+
+These are raw-decal fields only for now: `TelegraphStyle` does not expose them yet, so build the
+`GroundDecal` directly (as above) rather than through `GroundTelegraphs`. The
+`MoltenCracksShowcaseGpuTests` PNG dumps are the reference look.
 
 **The 2D `TelegraphRenderer2D` path ignores every knob in this subsection** (FeatherWidth,
 Pattern/PatternSpeed/PatternScale, EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow,

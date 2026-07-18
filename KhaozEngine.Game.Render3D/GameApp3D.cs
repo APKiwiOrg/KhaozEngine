@@ -16,9 +16,13 @@ namespace KhaozEngine.Game
     {
         readonly Render3DSurface _surface3D;
 
-        protected GameApp3D(in GameAppOptions options) : base(options)
+        /// <summary>Stand up the app and its 3D surface. A 3D game passes <paramref name="initialShadows"/> to size the
+        /// shadow atlas at construction (resolution / cascade count / step-blend provisioning are construction-time
+        /// knobs, issue #27): e.g. <c>base(options, new ShadowSettings { Mode = ShadowMode.ShadowMap, ShadowCascadeCount
+        /// = 4 })</c>. All other shadow tuning stays runtime-mutable on <see cref="Scene"/>.Post.</summary>
+        protected GameApp3D(in GameAppOptions options, ShadowSettings? initialShadows = null) : base(options)
         {
-            _surface3D = new Render3DSurface(Window);
+            _surface3D = new Render3DSurface(Window, initialShadows);
         }
 
         /// <summary>The 3D surface bound to the window.</summary>

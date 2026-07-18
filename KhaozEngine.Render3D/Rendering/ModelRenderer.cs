@@ -24,20 +24,24 @@ namespace KhaozEngine.Render3D.Rendering
 
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
         // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the cascaded shadow tail
-        // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992 bytes.
+        // (MaxCascades live matrices + params + the cross-fade set) = mat4[4] (256) + 3*vec4 (48) + mat4[4] (256) +
+        // vec4 (16) = 576, so 688 + 576 = 1264 bytes.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
         internal const uint LightArraysBytes = 2 * LightArrayBytes;   // both point-light arrays = 512
-        // The cascaded shadow tail (mat4 ShadowMat[4] + vec4 ShadowParams + vec4 ShadowParams2 + vec4 ShadowNormalOffsets)
-        // rides in the SAME frame UBO after the light arrays (a SECOND UBO in the set mis-binds on Metal, see the
-        // splat-params note below), so both the model and splat passes read the cascade atlas from their one bound UBO.
-        // ShadowParams = (cascadeCount, strength[0=inactive], constBias, slopeBias). ShadowParams2 = (texelStep =
-        // 1/perCascadeResolution, maxDistance, borderFrac, cascadeBlendFrac), ShadowNormalOffsets = per-cascade
-        // normal-offset world size (texel-world-size_i x ShadowNormalOffset, CPU-baked so it is extent-aware per cascade).
-        internal const uint ShadowTailBytes = (uint)MaxCascades * 64 + 48;     // mat4[4] + 3*vec4 = 304
+        // The cascaded shadow tail rides in the SAME frame UBO after the light arrays (a SECOND UBO in the set mis-binds
+        // on Metal, see the splat-params note below), so both the model and splat passes read the cascade atlas from
+        // their one bound UBO. Live set: mat4 ShadowMat[4] + vec4 ShadowParams + vec4 ShadowParams2 + vec4
+        // ShadowNormalOffsets. ShadowParams = (cascadeCount, strength[0=inactive], constBias, slopeBias). ShadowParams2
+        // = (texelStep = 1/perCascadeResolution, maxDistance, borderFrac, cascadeBlendFrac), ShadowNormalOffsets =
+        // per-cascade normal-offset world size (texel-world-size_i x ShadowNormalOffset, CPU-baked, extent-aware).
+        // Cross-fade set (issue #225, appended): mat4 ShadowMatPrev[4] = the OUTGOING step's receiver matrices, and vec4
+        // ShadowBlend = (weight, _, _, _) where weight 1 = no cross-fade (the frozen sample is skipped, so with blend
+        // off every existing field keeps its offset and the goldens are byte-stable).
+        internal const uint ShadowTailBytes = (uint)MaxCascades * 64 + 48 + (uint)MaxCascades * 64 + 16;  // live 304 + prev 272 = 576
         internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
-        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 992
+        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 1264
 
         // ---- GPU skinning (opt-in) combined-buffer geometry. The whole skinned pipeline reads ONE dynamic-offset
         // UBO at set 0 binding 0 (both stages) laid out as { mat4 Mvp; mat4 Model; mat4 P; <frame block>; mat4
@@ -47,9 +51,9 @@ namespace KhaozEngine.Render3D.Rendering
         // pattern), so a whole crowd shares one grow-with-retire buffer.
         internal const uint SkinnedHeaderMats = 3;                        // Mvp + Model + P(Tint/Emissive/Spec)
         internal const uint SkinnedFrameOffset = SkinnedHeaderMats * 64;  // 192: the frame block starts here
-        internal static readonly uint SkinnedBonesOffset = SkinnedFrameOffset + UboBytes;  // 192 + 768 = 960
+        internal static readonly uint SkinnedBonesOffset = SkinnedFrameOffset + UboBytes;  // 192 + 1264 = 1456
         internal static readonly uint SkinnedMainSlotBytes =
-            Align256(SkinnedBonesOffset + (uint)SkinningMath.MaxBonesPerDraw * 64);  // 960 + 128*64 = 9152 -> 9216
+            Align256(SkinnedBonesOffset + (uint)SkinningMath.MaxBonesPerDraw * 64);  // 1456 + 128*64 = 9648 -> 9728
         static uint Align256(uint n) => (n + 255u) & ~255u;
 
         /// <summary>Per-frame uniforms (binding 0) header. 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes, uploaded at
@@ -71,7 +75,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// (byte-stable with ShadowMode.Off). <see cref="Params2"/> is (texelStep = 1/perCascadeResolution,
         /// maxDistance, borderFrac, cascadeBlendFrac - the inner-cascade cross-fade band width, in cascade-local
         /// UV, that hides the texel-density step at a cascade hand-off). <see cref="NormalOffsets"/> holds the
-        /// per-cascade normal-offset world size (x = cascade 0 .. w = cascade 3). 304 bytes = mat4[4] + 3*vec4.</summary>
+        /// per-cascade normal-offset world size (x = cascade 0 .. w = cascade 3). Appended after it is the temporal
+        /// cross-fade set (issue #225): <see cref="CascadePrev0"/>..<see cref="CascadePrev3"/> are the OUTGOING step's
+        /// receiver matrices and <see cref="Blend"/>.x is the cross-fade weight (1 = no cross-fade, the frozen sample
+        /// is skipped and this tail behaves exactly as before). 576 bytes = mat4[4] + 3*vec4 + mat4[4] + vec4.</summary>
         internal struct ShadowUbo
         {
             public Matrix4x4 Cascade0;        // 0
@@ -81,6 +88,11 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Params;            // 256: x = cascadeCount, y = strength, z = const bias, w = slope bias
             public Vector4 Params2;           // 272: x = texelStep (1/perCascadeRes), y = maxDistance, z = borderFrac, w = cascadeBlendFrac
             public Vector4 NormalOffsets;     // 288: per-cascade normal-offset world size (x=c0..w=c3)
+            public Matrix4x4 CascadePrev0;    // 304: cross-fade OUTGOING-step receiver matrices (issue #225)
+            public Matrix4x4 CascadePrev1;    // 368
+            public Matrix4x4 CascadePrev2;    // 432
+            public Matrix4x4 CascadePrev3;    // 496
+            public Vector4 Blend;             // 560: x = cross-fade weight (1 = no cross-fade); y,z,w reserved
         }
 
         /// <summary>One dynamic point light, packed for the std140 UBO arrays: <see cref="PosRadius"/> is
@@ -169,15 +181,17 @@ namespace KhaozEngine.Render3D.Rendering
         // disposed only in Dispose. Bounded by geometric growth.
         readonly List<IDisposable> _retired = new();
 
-        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution, int shadowCascadeCount)
+        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution, int shadowCascadeCount,
+            bool provisionStepBlend)
         {
             _gd = gd;
             var factory = gd.Factory;
 
             // The cascade atlas is allocated up front at a fixed per-cascade resolution x cascade count so its texture
             // handle stays stable and can be bound into every material set below. The shader gates on ShadowParams.y
-            // (strength), so an inactive frame never taps it (byte-stable with ShadowMode.Off).
-            _shadowMap = new ShadowMapRenderer(gd, shadowMapResolution, shadowCascadeCount);
+            // (strength), so an inactive frame never taps it (byte-stable with ShadowMode.Off). provisionStepBlend also
+            // reserves the temporal cross-fade atlas (issue #225), bound as ShadowMapPrev into the same material sets.
+            _shadowMap = new ShadowMapRenderer(gd, shadowMapResolution, shadowCascadeCount, provisionStepBlend);
 
             _ubo = factory.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)); // header + 2 vec4[16] point-light arrays + shadow tail
 
@@ -188,7 +202,10 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                // Cross-fade OUTGOING-step atlas (issue #225). Bound in every material set; the shader samples it only
+                // while ShadowBlend.x < 1 (a cross-fade in flight), so it is inert when step-blend is off/unprovisioned.
+                new GpuResourceLayoutElement("ShadowMapPrev", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
 
             // Use the device's built-in linear sampler (wrap-addressed) - the SAME one Render2D samples its
             // textures (incl. a 1x1 white) through, which verifies correctly on D3D11/WARP. A custom
@@ -213,7 +230,7 @@ namespace KhaozEngine.Render3D.Rendering
             gd.UpdateTexture(_defaultRough, DefaultMaps.ZeroRoughnessTexel(), 0, 0, 1, 1);
 
             _defaultSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, _white, _flatNormal, _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler, _shadowMap.ShadowTexturePrev));
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
             _dissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
@@ -232,12 +249,13 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowMapPrev", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
             _skinnedShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);
             _skinnedDissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag);
             _skinnedDefaultFragSet = factory.CreateResourceSet(new GpuResourceSetDescription(
                 _skinnedFragLayout, _white, _flatNormal, _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler, _shadowMap.ShadowTexturePrev));
 
             // ONE descriptor set, ONE uniform buffer: the splat material's combined UBO carries the frame uniforms
             // (re-synced each frame, see WriteFrameUniformsTo) PLUS the per-material splat params appended at offset
@@ -251,7 +269,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("ShadowMapPrev", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
 
             // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
             // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
@@ -455,6 +474,9 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 Params = new Vector4(cascadeCount, strength, constantBias, slopeBias),
                 Params2 = new Vector4(texelStep, maxDistance, borderFrac, cascadeBlend),
+                // No temporal cross-fade by default: weight 1 => the shader skips the frozen sample, so this tail is
+                // byte-identical to the pre-cross-fade one. SetShadowBlend overrides this on a quantization-step frame.
+                Blend = new Vector4(1f, 0f, 0f, 0f),
             };
             // Fill up to MaxCascades matrices + normal offsets, leaving unread slots (past cascadeCount) at identity/zero.
             Matrix4x4 m0 = Matrix4x4.Identity, m1 = Matrix4x4.Identity, m2 = Matrix4x4.Identity, m3 = Matrix4x4.Identity;
@@ -473,6 +495,28 @@ namespace KhaozEngine.Render3D.Rendering
         /// light is unshadowed). Call each frame before the model pass unless the shadow tier is active; keeps the
         /// ShadowMode.Off render byte-stable.</summary>
         public void ClearShadowUniforms() => _shadow = default;
+
+        /// <summary>Overwrite the temporal cross-fade set on the current shadow tail (issue #225): the OUTGOING step's
+        /// receiver matrices + the cross-fade weight (0 = fully outgoing/frozen, 1 = fully incoming/live). Call AFTER
+        /// <see cref="SetShadowUniforms"/> on a blending frame; leaving it unset keeps weight 1 (no cross-fade, the
+        /// frozen sample is skipped). The frozen path reuses the live cascade count / texelStep / biases / normal
+        /// offsets (the atlas size is fixed at construction), so only the receiver matrices + the weight differ.</summary>
+        public void SetShadowBlend(ReadOnlySpan<Matrix4x4> prevReceiverMats, int prevCount, float weight)
+        {
+            int n = Math.Min(prevCount, MaxCascades);
+            _shadow.CascadePrev0 = n > 0 ? prevReceiverMats[0] : Matrix4x4.Identity;
+            _shadow.CascadePrev1 = n > 1 ? prevReceiverMats[1] : Matrix4x4.Identity;
+            _shadow.CascadePrev2 = n > 2 ? prevReceiverMats[2] : Matrix4x4.Identity;
+            _shadow.CascadePrev3 = n > 3 ? prevReceiverMats[3] : Matrix4x4.Identity;
+            _shadow.Blend = new Vector4(Math.Clamp(weight, 0f, 1f), 0f, 0f, 0f);
+        }
+
+        /// <summary>Freeze the live shadow atlas into the cross-fade atlas before it re-renders the incoming step
+        /// (issue #225). Record BEFORE the shadow depth pass. A no-op when step-blend was not provisioned.</summary>
+        public void CopyShadowAtlasToPrev(IGpuCommandList cl) => _shadowMap.CopyLiveToPrev(cl);
+
+        /// <summary>Whether the temporal cross-fade atlas was reserved at construction, so the scene may cross-fade.</summary>
+        public bool StepBlendProvisioned => _shadowMap.StepBlendProvisioned;
 
         /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
         /// at offset 0. <paramref name="dst"/> must be at least <see cref="UboBytes"/> bytes; a splat material's
@@ -535,7 +579,7 @@ namespace KhaozEngine.Render3D.Rendering
         public IGpuResourceSet CreateMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler, _shadowMap.ShadowTexturePrev));
 
         /// <summary>Create a splat material's combined UBO: <see cref="UboBytes"/> of frame uniforms (re-synced each
         /// frame via <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>) followed by the per-material <paramref name="data"/> at
@@ -559,7 +603,7 @@ namespace KhaozEngine.Render3D.Rendering
         public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer combinedUbo, IGpuTexture albedoArray, IGpuTexture normalArray, IGpuSampler sampler) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _splatLayout, combinedUbo, albedoArray, normalArray, sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler, _shadowMap.ShadowTexturePrev));
 
         /// <summary>Create a wrap-addressed terrain sampler from <paramref name="cfg"/> (anisotropy/trilinear/point +
         /// mip LOD bias). The caller owns and disposes it. Mirrors the shared default sampler this renderer builds at
@@ -702,7 +746,7 @@ namespace KhaozEngine.Render3D.Rendering
         public IGpuResourceSet CreateSkinnedMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _skinnedFragLayout, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler, _shadowMap.ShadowTexturePrev));
 
         /// <summary>Ensure the combined main UBO holds at least <paramref name="slotCount"/> per-draw slots (each
         /// <see cref="SkinnedMainSlotBytes"/>), growing geometrically and retiring the old buffer + its set. Rebuilds

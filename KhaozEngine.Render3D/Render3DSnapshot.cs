@@ -16,7 +16,8 @@ namespace KhaozEngine.Render3D
         /// camera/post); <paramref name="drawFrame"/> runs each frame after <see cref="Scene3D.Begin"/> to
         /// queue instances via <see cref="Scene3D.Draw(KhaozEngine.Render3D.MeshHandle, System.Numerics.Matrix4x4)"/>.
         /// </summary>
-        public static byte[] Capture(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1)
+        public static byte[] Capture(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1,
+            ShadowSettings? shadows = null)
         {
             // No-arg CreateHeadless uses the exact options the 3D snapshot needs (no depth, no sync, Improved
             // binding, depth-range 0..1, standard clip-Y) so the golden image stays pixel-identical.
@@ -29,7 +30,7 @@ namespace KhaozEngine.Render3D
                 GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             using IGpuFramebuffer finalFB = f.CreateFramebuffer(null, finalTex);
 
-            using var scene = new Scene3D(gd, finalFB.Outputs);
+            using var scene = new Scene3D(gd, finalFB.Outputs, shadows);
             setup(scene);
 
             using IGpuCommandList renderCl = f.CreateCommandList();
@@ -48,13 +49,14 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Single-mesh convenience: load <paramref name="mesh"/>, draw one instance at the origin each frame.</summary>
-        public static byte[] Capture(GltfMesh mesh, Action<Scene3D>? configure, int width, int height, int frames)
+        public static byte[] Capture(GltfMesh mesh, Action<Scene3D>? configure, int width, int height, int frames,
+            ShadowSettings? shadows = null)
         {
             MeshHandle handle = default;
             return Capture(width, height,
                 setup: scene => { handle = scene.LoadMesh(mesh); configure?.Invoke(scene); },
                 drawFrame: scene => scene.Draw(handle, Matrix4x4.Identity),
-                frames: frames);
+                frames: frames, shadows: shadows);
         }
     }
 }

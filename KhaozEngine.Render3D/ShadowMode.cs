@@ -113,10 +113,21 @@ namespace KhaozEngine.Render3D
 
         // ---- ShadowMap tier (the semi-realistic key-light directional shadow map with PCF) ---------------------
 
+        int _shadowMapResolution = 2048;
+
         /// <summary>Shadow-map resolution per axis (a square depth texture). Default <c>2048</c>. Bigger = crisper
-        /// contact shadows at more VRAM/fill cost; a low-end profile can drop to 1024 or 512. Clamped to a sane
-        /// minimum. Only used when <see cref="Mode"/> resolves to <see cref="ShadowMode.ShadowMap"/>.</summary>
-        public int ShadowMapResolution = 2048;
+        /// contact shadows at more VRAM/fill cost, and a low-end profile can drop to 1024 or 512. Clamped to a sane
+        /// minimum. Only used when <see cref="Mode"/> resolves to <see cref="ShadowMode.ShadowMap"/>.
+        /// <para><b>Construction-time knob.</b> The atlas is sized once when the <see cref="Scene3D"/> is built and its
+        /// handle is bound into every material set, so set this BEFORE construction via the <see cref="ShadowSettings"/>
+        /// passed to the Render3DSurface / Render3DPreview / Render3DSnapshot / GameApp3D construction seam. Writing it
+        /// after the scene has committed its atlas throws <see cref="InvalidOperationException"/> rather than silently
+        /// no-opping (the old behaviour this replaced). Recreate the scene to change it at runtime.</para></summary>
+        public int ShadowMapResolution
+        {
+            get => _shadowMapResolution;
+            set { ThrowIfAtlasCommitted(nameof(ShadowMapResolution)); _shadowMapResolution = value; }
+        }
 
         /// <summary>View distance (world units from the camera) the FIRST (tightest) cascade covers: cascade 0
         /// fits the bounding sphere of the camera-frustum slice from the near plane out to this depth, so a
@@ -135,8 +146,16 @@ namespace KhaozEngine.Render3D
         /// cascades share ONE <see cref="ShadowMode.ShadowMap"/> R32F atlas texture (side-by-side columns), each
         /// <see cref="ShadowMapResolution"/> square, so the memory is
         /// <c>ShadowCascadeCount * ShadowMapResolution^2 * 4</c> bytes (3 x 2048 = ~48 MB). A low-end profile drops the
-        /// count or the resolution. <c>1</c> is the single-map path (plus the edge fade).</summary>
-        public int ShadowCascadeCount = 3;
+        /// count or the resolution. <c>1</c> is the single-map path (plus the edge fade).
+        /// <para><b>Construction-time knob</b> (like <see cref="ShadowMapResolution"/>). Set it BEFORE the
+        /// <see cref="Scene3D"/> is built via the construction seam. A post-construction write throws
+        /// <see cref="InvalidOperationException"/> rather than silently no-opping.</para></summary>
+        public int ShadowCascadeCount
+        {
+            get => _shadowCascadeCount;
+            set { ThrowIfAtlasCommitted(nameof(ShadowCascadeCount)); _shadowCascadeCount = value; }
+        }
+        int _shadowCascadeCount = 3;
 
         /// <summary>Far reach (world units) of shadow coverage: the OUTERMOST cascade's fitted slice sphere reaches
         /// this radius, and beyond it the shadow term fades smoothly to fully lit (with the outermost cascade's UV
@@ -196,6 +215,52 @@ namespace KhaozEngine.Render3D
         /// smooth raw direction. Only used when <see cref="Mode"/> resolves to <see cref="ShadowMode.ShadowMap"/>.</summary>
         public float ShadowLightQuantizeDegrees = 0f;
 
+        float _shadowStepBlendSeconds = 0f;
+
+        /// <summary>Temporal cross-fade duration CLAMP MAX, in seconds, for easing a <see cref="ShadowLightQuantizeDegrees"/>
+        /// step. Default <c>0</c> = off entirely (byte-stable, no extra atlas). Only meaningful when
+        /// <see cref="ShadowLightQuantizeDegrees"/> &gt; 0: quantization stops the per-frame edge shimmer but trades it
+        /// for a discrete jump every step, and this eases that jump. When the quantized light direction steps, the
+        /// OUTGOING step's shadow atlas + receiver matrices are kept alive (frozen) while the INCOMING step renders, and
+        /// the receivers lerp the two PCF results from fully-outgoing to fully-incoming, then retire the old set. So a
+        /// step reads as a soft settle instead of a snap.
+        /// <para><b>Adaptive duration (issue #227).</b> This is NOT a fixed window: each fade runs for
+        /// <c>min(observed inter-step interval, ShadowStepBlendSeconds)</c>, so it tracks the sun's speed. A fixed window
+        /// under-fills a slow sun (the fade covers only the first slice of a long inter-step gap, then the edge holds
+        /// still until the next step: "slide-then-hold", read as ticking) and truncates a fast one. With this
+        /// <b>clamp set at or above the step interval</b>, each new atlas starts fading on arrival and lands exactly as
+        /// the next step is due, so the shadow edge is in continuous motion, one step latent. A smaller clamp retains the
+        /// old slide-then-hold (the clamp caps the fade below the interval), so the default and small values stay
+        /// byte-stable and a consumer opts into continuous motion by raising the clamp above the step interval. The FIRST
+        /// step after a scene start (no interval observed yet) uses the clamp as its duration. Consumer guidance under a
+        /// moving sun: set it at or above your worst-case step interval (roughly <c>ShadowLightQuantizeDegrees</c> /
+        /// sun-deg-per-second) for continuous motion, e.g. ~0.5 to 2 s for a normal day/night pace.</para>
+        /// <para><b>Per-frame bypass (issue #227).</b> When the sun outruns the frame rate (the observed interval drops
+        /// below ~2 frames' worth of scene time, e.g. a heavily accelerated world clock) a fade cannot chain, so the fit
+        /// automatically stops quantizing and refits per frame from the raw direction (continuous sub-texel motion, no
+        /// blend) until the interval climbs back past a comfortably higher threshold. This is hysteretic (it does not
+        /// flap) and needs no configuration.</para>
+        /// The blend clock advances on <see cref="Scene3D.EffectTimeSeconds"/>, so a scene using step-blend must keep
+        /// that advancing (as an animated day/night scene already does).
+        /// <para><b>Construction-time provisioning.</b> The second (cross-fade) atlas doubles the shadow VRAM, so it is
+        /// reserved only when this is &gt; 0 <em>at construction</em> (the opt-in cost). Once reserved, the value is
+        /// freely runtime-tunable (set <c>0</c> to pause the fade, back to a positive clamp to resume). Turning it
+        /// ON after construction (0 at build, &gt; 0 later) cannot reserve the atlas, so it throws
+        /// <see cref="InvalidOperationException"/> rather than silently failing to blend.</para></summary>
+        public float ShadowStepBlendSeconds
+        {
+            get => _shadowStepBlendSeconds;
+            set
+            {
+                if (_atlasCommitted && !_stepBlendProvisioned && value > 0f)
+                    throw new InvalidOperationException(
+                        "ShadowSettings.ShadowStepBlendSeconds must be > 0 at scene construction to reserve the temporal " +
+                        "cross-fade atlas. Enabling it after construction is not supported. Pass it via the ShadowSettings " +
+                        "handed to the Render3DSurface / Render3DPreview / Render3DSnapshot / GameApp3D construction seam.");
+                _shadowStepBlendSeconds = value;
+            }
+        }
+
         /// <summary>Minimum cascade count (the single-map path). See <see cref="ShadowCascadeCount"/>.</summary>
         public const int MinCascades = 1;
         /// <summary>Maximum cascade count (matches the fixed-size cascade arrays in the frame UBO / shaders).</summary>
@@ -210,6 +275,41 @@ namespace KhaozEngine.Render3D
         /// cascade (<see cref="ShadowNearDistance"/>): a nonsensical max distance below the near distance collapses to
         /// the near distance (equivalent to a single cascade). Pure.</summary>
         public float ResolvedMaxDistance => MathF.Max(ShadowMaxDistance, ShadowNearDistance);
+
+        // The three atlas-shaping knobs (ShadowMapResolution, ShadowCascadeCount, and whether ShadowStepBlendSeconds
+        // reserved the cross-fade atlas) are read ONCE when the scene builds its shadow atlas. Scene3D calls CommitAtlas
+        // right after, freezing them so a later write fails loudly instead of silently no-opping (issue #27).
+        bool _atlasCommitted;
+        bool _stepBlendProvisioned;
+
+        /// <summary>True once the owning scene has built its shadow atlas from these settings and the atlas-shaping
+        /// knobs are frozen. Set by <see cref="CommitAtlas"/>. Internal (a diagnostic, and the guard the throwing
+        /// setters read).</summary>
+        internal bool AtlasCommitted => _atlasCommitted;
+
+        /// <summary>Whether the temporal cross-fade atlas was reserved at construction (<see cref="ShadowStepBlendSeconds"/>
+        /// was &gt; 0 when <see cref="CommitAtlas"/> ran). The renderer reserves the second atlas only then, and only a
+        /// provisioned scene may blend.</summary>
+        internal bool StepBlendProvisioned => _stepBlendProvisioned;
+
+        /// <summary>Freeze the construction-time atlas knobs after the scene has sized its atlas from them. Records
+        /// whether step-blend was provisioned (so a provisioned scene may still runtime-tune the duration, while an
+        /// unprovisioned one refuses to turn blending on). Idempotent. Called by <see cref="Scene3D"/> only.</summary>
+        internal void CommitAtlas()
+        {
+            _stepBlendProvisioned = _shadowStepBlendSeconds > 0f;
+            _atlasCommitted = true;
+        }
+
+        void ThrowIfAtlasCommitted(string knob)
+        {
+            if (_atlasCommitted)
+                throw new InvalidOperationException(
+                    $"ShadowSettings.{knob} is a construction-time shadow-atlas knob. Set it BEFORE the scene allocates " +
+                    "its atlas, via the ShadowSettings passed to the Render3DSurface / Render3DPreview / Render3DSnapshot " +
+                    "/ GameApp3D construction seam. Changing it after construction is not supported because the atlas is " +
+                    "bound into every material set. Recreate the scene to change it.");
+        }
 
         /// <summary>
         /// Resolve <see cref="Mode"/> against what <paramref name="caps"/> supports, so an unsupported request

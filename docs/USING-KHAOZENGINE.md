@@ -773,8 +773,10 @@ sits in the stack, even while it is drawing nothing: every menu underneath stops
 keypresses with no visible cause. Pair this with keeping `PassUpdateThrough` true while dormant and flipping it
 false only for the frames something is actually visible/interactive, so a modal moment blocks lower screens and
 an idle moment does not. `UpdateOverlayScreen` (`KhaozEngine.Gui`) is the reference implementation: each frame it
-recomputes `PassUpdateThrough` from its own visibility and returns `receivesInput && visible`, never a bare
-`true`. (There used to be a `Screen.InputConsumption` enum gesturing at this contract without `ScreenStack` ever
+recomputes `PassUpdateThrough` from whether it must be modal (a required update or the apply step, not mere
+visibility) and returns consumed only when modal or when its trigger fired, never a bare `true`, so an optional
+"update available" prompt keeps the game below both simulating and receiving its own input. (There used to be a
+`Screen.InputConsumption` enum gesturing at this contract without `ScreenStack` ever
 reading it; it was removed in 10.111.0 as dead API - the bool-return contract above, sharpened in the `Screen.Update`
 XML doc, is the actual mechanism. See `CHANGELOG.md`.)
 

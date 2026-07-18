@@ -65,8 +65,10 @@ namespace KhaozEngine.Gui
         /// <see cref="PassUpdateThrough"/> true while dormant and flipping it false only while something is
         /// actually visible/interactive, so a modal moment blocks the screens below and an idle moment does not.
         /// <see cref="UpdateOverlayScreen"/> is the reference implementation: it recomputes
-        /// <see cref="PassUpdateThrough"/> from its own visibility every frame and returns
-        /// <c>receivesInput &amp;&amp; visible</c>, never a bare `true`.
+        /// <see cref="PassUpdateThrough"/> from whether it must be modal that frame (a required update or the
+        /// apply step, not mere visibility) and returns consumed only when modal or when its trigger actually
+        /// fired, never a bare `true`, so an optional prompt keeps the screens below both updating and receiving
+        /// input.
         /// </para>
         /// </returns>
         public abstract bool Update(float dt, bool receivesInput);

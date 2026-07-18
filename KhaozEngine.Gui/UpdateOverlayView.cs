@@ -31,7 +31,13 @@ public sealed class UpdateOverlayView
     /// <summary>Current fade alpha (0 hidden .. 1 shown); exposed for tests/diagnostics.</summary>
     public float Alpha => _alpha;
 
-    /// <summary>States that show a panel (and are modal). Idle/Checking are hidden.</summary>
+    /// <summary>True on the frame the trigger fired (key/button pressed while a panel is showing); reset every
+    /// <see cref="Update"/>. <see cref="UpdateOverlayScreen"/> reads it to consume input only on that frame while
+    /// non-modal, so an optional prompt never swallows the game's own input.</summary>
+    internal bool TriggeredThisFrame { get; private set; }
+
+    /// <summary>States that show a panel. Idle/Checking are hidden. Whether a shown panel is modal is decided by
+    /// the host (see <see cref="UpdateOverlayScreen"/>: modal only for a required update or the apply step).</summary>
     public static bool IsVisible(UpdateState state) => state is
         UpdateState.UpdateAvailable or UpdateState.Downloading or UpdateState.ReadyToApply
         or UpdateState.Applying or UpdateState.Failed;
@@ -45,8 +51,9 @@ public sealed class UpdateOverlayView
     }
 
     /// <summary>
-    /// Advance the fade, detect the trigger, and report whether the overlay is showing a panel (i.e. is modal
-    /// / consumed input). Pass <see cref="InputState.Empty"/> to advance visuals without accepting input.
+    /// Advance the fade, detect the trigger, and report whether the overlay is showing a panel. Also sets
+    /// <see cref="TriggeredThisFrame"/>. Pass <see cref="InputState.Empty"/> to advance visuals without accepting
+    /// input.
     /// </summary>
     public bool Update(IUpdateStatus status, InputState input, float dt)
     {
@@ -55,7 +62,8 @@ public sealed class UpdateOverlayView
         float step = Theme.FadeSpeed * dt;
         _alpha = target > _alpha ? MathF.Min(target, _alpha + step) : MathF.Max(target, _alpha - step);
 
-        if (visible && TriggerPressed(input))
+        TriggeredThisFrame = visible && TriggerPressed(input);
+        if (TriggeredThisFrame)
         {
             OnTrigger?.Invoke(status.State);
             Triggered?.Invoke();

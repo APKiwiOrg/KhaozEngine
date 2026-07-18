@@ -21,8 +21,9 @@ namespace KhaozEngine.Tests.Gui
             public override void Draw(SpriteBatch batch) { }
         }
 
-        /// <summary>The <see cref="UpdateOverlayScreen"/>-style reference pattern for a fake: recomputes
-        /// <see cref="Screen.PassUpdateThrough"/> from its own visibility and only consumes while visible.</summary>
+        /// <summary>A visibility-gated modal-overlay fake for exercising <see cref="ScreenStack"/> routing:
+        /// recomputes <see cref="Screen.PassUpdateThrough"/> from its own visibility and only consumes while
+        /// visible (how a REQUIRED <see cref="UpdateOverlayScreen"/> behaves; an optional one stays non-modal).</summary>
         sealed class FakeVisibilityOverlay : Screen
         {
             public bool Visible;
@@ -30,7 +31,7 @@ namespace KhaozEngine.Tests.Gui
             public override bool Update(float dt, bool receivesInput)
             {
                 LastReceivedInput = receivesInput;
-                PassUpdateThrough = !Visible; // recomputed from visibility every frame, like UpdateOverlayScreen
+                PassUpdateThrough = !Visible; // recomputed every frame (as a required UpdateOverlayScreen is modal)
                 return receivesInput && Visible;
             }
             public override void Draw(SpriteBatch batch) { }
@@ -103,7 +104,7 @@ namespace KhaozEngine.Tests.Gui
         }
 
         /// <summary>
-        /// The <see cref="UpdateOverlayScreen"/>-style reference pattern: an overlay that recomputes
+        /// A visibility-gated modal overlay (how a REQUIRED <see cref="UpdateOverlayScreen"/> behaves): recomputes
         /// <see cref="Screen.PassUpdateThrough"/> from its own visibility and only returns true (consumed) while
         /// actually visible. Confirms both halves of the contract on the same screen across frames: dormant does
         /// not starve, visible/modal does block (and stops the lower screen updating at all, per

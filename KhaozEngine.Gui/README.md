@@ -30,7 +30,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   screen that stays mounted all the time but is only sometimes showing something MUST return `false` from
   `Update` while dormant (received input != consumed it), or it silently blocks every screen below for as long as
   it sits in the stack. `UpdateOverlayScreen` is the reference implementation (recomputes `PassUpdateThrough` from
-  its own visibility each frame, returns `receivesInput && visible`); see `Screen.Update`'s XML doc and
+  whether it must be modal each frame, a required update or the apply step rather than mere visibility, and returns
+  consumed only when modal or when its trigger fired); see `Screen.Update`'s XML doc and
   `docs/USING-KHAOZENGINE.md` for the full contract.
 - **Theming (`GuiTheme` + `GuiStyle`).** Since 10.11.0 the default widget look is crisp: a neutral-dark palette
   with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). `GuiTheme` is the

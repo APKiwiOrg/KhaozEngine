@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.0.1
+
+Fix (Gui): the in-game update overlay no longer pauses the whole game for an OPTIONAL update. `UpdateOverlayScreen`
+was modal whenever a panel showed, so an "update available" prompt stopped every screen below it from updating and
+froze an idle game (Nullwake's mining sim sat still until a keypress). It is now modal only for a required update
+or the apply step. An optional prompt stays non-modal, so the game keeps simulating and keeps its own input behind
+it. Closes #128.
+
+- **`UpdateOverlayScreen.Update` recomputes modality from need, not mere visibility.**
+  `modal = visible && (IsRequired || State == Applying)`, and `PassUpdateThrough = !modal`. Optional
+  `UpdateAvailable`/`Downloading`/`ReadyToApply`/`Failed` are now non-modal, so `ScreenStack` keeps updating the
+  screens below. A required update, and the `Applying` relaunch step, stay modal.
+- **Input flows to the game while non-modal.** The screen now reports consumed input only when modal or on the frame
+  its trigger actually fires (new internal `UpdateOverlayView.TriggeredThisFrame`), instead of the old
+  `receivesInput && visible`. The trigger key/button still starts the download, but taps and keypresses now reach the
+  game behind an optional prompt instead of being swallowed.
+- Behaviour fix only, no public API change. Consumers (Nullwake, Hardpoint, SpaceGame, Ruinborne) get the corrected
+  overlay by repinning to 13.0.1, no code change required.
+
 ## 13.0.0
 
 Security (breaking): `DiscordTokenValidator` now verifies the access token was minted for the consumer's own

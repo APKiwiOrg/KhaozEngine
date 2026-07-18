@@ -9,8 +9,9 @@ namespace KhaozEngine.Gui;
 /// <summary>
 /// Drop-in <see cref="Screen"/> wrapping <see cref="UpdateOverlayView"/> for stack-based games. It reads
 /// input from the owning <see cref="ScreenStack"/>, draws the overlay centred in the supplied design
-/// viewport, and is modal only while a panel is showing (so the game below keeps updating when idle).
-/// Re-exposes the view's <see cref="OnTrigger"/>/<see cref="Triggered"/> events.
+/// viewport, and is modal only for a required update or the apply step. An optional prompt stays non-modal,
+/// so the game below keeps simulating and keeps its own input, and the overlay consumes only the frame its
+/// trigger fires. Re-exposes the view's <see cref="OnTrigger"/>/<see cref="Triggered"/> events.
 /// </summary>
 public sealed class UpdateOverlayScreen : Screen
 {
@@ -37,15 +38,20 @@ public sealed class UpdateOverlayScreen : Screen
         _viewport = viewport;
         _view = new UpdateOverlayView(theme);
         DrawOrder = 10_000;        // sits on top of game UI
-        PassUpdateThrough = true;  // re-evaluated each frame from visibility
+        PassUpdateThrough = true;  // re-evaluated each frame from modality
     }
 
     public override bool Update(float dt, bool receivesInput)
     {
         InputState input = receivesInput ? Manager.Input : InputState.Empty;
         bool visible = _view.Update(_status, input, dt);
-        PassUpdateThrough = !visible; // modal only while a panel is shown
-        return receivesInput && visible;
+        // Modal only when the update demands attention: a required update, or the apply step (the process is
+        // about to relaunch). An optional prompt stays non-modal so the game below keeps simulating.
+        bool modal = visible && (_status.IsRequired || _status.State == UpdateState.Applying);
+        PassUpdateThrough = !modal;
+        // While modal, consume all input; while non-modal, consume only the frame the trigger fires so the game
+        // keeps receiving its own input. Never a bare true, and false whenever !receivesInput.
+        return modal ? receivesInput : _view.TriggeredThisFrame;
     }
 
     public override void Draw(SpriteBatch batch) =>

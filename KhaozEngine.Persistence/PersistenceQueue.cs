@@ -27,6 +27,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     private readonly ILogger logger;
     private readonly int maxAttempts;
     private readonly TimeSpan retryDelay;
+    private readonly int backupGenerations;
     private bool workerScheduled;
     private bool notifying;
     private bool disposed;
@@ -34,8 +35,8 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     /// <summary>Raised when a write fails after all retry attempts. Notifications are delivered on a background worker thread, one at a time and in failure order, never concurrently. Delivery happens after the drain worker has released the queue's internal latch, so a subscriber may call <see cref="Flush"/> or <see cref="Dispose"/> from the handler without deadlocking. A subscriber's own exception is caught and logged, never killing the writer.</summary>
     public event EventHandler<PersistenceWriteFailedEventArgs>? WriteFailed;
 
-    /// <summary>Creates a queue. <paramref name="maxAttempts"/> total write attempts per payload (>= 1); <paramref name="retryDelay"/> backoff between attempts (default 50 ms). <paramref name="logger"/> defaults to the ambient <c>Log</c> facade (category <c>PersistenceQueue</c>).</summary>
-    public PersistenceQueue(ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null)
+    /// <summary>Creates a queue. <paramref name="maxAttempts"/> total write attempts per payload (>= 1). <paramref name="retryDelay"/> backoff between attempts (default 50 ms). <paramref name="logger"/> defaults to the ambient <c>Log</c> facade (category <c>PersistenceQueue</c>). <paramref name="backupGenerations"/> is the number of numbered backups to keep per target path via <see cref="SaveBackups"/>, rotated once per committed payload before the write attempt (default 0, off, existing behavior unchanged).</summary>
+    public PersistenceQueue(ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null, int backupGenerations = 0)
     {
         if (maxAttempts < 1)
         {
@@ -48,6 +49,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
         // pathological value from tying up a pool thread.
         TimeSpan delay = retryDelay ?? TimeSpan.FromMilliseconds(50);
         this.retryDelay = delay > TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : delay;
+        this.backupGenerations = backupGenerations;
     }
 
     /// <inheritdoc/>
@@ -227,6 +229,20 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     // Returns the failure to notify (queued by the caller for ordered delivery once the drain latch is released), or null on success.
     private PersistenceWriteFailedEventArgs? WriteWithRetry(string path, string json)
     {
+        // Rotate once per committed payload, never per retry attempt: the primary is copied (not
+        // moved) into generation 1, so it stays intact if every attempt below then fails.
+        if (backupGenerations > 0)
+        {
+            try
+            {
+                SaveBackups.Rotate(path, backupGenerations);
+            }
+            catch (Exception ex)
+            {
+                logger.Warn($"backup rotation for '{path}' failed, writing anyway", ex);
+            }
+        }
+
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try

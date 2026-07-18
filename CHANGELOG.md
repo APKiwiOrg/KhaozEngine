@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.5.0
+
+Render3D shadows: the temporal cross-fade now adapts its duration to the sun's actual step cadence and bypasses to
+per-frame refit when the sun outruns the frame rate, so a moving-sun shadow edge glides continuously instead of ticking.
+`ShadowSettings.ShadowStepBlendSeconds` reinterprets from a fixed window to the fade-duration CLAMP MAX. Closes #227.
+
+- **Adaptive fade duration (issue #227).** `ShadowSettings.ShadowStepBlendSeconds` was a FIXED cross-fade window; it is
+  now the fade-duration CLAMP MAX. Each fade runs for `min(observed inter-step interval, ShadowStepBlendSeconds)`, where
+  the interval is measured between consecutive quantized-direction steps. A fixed window under-fills a slow sun (it
+  covers only the first slice of a long inter-step gap, then the edge holds still until the next step: "slide-then-hold",
+  which reads as the shadow ticking every couple of seconds even at 1x) and truncates a fast one. With the clamp set at
+  or above the step interval, each new atlas starts fading on arrival and lands exactly as the next step is due, so the
+  edge is in continuous motion, one step latent. A consumer that keeps a small clamp retains the old slide-then-hold (the
+  clamp caps the fade below the interval), so the default and small values stay byte-stable and continuity is opt-in by
+  raising the clamp above the step interval. The FIRST step after a scene start (or a `Reset`) has no observed interval
+  yet, so it falls back to the clamp as its duration.
+- **Per-frame bypass with hysteresis (issue #227).** When the sun outruns the frame rate (the observed interval drops
+  below ~2 render frames' worth of scene time, e.g. a heavily accelerated day/night clock) a cross-fade can no longer
+  chain, so quantizing buys nothing. The fit then automatically stops quantizing and refits per frame from the RAW light
+  direction (restoring the pre-quantization continuous sub-texel motion, no blend), and resumes quantizing only once the
+  interval climbs back above ~4 frames, so the decision does not flap at the boundary. The bypass is a pure decision in
+  the `ShadowStepBlend` bookkeeping (the caller reads `BypassQuantization` before it fits, a one-frame-latent latch),
+  headless-tested. "Frames' worth of scene time" is `interval / dt`, i.e. the number of render frames the interval
+  spanned regardless of any timescale the consumer applies to `Scene3D.EffectTimeSeconds`.
+- **A step arriving mid-fade** lands the in-flight fade instantly (unchanged) and starts the new fade with the freshly
+  observed interval. With the clamp at or above the interval this only happens transiently right after a speed change.
+- **Default-off / clamp-0 is byte-stable.** `ShadowStepBlendSeconds == 0` still means off entirely (no second atlas,
+  weight 1, the shader skips the frozen sample), and a runtime clamp of 0 resets the whole adaptive + bypass machine each
+  frame (quantized fit, no bypass), so a paused fade behaves exactly as before. The shader path is unchanged (the blend
+  weight is still a 0..1 lerp; only its DURATION and the bypass decision are new CPU-side bookkeeping), so the committed
+  Metal shadow goldens (`scene3d_shadow_map`, `scene3d_cascade_wide`, `scene3d_cascade_handoff`, `scene3d_splat_shadow`,
+  `scene3d_shadow_blob`) pass unchanged (no re-bake). The only new API surface is the internal read
+  `ShadowStepBlend.BypassQuantization`; public `ShadowStepBlendSeconds` keeps its type and `0` default, only its meaning
+  widens from a fixed window to a clamp max. `ShadowStepBlendTests` gains interval-observation, min(interval, clamp)
+  selection, first-step fallback, mid-fade chaining, and bypass engage/release hysteresis coverage; the GPU property
+  test `ShadowStepBlendGpuTests` gains a case proving the ramp spans a full observed interval shorter than the clamp.
+
 ## 13.4.0
 
 Ground decals: the `MoltenCracks` Voronoi fill pattern and noise-eroded silhouettes (`EdgeErosion`), the

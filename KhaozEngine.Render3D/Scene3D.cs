@@ -90,8 +90,10 @@ namespace KhaozEngine.Render3D
         readonly Matrix4x4[] _cascadeDepthVps = new Matrix4x4[ShadowSettings.MaxCascades];      // receiver * atlas-column transform (depth pass)
         readonly float[] _cascadeNormalOffsets = new float[ShadowSettings.MaxCascades];
         int _cascadeCount;                    // active cascade count this frame
-        // Temporal shadow cross-fade (issue #225). The pure step-blend state machine, the (quantized) fit direction it
-        // watches, the EffectTimeSeconds sample it derives dt from, and the FROZEN outgoing-step receiver matrices +
+        // Temporal shadow cross-fade (issue #225) + adaptive duration & per-frame bypass (issue #227). The pure
+        // step-blend state machine, the QUANTIZED direction it watches for steps (which is the fitted direction too,
+        // except while BypassQuantization is set and the fit falls back to the raw direction for continuous per-frame
+        // motion), the EffectTimeSeconds sample it derives dt from, and the FROZEN outgoing-step receiver matrices +
         // count it holds across a fade (captured at the step from _lastCascadeCpuVps, never re-fit as the camera moves).
         Internal.ShadowStepBlend _stepBlend;
         Vector3 _shadowFitLightDir;
@@ -1674,13 +1676,23 @@ namespace KhaozEngine.Render3D
             int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
             Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
             Internal.ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
-            Vector3 lightDir = Vector3.Normalize(Post.LightDirection);
+            Vector3 rawDir = Vector3.Normalize(Post.LightDirection);
             // A slowly rotating sun rotates the whole texel-snapped light grid every frame, so shadow edges swim and
             // the atlas dirty-skip never reuses a frame. Snap ONLY the FIT's light direction onto an angular lattice
             // when enabled, so the fit holds constant between steps; shading and the sky keep the raw Post.LightDirection.
+            // The step-blend bookkeeping ALWAYS watches the quantized direction (_shadowFitLightDir) so it keeps
+            // measuring the inter-step cadence, but when it reports the sun has outrun the frame rate (BypassQuantization,
+            // issue #227) the fit falls back to the RAW direction for continuous per-frame motion. BypassQuantization
+            // reflects the previous frame's Advance (this fit runs before it), a harmless one-frame lag for a latch.
+            Vector3 lightDir = rawDir;
             if (shadows.ShadowLightQuantizeDegrees > 0f)
-                lightDir = Internal.ShadowMapMath.QuantizeDirection(lightDir, shadows.ShadowLightQuantizeDegrees);
-            _shadowFitLightDir = lightDir;   // the (quantized) direction this fit used; the cross-fade watches it for a step
+            {
+                Vector3 quantized = Internal.ShadowMapMath.QuantizeDirection(rawDir, shadows.ShadowLightQuantizeDegrees);
+                _shadowFitLightDir = quantized;                                    // watched for a step, regardless of bypass
+                lightDir = _stepBlend.BypassQuantization ? rawDir : quantized;     // bypass => per-frame refit from raw
+            }
+            else
+                _shadowFitLightDir = rawDir;   // quantization off: the fit already tracks the raw direction each frame
             float prev = camNear;
             for (int i = 0; i < count; i++)
             {
@@ -1987,19 +1999,28 @@ namespace KhaozEngine.Render3D
             {
                 timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
 
-                // Temporal shadow cross-fade (issue #225): advance the pure step-blend state machine on this frame's
-                // quantized fit direction. A cross-fade runs only when the second atlas was provisioned AND the light is
-                // quantized (a non-quantized direction moves every frame, so there is no discrete step to ease). On a
-                // STEP the live atlas + its receiver matrices still hold the OUTGOING quantization step, so freeze both
-                // before the incoming step re-renders the live atlas: the frozen matrices come from the last committed
-                // fit (_lastCascadeCpuVps) and are HELD for the whole fade (never re-fit, so a camera pan during the fade
+                // Temporal shadow cross-fade (issue #225) + adaptive duration & bypass (issue #227): advance the pure
+                // step-blend state machine on this frame's quantized fit direction. The fade runs only when the second
+                // atlas was provisioned AND the light is quantized AND the clamp is positive; ShadowStepBlendSeconds is
+                // now the fade-duration CLAMP MAX (each fade lasts min(observed inter-step interval, clamp)), and 0 still
+                // means off entirely, so a paused/off fade is reset (bypass off, quantized fit, byte-stable). On a STEP
+                // the live atlas + its receiver matrices still hold the OUTGOING quantization step, so freeze both before
+                // the incoming step re-renders the live atlas: the frozen matrices come from the last committed fit
+                // (_lastCascadeCpuVps) and are HELD for the whole fade (never re-fit, so a camera pan during the fade
                 // rides the baked outgoing matrices, exactly as the dirty-skip already reuses a stale atlas).
-                float blendSeconds = (_model.StepBlendProvisioned && Post.Quality.Shadows.ShadowLightQuantizeDegrees > 0f)
+                float clampSeconds = (_model.StepBlendProvisioned && Post.Quality.Shadows.ShadowLightQuantizeDegrees > 0f)
                     ? MathF.Max(0f, Post.Quality.Shadows.ShadowStepBlendSeconds)
                     : 0f;
                 float blendDt = Math.Clamp(EffectTimeSeconds - _blendClockSeconds, 0f, 0.25f);
                 _blendClockSeconds = EffectTimeSeconds;
-                bool stepped = _stepBlend.Advance(_shadowFitLightDir, blendDt, blendSeconds);
+                bool stepped;
+                if (clampSeconds > 0f)
+                    stepped = _stepBlend.Advance(_shadowFitLightDir, blendDt, clampSeconds);
+                else
+                {
+                    _stepBlend.Reset();   // fade off/paused: no adaptive blend, no bypass, quantized fit as before (byte-stable)
+                    stepped = false;
+                }
                 bool freezeOutgoing = stepped && _shadowPassRendered;
                 if (freezeOutgoing)
                 {

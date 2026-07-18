@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -11,7 +12,10 @@ namespace KhaozEngine.Tests.Gpu
     /// steps on the real shader path (the second atlas binds, the frozen sample runs, the weight ramps). A same-session
     /// luminance invariant, not a committed grid, so it runs on every backend: a ground probe that is SHADOWED under the
     /// outgoing sun direction but LIT under the incoming one must read darkest at weight 0 (fully outgoing), brightest at
-    /// the settled incoming step, and strictly BETWEEN at a mid-fade weight. Skipped unless KE_GPU_TESTS=1.
+    /// the settled incoming step, and strictly BETWEEN at a mid-fade weight. A second test proves the ADAPTIVE window
+    /// (issue #227): with a clamp far above the step interval, a fade still completes within one (shorter) observed
+    /// interval, so the ramp spans that whole interval instead of covering only a clamp-sized sliver of it. Skipped
+    /// unless KE_GPU_TESTS=1.
     /// </summary>
     public sealed class ShadowStepBlendGpuTests
     {
@@ -56,6 +60,61 @@ namespace KhaozEngine.Tests.Gpu
                 $"mid-fade ({wMid:0.###}) did not brighten past the fully-outgoing frame ({wFrozen:0.###}): the incoming step is not fading in.");
             Assert.True(wMid < wLit - 0.04f,
                 $"mid-fade ({wMid:0.###}) reached the fully-incoming brightness ({wLit:0.###}): the outgoing (frozen) shadow is not contributing.");
+        }
+
+        [GpuFact]
+        public void StepBlend_AdaptiveWindow_SpansAShortInterval_UnderALargeClamp()
+        {
+            // A LARGE clamp (1s) with a SHORT observed step interval (5 frames x 0.02s = 0.1s): the fade must run for the
+            // 0.1s interval, not the 1s clamp (issue #227). So 0.1s after the step the fade has fully settled (weight 1);
+            // a fixed clamp-sized window would be at weight 0.1 there, still essentially the frozen (outgoing) shadow.
+            // The plan commits B (lit), steps to A (shadow), then steps back to B: at that final step the frozen set is
+            // the shadowed A and the incoming set is the lit B, so the fade runs shadow -> lit. dt (0.02) is well under
+            // the interval, so the per-frame bypass never engages and the quantized adaptive blend is what runs.
+            const float dt = 0.02f;
+            float wFrozen  = ShadowRatio(AdaptiveSettings(), Plan(dt, (DirB, 5), (DirA, 5), (DirB, 1)));   // final step, weight 0
+            float wMid     = ShadowRatio(AdaptiveSettings(), Plan(dt, (DirB, 5), (DirA, 5), (DirB, 3)));   // +0.04 into the 0.10 window
+            float wSettled = ShadowRatio(AdaptiveSettings(), Plan(dt, (DirB, 5), (DirA, 5), (DirB, 6)));   // +0.10: the whole window
+            float wLit     = ShadowRatio(AdaptiveSettings(), Plan(dt, (DirB, 2)));                          // settled B, no fade
+
+            // Endpoints must actually differ (probe shadowed under frozen A, lit under B), or the ramp assertions are vacuous.
+            Assert.True(wLit - wFrozen > 0.15f,
+                $"probe not shadowed-under-A / lit-under-B enough to test the ramp (frozen {wFrozen:0.###}, lit {wLit:0.###}).");
+
+            // The ramp is real: mid-fade sits strictly between the frozen and lit endpoints.
+            Assert.True(wMid > wFrozen + 0.04f && wMid < wLit - 0.04f,
+                $"mid-fade ({wMid:0.###}) is not strictly between frozen ({wFrozen:0.###}) and lit ({wLit:0.###}).");
+
+            // THE adaptive-window property: 0.10s after the step (one whole observed interval) the fade has settled to
+            // the incoming (lit) result, and it kept progressing past mid to get there. A fixed clamp-sized (1s) window
+            // would read ~frozen at +0.10 (weight 0.1), so this would fail if the window ignored the interval.
+            Assert.True(wSettled > wLit - 0.05f,
+                $"the fade did not complete within the 0.10s observed interval (settled {wSettled:0.###}, lit {wLit:0.###}): the window is not adapting.");
+            Assert.True(wSettled > wMid + 0.04f,
+                $"the fade did not keep progressing past mid within the interval (settled {wSettled:0.###}, mid {wMid:0.###}).");
+        }
+
+        static ShadowSettings AdaptiveSettings() => new()
+        {
+            Mode = ShadowMode.ShadowMap,
+            ShadowLightQuantizeDegrees = 3f,   // quantized, so the A<->B changes are discrete steps
+            ShadowStepBlendSeconds = 1f,       // a large CLAMP MAX, well above the 0.1s step interval the plan establishes
+        };
+
+        // Expand a step plan into per-frame (LightDirection, EffectTimeSeconds) samples at a fixed dt: each entry holds
+        // its direction for `frames` frames (so an inter-step interval is frames*dt), with EffectTime accumulating
+        // continuously across the whole plan. A direction change on an entry's first frame is the quantized step.
+        static (Vector3 dir, float t)[] Plan(float dt, params (Vector3 dir, int frames)[] steps)
+        {
+            var seq = new List<(Vector3, float)>();
+            float t = 0f;
+            foreach (var (dir, frames) in steps)
+                for (int i = 0; i < frames; i++)
+                {
+                    seq.Add((dir, t));
+                    t += dt;
+                }
+            return seq.ToArray();
         }
 
         // Drive the scene over the given (LightDirection, EffectTimeSeconds) sequence (the shadow atlas is sized by the

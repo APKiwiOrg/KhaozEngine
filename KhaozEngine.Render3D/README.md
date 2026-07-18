@@ -100,12 +100,16 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   constant between steps (`ShadowMapMath.QuantizeDirection`) - edges rock-solid, dirty-skip reuse restored, at the cost
   of one small discrete edge nudge per step. Only the fit sees it; shading/sky keep the raw `Post.LightDirection`.
   `ShadowStepBlendSeconds` (default `0` = off, opt-in; only with `ShadowLightQuantizeDegrees > 0`) eases that per-step
-  nudge: on a step the OUTGOING atlas + receiver matrices stay alive while the INCOMING step renders, and for that window
-  the receivers lerp the two PCF results from outgoing to incoming, then retire the old set, so a step reads as a soft
-  settle. It needs a SECOND shadow atlas (2x shadow VRAM), reserved only when `> 0` at construction, so set it via the
-  same `ShadowSettings` construction seam; once reserved the duration is runtime-tunable (0 pauses, positive resumes).
-  The outgoing set is frozen at the step and never re-fit (a camera pan rides the baked matrices, like the dirty-skip),
-  and the fade advances on `Scene3D.EffectTimeSeconds`. The pure step bookkeeping is `Internal.ShadowStepBlend`.
+  nudge: on a step the OUTGOING atlas + receiver matrices stay alive while the INCOMING step renders, the receivers lerp
+  the two PCF results from outgoing to incoming, then retire the old set, so a step reads as a soft settle. It is now the
+  fade-duration CLAMP MAX, not a fixed window (issue #227): each fade runs `min(observed inter-step interval, clamp)`, so
+  with the clamp at or above the step interval the shadow edge moves continuously (one step latent) instead of
+  slide-then-hold; the first step (no interval yet) uses the clamp, small clamps stay byte-stable, and a sun that outruns
+  the frame rate auto-bypasses to per-frame refit (hysteretic). It needs a SECOND shadow atlas (2x shadow VRAM), reserved
+  only when `> 0` at construction, so set it via the same `ShadowSettings` construction seam; once reserved the clamp is
+  runtime-tunable (0 pauses, positive resumes). The outgoing set is frozen at the step and never re-fit (a camera pan
+  rides the baked matrices, like the dirty-skip), and the fade advances on `Scene3D.EffectTimeSeconds`. The pure step
+  bookkeeping is `Internal.ShadowStepBlend`.
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.

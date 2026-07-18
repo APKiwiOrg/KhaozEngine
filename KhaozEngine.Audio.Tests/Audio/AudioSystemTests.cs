@@ -372,4 +372,26 @@ public sealed class AudioSystemTests
         audio.Update();                              // recovered -> audio still alive, advances
         Assert.Equal(playedBefore + 1, backend.PlayedIndices.Count);
     }
+
+    [Fact]
+    public void Update_StreamingRefillThrows_StopsTrackAndStaysUsable()
+    {
+        var (audio, backend) = NewLoaded("a", "b");
+        audio.Update();                              // deferred first play -> a track is playing
+        int playedBefore = backend.PlayedIndices.Count;
+        int stoppedBefore = backend.StopCount;
+
+        // A corrupt or truncated music file makes the streaming refill throw mid-playback (the real OpenAL
+        // backend surfaces EndOfStreamException from the decoder). The frame loop must contain it, not crash
+        // the whole game.
+        backend.ThrowOnNextUpdateCalls = 1;
+        audio.Update();                              // refill throws -> must NOT propagate out of Update
+
+        // The failing track was stopped cleanly (logged + stopped), not left half-playing.
+        Assert.True(backend.StopCount > stoppedBefore);
+
+        // The audio system stays usable afterwards: the stopped track auto-advances on the next frame.
+        audio.Update();
+        Assert.True(backend.PlayedIndices.Count > playedBefore);
+    }
 }

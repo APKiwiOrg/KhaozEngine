@@ -10,8 +10,10 @@ namespace KhaozEngine.Commerce;
 public readonly record struct PeriodicGrantResult(bool Granted, long NewBalance, TimeSpan TimeUntilNext);
 
 /// <summary>A server-clock daily/periodic reward routed through the wallet. The server instant is the
-/// only clock; no client timestamp is trusted, which closes the clock-forward exploit. Non-stacking via
-/// <see cref="WallClockRewardSchedule"/>; credited-once via the wallet idempotency key.</summary>
+/// only clock. No client timestamp is trusted, which closes the clock-forward exploit. Non-stacking via
+/// <see cref="WallClockRewardSchedule"/>, credited-once via the wallet idempotency key. The first-ever claim
+/// keys on a fixed per (account, reward) sentinel retained in the wallet ledger, a permanent one-shot: do not
+/// clear the schedule store while retaining the wallet ledger unless denying the re-grant is intended.</summary>
 public sealed class PeriodicGrant
 {
     private readonly Wallet wallet;
@@ -36,6 +38,7 @@ public sealed class PeriodicGrant
         CancellationToken ct = default)
     {
         DateTimeOffset? nextRaw = await schedules.GetNextAvailableAsync(account, rewardId, ct);
+        bool bootstrap = nextRaw is null;
         WallClockRewardSchedule schedule = nextRaw is DateTimeOffset next
             ? new WallClockRewardSchedule { Interval = interval, NextAvailableUtc = next }
             : WallClockRewardSchedule.Start(interval, serverNowUtc, availableImmediately: true);
@@ -46,8 +49,15 @@ public sealed class PeriodicGrant
             return new PeriodicGrantResult(false, bal, schedule.TimeUntilAvailable(serverNowUtc));
         }
 
-        // Idempotency key pins this grant to the scheduled instant, so a concurrent double-claim credits once.
-        string key = $"{rewardId}:{account.Value}:{schedule.NextAvailableUtc.UtcTicks.ToString(CultureInfo.InvariantCulture)}";
+        // Idempotency key pins this grant so a concurrent double-claim credits once. On the first-ever claim
+        // the scheduled instant is the caller's own serverNowUtc, so two concurrent bootstraps would derive
+        // two different keys and both credit. Pin the bootstrap to a fixed per-(account, reward) sentinel
+        // instead: there is exactly one legitimate first grant, so concurrent first claims collide on one key
+        // and the wallet credits exactly once. Every later claim reads a persisted NextAvailableUtc, already
+        // stable across callers, and keys on its ticks.
+        string key = bootstrap
+            ? $"{rewardId}:{account.Value}:bootstrap"
+            : $"{rewardId}:{account.Value}:{schedule.NextAvailableUtc.UtcTicks.ToString(CultureInfo.InvariantCulture)}";
         CreditResult credit = await wallet.GrantAsync(account, currency, amount, key, ct);
 
         WallClockRewardSchedule advanced = schedule.Claim(serverNowUtc);

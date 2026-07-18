@@ -41,6 +41,12 @@ target path (rapid repeats to one path collapse to the last) and a background wo
 optional `ILogger` and raise `WriteFailed`. `Flush()` blocks until drained and the queue is
 `IDisposable` (disposing flushes), so a game can guarantee a clean write on shutdown.
 
+`WriteFailed` is delivered on a background worker thread after the drain latch is released, one handler
+at a time and in failure order, never concurrently. A handler may therefore safely call `Flush()` or
+`Dispose()` on the queue without deadlocking. One consequence: `Flush()` returns once the writes are
+drained and does not block until the `WriteFailed` handlers have run (the failure is still logged
+synchronously before `Flush()` returns).
+
 ```csharp
 using var queue = new PersistenceQueue(Log.For<PersistenceQueue>());   // logger, maxAttempts, retryDelay all optional
 queue.WriteFailed += (_, e) => Notify(e.Path, e.Exception);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using KhaozEngine.Audio;
 
 namespace KhaozEngine.Tests;
@@ -25,6 +26,13 @@ internal sealed class FakeMusicBackend : IMusicBackend
 
     /// <summary>When &gt; 0, the next read of <see cref="IsPlaying"/> throws and decrements this.</summary>
     public int ThrowOnNextIsPlayingReads { get; set; }
+
+    /// <summary>
+    /// When &gt; 0, the next <see cref="Update"/> call throws and decrements this. Models the streaming
+    /// refill hitting a corrupt or truncated file mid-playback (the real backend surfaces
+    /// <see cref="EndOfStreamException"/> from the decoder there).
+    /// </summary>
+    public int ThrowOnNextUpdateCalls { get; set; }
 
     public bool IsPlaying
     {
@@ -64,7 +72,15 @@ internal sealed class FakeMusicBackend : IMusicBackend
 
     public void SetVolume(float volume) => Volumes.Add(volume);
 
-    public void Update() => UpdateCount++;
+    public void Update()
+    {
+        if (ThrowOnNextUpdateCalls > 0)
+        {
+            ThrowOnNextUpdateCalls--;
+            throw new EndOfStreamException("Corrupt or truncated music stream (test).");
+        }
+        UpdateCount++;
+    }
 
     public void Dispose() => Disposed = true;
 }

@@ -63,11 +63,46 @@ on:
       - 'KhaozEngine.Gpu/**'
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
-      # The GPU golden + Imaging GoldenGridTests all live in Render.Tests now (wave-3 monolith split), so a
-      # single dir gate covers them (previously KhaozEngine.Tests/Gpu/** plus Tests/Imaging/**; the 10.18.1 LF
-      # fix shipped without a matrix run because only Tests/Gpu was watched, hence the whole-project gate).
+      # Render/runtime stack layer between Gpu and Render2D/Render3D (AppWindow, GLFW). Was never watched (#198).
+      - 'KhaozEngine.Windowing/**'
+      # 2D game-loop facade (BootScreenRenderer is drawn and captured by KhaozEngine.Render.Tests/Gpu/
+      # BootScreenVisualTests.cs) plus its 3D scene adapter. Neither was watched (#198).
+      - 'KhaozEngine.Game/**'
+      - 'KhaozEngine.Game.Render3D/**'
+      # Render-free terrain field (height/biome/noise) and its Render3D mesher. Neither was watched (#198).
+      - 'KhaozEngine.Terrain/**'
+      - 'KhaozEngine.Terrain.Render3D/**'
+      # Render-free deterministic particle sim and its Render3D billboard adapter. Neither was watched (#198).
+      - 'KhaozEngine.Particles/**'
+      - 'KhaozEngine.Particles.Render3D/**'
+      # Render-free telegraph style/resolve core (also draws the 2D path itself) and its Render3D ground
+      # path. Neither was watched (#198).
+      - 'KhaozEngine.Telegraphs/**'
+      - 'KhaozEngine.Telegraphs.Render3D/**'
+      # Headless snapshot runner (Shot2D) and its Shot3D extension, both driven end to end by
+      # KhaozEngine.Render.Tests/Gpu/SnapshotHarnessGpuTests.cs. Neither was watched (#198).
+      - 'KhaozEngine.Snapshot/**'
+      - 'KhaozEngine.Snapshot.Render3D/**'
+      # Map editor viewport and render tool carry their own [GpuFact] renders, and MapDoc is the document
+      # model those renders load. None were watched (#198).
+      - 'KhaozEngine.MapEditor/**'
+      - 'KhaozEngine.MapEdit.Tool/**'
+      - 'KhaozEngine.MapDoc/**'
+      # GoldenCompare delegates Downsample/Compare/Serialize entirely to this package, so a bug here can
+      # silently flip any golden's pass or fail. Wasn't watched (#198).
+      - 'KhaozEngine.Imaging/**'
+      # The GPU golden tests, the Imaging GoldenGridTests, and the Render3D/Terrain/ParticlesRender3D
+      # [GpuFact] suites all live in Render.Tests now (13.0.3 monolith split), and the committed goldens
+      # live under it too, so one whole-project gate covers what used to be five KhaozEngine.Tests/*
+      # subdirs (the 10.18.1 LF fix shipped without a matrix run because only Tests/Gpu was watched,
+      # hence whole-project gates rather than per-subdir lists).
       - 'KhaozEngine.Render.Tests/**'
+      # MapEditor/MapEditTool/MapDoc tests moved here (13.0.3 split) and carry [GpuFact] renders plus the
+      # sample document RenderServiceTests and ViewportWorldDisposeOrderGpuTests render (#198).
+      - 'KhaozEngine.MapEditor.Tests/**'
       - '.github/workflows/cross-platform-gpu.yml'
+  # No paths filter here (deliberate): pull_request already runs on every path unconditionally, a strict
+  # superset of the push list above, so it already "agrees" with push and needs no separate #198 fix.
   pull_request:
     branches: [ main ]
   # Weekly full-suite pass on the hosted D3D11 and Vulkan legs (Metal runs the full suite on every

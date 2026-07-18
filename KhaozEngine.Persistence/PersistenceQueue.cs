@@ -20,13 +20,18 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
     private readonly object sync = new();
     private readonly Dictionary<string, string> pending = new(StringComparer.Ordinal);
+    // Failure notifications awaiting delivery, guarded by sync. Drain workers append here and the
+    // single active notifier (see notifying) delivers FIFO, so WriteFailed handlers never run
+    // concurrently and failures arrive in the order they happened.
+    private readonly Queue<PersistenceWriteFailedEventArgs> deferredFailures = new();
     private readonly ILogger logger;
     private readonly int maxAttempts;
     private readonly TimeSpan retryDelay;
     private bool workerScheduled;
+    private bool notifying;
     private bool disposed;
 
-    /// <summary>Raised on the background worker thread when a write fails after all retry attempts. A subscriber's own exception is caught and logged, never killing the writer.</summary>
+    /// <summary>Raised when a write fails after all retry attempts. Notifications are delivered on a background worker thread, one at a time and in failure order, never concurrently. Delivery happens after the drain worker has released the queue's internal latch, so a subscriber may call <see cref="Flush"/> or <see cref="Dispose"/> from the handler without deadlocking. A subscriber's own exception is caught and logged, never killing the writer.</summary>
     public event EventHandler<PersistenceWriteFailedEventArgs>? WriteFailed;
 
     /// <summary>Creates a queue. <paramref name="maxAttempts"/> total write attempts per payload (>= 1); <paramref name="retryDelay"/> backoff between attempts (default 50 ms). <paramref name="logger"/> defaults to the ambient <c>Log</c> facade (category <c>PersistenceQueue</c>).</summary>
@@ -108,6 +113,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
     private void DrainPending()
     {
+        List<PersistenceWriteFailedEventArgs>? failures = null;
         try
         {
             while (true)
@@ -119,7 +125,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
                 {
                     if (pending.Count == 0)
                     {
-                        return;
+                        break;
                     }
 
                     path = string.Empty;
@@ -134,13 +140,32 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
                     pending.Remove(path);
                 }
 
-                WriteWithRetry(path, json);
+                PersistenceWriteFailedEventArgs? failure = WriteWithRetry(path, json);
+                if (failure is not null)
+                {
+                    // Collect the notification, do not raise it yet. Raising it here would run the
+                    // subscriber while workerScheduled is still true and only this drain thread can
+                    // clear it, so a handler that calls Flush or Dispose would wait on itself forever.
+                    (failures ??= new List<PersistenceWriteFailedEventArgs>()).Add(failure);
+                }
             }
         }
         finally
         {
+            bool notify = false;
             lock (sync)
             {
+                // Queue this pass's failures for delivery. The shared queue (never a raise on this
+                // thread mid-handoff) is what keeps WriteFailed serial and in failure order across
+                // drain handoffs: whichever thread ends up notifying delivers everything FIFO.
+                if (failures is not null)
+                {
+                    foreach (PersistenceWriteFailedEventArgs failure in failures)
+                    {
+                        deferredFailures.Enqueue(failure);
+                    }
+                }
+
                 // An Enqueue can land in the window between our pending-empty check above and here:
                 // it saw workerScheduled still true, so it added to pending WITHOUT scheduling a
                 // worker. If anything is pending, keep the latch and run another drain rather than
@@ -148,25 +173,66 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
                 // latch and wake Flush waiters.
                 if (pending.Count > 0)
                 {
+                    // The tail worker inherits the queued failures so the single notifier delivers
+                    // them serially and in order. Raising them on this thread instead would run
+                    // handlers concurrently with the tail drain.
                     ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
                 }
                 else
                 {
                     workerScheduled = false;
                     Monitor.PulseAll(sync);
+                    if (deferredFailures.Count > 0 && !notifying)
+                    {
+                        notifying = true;
+                        notify = true;
+                    }
                 }
+            }
+
+            // Deliver from inside the finally so failures inherited across a handoff are still
+            // raised even if a drain pass dies, and only after the lock above released the drain
+            // latch, so a handler that calls Flush or Dispose re-entrantly makes progress. See #150.
+            if (notify)
+            {
+                DrainNotifications();
             }
         }
     }
 
-    private void WriteWithRetry(string path, string json)
+    // Delivers queued WriteFailed notifications outside the lock until none remain. The notifying
+    // flag admits one thread at a time, so handlers are never entered concurrently and failures
+    // arrive in the order they were queued. A drain that finishes while a notifier is active just
+    // queues its failures and the active notifier picks them up on its next loop iteration.
+    private void DrainNotifications()
+    {
+        while (true)
+        {
+            PersistenceWriteFailedEventArgs args;
+            lock (sync)
+            {
+                if (deferredFailures.Count == 0)
+                {
+                    notifying = false;
+                    return;
+                }
+
+                args = deferredFailures.Dequeue();
+            }
+
+            RaiseWriteFailed(args);
+        }
+    }
+
+    // Returns the failure to notify (queued by the caller for ordered delivery once the drain latch is released), or null on success.
+    private PersistenceWriteFailedEventArgs? WriteWithRetry(string path, string json)
     {
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
                 AtomicJsonWriter.WriteText(path, json);
-                return;
+                return null;
             }
             catch (Exception ex) when (attempt < maxAttempts)
             {
@@ -179,13 +245,14 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             catch (Exception ex)
             {
                 logger.Error($"write to '{path}' failed after {maxAttempts} attempts, giving up", ex);
-                RaiseWriteFailed(path, ex, attempt);
-                return;
+                return new PersistenceWriteFailedEventArgs(path, ex, attempt);
             }
         }
+
+        return null;
     }
 
-    private void RaiseWriteFailed(string path, Exception exception, int attemptCount)
+    private void RaiseWriteFailed(PersistenceWriteFailedEventArgs args)
     {
         EventHandler<PersistenceWriteFailedEventArgs>? handler = WriteFailed;
         if (handler is null)
@@ -195,7 +262,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
         try
         {
-            handler(this, new PersistenceWriteFailedEventArgs(path, exception, attemptCount));
+            handler(this, args);
         }
         catch (Exception ex)
         {

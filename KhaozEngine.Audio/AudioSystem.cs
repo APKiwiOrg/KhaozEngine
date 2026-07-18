@@ -627,7 +627,20 @@ public sealed class AudioSystem : IDisposable
     {
         if (_backend.TrackCount == 0 || !_available || !_musicEnabled) return;
 
-        _backend.Update();   // pump the streaming backend (refill buffers, detect end-of-track)
+        try
+        {
+            _backend.Update();   // pump the streaming backend (refill buffers, detect end-of-track)
+        }
+        catch (Exception ex)
+        {
+            // A corrupt or truncated music file can make the streaming refill throw mid-playback. Stop the
+            // failing track cleanly and skip the frame instead of letting the exception crash the whole game.
+            // Other audio keeps working and the next frame recovers (the stopped track auto-advances).
+            _logger.Error("music backend update failed, stopping the current track.", ex);
+            try { _backend.Stop(); }
+            catch (Exception stopEx) { _logger.Warn("stopping the failed music track also threw.", stopEx); }
+            return;
+        }
 
         if (!_started)
         {

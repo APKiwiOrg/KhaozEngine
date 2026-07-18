@@ -40,6 +40,35 @@ hosted sweep still run everything. Closes #207.
   longer had a live consumer after the split are removed outright rather than retargeted.
 - Test and CI restructure only. No package API or runtime behavior changed.
 
+## 13.0.2
+
+Fix bundle from the 2026-07-18 full-engine review: a critical audio crash, a persistence deadlock, an
+economy double-credit race, and a CI coverage gap. No public API changed, so consumers adopt by repinning
+to 13.0.2. One observable behaviour change is called out below (persistence `WriteFailed` delivery timing).
+
+- **Audio: a corrupt or truncated music file no longer crashes the game (Closes #111).** The per-frame
+  streaming refill is now guarded in both `AudioSystem.Update` and `OpenAlMusicBackend.Update`. A decode
+  failure mid-playback stops the failing track, logs through the audio `ILogger`, and auto-advances to the
+  next track instead of throwing out of the render loop. Other audio keeps playing and the API stays usable.
+- **Persistence: `PersistenceQueue` no longer deadlocks when a `WriteFailed` handler calls `Flush()` or
+  `Dispose()` (Closes #150).** `WriteFailed` is now delivered outside the drain latch through a single-notifier
+  FIFO, one handler at a time and in failure order, so a re-entrant `Flush`/`Dispose` from a handler is legal
+  and non-blocking. **Behaviour change:** `Flush()` no longer blocks until `WriteFailed` handlers have run.
+  It still drains (and logs) the writes synchronously before returning, but handler delivery is now
+  asynchronous. A consumer whose shutdown relied on handlers having finished the instant `Flush()` returned
+  should await its own handler signal instead. No engine-internal subscriber relied on this.
+- **Commerce: `PeriodicGrant` no longer double-credits on concurrent first claims (Closes #157).** The
+  first-ever (bootstrap) claim now keys the wallet's idempotent credit on a fixed
+  `{rewardId}:{account}:bootstrap` sentinel instead of the caller's server-clock ticks, so racing first
+  claims collide on one key and credit exactly once across all three wallet backends. Bootstrap is now a
+  permanent one-shot per (account, reward): clearing the schedule store while retaining the wallet ledger
+  will deny a re-grant (documented on `PeriodicGrant`, tracked as #208).
+- **CI: the cross-platform GPU golden legs now verify every render-affecting package on direct pushes to
+  main (Closes #198).** `cross-platform-gpu.yml`'s push path filter previously omitted the Terrain, Particles,
+  Telegraphs, Snapshot, MapEditor, and Imaging render code (and its own `Tests/Render3D` GPU tests), so a
+  regression pushed straight to main skipped the D3D11/Vulkan legs. The filter now covers each package that
+  can change a golden output. The `pull_request` trigger already ran unconditionally and is unchanged.
+
 ## 13.0.1
 
 Fix (Gui): the in-game update overlay no longer pauses the whole game for an OPTIONAL update. `UpdateOverlayScreen`

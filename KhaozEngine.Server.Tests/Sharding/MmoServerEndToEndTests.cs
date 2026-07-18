@@ -1,10 +1,16 @@
+using System;
 using System.Diagnostics;
+using System.Numerics;
+using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Netcode.LiteNetLib;
+using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
+using KhaozEngine.WorldStore;
 using MmoServerSample;
 using Xunit;
 using Xunit.Abstractions;
@@ -156,6 +162,94 @@ public class MmoServerEndToEndTests
         Assert.Equal(0, got!.Value.slot);
         Assert.Equal("hello world", got.Value.text);
         Assert.Equal("hello world", server.LastChat);
+    }
+
+    [Fact]
+    public async Task PlayerPersistence_RoundTripsBySubject()
+    {
+        // Demonstrates the full capture/validate/apply loop keyed by the verified session subject: join as
+        // "alice", move, mutate the private health blob directly, leave (save-on-leave via PlayerLeaving), flush,
+        // then reconnect with the SAME subject on a brand-new server sharing the same store - the account-keyed
+        // record round-trips both the position (sample XY <-> engine XZ) and the game's PrivateStats health blob.
+        var store = new InMemoryWorldStore();
+        byte[] token = Encoding.UTF8.GetBytes("alice");
+        var config = new MmoServerConfig { TickSeconds = 0.1f, SpawnX = 50f, SpawnY = 50f };
+
+        float movedX, movedY;
+        {
+            (LoopbackTransport serverTransport, LoopbackTransport clientTransport) = LoopbackTransport.CreatePair();
+            var server = new MmoServer(serverTransport, config, store);
+            var client = new NetClient(clientTransport, token);
+
+            PumpNet(server, client);
+            Assert.Equal(0, client.Slot);
+            Assert.True(server.TryGetPlayerNetId(0, out long netId));
+
+            client.Send(MmoProtocol.EncodeMove(0, new MoveCommand(6f, 4f)), NetChannelReliability.ReliableOrdered);
+            server.Poll();
+            server.Tick(config.TickSeconds);
+            client.Poll();
+
+            Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
+            Assert.True(cell.World.TryGet(e, out Position moved));
+            movedX = moved.X;
+            movedY = moved.Y;
+            cell.World.Set(e, new PrivateStats { Health = 42 });
+
+            clientTransport.Disconnect(new NetConnectionId(1));   // server observes Left -> PlayerLeaving -> save-on-leave
+            server.Poll();
+            server.Tick(config.TickSeconds);
+            await server.FlushAsync();
+        }
+
+        {
+            (LoopbackTransport serverTransport, LoopbackTransport clientTransport) = LoopbackTransport.CreatePair();
+            var server = new MmoServer(serverTransport, config, store);
+            var client = new NetClient(clientTransport, token);
+
+            PumpNet(server, client);
+            Assert.Equal(0, client.Slot);
+            await server.FlushAsync();       // settle the async load
+            server.Tick(0f);                 // apply the loaded state on the server thread
+
+            Assert.True(server.TryGetPlayerNetId(0, out long netId));
+            Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
+            Assert.True(cell.World.TryGet(e, out Position restored));
+            Assert.Equal(movedX, restored.X, 2);
+            Assert.Equal(movedY, restored.Y, 2);
+            Assert.True(cell.World.TryGet(e, out PrivateStats stats));
+            Assert.Equal(42, stats.Health);
+        }
+    }
+
+    [Fact]
+    public async Task PlayerPersistence_BadHealthBlob_QuarantinedFreshSpawn()
+    {
+        // A record whose health blob fails ValidatePrivateStats (out of the game's 1..100 range) is quarantined
+        // WHOLE: the player is left at the default spawn rather than the saved position, and the raw record
+        // survives under quarantine:player:{accountId} for offline inspection.
+        var store = new InMemoryWorldStore();
+        byte[] badBlob = BitConverter.GetBytes(9999);
+        await store.SaveAsync("player:alice",
+            PlayerRecord.From(new PlayerMoveState { Position = new Vector3(70f, 0f, 80f) }, badBlob).Encode());
+
+        (LoopbackTransport serverTransport, LoopbackTransport clientTransport) = LoopbackTransport.CreatePair();
+        var config = new MmoServerConfig { TickSeconds = 0.1f, SpawnX = 50f, SpawnY = 50f };
+        var server = new MmoServer(serverTransport, config, store);
+        var client = new NetClient(clientTransport, Encoding.UTF8.GetBytes("alice"));
+
+        PumpNet(server, client);
+        Assert.Equal(0, client.Slot);
+        server.Tick(config.TickSeconds);   // drains the apply queue -> validates -> quarantines
+        await server.FlushAsync();
+
+        Assert.True(server.TryGetPlayerNetId(0, out long netId));
+        Assert.True(server.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
+        Assert.True(cell.World.TryGet(e, out Position spawned));
+        Assert.Equal(config.SpawnX, spawned.X);
+        Assert.Equal(config.SpawnY, spawned.Y);
+
+        Assert.NotNull(await store.LoadAsync("quarantine:player:alice"));
     }
 
     // Serves one authoritative frame and returns the raw replication snapshot the client received.

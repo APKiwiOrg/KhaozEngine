@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Threading.Tasks;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
@@ -34,8 +35,11 @@ public sealed class MmoServerConfig
 /// LiteNetLib in production, loopback in tests), with per-client home-cell area-of-interest serving and
 /// <see cref="IWorldStore"/> persistence. Transport-injected and headless: <see cref="Poll"/> ingests session
 /// events + client input, <see cref="Tick"/> steps one authoritative server frame and serves every client.
+/// Player state is account-keyed by the verified session subject (<see cref="ServerSessionEvent.Subject"/>, falling
+/// back to a per-slot guest id) via <see cref="WorldPersistence"/> - captured on leave, validated and applied on
+/// join - and demonstrates a game-state validation quarantine through its <see cref="PrivateStats"/> health blob.
 /// </summary>
-public sealed class MmoServer : ICellPersistenceHost
+public sealed class MmoServer : ICellPersistenceHost, IWorldPersistenceHost
 {
     private readonly MmoServerConfig config;
     private readonly ReplicationRegistry registry;
@@ -44,8 +48,10 @@ public sealed class MmoServer : ICellPersistenceHost
     private readonly RemoteCommandQueue<MoveCommand> commands = new(neutralCommand: default);
     private readonly IWorldStore store;
     private readonly CellPersistence cellPersistence;
+    private readonly WorldPersistence persistence;
     private readonly AoiDeltaReplicator deltaReplicator;
     private readonly Dictionary<int, long> playerNetIdBySlot = new();
+    private readonly Dictionary<int, string> accountBySlot = new();
     // The single NetId allocator (node 0) player joins + SpawnEntity draw from, so ids never collide (see NetIdAllocator).
     private readonly NetIdAllocator allocator = new();
 
@@ -66,6 +72,12 @@ public sealed class MmoServer : ICellPersistenceHost
             positionAccessor: MmoProtocol.PositionAccessor);
         net = new NetServer(transport, config.MaxPlayers, new AllowAllAuthenticator());
         cellPersistence = new CellPersistence(this, store);
+        persistence = new WorldPersistence(this, store, new WorldPersistenceConfig
+        {
+            CaptureGameState = CapturePrivateStats,
+            ApplyGameState = ApplyPrivateStats,
+            ValidateGameState = ValidatePrivateStats,
+        });
         deltaReplicator = new AoiDeltaReplicator(registry);
         host.CellCreated += cell => CellCreated?.Invoke(cell.Coord);
     }
@@ -152,6 +164,42 @@ public sealed class MmoServer : ICellPersistenceHost
     /// <inheritdoc />
     public void EnsureNextNetIdAtLeast(long atLeast) => allocator.EnsureNextAtLeast(atLeast);
 
+    /// <inheritdoc />
+    public event Action<int, string>? PlayerJoined;
+
+    /// <inheritdoc />
+    public event Action<int, string, PlayerMoveState>? PlayerLeaving;
+
+    /// <inheritdoc />
+    public IReadOnlyCollection<int> JoinedSlots => accountBySlot.Keys;
+
+    /// <inheritdoc />
+    public bool TryGetAccountId(int slot, out string accountId) => accountBySlot.TryGetValue(slot, out accountId!);
+
+    /// <inheritdoc />
+    public bool TryGetPlayerState(int slot, out PlayerMoveState state)
+    {
+        if (playerNetIdBySlot.TryGetValue(slot, out long netId)
+            && host.TryGetOwner(netId, out CellSim cell, out Entity e)
+            && cell.World.TryGet(e, out Position p))
+        {
+            state = new PlayerMoveState { Position = new Vector3(p.X, 0f, p.Y) };
+            return true;
+        }
+        state = default;
+        return false;
+    }
+
+    /// <summary>Overrides a joined player's 2D position (sample X from <see cref="PlayerMoveState.Position"/>.X, sample Y
+    /// from .Z). No-op for an unknown slot. This reference sample carries no teleport-epoch/interpolation state, so
+    /// <paramref name="teleport"/> is accepted for interface parity but otherwise unused.</summary>
+    public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
+    {
+        if (!playerNetIdBySlot.TryGetValue(slot, out long netId)) return;
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return;
+        cell.World.Set(e, new Position { X = state.Position.X, Y = state.Position.Z });
+    }
+
     /// <summary>Boot: resume the NetId allocator + instantiate saved cells, then apply restores. Call once before ticking.</summary>
     public async Task PreloadAsync()
     {
@@ -160,8 +208,9 @@ public sealed class MmoServer : ICellPersistenceHost
         await cellPersistence.FlushAsync();
     }
 
-    /// <summary>Shutdown: persist all dirty cells + the NetId high-water. Call once when stopping.</summary>
-    public Task FlushAsync() => cellPersistence.FlushAsync();
+    /// <summary>Shutdown: persists all dirty cells + the NetId high-water, and every joined player's account-keyed
+    /// record (position + the <see cref="PrivateStats"/> health blob).</summary>
+    public Task FlushAsync() => Task.WhenAll(cellPersistence.FlushAsync(), persistence.FlushAsync());
 
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
@@ -178,6 +227,9 @@ public sealed class MmoServer : ICellPersistenceHost
                         (w, e) => w.Set(e, new PrivateStats { Health = 100 }));
                     playerNetIdBySlot[ev.Slot] = playerNetId;
                     host.BindClient(ev.Slot, playerNetId);
+                    string accountId = ev.Subject.Length > 0 ? ev.Subject : $"guest-{ev.Slot}";
+                    accountBySlot[ev.Slot] = accountId;
+                    PlayerJoined?.Invoke(ev.Slot, accountId);
                     break;
 
                 case ServerSessionEventKind.Left:
@@ -205,6 +257,7 @@ public sealed class MmoServer : ICellPersistenceHost
     /// </summary>
     public void Tick(float dt)
     {
+        persistence.Update(dt);
         cellPersistence.Update(dt);
 
         // Apply one input per client to its (wherever-owned) player.
@@ -251,11 +304,11 @@ public sealed class MmoServer : ICellPersistenceHost
     {
         if (!playerNetIdBySlot.TryGetValue(slot, out long playerNetId)) return;
 
+        if (accountBySlot.TryGetValue(slot, out string? accountId) && TryGetPlayerState(slot, out PlayerMoveState st))
+            PlayerLeaving?.Invoke(slot, accountId, st);
+
         if (host.TryGetOwner(playerNetId, out CellSim cell, out Entity e))
         {
-            if (cell.World.TryGet(e, out Position p))
-                store.SaveAsync($"player/{slot}", MmoProtocol.EncodeMove(0, new MoveCommand(p.X, p.Y)))
-                    .GetAwaiter().GetResult(); // leave is rare; off the hot path
             cell.UnregisterOwned(playerNetId); // eager: drop it from the ownership index before despawning
             cell.World.Despawn(e);
         }
@@ -263,5 +316,37 @@ public sealed class MmoServer : ICellPersistenceHost
         host.UnbindClient(slot);
         deltaReplicator.Forget(slot);
         playerNetIdBySlot.Remove(slot);
+        accountBySlot.Remove(slot);
+    }
+
+    // WorldPersistenceConfig.CaptureGameState: the game's opaque durable per-player blob, here just the exact HP
+    // (the engine never interprets it). Null when the player entity or its PrivateStats can't be resolved.
+    private byte[]? CapturePrivateStats(in PlayerPersistenceContext context)
+    {
+        if (!playerNetIdBySlot.TryGetValue(context.Slot, out long netId)) return null;
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return null;
+        return cell.World.TryGet(e, out PrivateStats stats) ? BitConverter.GetBytes(stats.Health) : null;
+    }
+
+    // WorldPersistenceConfig.ApplyGameState: re-attaches a previously captured (and already-validated) health blob
+    // at load-on-join. Ignores a blob of the wrong length rather than throwing - ValidatePrivateStats already
+    // rejects it before this ever runs, so this guard is only a defensive backstop.
+    private void ApplyPrivateStats(in PlayerPersistenceContext context, ReadOnlySpan<byte> blob)
+    {
+        if (blob.Length != 4) return;
+        if (!playerNetIdBySlot.TryGetValue(context.Slot, out long netId)) return;
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return;
+        cell.World.Set(e, new PrivateStats { Health = BitConverter.ToInt32(blob) });
+    }
+
+    // WorldPersistenceConfig.ValidateGameState: the validation demo. A blob of the wrong length or a health outside
+    // the game's valid 1..100 range quarantines the WHOLE loaded record (position included) rather than applying it.
+    private static PlayerGameStateVerdict ValidatePrivateStats(in PlayerPersistenceContext context, ReadOnlySpan<byte> blob)
+    {
+        if (blob.Length != 4) return PlayerGameStateVerdict.Invalid("health blob must be 4 bytes");
+        int health = BitConverter.ToInt32(blob);
+        return health is < 1 or > 100
+            ? PlayerGameStateVerdict.Invalid($"health {health} out of range 1..100")
+            : PlayerGameStateVerdict.Valid();
     }
 }

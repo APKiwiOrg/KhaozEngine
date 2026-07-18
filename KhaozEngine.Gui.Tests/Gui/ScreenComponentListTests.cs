@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -81,6 +82,24 @@ public sealed class ScreenComponentListTests
         public void Draw(SpriteBatch batch, Rect bounds) { }
     }
 
+    // Looks back at the owning list from inside UnloadContent, which is how the unload-BEFORE-remove ordering
+    // is observable at all: a component that unloads after its own removal sees a list it is no longer in.
+    sealed class UnloadObservingComponent : IScreenComponent
+    {
+        public ScreenComponentList Owner = null!;
+        public bool StillPresentDuringUnload;
+        public int CountSeenDuringUnload = -1;
+
+        public void UnloadContent()
+        {
+            StillPresentDuringUnload = Owner.Items.Contains(this);
+            CountSeenDuringUnload = Owner.Count;
+        }
+
+        public bool Update(float dt, bool receivesInput, Rect bounds, InputManager input) => false;
+        public void Draw(SpriteBatch batch, Rect bounds) { }
+    }
+
     static (ScreenComponentList list, FakeComponent bottom, FakeComponent middle, FakeComponent top, List<string> log) ThreeDeep()
     {
         var log = new List<string>();
@@ -155,6 +174,42 @@ public sealed class ScreenComponentListTests
 
         Assert.False(list.Remove(stranger));
         Assert.Equal(0, stranger.UnloadCount);
+    }
+
+    [Fact]
+    public void Remove_unloads_BEFORE_removing_from_the_list()
+    {
+        // The ordering ScreenStack.Remove uses (unload, then drop it), and the one Clear already used. Untested,
+        // Remove drifted to the opposite order while the CHANGELOG documented this one.
+        var list = new ScreenComponentList();
+        var c = new UnloadObservingComponent();
+        c.Owner = list;
+        list.Add(c);
+
+        Assert.True(list.Remove(c));
+
+        Assert.True(c.StillPresentDuringUnload);
+        Assert.Equal(1, c.CountSeenDuringUnload);
+        Assert.Equal(0, list.Count);
+    }
+
+    [Fact]
+    public void Clear_unloads_BEFORE_removing_too_so_both_teardown_paths_agree()
+    {
+        var list = new ScreenComponentList();
+        var a = new UnloadObservingComponent { Owner = list };
+        var b = new UnloadObservingComponent { Owner = list };
+        var c = new UnloadObservingComponent { Owner = list };
+        list.Add(a); list.Add(b); list.Add(c);
+
+        list.Clear();
+
+        foreach (var each in new[] { a, b, c })
+        {
+            Assert.True(each.StillPresentDuringUnload);
+            Assert.Equal(3, each.CountSeenDuringUnload);   // Clear unloads the whole set before dropping any of it
+        }
+        Assert.Equal(0, list.Count);
     }
 
     [Fact]
@@ -344,6 +399,26 @@ public sealed class ScreenComponentListTests
         Assert.Equal(1, middle.UnloadCount);   // removal really unloaded it
         Assert.Equal(1, bottom.UpdateCount);   // and the iteration was not disturbed: the one below still ran
         Assert.Equal(1, top.UpdateCount);
+        Assert.Equal(2, list.Count);
+    }
+
+    [Fact]
+    public void A_component_removing_one_BELOW_itself_neither_re_updates_nor_skips_anything()
+    {
+        // THE test for the scratch copy, and the only mutation case that actually needs it. Reverse iteration is
+        // incidentally robust to a component removing ITSELF and to an append past the cursor, so both other
+        // mutation tests pass against an implementation that iterates _items directly. This one does not: without
+        // the copy, removing `bottom` from inside `top` shifts everything down one, so the descending index lands
+        // on `top` a second time and `bottom` never runs at all.
+        var (list, bottom, middle, top, _) = ThreeDeep();
+        top.OnUpdate = () => list.Remove(bottom);
+
+        list.Update(0.016f, receivesInput: true, Bounds, NewInput());
+
+        Assert.Equal(1, top.UpdateCount);      // not re-updated
+        Assert.Equal(1, middle.UpdateCount);
+        Assert.Equal(1, bottom.UpdateCount);   // the frame in flight iterates the copy taken before the removal
+        Assert.Equal(1, bottom.UnloadCount);
         Assert.Equal(2, list.Count);
     }
 

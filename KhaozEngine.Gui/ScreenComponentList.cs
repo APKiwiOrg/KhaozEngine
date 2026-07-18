@@ -52,12 +52,19 @@ public sealed class ScreenComponentList
 
     /// <summary>
     /// Removes a component and calls its <see cref="IScreenComponent.UnloadContent"/>. Returns false (and
-    /// unloads nothing) when it is not registered.
+    /// unloads nothing) when it is not registered. Unloads BEFORE removing, mirroring
+    /// <see cref="ScreenStack.Remove"/> and matching <see cref="Clear"/>, so a component tearing itself down
+    /// still sees the list it is leaving.
     /// </summary>
     public bool Remove(IScreenComponent component)
     {
-        if (!_items.Remove(component)) return false;
+        // Contains-then-Remove rather than caching an index: UnloadContent may itself mutate the list, and a
+        // cached index would then point at the wrong element. ScreenStack.Remove unloads unconditionally and
+        // discards the List.Remove result, so the containment check is the one deviation, and it is what buys
+        // the documented "not registered unloads nothing" answer on top of the same ordering.
+        if (!_items.Contains(component)) return false;
         component.UnloadContent();
+        _items.Remove(component);
         return true;
     }
 

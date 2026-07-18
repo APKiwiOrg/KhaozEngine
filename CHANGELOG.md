@@ -32,8 +32,9 @@ screen also has. Closes #226.
   `Update` runs top-down and stops input at the first component that consumes it, `Draw` runs bottom-up. The
   routing is `ScreenStack`'s, one level down, including the guarded latch (a component that violates the contract
   and returns true while blocked cannot poison the loop for the ones below it) and the scratch-copy iteration (a
-  component may add or remove itself during its own `Update`). Loads before inserting and unloads before removing,
-  as `ScreenStack.Add`/`Remove` do.
+  component may add or remove a component, itself included, during its own `Update`, and the frame in flight then
+  neither re-runs nor skips anyone). Loads before inserting and unloads before removing, as `ScreenStack.Add`/
+  `Remove` do, so a component tearing itself down still sees the list it is leaving.
 - **`Screen` is NOT modified, deliberately.** A host composes a `ScreenComponentList` as a field and forwards to it
   from its own overrides, four lines that do not grow with the component count. A built-in `Screen.Components`
   would have to be torn down from the `virtual UnloadContent`, so any subclass that overrides it and forgets
@@ -56,7 +57,11 @@ screen also has. Closes #226.
   is gone in favour of the per-call `bounds`, with widget construction (`OnLoad`) split from placement (`OnLayout`,
   re-run only when the bounds change) so a page keeps its typed text, scroll offset and field values across a
   re-layout. The tab host keeps its own array rather than a `ScreenComponentList`, because mutually exclusive tabs
-  are the wrong shape for a fan-out: the interface is the contract, the list is one collection over it.
+  are the wrong shape for a fan-out: the interface is the contract, the list is one collection over it. The pages
+  read `receivesInput` BEFORE touching input rather than gating only the answer they return, since a widget's
+  `Update` hit-tests and fires its callbacks, and they derive an honest consumed answer around the two widget bools
+  that do not report consumption (`Dropdown.Update` means "selection changed", `NumberField.Update` means "value
+  changed"). Those two widgets' own return semantics are unchanged public API.
 - **Out of scope, so nobody expects it.** This does not address the service-locator / closure-smuggling problem a
   large screen also has (the lambdas and multi-argument asset records that tunnel a font, a white pixel, a
   `GuiSurface`, a viewport, content loading and a service provider downward). That needs a context object, which

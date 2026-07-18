@@ -232,8 +232,11 @@ What it demonstrates, all of it load-bearing:
 - **The intended layering.** `abstract class ToolkitPage : IScreenComponent` keeps its own `A`/`Stack` fields and
   its `Activated()`/`Deactivated()` tab lifecycle while gaining the engine contract on top. That is exactly the
   message for SpaceGame's `RunPopup`.
-- **The DIM decision.** Most pages own no assets and declare no load or unload. `InputAudioPage` owns an
-  `AudioSystem` and declares `UnloadContent`.
+- **The DIM decision.** `ToolkitPage` declares `UnloadContent` on the base, for the reason section 2.2 gives (its
+  host calls it through `ToolkitPage`, not through the interface), so every page inherits a declaration and only
+  `InputAudioPage`, which owns an `AudioSystem`, has anything to put in it. No page is registered through
+  `ScreenComponentList.Add` either, so the `LoadContent` default goes unexercised here and is covered by
+  `MinimalComponent` in the tests instead.
 - **Per-call bounds, with state preserved.** The captured `Content` field is gone. Because three of the five pages
   build retained widgets at absolute positions, the base class splits construction (`OnLoad`, runs once, before any
   bounds exist) from placement (`OnLayout`, re-runs only when the bounds actually change, using `Rect`'s value
@@ -241,9 +244,19 @@ What it demonstrates, all of it load-bearing:
   is a deviation from the letter of the implementation spec, which assumed the pages could read `bounds` directly
   in `Update`/`Draw`; they could not, because the widgets need a position at construction time. The template-method
   shape (`Update`/`Draw` resolve layout, then call `OnUpdate`/`OnDraw`) is how the base absorbs that.
-- **Honest consumed-input answers.** Pages with no interactive widgets return `false` outright rather than a bare
-  `true`. Pages with widgets OR the widgets' own return values and gate the result on `receivesInput`. Every widget
-  still ticks each frame whether or not the page may act on input, which is the contract.
+- **Honest consumed-input answers, and `receivesInput` read BEFORE the input is touched.** Pages with no
+  interactive widgets return `false` outright rather than a bare `true`. Pages with widgets OR the widgets' own
+  return values, and gate the widget calls themselves, not only the answer: a widget's `Update` hit-tests and fires
+  its callbacks, so calling one on a blocked page runs the click and merely reports false afterwards. What keeps
+  ticking while blocked is the page's own timers and animation, which is what "a component still updates every
+  frame" means. `InputAudioPage` shows both halves in one method: its clock, audio and fading tap marks run
+  regardless, its keys, gestures and pad sit behind the gate.
+- **Two widget bools are not consumed-input answers**, so the page derives around them. `Dropdown.Update` means
+  "the selection changed" and `NumberField.Update` means "the value changed", so an open dropdown swallowing a
+  click, or a field being scrubbed onto the value it already held, would report false. `WidgetsPage` reads
+  `IsOpen` either side of the call, and `IsEditing`/`IsScrubbing` alongside it, which is the same "owns input"
+  answer `TextInput.Update` already returns while focused. The widgets' own return semantics are public API with
+  existing callers and were deliberately left alone.
 - **When NOT to use `ScreenComponentList`.** The tab host keeps its own array and its lazy per-tab load, and does
   NOT get a list, because the pages are mutually exclusive TABS with exactly one running. A fan-out list would
   update and draw all five. The interface is the per-component contract, the list is one collection over it, and a

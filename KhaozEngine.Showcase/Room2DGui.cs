@@ -488,13 +488,30 @@ namespace KhaozEngine.Showcase
 
         protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input)
         {
-            // Every widget still ticks each frame (caret blink, hover, scroll) whether or not this page may act
-            // on input, and the consumed answer is gated on receivesInput at the end. That is the
-            // IScreenComponent contract, identical to Screen.Update's one level up.
+            // receivesInput is read BEFORE any widget is touched, not just folded into the answer at the end.
+            // A widget's Update hit-tests and fires its callbacks, so calling one while a modal above owns input
+            // runs the click anyway and only the report comes back false. The IScreenComponent contract is that
+            // the COMPONENT still ticks every frame, which is about timers and animation a page owns itself
+            // (InputAudioPage keeps its clock running below); it is not licence to keep reading input.
+            if (!receivesInput)
+            {
+                _tip.Hide();   // a hover tooltip must not outlive the frame the page stopped being pointed at
+                return false;
+            }
+
             Pointer p = input.Pointer;
             bool consumed = _name.Update(p, input.State, dt);   // true while focused: the field owns the keyboard
-            consumed |= _difficulty.Update(p);
-            consumed |= _partySize.Update(input, dt);
+
+            // Dropdown.Update answers "did the SELECTION change", which is not the same question: an open list
+            // swallowing a click, or a click that just opened or dismissed it, all report false. Read IsOpen
+            // either side of the call instead, so an open dropdown owns input the way a focused TextInput does.
+            bool dropdownWasOpen = _difficulty.IsOpen;
+            consumed |= _difficulty.Update(p) || dropdownWasOpen || _difficulty.IsOpen;
+
+            // Same shape: NumberField.Update answers "did Value change", so the frames where it owns the keyboard
+            // (tap-to-edit) or the pointer (scrub) without landing on a new value would report false.
+            consumed |= _partySize.Update(input, dt) || _partySize.IsEditing || _partySize.IsScrubbing;
+
             _list.Update(p, input.State);
             consumed |= _info.Update(p);
             consumed |= _confirm.Update(p);
@@ -511,7 +528,7 @@ namespace KhaozEngine.Showcase
                     new Vector2(_info.Bounds.X + _info.Bounds.Width * 0.5f, _info.Bounds.Y));
             else _tip.Hide();
 
-            return receivesInput && consumed;
+            return consumed;
         }
 
         protected override void OnDraw(SpriteBatch batch, Rect bounds)
@@ -699,57 +716,70 @@ namespace KhaozEngine.Showcase
 
         protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input)
         {
-            Pointer pointer = input.Pointer;
-            InputState state = input.State;
-            _gestures.Update(pointer, dt);   // gestures use REAL dt
-
-            // Clock controls: Space pauses, 1/2/3 set slow/normal/fast.
-            if (state.WasPressed(Key.Space)) { if (_clock.IsPaused) _clock.Resume(); else _clock.Pause(); }
-            if (state.WasPressed(Key.D1)) _clock.TimeScale = 0.5f;
-            if (state.WasPressed(Key.D2)) _clock.TimeScale = 1f;
-            if (state.WasPressed(Key.D3)) _clock.TimeScale = 2f;
-
-            // SFX one-shots: Z = non-positional blip, X = positional thud 8 units to the listener's right.
-            if (state.WasPressed(Key.Z)) { _audio.PlaySfx("blip"); _lastSfx = "blip"; }
-            if (state.WasPressed(Key.X)) { _audio.PlaySfx3D("thud", new Vector3(8, 0, 0)); _lastSfx = "thud (3D)"; }
-
-            // Clipboard: C writes a known string and reads it back (self round-trip). V pastes the OS clipboard.
-            if (state.WasPressed(Key.C))
+            // The split this page exists to demonstrate. Everything that ACTS on input (plays a sound, writes the
+            // clipboard, moves the box) is gated on receivesInput, because those branches fire whether or not the
+            // answer is later gated. What keeps running below is the page's own TIMERS, and that is all "a
+            // component still updates every frame" ever meant.
+            if (receivesInput)
             {
-                string payload = $"KhaozEngine clipboard {_clock.ElapsedScaledSeconds:0.0}s";
-                bool setOk = Clipboard.TrySetClipboardText(payload);
-                string readBack = Clipboard.TryGetClipboardText();
-                bool roundTrip = setOk && readBack == payload;
-                _clipboardStatus = $"copy {(setOk ? "ok" : "FAIL")}, round-trip {(roundTrip ? "PASS" : "FAIL")}: \"{readBack}\"";
+                Pointer pointer = input.Pointer;
+                InputState state = input.State;
+                _gestures.Update(pointer, dt);   // gestures use REAL dt
+
+                // Clock controls: Space pauses, 1/2/3 set slow/normal/fast.
+                if (state.WasPressed(Key.Space)) { if (_clock.IsPaused) _clock.Resume(); else _clock.Pause(); }
+                if (state.WasPressed(Key.D1)) _clock.TimeScale = 0.5f;
+                if (state.WasPressed(Key.D2)) _clock.TimeScale = 1f;
+                if (state.WasPressed(Key.D3)) _clock.TimeScale = 2f;
+
+                // SFX one-shots: Z = non-positional blip, X = positional thud 8 units to the listener's right.
+                if (state.WasPressed(Key.Z)) { _audio.PlaySfx("blip"); _lastSfx = "blip"; }
+                if (state.WasPressed(Key.X)) { _audio.PlaySfx3D("thud", new Vector3(8, 0, 0)); _lastSfx = "thud (3D)"; }
+
+                // Clipboard: C writes a known string and reads it back (self round-trip). V pastes the OS clipboard.
+                if (state.WasPressed(Key.C))
+                {
+                    string payload = $"KhaozEngine clipboard {_clock.ElapsedScaledSeconds:0.0}s";
+                    bool setOk = Clipboard.TrySetClipboardText(payload);
+                    string readBack = Clipboard.TryGetClipboardText();
+                    bool roundTrip = setOk && readBack == payload;
+                    _clipboardStatus = $"copy {(setOk ? "ok" : "FAIL")}, round-trip {(roundTrip ? "PASS" : "FAIL")}: \"{readBack}\"";
+                }
+                if (state.WasPressed(Key.V))
+                {
+                    string pasted = Clipboard.TryGetClipboardText();
+                    _clipboardStatus = string.IsNullOrEmpty(pasted) ? "paste: <empty / unavailable>" : $"paste: \"{pasted}\"";
+                }
+
+                // Gamepad (best-effort): left stick nudges the box, A resets it. No-op with no controller connected.
+                var pad = state.PrimaryGamepad;
+                if (pad.IsConnected)
+                {
+                    _box += pad.LeftStickDeadzoned(0.2f) * (260f * dt);
+                    if (pad.WasPressed(GamepadButton.A)) _box = _boxHome;
+                }
+                _padInfo = pad.IsConnected ? $"stick {pad.LeftStick.X:0.0},{pad.LeftStick.Y:0.0}" : "none";
+
+                // Gestures: a drag that starts inside the panel grabs the box, long-press resets it, and taps inside
+                // the panel leave fading marks. The box centre is clamped below so nothing leaves the playground.
+                var boxRect = new Rect(_box.X - 45, _box.Y - 45, 90, 90);
+                if (_gestures.DragStarted && _playground.Contains(_gestures.DragStart) && boxRect.Contains(_gestures.DragStart))
+                    _grabbed = true;
+                if (_grabbed && _gestures.IsDragging) _box += _gestures.DragDelta;
+                if (_gestures.DragEnded) _grabbed = false;
+                if (_gestures.Tapped && _playground.Contains(_gestures.TapPosition)) _marks.Add((_gestures.TapPosition, 1f));
+                if (_gestures.LongPressed) _box = _boxHome;
             }
-            if (state.WasPressed(Key.V))
+            else
             {
-                string pasted = Clipboard.TryGetClipboardText();
-                _clipboardStatus = string.IsNullOrEmpty(pasted) ? "paste: <empty / unavailable>" : $"paste: \"{pasted}\"";
+                // Drop the drag rather than resume it later: with the gesture recogniser no longer being fed, the
+                // DragEnded that would clear this never arrives, and the box would jump on the frame input returns.
+                _grabbed = false;
             }
 
             _audio.Update();
             _clock.Update(dt);
             _orbit += _clock.ScaledDeltaSeconds * 1.6f;   // animation runs on SCALED time (freezes when paused)
-
-            // Gamepad (best-effort): left stick nudges the box, A resets it. No-op with no controller connected.
-            var pad = state.PrimaryGamepad;
-            if (pad.IsConnected)
-            {
-                _box += pad.LeftStickDeadzoned(0.2f) * (260f * dt);
-                if (pad.WasPressed(GamepadButton.A)) _box = _boxHome;
-            }
-            _padInfo = pad.IsConnected ? $"stick {pad.LeftStick.X:0.0},{pad.LeftStick.Y:0.0}" : "none";
-
-            // Gestures: a drag that starts inside the panel grabs the box, long-press resets it, and taps inside the
-            // panel leave fading marks. The box centre is clamped so nothing leaves the playground.
-            var boxRect = new Rect(_box.X - 45, _box.Y - 45, 90, 90);
-            if (_gestures.DragStarted && _playground.Contains(_gestures.DragStart) && boxRect.Contains(_gestures.DragStart))
-                _grabbed = true;
-            if (_grabbed && _gestures.IsDragging) _box += _gestures.DragDelta;
-            if (_gestures.DragEnded) _grabbed = false;
-            if (_gestures.Tapped && _playground.Contains(_gestures.TapPosition)) _marks.Add((_gestures.TapPosition, 1f));
-            if (_gestures.LongPressed) _box = _boxHome;
 
             _box.X = Math.Clamp(_box.X, _playground.X + 50f, _playground.Right - 50f);
             _box.Y = Math.Clamp(_box.Y, _playground.Y + 50f, _playground.Bottom - 50f);
@@ -916,6 +946,11 @@ namespace KhaozEngine.Showcase
 
         protected override bool OnUpdate(float dt, bool receivesInput, Rect bounds, InputManager input)
         {
+            // Nothing here animates, so the whole body sits behind the gate. Button.Update hit-tests AND fires its
+            // OnClick, and every one of these pushes a screen: gating only the returned bool would push it anyway
+            // while telling the host nothing was consumed.
+            if (!receivesInput) return false;
+
             // Button.Update returns whether it was clicked, so the page's consumed answer is simply "did one of
             // my buttons take this frame's tap". Never a bare true just because buttons exist.
             Pointer p = input.Pointer;
@@ -923,7 +958,7 @@ namespace KhaozEngine.Showcase
             consumed |= _overlay.Update(p);
             consumed |= _patchNotes.Update(p);
             consumed |= _toasts.Update(p);
-            return receivesInput && consumed;
+            return consumed;
         }
 
         protected override void OnDraw(SpriteBatch batch, Rect bounds)

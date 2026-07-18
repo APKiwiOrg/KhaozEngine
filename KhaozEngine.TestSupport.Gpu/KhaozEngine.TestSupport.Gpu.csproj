@@ -3,6 +3,11 @@
     <!-- Not a test project and ships nothing: excluded from the doc-version guard's packable-package
          catalog check (it greps for this literal tag). -->
     <IsPackable>false</IsPackable>
+    <!-- Helper library, not a test host. It references xunit only for the FactAttribute base class that
+         GpuFactAttribute derives from, and carries no test SDK or runner. Without this, solution-level
+         dotnet test discovers it as a test project, spins a testhost against a DLL with no adapter, and
+         that testhost crashes and fails the whole run. Pin it false so discovery skips it. -->
+    <IsTestProject>false</IsTestProject>
     <!-- GpuFactAttribute keeps its KhaozEngine.Tests.Gpu namespace, consistent with every split test
          project, so the [GpuFact] users resolve it unchanged. -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>

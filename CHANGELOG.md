@@ -2,8 +2,8 @@
 
 All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion>` in `Directory.Build.props`
 governs the whole MonoGame-free engine (custom stack + graduated foundation packages + the four umbrella
-metapackages). The legacy 4.x MonoGame line was deleted from the repo. See the post-MonoGame plan in
-`docs/ROADMAP.md`.
+metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
+GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 13.0.0
 

@@ -11,5 +11,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
   </ItemGroup>
 </Project>

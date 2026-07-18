@@ -47,10 +47,6 @@
          The clean inn/single-riser fixtures have a clear path behind the step so they do not cover this. -->
     <None Include="Physics/Fixtures/house_1_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Physics/Fixtures/house_2_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
-    <!-- A pre-10.0.0 (9.x) cell-persistence blob: one non-player entity (a ReplicatedPosition at (10,0,20)) under a
-         32-bit NetId 5, wrapped [magic][schemaVersion=1]. The real-save fixture the 10.0.0 NetId-widening migration
-         (NetIdBlobMigration.WidenV1ToV2) is tested against, so the forward-migration path can never silently rot. -->
-    <None Include="NetWorld/Fixtures/cell-v1-32bit.blob" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
@@ -119,8 +115,10 @@
     <ProjectReference Include="../MmoServerSample/MmoServerSample.csproj" />
     <ProjectReference Include="../KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
     <!-- Cross-cluster fakes (FakeUpdateSource/FakeUpdateStatus, FakeServerStatusSource) moved out to
-         TestSupport.Services in the wave-1 split; the Game/Gui/ServerStatus tests still in this project
-         consume them via their unchanged KhaozEngine.Tests.Updates / KhaozEngine.Tests.ServerStatus namespaces. -->
+         TestSupport.Services in the wave-1 split; the Game/Gui tests still in this project consume them via
+         their unchanged KhaozEngine.Tests.Updates / KhaozEngine.Tests.ServerStatus namespaces (ServerStatus
+         itself moved to KhaozEngine.Server.Tests in wave 2, Game/BootPipelineTests.cs is the remaining
+         FakeServerStatusSource consumer here). -->
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
   </ItemGroup>
 </Project>

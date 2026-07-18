@@ -74,6 +74,7 @@
   <Project Path="KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
   <Project Path="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj" />
   <Project Path="KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj" />
+  <Project Path="KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />

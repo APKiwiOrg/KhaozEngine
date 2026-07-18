@@ -173,4 +173,32 @@ public class MigrationChainTests
         Assert.Equal(3, result.SchemaVersion);
         Assert.Equal(new[] { 1, 2 }, result.Steps);
     }
+
+    [Fact]
+    public void StampCurrent_SetsCurrentVersion()
+    {
+        var chain = MigrationChain.For<Doc>()
+            .Step(1, d => { d.Steps.Add(1); return d; })
+            .Step(2, d => { d.Steps.Add(2); return d; })
+            .Build(3);
+
+        var doc = new Doc { SchemaVersion = 0 };
+        var result = chain.StampCurrent(doc);
+
+        Assert.Same(doc, result);
+        Assert.Equal(3, result.SchemaVersion);
+        Assert.Empty(result.Steps);   // no step ran
+    }
+
+    [Fact]
+    public void StampCurrent_Null_ReturnsNull()
+    {
+        var chain = MigrationChain.For<Doc>()
+            .Step(1, d => d)
+            .Build(2);
+
+        var result = chain.StampCurrent(null!);
+
+        Assert.Null(result);
+    }
 }

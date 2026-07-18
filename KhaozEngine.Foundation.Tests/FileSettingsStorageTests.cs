@@ -118,16 +118,102 @@ public class FileSettingsStorageTests
     }
 
     [Fact]
-    public void LoadSettings_CorruptJson_Throws()
+    public void LoadSettings_CorruptEverything_ReturnsDefaults_NoThrow()
     {
         AppDataPaths paths = TempPaths(out string root);
         try
         {
             var storage = new FileSettingsStorage(paths, new RecordingQueue());
-            // File.ReadAllText succeeds; Deserialize fails. Storage does NOT catch (the manager does).
+            // The ladder now catches a bad primary itself (issue #152). With no backup generations on
+            // disk to fall through to, it defaults rather than throwing.
             File.WriteAllText(paths.GetFilePath("settings.json"), "not-json{{");
 
-            Assert.Throws<JsonException>(() => storage.LoadSettings<Sample>());
+            Sample loaded = storage.LoadSettings<Sample>();
+
+            Assert.Equal(0, loaded.Score);
+            Assert.Equal("", loaded.Name);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void LoadSettingsDetailed_CorruptPrimary_RecoversFromBak1()
+    {
+        AppDataPaths paths = TempPaths(out string root);
+        try
+        {
+            using var queue = new PersistenceQueue(backupGenerations: 2);
+            var storage = new FileSettingsStorage(paths, queue);
+
+            storage.SaveSettings(new Sample { Score = 1, Name = "gen0" });
+            queue.Flush();
+            storage.SaveSettings(new Sample { Score = 2, Name = "gen1" });   // rotation: score 1 now in .bak1
+            queue.Flush();
+            File.WriteAllText(paths.GetFilePath("settings.json"), "{ garbage");
+
+            SaveLoadResult<Sample> result = storage.LoadSettingsDetailed<Sample>();
+
+            Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, result.Outcome);
+            Assert.Equal(1, result.RecoveredGeneration);
+            Assert.Equal(1, result.Value.Score);
+            Assert.Equal("gen0", result.Value.Name);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void LoadSettingsDetailed_NoFile_ReturnsFreshDefault()
+    {
+        AppDataPaths paths = TempPaths(out string root);
+        try
+        {
+            var storage = new FileSettingsStorage(paths, new RecordingQueue());
+
+            SaveLoadResult<Sample> result = storage.LoadSettingsDetailed<Sample>();
+
+            Assert.Equal(SaveLoadOutcome.FreshDefault, result.Outcome);
+            Assert.Equal(0, result.RecoveredGeneration);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void LoadSettingsDetailed_CorruptPrimaryNoBackups_ReturnsRejectedAndDefaulted()
+    {
+        AppDataPaths paths = TempPaths(out string root);
+        try
+        {
+            var storage = new FileSettingsStorage(paths, new RecordingQueue()) { BackupGenerations = 0 };
+            File.WriteAllText(paths.GetFilePath("settings.json"), "{ garbage");
+
+            SaveLoadResult<Sample> result = storage.LoadSettingsDetailed<Sample>();
+
+            Assert.Equal(SaveLoadOutcome.RejectedAndDefaulted, result.Outcome);
+            Assert.NotNull(result.Detail);
+            Assert.Equal(0, result.Value.Score);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void LoadSettingsDetailed_NegativeBackupGenerations_StillProbesPrimary()
+    {
+        AppDataPaths paths = TempPaths(out string root);
+        try
+        {
+            var storage = new FileSettingsStorage(paths, new RecordingQueue()) { BackupGenerations = -1 };
+            using var queue = new PersistenceQueue();
+            var writingStorage = new FileSettingsStorage(paths, queue);
+            writingStorage.SaveSettings(new Sample { Score = 3, Name = "primary" });
+            queue.Flush();
+
+            SaveLoadResult<Sample> result = storage.LoadSettingsDetailed<Sample>();
+
+            // A negative BackupGenerations must not skip generation 0 (the primary): clamped to 0, not
+            // treated as "probe nothing".
+            Assert.Equal(SaveLoadOutcome.Loaded, result.Outcome);
+            Assert.Equal(3, result.Value.Score);
+            Assert.Equal("primary", result.Value.Name);
         }
         finally { Cleanup(root); }
     }

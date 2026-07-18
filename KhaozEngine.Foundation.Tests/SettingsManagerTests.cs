@@ -36,6 +36,16 @@ public class SettingsManagerTests
         }
 
         public bool SettingsExist() => ToLoad is not null;
+
+        // Explicit override (rather than relying on the interface's default implementation) so ThrowOnLoad
+        // still throws regardless of SettingsExist, preserving this fixture's existing fault-injection contract.
+        public SaveLoadResult<T> LoadSettingsDetailed<T>() where T : new()
+        {
+            if (ThrowOnLoad) throw new InvalidOperationException("load boom");
+            return SettingsExist()
+                ? new SaveLoadResult<T> { Value = LoadSettings<T>(), Outcome = SaveLoadOutcome.Loaded }
+                : new SaveLoadResult<T> { Value = new T(), Outcome = SaveLoadOutcome.FreshDefault };
+        }
     }
 
     [Fact]
@@ -133,8 +143,47 @@ public class SettingsManagerTests
 
             var manager = new SettingsManager<Prefs>(storage, logger);
 
+            // Task 8 (#152): the ladder now recovers/reports this itself rather than throwing, so it is a
+            // reported outcome, not a thrown exception. The manager still observes a RejectedAndDefaulted
+            // outcome with an Error entry (restored by the review-follow-up in this same task), just via
+            // the outcome-level log below the ladder rather than the ctor's own catch block.
             Assert.Equal(0, manager.Settings.Volume);   // defaults despite corrupt file
+            Assert.Equal(SaveLoadOutcome.RejectedAndDefaulted, manager.LastLoadOutcome);
             Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_RecoveredFromBackupThroughRealStorage_LogsWarn()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-item10-recover-warn-" + Path.GetRandomFileName());
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsMacOS = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("APKiwi", "Item10SettingsRecoverWarn", env);
+
+            using var queue = new PersistenceQueue(backupGenerations: 2);
+            var storage = new FileSettingsStorage(paths, queue);
+            storage.SaveSettings(new Prefs { Volume = 1 });
+            queue.Flush();
+            storage.SaveSettings(new Prefs { Volume = 2 });   // rotation: Volume 1 now in .bak1
+            queue.Flush();
+            File.WriteAllText(paths.GetFilePath("settings.json"), "{ garbage");
+
+            var logger = new FakeLogger();
+            var manager = new SettingsManager<Prefs>(storage, logger);
+
+            Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, manager.LastLoadOutcome);
+            Assert.Equal(1, manager.Settings.Volume);
+            // The primary here is genuinely corrupt (not merely missing), so the Warn must name why
+            // instead of trailing off with a dangling colon.
+            FakeLogger.Entry warn = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warn);
+            Assert.Matches(@":\s*\S", warn.Message);
         }
         finally
         {
@@ -336,11 +385,59 @@ public class SettingsManagerTests
 
             var loaded = storage.Load<SaveDoc>("nosave.json", chain);
 
-            // Absent file => new SaveDoc() at SchemaVersion 0, which predates the chain's oldest
-            // step (1); the chain leaves it untouched per the "predates oldest step" policy.
+            // Absent file => new SaveDoc(), StampCurrent-ed to the chain's current version (#155). A first
+            // boot is not a pre-migration save, so no step runs (Items stays empty) and it is marked current
+            // rather than left at version 0 and warned through the "predates oldest step" path.
             Assert.NotNull(loaded);
             Assert.Empty(loaded.Items);
-            Assert.Equal(0, loaded.SchemaVersion);
+            Assert.Equal(2, loaded.SchemaVersion);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    // LoadSettingsDetailed / LastLoadOutcome (Task 8, issues #152 / #155).
+
+    [Fact]
+    public void SettingsManager_FreshLoad_StampsCurrentVersion_NoWarn()
+    {
+        var storage = new FakeStorage();   // ToLoad null => SettingsExist() false => FreshDefault
+        var chain = MigrationChain.For<VersionedBox>()
+            .Step(1, b => { b.Value = 42; return b; })
+            .Build(2);
+        var logger = new FakeLogger();
+
+        var mgr = new SettingsManager<VersionedBox>(storage, logger, sanitizeOnLoad: null, migrations: chain);
+
+        Assert.Equal(2, mgr.Settings.SchemaVersion);
+        Assert.Equal(SaveLoadOutcome.FreshDefault, mgr.LastLoadOutcome);
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Warn);
+    }
+
+    [Fact]
+    public void SettingsManager_RecoveredLoad_ReportsOutcome()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-settings-recover-" + Path.GetRandomFileName());
+        try
+        {
+            var env = new FakeAppDataEnvironment { IsMacOS = true };
+            env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+            var paths = new AppDataPaths("APKiwi", "SettingsRecover", env);
+
+            using var queue = new PersistenceQueue(backupGenerations: 2);
+            var storage = new FileSettingsStorage(paths, queue);
+            storage.SaveSettings(new Prefs { Volume = 1 });
+            queue.Flush();
+            storage.SaveSettings(new Prefs { Volume = 2 });   // rotation: Volume 1 now in .bak1
+            queue.Flush();
+            File.WriteAllText(paths.GetFilePath("settings.json"), "{ garbage");
+
+            var mgr = new SettingsManager<Prefs>(storage);
+
+            Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, mgr.LastLoadOutcome);
+            Assert.Equal(1, mgr.Settings.Volume);
         }
         finally
         {

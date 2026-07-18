@@ -33,7 +33,7 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   whether it must be modal each frame, a required update or the apply step rather than mere visibility, and returns
   consumed only when modal or when its trigger fired); see `Screen.Update`'s XML doc and
   `docs/USING-KHAOZENGINE.md` for the full contract.
-- `IScreenComponent` + `ScreenComponentList` (13.6.0) - the composition unit BELOW `Screen`, mirroring what
+- `IScreenComponent` + `ScreenComponentList` (13.7.0) - the composition unit BELOW `Screen`, mirroring what
   `Ecs.ISystem` is below `World`. A component is one HUD element / overlay / input controller / presenter:
   `bool Update(dt, receivesInput, bounds, input)` + `void Draw(batch, bounds)`, with `LoadContent`/`UnloadContent`
   as DEFAULT interface members so a component owning no assets omits them. A host holds a `ScreenComponentList`

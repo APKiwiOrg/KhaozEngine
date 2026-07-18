@@ -11,6 +11,8 @@ namespace KhaozEngine.Persistence;
 /// moved over the target, so a crash mid-write never leaves a half-written destination. Synchronous and
 /// <b>throws</b> on IO failure; the caller decides whether to catch. For fire-and-forget background
 /// writes that coalesce and retry, use <see cref="PersistenceQueue"/>.
+/// The temp file's content is flushed to the physical disk before the rename, but the directory entry
+/// itself is not fsynced (not reachable from .NET), an accepted residual risk.
 /// </summary>
 public static class AtomicJsonWriter
 {
@@ -28,7 +30,13 @@ public static class AtomicJsonWriter
         }
 
         string tempPath = path + ".tmp";
-        File.WriteAllText(tempPath, contents);
+        using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+        using (var writer = new StreamWriter(stream))
+        {
+            writer.Write(contents);
+            writer.Flush();
+            stream.Flush(flushToDisk: true);
+        }
         File.Move(tempPath, path, overwrite: true);
     }
 

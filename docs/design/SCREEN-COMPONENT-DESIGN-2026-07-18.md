@@ -1,6 +1,6 @@
 # `IScreenComponent`: the composition unit below `Screen`
 
-Shipped 13.6.0. Closes [#226](https://github.com/APKiwiOrg/KhaozEngine/issues/226). Consumer adoption is
+Shipped 13.7.0. Closes [#226](https://github.com/APKiwiOrg/KhaozEngine/issues/226). Consumer adoption is
 https://github.com/APKiwiOrg/SpaceGame/issues/69 (its phase 3 was blocked on the decision recorded here).
 
 This doc holds the WHY. The shipped API is in `CHANGELOG.md` and `docs/USING-KHAOZENGINE.md`, and the per-member

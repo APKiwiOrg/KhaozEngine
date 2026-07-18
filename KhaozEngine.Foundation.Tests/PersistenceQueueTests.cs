@@ -356,6 +356,49 @@ public class PersistenceQueueTests
         finally { Cleanup(root); }
     }
 
+    [Fact]
+    public void BackupGenerations_RotatePerCommittedWrite()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string path = Path.Combine(root, "save.json");
+            using var queue = new PersistenceQueue(backupGenerations: 2);
+
+            queue.Enqueue(path, "a");
+            queue.Flush();
+            queue.Enqueue(path, "b");
+            queue.Flush();
+            queue.Enqueue(path, "c");
+            queue.Flush();
+
+            Assert.Equal("c", File.ReadAllText(path));
+            Assert.Equal("b", File.ReadAllText(path + ".bak1"));
+            Assert.Equal("a", File.ReadAllText(path + ".bak2"));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
+    public void BackupGenerationsDefaultOff_NoBakFiles()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string path = Path.Combine(root, "save.json");
+            using var queue = new PersistenceQueue();
+
+            queue.Enqueue(path, "a");
+            queue.Flush();
+            queue.Enqueue(path, "b");
+            queue.Flush();
+
+            Assert.Equal("b", File.ReadAllText(path));
+            Assert.False(File.Exists(path + ".bak1"));
+        }
+        finally { Cleanup(root); }
+    }
+
     internal static string NewTempRoot()
     {
         string dir = Path.Combine(Path.GetTempPath(), "ke-persistqueue-" + Guid.NewGuid().ToString("N"));

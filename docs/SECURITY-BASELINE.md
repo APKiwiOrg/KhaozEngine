@@ -74,12 +74,19 @@ that is the transport's and the game's responsibility.
   the schema path is the gate for any content a game chooses to load from a less-trusted location (user
   config, downloaded data packs). Validation is opt-in per game: the engine gives the validator; the
   game must point it at its schemas and decide what is trusted.
-- **Saves / settings** (`KhaozEngine.Persistence`): `AtomicJsonWriter` + `PersistenceQueue` give
-  crash-safe atomic writes; `SaveEncoder` wraps save payloads in Base64 + an HMAC-SHA256 tag. Read the
-  HMAC claim precisely: it is a **tamper-deterrent, not a security boundary**. The HMAC key ships in the
-  game binary, and decode is lenient (it recovers the JSON even on an HMAC mismatch, logging a warning).
-  It detects casual save edits; it does not defend against an attacker who has the binary (they have the
-  key). See `KhaozEngine.Persistence/SaveEncoder.cs` (the source says so in its summary).
+- **Saves / settings** (`KhaozEngine.Persistence`): `AtomicJsonWriter` (crash-safe atomic writes, flushed
+  to disk before the rename) and `PersistenceQueue` (coalesced writes, numbered backup-generation
+  rotation) give corruption resilience. `SaveEncoder` wraps save payloads in a versioned Base64 +
+  HMAC-SHA256 envelope. Read the HMAC claim precisely: it is a **tamper-deterrent, not a security
+  boundary**. The HMAC key ships in the game binary either way, so it detects casual save edits and
+  corruption, but it does not defend against an attacker who has the binary (they have the key). The
+  default pipeline (`GameStorage`/`FileSettingsStorage`, via `TamperPolicy.Strict`) REJECTS a save whose
+  HMAC does not verify and recovers from a backup generation or a fresh default instead of loading it.
+  `TamperPolicy.Lenient` is an opt-in escape hatch (typically for hand-editing saves during dev) that
+  restores accept-and-log. The low-level `SaveEncoder.Decode` legacy method is still lenient on its own
+  (it recovers the JSON even on an HMAC mismatch, logging a warning). See
+  `KhaozEngine.Persistence/SaveEncoder.cs` and its package README for the full API and the
+  strict-by-default `LoadWithOutcome` recovery ladder.
 - **Serialization** (`KhaozEngine.Serialization`): shared `System.Text.Json` defaults (tolerant-read).
   The engine does not use `BinaryFormatter` or any known-unsafe deserializer; JSON is the wire/disk format.
 - **glTF meshes** (`KhaozEngine.Render3D`): `GltfLoader.Load` / `LoadSkinned` parse mesh data. Meshes a

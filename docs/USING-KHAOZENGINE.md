@@ -67,6 +67,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
 - [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
+- [Save data (`GameStorage`)](#save-data-gamestorage)
 - [Versioned save migrations (`MigrationChain<T>`)](#versioned-save-migrations-migrationchaint)
 - [Deterministic floating point (`KhaozEngine.Determinism`)](#deterministic-floating-point-khaozenginedeterminism)
 - [Testing your game headlessly](#testing-your-game-headlessly)
@@ -781,7 +782,7 @@ visibility) and returns consumed only when modal or when its trigger fired, neve
 reading it; it was removed in 10.111.0 as dead API - the bool-return contract above, sharpened in the `Screen.Update`
 XML doc, is the actual mechanism. See `CHANGELOG.md`.)
 
-**`IScreenComponent` + `ScreenComponentList` (13.6.0)** - the composition unit BELOW `Screen`, which is to `Screen`
+**`IScreenComponent` + `ScreenComponentList` (13.7.0)** - the composition unit BELOW `Screen`, which is to `Screen`
 what `Ecs.ISystem` is to `World`. Reach for it when a screen has grown many collaborators: without it the screen
 must hand-wire each one into every lifecycle moment, so its size becomes a function of how many it has (an N
 collaborators by M moments cross product). A component is one HUD element, overlay, input controller or presenter:
@@ -5412,8 +5413,9 @@ Each tick routes every client's `MoveCommand` to the cell that **owns** its play
 authority for boundary crossers exactly-once, refreshes border ghosts, then serves each client its single
 home-cell area-of-interest (owned + ghosts). Walking across a boundary hands off with no hitch; two players in
 adjacent cells see each other via ghosting. `WorldServer` stays the single-`World` option for a modest player
-count; both share `WorldPersistence` via `IWorldPersistenceHost`. `MmoServerSample` is the reference dedicated
-server built on the multi-cell `ShardedWorldServer` (cellSize 60).
+count; both share `WorldPersistence` via `IWorldPersistenceHost`. `MmoServerSample` is a separate reference
+dedicated server built directly on the multi-cell `ShardHost` (see "Reference dedicated server" below), not
+on `ShardedWorldServer`.
 
 ### Server-side anti-cheat / input-hardening
 
@@ -6317,9 +6319,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
   stamp" below).
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
-  writes), `SettingsManager<T>` + `FileSettingsStorage`, `SaveEncoder` (Base64 + HMAC), the `GameStorage`
-  facade (paths + queue + settings + encoder), the `SettingsManager<T>.StampInstall(...)` convenience, and
-  versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations" below).
+  writes, optional numbered backup-generation rotation), `SettingsManager<T>` + `FileSettingsStorage`,
+  `SaveEncoder` (Base64 + HMAC, a versioned envelope carrying tamper-protected `SaveMetadata`), the
+  `GameStorage` facade (paths + queue + settings + encoder, default-on encoding, an outcome-reporting
+  recovery ladder, generation restore - see "Save data" below), the `SettingsManager<T>.StampInstall(...)`
+  convenience, and versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations"
+  below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
@@ -6689,6 +6694,71 @@ edges.
 
 ---
 
+## Save data (`GameStorage`)
+
+`KhaozEngine.Persistence.GameStorage` is the one-call facade over the save/settings stack: publisher-rooted
+`AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and an optional
+`SaveEncoder`. See the package README for the full API. This section covers the consumer-facing decisions.
+
+```csharp
+using KhaozEngine.Persistence;
+
+var storage = new GameStorage("MyStudio", "MyGame", new GameStorageOptions
+{
+    Encoder = new SaveEncoder(hmacKey, "MGSV1"),   // configuring an encoder makes encoding the default
+    GameVersion = "1.4.2",                         // stamped into every encoded save's SaveMetadata.GameVersion
+});
+
+storage.Save("save.json", campaign);                // encoded (Base64 + HMAC) because Encoder is configured
+storage.Flush();                                     // writes are queued: flush before reading the same file back
+SaveLoadResult<CampaignSaveData> result = storage.LoadWithOutcome<CampaignSaveData>("save.json");
+```
+
+**Encoding is default-on, per-call opt-out.** Once `GameStorageOptions.Encoder` is configured, every `Save`
+encodes unless a call opts out - the reverse of the old "opt in per call" behavior, so a forgotten flag can
+no longer ship an unprotected save. Force plaintext for a deliberately hand-editable file (or force encoding
+without changing the facade default) with `SaveWriteOptions`:
+
+```csharp
+storage.Save("debug-dump.json", value, new SaveWriteOptions { Encode = false });
+storage.Save("save.json", value, new SaveWriteOptions { Summary = "Chapter 3, Level 42" });   // Encode = null follows the default
+```
+
+This is still a deterrent, not real security - the HMAC key ships in the game binary. It stops a casual
+save editor and detects corruption. It does not stop a player willing to read the source.
+
+**Recovery ladder outcomes.** `Load<T>` never throws on a bad save. It probes the primary file, then each
+backup generation in order, and returns the first valid candidate, or a fresh default if none are.
+`LoadWithOutcome<T>` reports which path was taken via `SaveLoadOutcome`: `Loaded` (clean primary),
+`FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under a configured
+encoder - a subsequent default-on save re-encodes it, though a file the game keeps writing with
+`Encode = false` stays plaintext deliberately and is never re-encoded this way), `RecoveredFromBackup`
+(the primary failed but a backup loaded, and `SaveLoadResult<T>.RecoveredGeneration` names which one), and
+`RejectedAndDefaulted` (something was on disk but every candidate was invalid). A save whose HMAC does not
+verify is rejected under `GameStorageOptions.TamperPolicy.Strict` (the default) and recovered under
+`.Lenient` - the dev escape hatch for hand-editing saves during balancing, which still reports a `Detail`
+naming the mismatch rather than accepting it silently. `AcceptLegacyPlaintext` (default true) lets a
+shipped game's existing install base upgrade transparently. Set it false once you no longer need to accept
+an unenveloped save, but note it rejects ALL plaintext, including a deliberate `Encode = false` file, so a
+game hardening its real saves this way should keep hand-editable files out of that storage, or leave the
+flag true. `Load`/`LoadWithOutcome` accept the same optional `MigrationChain<T>` as `SettingsManager<T>` -
+see "Versioned save migrations" below.
+
+**Generation restore.** `ListGenerations(fileName)` reports the primary plus every backup
+(`GameStorageOptions.BackupGenerations`, default 2) as `SaveGenerationInfo` entries - path, last-write
+time, and validity (`Valid` / `Tampered` / `Corrupt` / `Missing`) - the surface a "restore backup" menu
+reads. `RestoreGeneration(fileName, generation)` promotes a backup to primary. The current primary is
+rotated into generation 1 first (a `.bak1`/`.bak2`/... copy, never a move, so nothing on disk is destroyed
+by a restore that then also fails).
+
+**Settings.** `FileSettingsStorage` rides the same outcome type: `SettingsManager<T>` exposes
+`LastLoadOutcome` after each `Load()`, so a settings screen can surface "recovered from backup" or
+"settings reset" instead of silently swallowing it, matching the file settings' own `BackupGenerations`
+knob (separate from `GameStorageOptions.BackupGenerations` - set it to match if you want the same recovery
+depth).
+
+---
+
 ## Versioned save migrations (`MigrationChain<T>`)
 
 `SettingsManager<T>` and `GameStorage` take an optional `MigrationChain<T>` that upgrades an old on-disk
@@ -6720,6 +6790,16 @@ throws on a bad save: a save at/above current is left untouched, one older than 
 returned as-is, and a throwing step halts the chain with the partially-migrated value. The opt-in
 `For<T>()` factory is reference-type only; use the `For<T>(getVersion, setVersion)` delegate overload for any
 other type.
+
+**Fresh values are stamped current, not migrated.** A value with nothing on disk (`GameStorage.Load`'s
+`FreshDefault` outcome) or with everything on disk rejected (`RejectedAndDefaulted`) is never run through
+`Migrate` - it is stamped straight to `CurrentVersion` via `MigrationChain<T>.StampCurrent(value)`, called
+by both `GameStorage.LoadWithOutcome` and `SettingsManager.Load` for those two outcomes. Before this fix, a
+brand-new value entered the chain at schema version 0 (a fresh `ISchemaVersioned.SchemaVersion`'s CLR
+default), which read as older than every registered step: first boot logged a spurious
+corruption-looking "schema version predates the oldest migration step" warning on every launch, and the
+fresh value was never actually stamped to `CurrentVersion`. A first boot or a full reset is not a
+pre-migration save, so it should never look like one. `StampCurrent` is what makes that true.
 
 ## Deterministic floating point (`KhaozEngine.Determinism`)
 
@@ -7611,6 +7691,48 @@ MigrationChain<PlayerSave> playerSaveMigrations = MigrationChain
 
 Out of scope here (later sub-projects): accounts/auth, and migration of the engine's own `PlayerRecord` position
 schema (which stays forward-tolerant rather than chained - the game blob is where a chained migration lives).
+
+#### Load validation and quarantine
+
+Two optional hooks on `WorldPersistenceConfig` vet a loaded record on the server thread before it is
+applied, so a corrupt store row or a hand-edited one never flows straight into the live world:
+
+- **`Bounds`** (`WorldBounds`, the same type the movement clamp uses) rejects a loaded position outside the
+  play area.
+- **`ValidateGameState`** (`PlayerGameStateValidate`) is the game's plausibility check on its durable blob -
+  schema parse, stat clamps, inventory sanity - handed the same `PlayerPersistenceContext` plus a
+  `ReadOnlySpan<byte>` of the raw blob, returning a `PlayerGameStateVerdict` (`Valid()` or
+  `Invalid(reason)`). Only invoked when the record actually carries a blob.
+
+```csharp
+var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
+{
+    CaptureGameState = CapturePlayerBlob,
+    ApplyGameState = ApplyPlayerBlob,
+    Bounds = new CircleBounds(center: Vector2.Zero, radius: 2000f),
+    ValidateGameState = (in PlayerPersistenceContext ctx, ReadOnlySpan<byte> blob) =>
+        IsPlausible(blob) ? PlayerGameStateVerdict.Valid() : PlayerGameStateVerdict.Invalid("bad blob"),
+});
+persistence.OnRecordQuarantined += (accountId, reason) => Log.Warn($"{accountId} quarantined: {reason}");
+```
+
+A record that fails either check - or whose stored JSON does not even parse - is quarantined WHOLE rather
+than partially applied: its raw, undecoded bytes are copied verbatim to
+`{QuarantineKeyPrefix}{KeyPrefix}{accountId}` (default `quarantine:player:{accountId}`) in the same
+`IWorldStore`, `OnRecordQuarantined(accountId, reason)` fires, and the player is left at its **default
+spawn** - never placed from the bad record. The dirty-tracking baseline is deliberately not advanced for a
+quarantined record, so the fresh-spawn state stays dirty and the **next periodic save overwrites the bad
+primary**, while the quarantine copy survives untouched as a **forensic copy** for offline inspection (it
+is never itself restored automatically). `MmoServerSample` demonstrates the full loop: it captures,
+validates, and applies an exact-HP blob (`PrivateStats`) and rejects a wrong-length or out-of-range value.
+
+**An undecodable record is not an outage.** A record whose JSON fails to parse takes the SAME quarantine
+path as a failed `Bounds`/`ValidateGameState` check, clearing the load-on-join guard so persistence resumes
+for that account on the next dirty pass. A genuine store READ failure is different and is left unresolved
+on purpose: the guard stays set so the intact stored record is protected until a later rejoin retries the
+load, and the fault surfaces through `OnStoreError` instead of `OnRecordQuarantined`. Before this fix, an
+undecodable record was treated like an outage too, which left the guard set forever for a record that could
+never succeed on a retry - that player's persistence silently stopped for the rest of the session.
 
 ### Per-cell world persistence (`CellPersistence`)
 

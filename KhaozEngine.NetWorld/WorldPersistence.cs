@@ -30,6 +30,27 @@ public sealed class WorldPersistenceConfig
     /// default) discards any stored blob on load. Pair it with <see cref="CaptureGameState"/>.
     /// </summary>
     public PlayerGameStateApply? ApplyGameState { get; init; }
+
+    /// <summary>
+    /// Optional authoritative play area the loaded position is checked against on the server thread at load-on-join. A
+    /// record whose (X, Z) falls outside the bounds is quarantined WHOLE (see <see cref="WorldPersistence"/>) rather
+    /// than applied. Null (the default) accepts any position.
+    /// </summary>
+    public WorldBounds? Bounds { get; init; }
+
+    /// <summary>
+    /// Optional game hook that vets the loaded durable blob on the server thread at load-on-join, before it is applied.
+    /// A rejecting <see cref="PlayerGameStateVerdict"/> quarantines the WHOLE record (position and blob). Only fired for
+    /// a record that actually carries a blob. Null (the default) accepts any blob.
+    /// </summary>
+    public PlayerGameStateValidate? ValidateGameState { get; init; }
+
+    /// <summary>
+    /// Key prefix under which a quarantined record's raw bytes are copied verbatim. The quarantine key is
+    /// <c>{QuarantineKeyPrefix}{KeyPrefix}{accountId}</c> (default <c>quarantine:player:{accountId}</c>), so the intact
+    /// original survives for offline inspection while the primary record is free to be overwritten by the fresh spawn.
+    /// </summary>
+    public string QuarantineKeyPrefix { get; init; } = "quarantine:";
 }
 
 /// <summary>
@@ -43,12 +64,27 @@ public sealed class WorldPersistenceConfig
 /// <para>While a load-on-join is still in flight, the account is guarded: the periodic dirty pass and save-on-leave
 /// both skip it, so a save firing mid-load can't overwrite the stored record (position AND the durable game blob)
 /// with the pre-restore default-spawn state and permanently erase progression. The guard clears once the loaded
-/// record has been applied on the server thread, or immediately if the load found no saved record. Skipping the
-/// leave-save is intentional: the state was never applied, so the stored record - not the pre-restore live state -
-/// is the truth worth keeping. One edge is not covered: on an async store, store operations for the same account
-/// are not ordered across a rapid leave/rejoin that overlaps an in-flight load-on-join, so a rejoin can briefly apply
-/// pre-leave state (the next periodic save reconciles it). Use a stable account id; if a session needs strict
-/// ordering, serialize your own per-account store operations on top.</para>
+/// record has been applied (or quarantined) on the server thread, or immediately if the load found no saved record.
+/// Skipping the leave-save is intentional: the state was never applied, so the stored record - not the pre-restore
+/// live state - is the truth worth keeping. A faulted store READ is different: the guard is deliberately LEFT set so
+/// the intact stored record stays protected, and a later rejoin retries the read (outage semantics). One edge is not
+/// covered: on an async store, store operations for the same account are not ordered across a rapid leave/rejoin that
+/// overlaps an in-flight load-on-join, so a rejoin can briefly apply pre-leave state (the next periodic save
+/// reconciles it). Use a stable account id. If a session needs strict ordering, serialize your own per-account store
+/// operations on top.</para>
+///
+/// <para>Loaded records are validated on the server thread before they are applied, via
+/// <see cref="WorldPersistenceConfig.Bounds"/> (position must be in-bounds), the game's
+/// <see cref="WorldPersistenceConfig.ValidateGameState"/> verdict on its durable blob, and a decode guard (a record
+/// whose JSON no longer parses). A record that fails ANY check is quarantined WHOLE: its raw bytes are copied verbatim
+/// to <c>{QuarantineKeyPrefix}{KeyPrefix}{accountId}</c> (default <c>quarantine:player:{accountId}</c>), the player is
+/// NOT placed from it (so it keeps its default spawn, a fresh start), <see cref="OnRecordQuarantined"/> fires on the
+/// server thread, and the clean baseline is deliberately NOT advanced to the bad record. Because the baseline moves to
+/// the loaded bytes only on a SUCCESSFUL apply, a quarantined record is never marked clean, so the next dirty pass
+/// overwrites the bad PRIMARY record with the fresh-spawn state while the quarantine copy survives for offline repair.
+/// This also fixes an undecodable RECORD, which previously faulted the load and left the guard set forever (progress
+/// silently stopped persisting): it is now routed through quarantine, which clears the guard so persistence resumes.
+/// A store READ fault is NOT quarantine - the record was never read, so the outage retry above still applies.</para>
 ///
 /// <para>A game attaches durable per-player state (XP, inventory, quests) through
 /// <see cref="WorldPersistenceConfig.CaptureGameState"/> / <see cref="WorldPersistenceConfig.ApplyGameState"/>: an
@@ -62,19 +98,24 @@ public sealed class WorldPersistence
     private readonly IWorldStore store;
     private readonly WorldPersistenceConfig config;
 
-    // Loaded records waiting to be applied on the server thread (the drain below applies these): position via
-    // SetPlayerState, then the opaque game blob via ApplyGameState. AccountId rides along for the apply context.
-    private readonly ConcurrentQueue<(int slot, string accountId, PlayerMoveState state, byte[]? game)> applyQueue = new();
+    // Loaded records waiting to be validated + applied on the server thread (the drain below handles these): validate
+    // (bounds, blob verdict, or a carried decode failure), then either quarantine the whole record or apply it -
+    // position via SetPlayerState, then the opaque game blob via ApplyGameState. The raw bytes ride along so a
+    // quarantine copies them verbatim. AccountId rides along for the apply/quarantine context.
+    private readonly ConcurrentQueue<PendingApply> applyQueue = new();
     // accountId -> last persisted bytes, for dirty comparison (covers position AND the game blob, since both are
-    // in the same encoded record - a change to either marks the record dirty and re-saves).
+    // in the same encoded record - a change to either marks the record dirty and re-saves). The load-on-join baseline
+    // is set only on a SUCCESSFUL apply (in DrainApplyQueue), NOT at load time: a quarantined record must never be
+    // marked clean, so the fresh-spawn state stays dirty and overwrites the bad primary on the next pass.
     private readonly ConcurrentDictionary<string, byte[]> lastSaved = new();
-    // accountId -> outstanding load-on-join guard. Set in OnPlayerJoined before the async load starts; cleared only
-    // AFTER the loaded record is applied on the server thread (DrainApplyQueue), or immediately when the load returns
-    // null (a brand-new player: no stored record to protect). SaveDirtyPass and OnPlayerLeaving skip an account still
-    // in this set, so a periodic save or a quick leave can't overwrite the stored record (position AND the durable
-    // game blob) with pre-restore state - the default spawn and a null blob - and permanently erase progression. A
-    // faulted load deliberately leaves the guard set so the intact stored record stays protected (a later rejoin
-    // retries the load); mirrors CellPersistence's loadsInFlight.
+    // accountId -> outstanding load-on-join guard. Set in OnPlayerJoined before the async load starts, cleared only
+    // AFTER the loaded record is applied OR quarantined on the server thread (DrainApplyQueue), or immediately when the
+    // load returns null (a brand-new player: no stored record to protect). SaveDirtyPass and OnPlayerLeaving skip an
+    // account still in this set, so a periodic save or a quick leave can't overwrite the stored record (position AND
+    // the durable game blob) with pre-restore state - the default spawn and a null blob - and permanently erase
+    // progression. A faulted store READ deliberately leaves the guard set so the intact stored record stays protected
+    // (a later rejoin retries the load), mirroring CellPersistence's loadsInFlight. An undecodable record is NOT a read
+    // fault - it read fine, it just won't parse - so it clears the guard via quarantine, not via the outage path.
     private readonly ConcurrentDictionary<string, byte> loadsInFlight = new();
     // In-flight loads/saves, so FlushAsync can await them (tests + shutdown).
     private readonly object pendingLock = new();
@@ -86,6 +127,41 @@ public sealed class WorldPersistence
     /// unbounded, and this hook lets the game log or alert. The failed save's state stays dirty and is retried on the
     /// next pass.</summary>
     public event Action<Exception>? OnStoreError;
+
+    /// <summary>Raised on the server thread (from <see cref="Update"/> / <see cref="FlushAsync"/> via the apply drain)
+    /// when a loaded record failed validation and was quarantined WHOLE: (accountId, reason). The raw record's copy
+    /// to the quarantine key has only been queued (a Tracked <c>SaveAsync</c>) by the time this fires, not
+    /// necessarily completed: an async store may still be writing it, though <see cref="FlushAsync"/> awaits that
+    /// write before it returns. The player keeps its default spawn, and the primary record will be overwritten by the
+    /// fresh state on the next dirty pass. The reason is the bounds/blob/decode message, for logging or alerting. On
+    /// the <see cref="FlushAsync"/> path the invoking continuation may run on a thread-pool thread rather than the
+    /// true server thread, under FlushAsync's own documented precondition that it only be invoked when the server
+    /// loop is idle.</summary>
+    public event Action<string, string>? OnRecordQuarantined;
+
+    // A loaded record marshalled to the server thread for validation + apply. Raw is the exact stored bytes (copied
+    // verbatim on quarantine). State/Game are the decoded position and blob (default/null when DecodeFailure is set).
+    // DecodeFailure is non-null only when the stored bytes would not parse, which routes the item straight to
+    // quarantine without ever touching State/Game.
+    private readonly struct PendingApply
+    {
+        public PendingApply(int slot, string accountId, byte[] raw, PlayerMoveState state, byte[]? game, string? decodeFailure)
+        {
+            Slot = slot;
+            AccountId = accountId;
+            Raw = raw;
+            State = state;
+            Game = game;
+            DecodeFailure = decodeFailure;
+        }
+
+        public int Slot { get; }
+        public string AccountId { get; }
+        public byte[] Raw { get; }
+        public PlayerMoveState State { get; }
+        public byte[]? Game { get; }
+        public string? DecodeFailure { get; }
+    }
 
     public WorldPersistence(IWorldPersistenceHost server, IWorldStore store, WorldPersistenceConfig? config = null)
     {
@@ -117,9 +193,21 @@ public sealed class WorldPersistence
             loadsInFlight.TryRemove(accountId, out _);     // brand-new player: nothing stored to clobber, drop the guard now
             return;
         }
-        lastSaved[accountId] = data;                       // loaded == clean baseline
-        PlayerRecord record = PlayerRecord.Decode(data);
-        applyQueue.Enqueue((slot, accountId, record.ToState(), record.Game));   // guard cleared in DrainApplyQueue, AFTER this applies
+        // The baseline is NOT set here any more: it moves to apply time (DrainApplyQueue), so a quarantined record is
+        // never marked clean. A read fault propagates out of this task and the guard deliberately stays set (outage
+        // retry). An undecodable record read fine but won't parse, so route it through quarantine instead of faulting
+        // the task and stranding the guard forever.
+        PlayerRecord record;
+        try
+        {
+            record = PlayerRecord.Decode(data);
+        }
+        catch (Exception ex)
+        {
+            applyQueue.Enqueue(new PendingApply(slot, accountId, data, default, null, $"undecodable record: {ex.Message}"));
+            return;                                        // guard stays set until the drain quarantines and clears it
+        }
+        applyQueue.Enqueue(new PendingApply(slot, accountId, data, record.ToState(), record.Game, null));   // validated + guard cleared in DrainApplyQueue
     }
 
     // Captures the game blob (on the server thread - the caller is on the server thread) and encodes the full record.
@@ -179,16 +267,39 @@ public sealed class WorldPersistence
             foreach (Exception ex in failures) OnStoreError?.Invoke(ex);
     }
 
-    // Applies loaded records on the server thread: position first, then the opaque game blob (only when present and a
-    // hook is set). Shared by Update and FlushAsync so the game blob is re-attached on both paths.
+    // Validates then applies (or quarantines) loaded records on the server thread. A record fails validation if it
+    // carries a decode failure, its position is out of bounds, or the game's blob verdict rejects it - checked in that
+    // order, first hit wins. On failure the WHOLE record is copied verbatim to the quarantine key, the guard clears,
+    // the player is left at its default spawn (no SetPlayerState) and the baseline is untouched (so the fresh state
+    // overwrites the bad primary next pass), and OnRecordQuarantined fires. On success: position first, then the
+    // opaque game blob (only when present and a hook is set), then advance the baseline to the loaded bytes, then clear
+    // the guard. Shared by Update and FlushAsync so both paths validate identically.
     private void DrainApplyQueue()
     {
-        while (applyQueue.TryDequeue(out (int slot, string accountId, PlayerMoveState state, byte[]? game) a))
+        while (applyQueue.TryDequeue(out PendingApply a))
         {
-            server.SetPlayerState(a.slot, a.state, teleport: true);   // placing a loaded player is a teleport (cut, no glide)
-            if (a.game is { Length: > 0 } && config.ApplyGameState is { } apply)
-                apply(new PlayerPersistenceContext(a.slot, a.accountId), a.game);
-            loadsInFlight.TryRemove(a.accountId, out _);   // restore applied; the account is now safe to dirty-save
+            string? failure = a.DecodeFailure;
+            if (failure is null && config.Bounds is { } b && !b.Contains(a.State.Position.X, a.State.Position.Z))
+                failure = $"position ({a.State.Position.X}, {a.State.Position.Z}) outside world bounds";
+            if (failure is null && a.Game is { Length: > 0 } && config.ValidateGameState is { } validate)
+            {
+                PlayerGameStateVerdict verdict = validate(new PlayerPersistenceContext(a.Slot, a.AccountId), a.Game);
+                if (!verdict.IsValid) failure = verdict.Reason ?? "invalid";
+            }
+
+            if (failure is not null)
+            {
+                Track(store.SaveAsync(config.QuarantineKeyPrefix + Key(a.AccountId), a.Raw));   // copy the bad record verbatim, awaited by FlushAsync
+                loadsInFlight.TryRemove(a.AccountId, out _);   // quarantined, so the account is now free to dirty-save the fresh spawn over the bad primary
+                OnRecordQuarantined?.Invoke(a.AccountId, failure);
+                continue;                                      // NOT applied, baseline NOT advanced
+            }
+
+            server.SetPlayerState(a.Slot, a.State, teleport: true);   // placing a loaded player is a teleport (cut, no glide)
+            if (a.Game is { Length: > 0 } && config.ApplyGameState is { } apply)
+                apply(new PlayerPersistenceContext(a.Slot, a.AccountId), a.Game);
+            lastSaved[a.AccountId] = a.Raw;                 // loaded == clean baseline, set at apply time (never for a quarantined record)
+            loadsInFlight.TryRemove(a.AccountId, out _);   // restore applied, the account is now safe to dirty-save
         }
     }
 
@@ -226,9 +337,20 @@ public sealed class WorldPersistence
     /// tests) to reach a quiescent, fully-persisted point. Invoke from the server thread / when the loop is idle.</summary>
     public async Task FlushAsync()
     {
-        Task[] tasks;
-        lock (pendingLock) { tasks = pending.ToArray(); pending.Clear(); }
-        await Task.WhenAll(tasks).ConfigureAwait(false);
-        DrainApplyQueue();
+        // Loop rather than a single drain-then-await: DrainApplyQueue can itself Track a quarantine SaveAsync (a
+        // loaded record that fails validation), and awaiting pending can complete a LoadOnJoinAsync that enqueues a
+        // fresh applyQueue item. Either one leaves work this call has not yet awaited/applied, so keep going until a
+        // drain finds nothing new to track - only then is the call actually quiescent, mirroring CellPersistence's
+        // FlushAsync shape.
+        while (true)
+        {
+            DrainApplyQueue();
+
+            Task[] tasks;
+            lock (pendingLock) { tasks = pending.ToArray(); pending.Clear(); }
+            if (tasks.Length == 0) break;
+
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
     }
 }

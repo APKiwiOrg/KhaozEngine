@@ -173,4 +173,18 @@ public sealed class MigrationChain<T> where T : new()
             return value;
         }
     }
+
+    /// <summary>
+    /// Marks a brand-new value (one that never came from disk) as already at <see cref="CurrentVersion"/>,
+    /// without running any step. Use for fresh defaults so a first boot is not mistaken for a pre-migration
+    /// save (and does not warn as one). Null is returned unchanged.
+    /// </summary>
+    public T StampCurrent(T value)
+    {
+        if (value is not null)
+        {
+            setVersion(value, CurrentVersion);
+        }
+        return value;
+    }
 }

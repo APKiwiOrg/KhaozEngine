@@ -23,6 +23,10 @@ public sealed class SettingsManager<T> where T : new()
     /// <summary>The current settings. Never null.</summary>
     public T Settings => settings;
 
+    /// <summary>How the most recent <see cref="Load"/> resolved: a clean read, a recovery from a backup, a
+    /// fresh default, or a rejected-and-defaulted load. See <see cref="SaveLoadOutcome"/>.</summary>
+    public SaveLoadOutcome LastLoadOutcome { get; private set; }
+
     /// <summary>Raised after settings are loaded (including when defaults are substituted).</summary>
     public event Action<T>? SettingsLoaded;
 
@@ -74,24 +78,31 @@ public sealed class SettingsManager<T> where T : new()
 
     /// <summary>
     /// Loads settings, falling back to defaults on failure, then applies the optional sanitize hook.
-    /// Always raises <see cref="SettingsLoaded"/>.
+    /// Always raises <see cref="SettingsLoaded"/>. Sets <see cref="LastLoadOutcome"/> to how the load
+    /// resolved. A fresh or rejected-and-defaulted load is stamped to the migration chain's current
+    /// version rather than migrated (a first boot, or a defaulted load, is not a pre-migration save).
     /// </summary>
     public void Load()
     {
-        T loaded;
+        SaveLoadResult<T> result;
         try
         {
-            loaded = storage.LoadSettings<T>() ?? new T();
+            result = storage.LoadSettingsDetailed<T>();
         }
         catch (Exception ex)
         {
             logger.Error("Failed to load settings; using defaults.", ex);
-            loaded = new T();
+            result = new SaveLoadResult<T> { Value = new T(), Outcome = SaveLoadOutcome.RejectedAndDefaulted, Detail = ex.Message };
         }
+
+        LastLoadOutcome = result.Outcome;
+        T loaded = result.Value ?? new T();
 
         if (migrations is not null)
         {
-            loaded = migrations.Migrate(loaded, logger);
+            loaded = result.Outcome is SaveLoadOutcome.FreshDefault or SaveLoadOutcome.RejectedAndDefaulted
+                ? migrations.StampCurrent(loaded)
+                : migrations.Migrate(loaded, logger);
         }
 
         if (sanitizeOnLoad is not null)

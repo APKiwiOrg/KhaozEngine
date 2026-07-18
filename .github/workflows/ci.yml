@@ -1,4 +1,9 @@
 name: ci
+# Two paths, split by event (see docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md, Decisions 4-5):
+#   * Tag pushes (refs/tags/v*) and workflow_dispatch run the FULL sequence inline: restore, build,
+#     full test, determinism double-pass, pack, and (tags only) publish. This is what gates a release.
+#   * Push (main) and pull_request run scripts/ci-selective-test.sh, which builds and tests only the
+#     slice the diff affects (empty on a docs-only push). No pack or publish on this path.
 # Cancel a superseded in-flight run on the SAME ref (rapid push series stop stacking). Grouped by ref so
 # a tag run (refs/tags/v*) gets its own group and is never cancelled by a branch push - the publish leg
 # (tags only) is safe.
@@ -17,8 +22,8 @@ jobs:
   # Runs on GitHub-hosted x64 ubuntu, NOT the self-hosted arm64 container. The engine test suite needs
   # x64-only native deps (notably libveldrid-spirv, which the Veldrid.SPIRV package ships for linux-x64
   # but NOT linux-arm64 - the SPIRV shader-source tests DllNotFound on the arm64 fleet). Cost is fine:
-  # Linux is 1x and this is ~2 min, within the free tier. The only expensive work - the 10x macOS Metal
-  # golden - is the one thing self-hosted (on the dev Mac), in cross-platform-gpu.yml.
+  # Linux is 1x and even a full run is ~2 min, within the free tier. The only expensive work - the 10x
+  # macOS Metal golden - is the one thing self-hosted (on the dev Mac), in cross-platform-gpu.yml.
   build-test-pack:
     runs-on: ubuntu-latest
     permissions:
@@ -29,7 +34,14 @@ jobs:
       GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      # Fail fast if the docs' "current version" declarations drifted from Directory.Build.props.
+        # fetch-depth: 0 (full history) is required by the selective path: scripts/ci-selective-test.sh
+        # diffs the base sha against head, and both must be present locally, which the default depth-1
+        # shallow clone does not guarantee. Cost is a slower checkout. The tag/dispatch full runs pay it
+        # too but do not use the diff, and a missing base just falls the script back to a FULL run.
+        with:
+          fetch-depth: 0
+      # Fail fast if the docs' "current version" declarations drifted from Directory.Build.props. Runs
+      # on every event, both paths, so a selective docs-only push is still guarded.
       - name: Check doc version consistency
         run: ./scripts/check-doc-versions.sh
       - uses: actions/setup-dotnet@v4
@@ -37,21 +49,43 @@ jobs:
           dotnet-version: '10.0.x'
       # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
       - run: mkdir -p local-feed
-      - run: dotnet restore
-      - run: dotnet build -c Release --no-restore
+
+      # --- Selective path: push (main) and pull_request. Builds and tests only the affected slice. ---
+      # BASE is github.event.before for pushes and the PR base sha for PRs. HEAD is github.sha (for a PR
+      # that is the merge commit, which is what we want to test: the code as it would land on main).
+      - name: Selective build + test (push and PR)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') || github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: scripts/ci-selective-test.sh "$BASE" "$HEAD"
+
+      # --- Full path: tag pushes (refs/tags/v*) and workflow_dispatch. Gates every release. ---
+      - name: Restore (full)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: dotnet restore
+      - name: Build (full)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: dotnet build -c Release --no-restore
       # Exclude live-socket smokes (real UDP, fixed port) from CI: they are a manual/local smoke, covered
       # headlessly by LoopbackTransport. Run them locally with the full (unfiltered) test command.
-      - run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
+      - name: Test (full)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
       # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes.
-      # (The default run above covers ambient tiering; these pin the two extremes explicitly.)
-      - name: Determinism under JIT tiering 0 and 1
+      # (The default run above covers ambient tiering. These pin the two extremes explicitly.) The
+      # DeterministicFp tests live in KhaozEngine.Foundation.Tests, so the pass is scoped to it.
+      - name: Determinism under JIT tiering 0 and 1 (full)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: |
           for tc in 0 1; do
             echo "DOTNET_TieredCompilation=$tc"
-            DOTNET_TieredCompilation=$tc dotnet test -c Release --no-build \
+            DOTNET_TieredCompilation=$tc dotnet test KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj -c Release --no-build \
               --filter "FullyQualifiedName~DeterministicFp"
           done
-      - run: dotnet pack -c Release -o ./artifacts --no-build
+      - name: Pack (full)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: dotnet pack -c Release -o ./artifacts --no-build
       - name: Publish to GitHub Packages (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         # Pushes all packed packages. --skip-duplicate means only newly-versioned ones actually publish,

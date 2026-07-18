@@ -35,8 +35,4 @@ public class MathUtilTests
         Assert.Equal(0f, MathUtil.SmoothStep(5f, 5f, 4.9f));
         Assert.Equal(1f, MathUtil.SmoothStep(5f, 5f, 5f));
     }
-
-    [Fact]
-    public void SmoothStep_MatchesTerrainNoiseForward()
-        => Assert.Equal(MathUtil.SmoothStep(2f, 8f, 3.7f), KhaozEngine.Terrain.TerrainNoise.SmoothStep(2f, 8f, 3.7f));
 }

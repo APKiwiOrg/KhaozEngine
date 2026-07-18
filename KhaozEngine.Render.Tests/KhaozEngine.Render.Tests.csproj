@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces, consistent with every other split
+         test project (goldens are loaded by [CallerFilePath], not manifest name, but the pin keeps namespaces
+         and any future resource inference consistent). -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <!-- Render3D glTF loader tests build meshes with SharpGLTF. -->
+    <PackageReference Include="SharpGLTF.Toolkit" />
+    <!-- Render3D / Physics.Bepu debug-draw tests name BepuPhysics types. -->
+    <PackageReference Include="BepuPhysics" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Bundled libre font (Roboto, Apache-2.0) so the 2D golden has identical glyph input on every OS/runner,
+         instead of a hard-coded macOS system-font path that doesn't exist on Windows/Linux CI. Loaded from the
+         test output dir ("Assets/Roboto-Regular.ttf") by the Gpu/Render2D font tests. -->
+    <None Include="Assets/Roboto-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
+    <!-- Dungeon/DungeonKitAssetTests.cs validates the Showcase greybox kit (DungeonKitMap/DungeonPiece). -->
+    <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <!-- 7 Gpu-folder golden tests render Gui widgets (BootScreen, PatchNotesView, PopupPanel, SlotGrid, TabBar). -->
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <!-- ParticlesRender3D folder is the Particles->Render3D seam and needs the Particles package plus its
+         Render3D companion (ParticleSceneExtensions lives in KhaozEngine.Particles.Render3D, base namespace). -->
+    <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
+    <ProjectReference Include="../KhaozEngine.Particles.Render3D/KhaozEngine.Particles.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
+    <ProjectReference Include="../KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
+    <!-- Exposes SnapshotTool.DiffCommands for the headless diff/score command-layer tests (Snapshot folder). -->
+    <ProjectReference Include="../SnapshotTool/SnapshotTool.csproj" />
+    <ProjectReference Include="../KhaozEngine.Telegraphs/KhaozEngine.Telegraphs.csproj" />
+    <!-- GroundTelegraphs (base namespace KhaozEngine.Telegraphs) lives in the Render3D companion assembly. -->
+    <ProjectReference Include="../KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
+    <!-- Scene3DChunkSink (base namespace KhaozEngine.Terrain) lives in the Render3D companion assembly. -->
+    <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
+  </ItemGroup>
+</Project>

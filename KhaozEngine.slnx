@@ -72,11 +72,13 @@
   <Project Path="KhaozEngine.Tests/KhaozEngine.Tests.csproj" />
   <Project Path="KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
   <Project Path="KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
+  <Project Path="KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   <Project Path="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj" />
   <Project Path="KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj" />
   <Project Path="KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj" />
   <Project Path="KhaozEngine.Audio.Tests/KhaozEngine.Audio.Tests.csproj" />
   <Project Path="KhaozEngine.Particles.Tests/KhaozEngine.Particles.Tests.csproj" />
+  <Project Path="KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />

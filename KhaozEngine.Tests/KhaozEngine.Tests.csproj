@@ -23,9 +23,6 @@
     <EmbeddedResource Include="Gui/Fixtures/PLAY_CHANGELOG.md">
       <LogicalName>PLAY_CHANGELOG.md</LogicalName>
     </EmbeddedResource>
-    <!-- Bundled libre font (Roboto, Apache-2.0) so the 2D golden has identical glyph input on every OS/runner,
-         instead of a hard-coded macOS system-font path that doesn't exist on Windows/Linux CI. -->
-    <None Include="Assets/Roboto-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />
     <!-- A captured real one-sided building collision mesh (a Ruinborne house with eaves/overhangs), used as a
          realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
          the resolver's one-sided-mesh handling must not pin or float the capsule. -->
@@ -120,5 +117,8 @@
          itself moved to KhaozEngine.Server.Tests in wave 2, Game/BootPipelineTests.cs is the remaining
          FakeServerStatusSource consumer here). -->
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
+    <!-- Transitional (wave 3): GpuFactAttribute moved to TestSupport.Gpu, but MapEditor/MapEditTool [GpuFact]
+         tests still live here until MapEditor.Tests is extracted; this reference goes away with them. -->
+    <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
 </Project>

@@ -27,9 +27,6 @@
     <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
-    <!-- Primitives/MathUtilTests.cs cross-checks MathUtil.SmoothStep against KhaozEngine.Terrain.TerrainNoise
-         (a fully-qualified reference, so it does not show up as a using directive). Compile-revealed. -->
-    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />

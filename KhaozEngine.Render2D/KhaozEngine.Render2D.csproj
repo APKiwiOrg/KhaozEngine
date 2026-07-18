@@ -25,5 +25,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
   </ItemGroup>
 </Project>

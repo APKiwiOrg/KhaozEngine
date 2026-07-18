@@ -7,7 +7,6 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
-using KhaozEngine.Tests.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapEditor
@@ -443,7 +442,7 @@ namespace KhaozEngine.Tests.MapEditor
         [Fact]
         public void TexturedToggle_Off_LoadsFlat_RebuildFires()
         {
-            string path = GltfMaterialAutoReadTests.WriteTexturedTriangleGlb();
+            string path = GltfTriangleFixtures.WriteTexturedTriangleGlb();
             try
             {
                 var entry = new AssetEntry("hut", path, heightMeters: 2f, source: "", license: "", textured: true);
@@ -461,7 +460,7 @@ namespace KhaozEngine.Tests.MapEditor
         [Fact]
         public void TexturedToggle_DefaultTrue()
         {
-            string path = GltfMaterialAutoReadTests.WriteTexturedTriangleGlb();
+            string path = GltfTriangleFixtures.WriteTexturedTriangleGlb();
             try
             {
                 var entry = new AssetEntry("hut", path, heightMeters: 2f, source: "", license: "", textured: true);
@@ -482,7 +481,7 @@ namespace KhaozEngine.Tests.MapEditor
         {
             // An entry that never declared Textured must stay flat even when the option is on: the option can only
             // ever turn a textured entry's parts OFF, never turn an untextured entry's parts on.
-            string path = GltfMaterialAutoReadTests.WriteUntexturedTriangleGlb();
+            string path = GltfTriangleFixtures.WriteUntexturedTriangleGlb();
             try
             {
                 var entry = new AssetEntry("rock", path, heightMeters: 1f, source: "", license: "", textured: false);

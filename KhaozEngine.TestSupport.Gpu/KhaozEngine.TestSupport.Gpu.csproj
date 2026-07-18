@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Not a test project and ships nothing: excluded from the doc-version guard's packable-package
+         catalog check (it greps for this literal tag). -->
+    <IsPackable>false</IsPackable>
+    <!-- GpuFactAttribute keeps its KhaozEngine.Tests.Gpu namespace, consistent with every split test
+         project, so the [GpuFact] users resolve it unchanged. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- FactAttribute (the base class) only; not a test project, so no test SDK / runner. -->
+    <PackageReference Include="xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- GpuFactAttribute.ProbeHeadlessDevice calls KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless. -->
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- GpuFactSkipReasonTests (Render.Tests) exercises the internal SkipReason gate. -->
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+  </ItemGroup>
+</Project>

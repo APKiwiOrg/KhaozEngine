@@ -81,7 +81,7 @@ namespace KhaozEngine.Tests.Gpu
 
         static string EvidenceDir([CallerFilePath] string thisFile = "")
         {
-            // thisFile = <worktree>/KhaozEngine.Tests/Gpu/<this>.cs -> up three dirs = worktree root.
+            // thisFile = <worktree>/KhaozEngine.Render.Tests/Gpu/<this>.cs -> up three dirs = worktree root.
             string root = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(thisFile)!)!)!;
             return Path.Combine(root, "gpu-skinning-evidence");
         }

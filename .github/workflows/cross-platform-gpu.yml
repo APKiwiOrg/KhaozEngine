@@ -20,7 +20,7 @@
 #     fatal, deliberately not chased), so the full-suite runs serialize xUnit test collections via
 #     KE_TEST_EXTRA_ARGS, one live device at a time (~22 min serialized in the validation container
 #     vs minutes parallel). Golden-only runs keep their months-green parallel configuration.
-#   * Committed per-backend goldens live at KhaozEngine.Tests/Gpu/goldens/<name>.<backend>.txt.
+#   * Committed per-backend goldens live at KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt.
 #   * All three legs are validated, committed, and blocking: macOS Metal, Windows D3D11 (WARP),
 #     Linux Vulkan (Mesa lavapipe).
 #
@@ -28,7 +28,7 @@
 #   1. Run this workflow manually (Actions -> cross-platform-gpu -> Run workflow) with bake = true.
 #   2. The bake legs render with KE_UPDATE_GOLDENS=1 and upload the per-backend grids as artifacts
 #      named goldens-<backend> (e.g. scene2d.<backend>.txt).
-#   3. Download the artifacts, drop the files into KhaozEngine.Tests/Gpu/goldens/, and commit them.
+#   3. Download the artifacts, drop the files into KhaozEngine.Render.Tests/Gpu/goldens/, and commit them.
 #   4. After that, the push/PR legs VERIFY those backends.
 #
 # Software rasterizers (these runners have no real GPU):
@@ -63,10 +63,10 @@ on:
       - 'KhaozEngine.Gpu/**'
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
-      - 'KhaozEngine.Tests/Gpu/**'
-      # GoldenGridTests live here and run as part of the full suite below, so this dir must trigger too
-      # (the 10.18.1 LF fix shipped without a matrix run because only Tests/Gpu was watched).
-      - 'KhaozEngine.Tests/Imaging/**'
+      # The GPU golden + Imaging GoldenGridTests all live in Render.Tests now (wave-3 monolith split), so a
+      # single dir gate covers them (previously KhaozEngine.Tests/Gpu/** plus Tests/Imaging/**; the 10.18.1 LF
+      # fix shipped without a matrix run because only Tests/Gpu was watched, hence the whole-project gate).
+      - 'KhaozEngine.Render.Tests/**'
       - '.github/workflows/cross-platform-gpu.yml'
   pull_request:
     branches: [ main ]
@@ -224,7 +224,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-evidence-${{ matrix.backend }}
-          path: KhaozEngine.Tests/Gpu/goldens-evidence/
+          path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/
           if-no-files-found: ignore
 
       # When baking: upload the freshly written per-backend goldens so they can be downloaded and committed,
@@ -237,6 +237,6 @@ jobs:
         with:
           name: goldens-${{ matrix.backend }}
           path: |
-            KhaozEngine.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt
-            KhaozEngine.Tests/Gpu/goldens-evidence/*.${{ matrix.backend }}.bake.png
+            KhaozEngine.Render.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt
+            KhaozEngine.Render.Tests/Gpu/goldens-evidence/*.${{ matrix.backend }}.bake.png
           if-no-files-found: ignore

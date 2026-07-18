@@ -2,10 +2,14 @@
 
 Game-agnostic save/persistence helpers.
 
-`SaveEncoder` wraps save JSON in a Base64 + HMAC-SHA256 envelope (`{prefix}:{hmac}:{base64}`) to
-deter casual tampering. It is a deterrent, not real security: the HMAC key ships in the game binary.
-Decoding is lenient (recovers the JSON even on an HMAC mismatch) and reports outcomes through the
-engine logger.
+`SaveEncoder` wraps save JSON in a Base64 + HMAC-SHA256 envelope to deter casual tampering. It is a
+deterrent, not real security: the HMAC key ships in the game binary. The v2 format
+(`{prefix}:v2:{hmac}:{meta-base64}:{payload-base64}`) HMACs tamper-protected `SaveMetadata` alongside the
+payload. Legacy v1 (`{prefix}:{hmac}:{base64}`) is still read. `TryDecode` returns a structured
+`SaveDecodeResult` (Ok / TamperMismatch / Malformed / NotEncoded) and leaves the strict-versus-lenient
+choice to the caller. `TryReadMetadata` verifies the HMAC and returns the metadata without decoding the
+payload. The legacy `Decode` stays lenient (recovers the JSON even on an HMAC mismatch) and reports
+outcomes through the engine logger.
 
 ```csharp
 using System.Text;

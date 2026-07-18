@@ -38,10 +38,11 @@ public class PackageCategoryTests
             byte[] key = System.Text.Encoding.UTF8.GetBytes("k");
             var encoder = new SaveEncoder(key, "PFX1", logger: null);   // no logger -> ambient fallback
 
-            // Corrupt the HMAC hex (first char after the prefix separator), leaving the base64 payload
-            // intact so decoding hits the lenient HMAC-mismatch path (Warn), not a base64 FormatException.
+            // Corrupt the HMAC hex (first char after the "PFX1:v2:" prefix and version marker), leaving the
+            // base64 payload intact so decoding hits the lenient HMAC-mismatch path (Warn), not a base64
+            // FormatException.
             string encoded = encoder.Encode("{\"x\":1}");
-            int hmacAt = "PFX1".Length + 1;
+            int hmacAt = "PFX1:v2:".Length;
             char flipped = encoded[hmacAt] == 'a' ? 'b' : 'a';
             encoder.Decode(encoded[..hmacAt] + flipped + encoded[(hmacAt + 1)..]);
 

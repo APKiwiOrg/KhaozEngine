@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Persistence;
 using Xunit;
@@ -175,6 +176,148 @@ public class SaveEncoderTests
         // (a no-op when unconfigured). Decoding must still work without throwing.
         var encoder = new SaveEncoder(Key, Prefix, null);
         Assert.Equal("{\"x\":1}", encoder.Decode(encoder.Encode("{\"x\":1}")));
+    }
+
+    // ---- v2 envelope (versioned, tamper-protected metadata) ----
+
+    [Fact]
+    public void EncodeV2_RoundTrips_JsonAndMetadata()
+    {
+        var encoder = NewEncoder(out _);
+        var meta = new SaveMetadata { SavedAtUtc = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc), GameVersion = "1.2.3", Summary = "lvl 4" };
+
+        SaveDecodeResult r = encoder.TryDecode(encoder.Encode("{\"score\":42}", meta));
+
+        Assert.Equal(SaveDecodeVerdict.Ok, r.Verdict);
+        Assert.Equal("{\"score\":42}", r.Json);
+        Assert.Equal("1.2.3", r.Metadata!.GameVersion);
+        Assert.Equal("lvl 4", r.Metadata.Summary);
+    }
+
+    [Fact]
+    public void EncodeV2_TamperedPayload_ReportsMismatch_StillYieldsJson()
+    {
+        var encoder = NewEncoder(out _);
+        string encoded = encoder.Encode("{\"gold\":10}");
+        string tampered = encoded[..^4] + SwapLastBase64Char(encoded);
+
+        SaveDecodeResult r = encoder.TryDecode(tampered);
+
+        Assert.Equal(SaveDecodeVerdict.TamperMismatch, r.Verdict);
+        Assert.NotNull(r.Json);
+    }
+
+    [Fact]
+    public void EncodeV2_TamperedMetadataSegment_ReportsMismatch()
+    {
+        var encoder = NewEncoder(out _);
+        var meta = new SaveMetadata { SavedAtUtc = DateTime.UnixEpoch, GameVersion = "3.1.4", Summary = "boss room" };
+        // parts = [prefix, "v2", hmac, meta-base64, payload-base64]. Flip one char inside the meta segment.
+        string[] parts = encoder.Encode("{\"hp\":99}", meta).Split(':');
+        char[] metaChars = parts[3].ToCharArray();
+        metaChars[0] = metaChars[0] == 'A' ? 'B' : 'A';
+        parts[3] = new string(metaChars);
+
+        SaveDecodeResult r = encoder.TryDecode(string.Join(':', parts));
+
+        Assert.Equal(SaveDecodeVerdict.TamperMismatch, r.Verdict);
+    }
+
+    [Fact]
+    public void TryDecode_V1Content_DecodesWithNullMetadata()
+    {
+        var encoder = NewEncoder(out _);
+        string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"v\":1}"));
+        using var h = new System.Security.Cryptography.HMACSHA256(Key);
+        string hmac = Convert.ToHexStringLower(h.ComputeHash(Encoding.UTF8.GetBytes(b64)));
+
+        SaveDecodeResult r = encoder.TryDecode($"{Prefix}:{hmac}:{b64}");
+
+        Assert.Equal(SaveDecodeVerdict.Ok, r.Verdict);
+        Assert.Equal("{\"v\":1}", r.Json);
+        Assert.Null(r.Metadata);
+    }
+
+    [Fact]
+    public void TryDecode_PlainText_NotEncoded()
+    {
+        var encoder = NewEncoder(out _);
+
+        SaveDecodeResult r = encoder.TryDecode("just text");
+
+        Assert.Equal(SaveDecodeVerdict.NotEncoded, r.Verdict);
+        Assert.Null(r.Json);
+    }
+
+    [Fact]
+    public void TryDecode_V2EmptyPayload_Malformed()
+    {
+        var encoder = NewEncoder(out _);
+        var meta = new SaveMetadata { SavedAtUtc = DateTime.UnixEpoch, GameVersion = "0.0.1" };
+        string metaB64 = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(meta));
+        using var h = new System.Security.Cryptography.HMACSHA256(Key);
+        string hmac = Convert.ToHexStringLower(h.ComputeHash(Encoding.UTF8.GetBytes($"{metaB64}:")));
+
+        SaveDecodeResult r = encoder.TryDecode($"{Prefix}:v2:{hmac}:{metaB64}:");
+
+        Assert.Equal(SaveDecodeVerdict.Malformed, r.Verdict);
+        Assert.Contains("empty payload", r.Detail);
+    }
+
+    [Fact]
+    public void TryReadMetadata_VerifiesHmac_WithoutPayloadDecode()
+    {
+        var encoder = NewEncoder(out _);
+        var meta = new SaveMetadata { SavedAtUtc = DateTime.UnixEpoch, GameVersion = "9.9.9" };
+        SaveMetadataProbe probe = encoder.TryReadMetadata(encoder.Encode("{}", meta));
+
+        Assert.Equal(SaveDecodeVerdict.Ok, probe.Verdict);
+        Assert.Equal("9.9.9", probe.Metadata!.GameVersion);
+    }
+
+    [Fact]
+    public void TryReadMetadata_V1_OkWithNullMetadata()
+    {
+        var encoder = NewEncoder(out _);
+        string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"v\":1}"));
+        using var h = new System.Security.Cryptography.HMACSHA256(Key);
+        string hmac = Convert.ToHexStringLower(h.ComputeHash(Encoding.UTF8.GetBytes(b64)));
+
+        SaveMetadataProbe probe = encoder.TryReadMetadata($"{Prefix}:{hmac}:{b64}");
+
+        Assert.Equal(SaveDecodeVerdict.Ok, probe.Verdict);
+        Assert.Null(probe.Metadata);
+    }
+
+    [Fact]
+    public void Decode_V2Tampered_LenientReturnsJson_AndWarns()
+    {
+        var encoder = NewEncoder(out FakeLogger log);
+        string encoded = encoder.Encode("{\"gold\":5}");
+        string tampered = encoded[..^4] + SwapLastBase64Char(encoded);
+
+        string? decoded = encoder.Decode(tampered);
+
+        Assert.NotNull(decoded);
+        Assert.Single(log.Entries);
+        Assert.Equal(LogLevel.Warn, log.Entries[0].Level);
+        Assert.Contains("possible tampering", log.Entries[0].Message);
+    }
+
+    // Returns the last 4 chars of the encoded string with one non-padding base64 char swapped for a
+    // different valid one, so the payload still Base64-decodes but its HMAC no longer matches.
+    private static string SwapLastBase64Char(string encoded)
+    {
+        char[] tail = encoded[^4..].ToCharArray();
+        for (int i = tail.Length - 1; i >= 0; i--)
+        {
+            if (tail[i] != '=')
+            {
+                tail[i] = tail[i] == 'A' ? 'B' : 'A';
+                break;
+            }
+        }
+        return new string(tail);
     }
 }
 

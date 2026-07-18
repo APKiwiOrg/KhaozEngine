@@ -76,6 +76,35 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(992u, ModelRenderer.UboBytes);
         }
 
+        // ---- Model instance stream (InstanceData) + the dynamic-geometry decal tag (issue #235) ----
+
+        [Fact]
+        public void InstanceData_MarshalSize_EqualsDeclaredSizeInBytes_116()
+        {
+            // The per-instance vertex stream is Model (mat4, 64) + Tint + Emissive + SpecParams (3*16) + IsDynamic
+            // (float, 4) = 116 bytes. ModelRenderer's instance vertex layout uses InstanceData.SizeInBytes as the
+            // stride and adds an IDynamic Float1 element (location 12) for that last field; if the struct and the
+            // constant drift, the instanced draws fetch each instance at the wrong offset (garbled transforms/tints).
+            Assert.Equal(116, (int)ModelRenderer.InstanceData.SizeInBytes);
+            Assert.Equal((int)ModelRenderer.InstanceData.SizeInBytes, Marshal.SizeOf<ModelRenderer.InstanceData>());
+        }
+
+        [Fact]
+        public void ModelShaders_CarryTheDynamicGeometryTag()
+        {
+            // The dynamic-geometry decal mask rides InstanceData.IsDynamic -> IDynamic (location 12) -> vDynamic ->
+            // oNormal.a on the rigid/CPU-skinned path, and P[3].x -> vDynamic on the GPU-skinned path. Assert the GLSL
+            // halves so a struct/layout change without the shader (or vice versa) trips headlessly. The static world
+            // (splat terrain) keeps alpha 1, which is what makes a no-skinned scene byte-identical.
+            Assert.Contains("layout(location=12) in float IDynamic;", ShaderSources.ModelVert);
+            Assert.Contains("1.0 - clamp(vDynamic, 0.0, 1.0)", ShaderSources.ModelFrag);
+            Assert.Contains("1.0 - clamp(vDynamic, 0.0, 1.0)", ShaderSources.ModelDissolveFrag);
+            Assert.Contains("1.0 - clamp(vDynamic, 0.0, 1.0)", ShaderSources.SkinnedModelFrag);
+            Assert.Contains("1.0 - clamp(vDynamic, 0.0, 1.0)", ShaderSources.SkinnedModelDissolveFrag);
+            Assert.Contains("vDynamic = P[3].x;", ShaderSources.SkinnedModelVert);
+            Assert.Contains("oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);", ShaderSources.SplatFrag);
+        }
+
         // ---- Splat material params tail ----
 
         [Fact]

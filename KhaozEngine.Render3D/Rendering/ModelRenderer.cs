@@ -106,7 +106,13 @@ namespace KhaozEngine.Render3D.Rendering
             // texels with albedo alpha below it). The CharDissolve pipeline instead overloads z = dissolve
             // threshold + w = edge width (a different fragment shader), so the two never collide within one draw.
             public Vector4 SpecParams;    // 16
-            public const uint SizeInBytes = 112;
+            // Dynamic-geometry decal mask (issue #235): 0 = static world (the default; ModelFrag writes normal-target
+            // alpha 1), 1 = dynamic/skinned geometry (ModelFrag writes alpha 0, so the main ground-decal pass rejects
+            // it and a decal never paints onto a character standing in its Y-band). Left 0 for rigid instances, so a
+            // scene with no skinned geometry is byte-identical. A single Float1 attribute (location 12); the splat
+            // pipeline shares this layout and simply ignores it (terrain is always static).
+            public float IsDynamic;       // 4
+            public const uint SizeInBytes = 116;
         }
 
         readonly IGpuDevice _gd;
@@ -302,6 +308,10 @@ namespace KhaozEngine.Render3D.Rendering
                     new GpuVertexElement("ITint", GpuVertexElementFormat.Float4),
                     new GpuVertexElement("IEmissive", GpuVertexElementFormat.Float4),
                     new GpuVertexElement("ISpecParams", GpuVertexElementFormat.Float4),
+                    // Location 12: dynamic-geometry decal mask (0 static / 1 skinned). Consumed by ModelVert; the
+                    // splat pipeline shares this instance layout and ignores it (a trailing input the shader does not
+                    // read is valid on all three backends).
+                    new GpuVertexElement("IDynamic", GpuVertexElementFormat.Float1),
                 });
 
             _pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
@@ -731,16 +741,20 @@ namespace KhaozEngine.Render3D.Rendering
         /// boneCount). <see cref="SetFrameUniforms"/> (and <see cref="SetShadowUniforms"/> when shadows are on) must
         /// have run this frame so the cached frame block is current.</summary>
         public void PackSkinnedMainSlot(IGpuCommandList cl, uint slot, in Matrix4x4 model,
-            Vector4 tint, Vector4 emissive, Vector4 specParams, ReadOnlySpan<Matrix4x4> bones)
+            Vector4 tint, Vector4 emissive, Vector4 specParams, ReadOnlySpan<Matrix4x4> bones, float isDynamic = 1f)
         {
             uint baseOff = slot * SkinnedMainSlotBytes;
             _skinnedHeaderScratch[0] = model * _frame.ViewProj;   // System.Numerics order: p * model * ViewProj
             _skinnedHeaderScratch[1] = model;
+            // Row 3 is the P matrix's 4th column in the shader (GLSL reads the raw bytes column-major). Its .x carries
+            // the dynamic-geometry decal mask (SkinnedModelVert -> vDynamic): every GPU-skinned draw is a skinned
+            // character, so it defaults to 1 (dynamic), and the skinned fragment writes normal-target alpha 0 to keep
+            // the main ground-decal pass off it. The rest of the row stays 0.
             _skinnedHeaderScratch[2] = new Matrix4x4(
                 tint.X, tint.Y, tint.Z, tint.W,
                 emissive.X, emissive.Y, emissive.Z, emissive.W,
                 specParams.X, specParams.Y, specParams.Z, specParams.W,
-                0f, 0f, 0f, 0f);
+                isDynamic, 0f, 0f, 0f);
             cl.UpdateBuffer(_skinnedMainUbo!, baseOff, (ReadOnlySpan<Matrix4x4>)_skinnedHeaderScratch);
             WriteFrameUniformsTo(cl, _skinnedMainUbo!, baseOff + SkinnedFrameOffset);   // the fragment's lighting block
             if (bones.Length > 0) cl.UpdateBuffer(_skinnedMainUbo!, baseOff + SkinnedBonesOffset, bones);

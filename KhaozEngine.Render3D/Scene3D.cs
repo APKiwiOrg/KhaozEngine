@@ -1938,6 +1938,7 @@ namespace KhaozEngine.Render3D
                             Tint = it.Tint,
                             Emissive = emissive,
                             SpecParams = specParams,
+                            IsDynamic = 1f,   // skinned character: tag it so the main ground-decal pass rejects it (issue #235)
                         });
                         _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain));
                     }
@@ -2083,7 +2084,9 @@ namespace KhaozEngine.Render3D
                     _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_shadowDecals));
+                    // rejectDynamicGeometry: false. This pass runs BEFORE the skinned draws and resolves only depth
+                    // (not the normal target the reject reads), and a blob shadow wants no dynamic reject anyway.
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, false, CollectionsMarshal.AsSpan(_shadowDecals));
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -2221,7 +2224,9 @@ namespace KhaozEngine.Render3D
             // ground, are occluded by geometry (Y-band), and flow through the pixel post like the meshes.
             if (_decals.Count > 0)
                 // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, CollectionsMarshal.AsSpan(_decals));
+                // rejectDynamicGeometry: true. This is the main pass, after ResolveDepthNormal, so the normal target
+                // carries the model pass's dynamic tags - reject skinned-tagged pixels so decals stay off characters (#235).
+                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, true, CollectionsMarshal.AsSpan(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so

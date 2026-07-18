@@ -68,7 +68,7 @@ namespace KhaozEngine.Render3D.Rendering
         struct FrameUniforms
         {
             public Matrix4x4 InvViewProj;   // RAW (un-clip-corrected), matching Camera.ScreenToRay picking
-            public Vector4 TimeQ;           // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w reserved
+            public Vector4 TimeQ;           // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w = reject dynamic geometry (1 = discard skinned-tagged pixels)
         }
 
         /// <summary>A maximal run of consecutive queued decals sharing one blend, drawn as one instanced call.</summary>
@@ -387,8 +387,17 @@ namespace KhaozEngine.Render3D.Rendering
         /// the legacy chain) to the float16 max so the energy lanes can push telegraph cores over 1.0 and bloom. Caller
         /// guarantees the model pass is complete (depth written) and the framebuffer is free to rebind. Returns the
         /// number of GPU draw calls issued (= blend-run count), so the caller keeps its frame stats honest. No-op
-        /// (returns 0) when empty.</summary>
-        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, ReadOnlySpan<GroundDecal> decals)
+        /// (returns 0) when empty.
+        /// <para>
+        /// <paramref name="rejectDynamicGeometry"/> makes the GEOMETRY path discard pixels the model pass tagged as
+        /// dynamic/skinned (normal-target alpha ~0), so a ground decal never paints onto a character standing in its
+        /// Y-band (issue #235). The MAIN decal pass passes <c>true</c> - it runs after the normal target is resolved.
+        /// The early blob-shadow pass passes <c>false</c>: it runs before the skinned draws and resolves only depth,
+        /// so the normal alpha it would read is not yet valid under MSAA (and blob shadows want no such reject anyway).
+        /// With no dynamic geometry every geometry pixel keeps alpha 1, so the reject never fires and the render is
+        /// byte-identical.
+        /// </para></summary>
+        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, bool rejectDynamicGeometry, ReadOnlySpan<GroundDecal> decals)
         {
             if (decals.Length == 0) return 0;
             int voidCount = CountVoidDecals(decals);
@@ -404,7 +413,7 @@ namespace KhaozEngine.Render3D.Rendering
             var frame = new FrameUniforms
             {
                 InvViewProj = inv,
-                TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, maxRgb, 0f),
+                TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, maxRgb, rejectDynamicGeometry ? 1f : 0f),
             };
             cl.UpdateBuffer(_frameUbo, 0, in frame);
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);

@@ -192,6 +192,7 @@ layout(location=8) in vec4 IModel3;
 layout(location=9) in vec4 ITint;
 layout(location=10) in vec4 IEmissive;
 layout(location=11) in vec4 ISpecParams;
+layout(location=12) in float IDynamic;   // dynamic-geometry decal mask (0 static world / 1 skinned); see InstanceData
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
@@ -201,6 +202,7 @@ layout(location=5) out vec4 vTint;
 layout(location=6) out vec4 vEmissive;
 layout(location=7) out vec4 vSpecParams;
 layout(location=8) out vec4 vTangent;
+layout(location=9) out float vDynamic;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -214,6 +216,7 @@ void main() {
     vEmissive = IEmissive;
     vSpecParams = ISpecParams;
     vTangent = vec4(mat3(Model) * Tangent.xyz, Tangent.w); // rotate tangent to world; preserve handedness
+    vDynamic = IDynamic;
 }";
 
         public const string ModelFrag = @"#version 450
@@ -248,6 +251,7 @@ layout(location=5) in vec4 vTint;
 layout(location=6) in vec4 vEmissive;
 layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent, z = alpha-cutout threshold (0 = OPAQUE, no clip)
 layout(location=8) in vec4 vTangent;    // world-space tangent (xyz) + handedness (w); zero => geometric normal
+layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -296,7 +300,9 @@ void main() {
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
-    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass (not the perturbed one)
+    // rgb: GEOMETRIC normal for the edge pass (not the perturbed one). a: dynamic-geometry decal mask - 1 for the
+    // static world (unchanged), 0 for skinned/dynamic geometry so the main ground-decal pass rejects it (issue #235).
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0));
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
@@ -338,6 +344,7 @@ layout(location=5) in vec4 vTint;
 layout(location=6) in vec4 vEmissive;   // during a dissolve this carries the emissive EDGE colour
 layout(location=7) in vec4 vSpecParams; // x=spec strength, y=shininess, z=dissolve threshold, w=dissolve edge width
 layout(location=8) in vec4 vTangent;
+layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -383,7 +390,7 @@ void main() {
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;
     oColor = vec4(lit, 1.0);
-    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
@@ -431,6 +438,7 @@ layout(location=5) out vec4 vTint;
 layout(location=6) out vec4 vEmissive;
 layout(location=7) out vec4 vSpecParams;
 layout(location=8) out vec4 vTangent;
+layout(location=9) out float vDynamic;
 void main() {
     // 4-bone blend, mirroring SkinningMath.BlendSkinMatrix: raw (un-renormalized) weights, identity on ~0 total so an
     // unrigged vertex stays in place. bones[i] uploaded raw (System.Numerics row-major) reads column-major here as its
@@ -471,6 +479,7 @@ void main() {
     vEmissive = P[1];
     vSpecParams = P[2];
     vTangent = vec4(mat3(Model) * tLocal.xyz, tLocal.w);   // zero tangent -> (0,0,0,0), so the fragment uses Ngeo
+    vDynamic = P[3].x;   // dynamic-geometry decal mask (issue #235): GPU-skinned draws default to 1 (see PackSkinnedMainSlot)
 }";
 
         // Skinned fragment: byte-for-byte ModelFrag lighting. It reads the frame fields from the SAME combined VBlock
@@ -513,6 +522,7 @@ layout(location=5) in vec4 vTint;
 layout(location=6) in vec4 vEmissive;
 layout(location=7) in vec4 vSpecParams;
 layout(location=8) in vec4 vTangent;
+layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -541,7 +551,7 @@ void main() {
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
-    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
@@ -583,6 +593,7 @@ layout(location=5) in vec4 vTint;
 layout(location=6) in vec4 vEmissive;
 layout(location=7) in vec4 vSpecParams;
 layout(location=8) in vec4 vTangent;
+layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -626,7 +637,7 @@ void main() {
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;
     oColor = vec4(lit, 1.0);
-    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);
+    oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(vDepth, vDepth, vDepth, 1.0);
 }";
 
@@ -2077,6 +2088,13 @@ void main() {
         // GEOMETRY. Reconstruct the real surface world position from the stored depth. Sample by integer pixel
         // (texelFetch at gl_FragCoord). Background pixels never reach here, the hardware Greater test rejected them.
         float depth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+        // Dynamic-geometry reject (issue #235). The model pass tags skinned/dynamic surfaces with normal-target
+        // alpha 0 (the static world writes 1). When the caller enables it (TimeQ.w, set by the MAIN decal pass; the
+        // early blob-shadow pass leaves it 0, so this never touches its not-yet-resolved normal target), discard the
+        // tagged pixels so a ground decal never paints onto a character standing in its Y-band. Reject only near-zero
+        // alpha: any static coverage in the pixel keeps the resolved alpha at least 1/samples (>= 0.125 at 8x MSAA,
+        // the maximum), so a scene with no skinned geometry never trips it - byte-identical, MSAA silhouettes included.
+        if (TimeQ.w > 0.5 && texelFetch(sampler2D(NormalTex, Samp), ivec2(gl_FragCoord.xy), 0).a < 0.03) discard;
         vec4 wp = InvViewProj * vec4(ndcXY, depth, 1.0);
         vec3 g = wp.xyz / wp.w;
 

@@ -84,8 +84,11 @@ membership). Consequences, all deliberate:
 - xUnit collection definitions are per-assembly. Three collections cross clusters (`AllocSensitive`
   spans five, `ClipboardSerial` and `AmbientLocalization` span Foundation+Gui): each landing
   assembly gets its own thin `[CollectionDefinition]`, with any shared fixture class in
-  `TestSupport`. Cross-assembly serialization is not needed because `dotnet test` runs assemblies
-  sequentially.
+  `TestSupport`. This paragraph originally claimed cross-assembly serialization is unnecessary
+  because `dotnet test` runs assemblies sequentially. REFUTED post-ship: on net10, root
+  `dotnet test` runs the 16 test assemblies in PARALLEL (proven by interleaved per-assembly output
+  in run 29634904849). No collection correctness depended on the wrong claim, but two absolute-time
+  consequences did surface, see "As implemented".
 
 ## Decision 3: minimal references per test project
 
@@ -144,8 +147,13 @@ follows within minutes is full anyway. The selective win is the non-bump push.
 Path gates `KhaozEngine.Tests/Gpu/**` and `KhaozEngine.Tests/Imaging/**` become
 `KhaozEngine.Render.Tests/**`. Goldens move to `KhaozEngine.Render.Tests/Gpu/goldens/` (with any
 path literals in test code, recon inventories them). Legs, tiers, filters, and the weekly schedule
-are unchanged. Full-suite legs run root `dotnet test`, which after the split means all test
-assemblies sequentially, so the Vulkan one-device-at-a-time serialization semantics are preserved.
+are unchanged. Full-suite legs run root `dotnet test`, which this doc originally called sequential
+per assembly. It is parallel on net10 (see the Decision 2 correction), which has two consequences
+found on the 13.0.3 release itself: the dungeon seed-sweep's absolute 60s guard tripped on the
+Metal leg under cross-assembly contention (fixed by raising it to 180s, #217 closed), and the
+Vulkan one-device-at-a-time serialization is now per-assembly only, so Render.Tests and
+MapEditor.Tests device work can overlap on the full path. The first full dispatch over the split
+(run 29636574022) passed all three legs, so the overlap is tolerated so far, tracked as lead #218.
 
 ## Execution order
 

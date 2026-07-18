@@ -5,6 +5,51 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 13.6.0
+
+Save validation pass: a versioned tamper-protected save envelope (v2), a strict-with-recovery load ladder over new
+backup generations, default-on encoding, fsync-hardened atomic writes, and server-side validate-and-quarantine on
+player-record apply. Closes #148, #151, #152, #155, #193, #127 (program issue #224, design doc
+`docs/design/SAVE-VALIDATION-DESIGN-2026-07-18.md`).
+
+- **Save envelope v2 (`KhaozEngine.Persistence`).** `SaveEncoder.Encode` now writes
+  `{prefix}:v2:{hmac}:{meta}:{payload}` with the HMAC covering metadata plus payload. `SaveMetadata` (SavedAtUtc,
+  GameVersion, game-supplied Summary) rides the envelope, and `TryReadMetadata` reads plus HMAC-verifies it without
+  decoding the payload, the cheap surface for a save browser or Continue menu. New strict `TryDecode` returns a
+  `SaveDecodeResult` verdict (`Ok` / `TamperMismatch` / `Malformed` / `NotEncoded`) and still yields best-effort JSON
+  on tamper for the lenient policy. v1 envelopes decode forever, and the legacy lenient `Decode` keeps its exact
+  contract for compatibility.
+- **Recovery ladder with outcomes.** `GameStorage.LoadWithOutcome<T>` probes the primary then the `.bakN` generations,
+  rejects tampered or corrupt candidates, and falls back to defaults only when every candidate failed.
+  `SaveLoadResult<T>` reports `Loaded` / `FreshDefault` / `LoadedLegacyPlaintext` / `RecoveredFromBackup` /
+  `RejectedAndDefaulted` plus detail, recovered generation, and metadata. `Load<T>` wraps it and no longer throws on a
+  corrupt save (#148). Recovery and rejection log Warn/Error including the primary's failure reason.
+- **Backup generations (#152).** The write queue rotates `.bak1`/`.bak2` on every committed write
+  (`GameStorageOptions.BackupGenerations`, default 2, copy-not-move so a failed write keeps an intact primary).
+  `ListGenerations` exposes per-generation validity and metadata, `RestoreGeneration` promotes a backup without
+  destroying the current primary. Settings ride the same ladder: `SettingsManager` recovers from backups instead of
+  silently defaulting and exposes `LastLoadOutcome`.
+- **Default-on encoding and policy knobs.** Configuring `GameStorageOptions.Encoder` makes every `Save` encode, with
+  `SaveWriteOptions.Encode = false` as the per-file opt-out for deliberately hand-editable files. `TamperPolicy`
+  (`Strict` default, `Lenient` dev escape) and `AcceptLegacyPlaintext` (default true, one-time transparent upgrade
+  that re-encodes on the next default-on save) complete the posture. The `Save(fileName, value, bool)` overload keeps
+  its semantics, and two-argument calls now default to encoding when an encoder is configured.
+- **Durable writes (#151).** `AtomicJsonWriter` flushes bytes to the physical disk before the atomic rename.
+- **Fresh values stamped current (#155).** A brand-new value (no file on disk) gets
+  `MigrationChain<T>.StampCurrent` instead of entering the chain at version 0, so first boots no longer log a
+  spurious pre-migration warning and start at `CurrentVersion`.
+- **Server-side validate-and-quarantine (`KhaozEngine.NetWorld`).** `WorldPersistenceConfig` gains `Bounds` and
+  `ValidateGameState` (with `PlayerGameStateVerdict`), evaluated on the server thread at record apply. A failing or
+  undecodable record is quarantined whole: original bytes preserved under `quarantine:player:{accountId}`, fresh
+  spawn, `OnRecordQuarantined` raised, and the `lastSaved` baseline only advances on a successful apply so the next
+  dirty pass heals the primary while the quarantine copy survives. An undecodable record no longer wedges the
+  account's save guard for the rest of the session. `FlushAsync` now loops so drain-generated quarantine writes are
+  awaited by the same call.
+- **MmoServerSample (#127).** The sample keys persistence by the verified session subject via `WorldPersistence` (the
+  dead slot-keyed write is deleted) and demonstrates capture/validate/apply with a health-range validator.
+- **Docs.** `Persistence` and `NetWorld` package READMEs (including the previously missing `MigrationChain` section,
+  #193), the USING-KHAOZENGINE save and world-persistence sections, and the SECURITY-BASELINE tamper posture.
+
 ## 13.5.0
 
 Render3D shadows: the temporal cross-fade now adapts its duration to the sun's actual step cadence and bypasses to

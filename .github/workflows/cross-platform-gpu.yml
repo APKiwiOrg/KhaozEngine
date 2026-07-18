@@ -63,11 +63,54 @@ on:
       - 'KhaozEngine.Gpu/**'
       - 'KhaozEngine.Gui/**'
       - 'KhaozEngine.Primitives/**'
+      # Render/runtime stack layer between Gpu and Render2D/Render3D (AppWindow, GLFW). Was never watched (#198).
+      - 'KhaozEngine.Windowing/**'
+      # 2D game-loop facade (BootScreenRenderer is drawn and captured by KhaozEngine.Tests/Gpu/
+      # BootScreenVisualTests.cs) plus its 3D scene adapter. Neither was watched (#198).
+      - 'KhaozEngine.Game/**'
+      - 'KhaozEngine.Game.Render3D/**'
+      # Render-free terrain field (height/biome/noise) and its Render3D mesher. Neither was watched (#198).
+      - 'KhaozEngine.Terrain/**'
+      - 'KhaozEngine.Terrain.Render3D/**'
+      # Render-free deterministic particle sim and its Render3D billboard adapter. Neither was watched (#198).
+      - 'KhaozEngine.Particles/**'
+      - 'KhaozEngine.Particles.Render3D/**'
+      # Render-free telegraph style/resolve core (also draws the 2D path itself) and its Render3D ground
+      # path. Neither was watched (#198).
+      - 'KhaozEngine.Telegraphs/**'
+      - 'KhaozEngine.Telegraphs.Render3D/**'
+      # Headless snapshot runner (Shot2D) and its Shot3D extension, both driven end to end by
+      # KhaozEngine.Tests/Gpu/SnapshotHarnessGpuTests.cs. Neither was watched (#198).
+      - 'KhaozEngine.Snapshot/**'
+      - 'KhaozEngine.Snapshot.Render3D/**'
+      # Map editor viewport and render tool: KhaozEngine.Tests/MapEditor and .../MapEditTool carry their own
+      # [GpuFact] renders, and MapDoc is the document model those renders load. None were watched (#198).
+      - 'KhaozEngine.MapEditor/**'
+      - 'KhaozEngine.MapEdit.Tool/**'
+      - 'KhaozEngine.MapDoc/**'
+      # GoldenCompare (KhaozEngine.Tests/Gpu) delegates Downsample/Compare/Serialize entirely to this
+      # package, so a bug here can silently flip any golden's pass or fail. Wasn't watched (#198).
+      - 'KhaozEngine.Imaging/**'
       - 'KhaozEngine.Tests/Gpu/**'
       # GoldenGridTests live here and run as part of the full suite below, so this dir must trigger too
       # (the 10.18.1 LF fix shipped without a matrix run because only Tests/Gpu was watched).
       - 'KhaozEngine.Tests/Imaging/**'
+      # 14 [GpuFact] tests live here (Scene3D queues, ground decals, splats) and no other watched path
+      # covered them: only the KhaozEngine.Render3D source dir was watched, never its own tests (#198).
+      - 'KhaozEngine.Tests/Render3D/**'
+      # Real [GpuFact] tests outside Tests/Gpu that nothing watched (#198). This is the exact gap that
+      # already shipped unverified: MapEditor commits 4b953b16/4364534e/b7a022a6 (released f7f5d094)
+      # triggered no GPU leg, only the weekly cron would ever have caught a regression there.
+      - 'KhaozEngine.Tests/Terrain/**'
+      - 'KhaozEngine.Tests/MapEditor/**'
+      - 'KhaozEngine.Tests/MapEditTool/**'
+      - 'KhaozEngine.Tests/ParticlesRender3D/**'
+      # Not GPU-gated itself, but MapDoc's sample document is what RenderServiceTests and
+      # ViewportWorldDisposeOrderGpuTests render, so a change there alters golden output (#198).
+      - 'KhaozEngine.Tests/MapDoc/**'
       - '.github/workflows/cross-platform-gpu.yml'
+  # No paths filter here (deliberate): pull_request already runs on every path unconditionally, a strict
+  # superset of the push list above, so it already "agrees" with push and needs no separate #198 fix.
   pull_request:
     branches: [ main ]
   # Weekly full-suite pass on the hosted D3D11 and Vulkan legs (Metal runs the full suite on every

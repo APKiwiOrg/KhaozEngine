@@ -116,19 +116,31 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
     {
         if (!_playing) return;
 
-        _al.GetSourceProperty(_source, GetSourceInteger.BuffersProcessed, out int processed);
-        for (int i = 0; i < processed; i++)
+        try
         {
-            _al.SourceUnqueueBuffers(_source, _one);
-            if (!_streamEnded && Fill(_one[0])) _al.SourceQueueBuffers(_source, _one);
+            _al.GetSourceProperty(_source, GetSourceInteger.BuffersProcessed, out int processed);
+            for (int i = 0; i < processed; i++)
+            {
+                _al.SourceUnqueueBuffers(_source, _one);
+                if (!_streamEnded && Fill(_one[0])) _al.SourceQueueBuffers(_source, _one);
+            }
+
+            _al.GetSourceProperty(_source, GetSourceInteger.BuffersQueued, out int queued);
+            if (_streamEnded && queued == 0) { Stop(); return; }   // track finished
+
+            // Resume if the source underran while buffers are still queued.
+            _al.GetSourceProperty(_source, GetSourceInteger.SourceState, out int state);
+            if (queued > 0 && state != (int)SourceState.Playing) _al.SourcePlay(_source);
         }
-
-        _al.GetSourceProperty(_source, GetSourceInteger.BuffersQueued, out int queued);
-        if (_streamEnded && queued == 0) { Stop(); return; }   // track finished
-
-        // Resume if the source underran while buffers are still queued.
-        _al.GetSourceProperty(_source, GetSourceInteger.SourceState, out int state);
-        if (queued > 0 && state != (int)SourceState.Playing) _al.SourcePlay(_source);
+        catch (Exception ex)
+        {
+            // A corrupt or truncated file makes the decoder throw partway through playback (e.g. an
+            // EndOfStreamException from a data chunk that outruns the file). Stop this track cleanly and go
+            // quiet, the same way TryPlayTrack guards the initial fill, instead of letting it crash the frame
+            // loop. IsPlaying then reads false, so AudioSystem rotates to the next track.
+            _logger.Error("OpenAL: streaming refill failed, stopping the current track.", ex);
+            Stop();
+        }
     }
 
     public void Stop()

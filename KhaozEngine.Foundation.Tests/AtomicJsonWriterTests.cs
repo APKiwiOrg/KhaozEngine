@@ -65,6 +65,21 @@ public class AtomicJsonWriterTests
     }
 
     [Fact]
+    public void WriteText_OverwritesExisting_TempFileGone()
+    {
+        string root = NewTempRoot();
+        try
+        {
+            string path = Path.Combine(root, "a.json");
+            AtomicJsonWriter.WriteText(path, "a");
+            AtomicJsonWriter.WriteText(path, "b");
+            Assert.Equal("b", File.ReadAllText(path));
+            Assert.False(File.Exists(path + ".tmp"));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
     public void Write_RoundTripsValueAsIndentedJson()
     {
         string root = NewTempRoot();

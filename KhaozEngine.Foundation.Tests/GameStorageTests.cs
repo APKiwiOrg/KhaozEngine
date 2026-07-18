@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 using KhaozEngine.App;
 using KhaozEngine.Persistence;
 using Xunit;
@@ -17,6 +18,11 @@ public class GameStorageTests
     public sealed class Prefs
     {
         public int Volume { get; set; } = 5;
+    }
+
+    public sealed class TestSave
+    {
+        public int Score { get; set; }
     }
 
     private static GameStorage NewStorage(out string root, GameStorageOptions? options = null)
@@ -44,6 +50,28 @@ public class GameStorageTests
     {
         try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         catch { /* best-effort */ }
+    }
+
+    // dir is the resolved BaseDirectory (root/APKiwi/TestGame), not the fake ApplicationData root,
+    // so callers can Path.Combine(dir, fileName) directly against what GameStorage writes to.
+    private static GameStorage CreateStorage(out string dir, Action<GameStorageOptions>? configure = null)
+    {
+        string root = Directory.CreateTempSubdirectory().FullName;
+        var env = new FakeAppDataEnvironment { IsMacOS = true };
+        env.Folders[Environment.SpecialFolder.ApplicationData] = root;
+        var paths = new AppDataPaths("APKiwi", "TestGame", env);
+        dir = paths.BaseDirectory;
+
+        var options = new GameStorageOptions { BackupGenerations = 2 };
+        configure?.Invoke(options);
+        return new GameStorage(paths, options);
+    }
+
+    private static GameStorage CreateStorageWithEncoder(out SaveEncoder encoder, out string dir, Action<GameStorageOptions>? configure = null)
+    {
+        var localEncoder = new SaveEncoder(Encoding.UTF8.GetBytes("gs-test-key"), "GSV1");
+        encoder = localEncoder;
+        return CreateStorage(out dir, o => { o.Encoder = localEncoder; configure?.Invoke(o); });
     }
 
     [Fact]
@@ -201,5 +229,73 @@ public class GameStorageTests
             Assert.Equal(8, manager.Settings.Volume);
         }
         finally { storage.Dispose(); Cleanup(root); }
+    }
+
+    [Fact]
+    public void Save_EncoderConfigured_EncodesByDefault()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir);
+        storage.Save("slot.json", new TestSave { Score = 7 });
+        storage.Flush();
+
+        string raw = File.ReadAllText(Path.Combine(dir, "slot.json"));
+        Assert.True(encoder.IsEncoded(raw));
+        SaveDecodeResult r = encoder.TryDecode(raw);
+        Assert.Equal(SaveDecodeVerdict.Ok, r.Verdict);
+        Assert.NotNull(r.Metadata);
+    }
+
+    [Fact]
+    public void Save_WriteOptionsOptOut_WritesPlaintext()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir);
+        storage.Save("slot.json", new TestSave { Score = 3 }, new SaveWriteOptions { Encode = false });
+        storage.Flush();
+
+        string raw = File.ReadAllText(Path.Combine(dir, "slot.json"));
+        Assert.StartsWith("{", raw);
+    }
+
+    [Fact]
+    public void Save_BoolFalse_ForcesPlaintext()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir);
+        storage.Save("slot.json", new TestSave { Score = 3 }, false);
+        storage.Flush();
+
+        string raw = File.ReadAllText(Path.Combine(dir, "slot.json"));
+        Assert.StartsWith("{", raw);
+    }
+
+    [Fact]
+    public void Save_NoEncoder_WritesPlaintext()
+    {
+        using GameStorage storage = CreateStorage(out string dir);
+        storage.Save("slot.json", new TestSave { Score = 5 });
+        storage.Flush();
+
+        string raw = File.ReadAllText(Path.Combine(dir, "slot.json"));
+        Assert.StartsWith("{", raw);
+    }
+
+    [Fact]
+    public void Save_MetadataCarriesGameVersionAndSummary()
+    {
+        using GameStorage storage = CreateStorageWithEncoder(out SaveEncoder encoder, out string dir, o => o.GameVersion = "2.0.0");
+        storage.Save("slot.json", new TestSave { Score = 9 }, new SaveWriteOptions { Summary = "boss" });
+        storage.Flush();
+
+        string raw = File.ReadAllText(Path.Combine(dir, "slot.json"));
+        SaveDecodeResult r = encoder.TryDecode(raw);
+        Assert.Equal("2.0.0", r.Metadata?.GameVersion);
+        Assert.Equal("boss", r.Metadata?.Summary);
+    }
+
+    [Fact]
+    public void Save_EncodeTrueWithoutEncoder_Throws()
+    {
+        using GameStorage storage = CreateStorage(out string dir);
+        Assert.Throws<InvalidOperationException>(() =>
+            storage.Save("slot.json", new TestSave { Score = 1 }, true));
     }
 }

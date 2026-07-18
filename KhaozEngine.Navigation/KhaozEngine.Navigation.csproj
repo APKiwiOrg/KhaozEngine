@@ -13,5 +13,6 @@
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <InternalsVisibleTo Include="KhaozEngine.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
   </ItemGroup>
 </Project>

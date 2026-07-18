@@ -1,0 +1,76 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces, consistent with every other split
+         test project. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <!-- Physics/BepuDeterminismGateTests.cs asserts directly against BepuPhysics types. -->
+    <PackageReference Include="BepuPhysics" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A captured real one-sided building collision mesh (a Ruinborne house with eaves/overhangs), used as a
+         realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
+         the resolver's one-sided-mesh handling must not pin or float the capsule. -->
+    <None Include="Physics/Fixtures/building_with_eaves.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- A REAL authored collision PROXY (compound of convex boxes) baked by ke-propbake from a blacksmith
+         <id>_collision.glb. The goal-metric fixture for the collision-proxy pipeline: a convex proxy must be
+         wedge-free (the capsule can always walk or jump out) while keeping the body + furniture standable. -->
+    <None Include="Physics/Fixtures/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- A REAL baked building-entrance proxy (the Ruinborne inn: a compound of solid convex boxes, one of which is
+         the door step in front of the hall wall). The regression fixture for the paced step-up's embedded-riser
+         mount: a walking capsule must climb this single solid door step, not buzz at flat height. Only the SOLID
+         (convex-box) proxy reproduces it - a one-sided mesh riser has no solid under the tread to embed the feet. -->
+    <None Include="Physics/Fixtures/inn_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Two REAL baked Ruinborne house proxies (compounds of solid convex boxes) whose doorstep sits close under a
+         wall/wing: house_1 (0.25 m step, approached -Z with a wall behind the step) and house_2 (0.32 m step under a
+         building wing, approached +Z). The regression fixtures for the 10.68.0 stair-run tangent co-pace gate
+         misfiring on compound geometry: SteepFaceAhead's forward sweep hits the wall/wing behind the doorstep, the
+         single-riser mount is misclassified as a continuous stair run, and the throttled seat stalls at flat height.
+         The clean inn/single-riser fixtures have a clear path behind the step so they do not cover this. -->
+    <None Include="Physics/Fixtures/house_1_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Physics/Fixtures/house_2_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
+    <ProjectReference Include="../KhaozEngine.Content/KhaozEngine.Content.csproj" />
+    <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
+    <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
+    <!-- AnimatedCharacter/LocomotionState (Game/AnimatedCharacter*Tests.cs) are compiled into this seam assembly
+         but live in the KhaozEngine.Game namespace (already covered by the KhaozEngine.Game ProjectReference above). -->
+    <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj" />
+    <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
+    <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+    <ProjectReference Include="../KhaozEngine.Objectives/KhaozEngine.Objectives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.Progression/KhaozEngine.Progression.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
+    <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
+    <!-- ChunkDynamics/ChunkCoord/TerrainChunkMesh (Physics/ChunkDynamicsTests.cs, Physics/TerrainMeshCollisionTests.cs)
+         are compiled into this seam assembly but live in the KhaozEngine.Terrain namespace (already covered by the
+         KhaozEngine.Terrain ProjectReference above). -->
+    <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <!-- Game/UpdateBootStepTests.cs (FakeUpdateSource) and Game/BootPipelineTests.cs (FakeServerStatusSource)
+         consume the cross-cluster fakes via their unchanged KhaozEngine.Tests.Updates / KhaozEngine.Tests.ServerStatus
+         namespaces. -->
+    <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />
+  </ItemGroup>
+</Project>

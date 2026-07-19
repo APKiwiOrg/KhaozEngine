@@ -93,6 +93,8 @@
   <Project Path="tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj" />
   <Project Path="tools/KeDungeon/KeDungeon.csproj" />
   <Project Path="tools/KeDungeon.Tests/KeDungeon.Tests.csproj" />
+  <Project Path="tools/DungeonKitGen/DungeonKitGen.csproj" />
+  <Project Path="tools/TestModelGen/TestModelGen.csproj" />
   <Project Path="KhaozEngine.Physics.AotProbe/KhaozEngine.Physics.AotProbe.csproj" />
   <Project Path="KhaozEngine.Server.AotProbe/KhaozEngine.Server.AotProbe.csproj" />
 </Solution>

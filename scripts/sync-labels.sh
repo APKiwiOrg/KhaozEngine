@@ -54,6 +54,7 @@ priority/critical|b60205|Actively harmful now: prod security, data loss, common-
 priority/high|d93f0b|Confirmed and important: verified bugs with real impact, reachable security, explicit near-term.
 priority/medium|fbca04|Worth doing, not urgent. Clear-value features/polish and plausible leads. The default tier.
 priority/low|ededed|Nice-to-have, speculative, or deferred: pull-gated, possible non-bug, cosmetic, someday.
+parity|f9d0c4|Parity finding from an audit, sweep, or decline: adopt candidate, fit-failure pair, or engine gap.
 '
 
 printf 'sync-labels: %s\n' "$repo"

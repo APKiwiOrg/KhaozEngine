@@ -309,6 +309,19 @@ something that cannot answer back (a branch, a chat, a person), just say so in t
 not a party, and a scoping prompt pasted into another chat is not a handoff either, because that chat
 can drift and nothing records that it was ever asked.
 
+**Consumer fit-failure pairs are the decline ledger's inflow, and the engine treats them as a primary
+API-gap signal.** A game that cannot adopt an engine type files a pair: a `needs/upstream` record on
+its side and, here, a `kind/backlog` (or `kind/roadmap` if it needs a spec) issue carrying the
+code-cited fit evidence with `confidence/verified` and the fleet `parity` label, cross-linked by full
+URL both ways and added by the filer to the org board
+(https://github.com/orgs/APKiwiOrg/projects/1, which has no auto-add). These are not noise. They are
+the main way the engine learns what blocked adoption, especially for `Gui` and utility API gaps where
+a missing knob (a text scale, a predicate hook) silently forces a bespoke fork downstream. The
+precedent pair is https://github.com/APKiwiOrg/KhaozEngine/issues/237 (here) and
+https://github.com/APKiwiOrg/SpaceGame/issues/82 (SpaceGame). The consumer-side process that generates
+these lives in `GameTemplate/docs/ENGINE-INTEGRATION.md` and the games' own
+`docs/ENGINE-INTEGRATION.md`, and is not restated here.
+
 **Resolved means CLOSED, on the spot. Close it, do not delete it.** The moment an item is done, close
 the issue, in the same sitting, ideally from the commit that resolved it (`Closes #123`). Closing is
 what a tick could never be: it takes the item out of the open pile AND keeps the whole record

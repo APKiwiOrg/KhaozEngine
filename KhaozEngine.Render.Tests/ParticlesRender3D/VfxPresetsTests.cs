@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using KhaozEngine.Particles;
 using Xunit;
 
@@ -10,25 +12,52 @@ namespace KhaozEngine.Tests.ParticlesRender3D
     // emits within its authored schedule. No GPU: the adapter presentation side is covered by the GpuFact tests.
     public sealed class VfxPresetsTests
     {
-        public static TheoryData<string> PresetNames => new()
-        {
-            "FireBurst", "FrostShatter", "HealMotes", "EmberDrift",
-            "SparkShower", "Shockwave", "SmokePlume", "ArcaneSparkle", "HeatHaze",
-        };
+        // The roster is discovered by reflection over VfxPresets' public static VfxPreset properties, instead of
+        // a hand-typed list, so a newly added preset is automatically covered by every theory below with nothing
+        // else to update. As of this write there are 9: FireBurst, FrostShatter, HealMotes, EmberDrift,
+        // SparkShower, Shockwave, SmokePlume, ArcaneSparkle, HeatHaze. That count is also the floor
+        // MinimumPresetCount checks in PresetRoster_HasAtLeastTheKnownPresetCount below, so an accidental
+        // emptying of the roster (a broken filter, a renamed type) fails loudly instead of quietly running the
+        // theories below over zero cases.
+        private const int MinimumPresetCount = 9;
 
-        static VfxPreset Resolve(string name) => name switch
+        private static readonly PropertyInfo[] PresetProperties = typeof(VfxPresets)
+            .GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(p => p.PropertyType == typeof(VfxPreset) && p.GetIndexParameters().Length == 0)
+            .ToArray();
+
+        public static TheoryData<string> PresetNames
         {
-            "FireBurst" => VfxPresets.FireBurst,
-            "FrostShatter" => VfxPresets.FrostShatter,
-            "HealMotes" => VfxPresets.HealMotes,
-            "EmberDrift" => VfxPresets.EmberDrift,
-            "SparkShower" => VfxPresets.SparkShower,
-            "Shockwave" => VfxPresets.Shockwave,
-            "SmokePlume" => VfxPresets.SmokePlume,
-            "ArcaneSparkle" => VfxPresets.ArcaneSparkle,
-            "HeatHaze" => VfxPresets.HeatHaze,
-            _ => throw new ArgumentOutOfRangeException(nameof(name), name, "unknown preset"),
-        };
+            get
+            {
+                var data = new TheoryData<string>();
+                foreach (PropertyInfo property in PresetProperties)
+                {
+                    data.Add(property.Name);
+                }
+                return data;
+            }
+        }
+
+        static VfxPreset Resolve(string name)
+        {
+            PropertyInfo? property = PresetProperties.FirstOrDefault(p => p.Name == name);
+            if (property is null)
+            {
+                throw new ArgumentOutOfRangeException(nameof(name), name, "unknown preset");
+            }
+
+            return (VfxPreset)property.GetValue(null)!;
+        }
+
+        [Fact]
+        public void PresetRoster_HasAtLeastTheKnownPresetCount()
+        {
+            Assert.True(
+                PresetProperties.Length >= MinimumPresetCount,
+                $"expected at least {MinimumPresetCount} VfxPresets properties, found {PresetProperties.Length}. " +
+                "An emptied or misdiscovered preset roster would otherwise run every theory below over zero cases.");
+        }
 
         [Theory]
         [MemberData(nameof(PresetNames))]

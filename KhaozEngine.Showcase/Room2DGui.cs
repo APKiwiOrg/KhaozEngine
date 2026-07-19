@@ -556,7 +556,7 @@ namespace KhaozEngine.Showcase
             {
                 Rect r = _list.ItemBounds(i);
                 batch.Draw(white, new Vector4(r.X + 4, r.Y, r.Width - 8, r.Height), new Color(0.12f, 0.14f, 0.2f, 1f));
-                batch.DrawString(font, $"Item {i + 1}", new Vector2(r.X + 14, r.Y + (r.Height - font.LineHeight) * 0.5f), new Color(0.8f, 0.84f, 0.9f, 1f));
+                batch.DrawString(font, LocalizedText.Of(ShowcaseStrings.WidgetsListItem, i + 1).Resolve(), new Vector2(r.X + 14, r.Y + (r.Height - font.LineHeight) * 0.5f), new Color(0.8f, 0.84f, 0.9f, 1f));
             }
             _list.EndClip(batch);
             _difficulty.Draw(batch, white, font);   // trigger (before its overlay)

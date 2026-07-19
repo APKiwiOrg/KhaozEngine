@@ -31,5 +31,5 @@ internal static class LocalizationDiagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "A bare string literal drawn straight to SpriteBatch.DrawString bypasses localization the same way a raw Gui string does. Route player-facing copy through the catalog (a StringId), or use LocalizedText.Raw(\"...\").Resolve() for genuinely non-localizable text (names, numbers, debug). v1 flags only non-interpolated, non-verbatim literals of length > 1 that contain a letter; single-character tokens and [LocalizationExempt] / DEBUG scopes are ignored.");
+        description: "A bare string literal drawn straight to SpriteBatch.DrawString bypasses localization the same way a raw Gui string does. Route player-facing copy through the catalog (a StringId), or use LocalizedText.Raw(\"...\").Resolve() for genuinely non-localizable text (names, numbers, debug). Flags plain literals and the literal segments of interpolated ($\"Score: {n}\") and concatenated (\"Item \" + i) strings, each of length > 1 and containing a letter. Interpolation holes, verbatim/raw literals, single-character tokens, and [LocalizationExempt] / DEBUG scopes are ignored.");
 }

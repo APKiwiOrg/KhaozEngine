@@ -78,10 +78,11 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    // KELOC003: a bare string literal drawn straight to the engine's 2D text primitive SpriteBatch.DrawString.
-    // v1 catches only non-interpolated, non-verbatim string LITERALS - variables, interpolation, and concatenation
-    // are dynamic and localized at their source, so they stay out of scope. Single-character tokens (a close 'X'),
-    // letter-free tokens (numbers / format like "{0}"), and [LocalizationExempt] / DEBUG scopes are all allowed, so
+    // KELOC003: player-facing text drawn straight to the engine's 2D text primitive SpriteBatch.DrawString.
+    // Scans plain string LITERALS, plus the literal segments of interpolated ($"...") and concatenated ("a" + b)
+    // strings. The interpolation holes ({expr}) and non-constant concat operands are dynamic and localized at
+    // their source, so they stay out of scope. Single-character tokens (a close 'X'), letter-free tokens (numbers
+    // / format like "{0}"), verbatim/raw literals, and [LocalizationExempt] / DEBUG scopes are all allowed, so
     // DrawString's constant use for numbers, glyphs, names, and debug output does not become a false positive.
     private static void AnalyzeDrawStringText(OperationAnalysisContext ctx, IInvocationOperation invocation)
     {
@@ -93,20 +94,65 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
         }
         if (textArg is null) return;
 
-        IOperation value = textArg.Value;
-        if (value is IConversionOperation conv) value = conv.Operand;
-        if (value is not ILiteralOperation lit) return;          // variable / interpolation / concat -> out of scope
-        if (lit.ConstantValue.Value is not string s) return;
-        if (!IsPlainStringLiteral(lit)) return;                  // verbatim @"..." / raw """...""" -> out of scope
-        if (s.Length <= 1) return;                               // single-glyph tokens allowed
-        if (!s.Any(char.IsLetter)) return;                       // numbers / format tokens allowed
-
+        // Exempt / DEBUG scoping is a property of the whole call site, so gate once before scanning segments.
         if (IsExempt(ctx.ContainingSymbol)) return;
         if (IsInsideActiveDebugRegion(invocation.Syntax)) return;
 
+        ScanTextOperand(ctx, textArg.Value);
+    }
+
+    // Report every hardcoded, player-facing string literal reachable from a DrawString text argument: a bare
+    // literal, a text segment of an interpolated string, or a literal operand of a string concatenation.
+    private static void ScanTextOperand(OperationAnalysisContext ctx, IOperation value)
+    {
+        if (value is IConversionOperation conv) value = conv.Operand;
+
+        switch (value)
+        {
+            case ILiteralOperation lit:
+                CheckPlainLiteral(ctx, lit);
+                break;
+            case IInterpolatedStringOperation interp:
+                ScanInterpolatedString(ctx, interp);
+                break;
+            case IBinaryOperation { OperatorKind: BinaryOperatorKind.Add } bin:
+                ScanTextOperand(ctx, bin.LeftOperand);
+                ScanTextOperand(ctx, bin.RightOperand);
+                break;
+        }
+    }
+
+    // A bare double-quoted string literal ("Play"). Verbatim @"..." / raw """...""" literals stay out of scope.
+    private static void CheckPlainLiteral(OperationAnalysisContext ctx, ILiteralOperation lit)
+    {
+        if (lit.ConstantValue.Value is not string s) return;
+        if (!IsPlainStringLiteral(lit)) return;                  // verbatim @"..." / raw """...""" -> out of scope
+        if (!IsLocalizableText(s)) return;                       // single glyphs and letter-free tokens allowed
         ctx.ReportDiagnostic(Diagnostic.Create(
             LocalizationDiagnostics.RawDrawString, lit.Syntax.GetLocation()));
     }
+
+    // The literal text segments of an interpolated string ($"Score: {n}" -> "Score: "). The interpolation holes
+    // ({n}) are dynamic and stay out of scope. Verbatim ($@"...") and raw ($"""...""") interpolated strings are
+    // skipped whole, matching the verbatim/raw carve-out for plain literals.
+    private static void ScanInterpolatedString(OperationAnalysisContext ctx, IInterpolatedStringOperation interp)
+    {
+        if (interp.Syntax is not InterpolatedStringExpressionSyntax ise) return;
+        if (!ise.StringStartToken.IsKind(SyntaxKind.InterpolatedStringStartToken)) return;
+
+        foreach (IOperation part in interp.Parts)
+        {
+            if (part is not IInterpolatedStringTextOperation textPart) continue;   // skip {expr} holes
+            if (textPart.Text.ConstantValue.Value is not string s) continue;
+            if (!IsLocalizableText(s)) continue;                                    // single glyphs / format tokens allowed
+            ctx.ReportDiagnostic(Diagnostic.Create(
+                LocalizationDiagnostics.RawDrawString, part.Syntax.GetLocation()));
+        }
+    }
+
+    // Shared length/letter gate: only text of length > 1 that contains a letter is player-facing copy. Single
+    // glyphs (a close 'X') and letter-free tokens (numbers, "{0}", " - ") are not flagged.
+    private static bool IsLocalizableText(string s) => s.Length > 1 && s.Any(char.IsLetter);
 
     // A plain double-quoted string literal, i.e. NOT verbatim (@"...") and NOT a raw/utf8 string literal. Verbatim
     // and raw literals carry a distinct token text/kind and are deliberately out of the v1 scope.
@@ -151,15 +197,18 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    // True when the node sits lexically inside an active `#if DEBUG` (condition mentioning DEBUG) branch. Under a
-    // non-DEBUG build the branch is inactive and never parsed into the tree, so this only matters in DEBUG builds.
+    // True when the node sits lexically inside a `#if` branch that is BOTH taken AND live because DEBUG is
+    // defined (`#if DEBUG`, `#if DEBUG || TRACE`, ...). A raw `Condition.ToString().Contains("DEBUG")` test also
+    // matched `#if !DEBUG` - the inverse, which is the branch that goes live in a Release build - and so silently
+    // exempted release-only code from KELOC002/KELOC003 (issue #165). The condition is parsed instead, and only a
+    // non-negated DEBUG identifier is treated as a debug carve-out.
     private static bool IsInsideActiveDebugRegion(SyntaxNode node)
     {
         SyntaxNode root = node.SyntaxTree.GetRoot();
         foreach (var ifDir in root.DescendantNodes(descendIntoTrivia: true).OfType<IfDirectiveTriviaSyntax>())
         {
             if (!ifDir.BranchTaken) continue;
-            if (!ifDir.Condition.ToString().Contains("DEBUG")) continue;
+            if (!ConditionEnablesDebug(ifDir.Condition)) continue;
 
             var related = ifDir.GetRelatedDirectives();
             int idx = related.IndexOf(ifDir);
@@ -168,6 +217,28 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
             // The taken branch runs from just after the #if to the next related directive (#elif/#else/#endif).
             DirectiveTriviaSyntax next = related[idx + 1];
             if (node.SpanStart >= ifDir.Span.End && node.Span.End <= next.SpanStart) return true;
+        }
+        return false;
+    }
+
+    // Whether an `#if` condition goes live because DEBUG is defined: DEBUG appears as a whole identifier in a
+    // non-negated position. `#if DEBUG` and `#if DEBUG || TRACE` qualify. `#if !DEBUG` does not - the DEBUG token
+    // sits under one logical-not, so it is the Release-live inverse, not a debug carve-out. A substring test
+    // cannot tell these apart because "!DEBUG".Contains("DEBUG") is true (issue #165).
+    private static bool ConditionEnablesDebug(ExpressionSyntax condition)
+    {
+        foreach (IdentifierNameSyntax id in condition.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>())
+        {
+            if (id.Identifier.ValueText != "DEBUG") continue;
+
+            // Count the enclosing `!` operators up to the condition root; an even count is a positive position.
+            int negations = 0;
+            for (SyntaxNode? p = id; p is not null; p = p.Parent)
+            {
+                if (p.IsKind(SyntaxKind.LogicalNotExpression)) negations++;
+                if (p == condition) break;
+            }
+            if (negations % 2 == 0) return true;
         }
         return false;
     }

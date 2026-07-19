@@ -103,6 +103,7 @@
   <data name="Widgets.Difficulty" xml:space="preserve"><value>Difficulty</value></data>
   <data name="Widgets.PartySize" xml:space="preserve"><value>Party size</value></data>
   <data name="Widgets.List" xml:space="preserve"><value>Scrollable list (wheel / drag)</value></data>
+  <data name="Widgets.ListItem" xml:space="preserve"><value>Item {0}</value></data>
   <data name="Widgets.HoverForTip" xml:space="preserve"><value>hover for tip</value></data>
   <data name="Widgets.Confirm" xml:space="preserve"><value>Confirm...</value></data>
   <data name="Widgets.TipTitle" xml:space="preserve"><value>Tooltip</value></data>

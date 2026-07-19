@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -179,16 +180,16 @@ class C { void M(SpriteBatch b, SpriteFont f){ b.DrawString(f, ""Continue"", def
         }
 
         [Fact]
-        public async Task KELOC003_SilentOnInterpolatedString()
+        public async Task KELOC003_FiresOnInterpolatedLiteralSegment()
         {
-            // Interpolated text is dynamic and out of scope for v1.
+            // The literal segment ("Score ") of an interpolated string is as hardcoded as a plain literal (#171).
             var src = @"
 using KhaozEngine.Render2D;
 using System.Numerics;
 class C { void M(SpriteBatch b, SpriteFont f, int n){ b.DrawString(f, $""Score {n}"", default(Vector2), 0); } }
 ";
             var diags = await AnalyzerHarness.Run(src);
-            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+            Assert.Contains(diags, d => d.Id == "KELOC003");
         }
 
         [Fact]
@@ -270,6 +271,163 @@ class C { void M(SpriteBatch b, SpriteFont f){
 ";
             var diags = await AnalyzerHarness.RunWithDebug(src);
             Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        // ---- KELOC003: interpolated / concatenated string literal segments (#171) ----
+
+        [Fact]
+        public async Task KELOC003_FiresOnShowcaseInterpolationShape()
+        {
+            // The exact shape shipped unflagged in KhaozEngine.Showcase/Room2DGui.cs:439 - $""Item {i + 1}"".
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int i){ b.DrawString(f, $""Item {i + 1}"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Single(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_FiresOnEachInterpolatedLiteralSegment()
+        {
+            // Both surrounding literal segments (""Item "" and "" of "") are player-facing copy; the two holes are not.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int i, int n){ b.DrawString(f, $""Item {i} of {n}"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Equal(2, diags.Count(d => d.Id == "KELOC003"));
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnInterpolationWithNoLiteralText()
+        {
+            // A hole-only interpolation ($""{a}{b}"") carries no hardcoded copy - still out of scope.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int a, int b2){ b.DrawString(f, $""{a}{b2}"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnInterpolatedSingleGlyphSegment()
+        {
+            // The only literal segment (""%"") is a single glyph, and the number hole is out of scope.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int n){ b.DrawString(f, $""{n}%"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnVerbatimInterpolatedString()
+        {
+            // Verbatim ($@""..."") interpolated strings stay out of scope, matching the plain-literal carve-out.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int n){ b.DrawString(f, $@""Path {n}"", default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_FiresOnConcatenatedLiteral()
+        {
+            // A literal operand of a string concatenation (""Item "" + i) is as hardcoded as a plain literal (#171).
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int i){ b.DrawString(f, ""Item "" + i, default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Single(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC003_FiresOnEachConcatenatedLiteralOperand()
+        {
+            // Chained concatenation flags each hardcoded literal operand ("" of "" too), not the variables.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, int i, int n){ b.DrawString(f, ""Item "" + i + "" of "" + n, default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Equal(2, diags.Count(d => d.Id == "KELOC003"));
+        }
+
+        [Fact]
+        public async Task KELOC003_SilentOnConcatenatedVariablesOnly()
+        {
+            // Concatenation of only variables carries no hardcoded literal - out of scope.
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f, string a, string c){ b.DrawString(f, a + c, default(Vector2), 0); } }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC003");
+        }
+
+        // ---- #165: the DEBUG carve-out must NOT exempt #if !DEBUG (release-live) code ----
+
+        [Fact]
+        public async Task KELOC002_FiresInsideIfNotDebugRegion_WhenDebugUndefined()
+        {
+            // Parsed WITHOUT DEBUG (Release-equivalent), so the #if !DEBUG branch is live and analyzed. Its
+            // LocalizedText.Raw must still be flagged - the old substring test wrongly exempted it (#165).
+            var src = @"
+using KhaozEngine.App;
+class C { void M(){
+#if !DEBUG
+    var x = LocalizedText.Raw(""release-only"");
+#endif
+} }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Contains(diags, d => d.Id == "KELOC002");
+        }
+
+        [Fact]
+        public async Task KELOC003_FiresInsideIfNotDebugRegion_WhenDebugUndefined()
+        {
+            var src = @"
+using KhaozEngine.Render2D;
+using System.Numerics;
+class C { void M(SpriteBatch b, SpriteFont f){
+#if !DEBUG
+    b.DrawString(f, ""Release banner"", default(Vector2), 0);
+#endif
+} }
+";
+            var diags = await AnalyzerHarness.Run(src);
+            Assert.Contains(diags, d => d.Id == "KELOC003");
+        }
+
+        [Fact]
+        public async Task KELOC002_SilentInsideIfDebugDisjunction_WhenDebugDefined()
+        {
+            // A non-negated DEBUG in a compound condition (#if DEBUG || TRACE) still counts as a debug carve-out.
+            var src = @"
+using KhaozEngine.App;
+class C { void M(){
+#if DEBUG || TRACE
+    var x = LocalizedText.Raw(""dbg"");
+#endif
+} }
+";
+            var diags = await AnalyzerHarness.RunWithDebug(src);
+            Assert.DoesNotContain(diags, d => d.Id == "KELOC002");
         }
     }
 }

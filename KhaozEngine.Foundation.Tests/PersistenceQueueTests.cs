@@ -255,7 +255,7 @@ public class PersistenceQueueTests
     }
 
     [Fact]
-    public void WriteFailed_SecondFailureDuringHandler_DeliveredSeriallyInOrder()
+    public async Task WriteFailed_SecondFailureDuringHandler_DeliveredSeriallyInOrder()
     {
         string root = NewTempRoot();
         try
@@ -265,55 +265,71 @@ public class PersistenceQueueTests
             string badA = Path.Combine(blocker, "a.json");
             string badB = Path.Combine(blocker, "b.json");
 
-            using var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
-            using var allDelivered = new ManualResetEventSlim(false);
-            var delivered = new List<string>();
-            int active = 0;
-            int overlapped = 0;
-            bool bDeliveredDuringA = false;
-
-            queue.WriteFailed += (_, e) =>
+            var queue = new PersistenceQueue(maxAttempts: 1, retryDelay: TimeSpan.FromMilliseconds(1));
+            try
             {
-                if (Interlocked.Increment(ref active) > 1)
-                {
-                    Interlocked.Exchange(ref overlapped, 1);
-                }
+                using var allDelivered = new ManualResetEventSlim(false);
+                var delivered = new List<string>();
+                int active = 0;
+                int overlapped = 0;
+                bool bDeliveredDuringA = false;
 
-                lock (delivered)
+                queue.WriteFailed += (_, e) =>
                 {
-                    delivered.Add(e.Path);
-                }
+                    if (Interlocked.Increment(ref active) > 1)
+                    {
+                        Interlocked.Exchange(ref overlapped, 1);
+                    }
 
-                if (e.Path == badA)
-                {
-                    // From inside the first notification, produce a second failure and wait for its
-                    // drain to finish: Flush() returns only once the tail worker has drained badB
-                    // and released the latch, so badB's failure is already queued for delivery
-                    // while this handler is still running. Serial delivery means it must not have
-                    // been raised yet (issue #150 review: no concurrent or reordered handlers).
-                    queue.Enqueue(badB, "data-b");
-                    queue.Flush();
                     lock (delivered)
                     {
-                        bDeliveredDuringA = delivered.Contains(badB);
+                        delivered.Add(e.Path);
                     }
-                }
-                else if (e.Path == badB)
+
+                    if (e.Path == badA)
+                    {
+                        // From inside the first notification, produce a second failure and wait for its
+                        // drain to finish: Flush() returns only once the tail worker has drained badB
+                        // and released the latch, so badB's failure is already queued for delivery
+                        // while this handler is still running. Serial delivery means it must not have
+                        // been raised yet (issue #150 review: no concurrent or reordered handlers).
+                        queue.Enqueue(badB, "data-b");
+                        queue.Flush();
+                        lock (delivered)
+                        {
+                            bDeliveredDuringA = delivered.Contains(badB);
+                        }
+                    }
+                    else if (e.Path == badB)
+                    {
+                        allDelivered.Set();
+                    }
+
+                    Interlocked.Decrement(ref active);
+                };
+
+                queue.Enqueue(badA, "data-a");
+
+                Assert.True(allDelivered.Wait(TimeSpan.FromSeconds(10)), "not every failure notification was delivered");
+                Assert.Equal(0, overlapped);
+                Assert.False(bDeliveredDuringA, "badB's failure was delivered while badA's handler was still running");
+                lock (delivered)
                 {
-                    allDelivered.Set();
+                    Assert.Equal(new[] { badA, badB }, delivered);
                 }
-
-                Interlocked.Decrement(ref active);
-            };
-
-            queue.Enqueue(badA, "data-a");
-
-            Assert.True(allDelivered.Wait(TimeSpan.FromSeconds(10)), "not every failure notification was delivered");
-            Assert.Equal(0, overlapped);
-            Assert.False(bDeliveredDuringA, "badB's failure was delivered while badA's handler was still running");
-            lock (delivered)
+            }
+            finally
             {
-                Assert.Equal(new[] { badA, badB }, delivered);
+                // Dispose deterministically on every path, but through a timeout guard rather than a using:
+                // on a full regression to the pre-#150 code shape the handler's re-entrant Flush() (above)
+                // wedges the drain thread, and a bare Dispose() here (which calls Flush()) would hang the
+                // runner right after the timeout assert above already reported the failure (issue #210,
+                // mirroring the guarded-dispose finally in WriteFailed_HandlerCallsFlush_DoesNotDeadlock).
+                var disposeTask = Task.Run(() => queue.Dispose());
+                if (await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(5))) == disposeTask)
+                {
+                    await disposeTask;   // observe any exception thrown by Dispose()
+                }
             }
         }
         finally { Cleanup(root); }

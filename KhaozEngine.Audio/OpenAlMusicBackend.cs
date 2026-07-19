@@ -126,7 +126,7 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
             }
 
             _al.GetSourceProperty(_source, GetSourceInteger.BuffersQueued, out int queued);
-            if (_streamEnded && queued == 0) { Stop(); return; }   // track finished
+            if (_streamEnded && queued == 0) { StopCleanFinish(); return; }   // track finished
 
             // Resume if the source underran while buffers are still queued.
             _al.GetSourceProperty(_source, GetSourceInteger.SourceState, out int state);
@@ -140,6 +140,25 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
             // loop. IsPlaying then reads false, so AudioSystem rotates to the next track.
             _logger.Error("OpenAL: streaming refill failed, stopping the current track.", ex);
             Stop();
+        }
+    }
+
+    // Stops a track that finished cleanly (stream exhausted, nothing left queued). Deliberately outside the
+    // refill-failure catch above: that catch is for a decoder/AL failure DURING playback, not for the
+    // clean-finish Stop() itself, so a throw here gets its own label instead of being logged as "streaming
+    // refill failed". It also calls Stop() at most once - Stop() is guarded by `_source != 0`, so a second
+    // call after a completed one is a no-op, but a Stop() that throws PARTWAY through (before `_source = 0`
+    // is reached) would otherwise get re-invoked from the shared catch and re-touch already-torn-down OpenAL
+    // handles (issue #210).
+    void StopCleanFinish()
+    {
+        try
+        {
+            Stop();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("OpenAL: Stop() failed while finishing a track that reached end of stream.", ex);
         }
     }
 

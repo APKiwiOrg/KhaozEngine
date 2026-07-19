@@ -2,7 +2,8 @@
 # tag-release.sh - create the annotated release tag v<version> with a canonical
 # 'area(<version>): summary' message, validated against the shared tag standard so releases
 # stop drifting in format. area+summary default from the HEAD commit subject (already
-# conventional-commit); override either with positional args.
+# conventional-commit) when HEAD is a plain commit, or from the version-bump commit / newest
+# non-merge commit when HEAD is a merge (see below). Override either with positional args.
 #
 #   scripts/tag-release.sh                       # mirror the HEAD subject
 #   scripts/tag-release.sh audio "loads .ogg"    # explicit area + summary
@@ -22,8 +23,20 @@ if git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Defaults from the HEAD subject when it is already 'area[(scope)]: summary'.
-hs=$(git log -1 --format='%s' 2>/dev/null || true)
+# Defaults from the HEAD subject when it is already 'area[(scope)]: summary'. When HEAD is a merge
+# commit (the release ritual's own integrate-then-tag flow produces one: merge main into the
+# feature branch, then merge that branch back), git's own synthetic 'Merge ...' subject is not a
+# conventional one and leaks into the tag. Prefer, in order: the commit that bumped the version
+# knob to $ver (wherever it lives in the merged history - that commit's subject already IS the
+# canonical one per the release-commit convention), then the newest non-merge commit on HEAD's
+# first-parent chain, then HEAD's own subject as before.
+hs=''
+if git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
+  needle="<$knob>$ver</$knob>"
+  hs=$(git log -S"$needle" --format='%s' -- Directory.Build.props 2>/dev/null | head -1 || true)
+  [ -n "${hs:-}" ] || hs=$(git log --first-parent --no-merges -1 --format='%s' 2>/dev/null || true)
+fi
+[ -n "${hs:-}" ] || hs=$(git log -1 --format='%s' 2>/dev/null || true)
 harea=''; hsum=''
 if printf '%s' "$hs" | grep -Eq '^[a-z0-9][a-z0-9._-]*(\([^)]*\))?: .+$'; then
   harea=$(printf '%s' "$hs" | sed -E 's/^([a-z0-9][a-z0-9._-]*).*$/\1/')

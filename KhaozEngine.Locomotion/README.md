@@ -88,7 +88,15 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit.
 - **`MoveState`** - carried kinematic state: position, `VerticalVelocity`, `Grounded`, coyote/buffer timers,
-  `Swimming` (surface-swim flag, carried tick-to-tick for the enter/exit hysteresis).
+  `Swimming` (surface-swim flag, carried tick-to-tick for the enter/exit hysteresis). Also the stair-glide
+  step-climb signals: `ClimbRate` (signed step-climb rate in m/s, replicated quantized as
+  `MovementState.ClimbRateQ`, positive on a paced stair-climb run and negative on a stepped-down descent, 0
+  when not on a step climb) and `StepDeltaY` (sim-local, not replicated: the signed vertical delta a single
+  discrete step commits, read once by the local owner at the client-prediction boundary). Both are what a
+  presentation layer consumes to glide/ease the drawn feet on stairs, see the "Animated characters" section
+  of `docs/USING-KHAOZENGINE.md` for the full `CharacterController3D.ClimbRate` / `.StepDeltaY` consumer
+  contract. `ClimbRateEwma` is a sim-local (not replicated) smoothing average `ClimbRate` is stamped from on
+  a run tick, with no consumer of its own.
 - **`MovementMedium`** - the fluid medium at one world sample the medium provider returns: `WaterSurfaceY`,
   `InWater`, `WadeSpeedScale` (a per-sample zone multiplier, default 1). `default` / `MovementMedium.Dry` is dry land.
 - **`MoveTuning`** - all speed and feel constants:

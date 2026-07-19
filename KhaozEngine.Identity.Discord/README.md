@@ -48,6 +48,9 @@ using KhaozEngine.Identity.Discord;
 
 DiscordProviderOptions options = new() { ClientId = "your-client-id" };
 IBrowserLauncher launcher = new SystemBrowserLauncher(); // from KhaozEngine.Identity.Oidc, or your own
+// The listener factory is the seam for a localized/branded sign-in completion page: pass it as the
+// listener's second argument, e.g. port => new HttpLoopbackListener(port, myLocalizedHtml). Omitted, it
+// serves the raw HttpLoopbackListener.DefaultCompletionPageHtml.
 DiscordClientProvider provider = new(options, launcher, port => new HttpLoopbackListener(port));
 
 ProviderCredential credential = await provider.SignInAsync();

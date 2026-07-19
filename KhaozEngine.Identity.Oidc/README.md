@@ -22,7 +22,10 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   default browser via `KhaozEngine.Platform.Browser`.
 - **HttpLoopbackListener** - `ILoopbackListener` implementation that binds a short-lived
   `HttpListener` on `http://127.0.0.1:<port>/`, captures the provider's redirect, and returns the
-  parsed query string.
+  parsed query string. The completion page shown to the browser after sign-in is the constructor's
+  second argument (`new HttpLoopbackListener(port, myLocalizedHtml)`), defaulting to the raw
+  `HttpLoopbackListener.DefaultCompletionPageHtml` when omitted. Pass a localized or branded page here
+  (the identity packages do not reference the localization catalog, so the page is caller-supplied).
 - **OidcProviderOptions** - authority, client id, scopes (default `openid profile email`), loopback port,
   and HTTP timeout.
 

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -22,15 +21,6 @@ public class AdminHttpServerTests
 {
     private static float Flat(float x, float z) => 0f;
 
-    private static int FreePort()
-    {
-        var l = new TcpListener(IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
-    }
-
     [Fact]
     public async Task Requires_Bearer_And_Serves_Online()
     {
@@ -42,7 +32,7 @@ public class AdminHttpServerTests
         server.Tick(config.TickSeconds);
 
         var admin = new ServerAdmin(server);
-        int port = FreePort();
+        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
             Port = port,
@@ -92,7 +82,7 @@ public class AdminHttpServerTests
         admin.Teleport(PlayerRef.Slot(0), moved);
         for (int i = 0; i < 5; i++) { server.Poll(); server.Tick(config.TickSeconds); }
 
-        int port = FreePort();
+        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
             Port = port,
@@ -149,7 +139,7 @@ public class AdminHttpServerTests
 
         // Start AdminHttpServer.
         var admin = new ServerAdmin(server);
-        int port = FreePort();
+        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
             Port = port,
@@ -204,7 +194,7 @@ public class AdminHttpServerTests
         var store = new TokenCapturingAccountStore();
         var admin = new ServerAdmin(server, bans: null, accounts: store);
 
-        int port = FreePort();
+        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
             Port = port,

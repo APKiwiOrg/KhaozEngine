@@ -4,7 +4,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Sockets;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
@@ -18,19 +17,11 @@ namespace KhaozEngine.Tests.ServerAdminEndpoint;
 
 /// <summary>
 /// Exercises the game-registered admin action seam over a real loopback HTTPS listener, cloning the AdminHttpServer
-/// harness (FreePort, self-signed cert, bearer client). The action registry never touches the simulation, so the
-/// backing world is a do-nothing controllable rather than a live server.
+/// harness (TcpPortSupport.FreeTcpPort, self-signed cert, bearer client). The action registry never touches the
+/// simulation, so the backing world is a do-nothing controllable rather than a live server.
 /// </summary>
 public class AdminActionHttpTests
 {
-    private static int FreePort()
-    {
-        var l = new TcpListener(IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
-    }
 
     private sealed class NullAdminControllable : IAdminControllable
     {
@@ -59,7 +50,7 @@ public class AdminActionHttpTests
 
     private static async Task<Harness> StartAsync(ServerAdmin admin, bool withBearer = true)
     {
-        int port = FreePort();
+        int port = TcpPortSupport.FreeTcpPort();
         var opts = new AdminEndpointOptions
         {
             Port = port,

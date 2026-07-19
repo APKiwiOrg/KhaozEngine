@@ -122,10 +122,12 @@ public sealed class WorldPersistence
     private readonly List<Task> pending = new();
     private float sinceSave;
 
-    /// <summary>Raised on the server thread from <see cref="Update"/> when a tracked load/save task faulted or was
+    /// <summary>Raised on the server thread from <see cref="Update"/> (via <see cref="PrunePending"/>) or from
+    /// <see cref="FlushAsync"/> (via <see cref="AwaitAndObserve"/>) when a tracked load/save task faulted or was
     /// canceled (typically a store outage). The engine drops the finished task so the pending list can't grow
     /// unbounded, and this hook lets the game log or alert. The failed save's state stays dirty and is retried on the
-    /// next pass.</summary>
+    /// next pass. <see cref="FlushAsync"/> surfaces every fault this way instead of rethrowing, so it always reaches
+    /// quiescence even through a store outage, mirroring <c>CellPersistence.AwaitPendingAsync</c>.</summary>
     public event Action<Exception>? OnStoreError;
 
     /// <summary>Raised on the server thread (from <see cref="Update"/> / <see cref="FlushAsync"/> via the apply drain)
@@ -350,7 +352,25 @@ public sealed class WorldPersistence
             lock (pendingLock) { tasks = pending.ToArray(); pending.Clear(); }
             if (tasks.Length == 0) break;
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+            await AwaitAndObserve(tasks).ConfigureAwait(false);
         }
+    }
+
+    // Awaits every given task to completion, then observes it. Unlike a bare Task.WhenAll (which rethrows the
+    // first fault and, having already cleared those tasks out of pending, would unwind FlushAsync's loop before
+    // it reaches quiescence - the caller gets an exception instead of ever finding out the flush actually
+    // landed) this surfaces EVERY faulted/canceled task through OnStoreError and never throws, so a store outage
+    // during shutdown still lets the loop keep draining. A faulted save's account stays dirty and is retried on
+    // the next pass. Mirrors CellPersistence.AwaitPendingAsync.
+    private async Task AwaitAndObserve(Task[] tasks)
+    {
+        try { await Task.WhenAll(tasks).ConfigureAwait(false); }
+        catch { /* individual faults are observed + surfaced per-task below, not rethrown */ }
+        List<Exception>? failures = null;
+        foreach (Task t in tasks)
+            if (t.IsFaulted || t.IsCanceled)
+                (failures ??= new List<Exception>()).Add(t.Exception?.GetBaseException() ?? new TaskCanceledException());
+        if (failures is not null)
+            foreach (Exception ex in failures) OnStoreError?.Invoke(ex);
     }
 }

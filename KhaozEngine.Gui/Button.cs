@@ -29,6 +29,15 @@ namespace KhaozEngine.Gui
         /// <summary>When true, the button draws in its selected state.</summary>
         public bool Selected;
 
+        /// <summary>
+        /// Uniform scale for the caption glyphs and advances, applied about the button centre so the label
+        /// stays centred. Defaults to <c>1f</c> (today's rendering, byte-for-byte). This scales the LABEL
+        /// ONLY: <see cref="Bounds"/> and the press-origin hit-test are unchanged at any scale, so a compact
+        /// button draws a smaller label inside the same rect. A scale large enough to overflow the rect is the
+        /// caller's responsibility, exactly as for the immediate <see cref="GuiSurface.Button(SpriteFont, Rect, LocalizedText, GuiStyle, bool, bool, float)"/>.
+        /// </summary>
+        public float LabelScale = 1f;
+
         bool _hover, _press;
 
         /// <summary>Create a button from localized text.</summary>
@@ -73,6 +82,6 @@ namespace KhaozEngine.Gui
         /// <summary>Draw the button via the shared <see cref="GuiDraw.DrawButton"/>. <paramref name="white"/> is a
         /// 1x1 white texture for the fill.</summary>
         public void Draw(SpriteBatch batch, Texture2D white) =>
-            GuiDraw.DrawButton(batch, white, Font, Bounds, Content, Style, Enabled, Selected, _hover, _press);
+            GuiDraw.DrawButton(batch, white, Font, Bounds, Content, Style, Enabled, Selected, _hover, _press, LabelScale);
     }
 }

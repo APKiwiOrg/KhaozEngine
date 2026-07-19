@@ -123,6 +123,19 @@ while IFS= read -r rel; do
   fi
 done < "$TMP/slnx_tests.txt"
 
+# The architecture-test rump (KhaozEngine.Tests) enforces the repo's layering/seam rules by parsing
+# every project's *.csproj XML at runtime, not by compiling against them, so it carries ZERO
+# ProjectReferences and has no edge in the graph dotnet-affected walks. A csproj-only change that
+# violates one of those rules (a disallowed PackageReference/ProjectReference, umbrella membership,
+# opt-in-backend reachability, third-party containment) would otherwise dodge selective CI and surface
+# only at the next full run. So whenever the diff touches any *.csproj, force the rump into the
+# affected set. It parses XML and is fast, so the cost is trivial (#212).
+RUMP_TESTS="KhaozEngine.Tests/KhaozEngine.Tests.csproj"
+if grep -qE '\.csproj$' "$TMP/changed.txt" && ! grep -qxF "$RUMP_TESTS" "$TMP/affected_tests.txt"; then
+  echo "selective: a .csproj changed, adding the architecture-test rump ($RUMP_TESTS)"
+  printf '%s\n' "$RUMP_TESTS" >> "$TMP/affected_tests.txt"
+fi
+
 if [ ! -s "$TMP/affected_tests.txt" ]; then
   echo "selective: no affected test projects, skipping build/test"
   exit 0

@@ -3,10 +3,11 @@ using System.Collections.Generic;
 namespace PixelLabSheetAssembler;
 
 /// <summary>
-/// Maps a PixelLab export direction name to its grid-sheet row index. Row order is the
-/// KhaozEngine.Sprites.Direction8 integer order (S, SE, E, NE, N, NW, W, SW), which is exactly
-/// what PixelLabSpriteLoader.FromGridSheet expects. Pinned against the live enum by
-/// PixelLabSheetAssembler.Tests.DirectionRowsTests so an enum reorder fails loudly.
+/// Maps a PixelLab export direction name to its grid-sheet row index, in the canonical S, SE, E, NE,
+/// N, NW, W, SW row order. That order used to mirror KhaozEngine.Sprites.Direction8, but the whole
+/// KhaozEngine.Sprites package (Direction8 included) was deleted in the MonoGame purge, so this order
+/// is now the sole source of truth, asserted directly by
+/// PixelLabSheetAssembler.Tests.DirectionRowsTests.
 /// </summary>
 public static class DirectionRows
 {

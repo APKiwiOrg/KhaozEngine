@@ -76,7 +76,7 @@ internal static class Program
             Console.WriteLine($"frameCount = {result.FrameCount}");
             Console.WriteLine($"suggested fps = {result.SuggestedFps:0.#}");
             Console.WriteLine(
-                $"FromGridSheet(sheet, frameCount: {result.FrameCount}, fps: {result.SuggestedFps:0.#}f)");
+                "(no engine loader for this sheet today - load the PNG yourself and slice the grid, see the tool README)");
             foreach (string w in result.Warnings)
                 Console.WriteLine(w);
 

@@ -12,9 +12,9 @@ namespace KhaozEngine.Tests.Dungeon
     /// file actually exists on disk, so the committed kit and the greybox map never drift apart.
     ///
     /// The manifest is read from the test output directory (the project idiom for committed assets,
-    /// see <c>Render3D/GltfLoaderTangentTests.cs</c>): the Showcase csproj's <c>assets/dungeon/**</c>
-    /// copy item flows transitively into this project's output via the Showcase project
-    /// reference.</summary>
+    /// see <c>Render3D/GltfLoaderTangentTests.cs</c>): this project's csproj copies the Showcase
+    /// <c>assets/dungeon/**</c> kit straight into its output, so the test needs no reference to the
+    /// Showcase project itself (which would over-select this heavy project, see #211).</summary>
     public class DungeonKitAssetTests
     {
         [Fact]

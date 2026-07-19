@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces, consistent with every other split
+         test project. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The showcase demo app itself: ShowcaseMenuTests names public ShowcaseMenu, and ShowcaseStringsTests
+         reaches internal ShowcaseStrings (via the InternalsVisibleTo grant in KhaozEngine.Showcase.csproj)
+         plus public ShowcaseApp. This tiny project is the ONLY test project that references Showcase, which
+         transitively pulls in Audio: keeping it out of KhaozEngine.Render.Tests is what stops an Audio- or
+         Showcase-adjacent change from dragging the heaviest test project into the affected set (#211). -->
+    <ProjectReference Include="../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
+    <!-- ShowcaseStringsTests names StringId and ResourceStringCatalog. -->
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+  </ItemGroup>
+</Project>

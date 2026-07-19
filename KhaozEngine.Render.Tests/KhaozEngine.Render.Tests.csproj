@@ -21,14 +21,23 @@
          instead of a hard-coded macOS system-font path that doesn't exist on Windows/Linux CI. Loaded from the
          test output dir ("Assets/Roboto-Regular.ttf") by the Gpu/Render2D font tests. -->
     <None Include="Assets/Roboto-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Dungeon/DungeonKitAssetTests.cs reads assets/dungeon/dungeon.manifest.json from this test's output
+         dir. The kit lives in the Showcase project (its demo renders it). Copy it straight in here so the
+         test needs no Showcase project reference. That reference chained Showcase -> Audio, so an Audio- or
+         Showcase-adjacent change dragged this heaviest test project into the selective affected set (#211). -->
+    <None Include="../KhaozEngine.Showcase/assets/dungeon/**"
+          Link="assets/dungeon/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
-    <!-- Dungeon/DungeonKitAssetTests.cs validates the Showcase greybox kit (DungeonKitMap/DungeonPiece). -->
+    <!-- Dungeon/DungeonKitAssetTests.cs validates the greybox kit (DungeonKitMap/DungeonPiece) against the
+         committed manifest, copied straight from the Showcase asset dir below (no Showcase project reference). -->
     <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
     <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
+    <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <!-- 7 Gpu-folder golden tests render Gui widgets (BootScreen, PatchNotesView, PopupPanel, SlotGrid, TabBar). -->
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
@@ -42,7 +51,6 @@
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
-    <ProjectReference Include="../KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
     <ProjectReference Include="../KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />
     <!-- Exposes SnapshotTool.DiffCommands for the headless diff/score command-layer tests (Snapshot folder). -->
     <ProjectReference Include="../SnapshotTool/SnapshotTool.csproj" />

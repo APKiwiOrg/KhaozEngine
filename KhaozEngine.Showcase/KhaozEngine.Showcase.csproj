@@ -32,8 +32,8 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <!-- Let the engine test project verify the localization catalog (ShowcaseStrings + resx) resolves. -->
-    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <!-- Let the showcase test project verify the localization catalog (internal ShowcaseStrings + resx) resolves. -->
+    <InternalsVisibleTo Include="KhaozEngine.Showcase.Tests" />
     <!-- Run the localization analyzer on the showcase (the worked example) so KELOC001/002 are enforced here
          in-repo, proving the diagnostics fire on real consumer-style code. -->
     <ProjectReference Include="../KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj"

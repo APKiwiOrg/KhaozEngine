@@ -35,12 +35,13 @@ each folder's dominant references and corrects mismatches before the move):
 | `KhaozEngine.Foundation.Tests` | Primitives, App, Localization, Logging, Platform, Http, Content, Persistence, Diagnostics, Updates + root foundation/determinism files |
 | `KhaozEngine.Simulation.Tests` | Ecs, Simulation + root ECS files (except the Netcode-coupled integration file, which goes to Server) |
 | `KhaozEngine.Server.Tests` | Netcode, Replication, Sharding, WorldStore, NetWorld, ServerStatus, ServerAdminEndpoint, Identity, Social, Commerce, Benchmarks + `Simulation/FixedTickHostSimulatorIntegrationTests.cs` |
-| `KhaozEngine.Render.Tests` | Gpu, Render2D, Render3D, Windowing, Snapshot, Terrain, Telegraphs, ParticlesRender3D, Imaging, Showcase (owns `Gpu/goldens/`) + `Dungeon/DungeonKitAssetTests.cs` (validates Showcase kit content) |
+| `KhaozEngine.Render.Tests` | Gpu, Render2D, Render3D, Windowing, Snapshot, Terrain, Telegraphs, ParticlesRender3D, Imaging (owns `Gpu/goldens/`) + `Dungeon/DungeonKitAssetTests.cs` (validates the dungeon kit against a direct copy of the Showcase asset dir, no Showcase project reference, #211). The `Showcase/` folder tests moved out to their own project, see below |
 | `KhaozEngine.Gui.Tests` | Gui |
 | `KhaozEngine.MapEditor.Tests` | MapEditor, MapEditTool, MapDoc |
 | `KhaozEngine.Game.Tests` | Game, Locomotion, Navigation, Dungeon (minus the kit-asset file), Collision, Physics, Objectives, Progression + root collision files |
 | `KhaozEngine.Audio.Tests` | Audio, Sfx (Sfx tests the `KhaozEngine.Sfx.Tool` exe, referenced directly) |
 | `KhaozEngine.Particles.Tests` | Particles |
+| `KhaozEngine.Showcase.Tests` (added by #211) | `Showcase/` (the `ShowcaseStrings` catalog test and the `ShowcaseMenu` widget test). Split out of Render.Tests because it is the ONLY test project that references the `KhaozEngine.Showcase` demo app, which transitively pulls in Audio. Keeping this project tiny is what stops an Audio- or Showcase-adjacent change from dragging the heavy Render.Tests into the affected set |
 | `KhaozEngine.Tests` (rump) | ArchitectureTests and the genuinely cross-cutting remainder, kept deliberately small |
 | `KhaozEngine.TestSupport` (new, no tests) | Planned as shared fixtures/builders/custom attributes (e.g. `GpuFact`, the `AllocSensitive` fixture) used by 2+ clusters, referencing nothing beyond `KhaozEngine.Primitives`. As implemented it ended dependency-free instead, see "As implemented" below |
 | `KhaozEngine.TestSupport.Services` (new, no tests) | The package-coupled cross-cluster fakes (Updates, ServerStatus). References those two leaf packages, and is referenced ONLY by the test projects that need the fakes (Foundation, Gui, Game, Server) |
@@ -97,9 +98,11 @@ cluster from using directives, compile errors at the green gates catch the misse
 point of the split: selection precision comes from honest reference sets. The rump ended with ZERO
 `ProjectReference`s instead of the "potentially everything" guessed here: `ArchitectureTests` parses
 `*.csproj` XML directly rather than compiling against the projects it checks, so it needs no reference-
-graph edge to do its job. That is the opposite of the prediction above: the rump now runs only when its
-own files change, not on nearly every selective run, which under-selects it for a csproj-only change
-elsewhere that its rules would have caught. Tracked as #212.
+graph edge to do its job. That is the opposite of the prediction above: the rump ran only when its own
+files change, not on nearly every selective run, which under-selected it for a csproj-only change
+elsewhere that its rules would have caught. Fixed under #212 by a targeted rule in
+`ci-selective-test.sh`: whenever the diff touches any `*.csproj`, the rump is forced into the affected
+set alongside the dotnet-affected output (see Decision 5). It parses XML, so running it is cheap.
 
 `KhaozEngine.TestSupport` is `IsPackable=false`, ships nothing, and is exempt from the README catalog
 and `check-doc-versions.sh` (the guard checks packable projects only, verified during
@@ -127,7 +130,10 @@ encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable lo
    unknown before-sha falls back to FULL.
 2. Force-FULL file classes (belt and braces over the tool's own handling): `.github/workflows/**`,
    `scripts/**`, `Directory.Build.props`, `nuget.config`, `*.slnx`, `.config/dotnet-tools.json`.
-3. Otherwise run `dotnet affected`, intersect with slnx test projects.
+3. Otherwise run `dotnet affected`, intersect with slnx test projects. Then, if the diff touched any
+   `*.csproj`, add the architecture-test rump (`KhaozEngine.Tests`) to that set: it has zero
+   `ProjectReference`s so dotnet-affected never reaches it, yet its rules validate csproj XML, so a
+   csproj-only violation would otherwise slip to the next full run (#212, see Decision 3).
 4. Empty set (docs-only push): doc guard only, no restore/build/test/pack. The job goes green in
    under a minute, and this is the common case the change exists for (docs, governance, changelog
    pushes).
@@ -205,11 +211,20 @@ double, `Foundation.Tests` + `Gui.Tests`), `FakeAppDataEnvironment` (`IAppDataEn
 `Foundation.Tests` + `MapEditor.Tests`), and `GltfTriangleFixtures` (headless SharpGLTF triangle-glb
 writers, `Render.Tests` + `MapEditor.Tests`). Each copy carries an in-file comment naming its sibling.
 
-Two known selection imprecisions surfaced after the split, both verified, neither actioned:
+Two known selection imprecisions surfaced after the split, both verified, both now fixed:
 
-- **#211, over-selection.** `KhaozEngine.Render.Tests` references `KhaozEngine.Showcase` for one
-  kit-asset test (`DungeonKitAssetTests.cs`), and `Showcase` references `KhaozEngine.Audio` for its
-  demo, so an Audio-only change drags the heaviest test project (2,124 tests) into the affected set.
-- **#212, under-selection.** The rump ended with zero `ProjectReference`s (see the Decision 3
-  correction above), so a csproj-only change elsewhere that `ArchitectureTests` would flag does not
-  mark the rump affected, and is caught only at the next full run, not the push that introduced it.
+- **#211, over-selection (fixed).** `KhaozEngine.Render.Tests` referenced `KhaozEngine.Showcase`, and
+  `Showcase` references `KhaozEngine.Audio` for its demo, so an Audio-only change dragged the heaviest
+  test project (2,124 tests) into the affected set. The premise that the reference was solely for the
+  `DungeonKitAssetTests.cs` kit-asset test was wrong: `Showcase/ShowcaseStringsTests.cs` (internal
+  `ShowcaseStrings` via the IVT grant, plus public `ShowcaseApp`) and `Showcase/ShowcaseMenuTests.cs`
+  (public `ShowcaseMenu`) also compiled against Showcase. Fix: the two `Showcase/` code tests moved to a
+  new tiny `KhaozEngine.Showcase.Tests` project (the only test project that references Showcase now, with
+  the IVT grant retargeted to it), and `DungeonKitAssetTests.cs` stayed in Render.Tests but now copies
+  the `assets/dungeon/**` kit straight into its own output instead of getting it transitively from the
+  Showcase reference. Render.Tests no longer references Showcase, so an Audio change now flags
+  {Audio.Tests, Showcase.Tests}, not the heavy Render.Tests.
+- **#212, under-selection (fixed).** The rump ended with zero `ProjectReference`s (see the Decision 3
+  correction above), so a csproj-only change elsewhere that `ArchitectureTests` would flag did not mark
+  the rump affected, and was caught only at the next full run. Fix: `ci-selective-test.sh` now adds the
+  rump to the affected set whenever the diff touches any `*.csproj` (Decision 5, step 3).

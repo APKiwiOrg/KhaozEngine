@@ -76,9 +76,10 @@ namespace KhaozEngine.Gpu
                 _ => throw new NotSupportedException($"Unknown GpuWindowKind '{window.Kind}'."),
             };
 
-            // Engine-owned default windowed device options (depth swapchain, Improved binding, sRGB) - the same
-            // options the previous windowed CreateWindow path passed, with the vsync flag now caller-selected.
-            // Veldrid's GraphicsDeviceOptions stays internal to this package so consumers never reference a Veldrid type.
+            // Engine-owned default windowed device options (no swapchain depth attachment, Improved binding,
+            // linear non-sRGB swapchain) - the same options the previous windowed CreateWindow path passed, with
+            // the vsync flag now caller-selected. Veldrid's GraphicsDeviceOptions stays internal to this package
+            // so consumers never reference a Veldrid type.
             var opts = new GraphicsDeviceOptions(false, null, syncToVerticalBlank, ResourceBindingModel.Improved, true, true);
             var scDesc = new SwapchainDescription(source, width, height, null, syncToVerticalBlank, false);
 

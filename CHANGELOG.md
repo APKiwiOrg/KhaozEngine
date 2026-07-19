@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.2.0
+
+Second backlog cleanup batch closing 18 issues: a localizable ban notice, analyzer correctness, CI
+selection fidelity, identity and persistence hardening, and the golden rebake. Minor bump: one additive
+public enum value and consumer-visible analyzer strictness.
+
+- NetWorld: new `ServerNoticeKind.Banned`. Both servers send the typed kind with an empty message
+  instead of the hardcoded English "banned" literal, so clients localize the notice through their own
+  catalog like Maintenance/Shutdown. Wire-additive, ban tests added for both servers (#137).
+- Analyzers: the DEBUG carve-out no longer exempts `#if !DEBUG` (release-only) code, and KELOC003 now
+  scans interpolated and concatenated string literals, with verbatim/raw interpolated strings still
+  exempt. Consumers may see new, correct diagnostics on adopt. The one engine site flagged (the
+  Showcase widget list label) is localized via a new `Widgets.ListItem` entry (#165, #171).
+- CI selection: the ArchitectureTests rump now runs on any csproj change (it has no ProjectReferences
+  for dotnet-affected to walk), and Showcase tests moved to a new tiny `KhaozEngine.Showcase.Tests`
+  project so the heaviest test assembly no longer over-selects on Showcase-adjacent edits. Test
+  assemblies 16 to 17, `Render.Tests` gains the direct `Game.Render3D` reference it actually uses
+  (#211, #212).
+- Identity: `HttpLoopbackListener` takes a caller-supplied localized completion page (default English
+  literal stays as the greppable escape hatch), binds ephemeral ports retry-safe, and gains its first
+  real-socket tests. OIDC validator tests now prove forged, tampered, and unsigned tokens are
+  rejected. `HttpServerStatusSource` TLS and size-cap hardening is tested (#174, #181, #182, #183, #184).
+- Robustness: `WorldPersistence.FlushAsync` observes faults via `OnStoreError` instead of rethrowing,
+  `PropCollisionFormat.ReadShape` validates array counts before allocating, `DeterministicFp` logs a
+  one-time Warn when the platform probe fails (new acyclic Determinism to Diagnostics reference), the
+  OpenAL clean-finish Stop has its own failure label, and two assertion-free or hang-prone tests are
+  fixed (#147, #156, #185, #210, #230).
+- FrameStats: `SpriteBatch` no longer counts 2D quads in `Triangles`, matching the counter's own
+  documented 3D-only contract (#86).
+- Goldens: the eight drifted scenes (scene3d family and both telegraph scenes) are rebaked on all
+  three backends from CI run 29706156441, restoring the full 0.06 verify margin (#18).
+- Docs and hygiene: stale device-option comment fixed, the PixelLab sheet assembler no longer
+  documents a deleted MonoGame-era loader, and the VfxPresets test roster is discovered by reflection
+  so a new preset cannot ship untested (#85, #186, #98).
+
 ## 14.1.2
 
 Backlog cleanup batch closing 17 infra, guard, packaging, and doc-accuracy issues, with no runtime API changes.

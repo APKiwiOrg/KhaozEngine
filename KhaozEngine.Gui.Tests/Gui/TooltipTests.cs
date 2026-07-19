@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -198,6 +199,91 @@ namespace KhaozEngine.Tests.Gui
         {
             var bounds = new Rect(100, 100, 80, 40);
             Assert.False(Tooltip.ShouldDismiss(TooltipDismiss.CallerDriven, showedThisFrame: false, ReleaseAt(new Vector2(10, 10)), bounds));
+        }
+
+        // --- TooltipLine.Scale / Tooltip.TitleScale: additive, defaulting to 1f. ---
+
+        [Fact]
+        public void Default_scale_of_one_is_inert_on_both_TooltipLine_and_TitleScale()
+        {
+            // The pre-existing 2-arg construction still compiles and defaults Scale to 1f; an explicit 1f is the
+            // same value, and threading an explicit titleScale: 1f through the fullest overload reproduces the
+            // plain overload's bounds exactly (the known 70x61 baseline from Auto_sizes_to_content_and_sits_above_the_anchor).
+            var twoArg = new TooltipLine("World", Vector4.One);
+            var explicitOne = new TooltipLine("World", Vector4.One, 1f);
+            Assert.Equal(1f, twoArg.Scale);
+            Assert.Equal(twoArg, explicitOne);
+
+            var plain = Tooltip.ComputeBounds(Font, "Hello", Font, new[] { twoArg }, new Vector2(300, 200), View, M);
+            var fullest = Tooltip.ComputeBounds(Font, "Hello", "", Font, Font, new[] { explicitOne },
+                new Vector2(300, 200), View, M, float.PositiveInfinity, titleScale: 1f);
+            Assert.Equal(plain, fullest);
+            Assert.Equal(70f, plain.Width);
+            Assert.Equal(61f, plain.Height);
+        }
+
+        [Fact]
+        public void Body_line_scale_halves_its_width_and_height_contribution()
+        {
+            // "longline" (8 chars) measures 80 wide, 20 tall at scale 1. At scale 0.5 it contributes 40 wide, 10
+            // tall. No title, one line: contentH = LineHeight*scale (the trailing LineSpacing is subtracted back
+            // off since there is no next line), panelH = contentH + PadY*2(16).
+            var plain = Tooltip.ComputeBounds(Font, "", Font, One("longline"), new Vector2(400, 300), View, M);
+            var half = Tooltip.ComputeBounds(Font, "", Font,
+                new[] { new TooltipLine("longline", Vector4.One, 0.5f) }, new Vector2(400, 300), View, M);
+
+            Assert.Equal(100f, plain.Width);    // 80 + PadX*2
+            Assert.Equal(36f, plain.Height);    // 20 + PadY*2
+            Assert.Equal(60f, half.Width);      // 40 + PadX*2
+            Assert.Equal(26f, half.Height);     // 10 + PadY*2
+        }
+
+        [Fact]
+        public void TitleScale_scales_the_title_row_width_and_height()
+        {
+            // Title "Hello" (50 wide, 20 tall) with a short body line "x" (10 wide) that never dominates the
+            // width, so the title row alone drives contentW. titleScale 2 doubles both the title's measured
+            // width and its LineHeight term in contentH; the body line's own (unscaled here) 20+3-3=20 term and
+            // TitleGap(5)/PadX/PadY are unaffected.
+            var lines = One("x");
+            var scaled = Tooltip.ComputeBounds(Font, "Hello", "", Font, Font, lines, new Vector2(300, 200), View, M,
+                float.PositiveInfinity, titleScale: 2f);
+            var plain = Tooltip.ComputeBounds(Font, "Hello", "", Font, Font, lines, new Vector2(300, 200), View, M,
+                float.PositiveInfinity, titleScale: 1f);
+
+            Assert.Equal(120f, scaled.Width);   // title 50*2=100 -> +PadX*2(20)
+            Assert.Equal(70f, plain.Width);     // title 50*1=50 -> +PadX*2(20)
+            Assert.Equal(81f, scaled.Height);   // (20*2+5) title + 20 body + PadY*2(16)
+            Assert.Equal(61f, plain.Height);    // (20*1+5) title + 20 body + PadY*2(16), matches the known baseline
+        }
+
+        [Fact]
+        public void Line_scale_shifts_the_wrap_budget_so_a_higher_scale_wraps_sooner()
+        {
+            // maxWidth 100 -> content budget 80. "one two" measures 70 unscaled: fits the budget at scale 1 (stays
+            // one line), but at scale 2 it occupies 140 design px, so it must wrap at the font-space budget 80/2=40
+            // - "one"(30) then "two"(30), each still at scale 2.
+            var unscaled = new[] { new TooltipLine("one two", Vector4.One, 1f) };
+            var doubled = new[] { new TooltipLine("one two", Vector4.One, 2f) };
+
+            var rNormal = Tooltip.ComputeBounds(Font, "", Font, unscaled, new Vector2(400, 300), View, M, maxWidth: 100f);
+            var rScaled = Tooltip.ComputeBounds(Font, "", Font, doubled, new Vector2(400, 300), View, M, maxWidth: 100f);
+
+            Assert.Equal(90f, rNormal.Width);    // 70 + PadX*2, single line
+            Assert.Equal(36f, rNormal.Height);   // 20*1 + PadY*2, single line
+
+            Assert.Equal(80f, rScaled.Width);    // widest wrapped chunk "one"/"two" = 30*2=60 -> +PadX*2(20)
+            Assert.True(rScaled.Width <= 100f);  // stays within the cap
+            // Two wrapped lines at scale 2: contentH = (20*2+3)*2 - 3 = 83 -> panelH 83+16=99.
+            Assert.Equal(99f, rScaled.Height);
+        }
+
+        [Fact]
+        public void TooltipLine_Of_carries_the_scale_through()
+        {
+            TooltipLine line = TooltipLine.Of(LocalizedText.Raw("hi"), Vector4.One, 0.5f);
+            Assert.Equal("hi", line.Text);
+            Assert.Equal(0.5f, line.Scale);
         }
     }
 }

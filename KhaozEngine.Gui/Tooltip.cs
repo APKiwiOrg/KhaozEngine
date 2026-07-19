@@ -8,11 +8,14 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Gui
 {
-    /// <summary>A single line of text in a <see cref="Tooltip"/>.</summary>
-    public readonly record struct TooltipLine(string Text, Vector4 Color)
+    /// <summary>A single line of text in a <see cref="Tooltip"/>, optionally at a per-line
+    /// <paramref name="Scale"/> (default <c>1f</c>) so one font can render a size hierarchy.</summary>
+    public readonly record struct TooltipLine(string Text, Vector4 Color, float Scale = 1f)
     {
-        /// <summary>Build a line from localized text (resolved now against the ambient catalog).</summary>
-        public static TooltipLine Of(LocalizedText text, Vector4 color) => new(text.Resolve(), color);
+        /// <summary>Build a line from localized text (resolved now against the ambient catalog),
+        /// optionally at <paramref name="scale"/>.</summary>
+        public static TooltipLine Of(LocalizedText text, Vector4 color, float scale = 1f) =>
+            new(text.Resolve(), color, scale);
     }
 
     /// <summary>
@@ -90,6 +93,11 @@ namespace KhaozEngine.Gui
         public Vector4 Border = new(0.24f, 0.255f, 0.31f, 0.78f);
         public Vector4 TitleColor = new(0.86f, 0.88f, 0.94f, 1f);
 
+        /// <summary>Uniform scale for the title row (the left title and the optional right-aligned value,
+        /// scaled together). Defaults to <c>1f</c> so a tooltip with no scaled lines renders unchanged. The
+        /// body lines carry their own per-line <see cref="TooltipLine.Scale"/>.</summary>
+        public float TitleScale = 1f;
+
         /// <summary>
         /// Opt-in: draw a 1px separator line under the title (in the <see cref="TooltipMetrics.TitleGap"/> band).
         /// Default <c>false</c> so existing tooltips render unchanged. Colour is <see cref="SeparatorColor"/>.
@@ -148,7 +156,7 @@ namespace KhaozEngine.Gui
             if (!IsVisible) { _showedThisFrame = false; return; }
             bool shownFrame = _showedThisFrame;
             _showedThisFrame = false;
-            Rect bounds = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, ResolveMaxWidth());
+            Rect bounds = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, ResolveMaxWidth(), TitleScale);
             if (ShouldDismiss(Dismiss, shownFrame, pointer, bounds)) IsVisible = false;
         }
 
@@ -198,26 +206,32 @@ namespace KhaozEngine.Gui
         /// <paramref name="titleRight"/>) keeps the bubble at least wide enough to hold it so the name never
         /// overlaps the right-aligned value (that floor can exceed the cap), while a one-column title just clips.
         /// <paramref name="maxWidth"/> &lt;= 0 or <see cref="float.PositiveInfinity"/> means unbounded.
+        /// <paramref name="titleScale"/> (default <c>1f</c>) scales the title row only; each body line's own
+        /// <see cref="TooltipLine.Scale"/> rides through <paramref name="lines"/>. The shorter overloads above
+        /// all keep an unscaled title (they never pass <paramref name="titleScale"/>), so this is the only
+        /// overload a caller with a scaled title needs.
         /// </summary>
         public static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
             ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
-            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth)
+            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
+            float titleScale = 1f)
         {
             bool bounded = maxWidth > 0f && !float.IsInfinity(maxWidth);
             var visual = WrapBody(bodyFont, lines, ContentWidthCap(maxWidth, m));
 
             bool hasTitle = !string.IsNullOrEmpty(title);
-            float titleRowW = hasTitle ? titleFont.Measure(title).X : 0f;
+            float titleRowW = hasTitle ? titleFont.Measure(title).X * titleScale : 0f;
             if (!string.IsNullOrEmpty(titleRight))
-                titleRowW += m.TitleRightGap + titleRightFont.Measure(titleRight).X;
+                titleRowW += m.TitleRightGap + titleRightFont.Measure(titleRight).X * titleScale;
 
             float contentW = titleRowW;
             for (int i = 0; i < visual.Count; i++)
-                contentW = MathF.Max(contentW, bodyFont.Measure(visual[i].Text).X);
+                contentW = MathF.Max(contentW, bodyFont.Measure(visual[i].Text).X * visual[i].Scale);
 
             float contentH = 0f;
-            if (hasTitle) contentH += titleFont.LineHeight + m.TitleGap;
-            contentH += visual.Count * (bodyFont.LineHeight + m.LineSpacing);
+            if (hasTitle) contentH += titleFont.LineHeight * titleScale + m.TitleGap;
+            for (int i = 0; i < visual.Count; i++)
+                contentH += bodyFont.LineHeight * visual[i].Scale + m.LineSpacing;
             if (visual.Count > 0) contentH -= m.LineSpacing;   // no trailing gap
 
             float w = contentW + m.PadX * 2f;
@@ -250,7 +264,10 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// The body lines as they lay out: each source line is kept verbatim when it fits (or when unbounded),
         /// or word-wrapped (spaces, hard-breaking an over-long token) into several lines that each inherit the
-        /// source colour when it exceeds <paramref name="maxContentWidth"/>. Shared by <c>ComputeBounds</c>
+        /// source colour and <see cref="TooltipLine.Scale"/> when it exceeds <paramref name="maxContentWidth"/>.
+        /// A line drawn at <see cref="TooltipLine.Scale"/> <c>s</c> occupies <c>Measure * s</c> design pixels, so
+        /// it wraps at the font-space budget <c>maxContentWidth / s</c> (guarded against <c>s &lt;= 0</c>, which
+        /// falls back to <c>1f</c>) so the drawn line actually stays within the cap. Shared by <c>ComputeBounds</c>
         /// and <see cref="Draw"/> so the measured height matches what is drawn.
         /// </summary>
         static List<TooltipLine> WrapBody(ITextMeasurer bodyFont, IReadOnlyList<TooltipLine> lines, float maxContentWidth)
@@ -260,13 +277,14 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < lines.Count; i++)
             {
                 TooltipLine line = lines[i];
-                if (!bounded || bodyFont.Measure(line.Text).X <= maxContentWidth)
+                float budget = bounded ? maxContentWidth / (line.Scale > 0f ? line.Scale : 1f) : maxContentWidth;
+                if (!bounded || bodyFont.Measure(line.Text).X <= budget)
                 {
                     outLines.Add(line);
                     continue;
                 }
-                foreach (string wrapped in TextLayout.Wrap(bodyFont, line.Text, maxContentWidth, hardBreak: true))
-                    outLines.Add(new TooltipLine(wrapped, line.Color));
+                foreach (string wrapped in TextLayout.Wrap(bodyFont, line.Text, budget, hardBreak: true))
+                    outLines.Add(new TooltipLine(wrapped, line.Color, line.Scale));
             }
             return outLines;
         }
@@ -289,7 +307,7 @@ namespace KhaozEngine.Gui
                 throw new InvalidOperationException(
                     "Tooltip.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
             float maxWidth = ResolveMaxWidth();
-            Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, maxWidth);
+            Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport, Metrics, maxWidth, TitleScale);
             GuiDraw.Fill(batch, white, b, Background);
             GuiDraw.Border(batch, white, b, 1f, Border);
 
@@ -297,14 +315,17 @@ namespace KhaozEngine.Gui
             float y = b.Y + Metrics.PadY;
             if (!string.IsNullOrEmpty(_title))
             {
-                batch.DrawString(_titleFont, _title, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)TitleColor);
+                batch.DrawString(_titleFont, _title, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)TitleColor, TitleScale);
                 if (!string.IsNullOrEmpty(_titleRight))
                 {
-                    float rw = _bodyFont.Measure(_titleRight).X;
+                    // The right-aligned value draws with the body font but scales WITH the title row (both pass
+                    // TitleScale), or it would draw unscaled and misalign against the scaled row, and its
+                    // right-edge anchor would be computed from the wrong (unscaled) width.
+                    float rw = _bodyFont.Measure(_titleRight).X * TitleScale;
                     batch.DrawString(_bodyFont, _titleRight,
-                        new Vector2(MathF.Floor(b.Right - Metrics.PadX - rw), MathF.Floor(y)), (Color)TitleRightColor);
+                        new Vector2(MathF.Floor(b.Right - Metrics.PadX - rw), MathF.Floor(y)), (Color)TitleRightColor, TitleScale);
                 }
-                y += _titleFont.LineHeight + Metrics.TitleGap;
+                y += _titleFont.LineHeight * TitleScale + Metrics.TitleGap;
                 if (ShowTitleSeparator)
                 {
                     float sepY = MathF.Floor(y - Metrics.TitleGap * 0.5f);
@@ -314,8 +335,8 @@ namespace KhaozEngine.Gui
             List<TooltipLine> visual = WrapBody(_bodyFont, _lines, ContentWidthCap(maxWidth, Metrics));
             for (int i = 0; i < visual.Count; i++)
             {
-                batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)visual[i].Color);
-                y += _bodyFont.LineHeight + Metrics.LineSpacing;
+                batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)), (Color)visual[i].Color, visual[i].Scale);
+                y += _bodyFont.LineHeight * visual[i].Scale + Metrics.LineSpacing;
             }
         }
     }

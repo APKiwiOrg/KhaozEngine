@@ -4019,7 +4019,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="10.31.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.1.0" />
 ```
 
 ```csharp
@@ -8277,8 +8277,8 @@ and execute the published binary; it prints one `AOT PROBE:` line and returns ex
 
 - **One shared version** across the whole engine: `<KhaozEngineVersion>` in `Directory.Build.props`. Every
   packable project sets `<Version>$(KhaozEngineVersion)</Version>`; bumping it releases all packages together.
-  `scripts/check-doc-versions.sh` (run in CI) enforces that the engine-version declarations in `ROADMAP.md`
-  and the `README.md` `<PackageReference>` example match.
+  `scripts/check-doc-versions.sh` (run in CI) enforces that the `<PackageReference>` examples in `README.md`
+  and this doc match `<KhaozEngineVersion>`, and that the newest `CHANGELOG.md` heading is for that version.
 - SemVer: additive = minor, fixes = patch, breaking = major. Local file-feed for inner-loop dev; GitHub Packages
   on `v*` tags.
 - To change the library: edit, add a headless test, `dotnet pack -c Release -o ./local-feed`, consume locally;

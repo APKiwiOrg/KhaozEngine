@@ -4,9 +4,13 @@
     <PackageId>KhaozEngine.Determinism</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Cross-platform deterministic floating-point environment control for fixed-tick / lockstep sims: DeterministicFpScope forces the CPU FP control register (ARM64 FPCR, x86 MXCSR) to a canonical IEEE state (round-to-nearest, FTZ/DAZ off, default exception masking) for the duration of a sim tick or sim-thread, and restores it afterward. Allocation-free. BCL-only (libc/ucrt fenv via P/Invoke); no native build assets.</Description>
+    <Description>Cross-platform deterministic floating-point environment control for fixed-tick / lockstep sims: DeterministicFpScope forces the CPU FP control register (ARM64 FPCR, x86 MXCSR) to a canonical IEEE state (round-to-nearest, FTZ/DAZ off, default exception masking) for the duration of a sim tick or sim-thread, and restores it afterward. Allocation-free. Depends only on KhaozEngine.Diagnostics (for the one-time unsupported-platform warning) plus BCL fenv P/Invoke; no native build assets.</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

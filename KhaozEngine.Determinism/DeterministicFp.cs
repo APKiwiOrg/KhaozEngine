@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Determinism;
 
@@ -107,14 +108,28 @@ public static class DeterministicFp
     {
         Architecture arch = RuntimeInformation.ProcessArchitecture;
         if (arch != Architecture.X64 && arch != Architecture.Arm64)
+        {
+            Log.Get("DeterministicFp").Warn(
+                $"DeterministicFp: unsupported architecture '{arch}'. Determinism enforcement is disabled - " +
+                "SetCanonical/DeterministicFpScope are permanent no-ops on this process. " +
+                "Check DeterministicFp.IsSupported at startup if your sim requires the guarantee.");
             return false;
+        }
         try
         {
             FpEnvBuffer tmp = default;
             return FpNative.FeGetEnv(ref tmp) == 0;   // throws if the library/symbol is unavailable
         }
-        catch
+        catch (Exception ex)
         {
+            // Silent before this fix: an unsupported OS/libc combination, a sandboxed environment blocking the
+            // native call, or an unexpected architecture left _supported false with zero diagnostic breadcrumb
+            // anywhere in the engine. That surfaced later as an unexplained sim/replication drift with no lead
+            // back to its actual root cause. One Warn at static-init time turns that into a startup-log finding.
+            Log.Get("DeterministicFp").Warn(
+                $"DeterministicFp: native FP-environment probe failed on {RuntimeInformation.OSDescription} ({arch}). " +
+                "Determinism enforcement is disabled - SetCanonical/DeterministicFpScope are permanent no-ops on this process. " +
+                "Check DeterministicFp.IsSupported at startup if your sim requires the guarantee.", ex);
             return false;
         }
     }

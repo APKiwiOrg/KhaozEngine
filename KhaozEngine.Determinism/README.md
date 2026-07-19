@@ -24,6 +24,10 @@ Pure-managed P/Invoke over the platform C library's `<fenv.h>` (libSystem / libm
 there is no per-RID native build asset and the package packs like any other managed one. On
 platforms or architectures where that is not wired up, `IsSupported` is false and
 `SetCanonical`/`Enter` are safe no-ops whose restore is also a no-op. They never corrupt FP state.
+The package depends on `KhaozEngine.Diagnostics` for one thing only: a one-time `Warn` logged
+through the static `Log` facade when the native probe fails or the architecture is unsupported, so a
+determinism guarantee silently dropping on an odd platform leaves a breadcrumb instead of surfacing
+only later as an unexplained sim/replication drift.
 
 Scope caveat: this controls the FP control register only. It does not remove non-determinism from
 JIT codegen variance (FMA contraction, auto-vectorization). See "Deterministic floating point" in

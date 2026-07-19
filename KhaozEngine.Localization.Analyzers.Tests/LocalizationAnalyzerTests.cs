@@ -291,7 +291,7 @@ class C { void M(SpriteBatch b, SpriteFont f, int i){ b.DrawString(f, $""Item {i
         [Fact]
         public async Task KELOC003_FiresOnEachInterpolatedLiteralSegment()
         {
-            // Both surrounding literal segments (""Item "" and "" of "") are player-facing copy; the two holes are not.
+            // Both surrounding literal segments (""Item "" and "" of "") are player-facing copy, the two holes are not.
             var src = @"
 using KhaozEngine.Render2D;
 using System.Numerics;

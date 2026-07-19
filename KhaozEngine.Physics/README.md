@@ -61,7 +61,10 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   plus the headless manifest-free loaders `LoadDirectory(dir)` (every `<id>.coll` keyed by file name)
   and `Load(entries)`. A GPU-less server loads the same baked shapes a client predicts against,
   byte-identical, so queries match and prediction reconciles. The glTF bake that PRODUCES `.coll`
-  files stays in `KhaozEngine.Render3D` / `ke-propbake`.
+  files stays in `KhaozEngine.Render3D` / `ke-propbake`. `Read` throws `InvalidOperationException` on
+  a bad magic, unsupported version, unknown shape kind, or an array count that is negative or could
+  not possibly fit in what remains of the stream (a truncated or corrupted file), rather than risking
+  an `OverflowException`/`OutOfMemoryException` from an unchecked allocation.
 
 ## Usage
 

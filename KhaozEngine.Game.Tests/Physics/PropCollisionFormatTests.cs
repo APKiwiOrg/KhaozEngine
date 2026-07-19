@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Numerics;
 using KhaozEngine.Physics;
@@ -59,5 +60,43 @@ public class PropCollisionFormatTests
         PropCollisionFormat.Write(compound, a);
         PropCollisionFormat.Write(compound, b);
         Assert.Equal(a.ToArray(), b.ToArray());
+    }
+
+    // Hand-built streams below use the raw wire kind byte (1 = convex hull, per PropCollisionFormat's internal
+    // KindConvexHull, a stable value that is never renumbered) instead of calling Write, so the corrupt count can
+    // be injected directly - the same shape a truncated file or a partial download would produce.
+    static MemoryStream StreamWithConvexHullCount(int count)
+    {
+        var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            w.Write(PropCollisionFormat.Magic);
+            w.Write(PropCollisionFormat.Version);
+            w.Write((byte)1);   // KindConvexHull
+            w.Write(count);
+        }
+        ms.Position = 0;
+        return ms;
+    }
+
+    [Fact]
+    public void Read_NegativeArrayCount_ThrowsInvalidOperationException()
+    {
+        // A corrupted/truncated .coll handing this a negative int32 must not reach `new Vector3[count]`: the CLR
+        // treats a negative array length as an unsigned overflow (OverflowException), not the
+        // InvalidOperationException this format promises for every other malformed-input case (issue #147).
+        using MemoryStream ms = StreamWithConvexHullCount(-1);
+        var ex = Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(ms));
+        Assert.Contains("negative", ex.Message);
+    }
+
+    [Fact]
+    public void Read_ArrayCountExceedingRemainingStream_ThrowsInvalidOperationException()
+    {
+        // A huge bogus positive count (garbage bits from corruption) must fail cleanly instead of attempting a
+        // multi-gigabyte allocation or crawling past the end of the stream (issue #147).
+        using MemoryStream ms = StreamWithConvexHullCount(int.MaxValue);
+        var ex = Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(ms));
+        Assert.Contains("remain", ex.Message);
     }
 }

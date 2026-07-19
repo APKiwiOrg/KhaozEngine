@@ -91,8 +91,10 @@ public static class PropCollisionFormat
     }
 
     /// <summary>Read a single baked shape from <paramref name="stream"/>. Throws
-    /// <see cref="InvalidOperationException"/> on a bad magic, unsupported version, or unknown kind. The stream
-    /// is left open.</summary>
+    /// <see cref="InvalidOperationException"/> on a bad magic, unsupported version, unknown kind, or an
+    /// array-count field that is negative or could not possibly fit in what remains of the stream (a truncated
+    /// or corrupted file) - never <see cref="OverflowException"/> or <see cref="OutOfMemoryException"/> from an
+    /// unchecked allocation. The stream is left open.</summary>
     public static PhysicsShape Read(Stream stream)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
@@ -111,6 +113,49 @@ public static class PropCollisionFormat
         return ReadShape(r);
     }
 
+    // Bytes the smallest possible encoding of one array element occupies, used only as a fallback ceiling when the
+    // stream can't report a remaining length (see ReadCount). A Vector3 is 3 floats, an int index is 4 bytes, and a
+    // compound child is at minimum a pose (7 floats) plus a shape kind byte.
+    const int Vector3Bytes = 12;
+    const int Int32Bytes = 4;
+    const int MinCompoundChildBytes = 7 * 4 + 1;
+
+    // Sane upper bound for any single count field, used only when the stream can't report a remaining length (a
+    // non-seekable Stream). Generously large: no legitimate baked shape approaches this list size.
+    const int MaxCountFallback = 100_000_000;
+
+    // Validates a length-prefixed array count read from the stream before it is used to allocate. A truncated or
+    // corrupted .coll file can hand this a garbage int32: a negative value would overflow new T[count] into an
+    // OverflowException (the CLR treats a negative array length as an unsigned overflow), and a huge positive
+    // value would throw OutOfMemoryException or stall the allocation - both outside the InvalidOperationException
+    // contract this format promises elsewhere (magic/version/kind). Rejects a negative count outright. When the
+    // stream can report its remaining length, also rejects a count whose minimum possible byte size could not
+    // possibly fit in what's left, catching a bogus positive count before the allocation is attempted rather than
+    // picking an arbitrary ceiling. Otherwise it falls back to a generous absolute maximum.
+    static int ReadCount(BinaryReader r, string what, int elementMinBytes)
+    {
+        int count = r.ReadInt32();
+        if (count < 0)
+            throw new InvalidOperationException(
+                $"PropCollisionFormat: {what} count {count} is negative.");
+
+        Stream stream = r.BaseStream;
+        if (stream.CanSeek)
+        {
+            long remaining = stream.Length - stream.Position;
+            if ((long)count * elementMinBytes > remaining)
+                throw new InvalidOperationException(
+                    $"PropCollisionFormat: {what} count {count} needs at least {(long)count * elementMinBytes} bytes, but only {remaining} remain in the stream.");
+        }
+        else if (count > MaxCountFallback)
+        {
+            throw new InvalidOperationException(
+                $"PropCollisionFormat: {what} count {count} exceeds the maximum of {MaxCountFallback}.");
+        }
+
+        return count;
+    }
+
     static PhysicsShape ReadShape(BinaryReader r)
     {
         byte kind = r.ReadByte();
@@ -118,7 +163,7 @@ public static class PropCollisionFormat
         {
             case KindConvexHull:
             {
-                int count = r.ReadInt32();
+                int count = ReadCount(r, "convex hull point", Vector3Bytes);
                 var points = new Vector3[count];
                 for (int i = 0; i < count; i++)
                     points[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
@@ -132,11 +177,11 @@ public static class PropCollisionFormat
             }
             case KindTriangleMesh:
             {
-                int vCount = r.ReadInt32();
+                int vCount = ReadCount(r, "triangle mesh vertex", Vector3Bytes);
                 var verts = new Vector3[vCount];
                 for (int i = 0; i < vCount; i++)
                     verts[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
-                int iCount = r.ReadInt32();
+                int iCount = ReadCount(r, "triangle mesh index", Int32Bytes);
                 var indices = new int[iCount];
                 for (int i = 0; i < iCount; i++)
                     indices[i] = r.ReadInt32();
@@ -149,7 +194,7 @@ public static class PropCollisionFormat
             }
             case KindCompound:
             {
-                int childCount = r.ReadInt32();
+                int childCount = ReadCount(r, "compound child", MinCompoundChildBytes);
                 var children = new CompoundChild[childCount];
                 for (int i = 0; i < childCount; i++)
                 {

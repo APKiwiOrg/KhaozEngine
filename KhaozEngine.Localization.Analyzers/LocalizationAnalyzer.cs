@@ -231,7 +231,7 @@ public sealed class LocalizationAnalyzer : DiagnosticAnalyzer
         {
             if (id.Identifier.ValueText != "DEBUG") continue;
 
-            // Count the enclosing `!` operators up to the condition root; an even count is a positive position.
+            // Count the enclosing `!` operators up to the condition root, an even count is a positive position.
             int negations = 0;
             for (SyntaxNode? p = id; p is not null; p = p.Parent)
             {

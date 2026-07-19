@@ -158,6 +158,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   standing on ground (0 = no dim, 1 = fully transparent). Default `false` keeps the legacy
   depth-only behavior byte-for-byte, with zero extra draws and no new pipeline bound. See
   `docs/USING-KHAOZENGINE.md`.
+- Dynamic-geometry reject (since 14.0.1, automatic): the main ground-decal pass conforms to the
+  static world but skips skinned characters, so a decal with a tall Y-band no longer paints onto a
+  character standing in it. The model pass tags skinned meshes (CPU- and GPU-skinning) in the normal
+  target's alpha and the decal pass discards those pixels. Rigid geometry still receives decals and a
+  scene with no skinned geometry is byte-for-byte identical. The early blob-shadow pass is unaffected.
 - Molten cracks + edge erosion (since 13.4.0, both opt-in and byte-neutral when unset):
   `DecalFillPattern.MoltenCracks` is an animated Voronoi crack web in decal-local XZ - a near-white
   core at each cell border falling off through a `GroundDecal.AccentColor` glow into the dark

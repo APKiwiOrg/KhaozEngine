@@ -2939,6 +2939,16 @@ projected pixel matches a ground pixel, and 1 is fully transparent). ~0.15 is a 
 starting point, just enough for a projected pixel to read as projected without dimming the shape
 toward invisibility.
 
+**Ground decals skip skinned characters** (since 14.0.1, automatic, no opt-in): the main
+ground-decal pass conforms to the static world but no longer paints onto skinned geometry, so a
+hazard decal with a tall Y-band (a MoltenCracks scar, a wide range ring) never plasters itself
+across the shoulders and head of a character standing in it. The model pass tags skinned meshes
+(both the CPU- and GPU-skinning paths) in the normal target's alpha and the decal pass rejects
+those pixels. The slope/stair conform band is untouched, rigid world geometry (terrain, props,
+static meshes) still receives decals exactly as before, and a scene with no skinned geometry
+renders byte-for-byte identically. Blob-shadow decals are unaffected: they draw before the skinned
+meshes, so there is nothing dynamic in the depth buffer for them to skip.
+
 **Molten cracks + edge erosion** (raw `GroundDecal` fields, since 13.4.0): two opt-in additions
 for hazard-aftermath ground effects (a molten slam scar, ice fracture, corruption ground). Both
 default off and leave non-opting decals byte-identical.

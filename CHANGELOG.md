@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.0.1
+
+Ground decals no longer paint onto skinned characters standing in them (issue #235). A hazard decal
+with a tall Y-band (a MoltenCracks scar, a wide range ring) used to conform to any surface inside its
+band, including a character's shoulders and head, because the decal pass read only depth and normals
+and had no way to tell dynamic geometry from the static world. The model pass now tags skinned
+geometry and the main decal pass rejects those pixels. No public API change, no per-decal tuning, and
+a scene with no skinned geometry renders byte-for-byte identically (every existing GPU golden passes
+unchanged on all three backends).
+
+- **Model pass tags dynamic geometry.** Skinned meshes (both the CPU- and GPU-skinning paths) now
+  write `0` into the normal target's alpha where the static world writes `1`. The tag rides a new
+  per-instance `IDynamic` vertex attribute (location 12, `InstanceData` grows 112 -> 116 bytes) on the
+  rigid / CPU-skinned pipeline, and the previously-spare `P[3].x` column on the GPU-skinning pipeline.
+  Rigid instances default to `0`, so their bytes are unchanged. The normal target's alpha was unused
+  (the background flag lives in the colour target's alpha), so nothing else reads it.
+- **Main decal pass rejects the tagged pixels.** `GroundDecalRenderer.Draw` takes a per-call
+  `rejectDynamicGeometry` flag (folded into the `Frame` UBO's spare `TimeQ.w` lane). Scene3D passes it
+  `true` for the main pass (after `ResolveDepthNormal`, so the tag is valid) and `false` for the early
+  blob-shadow pass (which runs before the skinned draws and resolves only depth, so it must not read
+  the normal target - and blob shadows want no such reject). The fragment discards a geometry pixel
+  whose resolved normal alpha is near zero. That threshold is deliberate: any static coverage in a
+  pixel keeps the resolved alpha at least `1/samples` (>= 0.125 at the 8x MSAA maximum), so a static
+  silhouette edge is never dropped and the no-skinned render stays byte-identical, MSAA included.
+- **Scope.** Only skinned meshes are tagged. Rigid world geometry (terrain, props, static meshes)
+  still receives decals, and the slope/stair conform band is untouched. The mechanism is per-instance,
+  so a future per-model opt-out (a dynamic prop that DOES want decals) is a one-line change, but no
+  public knob ships yet.
+- **Tests.** `GroundDecalDynamicRejectGpuTests` proves a CPU-skinned and a GPU-skinned mesh are left
+  unpainted while the surrounding ground is painted, with a rigid-mesh control that must still be
+  painted. Headless `UboLayoutTests` guards pin the `InstanceData` size and the GLSL tag plumbing.
+
 ## 14.0.0
 
 Render3D shadows (breaking removal): the orphaned light-direction quantization + temporal step-blend family

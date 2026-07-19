@@ -1092,7 +1092,7 @@ layout(set=0, binding=5) uniform sampler AtlasSamp;
 layout(location=0) in vec2 vLocal;    // quad-local coords in [-1,1] (rotate/stretch with the quad)
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
-layout(location=3) in vec4 vExtra;    // x aspect, y additivity, zw reserved
+layout(location=3) in vec4 vExtra;    // x aspect, y additivity, z orientation (0 camera / 1 flat ground), w soft-fade scale
 layout(location=4) in vec3 vWorld;    // fragment world position (flat across the quad's plane)
 layout(location=5) in vec4 vFlip;     // x frameA, y frameB, z blend, w packed grid+strength (0 = procedural)
 layout(location=0) out vec4 oColor;
@@ -1194,11 +1194,15 @@ void main() {
     // approach. The depth-color attachment is CLEARED to the background color's red channel, not to the far
     // plane, so a sample equal to that marker (Params.z) means no geometry: skip the fade there instead of
     // reconstructing a bogus near-plane point that would dim sprites against empty sky.
-    // vExtra.w is the per-sprite soft-fade scale (packed as 1 for the default): flat-on-ground sprites shrink
-    // it so the floor sitting immediately behind them does not erase them, dense smoke can grow it.
+    // vExtra.w is the per-sprite soft-fade scale (packed as 1 for the default), and vExtra.z is the orientation
+    // (0 camera-facing, 1 flat-on-ground). The fade is SKIPPED for flat-ground sprites: they lie in the ground
+    // plane by construction, so the surface reconstructed behind them IS that same coplanar floor, and at a
+    // grazing camera angle its reconstructed distance interleaves with the quad's own, erasing the near/far arcs
+    // of a shockwave ring (the partially-visible ground-ring bug). Camera-facing sprites still fade over
+    // Params.x world units of approach, so a glow sinking into geometry softens at the surface instead of clipping.
     float fade = 1.0;
     float fadeDist = Params.x * vExtra.w;
-    if (fadeDist > 0.0) {
+    if (fadeDist > 0.0 && vExtra.z < 0.5) {
         if (abs(depth - Params.z) > 1e-6) {
             vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, depth, 1.0);
             vec4 wp = InvViewProj * ndc;
@@ -1351,11 +1355,13 @@ void main() {
 
     // Footprint fade so the quad never hard-edges, then the soft depth occlusion (skipping the background marker,
     // the same recipe the particle pass uses), then the authored strength. Fade the offset toward zero (never
-    // discard) so edges stay soft.
+    // discard) so edges stay soft. The depth occlusion is SKIPPED for flat-ground sprites (vExtra.z >= 0.5),
+    // matching the particle pass: a flat-on-ground refraction ring lies in the coplanar floor, whose reconstructed
+    // distance interleaves with the quad's at grazing angles and would erase the ring's near/far arcs.
     float footprint = 1.0 - smoothstep(0.85, 1.0, d);
     float fade = 1.0;
     float fadeDist = Params.x * vExtra.w;
-    if (fadeDist > 0.0) {
+    if (fadeDist > 0.0 && vExtra.z < 0.5) {
         if (abs(depth - Params.z) > 1e-6) {
             vec2 fullUv = gl_FragCoord.xy * ratio / vec2(sz);
             vec4 ndc = vec4(fullUv.x * 2.0 - 1.0, 1.0 - fullUv.y * 2.0, depth, 1.0);

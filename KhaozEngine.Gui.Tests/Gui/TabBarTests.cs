@@ -199,5 +199,27 @@ namespace KhaozEngine.Tests.Gui
             Assert.Throws<ArgumentOutOfRangeException>(() => bar.TabRect(3));
             Assert.Throws<ArgumentOutOfRangeException>(() => bar.TabRect(-1));
         }
+
+        // --- TextScale: label-only, so it defaults to 1f and never perturbs the hit-geometry. ---
+
+        [Fact]
+        public void TextScale_defaults_to_one()
+        {
+            var bar = NewBar();
+            Assert.Equal(1f, bar.TextScale);
+        }
+
+        [Fact]
+        public void TabRect_is_independent_of_TextScale()
+        {
+            var bar = NewBar();
+            Rect before0 = bar.TabRect(0), before1 = bar.TabRect(1), before2 = bar.TabRect(2);
+
+            bar.TextScale = 0.5f;
+
+            Assert.Equal(before0, bar.TabRect(0));
+            Assert.Equal(before1, bar.TabRect(1));
+            Assert.Equal(before2, bar.TabRect(2));
+        }
     }
 }

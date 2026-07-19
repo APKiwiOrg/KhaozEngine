@@ -43,6 +43,14 @@ namespace KhaozEngine.Gui
         /// </summary>
         public float Opacity = 1f;
 
+        /// <summary>
+        /// Uniform scale for every tab label (each centred within its tab). Defaults to <c>1f</c> (today's
+        /// rendering, byte-for-byte). Scales the LABEL text only: the tab bodies, the shared border grid, the
+        /// active accent outline, and <see cref="TabRect"/> hit-testing are all unchanged, so a smaller scale
+        /// lets long labels fit a narrow bar without shrinking the tabs.
+        /// </summary>
+        public float TextScale = 1f;
+
         readonly LocalizedText[] _labels;
         int _activeIndex;
         int _hoverIndex = -1, _pressIndex = -1;
@@ -167,8 +175,8 @@ namespace KhaozEngine.Gui
                 Rect body = BodyRect(batch, frame, edges, i);
                 Vector4 text = (i == _activeIndex ? active : inactive).Text;
                 string str = _labels[i].Resolve();
-                Vector2 pos = GuiDraw.AlignedTextPos(body, Font.Measure(str), Font.LineHeight, GuiAlign.Center);
-                batch.DrawString(Font, str, pos, (Color)text);
+                Vector2 pos = GuiDraw.AlignedTextPos(body, Font.Measure(str), Font.LineHeight, GuiAlign.Center, TextScale);
+                batch.DrawString(Font, str, pos, (Color)text, TextScale);
             }
         }
 

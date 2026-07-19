@@ -24,17 +24,21 @@ public class ArchitectureTests
         "KhaozEngine.Foundation", "KhaozEngine.Game2D", "KhaozEngine.Game3D", "KhaozEngine.Server",
     };
 
-    // Opt-in backends (AGENTS.md "in NO umbrella" list + the Commerce SQL backends from DEPENDENCY-SEAMS.md).
-    // Pay-for-what-you-use: a consumer that does not want the heavy/platform-specific dependency must not
-    // drag it in transitively through any umbrella. Short names (KhaozEngine. prefix stripped).
+    // Opt-in backends (AGENTS.md "in NO umbrella" list + the Commerce SQL backends from DEPENDENCY-SEAMS.md,
+    // plus the Identity.Oidc / Identity.Discord opt-in provider packages README.md and DEPENDENCY-SEAMS.md
+    // document as "add explicitly like Physics.Bepu"). Pay-for-what-you-use: a consumer that does not want the
+    // heavy/platform-specific dependency must not drag it in transitively through any umbrella. Short names
+    // (KhaozEngine. prefix stripped).
     static readonly string[] OptInBackends =
     {
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
+        "Identity.Oidc", "Identity.Discord",
     };
 
-    // The GPU / runtime stack. None of these may appear in the Foundation umbrella's closure (Foundation is
-    // the GPU-free foundation). Short names.
+    // The GPU / runtime stack. None of these may appear in the Foundation or Server umbrella closures (both
+    // are documented GPU-free metapackages: the GPU-free foundation, and the headless no-GPU sim server).
+    // Short names.
     static readonly string[] GpuRuntimeStack =
     {
         "Gpu", "Windowing", "Render2D", "Render3D", "Gui", "Audio", "Particles", "Telegraphs",
@@ -200,6 +204,17 @@ public class ArchitectureTests
 
         bool clean = hits.Length == 0;
         Assert.True(clean, "Foundation is the GPU-free foundation but its ProjectReference closure pulls in the GPU/runtime stack: " + string.Join(", ", hits));
+    }
+
+    [Fact]
+    public void ServerUmbrella_StaysGpuFree()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        HashSet<string> closure = TransitiveClosure("KhaozEngine.Server", graph).Select(Short).ToHashSet(StringComparer.Ordinal);
+        string[] hits = GpuRuntimeStack.Where(closure.Contains).ToArray();
+
+        bool clean = hits.Length == 0;
+        Assert.True(clean, "Server is the headless no-GPU sim-server metapackage but its ProjectReference closure pulls in the GPU/runtime stack: " + string.Join(", ", hits));
     }
 
     [Fact]

@@ -6832,7 +6832,9 @@ finally { DeterministicFp.Restore(prior); }
 It is implemented over the platform C library's `<fenv.h>` (no native build asset; pure-managed
 P/Invoke), and works on arm64 and x64 (macOS / Linux / Windows). On an unsupported platform
 `IsSupported` is `false` and the scope is a safe no-op (it never corrupts FP state) - assert
-`DeterministicFp.IsSupported` in a debug build if your game requires the guarantee.
+`DeterministicFp.IsSupported` in a debug build if your game requires the guarantee. The unsupported
+case also logs a one-time `Warn` through `KhaozEngine.Diagnostics` (naming the platform/architecture),
+so the drop isn't silent - it shows up in the log instead of only later as an unexplained drift.
 
 **What it does NOT fix.** The scope controls the FP *register* only. It does not remove
 non-determinism that comes from JIT *codegen* differences:
@@ -7873,7 +7875,10 @@ client.NoticeReceived += notice =>
 if (client.LastNotice is { } n) ShowBanner(n.Message);
 ```
 
-`ServerNoticeKind` values: `Custom`, `Maintenance`, `Shutdown`.
+`ServerNoticeKind` values: `Custom`, `Maintenance`, `Shutdown`, `Banned`. `Banned` is a typed rejection the server
+sends (with an empty message) just before dropping a banned account: it carries no engine-authored text, so the
+client maps the kind to its own localized string rather than showing a hardcoded literal. Adding a kind is
+wire-additive (the byte is written and read raw), so an older client just treats an unknown kind as opaque.
 
 **Graceful drain (server shutdown).** Call `BeginDrain`, tick until complete, flush persistence, then dispose:
 
@@ -7909,7 +7914,9 @@ thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.A
 spawns. `InMemoryBanStore` is the default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace
 (`ban:{accountId}`) and caches in memory so the connect check stays synchronous (call `LoadAsync()` once at startup
 to hydrate from the store). Pass it as the trailing `banStore:` ctor arg on either server. Bans key on the verified
-account id; guests are not bannable.
+account id; guests are not bannable. A rejected account receives a typed `ServerNoticeKind.Banned` notice (empty
+message) just before the drop, which the client maps to its own localized "you are banned" string, so the ban text
+never ships from the server as a hardcoded literal.
 
 **Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
 `SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.

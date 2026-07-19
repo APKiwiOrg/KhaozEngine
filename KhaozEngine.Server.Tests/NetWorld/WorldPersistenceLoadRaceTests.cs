@@ -217,6 +217,28 @@ public class WorldPersistenceLoadRaceTests
     }
 
     [Fact]
+    public async Task StoreSaveFault_FlushAsyncSurfacesViaEvent_AndDoesNotThrow()
+    {
+        // FlushAsync used to await its pending list with a bare Task.WhenAll, which rethrows on the first fault and
+        // unwinds the drain loop before it reaches quiescence - the caller (e.g. a shutdown routine) got an
+        // exception instead of ever finding out the flush actually landed. Mirrors CellPersistenceTests'
+        // StoreSaveFault_IsSurfacedViaEvent_AndFlushDoesNotThrow (issue #230: align with CellPersistence.AwaitPendingAsync).
+        var store = new FaultingWorldStore();
+        var host = new FakeHost();
+        var persistence = new WorldPersistence(host, store, new WorldPersistenceConfig());
+        var errors = new List<Exception>();
+        persistence.OnStoreError += errors.Add;
+
+        host.Join(0, "hero", new PlayerMoveState { Position = Vector3.Zero });   // load returns null -> guard clears
+        persistence.SaveDirtyPass();                                            // creates a save task that faults
+
+        await persistence.FlushAsync();                                         // must NOT rethrow
+
+        Assert.Single(errors);
+        Assert.IsType<System.IO.IOException>(errors[0]);
+    }
+
+    [Fact]
     public async Task SaveDirtyPass_BatchFault_KeepsEveryRecordDirty_SurfacesOncePerPass_AndRetriesAfterRecovery()
     {
         // Two dirty accounts in one pass: this exercises the batching itself (SaveDirtyPass -> one SaveManyAsync

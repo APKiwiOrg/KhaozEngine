@@ -544,7 +544,9 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         string accountId = string.IsNullOrEmpty(subject) ? $"guest:{slot}" : subject;
         if (banStore is not null && banStore.IsBanned(accountId))
         {
-            SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Custom, "banned"));
+            // Typed rejection, no engine-authored text: the client maps ServerNoticeKind.Banned to its own localized
+            // string (the server owns no string catalog), the same way it does for Maintenance / Shutdown.
+            SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Banned, string.Empty));
             net.Disconnect(slot);
             return;
         }

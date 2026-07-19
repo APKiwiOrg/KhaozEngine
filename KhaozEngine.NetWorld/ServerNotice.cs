@@ -3,8 +3,13 @@ using System;
 namespace KhaozEngine.NetWorld;
 
 /// <summary>The kind of out-of-band notice a server pushes to connected clients. <see cref="Shutdown"/> also lets a
-/// client attribute a following drop to <c>DisconnectReason.ServerShutdown</c> (a planned restart, not a crash).</summary>
-public enum ServerNoticeKind : byte { Custom = 0, Maintenance = 1, Shutdown = 2 }
+/// client attribute a following drop to <c>DisconnectReason.ServerShutdown</c> (a planned restart, not a crash).
+/// <see cref="Banned"/> is the typed rejection sent just before a banned account is dropped: it carries no
+/// engine-authored display text, so the client maps the kind to its own localized string (a headless server owns no
+/// string catalog). Adding a value is wire-additive: the byte kind is written/read raw with no validation (see
+/// <see cref="MoveProtocol.EncodeNotice"/> / <see cref="MoveProtocol.DecodeNotice"/>), so an older client just treats
+/// an unknown kind as opaque.</summary>
+public enum ServerNoticeKind : byte { Custom = 0, Maintenance = 1, Shutdown = 2, Banned = 3 }
 
 /// <summary>
 /// A small typed message broadcast server->client and surfaced on <see cref="WorldClient"/> (event + latest

@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.1.2
+
+Backlog cleanup batch closing 17 infra, guard, packaging, and doc-accuracy issues, with no runtime API changes.
+
+- Doc guard: `scripts/check-doc-versions.sh` now also verifies `docs/USING-KHAOZENGINE.md`'s engine
+  `<PackageReference>` literals (previously 17 releases stale unnoticed) and that `CHANGELOG.md`'s newest
+  heading documents the current `<KhaozEngineVersion>`, not merely that the file was touched (#200, #201).
+- Release tooling: `scripts/tag-release.sh` derives the tag subject from the version-bump commit when HEAD
+  is a merge commit instead of minting a `merge(...)` subject (#214).
+- Agent hooks: the tag-collision guard's creation branch reads the version from `Directory.Build.props`
+  for the bare `tag-release.sh` invocation (previously a silent no-op), and the em-dash Write/Edit guard
+  covers `.cs` alongside `.md`, matching pre-commit (#204, #206).
+- Architecture guards: `Identity.Oidc`/`Identity.Discord` joined the umbrella opt-in leak guard, and a new
+  test asserts the Server umbrella's transitive closure stays GPU-free (#195, #196).
+- CI: `tools/DungeonKitGen` and `tools/TestModelGen` joined `KhaozEngine.slnx` so the root build and CI
+  compile them, and `cross-platform-gpu.yml` gained a least-privilege `permissions` block (#202, #203).
+- Packaging: `KhaozEngine.Game` now references `Gpu` directly (`GameApp` exposes `GpuBackendKind` in public
+  API), `Identity`'s `NoWarn` appends to the inherited value instead of overwriting it, and the
+  `Game.Render3D` and `Localization.Analyzers` package descriptions are accurate again (#179, #205, #180, #173).
+- Docs: retired `ROADMAP.md`/`TODO.md` references repointed at GitHub Issues (#191, #222, #247), and the
+  LiteNetLib transport classes, the stair-glide `MoveState` fields, and the two undocumented benchmark
+  output sections (ownership-lookup and replication, with real captured tables) are documented
+  (#192, #194, #190).
+
 ## 14.1.1
 
 Flat-ground particle and distortion sprites now skip the soft depth fade, fixing the `Shockwave` ring (and any

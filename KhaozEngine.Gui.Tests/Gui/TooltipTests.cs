@@ -206,7 +206,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Default_scale_of_one_is_inert_on_both_TooltipLine_and_TitleScale()
         {
-            // The pre-existing 2-arg construction still compiles and defaults Scale to 1f; an explicit 1f is the
+            // The pre-existing 2-arg construction still compiles and defaults Scale to 1f. An explicit 1f is the
             // same value, and threading an explicit titleScale: 1f through the fullest overload reproduces the
             // plain overload's bounds exactly (the known 70x61 baseline from Auto_sizes_to_content_and_sits_above_the_anchor).
             var twoArg = new TooltipLine("World", Vector4.One);
@@ -243,7 +243,7 @@ namespace KhaozEngine.Tests.Gui
         {
             // Title "Hello" (50 wide, 20 tall) with a short body line "x" (10 wide) that never dominates the
             // width, so the title row alone drives contentW. titleScale 2 doubles both the title's measured
-            // width and its LineHeight term in contentH; the body line's own (unscaled here) 20+3-3=20 term and
+            // width and its LineHeight term in contentH. The body line's own (unscaled here) 20+3-3=20 term and
             // TitleGap(5)/PadX/PadY are unaffected.
             var lines = One("x");
             var scaled = Tooltip.ComputeBounds(Font, "Hello", "", Font, Font, lines, new Vector2(300, 200), View, M,

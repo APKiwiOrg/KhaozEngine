@@ -206,7 +206,7 @@ namespace KhaozEngine.Gui
         /// <paramref name="titleRight"/>) keeps the bubble at least wide enough to hold it so the name never
         /// overlaps the right-aligned value (that floor can exceed the cap), while a one-column title just clips.
         /// <paramref name="maxWidth"/> &lt;= 0 or <see cref="float.PositiveInfinity"/> means unbounded.
-        /// <paramref name="titleScale"/> (default <c>1f</c>) scales the title row only; each body line's own
+        /// <paramref name="titleScale"/> (default <c>1f</c>) scales the title row only. Each body line's own
         /// <see cref="TooltipLine.Scale"/> rides through <paramref name="lines"/>. The shorter overloads above
         /// all keep an unscaled title (they never pass <paramref name="titleScale"/>), so this is the only
         /// overload a caller with a scaled title needs.

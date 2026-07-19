@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     // The FORWARD gets its own regression net: Button.Draw must forward LabelScale into the internal
     // GuiDraw.DrawButton, and dropping that forward (the pre-existing #232 bug) is invisible to any pure test.
-    // Capture A is today's exact internal call (scale defaulted); Capture B is the retained Button at its default
+    // Capture A is today's exact internal call (scale defaulted). Capture B is the retained Button at its default
     // LabelScale=1f - byte-identical proves the forward reproduces today's draw exactly. Capture C is the same
     // button at LabelScale=0.5f: it differs from B, and the label's lit-pixel extent roughly halves, proving a
     // non-1f scale actually reaches the draw. No golden image (self-relative only). Skipped unless KE_GPU_TESTS=1.

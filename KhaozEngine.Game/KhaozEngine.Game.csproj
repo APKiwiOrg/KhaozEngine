@@ -23,6 +23,10 @@
          transitively via Foundation -> Ecs -> Simulation for a Game2D/Game3D umbrella consumer. This makes it
          direct so KhaozEngine.Game alone (no Ecs/Foundation) still exposes the property. -->
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <!-- GameApp.Backend exposes GpuBackendKind directly (GameApp.cs), already reachable transitively via
+         Windowing -> Gpu, made direct per the same "used directly, referenced directly" rule as
+         App/Diagnostics/Simulation above. -->
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

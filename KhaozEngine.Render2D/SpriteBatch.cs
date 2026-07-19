@@ -551,7 +551,8 @@ void main() {
             _runs.Add(key, vtl); _runs.Add(key, vtr); _runs.Add(key, vbr);
             _runs.Add(key, vtl); _runs.Add(key, vbr); _runs.Add(key, vbl);
             _stats.Quads++;
-            _stats.Triangles += 2;   // two triangles per quad
+            // Triangles is documented as mesh-geometry-only (RenderFrameStats.Triangles, FrameStats above), so a 2D
+            // quad counts toward Quads, not Triangles.
         }
 
         /// <summary>The four rect-local corner offsets (TL, TR, BR, BL) from the centre of a w x h rect. Pure / headless.</summary>

@@ -52,7 +52,7 @@ namespace KhaozEngine.Tests.Gpu
 
             RenderFrameStats s = batch.FrameStats;
             Assert.Equal(5, s.Quads);
-            Assert.Equal(10L, s.Triangles);          // two per quad
+            Assert.Equal(0L, s.Triangles);            // 2D quads don't count as mesh triangles (3D-only field)
             Assert.Equal(1, s.DrawCalls);            // consecutive same-texture quads coalesce
             Assert.Equal(1, s.Flushes);              // one End -> one flush
             Assert.Equal(1, s.TextureSwitches);      // the initial bind

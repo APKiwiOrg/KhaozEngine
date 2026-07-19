@@ -285,8 +285,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   because the fragment premultiplies colour and zeroes the alpha lane for additive sprites. Depth state is test
   LessEqual / no write against the resolved scene depth, and a soft depth fade (`Scene3D.ParticleSoftFade`, world
   units, default 0.35, 0 disables the fade and its texture work) dims a sprite as it approaches geometry, scaled
-  per sprite by `SoftFadeScale` (a flat-ground sprite wants a small value like 0.1 so the floor just behind it does
-  not erase it). `Scene3D.ParticleQuality` (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second
+  per sprite by `SoftFadeScale`. The fade is skipped for flat-ground sprites (they lie coplanar with the floor the
+  fade measures against, so it would erase a ground ring's near/far arcs at a grazing angle; `SoftFadeScale` is
+  ignored there). `Scene3D.ParticleQuality` (`Full`/`Reduced`, host-set, not cleared by `Begin`) drops the second
   noise octave and the ember flicker on weak GPUs. The pass obeys the engine one-UBO rule: a single set-0 frame
   uniform, every per-sprite value on an instanced vertex-attribute stream, and the textures at set 0 bindings 1..5
   in the order they are sampled (scene depth + its sampler at 1 and 2, then the motion, atlas, and atlas sampler at

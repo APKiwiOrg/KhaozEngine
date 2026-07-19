@@ -36,9 +36,11 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>Billboard toward the camera (the default for glows, sparks, smoke).</summary>
         CameraFacing = 0,
-        /// <summary>Lie flat in the ground plane (XZ), for shockwave rings and ground glows. Pair with a small
-        /// <see cref="ParticleSprite.SoftFadeScale"/> so the floor immediately behind the quad does not erase
-        /// it, and lift the sprite slightly above the surface.</summary>
+        /// <summary>Lie flat in the ground plane (XZ), for shockwave rings and ground glows. The soft depth fade
+        /// (see <see cref="Scene3D.ParticleSoftFade"/>) is SKIPPED for this orientation: a quad lying in the ground
+        /// plane is coplanar with the very floor the fade measures against, and at a grazing camera angle that
+        /// erases the ring's near/far arcs. Just lift the sprite slightly above the surface so it wins the depth
+        /// test against the floor. <see cref="ParticleSprite.SoftFadeScale"/> is therefore ignored here.</summary>
         FlatGround = 1,
     }
 
@@ -121,8 +123,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Camera-facing (default) or flat in the ground plane (shockwave rings, ground glows).</summary>
         public ParticleOrientation Orientation;
         /// <summary>Per-sprite multiplier on <see cref="Scene3D.ParticleSoftFade"/>. 0 means 1 (the default).
-        /// Flat-on-ground sprites want a small value (around 0.1) so the floor just behind them does not fade
-        /// them out, and dense smoke can raise it for a longer, softer approach.</summary>
+        /// Dense smoke can raise it for a longer, softer approach. Ignored for
+        /// <see cref="ParticleOrientation.FlatGround"/> sprites, which skip the depth fade entirely (it would
+        /// erase a quad lying coplanar with the floor).</summary>
         public float SoftFadeScale;
         /// <summary>Optional authored-atlas playback. The default (an invalid <see cref="ParticleFlipbook.Texture"/>)
         /// keeps the sprite on the procedural <see cref="Shape"/> path. When active, the atlas frame selected by

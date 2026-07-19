@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.1.1
+
+Flat-ground particle and distortion sprites now skip the soft depth fade, fixing the `Shockwave` ring (and any
+ground ring or glow) rendering as only a partial arc in the VFX showcase.
+
+- **The bug.** A `ParticleOrientation.FlatGround` sprite lies coplanar with the floor, so the soft depth fade
+  reconstructed that same floor behind the quad and, at the showcase's shallow camera angle, its reconstructed
+  distance interleaved with the quad's own. `(sceneDist - fragDist)` went to zero (or negative) across the ring's
+  near and far arcs, clamping the fade to 0 and erasing them, so the nova ring showed only a stub of its ellipse at
+  every frame. Shrinking `SoftFadeScale` did not help (it left only the ellipse's side arcs), and lifting the quad
+  far enough to fix it floated a ground shockwave off the floor.
+- **The fix.** `ParticleFrag` and `DistortionFrag` gate the depth fade on camera-facing orientation
+  (`vExtra.z < 0.5`). Flat-ground sprites keep `fade = 1`: they lie in the ground plane by construction, so fading
+  them against that plane was a category error. The depth TEST still occludes them behind real geometry, and a
+  small `OriginOffset` lift still wins that test against the coplanar floor. The camera-facing path is unchanged
+  (its orientation lane is 0, so the added guard is always true there), so every 3D particle and distortion golden
+  renders byte-for-byte identically. No golden rebake.
+- **API docs.** `ParticleOrientation.FlatGround` and the `SoftFadeScale` field on `ParticleSprite`,
+  `DistortionSprite`, `ParticleLook`, and `DistortionLook` now state that flat-ground sprites ignore the fade. The
+  `Shockwave` preset drops its now-moot `SoftFadeScale = 0.12` on both flat-ground looks (nova ring + refraction
+  ring). `docs/USING-KHAOZENGINE.md` and the `Render3D` / `Particles.Render3D` package READMEs updated to match.
+- **Test.** `FlatGroundRingFadeTests` renders the flat-ground ring at the showcase camera and asserts lit pixels
+  at BOTH the near and far edges of the ellipse (the near arc was fully erased before the fix). A GPU behaviour
+  test, not a byte golden.
+
 ## 14.1.0
 
 Retained `Button` and `TabBar`, plus `Tooltip`, can now draw their text at a caller-set scale (issues

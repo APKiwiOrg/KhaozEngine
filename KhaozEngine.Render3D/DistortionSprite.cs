@@ -69,8 +69,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Camera-facing (default) or flat in the ground plane (shockwave rings, ground ripples).</summary>
         public ParticleOrientation Orientation;
         /// <summary>Per-sprite multiplier on <see cref="Scene3D.ParticleSoftFade"/> for the depth occlusion. 0
-        /// means 1 (the default), matching <see cref="ParticleSprite.SoftFadeScale"/>. Flat-on-ground sprites want
-        /// a small value so the floor just behind them does not fade their offsets to zero.</summary>
+        /// means 1 (the default), matching <see cref="ParticleSprite.SoftFadeScale"/>. Ignored for
+        /// <see cref="ParticleOrientation.FlatGround"/> sprites, which skip the depth occlusion entirely (it would
+        /// erase a refraction ring lying coplanar with the floor, the same reason the particle pass skips it).</summary>
         public float SoftFadeScale;
     }
 }

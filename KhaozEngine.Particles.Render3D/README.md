@@ -32,9 +32,9 @@ The per-emitter presentation recipe:
 - `Stretch`: velocity-stretch factor. 0 keeps a round camera-facing quad, larger elongates along motion.
 - `Orientation`: `CameraFacing` (default) billboards toward the camera, or `FlatGround` lies flat in the
   ground (XZ) plane for shockwave rings and ground glows.
-- `SoftFadeScale`: per-sprite multiplier on `Scene3D.ParticleSoftFade` (0 means 1, the default). A
-  `FlatGround` look wants a small value (around 0.1) so the floor immediately behind the coplanar quad does
-  not fade it out, and dense smoke can raise it for a longer, softer approach.
+- `SoftFadeScale`: per-sprite multiplier on `Scene3D.ParticleSoftFade` (0 means 1, the default). Dense smoke
+  can raise it for a longer, softer approach. Ignored for `FlatGround` looks: they skip the depth fade
+  entirely (a quad coplanar with the floor would otherwise erase its own near/far arcs at a grazing angle).
 - `Trails` and `TrailStyle`: when `Trails` is true and the pool has trail capacity, each particle's
   motion history is forwarded as a tapered ribbon to `Scene3D.DrawTrail`.
 - `TrailWidthScale`: trail half-width as a multiple of the particle's size (scaled down the tail).
@@ -63,10 +63,10 @@ The per-emitter presentation recipe:
 ```csharp
 var look = new ParticleLook
 {
-    Orientation = ParticleOrientation.FlatGround,
+    Orientation = ParticleOrientation.FlatGround,   // flat-on-ground: skips the depth occlusion
     Distortion = new DistortionLook
     {
-        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f,
     },
 };
 ```
@@ -90,9 +90,9 @@ var look = new ParticleLook
 scene.DrawParticles(system, in look);
 ```
 
-The `Shockwave` preset is the worked orientation example: its ring look is `FlatGround` with a small
-`SoftFadeScale` (0.12), and the ring phase lifts off the floor with `ParticleEffectPhase.OriginOffset`
-(y 0.09) so a quad exactly coplanar with the ground is not erased by the soft depth fade.
+The `Shockwave` preset is the worked orientation example: its ring look is `FlatGround`, so it skips the
+soft depth fade (which would erase a quad coplanar with the ground). The ring phase still lifts off the floor
+with `ParticleEffectPhase.OriginOffset` (y 0.09) so it wins the depth test against the coplanar surface.
 
 ## `VfxPresets`
 

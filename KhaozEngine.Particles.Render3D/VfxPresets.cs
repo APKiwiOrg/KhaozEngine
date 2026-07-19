@@ -361,8 +361,9 @@ namespace KhaozEngine.Particles
                             SizeCurve = ParticleCurve.EaseOut,
                             AlphaCurve = ParticleCurve.EaseOut,
                         },
-                        // Lifted slightly off the surface: a flat-ground quad exactly coplanar with the floor
-                        // would be erased by the soft depth fade.
+                        // Lifted slightly off the surface so the flat-ground quad wins the depth test against the
+                        // coplanar floor (an exactly-coplanar quad would z-fight it). The soft depth fade is skipped
+                        // for flat-ground sprites, so no fade-descale is needed.
                         BurstCount = 1, PoolCapacity = 4, OriginOffset = new Vector3(0f, 0.09f, 0f),
                     },
                     // Dust: a shell of alpha wisps pushed outward low to the ground.
@@ -405,22 +406,23 @@ namespace KhaozEngine.Particles
 
                 var looks = new[]
                 {
-                    // The nova ring lies flat in the ground plane, the ARPG read. SoftFadeScale is small so the
-                    // floor immediately behind the flat quad does not fade it out.
+                    // The nova ring lies flat in the ground plane, the ARPG read. Flat-ground sprites skip the soft
+                    // depth fade (it would erase a quad coplanar with the floor), so no SoftFadeScale is needed.
                     new ParticleLook
                     {
                         Shape = ParticleShape.Ring, ShapeParam = 0.15f, Blend = BillboardBlend.Additive,
-                        Orientation = ParticleOrientation.FlatGround, SoftFadeScale = 0.12f,
+                        Orientation = ParticleOrientation.FlatGround,
                     },
                     new ParticleLook { Shape = ParticleShape.Wisp, Blend = BillboardBlend.Alpha },
                     // The refraction ring: flat on the ground, a Ripple offset band that fades with the particle's
                     // alpha. Active distortion, so this phase warps the scene instead of drawing a visible sprite.
+                    // Flat-ground, so it skips the depth occlusion too (same coplanar-floor reason as the nova ring).
                     new ParticleLook
                     {
                         Orientation = ParticleOrientation.FlatGround,
                         Distortion = new DistortionLook
                         {
-                            Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+                            Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f,
                         },
                     },
                 };

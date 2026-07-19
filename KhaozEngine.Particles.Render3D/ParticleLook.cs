@@ -26,7 +26,8 @@ namespace KhaozEngine.Particles
         public float Strength;
 
         /// <summary>Per-sprite multiplier on <see cref="Scene3D.ParticleSoftFade"/> for the depth occlusion, mirroring
-        /// <see cref="SoftFadeScale"/>. 0 means 1. Flat-on-ground ripples want a small value.</summary>
+        /// <see cref="SoftFadeScale"/>. 0 means 1. Ignored for <see cref="ParticleOrientation.FlatGround"/> looks,
+        /// which skip the depth occlusion entirely (it would erase a ripple coplanar with the floor).</summary>
         public float SoftFadeScale;
 
         /// <summary>Whether this look drives the distortion path (a non-zero <see cref="Strength"/>).</summary>
@@ -68,8 +69,8 @@ namespace KhaozEngine.Particles
         public ParticleOrientation Orientation;
 
         /// <summary>Per-sprite multiplier on <see cref="Scene3D.ParticleSoftFade"/>. 0 means 1 (the default).
-        /// Flat-on-ground looks want a small value (around 0.1) so the floor just behind the quad does not fade
-        /// it out.</summary>
+        /// Ignored for <see cref="ParticleOrientation.FlatGround"/> looks, which skip the depth fade entirely (it
+        /// would erase a quad lying coplanar with the floor).</summary>
         public float SoftFadeScale;
 
         /// <summary>When true, each live particle's motion history (from <see cref="ParticleSystem.GetTrail"/>) is

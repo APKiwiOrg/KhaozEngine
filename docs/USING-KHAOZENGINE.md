@@ -3139,10 +3139,11 @@ scene.ParticleQuality = ParticleQuality.Reduced;   // weak GPU: drop the 2nd noi
 scene.ParticleSoftFade = 0.35f;                    // world units, 0 disables the depth fade entirely
 ```
 
-`ParticleSoftFade` dims a sprite as it nears geometry so smoke does not slice into the floor. A flat-ground sprite
-sits almost coplanar with the floor, so give those looks a small `SoftFadeScale` (around 0.1) or the floor just
-behind them fades them out. Lift them slightly off the surface too (the `Shockwave` ring uses `OriginOffset` y 0.09
-for exactly this).
+`ParticleSoftFade` dims a sprite as it nears geometry so smoke does not slice into the floor. The fade is SKIPPED
+for flat-ground sprites: a quad lying in the ground plane is coplanar with the very floor the fade measures
+against, so at a grazing camera angle it would erase the near/far arcs of a shockwave ring (`SoftFadeScale` is
+ignored for that orientation). Just lift a flat-ground look slightly off the surface so it wins the depth test
+against the floor (the `Shockwave` ring uses `OriginOffset` y 0.09 for exactly this).
 
 **Trails.** Give the pool history at construction (`new ParticleSystem(capacity, seed, trailSamples: 12)`, or set
 `ParticleEffectPhase.TrailSamples`), then set `Trails = true` on the look. The adapter forwards each particle's
@@ -3179,8 +3180,7 @@ scene.DrawDistortion(new DistortionSprite
     Shape = DistortionShape.Ripple,             // a shockwave ring
     ShapeParam = 0.15f,                          // ring band thickness (0 tight, 1 fat)
     Strength = 1.5f,                             // offset magnitude, the one authoring dial
-    Orientation = ParticleOrientation.FlatGround,
-    SoftFadeScale = 0.12f,                       // flat-on-ground, so a small fade
+    Orientation = ParticleOrientation.FlatGround,  // flat-on-ground: the depth occlusion is skipped for it
 });
 // or a batch: scene.DrawDistortions(spriteSpan);
 ```
@@ -3196,10 +3196,10 @@ The three shapes and when to reach for each:
 
 `Strength` is the magnitude dial (world-ish units), and for `Lens` its sign chooses magnify vs pinch. The apply
 pass converts it to a UV excursion and clamps the total to a small maximum, so stacking many hot sprites can
-never smear the whole screen. Sprites are depth-occluded against the scene like the modern particle pass: a wall
-between the camera and the sprite fades its offsets to zero. `SoftFadeScale` multiplies `Scene3D.ParticleSoftFade`
-for that fade (0 means 1). A flat-on-ground ripple wants a small value so the floor just behind it does not erase
-it.
+never smear the whole screen. Camera-facing sprites are depth-occluded against the scene like the modern particle
+pass: a wall between the camera and the sprite fades its offsets to zero. `SoftFadeScale` multiplies
+`Scene3D.ParticleSoftFade` for that fade (0 means 1). Flat-ground ripples SKIP the occlusion entirely (and ignore
+`SoftFadeScale`), because a ring coplanar with the floor would otherwise erase its own near/far arcs.
 
 Quality is a host knob, not cleared by `Begin` (the `ParticleQuality` pattern). Set it once when picking a
 graphics tier:
@@ -3224,10 +3224,10 @@ is a ready-made shimmering-air preset (a heat column plus a faint warm additive 
 ```csharp
 var look = new ParticleLook
 {
-    Orientation = ParticleOrientation.FlatGround,
+    Orientation = ParticleOrientation.FlatGround,   // flat-on-ground: skips the depth occlusion
     Distortion = new DistortionLook
     {
-        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f, SoftFadeScale = 0.12f,
+        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 1.5f,
     },
 };
 scene.DrawParticles(system, in look);   // this phase warps the scene instead of drawing sprites

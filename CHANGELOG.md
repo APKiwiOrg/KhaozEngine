@@ -5,6 +5,44 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.1.0
+
+Retained `Button` and `TabBar`, plus `Tooltip`, can now draw their text at a caller-set scale (issues
+#232, #237). `Button.LabelScale`, `TabBar.TextScale`, per-line `TooltipLine.Scale`, and
+`Tooltip.TitleScale` each default to `1f`, so every existing button and tooltip renders byte-for-byte
+identically. `Toggle` and `Slider` are untouched because they render no text at all (no `SpriteFont`
+field, no `DrawString` call), so there was nothing to scale.
+
+- **`Button.LabelScale`** (default `1f`). `Button.Draw` was dropping the trailing `scale` argument
+  `GuiDraw.DrawButton` already accepted, so a retained button had no way to draw a smaller label inside
+  a fixed rect. Forwarding the new field fixes that: `Bounds` and the press-origin hit-test stay
+  unchanged at any scale.
+- **`TabBar.TextScale`** (default `1f`). TabBar was drawing its per-tab labels inline at a hardcoded
+  scale of 1 (contrary to #232's claim that it already scaled text). Threaded through
+  `GuiDraw.AlignedTextPos` and the scaled `DrawString` overload. `TabRect` hit-testing, the tab bodies,
+  the shared border grid, and the active accent outline are all unchanged at any scale.
+- **`TooltipLine.Scale`** (default `1f`, a new additive third positional parameter on the
+  `readonly record struct TooltipLine`). Every existing 2-arg `new TooltipLine(text, color)` and
+  `TooltipLine.Of(text, color)` call site still compiles unchanged. **`Tooltip.TitleScale`** (default
+  `1f`) scales the title row (the left title and the optional right-aligned value, drawn with the body
+  font, scale together so they stay aligned). `ComputeBounds` gains one new trailing optional
+  `titleScale = 1f` parameter on its fullest (title + titleRight) overload only. The three shorter
+  overloads are unchanged in signature and keep an unscaled title. `WrapBody` now wraps each line at its
+  own font-space budget (`maxContentWidth / line.Scale`, guarded against `scale <= 0`) so a scaled line
+  still wraps within the bubble's width cap, and wrapped pieces inherit the source line's scale. Both
+  `Draw` and `Update` pass `TitleScale` into `ComputeBounds` so the drawn bounds and the
+  tap-outside-dismiss bounds always agree.
+- **Scale is label-only, everywhere.** No widget rect, hit-test, or chrome geometry reads any of these
+  fields. Only measured text width and line-height terms multiply by scale. A scale large enough to
+  overflow a fixed rect is the caller's responsibility, mirroring the existing immediate-mode
+  `GuiSurface` scale sinks.
+- **Tests.** Headless: `ButtonScaleTests`, `TabBarTests` (`TextScale` default + `TabRect` independence),
+  and `TooltipTests` (`ComputeBounds` is pure, so scale-1 byte-identity, per-line/title scale deltas, and
+  wrap-at-scale are all real coverage, not a proxy). GPU (self-relative captures, no new pixel golden):
+  `ButtonLabelScaleGpuTests` and `TabBarTextScaleGpuTests` each pin that the forward reproduces today's
+  draw at scale 1 and that a non-1 scale visibly shrinks only the label, leaving the surrounding chrome
+  byte-identical.
+
 ## 14.0.1
 
 Ground decals no longer paint onto skinned characters standing in them (issue #235). A hazard decal

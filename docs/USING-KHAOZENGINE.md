@@ -760,6 +760,23 @@ gui.Label(font, hudRect, Strings.Score, textColor, GuiAlign.Left, scale: 2f);   
 if (gui.Button(font, btnRect, Strings.Resume, style, scale: 1.5f)) Resume();     // label 1.5x, rect unchanged
 ```
 
+The retained widgets that draw text follow the same idiom, one scale field per widget defaulting to `1f`
+(label-only: the widget's rect, hit-test, and chrome never change with scale): `Button.LabelScale`,
+`TabBar.TextScale` (each tab label), and `Tooltip`'s per-line `TooltipLine.Scale` plus `Tooltip.TitleScale`
+for the title row, so a single shared font can render a whole size hierarchy.
+
+```csharp
+var compact = new Button(btnRect, Strings.Resume, font) { LabelScale = 0.56f };   // small label, same fixed rect
+
+var tip = new Tooltip(font, font);   // one shared font, the title and body scale independently
+tip.TitleScale = 1f;
+tip.Show(Strings.ItemName, new[]
+{
+    TooltipLine.Of(Strings.ItemRarity, accentColor, scale: 0.84f),
+    TooltipLine.Of(Strings.ItemFlavorText, mutedColor, scale: 0.42f),
+}, anchor);
+```
+
 **Retained `ScreenStack`** - a routed stack of `Screen`s (top-to-bottom input, bottom-to-top draw, transitions),
 for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(batch)`. A `Screen` reads input via
 `Manager.Pointer` (pointer/hit-test) and `Manager.InputManager` (menu nav + keyboard/gamepad; its pointer IS
@@ -969,6 +986,10 @@ tip.Show(Strings.CopperOre, LocalizedText.Raw("x128"), bodyLines, anchor); // le
 tip.Update(pointer);                               // auto-dismisses on tap-outside in TapOutside mode
 tip.Draw(batch, white);
 ```
+
+Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), and `tip.TitleScale` scales
+the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
+Gui text" above).
 
 **`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
 panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly

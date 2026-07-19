@@ -76,7 +76,8 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
   the slot rect to stay inside the frame.
 - Core widgets, all bounds-aware over `Pointer` (press-origin click-through invariant), drawn with a 1x1 white
   texture + `SpriteBatch`:
-  - `Button` - click via `IsTapIn`, hover/press visuals.
+  - `Button` - click via `IsTapIn`, hover/press visuals. `LabelScale` (default `1f`) scales the caption only
+    (`Bounds` and the hit-test are unchanged), forwarded into the shared `GuiDraw.DrawButton`.
   - `Label` - non-interactive text, aligned (left/center/right) and optionally word-wrapped, via `TextLayout`; a
     `Scale` field (default 1) uniformly scales the drawn text.
   - `Panel` - filled/bordered container; `BlocksPointer` reserves its region so lower layers skip hit-testing under it.
@@ -133,10 +134,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     dropdown for a host transition.
   - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
     activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
-    the panel body only on a real change; `ActiveIndex` is settable to restore/persist the selection without
+    the panel body only on a real change. `ActiveIndex` is settable to restore/persist the selection without
     raising the change signal. Active tab uses `ActiveStyle` (`GuiStyle.Active`), inactive tabs `InactiveStyle`
-    (`GuiStyle.Secondary`); labels are `LocalizedText`; `TabRect(i)` is the pure per-tab layout; `Opacity` fades
-    the whole bar for a host transition.
+    (`GuiStyle.Secondary`), labels are `LocalizedText`, and `TabRect(i)` is the pure per-tab layout, independent of
+    `TextScale` (default `1f`, scales every tab label only). `Opacity` fades the whole bar for a host transition.
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully
@@ -157,7 +158,10 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     title, a width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps long body lines
     downward instead of overflowing the viewport (hard-breaking a token longer than the cap), and platform-aware
     dismissal via `Dismiss` (`CallerDriven` desktop-hover vs `TapOutside` touch, driven by `Update(Pointer)`) - the
-    dismissal policy is a runtime value, not a compile-time platform branch.
+    dismissal policy is a runtime value, not a compile-time platform branch. Each `TooltipLine` carries its own
+    `Scale` (default `1f`, a third optional positional field), and `Tooltip.TitleScale` (default `1f`) scales the
+    title row, so one shared font can render a size hierarchy (e.g. a bright 1.0 title over 0.84/0.42 body lines).
+    A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer; blocks the pointer.
     Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
     `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick

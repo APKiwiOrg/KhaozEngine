@@ -35,6 +35,9 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --quick
 
 # jobs-3 gate: should we build a system scheduler? (runs alone, prints a verdict)
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate
+
+# replication-hotpath jobs-1 matrix only (runs alone, no cell/entities/ownership-lookup sections)
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --replication
 ```
 
 Always run in `-c Release`. Debug numbers are not representative.
@@ -91,6 +94,71 @@ entities axis - one hot World (E=65536), ForEach vs ParallelForEach, sweeping pe
   ~P× as per-row work grows. This is the ceiling parallel cell ticks (`~1x` for one cell) cannot reach: the entities
   axis splits a single hot system's rows across cores, so even a degenerate single-cell load uses every core - **once
   the per-row work clears the fork/join floor**. That caveat is why the benchmark prints the whole curve, not one row.
+
+### Ownership-lookup axis (gap 6)
+
+After the entities axis the benchmark prints a third section (`OwnerLookupBenchmark`): `ShardHost.TryGetOwner` -
+the per-player / per-NPC-per-tick owner lookup - timed as the O(1) `netId -> (cell, entity)` index it uses today
+against a naive linear owner-scan over the same host (the pre-index behaviour: scan every cell and
+`World.ForEach` for the netId). It sweeps the total entity count with the cell count held fixed, so it shows the
+index cost stay flat while the naive scan grows linearly - the quadratic-population wall the index removed.
+
+```
+ownership-lookup axis - ShardHost.TryGetOwner: O(1) index vs pre-index linear scan, sweeping total entities (gap 6)
+N (entities) index ns/lookup  scan ns/lookup   scan/index
+----------------------------------------------------------
+        4096           130.5         18026.6         138x
+       16384           117.1         13293.1         113x
+       65536            27.1         42502.0        1570x
+      262144            25.2        147964.4        5865x
+```
+
+(Representative 12-core run. Absolute numbers vary by machine.)
+
+- **N (entities)** - total owned entities across the grid for that row.
+- **index ns/lookup** - mean nanoseconds per `TryGetOwner` call (the O(1) index path).
+- **scan ns/lookup** - mean nanoseconds per naive linear owner-scan at the same `N` (sampled at a stride, not every
+  netId, to keep the O(N^2) naive path tractable to time, the reported per-lookup cost is unaffected).
+- **scan/index** - `scan ns/lookup / index ns/lookup`, how many times slower the naive scan is at that `N`.
+
+**index ns/lookup stays ~constant as `N` grows** (a dictionary hit). **scan ns/lookup grows ~linearly with `N`**.
+The per-tick cost is that lookup cost times (players + NPCs), so the index turns an `O(population x entities)`
+quadratic into `O(population)`.
+
+### Replication axis (replication-hotpath jobs-1)
+
+After the ownership-lookup axis the benchmark unconditionally runs a fourth section (`ReplicationTickBenchmark`,
+matrix from `ReplicationBenchmarkMatrix`): the real `AoiDeltaReplicator` hot path against a populated
+`ReplicationRegistry` - `NetId` entities carrying a few replicated components, `C` simulated clients each with an
+area-of-interest, movement-heavy steady state (every entity moves every tick, each client acks the previous
+tick's snapshot one tick later). The interest grid is rebuilt once per tick and shared across clients, matching
+`ShardHost.HomeInterest`'s per-serve-pass cadence inside `ShardedWorldServer`, and the world is captured once per
+tick into one consolidated buffer with `(offset, length)` segments (no per-component `byte[]`), so the win being
+measured is the shared once-per-tick scan and capture, not a cheaper per-client walk - each client's own
+`WriteFor` projection still walks the whole shared capture, filtering by its own interest set.
+
+```
+regime                  C       E  comp  per-tick ms    alloc B/tick   gen0/Kt   gen1/Kt   gen2/Kt     wire B/tick
+------------------------------------------------------------------------------------------------------------------
+C=8  E=4096  comp=1     8    4096     1        5.884       2,427,875     300.0     166.7      66.7          84,598
+C=8  E=4096  comp=4     8    4096     4        7.138       2,866,008     333.3     166.7      66.7          83,937
+C=8  E=16384 comp=1     8   16384     1       11.211       8,775,216    1100.0     500.0     166.7         342,206
+C=64 E=4096  comp=1    64    4096     1        7.095       5,780,610     700.0     266.7     133.3         668,503
+C=64 E=16384 comp=1    64   16384     1       34.641      22,161,168    3200.0    1533.3     666.7       2,708,327
+C=64 E=16384 comp=4    64   16384     4       43.965      23,813,686    3400.0    1666.7     700.0       2,668,843
+```
+
+(Representative 12-core run. Absolute numbers vary by machine. `--replication` runs this matrix alone.)
+
+- **C** / **E** / **comp** - client count, entity count, and replicated components per entity for that row.
+- **per-tick ms** - movement + the one shared (interest-grid rebuild + world capture) + every client's own
+  (Query + `WriteFor`), mean over the timed ticks.
+- **alloc B/tick** - bytes allocated on the benchmark thread per tick (`GC.GetAllocatedBytesForCurrentThread` delta).
+- **gen0/1/2 per Kt** - GC collections per 1000 ticks, by generation.
+- **wire B/tick** - total bytes `WriteFor` returned, summed across all clients for that tick.
+
+This measures the shared per-tick path only (one interest-grid rebuild plus one world capture per tick, however
+many clients read from it), not a from-scratch per-client capture.
 
 ### jobs-3 gate (`--gate`): is a system scheduler worth building?
 

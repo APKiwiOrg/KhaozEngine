@@ -114,8 +114,9 @@ version/release work.
   `local-feed` may be pruned up to the lowest version any consumer still pins (each consumer's `Directory.Build.props`
   `<KhaozEngineVersion>`; do not prune below it) without losing anything recoverable.
 - **Full doc sweep on EVERY feature / bug / change - not just the guard-checked declarations.**
-  `check-doc-versions.sh` verifies the engine-version declarations AND the package inventory (every packable
-  package has a README catalog row and ships its own `<Package>/README.md`). What it does NOT check is whether
+  `check-doc-versions.sh` verifies the engine-version declarations, the newest `CHANGELOG.md` heading, AND the
+  package inventory (every packable package has a README catalog row and ships its own `<Package>/README.md`).
+  What it does NOT check is whether
   any of that prose is CORRECT: a stale catalog row, or a package README describing removed API, sails straight
   through. The sweep below is for content accuracy, which no guard can do for you.
   Each artifact has ONE canonical source - edit that one, the rest point at it:
@@ -150,14 +151,16 @@ version/release work.
   Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`
   recursively** (root, `docs/`, `docs/design/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
   that should mention it does (and no stale doc still describes what you removed).
-- `scripts/check-doc-versions.sh` enforces two things. First, that the engine-version declarations
-  (EVERY `README.md` `<PackageReference>` example line, not just one) match the **engine version line**
-  (`<KhaozEngineVersion>`). `docs/ROADMAP.md` "Current released version" was checked here too and is not
-  any more: the roadmap is issues now, the file is gone, and no prose copy of the version is left to
-  drift. Second, that every packable package has
-  a README catalog row and ships its own `<Package>/README.md` via `<PackageReadmeFile>`, which is what catches
-  a new package landing undocumented. CI runs it on every push, so a forgotten bump or an undocumented package
-  fails the build. Consumer pins are exempt and may lag.
+- `scripts/check-doc-versions.sh` enforces three things. First, that the engine-version declarations
+  (EVERY `<PackageReference>` example line in `README.md` AND `docs/USING-KHAOZENGINE.md`, not just one) match the
+  **engine version line** (`<KhaozEngineVersion>`). `docs/ROADMAP.md` "Current released version" was checked here
+  too and is not any more: the roadmap is issues now, the file is gone, and no prose copy of the version is left
+  to drift. Second, that the newest `CHANGELOG.md` heading is `## <KhaozEngineVersion>`, so a version bump cannot
+  ship without a changelog entry that actually names the new version (the pre-commit and PostToolUse hooks only
+  check the file was touched). Third, that every packable package has a README catalog row and ships its own
+  `<Package>/README.md` via `<PackageReadmeFile>`, which is what catches a new package landing undocumented. CI
+  runs it on every push, so a forgotten bump, a stale doc version, a missing changelog entry, or an undocumented
+  package fails the build. Consumer pins are exempt and may lag.
 - SemVer: additive = minor, fixes = patch, breaking = major.
 - **One shared version line - the engine is entirely MonoGame-free.** `Directory.Build.props` carries a single
   `<KhaozEngineVersion>` governing the WHOLE engine; every packable project sets

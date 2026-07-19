@@ -48,10 +48,24 @@ expect() {
 # prose copy of the version to drift. Deliberately NOT repointed at Directory.Build.props: that is
 # where $ver is already read from, so the check would compare the file to itself and pass forever.
 #
-# README.md  ->  the copy-paste <PackageReference> example (shows the current release)
-while read -r v; do
-  expect README.md "PackageReference example version" "$v"
-done < <(grep -E 'PackageReference Include="KhaozEngine' README.md | grep -oE 'Version="[^"]+"' | sed -E 's/Version="([^"]+)"/\1/')
+# README.md + docs/USING-KHAOZENGINE.md  ->  the copy-paste <PackageReference> examples (show the current
+# release). Both carry the same paste-ready snippet and drift the same way, so check every such line in each.
+for doc in README.md docs/USING-KHAOZENGINE.md; do
+  while read -r v; do
+    expect "$doc" "PackageReference example version" "$v"
+  done < <(grep -E 'PackageReference Include="KhaozEngine' "$doc" | grep -oE 'Version="[^"]+"' | sed -E 's/Version="([^"]+)"/\1/')
+done
+
+# CHANGELOG.md must actually DOCUMENT this version: its newest "## X.Y.Z" heading has to be the current one.
+# The pre-commit and PostToolUse hooks only check the file was touched, not that it names the new version, so
+# a bump with an unrelated changelog edit sails through them. This closes that gap.
+newest=$(grep -m1 -E '^## ' CHANGELOG.md | sed -E 's/^##[[:space:]]+//; s/[[:space:]]+$//' || true)
+if [ "$newest" = "$ver" ]; then
+  echo "ok    CHANGELOG.md: newest entry heading = ## $ver"
+else
+  echo "FAIL  CHANGELOG.md: newest entry heading is '## $newest', engine is '$ver' (add a '## $ver' section at the top)"
+  fail=1
+fi
 
 # --- Package inventory guard -------------------------------------------------
 # Every packable KhaozEngine.* project must (a) have a row in the README.md catalog

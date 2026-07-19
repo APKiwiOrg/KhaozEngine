@@ -43,9 +43,29 @@ public class OidcTokenValidatorTests
             return MintIdTokenCore(new Dictionary<string, object>(), aud, expUtc, issuerOverride);
         }
 
-        private string MintIdTokenCore(Dictionary<string, object> claims, string aud, DateTime expUtc, string? issuerOverride)
+        // Signs a valid-looking token with a throwaway key the JWKS never advertises, so the signature cannot
+        // verify against the published key. This is the ValidateIssuerSigningKey boundary, not a claim check.
+        public string MintWithForeignKey(string sub, string aud, DateTime expUtc)
         {
-            RsaSecurityKey key = new(Rsa) { KeyId = Kid };
+            RSA foreign = RSA.Create(2048);
+            return MintIdTokenCore(new Dictionary<string, object> { ["sub"] = sub }, aud, expUtc, null, foreign);
+        }
+
+        // Builds an unsigned alg:none token (empty signature segment), the shape a validator that trusts the
+        // header algorithm would wrongly accept.
+        public static string MintAlgNone(string sub, string aud, string issuer, DateTime expUtc)
+        {
+            long exp = new DateTimeOffset(expUtc).ToUnixTimeSeconds();
+            string header = Base64UrlEncoder.Encode(Encoding.UTF8.GetBytes("{\"alg\":\"none\",\"typ\":\"JWT\"}"));
+            string payload = Base64UrlEncoder.Encode(Encoding.UTF8.GetBytes(
+                $"{{\"sub\":\"{sub}\",\"aud\":\"{aud}\",\"iss\":\"{issuer}\",\"exp\":{exp}}}"));
+            return $"{header}.{payload}.";
+        }
+
+        private string MintIdTokenCore(
+            Dictionary<string, object> claims, string aud, DateTime expUtc, string? issuerOverride, RSA? signingKey = null)
+        {
+            RsaSecurityKey key = new(signingKey ?? Rsa) { KeyId = Kid };
             SigningCredentials creds = new(key, SecurityAlgorithms.RsaSha256);
             JsonWebTokenHandler handler = new();
             SecurityTokenDescriptor descriptor = new()
@@ -122,5 +142,41 @@ public class OidcTokenValidatorTests
         (OidcTokenValidator v, FakeOidc f) = Build();
         string tok = f.MintIdTokenWithoutSub("client-1", DateTime.UtcNow.AddHours(1));
         Assert.Null(await v.ValidateAsync(tok));
+    }
+
+    [Fact]
+    public async Task Token_signed_with_a_foreign_key_is_rejected()
+    {
+        (OidcTokenValidator v, FakeOidc f) = Build();
+        string tok = f.MintWithForeignKey("sub-abc", "client-1", DateTime.UtcNow.AddHours(1));
+        Assert.Null(await v.ValidateAsync(tok));
+    }
+
+    [Fact]
+    public async Task Token_with_a_corrupted_signature_is_rejected()
+    {
+        (OidcTokenValidator v, FakeOidc f) = Build();
+        string tok = f.MintIdToken("sub-abc", "client-1", DateTime.UtcNow.AddHours(1));
+        Assert.Null(await v.ValidateAsync(CorruptSignature(tok)));
+    }
+
+    [Fact]
+    public async Task Unsigned_alg_none_token_is_rejected()
+    {
+        (OidcTokenValidator v, FakeOidc f) = Build();
+        string tok = FakeOidc.MintAlgNone("sub-abc", "client-1", f.Authority, DateTime.UtcNow.AddHours(1));
+        Assert.Null(await v.ValidateAsync(tok));
+    }
+
+    // Flips the first character of the base64url signature segment so the decoded signature differs from the
+    // real one (the first char carries six significant bits of byte 0, so the change is never a no-op), leaving
+    // the header/payload intact for the signature check to reject.
+    private static string CorruptSignature(string jwt)
+    {
+        string[] parts = jwt.Split('.');
+        char[] signature = parts[2].ToCharArray();
+        signature[0] = signature[0] == 'A' ? 'B' : 'A';
+        parts[2] = new string(signature);
+        return string.Join('.', parts);
     }
 }

@@ -103,4 +103,34 @@ public class ChangeDetectionTests
         World loaded = ser.Load(ser.Save(src));
         Assert.Empty(loaded.Added<CdSer>());             // SetByType (load) is un-hooked
     }
+
+    [Fact]
+    public void Added_EnumeratesInInsertionOrder()
+    {
+        var w = new World();
+        var entities = new Entity[16];
+        for (int i = 0; i < entities.Length; i++)
+        {
+            entities[i] = w.Spawn();
+            w.Set(entities[i], new CdA { V = i });
+        }
+        Assert.Equal(entities, w.Added<CdA>().ToArray());
+    }
+
+    [Fact]
+    public void Changed_EnumeratesInInsertionOrder()
+    {
+        var w = new World();
+        var entities = new Entity[16];
+        for (int i = 0; i < entities.Length; i++)
+        {
+            entities[i] = w.Spawn();
+            w.Set(entities[i], new CdA { V = i });
+        }
+        w.AdvanceTick();
+        // Mark in reverse spawn order so insertion order and id order differ.
+        for (int i = entities.Length - 1; i >= 0; i--)
+            w.MarkChanged<CdA>(entities[i]);
+        Assert.Equal(entities.Reverse().ToArray(), w.Changed<CdA>().ToArray());
+    }
 }

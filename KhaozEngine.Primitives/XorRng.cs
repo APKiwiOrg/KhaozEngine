@@ -27,8 +27,10 @@ public struct XorRng
         return x;
     }
 
-    /// <summary>Float in [0, 1). Uses the top 24 bits for a clean mantissa.</summary>
-    public float NextFloat() => (NextUInt() >> 8) * (1.0f / 16777216.0f);
+    /// <summary>Float in [0, 1). Uses the top 24 bits for a clean mantissa. Shares its fold with
+    /// <see cref="StableHash.ToUnitFloat"/>, so a hashed value and a drawn value map to [0, 1) off the same bits
+    /// identically.</summary>
+    public float NextFloat() => StableHash.ToUnitFloat(NextUInt());
 
     /// <summary>Float uniformly in [min, max). Always consumes exactly one draw, so a stream's shape never
     /// depends on whether a bound pair is degenerate. Degenerate (max &lt;= min) returns min.</summary>

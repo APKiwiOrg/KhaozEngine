@@ -2534,6 +2534,19 @@ The set is render-free and headless-testable (owns no GPU handle, never calls `S
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
 
+**Death / despawn dissolve.** The same skinned dissolve overload behind the teleport screen effect (see the
+CharDissolve / teleport section below) works here too - swap the plain `DrawSkinned` call above for the dissolve
+overload and drive `dissolve` from any game-side 0..1 timer (a death fade, a despawn countdown) instead of a
+`CharDissolve.Cover`:
+
+```csharp
+scene.DrawSkinned(handle, p.Pose, p.World, tint, Material.None, dissolve: deathTimer, edgeWidth: 0.08f, edgeColor: Color.White);
+```
+
+It discards per-fragment against a world-space noise mask - opaque, not alpha-blended - so overlapping
+dying/despawning characters raise no transparency-ordering concern. A `dissolve` of 0 still draws exactly like the
+plain overload, so it is safe to wire in unconditionally before the timer starts.
+
 The bridge smooths the drawn FEET HEIGHT on stairs so a climb reads as a glide, not a per-riser bob. A paced
 stair-climb produces a deliberate per-riser vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40
 staircase). The glide is SIGNAL-DRIVEN: it engages iff the sample carries a non-zero `CharacterSample.ClimbRate` (the

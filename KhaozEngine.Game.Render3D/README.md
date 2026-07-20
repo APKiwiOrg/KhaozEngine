@@ -160,6 +160,11 @@ defaults false on every constructor, set it orthogonally on any sample via `With
 an entity never marked downed renders byte-identically to before. The override is modelled as an internal
 `PoseOverride` seam so a future stunned / sitting / emote pose extends it without reworking the branch.
 
+A downed pose is not the only death/despawn treatment: the same `Scene3D.DrawSkinned` dissolve overload
+`CharDissolve` rides for teleports (`dissolve`/`edgeWidth`/`edgeColor`) works here too, driven by any game-side 0..1
+timer instead of `CharDissolve.Cover` - an opaque per-fragment discard, so it raises no transparency-ordering
+concern between overlapping dying/despawning characters. See docs/USING-KHAOZENGINE.md.
+
 ## One-shot and held actions over locomotion
 
 `AnimatedCharacter.PlayAction(clip, mask, fadeIn, fadeOut, speed, mode, hold)` -> `ActionHandle` plays a masked

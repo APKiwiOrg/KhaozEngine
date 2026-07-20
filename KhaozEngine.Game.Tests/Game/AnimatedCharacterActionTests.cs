@@ -223,5 +223,45 @@ namespace KhaozEngine.Tests.Game
             Assert.False(c.HasActiveActions);
             Assert.Equal(3f, Locals(c)[1].Translation.X, 2);    // arms back on locomotion
         }
+
+        // ---- #94 regression: an action in flight at death must not freeze and resume after respawn ----
+
+        [Fact]
+        public void EnterDowned_CancelsInFlightAction_NoResumeAfterRespawn()
+        {
+            // Regression for #94. Before the fix, EnterDowned never touched _actions: a held action in flight at the
+            // moment of death froze (UpdateDowned never advances it) and resumed its exact fade/sustain timeline on
+            // the first post-respawn Update. hold:true is the worst case named in the issue - sustain weight is
+            // already 1 and Hold suppresses the auto fade-out, so an uncancelled hold reappears at full weight with
+            // no fade-in and loops indefinitely.
+            Skeleton skel = LegsArms();
+            var c = new AnimatedCharacter(skel, Clips(), crossfade: 0.05f, stateDebounceSeconds: 0f);
+            var reference = new AnimatedCharacter(skel, Clips(), crossfade: 0.05f, stateDebounceSeconds: 0f);
+            Settle(c, 12f);
+            Settle(reference, 12f);
+
+            c.PlayAction(Attack(1f), UpperBody(), fadeIn: 0.1f, fadeOut: 0.15f, hold: true);
+            const float dt = 1f / 60f;
+            for (float t = 0f; t < 0.3f; t += dt) c.Update(12f, true, 0f, dt);   // mid sustain: held action live
+            Assert.True(c.HasActiveActions);
+
+            c.EnterDowned();
+            Assert.False(c.HasActiveActions);   // cancelled immediately on entry, not frozen mid-flight
+
+            for (int i = 0; i < 30; i++) c.UpdateDowned(dt);   // downed window: actions never advance
+            Assert.False(c.HasActiveActions);
+
+            c.ExitDowned();
+            reference.ExitDowned();   // same respawn snap on the reference, so both start from the identical baseline
+            Assert.False(c.HasActiveActions);
+
+            // Resume normal locomotion on both. The respawned character must be byte-identical to one that never
+            // played an action at all: no frozen/held pose reappears.
+            for (float t = 0f; t < 0.3f; t += dt) { c.Update(12f, true, 0f, dt); reference.Update(12f, true, 0f, dt); }
+
+            Matrix4x4[] a = reference.Pose;
+            Matrix4x4[] b = c.Pose;
+            for (int i = 0; i < a.Length; i++) Assert.Equal(a[i], b[i]);   // exact: no residual action pose
+        }
     }
 }

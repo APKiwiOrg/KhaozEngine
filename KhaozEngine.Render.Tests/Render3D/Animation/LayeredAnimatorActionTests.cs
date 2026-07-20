@@ -387,6 +387,98 @@ namespace KhaozEngine.Tests.Render3D.Animation
             Assert.Equal(10f, Locals(held)[0].Translation.X, 3);
         }
 
+        // ---- cancel-all: fades or retires every live action at once (e.g. before a downed transition) ----
+
+        [Fact]
+        public void CancelAllActions_Graceful_FadesEveryLiveAction_ThenRetires()
+        {
+            Skeleton skel = Flat3();
+            var anim = new LayeredAnimator(skel);
+            var actionA = TranslationClip("a", 0, new Vector3(10, 0, 0), duration: 5f);
+            var actionB = TranslationClip("b", 2, new Vector3(20, 0, 0), duration: 5f);
+            var maskA = new BoneMask(new[] { 1f, 0f, 0f });
+            var maskB = new BoneMask(new[] { 0f, 0f, 1f });
+            const float dt = 1f / 60f;
+
+            anim.PlayAction(actionA, maskA, fadeIn: 0.1f, fadeOut: 0.2f);
+            anim.PlayAction(actionB, maskB, fadeIn: 0.1f, fadeOut: 0.2f);
+            for (float t = 0f; t < 0.5f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }   // both in sustain
+            JointPose[] beforeCancel = Locals(anim);
+            Assert.Equal(10f, beforeCancel[0].Translation.X, 2);
+            Assert.Equal(20f, beforeCancel[2].Translation.X, 2);
+
+            anim.CancelAllActions();
+
+            // The frame right after cancel must not pop: continuity from the current weight on both actions.
+            anim.Update(dt); SetBase(anim, skel, 0f);
+            JointPose[] justAfter = Locals(anim);
+            Assert.True(MathF.Abs(justAfter[0].Translation.X - beforeCancel[0].Translation.X) < 2f, "pop on action A");
+            Assert.True(MathF.Abs(justAfter[2].Translation.X - beforeCancel[2].Translation.X) < 2f, "pop on action B");
+            Assert.True(anim.HasActiveActions);
+
+            // Drive out the cancel fade (0.2s): both retire, pose returns to base.
+            for (float t = 0f; t < 0.4f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+            Assert.False(anim.HasActiveActions);
+            JointPose[] afterRetire = Locals(anim);
+            Assert.Equal(0f, afterRetire[0].Translation.X, 4);
+            Assert.Equal(0f, afterRetire[2].Translation.X, 4);
+        }
+
+        [Fact]
+        public void CancelAllActions_Immediate_RetiresInstantly_SameFrame()
+        {
+            Skeleton skel = Flat3();
+            var anim = new LayeredAnimator(skel);
+            var held = TranslationClip("hold", 1, new Vector3(5, 0, 0), duration: 1f);
+            var oneShot = TranslationClip("swing", 0, new Vector3(10, 0, 0), duration: 5f);
+            const float dt = 1f / 60f;
+
+            anim.PlayAction(held, mask: new BoneMask(new[] { 0f, 1f, 0f }), fadeIn: 0.1f, fadeOut: 0.1f, hold: true);
+            anim.PlayAction(oneShot, mask: new BoneMask(new[] { 1f, 0f, 0f }), fadeIn: 0.1f, fadeOut: 0.1f);
+            for (float t = 0f; t < 0.5f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+            Assert.True(anim.HasActiveActions);
+
+            anim.CancelAllActions(immediate: true);
+
+            // Immediate: no fade frame needed, everything is retired THIS instant (before the next Update even runs).
+            Assert.False(anim.HasActiveActions);
+            for (int i = 0; i < anim.Layers.Count; i++) Assert.Equal(0f, anim.Layers[i].Weight);
+
+            // A subsequent Update composites nothing but base: pose reads back as pure base.
+            anim.Update(dt); SetBase(anim, skel, 3f);
+            JointPose[] locals = Locals(anim);
+            Assert.Equal(3f, locals[0].Translation.X, 4);
+            Assert.Equal(3f, locals[1].Translation.X, 4);
+            Assert.Equal(3f, locals[2].Translation.X, 4);
+        }
+
+        [Fact]
+        public void CancelAllActions_StaleHandleAfterCancelAll_IsNoOp()
+        {
+            Skeleton skel = OneBone();
+            var anim = new LayeredAnimator(skel);
+            var action = TranslationClip("swing", 0, new Vector3(10, 0, 0), duration: 5f);
+            const float dt = 1f / 60f;
+
+            ActionHandle h = anim.PlayAction(action, fadeIn: 0.05f, fadeOut: 0.05f);
+            for (float t = 0f; t < 0.2f; t += dt) { anim.Update(dt); SetBase(anim, skel, 0f); }
+
+            anim.CancelAllActions(immediate: true);
+            Assert.False(anim.HasActiveActions);
+            Assert.False(anim.Cancel(h));   // the generation bumped on retire: the old handle is stale, not live
+        }
+
+        [Fact]
+        public void CancelAllActions_OnEmptyAnimator_IsNoOp()
+        {
+            Skeleton skel = OneBone();
+            var anim = new LayeredAnimator(skel);
+            anim.CancelAllActions();               // graceful, nothing to do
+            anim.CancelAllActions(immediate: true); // immediate, nothing to do
+            Assert.False(anim.HasActiveActions);
+            Assert.Equal(0, anim.LayerCount);       // never touched the layer stack
+        }
+
         static AnimationLayer ActiveLayer(LayeredAnimator anim)
         {
             for (int i = 0; i < anim.Layers.Count; i++)

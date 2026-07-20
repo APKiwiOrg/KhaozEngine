@@ -296,13 +296,41 @@ namespace KhaozEngine.Render3D
         {
             if (!TryResolve(handle, out ActionSlot? slot) || slot!.Phase == ActionPhase.Idle) return false;
             if (slot.Cancelling) return true;   // already cancelling
+            BeginCancelFade(slot);
+            return true;
+        }
+
+        /// <summary>Cancel every in-flight one-shot action at once (fading or held), e.g. before a downed / death
+        /// transition so nothing keeps playing underneath it. With <paramref name="immediate"/> false (default) each
+        /// live action fades out gracefully from its current weight, the same continuity a single <see cref="Cancel"/>
+        /// gives (a slot already cancelling is left to finish its own fade). With <paramref name="immediate"/> true
+        /// every slot retires this instant with no fade - use this when the actions will not be advanced at all while
+        /// the caller's alternate state is active, so a graceful fade would freeze mid-fade and resume unfaded later
+        /// (a downed / death transition needs this when the frame loop that would advance the fade stops running
+        /// while downed). A no-op when no action is active.</summary>
+        public void CancelAllActions(bool immediate = false)
+        {
+            if (_activeActions == 0) return;
+            for (int i = 0; i < _actionSlots.Count; i++)
+            {
+                ActionSlot slot = _actionSlots[i];
+                if (slot.Phase == ActionPhase.Idle) continue;
+                if (immediate) { RetireSlot(slot); continue; }
+                if (slot.Cancelling) continue;   // already cancelling: leave its fade running
+                BeginCancelFade(slot);
+            }
+        }
+
+        // Shared graceful-cancel start for a live, not-yet-cancelling slot: fade from its CURRENT weight over its own
+        // fade-out duration (continuity, no pop), then retire. Used by both Cancel and CancelAllActions.
+        void BeginCancelFade(ActionSlot slot)
+        {
             slot.Cancelling = true;
             slot.CancelFromWeight = slot.Layer.Weight;   // fade from where we are now, not from 1 (continuity)
             slot.CancelElapsed = 0f;
             slot.CancelDuration = slot.FadeOut;          // reuse the action's fade-out length
             slot.Phase = ActionPhase.FadeOut;
             if (slot.CancelDuration <= 0f) RetireSlot(slot);   // instant cancel
-            return true;
         }
 
         // Advance every non-idle action one frame: ramp its weight per phase, transition phases, retire when done.

@@ -156,6 +156,12 @@ namespace KhaozEngine.Game
         /// for a stale/defaulted handle. Returns true if it referred to a live action.</summary>
         public bool CancelAction(ActionHandle handle) => _actions?.Cancel(handle) ?? false;
 
+        /// <summary>Cancel every in-flight action at once (fading or held) - e.g. before a downed / death pose so
+        /// nothing keeps playing underneath it. <paramref name="immediate"/> false (default) fades each one out
+        /// gracefully from its current weight, true retires them all this instant with no fade. A no-op if no action
+        /// has ever been played.</summary>
+        public void CancelAllActions(bool immediate = false) => _actions?.CancelAllActions(immediate);
+
         /// <summary>True while at least one one-shot action is fading in, playing, or fading out.</summary>
         public bool HasActiveActions => _actions is not null && _actions.HasActiveActions;
 
@@ -180,6 +186,10 @@ namespace KhaozEngine.Game
         /// nor the action compositor runs - the bridge calls <see cref="UpdateDowned"/> instead).</summary>
         public void EnterDowned()
         {
+            // Cancel any in-flight action immediately (no fade): UpdateDowned never advances the compositor, so a
+            // graceful fade would freeze mid-fade and resume unfaded on the first post-respawn Update instead.
+            _actions?.CancelAllActions(immediate: true);
+
             if (HasDownedClip)
             {
                 _downedClipPlaying = true;

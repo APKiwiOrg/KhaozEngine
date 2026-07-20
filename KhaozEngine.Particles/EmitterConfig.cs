@@ -102,6 +102,11 @@ public struct EmitterConfig
     /// <summary>Spatial/temporal frequency of the turbulence field. &lt;= 0 is treated as 1.</summary>
     public float TurbulenceFrequency;
 
+    /// <summary>When true, particles from this config ignore any <see cref="ParticleSystem.Attractor"/>: they
+    /// neither feel the pull nor get absorbed. Default false, so an attracted system pulls everything it
+    /// holds. Lets one phase of a multi-phase effect (an ambient haze) drift free while another drains.</summary>
+    public bool IgnoreAttractor;
+
     /// <summary>A short-lived, fast, fading spark (good additive hit/muzzle burst).</summary>
     public static EmitterConfig Spark => new()
     {

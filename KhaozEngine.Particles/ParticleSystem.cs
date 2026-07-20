@@ -30,6 +30,7 @@ public sealed class ParticleSystem
     private readonly float[] _spin;
     private readonly float[] _turbStrength;
     private readonly float[] _turbFreq;
+    private readonly bool[] _ignoreAttract;
 
     // Optional per-particle motion-history ring (opt-in via the ctor, default 0 keeps the legacy footprint).
     // _trailPos/_trailAge are one contiguous block per particle slot (capacity x _trailSamples), swap-removed
@@ -71,6 +72,7 @@ public sealed class ParticleSystem
         _spin = new float[capacity];
         _turbStrength = new float[capacity];
         _turbFreq = new float[capacity];
+        _ignoreAttract = new bool[capacity];
 
         _trailSamples = trailSamples > 0 ? trailSamples : 0;
         if (_trailSamples > 0)
@@ -107,6 +109,23 @@ public sealed class ParticleSystem
 
     /// <summary>Seconds between trail captures. Default 1/30 s. Ignored when trails are disabled.</summary>
     public float TrailSampleInterval { get; set; } = 1f / 30f;
+
+    /// <summary>
+    /// The active attractor, or null for none (the default, and the bit-identical legacy path). Re-assign each
+    /// frame to track a moving target. Applied during <see cref="Update"/> to every live particle whose config
+    /// did not set <see cref="EmitterConfig.IgnoreAttractor"/>.
+    /// </summary>
+    public ParticleAttractor? Attractor { get; set; }
+
+    /// <summary>Particles absorbed by the attractor during the most recent <see cref="Update"/>.</summary>
+    public int AbsorbedLastUpdate { get; private set; }
+
+    /// <summary>Total particles absorbed by the attractor over this system's lifetime.</summary>
+    public int AbsorbedTotal { get; private set; }
+
+    /// <summary>Invoked once per absorbed particle, with its final state, during <see cref="Update"/>.
+    /// Assign a cached delegate to keep the update loop allocation-free.</summary>
+    public Action<Particle>? OnAbsorbed { get; set; }
 
     /// <summary>
     /// Spawn a burst of up to <c>min(count, Capacity - ActiveCount)</c> particles at <paramref name="origin"/>.
@@ -208,6 +227,7 @@ public sealed class ParticleSystem
             _spin[idx] = spin;
             _turbStrength[idx] = cfg.TurbulenceStrength;
             _turbFreq[idx] = cfg.TurbulenceFrequency;
+            _ignoreAttract[idx] = cfg.IgnoreAttractor;
 
             if (_trailSamples > 0)
             {
@@ -224,6 +244,12 @@ public sealed class ParticleSystem
     public void Update(float dt)
     {
         _time += dt;
+        AbsorbedLastUpdate = 0;
+
+        ParticleAttractor? attractorSlot = Attractor;
+        bool hasAttractor = attractorSlot.HasValue;
+        ParticleAttractor attractor = attractorSlot.HasValue ? attractorSlot.Value : default;
+        float killSq = attractor.KillRadius > 0f ? attractor.KillRadius * attractor.KillRadius : 0f;
 
         int i = 0;
         while (i < _count)
@@ -252,8 +278,42 @@ public sealed class ParticleSystem
                 p.Velocity += ParticleNoise.Curl(p.Position * freq, _time * freq, p.Seed) * (_turbStrength[i] * dt);
             }
 
+            if (hasAttractor && !_ignoreAttract[i])
+            {
+                if (attractor.Strength > 0f)
+                {
+                    Vector3 toTarget = attractor.Target - p.Position;
+                    float distSq = toTarget.LengthSquared();
+                    if (distSq > 1e-12f)
+                    {
+                        float pull = attractor.Strength * attractor.StrengthCurve.Evaluate(p.Norm);
+                        p.Velocity += toTarget * (pull * dt / MathF.Sqrt(distSq));
+                    }
+                }
+
+                if (attractor.MaxSpeed > 0f)
+                {
+                    float speedSq = p.Velocity.LengthSquared();
+                    float maxSq = attractor.MaxSpeed * attractor.MaxSpeed;
+                    if (speedSq > maxSq)
+                    {
+                        p.Velocity *= attractor.MaxSpeed / MathF.Sqrt(speedSq);
+                    }
+                }
+            }
+
             p.Position += p.Velocity * dt;
             p.Rotation += _spin[i] * dt;
+
+            if (hasAttractor && killSq > 0f && !_ignoreAttract[i]
+                && Vector3.DistanceSquared(p.Position, attractor.Target) <= killSq)
+            {
+                AbsorbedLastUpdate++;
+                AbsorbedTotal++;
+                OnAbsorbed?.Invoke(p);
+                RecycleAt(i);
+                continue;
+            }
 
             if (_trailSamples > 0)
             {
@@ -336,6 +396,7 @@ public sealed class ParticleSystem
             _spin[i] = _spin[last];
             _turbStrength[i] = _turbStrength[last];
             _turbFreq[i] = _turbFreq[last];
+            _ignoreAttract[i] = _ignoreAttract[last];
 
             if (_trailSamples > 0)
             {

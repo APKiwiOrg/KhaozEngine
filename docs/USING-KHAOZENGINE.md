@@ -30,6 +30,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Animated characters (glTF clip playback + locomotion blend)](#animated-characters-gltf-clip-playback-locomotion-blend)
 - [Attack telegraphs / danger zones](#attack-telegraphs-danger-zones)
 - [Modern particle VFX](#modern-particle-vfx)
+- [Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.6.0)](#particle-attractors-particleattractor-absorb-on-arrival-1460)
 - [Screen-space distortion](#screen-space-distortion)
 - [Terrain (`KhaozEngine.Terrain` / `KhaozEngine.Terrain.Render3D`)](#terrain-khaozengineterrain-khaozengineterrainrender3d)
 - [Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)](#third-person-follow-camera-character-controller-followcamera3d-charactercontroller3d)
@@ -3189,6 +3190,66 @@ glow/ember/streak/smoke/ring/glint vocabulary without an asset pipeline.
 
 ---
 
+## Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.6.0)
+
+A `ParticleAttractor` is a world-space point pull applied to every live particle in a `ParticleSystem`, or
+every phase of a `ParticleEffectPlayer` that did not opt out. It is the primitive behind essence/soul-drain
+style effects: motes stream off a source and are absorbed into a moving target (a killer, a collector, a
+beacon), with a small cue on arrival.
+
+**Worked example: draining motes into a moving killer, spawn rate tied to a dissolve threshold.** A dying
+enemy plays `VfxPresets.EssenceMotes` (attracted gold motes + a free ambient haze that ignores the pull) and
+drains its essence into whichever player killed it. The killer moves, so the attractor target is re-assigned
+every frame. The spawn rate ramps with the corpse's own dissolve threshold instead of running flat from the
+first frame. And if the killer disconnects mid-drain, the motes should drift off and fade rather than snap or
+freeze:
+
+```csharp
+VfxPreset preset = VfxPresets.EssenceMotes;
+var drain = new ParticleEffectPlayer(preset.Effect, maxInstances: 1, seed: 11);
+ParticleLook[] looks = preset.Looks.ToArray();
+
+drain.OnAbsorbed = _ => killer.EssenceCounter++;   // a small per-mote cue: tick a counter, not a whole event
+
+// on death, start the drain at the corpse:
+drain.Play(corpse.Position, Vector3.UnitY);
+
+// each frame while the corpse is dissolving:
+drain.RateScale = corpse.DissolveThreshold;        // spawn rate ramps with the same value driving the fade
+drain.Attractor = killer.IsConnected
+    ? new ParticleAttractor
+    {
+        Target = killer.Position,                  // re-assigned every frame: the killer is moving
+        Strength = 26f,
+        StrengthCurve = ParticleCurve.EaseIn,       // a beat of drift before the pull takes over
+        KillRadius = 0.18f,
+        MaxSpeed = 6f,
+    }
+    : null;                                         // killer gone: release the motes to drift and fade
+
+drain.Update(dt);
+scene.DrawEffect(drain, looks);
+```
+
+`Attractor = null` (the killer despawning, disconnecting, or the drain simply ending) is not a special case:
+already-live particles keep their current velocity and age out on their own lifetimes, same as any particle
+whose effect finished, so there is nothing to clean up on the despawn path beyond clearing the field.
+`EmitterConfig.IgnoreAttractor` (set on `EssenceMotes`'s haze phase) is what keeps the ambient shroud drifting
+even while the motes are actively draining, so a multi-phase preset can mix an attracted stream with a free
+one.
+
+`RateScale` (player-level, a runtime multiplier on every phase's stream rate) and `ParticleEffectPhase.RateCurve`
+(authored per phase, an envelope over the phase's own active window) are two different knobs for two different
+drivers: `RateScale` is for a value your game computes each frame (a dissolve threshold, a channel-up windup),
+`RateCurve` is for a shape baked into the effect's authoring (a phase that tapers off near the end of its own
+duration regardless of what the game is doing). They multiply together and both leave bursts untouched.
+
+See `KhaozEngine.Particles/README.md`'s Attractor section for the field-by-field reference
+(`Target`/`Strength`/`StrengthCurve`/`KillRadius`/`MaxSpeed`) and the `AbsorbedLastUpdate`/`AbsorbedTotal`
+counters.
+
+---
+
 ## Screen-space distortion
 
 Distortion sprites warp the pixels behind them instead of drawing over them: heat haze, refractive shockwave
@@ -4044,7 +4105,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.5.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.6.0" />
 ```
 
 ```csharp

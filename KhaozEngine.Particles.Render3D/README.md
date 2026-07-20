@@ -111,6 +111,11 @@ read at roughly 8 to 12 world units from the camera, origin on the ground, +Y up
 - `ArcaneSparkle`: swirling violet-to-cyan magic sparkles that pulse and faintly light the caster.
 - `HeatHaze`: a shimmering heat haze, a slow rising column that warps the scene (a `Heat` distortion) under a
   faint warm additive shimmer. For braziers, lava, desert air, exhaust.
+- `EssenceMotes`: warm gold drain motes (SoftGlow, additive) pulled by whatever `ParticleAttractor` the player
+  sets, plus a free ambient haze phase (Wisp, additive, `IgnoreAttractor`) that keeps drifting once the drain
+  stops. Set `player.Attractor` each frame to drain into a moving target and drive `player.RateScale` from your
+  own ramp (a dissolve threshold). See `KhaozEngine.Particles/README.md`'s Attractor section for the full
+  snippet.
 
 ## Usage
 

@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.6.0
+
+A particle attractor: motes accelerate toward a moving world-space target and are absorbed on
+arrival. Unblocks the Ruinborne essence-drain kill effect (#255), the user-facing half of the
+skinned dissolve pass shipped in 14.4.0/14.5.0.
+
+- New public API: `ParticleAttractor` (`Target`, `Strength`, `StrengthCurve`, `KillRadius`,
+  `MaxSpeed`), a value struct assigned to `ParticleSystem.Attractor` (nullable, re-assign per frame
+  to track a moving target, null releases live particles to free drift/fade). Applied during
+  `ParticleSystem.Update` after turbulence and before position integration: every live particle not
+  opted out accelerates toward `Target` at `Strength * StrengthCurve.Evaluate(normalisedAge)`, then
+  the resulting velocity is clamped to `MaxSpeed` when positive. A particle within `KillRadius` of
+  `Target` after the position update is absorbed: removed, counted, and reported.
+- Absorb-on-arrival: `ParticleSystem.AbsorbedLastUpdate` (this frame) and `AbsorbedTotal` (lifetime)
+  counters, plus `Action<Particle>? OnAbsorbed` invoked once per absorbed particle with its final
+  state, for a small absorb cue (a flash, a sound, a currency tick).
+  `EmitterConfig.IgnoreAttractor` (default false) opts a phase's particles out of both the pull and
+  the absorb, so one phase of a multi-phase effect can drain while another drifts free.
+- `ParticleEffectPlayer` forwards the attractor to every phase pool: `Attractor` (assigns to all
+  phases, respecting each phase's `IgnoreAttractor`), `OnAbsorbed` (forwarded to all phases), and
+  `AbsorbedLastUpdate`/`AbsorbedTotal` (summed across phases).
+- Emission-rate modulation, two knobs for two different drivers: `ParticleEffectPhase.RateCurve`
+  (optional `ParticleCurve`, an authored envelope over the phase's active window, null keeps the flat
+  legacy rate) and `ParticleEffectPlayer.RateScale` (a runtime multiplier on every phase's stream
+  rate, default 1, for tying emission to an external ramp such as a dissolve threshold). Both
+  multiply `RatePerSecond`. Bursts are unaffected. `<= 0` on either emits nothing.
+- `ParticleCurveKind.One` / `ParticleCurve.One`: a constant-1 curve, for pinning a lerp at End for a
+  whole life or holding a strength envelope at full pull from birth (no drift beat).
+- `VfxPresets.EssenceMotes`: warm gold drain motes (SoftGlow, additive, pulled by whatever
+  `ParticleAttractor` the player sets) plus a free ambient haze phase (Wisp, additive,
+  `IgnoreAttractor` true) that keeps drifting once the drain stops.
+- New GPU golden `scene3d_particles_attractor` (Metal) plus pixel-presence GpuFacts covering the
+  pull-toward-target motion and the absorb drain, through the modern particle pass end to end. The
+  shipped skinned dissolve pass is untouched. This capability layers alongside it.
+
 ## 14.5.0
 
 Per-instance dissolve on the rigid/instanced render path, the primitive the prop draw-distance

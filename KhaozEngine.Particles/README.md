@@ -26,7 +26,9 @@ an unmodernised config emits and shades bit-for-bit as before.
   particle value stays `lerp(start, end, curve.Evaluate(n))`. Kinds: `Linear` (identity, the default, bit-identical
   to the legacy straight lerp), `EaseIn`, `EaseOut`, `EaseInOut`, `Flash` (snap to Start at birth, peak at `Param`,
   decay back to End), `FadeInOut` (trapezoid, `Param` = edge fraction, reads as fade-in/hold/fade-out), `Pulse`
-  (`Param` = cycle count). Static factories: `ParticleCurve.EaseOut`, `ParticleCurve.Flash(0.15f)`, etc.
+  (`Param` = cycle count), `One` (constant 1, pins a lerp at End for the whole life, or holds an
+  attractor's `StrengthCurve` at full pull from birth). Static factories: `ParticleCurve.EaseOut`,
+  `ParticleCurve.Flash(0.15f)`, `ParticleCurve.One`, etc.
 - **Emission shapes** (`Shape`, `ShapeRadius`, `ShapeShell`). `Point` (default, spawn at the origin), `Sphere`,
   `Hemisphere` (a dome folded to `Direction`, +Y when Direction is ~zero), `Disc` (perpendicular to `Direction`,
   +Y when ~zero). `ShapeShell` 0 fills the volume, 1 spawns only on the surface/edge, blending in between. A ring
@@ -68,14 +70,50 @@ A layered effect plays several emitters on one timeline, all headless and determ
   `BurstCount`, `PoolCapacity`, `TrailSamples`, and `OriginOffset` (an effect-local emission offset authored with
   +Y as the effect axis and rotated onto the played direction, for lifting a ground ring off the floor or pushing
   a muzzle phase ahead of the hand). `Duration` 0 with a positive `BurstCount` is an instant burst, `RatePerSecond`
-  > 0 streams while the phase is active.
+  > 0 streams while the phase is active. `RateCurve` (optional `ParticleCurve`, null by default) is an authored
+  emission-rate envelope: the effective stream rate is `RatePerSecond * RateCurve.Evaluate(local / Duration)`, for
+  a phase whose spawn rate ramps up or tapers off on its own schedule (bursts are unaffected).
 - `ParticleEffect` - an immutable list of phases (impact = flash burst + spark burst + smoke stream + ring). The
   phase array is defensively copied.
 - `ParticleEffectPlayer` - plays bounded concurrent instances with one `ParticleSystem` pool per phase, so mixed
   per-phase looks stay renderable. `Play(Vector3 origin, Vector3 direction)` starts an instance, rotating every
   phase's emitter `Direction` (and `OriginOffset`) from +Y onto the played direction. `Update(dt)` advances each
   instance's schedule then steps every pool once. `PhaseSystem(i)` exposes a pool for a renderer, with `AnyAlive`
-  and `Clear()` rounding it out. Deterministic from the ctor seed.
+  and `Clear()` rounding it out. `RateScale` (default 1) is a runtime multiplier on every phase's stream rate,
+  independent of and multiplicative with each phase's own `RateCurve` - drive it per frame to tie emission to an
+  external ramp your game owns (a dissolve threshold, a channel-up windup). Deterministic from the ctor seed.
+
+## Attractor and absorb-on-arrival
+
+`ParticleAttractor` is a world-space point pull applied to every live particle in a `ParticleSystem` (or every
+phase of a `ParticleEffectPlayer`) whose config did not opt out via `EmitterConfig.IgnoreAttractor`:
+
+```csharp
+var player = new ParticleEffectPlayer(VfxPresets.EssenceMotes.Effect, maxInstances: 4, seed: 3);
+player.OnAbsorbed = _ => audio.PlayOneShot(AbsorbCue);   // a small cue per absorbed particle
+
+// each frame, while draining into a moving target:
+player.Attractor = killer is null ? null : new ParticleAttractor
+{
+    Target = killer.Position,
+    Strength = 26f,
+    StrengthCurve = ParticleCurve.EaseIn,   // a beat of drift, then accelerating pull
+    KillRadius = 0.18f,
+    MaxSpeed = 6f,
+};
+player.Update(dt);
+```
+
+Re-assign `Attractor` every frame to track a moving target (a `null` check on the field you assign from is
+usually enough, as above). Setting it to null releases every live particle to free drift: they keep their
+velocity and fade out on their own lifetimes, so clearing the attractor when the target despawns degrades
+gracefully instead of snapping particles in place. A particle within `KillRadius` of `Target` after the frame's
+position update is absorbed: removed and reported through `AbsorbedLastUpdate` / `AbsorbedTotal` and
+`OnAbsorbed`. `StrengthCurve` shapes the pull over each particle's own normalised age (`Linear`, the default,
+ramps 0 to 1, while `ParticleCurve.One` pulls at full strength from birth). `MaxSpeed` caps velocity while an
+attractor is set. `<= 0` on `Strength`, `KillRadius`, or `MaxSpeed` disables that half of the behaviour.
+`EmitterConfig.IgnoreAttractor` lets one phase of a multi-phase effect (an ambient haze) drift free while
+another phase drains, as `VfxPresets.EssenceMotes` does.
 
 ## Backward compatibility
 

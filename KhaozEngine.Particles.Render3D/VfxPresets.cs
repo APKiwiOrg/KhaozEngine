@@ -575,5 +575,63 @@ namespace KhaozEngine.Particles
                 return new VfxPreset(new ParticleEffect(phases), looks);
             }
         }
+
+        /// <summary>Composable essence-drain motes: warm gold sparks streaming toward an absorb point, plus a free
+        /// ambient haze that ignores the pull. The consumer sets <see cref="ParticleEffectPlayer.Attractor"/> at
+        /// the drain target each frame and drives <see cref="ParticleEffectPlayer.RateScale"/> from its own ramp
+        /// (spinning the tap up and down as the drain starts and stops).</summary>
+        public static VfxPreset EssenceMotes
+        {
+            get
+            {
+                var phases = new[]
+                {
+                    // Motes: the drained essence, pulled by whatever ParticleAttractor the player sets.
+                    new ParticleEffectPhase
+                    {
+                        Config = new EmitterConfig
+                        {
+                            LifetimeMin = 1.6f, LifetimeMax = 2.4f,
+                            SpeedMin = 0.35f, SpeedMax = 0.8f,
+                            Shape = EmissionShape.Sphere, ShapeRadius = 0.45f, ShapeShell = 0.7f,
+                            VelocityMode = ParticleVelocityMode.Radial,
+                            StartSize = 0.07f, EndSize = 0.025f,
+                            StartColor = new Color(1f, 0.86f, 0.45f, 1f),
+                            EndColor = new Color(1f, 0.55f, 0.2f, 0f),
+                            SizeCurve = ParticleCurve.EaseOut,
+                            AlphaCurve = ParticleCurve.FadeInOut(0.25f),
+                            TurbulenceStrength = 0.35f, TurbulenceFrequency = 0.8f,
+                        },
+                        Duration = 2.5f, RatePerSecond = 90f, PoolCapacity = 384,
+                    },
+                    // Haze: a free ambient shroud that never drains, so it keeps drifting even once the motes stop.
+                    new ParticleEffectPhase
+                    {
+                        Config = new EmitterConfig
+                        {
+                            IgnoreAttractor = true,
+                            LifetimeMin = 2f, LifetimeMax = 3f,
+                            SpeedMin = 0.15f, SpeedMax = 0.3f,
+                            Direction = Vector3.UnitY, SpreadDegrees = 30f,
+                            Shape = EmissionShape.Sphere, ShapeRadius = 0.6f,
+                            StartSize = 0.18f, EndSize = 0.3f,
+                            StartColor = new Color(1f, 0.85f, 0.5f, 0.25f),
+                            EndColor = new Color(1f, 0.7f, 0.35f, 0f),
+                            SizeCurve = ParticleCurve.EaseOut,
+                            AlphaCurve = ParticleCurve.FadeInOut(0.3f),
+                        },
+                        Duration = 2.5f, RatePerSecond = 18f, PoolCapacity = 96,
+                    },
+                };
+
+                var looks = new[]
+                {
+                    new ParticleLook { Shape = ParticleShape.SoftGlow, Blend = BillboardBlend.Additive },
+                    new ParticleLook { Shape = ParticleShape.Wisp, Blend = BillboardBlend.Additive },
+                };
+
+                return new VfxPreset(new ParticleEffect(phases), looks);
+            }
+        }
     }
 }

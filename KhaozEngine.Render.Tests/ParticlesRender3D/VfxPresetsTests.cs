@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using KhaozEngine.Particles;
+using KhaozEngine.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests.ParticlesRender3D
@@ -14,12 +15,12 @@ namespace KhaozEngine.Tests.ParticlesRender3D
     {
         // The roster is discovered by reflection over VfxPresets' public static VfxPreset properties, instead of
         // a hand-typed list, so a newly added preset is automatically covered by every theory below with nothing
-        // else to update. As of this write there are 9: FireBurst, FrostShatter, HealMotes, EmberDrift,
-        // SparkShower, Shockwave, SmokePlume, ArcaneSparkle, HeatHaze. That count is also the floor
+        // else to update. As of this write there are 10: FireBurst, FrostShatter, HealMotes, EmberDrift,
+        // SparkShower, Shockwave, SmokePlume, ArcaneSparkle, HeatHaze, EssenceMotes. That count is also the floor
         // MinimumPresetCount checks in PresetRoster_HasAtLeastTheKnownPresetCount below, so an accidental
         // emptying of the roster (a broken filter, a renamed type) fails loudly instead of quietly running the
         // theories below over zero cases.
-        private const int MinimumPresetCount = 9;
+        private const int MinimumPresetCount = 10;
 
         private static readonly PropertyInfo[] PresetProperties = typeof(VfxPresets)
             .GetProperties(BindingFlags.Public | BindingFlags.Static)
@@ -148,6 +149,33 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             }
 
             Assert.True(maxAlive > 0, $"{name} emitted no particles across its schedule");
+        }
+
+        [Fact]
+        public void EssenceMotes_HasTwoPhases_OneLookEach()
+        {
+            VfxPreset preset = VfxPresets.EssenceMotes;
+
+            Assert.Equal(2, preset.Effect.PhaseCount);
+            Assert.Equal(2, preset.Looks.Count);
+        }
+
+        [Fact]
+        public void EssenceMotes_HazePhase_IgnoresAttractor()
+        {
+            VfxPreset preset = VfxPresets.EssenceMotes;
+
+            Assert.False(preset.Effect.GetPhase(0).Config.IgnoreAttractor);
+            Assert.True(preset.Effect.GetPhase(1).Config.IgnoreAttractor);
+        }
+
+        [Fact]
+        public void EssenceMotes_MotePhase_UsesSoftGlow()
+        {
+            VfxPreset preset = VfxPresets.EssenceMotes;
+
+            Assert.Equal(ParticleShape.SoftGlow, preset.Looks[0].Shape);
+            Assert.Equal(ParticleShape.Wisp, preset.Looks[1].Shape);
         }
     }
 }

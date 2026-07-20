@@ -9,12 +9,14 @@
 # hand-edit, on purpose: it should show up in review as "we are blessing a new large file".
 #
 # A path can instead be marked "exempt <path>" in place of a number, for a file whose size is CONTENT
-# rather than STRUCTURE (a shader source blob, a data table): no baseline, no cap, no diagnostic for
-# that path at all. Put the reason on a "#" comment line right above the exempt line, since the line
-# itself is the path verbatim (paths may contain spaces) and cannot also carry a trailing comment:
+# rather than STRUCTURE (a generated lookup table, an embedded data blob): no baseline, no cap, no
+# diagnostic for that path at all. The test is whether the file grows only when the DATA grows, never
+# when its subsystem gains a feature. Put the reason on a "#" comment line right above the exempt
+# line, since the line itself is the path verbatim (paths may contain spaces) and cannot also carry a
+# trailing comment:
 #
-#   # size is content, not structure: one const string per shader stage
-#   exempt KhaozEngine.Render3D/Internal/ShaderSources.cs
+#   # size is content, not structure: regenerated wholesale, one row per ISO country code
+#   exempt MyGame.Content/Generated/CountryCodes.cs
 #
 # Exemption is always a deliberate hand-edit: --init and --update never write an exempt line, only a
 # human adds one, and --update carries every exempt line (and its comment) through unchanged when it
@@ -34,7 +36,6 @@
 3672 KhaozEngine.MapEditor/MapEditorScene.cs
 3137 KhaozEngine.Render3D/Scene3D.cs
 2710 KhaozEngine.MapEditor/EditorCommands.cs
-2624 KhaozEngine.Render3D/Internal/ShaderSources.cs
 2329 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
 1793 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
 1644 KhaozEngine.Locomotion/CharacterMovement.cs

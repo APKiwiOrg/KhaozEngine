@@ -144,9 +144,12 @@ control.
 
 The ratchet's own rationale is about frame-loop owners and screens: classes that accrete features
 because they are the cheapest place to put the next one. A file whose size is CONTENT rather than
-STRUCTURE was never the target. `ShaderSources.cs` (2624 lines of const shader strings) is the
-exemplar: freezing it means every legitimate shader addition either interrupts the user or pressures
-someone into an arbitrary split.
+STRUCTURE was never the target. Freezing such a file means every legitimate addition either
+interrupts the user or pressures someone into an arbitrary split.
+
+`ShaderSources.cs` (2624 lines of const shader strings) was used as the exemplar here when this
+section was written. **That was wrong, and 14.8.1 both corrected it and turned it into the rule's
+best teaching case.** See "14.8.1: the exemption test is growth, not syntax" below.
 
 So `.filesize-baseline` gains an `exempt <path>` line form, taking a file out of both rules
 entirely. Design points worth keeping:
@@ -180,3 +183,75 @@ one: the engine has no shell file-size layer at all (no pre-commit, no pre-push,
 enforcement, so its leniencies have no backstop. Left as is, since the leniencies are narrow and
 erring lenient in the repo that owns the analyzer is the safer direction, but the claim as written
 was wrong and should not be relied on.
+
+## 14.8.1: the exemption test is growth, not syntax
+
+14.8.0 shipped the exemption with `ShaderSources.cs` as its canonical example, in this doc, the
+script's usage comment, the generated baseline header, the package README, USING-KHAOZENGINE.md and
+game-template's CODE-LAYOUT-STANDARD. The very first time the rule was applied to a real file, that
+example turned out to be wrong, and wrong in the worst direction: it named as the poster child a file
+that FAILS the rule.
+
+### Why it looked like a candidate and was not
+
+Every syntactic signal said content. 2624 lines, 47 `public const string` members, zero methods, zero
+C# control flow (the 115 `if`/`for`/`return` hits are all GLSL inside verbatim strings). If the test
+were "is it all constants", it passes outright.
+
+Its history says the opposite:
+
+```
+2026-07-17  2327   cross-cascade blend band in sampleKeyShadow
+2026-07-17  2451   void decals
+2026-07-18  2492   shadow atlas construction seam
+2026-07-18  2610   MoltenCracks Voronoi decal fill
+2026-07-20  2624   per-instance dissolve
+```
+
+About 300 lines in three days, every one of them a renderer FEATURE. That is behaviour accreting
+exactly the way a frame-loop owner accretes it, differing only in being written in GLSL rather than
+C#. Exempting it would have removed the ratchet from the fastest-growing file in the engine, which is
+the precise opposite of what the ratchet is for.
+
+So the criterion is restated everywhere as a GROWTH test, answered from `git log` rather than from
+what the file looks like: does it grow only when the DATA grows, or also whenever its subsystem gains
+a feature? Constants that encode behaviour are structure. The worked example is now a genuinely
+static one (a regenerated country-code table), and the near-miss is written up as the counter-example
+because the next reader will have the same instinct.
+
+### The alternative that was taken instead
+
+Split by render domain into `ShaderSources.<Domain>.cs` partial-class files: Lighting, Model,
+Terrain, Shadow, Effects, Post, Decal, Sky. These are responsibility boundaries, not line-count cuts,
+which is what makes this a legitimate split rather than the two-god-halves failure. `partial` keeps
+all 158 external call sites working untouched, and const-concatenation across the partials
+(`ModelFrag` splicing in `LightingCommonGlsl`) still resolves at compile time exactly as before.
+
+The ratchet result: `.filesize-baseline` went from 24 entries to 23. The 2624-line entry did not get
+frozen at a lower number, it left the debt list entirely, because every partial is comfortably under
+the cap. Growth signal is now per-domain, so "the decal shaders are growing" is reportable in a way
+"ShaderSources is growing" never was.
+
+### How the move was verified
+
+A pure-move refactor of 2600 lines of shader text is exactly where a silent one-byte change becomes a
+rendering bug that no unit test catches, so it was proven three independent ways:
+
+1. **Source-level reconstruction.** The split was performed by a script that reassembles the original
+   member region from the pieces it is about to write, and refuses to write anything unless the
+   reassembly matches the source byte-for-byte. It also refuses if the declared groups are not in
+   source order, which caught one real ordering mistake (`Decal` placed before `Post`).
+2. **Compiled-value equality.** A temporary harness reflected over every `public const string` on
+   `ShaderSources` and recorded length plus SHA256 per member, before and after. All 47 matched
+   exactly. This is the strongest of the three, because it proves the values the compiler actually
+   produces, including the cross-file const splicing, rather than the text that produced them.
+3. **GPU goldens on real Metal.** `KE_GPU_TESTS=1` turns 250 otherwise-skipped tests on. All 250 ran
+   and passed. Worth noting for future work here: a plain `dotnet test` SKIPS every GPU golden, so a
+   shader change that only ever saw the default suite has not been visually verified at all.
+
+### Residual case
+
+`DecalFrag` alone is 449 lines and is one indivisible const, so `ShaderSources.Decal.cs` is ~500 and a
+future decal feature could push that single file toward the cap with no further split available.
+That is the one place in this family where an exemption might genuinely be the right answer later.
+It is not the right answer for a 2624-line grab bag today.

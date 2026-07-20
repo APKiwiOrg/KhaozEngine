@@ -5,6 +5,39 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.8.1
+
+`ShaderSources.cs` splits by render domain into partial-class files, and the exemption rule it nearly
+tripped is restated everywhere as a growth test rather than a syntax test.
+
+- **`KhaozEngine.Render3D.Internal.ShaderSources` is now eight partial files**
+  (`ShaderSources.Lighting/Model/Terrain/Shadow/Effects/Post/Decal/Sky.cs`) plus a 19-line root
+  carrying the shared contract. No public or internal API change: `partial` keeps all 158 external
+  call sites working untouched, and const-concatenation across the partials (`ModelFrag` splicing in
+  `LightingCommonGlsl`) still resolves at compile time. Every resulting file is comfortably under the
+  800-line cap, so `.filesize-baseline` drops from 24 entries to 23: the 2624-line entry left the
+  debt list rather than being frozen lower. Growth signal is now per render domain.
+- **Pure move, verified three ways.** The split script reassembles the original member region from
+  the pieces it is about to write and refuses to write unless it matches byte-for-byte (it also
+  refuses if groups are out of source order, which caught one real ordering mistake). A temporary
+  reflection harness recorded length plus SHA256 for every `public const string` before and after:
+  all 47 identical, which proves the values the compiler emits rather than the text behind them.
+  Then 250 GPU tests ran on real Metal via `KE_GPU_TESTS=1`, all passing. Note for anyone touching
+  shaders here: a plain `dotnet test` SKIPS every GPU golden, so the default suite alone does not
+  verify a shader change.
+- **Docs: the exemption test is GROWTH, not syntax.** 14.8.0 shipped `exempt` with "a shader source
+  blob" as its canonical qualifying example. Applying the rule to the actual file showed that example
+  fails its own test: 2624 lines of nothing but `const string` with no logic, yet it grew ~300 lines
+  in three days tracking cascaded shadows, decals and per-instance dissolve. Constants that encode
+  behaviour are structure, and exempting it would have removed the ratchet from the fastest-growing
+  file in the engine. The criterion is now "does it grow only when the DATA grows, answered from
+  `git log`", the worked example is a genuinely static one (a regenerated country-code table), and
+  the near-miss is written up as the counter-example. Updated in `AGENTS.md`,
+  `docs/USING-KHAOZENGINE.md`, the `CodeHealth.Analyzers` README, the generated `.filesize-baseline`
+  header, `scripts/check-file-size.sh`, and game-template's `CODE-LAYOUT-STANDARD.md`. Full rationale
+  in `docs/design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md` under "14.8.1".
+- No behaviour change. Shader text, pipelines and rendered output are bit-identical to 14.8.0.
+
 ## 14.8.0
 
 The KESIZE file-size ratchet stops pushing agents toward the bad split it warns against: both

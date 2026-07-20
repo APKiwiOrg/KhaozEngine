@@ -26,15 +26,22 @@ A baseline line of the form `exempt <path>` takes a file out of both rules: no f
 no diagnostic. Put the reason on a `#` line above it, since the path is the rest of the line.
 
 ```
-# size is content, not structure: one const string per shader stage
-exempt KhaozEngine.Render3D/Internal/ShaderSources.cs
+# size is content, not structure: regenerated wholesale, one row per ISO country code
+exempt MyGame.Content/Generated/CountryCodes.cs
 ```
 
-This exists for files whose size is CONTENT rather than STRUCTURE (a shader source blob, a data
-table), where freezing the size only pressures the next contributor into splitting at an arbitrary
-line, which is the failure the ratchet exists to prevent. It is not for a test fixture that accreted
-cases or a screen or frame-loop class: those should be split by responsibility, and the ratchet
-pressing you to do it is working correctly.
+This exists for files whose size is CONTENT rather than STRUCTURE (a generated lookup table, an
+embedded data blob), where freezing the size only pressures the next contributor into splitting at an
+arbitrary line, which is the failure the ratchet exists to prevent. It is not for a test fixture that
+accreted cases or a screen or frame-loop class: those should be split by responsibility, and the
+ratchet pressing you to do it is working correctly.
+
+**The test is growth, not syntax.** Does the file grow only when the DATA grows, or also whenever its
+subsystem gains a feature? Answer from `git log`, not from what the file looks like. "It is all
+constants" is not the test: the engine's own `ShaderSources.cs` was 2624 lines of nothing but
+`const string` with no logic, and was still the wrong candidate, because it grew with every renderer
+feature. Constants that encode behaviour are structure. It was split by render domain in 14.8.1
+rather than exempted.
 
 An exempt entry wins over a numeric entry for the same path in either order. `--init` and
 `--preview` never emit one, and `--update` preserves the ones you wrote, so an exemption is only ever

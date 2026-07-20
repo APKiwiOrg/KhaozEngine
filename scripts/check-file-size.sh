@@ -20,10 +20,13 @@
 # bad, while new files get a soft ceiling. Nobody is forced into a big-bang refactor and nobody can
 # make it worse. See docs/CODE-LAYOUT-STANDARD.md for the convention this backs.
 #
-# The escape hatch: a file whose size is CONTENT rather than STRUCTURE (a shader source blob, a data
-# table) is not a ratchet candidate at all. Freezing it means every legitimate addition either
-# interrupts the user or pressures an agent into splitting the file at an arbitrary line, which is the
-# "two god halves" failure this check exists to prevent. Mark the path with an "exempt <path>" line in
+# The escape hatch: a file whose size is CONTENT rather than STRUCTURE (a generated lookup table, an
+# embedded data blob) is not a ratchet candidate at all. Freezing it means every legitimate addition
+# either interrupts the user or pressures an agent into splitting the file at an arbitrary line, which
+# is the "two god halves" failure this check exists to prevent. THE TEST IS GROWTH, NOT SYNTAX: does
+# the file grow only when the DATA grows, or does it also grow whenever its subsystem gains a feature?
+# A file of nothing but constants can still fail that test, and the fleet's own near-miss is the
+# example worth remembering (see docs/CODE-LAYOUT-STANDARD.md). Mark the path with an "exempt <path>" line in
 # .filesize-baseline instead of a number, with the reason on a "#" comment line above it: no baseline,
 # no cap, no diagnostic for that path, in every mode below. Always a deliberate hand-edit (see
 # write_baseline_header and docs/CODE-LAYOUT-STANDARD.md). --init and --update never write one.
@@ -179,12 +182,14 @@ write_baseline_header() {
 # hand-edit, on purpose: it should show up in review as "we are blessing a new large file".
 #
 # A path can instead be marked "exempt <path>" in place of a number, for a file whose size is CONTENT
-# rather than STRUCTURE (a shader source blob, a data table): no baseline, no cap, no diagnostic for
-# that path at all. Put the reason on a "#" comment line right above the exempt line, since the line
-# itself is the path verbatim (paths may contain spaces) and cannot also carry a trailing comment:
+# rather than STRUCTURE (a generated lookup table, an embedded data blob): no baseline, no cap, no
+# diagnostic for that path at all. The test is whether the file grows only when the DATA grows, never
+# when its subsystem gains a feature. Put the reason on a "#" comment line right above the exempt
+# line, since the line itself is the path verbatim (paths may contain spaces) and cannot also carry a
+# trailing comment:
 #
-#   # size is content, not structure: one const string per shader stage
-#   exempt KhaozEngine.Render3D/Internal/ShaderSources.cs
+#   # size is content, not structure: regenerated wholesale, one row per ISO country code
+#   exempt MyGame.Content/Generated/CountryCodes.cs
 #
 # Exemption is always a deliberate hand-edit: --init and --update never write an exempt line, only a
 # human adds one, and --update carries every exempt line (and its comment) through unchanged when it

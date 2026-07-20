@@ -71,9 +71,13 @@ version/release work.
   inside a large diff. Ratcheting DOWN is free and needs no approval: run
   `scripts/check-file-size.sh --update` (it can only lower or drop entries, never raise one) in the
   same branch as the shrink, so the baseline follows the new low-water mark. An `exempt <path>` line
-  is for a file whose size is CONTENT rather than STRUCTURE (a shader source blob, a data table), and
-  never for a test fixture that accreted cases or a screen/frame-loop class, both of which should be
-  split instead.
+  is for a file whose size is CONTENT rather than STRUCTURE (a generated lookup table, an embedded
+  data blob), and never for a test fixture that accreted cases or a screen/frame-loop class, both of
+  which should be split instead. **The test is GROWTH, not syntax:** does the file grow only when the
+  DATA grows, or also whenever its subsystem gains a feature? Check `git log`, do not reason from what
+  the file looks like. "It is all constants" is NOT the test: `ShaderSources.cs` was 2624 lines of
+  nothing but `const string` with no logic at all, and was still the wrong candidate, because it grew
+  with every renderer feature. It was split into `ShaderSources.<Domain>.cs` partials instead (14.8.1).
 
 ## Build / test / release
 - `dotnet test` (root, runs `KhaozEngine.slnx` - all 17 test assemblies) - every new behaviour ships with a headless test in its matching per-area project.

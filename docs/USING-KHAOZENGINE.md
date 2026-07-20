@@ -1407,14 +1407,14 @@ skipped with `--no-verify`.
 
 **Exemptions (14.8.0).** A baseline line of the form `exempt <path>` takes a file out of the ratchet
 entirely: no frozen size, no cap, no diagnostic. It exists for files whose size is CONTENT rather
-than STRUCTURE, a shader source blob or a data table, where freezing the size just pressures the next
-contributor into splitting at an arbitrary line. That split is the failure the ratchet exists to
-prevent, so the exemption is the honest escape. Put the reason on a `#` line above the entry (the
-path is the rest of the line, so a trailing comment would be read as part of the path):
+than STRUCTURE, a generated lookup table or an embedded data blob, where freezing the size just
+pressures the next contributor into splitting at an arbitrary line. That split is the failure the
+ratchet exists to prevent, so the exemption is the honest escape. Put the reason on a `#` line above
+the entry (the path is the rest of the line, so a trailing comment would be read as part of the path):
 
 ```
-# size is content, not structure: one const string per shader stage
-exempt KhaozEngine.Render3D/Internal/ShaderSources.cs
+# size is content, not structure: regenerated wholesale, one row per ISO country code
+exempt MyGame.Content/Generated/CountryCodes.cs
 ```
 
 An exempt entry wins over a numeric entry for the same path, in either order. `--init` and
@@ -1422,6 +1422,15 @@ An exempt entry wins over a numeric entry for the same path, in either order. `-
 a deliberate hand-edit. What does NOT qualify: a test fixture that accreted cases, or a screen or
 frame-loop class. Those should be split by responsibility, and the ratchet pressing you to do it is
 working as intended.
+
+**The test is growth, not syntax (14.8.1).** Ask whether the file grows only when the DATA grows, or
+also whenever its subsystem gains a feature, and answer it from `git log` rather than from what the
+file looks like. "It is all constants" is not the test. This engine's own `ShaderSources.cs` was the
+near-miss that proved it: 2624 lines, 47 `public const string`, zero methods, zero C# control flow,
+and still the wrong candidate, because it grew roughly 300 lines in three days as the renderer gained
+cascaded shadows, decals and per-instance dissolve. Constants that encode behaviour are structure. It
+was split into `ShaderSources.<Domain>.cs` partials instead, which kept all 158 call sites untouched
+and gives per-domain growth signal.
 
 Compatibility: a consumer still pinned below 14.8.0 (or running an un-refreshed
 `check-file-size.sh`) does not understand `exempt` and will read the file as unlisted, so it reports
@@ -4146,7 +4155,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.8.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.8.1" />
 ```
 
 ```csharp

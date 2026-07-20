@@ -127,6 +127,22 @@ public class ParticleCurveTests
     }
 
     [Fact]
+    public void One_EvaluatesToConstantOne()
+    {
+        var curve = ParticleCurve.One;
+        Assert.Equal(1f, curve.Evaluate(0f));
+        Assert.Equal(1f, curve.Evaluate(0.3f));
+        Assert.Equal(1f, curve.Evaluate(1f));
+    }
+
+    [Fact]
+    public void One_StaticFactory_HasKindOne()
+    {
+        var curve = ParticleCurve.One;
+        Assert.Equal(ParticleCurveKind.One, curve.Kind);
+    }
+
+    [Fact]
     public void AllKinds_StayWithinUnitRange()
     {
         ParticleCurve[] curves =
@@ -138,6 +154,7 @@ public class ParticleCurveTests
             ParticleCurve.Flash(),
             ParticleCurve.FadeInOut(),
             ParticleCurve.Pulse(),
+            ParticleCurve.One,
         };
 
         foreach (var curve in curves)

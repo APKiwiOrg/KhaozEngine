@@ -29,6 +29,9 @@ public enum ParticleCurveKind : byte
 
     /// <summary>Cosine pulse of <c>Param</c> cycles across the lifetime (0 to 1 and back, repeated).</summary>
     Pulse,
+
+    /// <summary>Constant 1, pins a lerp at End for the whole life, or holds a strength envelope at full.</summary>
+    One,
 }
 
 /// <summary>
@@ -77,6 +80,8 @@ public readonly struct ParticleCurve
                 float c = Param <= 0f ? 2f : Param;
                 return 0.5f - 0.5f * MathF.Cos(2f * MathF.PI * c * n);
             }
+            case ParticleCurveKind.One:
+                return 1f;
             default:
                 return n;
         }
@@ -106,4 +111,7 @@ public readonly struct ParticleCurve
 
     /// <summary>A cosine pulse of <paramref name="cycles"/> full cycles across the lifetime.</summary>
     public static ParticleCurve Pulse(float cycles = 2f) => new(ParticleCurveKind.Pulse, cycles);
+
+    /// <summary>Constant 1 for the whole life, pins a lerp at End or holds a strength envelope at full.</summary>
+    public static ParticleCurve One => new(ParticleCurveKind.One);
 }

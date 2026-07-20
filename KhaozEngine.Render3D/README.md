@@ -28,7 +28,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   docs/USING-KHAOZENGINE.md.
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
-  with per-instance tint + `Material`), per-mesh albedo textures, lighting, camera-facing billboards, an
+  with per-instance tint + `Material`, plus a per-instance dissolve overload `Draw(handle, transform, tint,
+  material, dissolve, edgeWidth, edgeColor)` - the rigid mirror of the skinned `DrawSkinned` dissolve, folded
+  into the shared model pipeline so it stays one instanced draw per mesh), per-mesh albedo textures, lighting, camera-facing billboards, an
   immediate-mode debug-draw overlay (line/ray/box/grid/axes/circle) plus depth-tested debug wire volumes
   (sphere/dome/cylinder/circle), composited into the window. `UnloadTexture`/`UnloadMesh`/`UnloadSkinnedMesh`/
   `UnloadSplatMaterial` drain the device (`IGpuDevice.WaitForIdle`) before disposing GPU resources, since a

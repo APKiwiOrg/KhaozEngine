@@ -1726,6 +1726,18 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
   into "pixely" sparkle as the camera moves. `Post` is the
   `PixelPostProcess` (pixelation / quantize / dither / cel bands / palette for the chunky retro look; the smooth
   look is the default).
+- **Per-instance dissolve (rigid path).** `Draw(handle, transform, tint, material, dissolve, edgeWidth, edgeColor)`
+  dissolves one instanced draw, mirroring the skinned `DrawSkinned` dissolve overload but on the rigid path.
+  `dissolve` is a 0..1 threshold (0 = solid, 1 = fully gone), with a glowing emissive edge of `edgeColor` and width
+  `edgeWidth` (a fraction of the noise range). It discards per-fragment against a world-space noise mask - opaque,
+  not alpha-blended - so overlapping fading props raise no transparency-ordering concern, and it folds into the
+  shared model pipeline (no pipeline switch, still one instanced draw per mesh). A `dissolve` of 0 draws exactly
+  like the plain `material` overload, so it is safe to wire in unconditionally and drive `dissolve` from any
+  game-side 0..1 timer (a draw-distance fade, a despawn countdown).
+
+```csharp
+scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, edgeWidth: 0.1f, edgeColor: Color.White);
+```
 - Rigid glTF honours node world transforms: `GltfLoader.Load` / `LoadWithMaterial` walk the scene
   graph and bake each mesh node's world matrix into the loaded vertices (POSITION by the world matrix, NORMAL +
   TANGENT.xyz by the normal matrix, correct under non-uniform scale), matching the already-node-aware skinned
@@ -4032,7 +4044,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.4.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.5.0" />
 ```
 
 ```csharp

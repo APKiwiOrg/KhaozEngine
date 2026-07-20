@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.5.0
+
+Per-instance dissolve on the rigid/instanced render path, the primitive the prop draw-distance
+fade band and the AoI presentation fade build on later. Mirrors the skinned dissolve but folds into
+the shared model pipeline, so a fading prop stays one instanced draw per mesh.
+
+- New public API: `Scene3D.Draw(MeshHandle, Matrix4x4, Color, Material, float dissolve, float
+  edgeWidth, Color edgeColor)`, the rigid mirror of the `DrawSkinned` dissolve overload.
+  `dissolve` is a 0..1 threshold (0 = solid, 1 = fully gone) with a glowing emissive edge of
+  `edgeColor` and width `edgeWidth`. It discards per-fragment against a world-space noise mask
+  (opaque, not alpha-blended, so overlapping fading props raise no ordering concern), and a
+  `dissolve` of 0 draws exactly like the plain material overload, so it is safe to call
+  unconditionally while gating the value on a fade. Presentation only. Unblocks issue #253's
+  consumers (#44 the prop fade band, #37 the AoI presentation fade).
+- `ModelRenderer.InstanceData` grows a trailing `Vector2 Dissolve` (x = threshold, y = edge width),
+  116 -> 124 bytes, appended after `IsDynamic` so every existing instance element keeps its byte
+  offset. The discard + emissive-edge term folds into `ModelFrag` gated behind `if (vDissolve.x >
+  0.0)` (a branch, not a multiply), so a draw carrying no dissolve is byte-identical to the
+  pre-dissolve path and every GPU golden holds. Not a separate pipeline: the CharDissolve
+  (`ModelDissolveFrag`) path and its skinned goldens are untouched. `SceneInstances.Instance` and
+  `Scene3D.GroupInstances` thread the value, substituting the edge colour onto `InstanceData.Emissive`
+  when dissolving (the same trade the skinned path makes). `UboLayoutTests` pins the new size, the
+  fixed field offsets, and the shader wiring.
+
 ## 14.4.0
 
 Downed entry cancels in-flight one-shot actions, and the skinned dissolve is documented for death

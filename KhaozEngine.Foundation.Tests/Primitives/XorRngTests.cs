@@ -36,4 +36,17 @@ public class XorRngTests
         for (int i = 0; i < 1000; i++) Assert.InRange(rng.Range(2f, 5f), 2f, 5f);
         Assert.Equal(4f, new XorRng(3).Range(4f, 4f));   // degenerate range returns min
     }
+
+    [Fact]
+    public void Range_DegenerateStillConsumesExactlyOneDraw()
+    {
+        // Two identical rngs: one calls the degenerate Range, the other burns one draw by hand.
+        // Their streams must line up afterwards, so draw count cannot depend on the bound values.
+        var viaRange = new XorRng(77);
+        var viaFloat = new XorRng(77);
+        Assert.Equal(4f, viaRange.Range(4f, 4f));
+        viaFloat.NextFloat();
+        for (int i = 0; i < 8; i++)
+            Assert.Equal(viaFloat.NextUInt(), viaRange.NextUInt());
+    }
 }

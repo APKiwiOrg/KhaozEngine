@@ -283,4 +283,33 @@ public class ParticleSystemTests
         Assert.Equal(0, sys.ActiveCount);
         Assert.Equal(0, sys.Active.Length);
     }
+
+    [Fact]
+    public void FixedLifetime_DoesNotShiftLaterDraws()
+    {
+        // Same seed, two configs differing only in whether Lifetime is a fixed value or a range.
+        // Rotation is drawn later in the same stream, so it must come from the same stream position
+        // in both systems. Before the #122 fix the fixed-value config skipped the lifetime draw and
+        // every later draw shifted by one slot.
+        EmitterConfig Cfg(float lifeMax) => new()
+        {
+            LifetimeMin = 2f,
+            LifetimeMax = lifeMax,
+            SpeedMin = 3f,
+            SpeedMax = 3f,
+            Direction = Vector3.UnitX,
+            RandomStartRotation = true,
+            StartSize = 1f,
+            EndSize = 1f,
+            StartColor = Color.White,
+            EndColor = Color.White,
+        };
+
+        var fixedSys = new ParticleSystem(4, seed: 99u);
+        var rangedSys = new ParticleSystem(4, seed: 99u);
+        fixedSys.Emit(Cfg(2f), Vector3.Zero, 1);
+        rangedSys.Emit(Cfg(2.5f), Vector3.Zero, 1);
+
+        Assert.Equal(rangedSys.Active[0].Rotation, fixedSys.Active[0].Rotation);
+    }
 }

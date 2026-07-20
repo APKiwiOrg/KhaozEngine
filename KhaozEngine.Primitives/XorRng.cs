@@ -30,6 +30,11 @@ public struct XorRng
     /// <summary>Float in [0, 1). Uses the top 24 bits for a clean mantissa.</summary>
     public float NextFloat() => (NextUInt() >> 8) * (1.0f / 16777216.0f);
 
-    /// <summary>Float uniformly in [min, max). Degenerate (max &lt;= min) returns min.</summary>
-    public float Range(float min, float max) => max <= min ? min : min + (max - min) * NextFloat();
+    /// <summary>Float uniformly in [min, max). Always consumes exactly one draw, so a stream's shape never
+    /// depends on whether a bound pair is degenerate. Degenerate (max &lt;= min) returns min.</summary>
+    public float Range(float min, float max)
+    {
+        float t = NextFloat();
+        return max <= min ? min : min + (max - min) * t;
+    }
 }

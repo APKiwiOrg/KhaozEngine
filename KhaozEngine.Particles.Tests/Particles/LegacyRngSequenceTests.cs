@@ -32,7 +32,11 @@ public class LegacyRngSequenceTests
 
         public float NextFloat() => (NextUInt() >> 8) * (1.0f / 16777216.0f);
 
-        public float Range(float min, float max) => max <= min ? min : min + (max - min) * NextFloat();
+        public float Range(float min, float max)
+        {
+            float t = NextFloat();
+            return max <= min ? min : min + (max - min) * t;
+        }
     }
 
     [Fact]

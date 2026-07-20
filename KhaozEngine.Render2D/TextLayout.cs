@@ -39,27 +39,37 @@ namespace KhaozEngine.Render2D
         /// boundaries so every returned line fits within <paramref name="maxWidth"/> (a word narrower than one
         /// character still yields at least one character per line, so it always makes progress).
         /// <para>
+        /// By default a run of interior spaces is COLLAPSED to a single space on every output line (fine for
+        /// engine-authored labels and tooltips). Set <paramref name="preserveSpaceRuns"/> to keep USER-authored
+        /// spacing intact: a space run is still ONE break opportunity, but when no break is taken there the run is
+        /// re-emitted verbatim (a break taken at the run still consumes it, so a fresh line never carries leading
+        /// spaces). This is the mode for wrapping player-typed content (chat) where collapsing spaces would silently
+        /// rewrite the text. (Newlines are still ignored by the wrap either way - that is tracked separately as #82.)
+        /// </para>
+        /// <para>
         /// Memoized: the result is a pure function of (<paramref name="font"/> identity, <paramref name="text"/>,
-        /// <paramref name="maxWidth"/>, <paramref name="hardBreak"/>), so a caller that recomputes the same wrap
-        /// every frame (a static label, an unchanged tooltip) hits a bounded LRU cache instead of re-running the
-        /// wrap algorithm. <see cref="DrawWrapped"/> folds its <c>scale</c> parameter into the effective
-        /// <paramref name="maxWidth"/> it passes here (<c>maxWidth / scale</c>), so scale is already part of the
-        /// cache key via that effective width - two different (width, scale) pairs that resolve to the same
-        /// effective width correctly share one cache entry, since <see cref="Wrap"/>'s output depends only on
-        /// that effective width. The cache is bounded (oldest-unused entries evicted) so a session that streams
-        /// many distinct texts (chat, procedurally generated labels) cannot grow it without limit. The returned
-        /// list is always a fresh copy, so a caller mutating it can never corrupt the cache.
+        /// <paramref name="maxWidth"/>, <paramref name="hardBreak"/>, <paramref name="preserveSpaceRuns"/>), so a
+        /// caller that recomputes the same wrap every frame (a static label, an unchanged tooltip) hits a bounded LRU
+        /// cache instead of re-running the wrap algorithm. The mode is part of the cache key, so the same string
+        /// wrapped both collapsed and preserved never returns one poisoning the other. <see cref="DrawWrapped"/> folds
+        /// its <c>scale</c> parameter into the effective <paramref name="maxWidth"/> it passes here
+        /// (<c>maxWidth / scale</c>), so scale is already part of the cache key via that effective width - two
+        /// different (width, scale) pairs that resolve to the same effective width correctly share one cache entry,
+        /// since <see cref="Wrap"/>'s output depends only on that effective width. The cache is bounded
+        /// (oldest-unused entries evicted) so a session that streams many distinct texts (chat, procedurally
+        /// generated labels) cannot grow it without limit. The returned list is always a fresh copy, so a caller
+        /// mutating it can never corrupt the cache.
         /// </para></summary>
-        public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak = false)
+        public static List<string> Wrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak = false, bool preserveSpaceRuns = false)
         {
-            var key = new WrapKey(font, text, maxWidth, hardBreak);
+            var key = new WrapKey(font, text, maxWidth, hardBreak, preserveSpaceRuns);
             lock (WrapCacheLock)
             {
                 if (TryGetCachedWrap(key, out List<string>? cachedHit))
                     return new List<string>(cachedHit);
             }
 
-            List<string> lines = ComputeWrap(font, text, maxWidth, hardBreak);
+            List<string> lines = ComputeWrap(font, text, maxWidth, hardBreak, preserveSpaceRuns);
 
             lock (WrapCacheLock)
             {
@@ -74,7 +84,7 @@ namespace KhaozEngine.Render2D
         // from `text`), so one upfront buffer sized to `text.Length` never needs to grow. A candidate that turns
         // out not to fit costs no allocation - it is just overwritten in place by the next line's content - only
         // a line actually kept costs the one unavoidable allocation: the `string` for that output line.
-        static List<string> ComputeWrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak)
+        static List<string> ComputeWrap(ITextMeasurer font, string text, float maxWidth, bool hardBreak, bool preserveSpaceRuns)
         {
             var lines = new List<string>();
             if (text.Length == 0) return lines;
@@ -86,15 +96,23 @@ namespace KhaozEngine.Render2D
 
             while (pos < span.Length)
             {
+                int spaceStart = pos;
                 while (pos < span.Length && span[pos] == ' ') pos++;   // skip run(s) of spaces
+                int spaceRun = pos - spaceStart;                       // how many, for the preserve-spaces mode
                 if (pos >= span.Length) break;
                 int wordStart = pos;
                 while (pos < span.Length && span[pos] != ' ') pos++;
                 ReadOnlySpan<char> word = span.Slice(wordStart, pos - wordStart);
 
-                int candidateLen = bufLen == 0 ? word.Length : bufLen + 1 + word.Length;
+                // The separator emitted before this word when it packs onto the current line: none at a line start,
+                // otherwise a single space (default, collapsing the run) or the run verbatim (preserve mode). Taking a
+                // BREAK here still consumes the run (the fresh line below starts with just the word), matching the
+                // default break behaviour. The reconstructed line is a contiguous slice of the source either way, so
+                // the one text.Length buffer never needs to grow.
+                int sep = bufLen == 0 ? 0 : (preserveSpaceRuns ? spaceRun : 1);
+                int candidateLen = bufLen + sep + word.Length;
                 int w = bufLen;
-                if (bufLen > 0) buf[w++] = ' ';
+                for (int s = 0; s < sep; s++) buf[w++] = ' ';
                 word.CopyTo(buf.Slice(w));
 
                 if (bufLen == 0 || font.Measure(buf[..candidateLen]).X <= maxWidth)
@@ -144,15 +162,17 @@ namespace KhaozEngine.Render2D
             return chunks;
         }
 
-        /// <summary>Total height (pixels) of <paramref name="text"/> word-wrapped to <paramref name="maxWidth"/>.</summary>
-        public static float MeasureWrappedHeight(ITextMeasurer font, string text, float maxWidth) =>
-            Wrap(font, text, maxWidth).Count * font.LineHeight;
+        /// <summary>Total height (pixels) of <paramref name="text"/> word-wrapped to <paramref name="maxWidth"/>.
+        /// <paramref name="preserveSpaceRuns"/> forwards to <see cref="Wrap"/> (it can change the line count when a
+        /// preserved run pushes a wrap the collapsed form would not have).</summary>
+        public static float MeasureWrappedHeight(ITextMeasurer font, string text, float maxWidth, bool preserveSpaceRuns = false) =>
+            Wrap(font, text, maxWidth, preserveSpaceRuns: preserveSpaceRuns).Count * font.LineHeight;
 
         // -- Wrap()'s bounded LRU memo cache --
 
         // Font identity (reference equality, since ITextMeasurer has no overridden Equals) + the text/width/mode
         // that fully determine Wrap's output.
-        readonly record struct WrapKey(ITextMeasurer Font, string Text, float MaxWidth, bool HardBreak);
+        readonly record struct WrapKey(ITextMeasurer Font, string Text, float MaxWidth, bool HardBreak, bool PreserveSpaceRuns);
 
         // Not a hot per-frame allocation path (a cache hit/miss check, not the wrap itself), and Wrap() may be
         // called from tests/tools off the render thread, so guard the shared cache with a plain lock rather than
@@ -206,12 +226,14 @@ namespace KhaozEngine.Render2D
         /// <summary>Draws <paramref name="text"/> word-wrapped to <paramref name="maxWidth"/>, each line aligned
         /// within that width, starting at <paramref name="topLeft"/> and scaled by <paramref name="scale"/>
         /// (<c>scale = 1</c> is the unscaled path). Wrapping and line advance both account for the scale so the
-        /// scaled lines fill <paramref name="maxWidth"/>. Returns the total height drawn.</summary>
+        /// scaled lines fill <paramref name="maxWidth"/>. <paramref name="preserveSpaceRuns"/> forwards to
+        /// <see cref="Wrap"/> for wrapping user-authored content without collapsing interior spacing. Returns the
+        /// total height drawn.</summary>
         public static float DrawWrapped(SpriteBatch batch, SpriteFont font, string text,
-            Vector2 topLeft, float maxWidth, TextAlign align, Color color, float scale = 1f)
+            Vector2 topLeft, float maxWidth, TextAlign align, Color color, float scale = 1f, bool preserveSpaceRuns = false)
         {
             float y = topLeft.Y;
-            foreach (string line in Wrap(font, text, maxWidth / scale))
+            foreach (string line in Wrap(font, text, maxWidth / scale, preserveSpaceRuns: preserveSpaceRuns))
             {
                 DrawAligned(batch, font, line, topLeft.X, maxWidth, y, align, color, scale);
                 y += font.LineHeight * scale;

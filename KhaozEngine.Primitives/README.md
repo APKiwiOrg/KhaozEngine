@@ -18,6 +18,12 @@ automatically, so this is transparent to every other package.
   streams, `StableHash` for a platform-stable string hash.
 - `XorRng` - tiny xorshift32 value-type PRNG for allocation-free hot paths (particles, audio noise).
   Copy the struct to snapshot. Use `DeterministicRng` when you need resume or derived streams.
+- `StableHash` (14.9.0) - stateless, allocation-free integer hashing: `Mix(uint)`, `Mix(uint, uint)`,
+  `Mix(uint, uint, uint)` fixed-arity hashes (FNV-1a accumulate + a Murmur3-style avalanche finalizer) and
+  `ToUnitFloat(uint)` folding bits to a float in [0, 1). A pure key-to-value map (same inputs, same hash on every
+  machine), distinct from `XorRng`'s stateful stream, for deterministic procedural content keyed off ids/coordinates
+  with no shared RNG. `XorRng.NextFloat` shares its `ToUnitFloat` fold, so a hashed value and a stream draw land in
+  [0, 1) off the same bits identically. The uint-keyed 32-bit sibling of `DeterministicRng.StableHash(string) -> ulong`.
 - `MathUtil` - `Clamp01`, `Lerp`, `InverseLerp`, `SmoothStep(a, b, x)` (clamped Hermite).
 - `Easing` - `Linear`/`SmoothStep`/`EaseIn`/`EaseOut`/`EaseInOut`, all clamped to [0,1].
 - `ViewportMath` - `Fit` (letterbox) and `Cover` (crop) uniform-scale factors for aspect-preserving fits, plus

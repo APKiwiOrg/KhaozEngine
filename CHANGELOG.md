@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.9.0
+
+Four small additive parity APIs from the engine-parity audit, each replacing a hand-rolled copy in a
+consumer: a public commanded-facing direction on `CharacterMovement` (#240), a secret-free structural
+token parse on `SignedToken` (#241), a stateless `StableHash` mix + hash-to-unit-float on the Primitives
+RNG surface (#242), and an opt-in preserve-spaces wrap mode on `TextLayout` (#249).
+
+- **`CharacterMovement.CameraRelativeDir(in MoveCommand)` (KhaozEngine.Locomotion, #240).** Returns the
+  commanded camera-relative travel direction as a unit XZ `Vector2` (`Vector2.Zero` when idle), the exact
+  direction the authoritative/prediction `Step` resolves the command to before it moves. A consumer driving
+  explicit model facing now shares the ONE camera basis (a commanded-facing yaw is just
+  `MathF.Atan2(dir.X, dir.Y)`) instead of copying `forward = (-sinYaw, -cosYaw)`, `right = (cosYaw, -sinYaw)`
+  by hand. Delegates to the same private `ResolveCameraRelative` the sim uses, so facing and movement cannot
+  drift. `CharacterMovement` is now a partial class and the accessor lives in its own file, so the at-cap
+  main file does not grow past the KESIZE ratchet.
+- **`SignedToken.TryParseUnverified(token, out subject, out expUnix, out displayName)` (KhaozEngine.Netcode,
+  #241).** A secret-free structural parse of the `v1`/`v2` wire format for a client-side shape pre-filter
+  (pasted or launch-supplied tokens, where the HMAC secret lives only on the server). It does NOT verify the
+  signature and does NOT check expiry (a true, tampered, or expired token all parse), so it is NOT
+  authentication. Its acceptance is derived from this type's own `TryVerify` structural gate (non-empty, v1
+  4-field / v2 5-field split with the matching version prefix, `NumberStyles.None` numeric expiry), so a
+  consumer deferring to it cannot drift from the format. `displayName` is `null` for v1, the empty string for
+  a v2 empty-name claim, else the decoded name.
+- **`StableHash` (KhaozEngine.Primitives, #242).** A new stateless static class: `Mix(uint)`,
+  `Mix(uint, uint)`, `Mix(uint, uint, uint)` fixed-arity hashes (FNV-1a accumulate + a Murmur3-style avalanche
+  finalizer) and `ToUnitFloat(uint)` folding bits to a float in [0, 1). Kept separate from `XorRng` (a
+  stateless key-to-value map versus a stateful stream), but `XorRng.NextFloat` now delegates to
+  `StableHash.ToUnitFloat`, so a hashed value and a stream draw share ONE fold with no change to `NextFloat`'s
+  observable behaviour. For deterministic procedural content keyed off ids with no shared RNG stream.
+- **`TextLayout.Wrap` opt-in `preserveSpaceRuns` (KhaozEngine.Render2D, #249).** The wrap collapsed every
+  interior space run to a single space, which silently rewrites player-authored text and cost Ruinborne's
+  chat scrollback adopt (https://github.com/APKiwiOrg/Ruinborne/issues/129). A new `bool preserveSpaceRuns`
+  (default false, path bit-identical to before) keeps a space run as ONE break opportunity but re-emits it
+  verbatim when no break is taken there (a break taken at the run still consumes it). The LRU memo key
+  includes the mode, and `DrawWrapped` / `MeasureWrappedHeight` forward it. Unblocks the chat adopt. The
+  separate newline limitation stays tracked as #82.
+
 ## 14.8.1
 
 `ShaderSources.cs` splits by render domain into partial-class files, and the exemption rule it nearly

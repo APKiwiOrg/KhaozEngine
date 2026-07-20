@@ -160,3 +160,22 @@ shutdown handshake (LiteNetLib `NetPeer.Disconnect(byte[])` -> `DisconnectInfo.A
 `NetEvent` `Disconnected` payload) - is what makes the reject reach the client. `NetClient` turns a disconnect that
 carries a `Reject` frame into a `Rejected` session event, so `WorldClient` classifies a version/token reject
 terminally instead of treating the bare drop as a transient outage and auto-reconnecting forever.
+
+## SignedToken connect tokens
+
+`SignedToken` is a zero-dependency HMAC-SHA256 connect-token primitive binding a `subject` (the stable account/player
+id) to an expiry. The wire format is `v1.<subject>.<expUnix>.<sig>`, or `v2.<subject>.<nameB64>.<expUnix>.<sig>` which
+adds a base64url display-name claim (cosmetic, distinct from the verified subject). `Mint(subject, expiry, secret)` and
+`Mint(subject, displayName, expiry, secret)` issue tokens; `TryVerify(token, secret, now, out subject[, out displayName],
+out reason)` is the authoritative server-side check (fixed-time HMAC compare, then expiry). `HmacTokenAuthenticator`
+wraps `TryVerify` as an `IConnectionAuthenticator`.
+
+- **`TryParseUnverified(token, out subject, out expUnix, out displayName) -> bool`** (14.9.0)
+  A **secret-free STRUCTURAL parse**: extracts the subject, expiry (Unix seconds), and optional v2 display name without
+  the HMAC secret, for a **client-side shape pre-filter** (sanity-checking a pasted or launch-supplied token before a
+  connect, where the secret lives only on the server). It does **NOT** verify the signature and does **NOT** check
+  expiry, so a genuine, a tampered, and an expired token all parse the same - it is **not authentication**. Its
+  acceptance mirrors `TryVerify`'s own structural gate (non-empty; the v1 4-field / v2 5-field split with the matching
+  version prefix; a `NumberStyles.None` numeric expiry), so a consumer deferring to it cannot drift from the format if
+  a v3 is ever added. `displayName` is `null` for a v1 token, the empty string for a v2 empty-name claim, else the
+  decoded name.

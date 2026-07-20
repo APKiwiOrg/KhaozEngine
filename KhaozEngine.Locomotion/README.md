@@ -55,6 +55,15 @@ optional slope gate via a ground-normal delegate):
   shape (a unit direction + a speed fraction) and share a single collision core, so player and AI can never drift
   apart - the player path stays byte-for-byte identical to before.
 
+- **`CameraRelativeDir(in MoveCommand) -> Vector2`** (14.9.0)
+  The **commanded** camera-relative travel direction as a unit XZ vector (`Vector2.Zero` when idle, inside the
+  1e-6 length-squared dead-zone), the exact direction the authoritative/prediction `Step` resolves the command to
+  before it moves. For a consumer driving **explicit model facing** (facing the model toward where it is COMMANDED
+  to travel, distinct from the direction the measured render position drifts): a commanded-facing yaw is just
+  `MathF.Atan2(dir.X, dir.Y)` (world radians about +Y, 0 = +Z), gated on the vector being non-zero. Shares the ONE
+  camera basis the step uses (`forward = (-sinYaw, -cosYaw)`, `right = (cosYaw, -sinYaw)`), so the public facing and
+  the resolved movement can never drift apart.
+
 ### Movement medium (wading)
 
 Both overloads take an **optional medium provider** `medium: (x, z, feetY) -> MovementMedium`. It is a **pure,

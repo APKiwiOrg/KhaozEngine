@@ -34,7 +34,12 @@
   hardBreak), so a caller re-wrapping the same unchanged text every frame (a static label, an idle tooltip)
   hits the cache instead of re-running the wrap algorithm, and the returned list is always a fresh copy, so mutating
   it can never corrupt the cache. The opt-in `hardBreak` (default off) additionally slices a single token longer
-  than `maxWidth` at character boundaries so every returned line fits. Default baked coverage is
+  than `maxWidth` at character boundaries so every returned line fits. The opt-in `preserveSpaceRuns` (14.9.0,
+  default off, default path bit-identical) keeps interior space runs verbatim instead of collapsing each to one
+  space: a run stays ONE break opportunity but is re-emitted intact when no break is taken there (a break taken at
+  the run still consumes it), for wrapping user-authored content (chat) without silently rewriting it. The memo key
+  includes the mode, and `DrawWrapped` / `MeasureWrappedHeight` forward it. (Newlines are still ignored by the wrap
+  either way, tracked as #82.) Default baked coverage is
   U+0020..U+017F (printable ASCII + Latin-1 Supplement + Latin Extended-A), so accented Western/Central European
   text renders out of the box. Anything outside the coverage (or missing from the face) measures AND draws as
   the visible `SpriteFont.FallbackChar` glyph (`?`) instead of silently dropping. Control characters stay

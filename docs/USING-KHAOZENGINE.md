@@ -1624,6 +1624,23 @@ exist on `Render2DContext` (the `Render2DSnapshot` headless callback).
   `DrawRadialProgress(center, radius, thickness, fraction, color)` strokes `clamp(fraction,0,1)` of a ring from
   12 o'clock clockwise (0 nothing, 1 a full ring) - a countdown/cooldown dial. Angles are radians, +Y down so a
   positive sweep goes clockwise; segment count scales with the swept fraction so small arcs stay smooth.
+- `TextLayout` - device-free word-wrap + alignment over an `ITextMeasurer`, memoized in a bounded LRU cache.
+  `Wrap(font, text, maxWidth, hardBreak = false, preserveSpaceRuns = false)` breaks on spaces; `hardBreak` slices a
+  single over-wide token at character boundaries. By default interior space runs COLLAPSE to one space (fine for
+  engine-authored labels). For **user-authored content** (a chat log), pass `preserveSpaceRuns: true` (14.9.0) so a
+  run stays one break opportunity but is re-emitted verbatim when no break is taken there - collapsing it would
+  silently rewrite what the player typed:
+
+  ```csharp
+  // Player chat: keep the spacing the sanitizer preserved; wrap only where the width forces it.
+  foreach (string line in TextLayout.Wrap(font, chatLine, boxWidth, preserveSpaceRuns: true))
+      batch.DrawString(font, line, pen, color);
+  // Or in one call: TextLayout.DrawWrapped(batch, font, chatLine, topLeft, boxWidth, align, color,
+  //                                        preserveSpaceRuns: true);
+  ```
+
+  The mode is part of the memo key (the same string wrapped both ways never returns one poisoning the other), and
+  `DrawWrapped` / `MeasureWrappedHeight` forward it. (The wrap still ignores newlines either way, tracked as #82.)
 
 ### 2D VFX (`KhaozEngine.Render2D.Vfx`)
 
@@ -3440,6 +3457,25 @@ construction. There is no jump bit (NPCs do not jump in v1) and no client-predic
 Shrink `toTarget` below unit length for a slower saunter (e.g. a patrol), or pass a longer vector (clamped to full
 speed).
 
+**Commanded facing without re-deriving the camera basis (`CharacterMovement.CameraRelativeDir`, 14.9.0).** When you
+want the local model to face the direction it is COMMANDED to travel (steadier than the direction the measured
+render position drifts, which oscillates on a diagonal stair climb), ask the engine for the resolved direction
+instead of copying its camera basis by hand:
+
+```csharp
+var cmd = new MoveCommand(wasdAxis, run, cameraYaw);
+Vector2 dir = CharacterMovement.CameraRelativeDir(cmd);   // unit XZ, Vector2.Zero when idle
+if (dir != Vector2.Zero)
+{
+    float commandedYaw = MathF.Atan2(dir.X, dir.Y);       // world radians about +Y, 0 = +Z
+    sample = sample.WithFacingYaw(commandedYaw);          // drive explicit model facing
+}
+// else idle: leave the last facing (no snap on release)
+```
+
+This is the exact direction the authoritative/prediction `Step` resolves the command to before it moves (it shares
+the ONE camera basis), so the explicit facing can never drift from what the sim does.
+
 On the client, `KhaozEngine.Terrain.Render3D` (in the `Game3D` umbrella) meshes finite chunks off the field,
 `using KhaozEngine.Terrain;`:
 
@@ -4155,7 +4191,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.8.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.9.0" />
 ```
 
 ```csharp
@@ -5820,6 +5856,23 @@ sub-RNGs) gives platform-stable RNG for lockstep sims; `WorldSerializer` round-t
 `KhaozEngine.Serialization.JsonDefaults.IncludeFields`). (`DeterministicRng` lives in
 `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
+**Stateless hashing for procedural content (`StableHash`, 14.9.0, `KhaozEngine.Primitives`).** When you need
+reproducible values keyed off ids or coordinates with NO shared RNG stream to thread through - a client deriving
+the same scatter pattern from an effect id, terrain detail keyed off a tile coordinate - use `StableHash`: a pure
+key-to-value map, not a stream. `Mix(uint)` / `Mix(uint, uint)` / `Mix(uint, uint, uint)` fold their inputs into a
+well-distributed `uint` (FNV-1a + a Murmur3-style avalanche), and `ToUnitFloat(uint)` folds bits to a float in
+`[0, 1)` - the SAME fold `XorRng.NextFloat` uses, so a hashed value and a stream draw land in `[0, 1)` off the same
+bits identically:
+
+```csharp
+// Deterministic per-(effect, index) jitter, same on every machine, no RNG state:
+float t     = StableHash.ToUnitFloat(StableHash.Mix(effectId, (uint)i));       // [0, 1)
+float angle = (StableHash.ToUnitFloat(StableHash.Mix(effectId, (uint)i, 7u)) * 2f - 1f) * spread;
+```
+
+It is the uint-keyed 32-bit sibling of `DeterministicRng.StableHash(string) -> ulong` (which derives a seed from a
+name). Use the fixed-arity overloads (no `params` array, so no allocation on a hot path).
+
 **Zero-field "tag" components.** A component struct with no fields is stored with no column (presence on the
 entity is its whole state). `Get<T>` still throws for a tag (there is no column to ref into), but `TryGet<T>`
 copies out `default` for a present tag instead of throwing, so `if (world.TryGet(e, out MyTag _))` is the normal
@@ -7420,6 +7473,27 @@ token for the same account carries the same subject, so persistence keyed on the
 `WorldServer`/`ShardedWorldServer` take the authenticator as an optional last constructor argument (default
 `AllowAllAuthenticator`) and use `ev.Subject` as the persisted `accountId`, falling back to `guest:{slot}` when it
 is empty.
+
+**Client-side shape pre-filter without the secret (`SignedToken.TryParseUnverified`, 14.9.0).** The HMAC secret
+lives only on the server, so a client that wants to sanity-check a pasted or launch-supplied token's SHAPE before
+attempting a connect uses the secret-free structural parse. It extracts the subject, expiry, and optional v2 name
+but does NOT verify the signature and does NOT check expiry, so it is NOT authentication - only the server's
+`TryVerify` is:
+
+```csharp
+// e.g. gating a paste-a-token launch screen before dialing the server.
+if (SignedToken.TryParseUnverified(pastedToken, out string subject, out long expUnix, out string? displayName))
+{
+    // Structurally a v1/v2 token: subject + expUnix are populated (displayName is null for v1, "" for a v2 empty
+    // name, else the decoded name). Still UNVERIFIED - present it to the server as the connect token and let
+    // HmacTokenAuthenticator.TryVerify pass judgement. Optionally warn locally if expUnix is already in the past.
+    var client = new NetClient(clientTransport, pastedToken);
+}
+else
+{
+    ShowError(StringIds.TokenMalformed);   // reject obviously wrong shapes before wasting a connect
+}
+```
 
 Slots are the same small-int key `RemoteCommandQueue` uses, so commands and replication line up.
 

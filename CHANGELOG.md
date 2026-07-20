@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.4.0
+
+Downed entry cancels in-flight one-shot actions, and the skinned dissolve is documented for death
+and despawn use. Unblocks the Ruinborne death pass
+(https://github.com/APKiwiOrg/Ruinborne/issues/120).
+
+- New public API: `LayeredAnimator.CancelAllActions(bool immediate = false)` cancels every
+  in-flight one-shot action, gracefully fading by default or retiring instantly, with a
+  `AnimatedCharacter.CancelAllActions` pass-through. `EnterDowned` now calls it with immediate
+  retire, so an action in flight at the moment of death (a mid-swing attack, a held drawn-weapon
+  idle) no longer freezes through the downed window and resumes after respawn. Regression-tested
+  with a byte-parity check against a never-actioned character (#94).
+- Docs: the existing `Scene3D.DrawSkinned` dissolve overload (noise discard with an emissive edge,
+  opaque, no transparency-ordering concerns) is now documented for death and despawn dissolves in
+  the animated-characters section of USING-KHAOZENGINE.md and the Game.Render3D README, not only as
+  the CharDissolve teleport transition.
+
 ## 14.3.0
 
 Three verified fixes: partial-sweep telegraph outlines, a documented ECS change-iteration order, and a

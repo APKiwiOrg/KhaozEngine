@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.CodeHealth.Analyzers</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <!-- Roslyn analyzers must target netstandard2.0 (overrides the repo-wide net10.0). -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <!-- Analyzer assembly ships under analyzers/dotnet/cs (below), not lib/. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <IncludeSymbols>false</IncludeSymbols>
+    <DevelopmentDependency>false</DevelopmentDependency>
+    <!-- RS2008 (analyzer release tracking) is overkill for this internal engine analyzer. -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+    <!-- This project cannot run the file-size analyzer on itself (self-reference). -->
+    <KhaozSkipFileSizeAnalyzer>true</KhaozSkipFileSizeAnalyzer>
+    <Description>Roslyn analyzer enforcing the fleet file-size ratchet at compile time: KESIZE001 flags a source file that grew past its .filesize-baseline entry, KESIZE002 flags an unlisted file over the size cap (default 800 lines, KhaozFileSizeCap overrides). Semantics mirror scripts/check-file-size.sh: frozen debt may shrink, never grow. Errors by default. Ships buildTransitive props that auto-discover the repo's .filesize-baseline. Flows to consumers via all four umbrellas.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_AddAnalyzerToPackage</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="buildTransitive/KhaozEngine.CodeHealth.Analyzers.props" Pack="true" PackagePath="buildTransitive" />
+  </ItemGroup>
+  <!-- Pack the built analyzer dll into the analyzers path so it runs in consuming projects. Runs during
+       pack (after build), when the assembly exists, unlike a plain <None> glob evaluated pre-build. -->
+  <Target Name="_AddAnalyzerToPackage">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(OutputPath)$(AssemblyName).dll" PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+  </Target>
+</Project>

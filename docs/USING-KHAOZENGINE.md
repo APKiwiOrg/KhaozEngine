@@ -21,6 +21,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Number + duration formatting (`NumberFormatter` / `TimeFormatter`)](#number-duration-formatting-numberformatter-timeformatter)
 - [Version comparison (`VersionComparer`)](#version-comparison-versioncomparer)
 - [Compile-time localization enforcement (`StringId` / `LocalizedText`)](#compile-time-localization-enforcement-stringid-localizedtext)
+- [File-size ratchet (KESIZE analyzer)](#file-size-ratchet-kesize-analyzer)
 - [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader-patchnotesview-patchnotesscreen-10450)
 - [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect-connection-outage-screen-connectionstatuscontroller-reconnectscreen-1320)
 - [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
@@ -30,7 +31,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Animated characters (glTF clip playback + locomotion blend)](#animated-characters-gltf-clip-playback-locomotion-blend)
 - [Attack telegraphs / danger zones](#attack-telegraphs-danger-zones)
 - [Modern particle VFX](#modern-particle-vfx)
-- [Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.6.0)](#particle-attractors-particleattractor-absorb-on-arrival-1460)
+- [Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.7.0)](#particle-attractors-particleattractor-absorb-on-arrival-1470)
 - [Screen-space distortion](#screen-space-distortion)
 - [Terrain (`KhaozEngine.Terrain` / `KhaozEngine.Terrain.Render3D`)](#terrain-khaozengineterrain-khaozengineterrainrender3d)
 - [Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)](#third-person-follow-camera-character-controller-followcamera3d-charactercontroller3d)
@@ -1391,6 +1392,18 @@ accent-outlined on top) keeps every seam a crisp single 1px line, uniform even i
 device-pixel snapping (10.32.1). Override `ActiveStyle` / `InactiveStyle` to
 re-theme, and `Opacity` (0..1) fades the whole bar with a host transition. Labels are `LocalizedText`, so use a
 `StringId` for player-facing copy (`LocalizedText.Raw(...)` only for debug/non-localizable tokens).
+
+## File-size ratchet (KESIZE analyzer)
+
+Every umbrella carries `KhaozEngine.CodeHealth.Analyzers`, the compile-time twin of
+`scripts/check-file-size.sh`. If your repo has a `.filesize-baseline` at its root, the build errors
+when a baselined file grows past its frozen size (KESIZE001) or an unlisted file exceeds the
+800-line cap (KESIZE002). No baseline, no enforcement: adopt with
+`scripts/check-file-size.sh --init`. A baselined file may shrink freely. Blessing deliberate growth
+is a hand-edit of the baseline. Knobs: `KhaozFileSizeCap` (cap override) and
+`KhaozFileSizeBaselineDir` (non-standard baseline location), both MSBuild properties. The shell
+hooks and CI check remain in place as an earlier feedback layer, the analyzer is the layer that cannot be
+skipped with `--no-verify`.
 
 ## In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)
 
@@ -3190,7 +3203,7 @@ glow/ember/streak/smoke/ring/glint vocabulary without an asset pipeline.
 
 ---
 
-## Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.6.0)
+## Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.7.0)
 
 A `ParticleAttractor` is a world-space point pull applied to every live particle in a `ParticleSystem`, or
 every phase of a `ParticleEffectPlayer` that did not opt out. It is the primitive behind essence/soul-drain
@@ -4105,7 +4118,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.6.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.7.0" />
 ```
 
 ```csharp

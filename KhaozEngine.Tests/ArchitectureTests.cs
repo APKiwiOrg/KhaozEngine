@@ -84,8 +84,9 @@ public class ArchitectureTests
         // OIDC identity backend.
         ["Microsoft.IdentityModel.Protocols.OpenIdConnect"] = new[] { "Identity.Oidc" },
         ["Microsoft.IdentityModel.JsonWebTokens"] = new[] { "Identity.Oidc" },
-        // The localization analyzer is itself a Roslyn analyzer (netstandard2.0), so it carries Roslyn.
-        ["Microsoft.CodeAnalysis.CSharp"] = new[] { "Localization.Analyzers" },
+        // The localization analyzer and the file-size ratchet analyzer are both Roslyn analyzers
+        // (netstandard2.0), so both carry Roslyn.
+        ["Microsoft.CodeAnalysis.CSharp"] = new[] { "Localization.Analyzers", "CodeHealth.Analyzers" },
     };
 
     // Benign build-infrastructure packages that any package may carry. Listed, not silently skipped, so the
@@ -249,9 +250,10 @@ public class ArchitectureTests
             "KhaozEngine.Foundation",
             new[]
             {
-                "App", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon", "Ecs", "Http", "Identity",
-                "Locomotion", "MapDoc", "Navigation", "Objectives", "Persistence", "Physics", "Platform",
-                "Primitives", "Progression", "Serialization", "ServerStatus", "Social", "Terrain", "Updates",
+                "App", "CodeHealth.Analyzers", "Collision", "Content", "Determinism", "Diagnostics", "Dungeon",
+                "Ecs", "Http", "Identity", "Locomotion", "MapDoc", "Navigation", "Objectives", "Persistence",
+                "Physics", "Platform", "Primitives", "Progression", "Serialization", "ServerStatus", "Social",
+                "Terrain", "Updates",
             }
         },
         {
@@ -259,19 +261,23 @@ public class ArchitectureTests
             new[]
             {
                 "Windowing", "Render2D", "Gui", "Audio", "Particles", "Telegraphs", "Game", "Foundation",
-                "Localization.Analyzers",
+                "Localization.Analyzers", "CodeHealth.Analyzers",
             }
         },
         {
             "KhaozEngine.Game3D",
-            new[] { "Game2D", "Render3D", "Game.Render3D", "Telegraphs.Render3D", "Terrain.Render3D", "Particles.Render3D", "Physics" }
+            new[]
+            {
+                "Game2D", "Render3D", "Game.Render3D", "Telegraphs.Render3D", "Terrain.Render3D",
+                "Particles.Render3D", "Physics", "CodeHealth.Analyzers",
+            }
         },
         {
             "KhaozEngine.Server",
             new[]
             {
                 "Foundation", "Netcode", "Netcode.Abstractions", "Netcode.LiteNetLib", "Simulation",
-                "Replication", "WorldStore", "Sharding", "NetWorld", "Physics",
+                "Replication", "WorldStore", "Sharding", "NetWorld", "Physics", "CodeHealth.Analyzers",
             }
         },
     };

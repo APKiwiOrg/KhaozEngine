@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- The tests reference the analyzer project normally, so the repo-wide Analyzer-typed dogfood
+         reference would be a duplicate ProjectReference item. -->
+    <KhaozSkipFileSizeAnalyzer>true</KhaozSkipFileSizeAnalyzer>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Reference the analyzer as a plain library so tests can instantiate it (not applied as an analyzer). -->
+    <ProjectReference Include="../KhaozEngine.CodeHealth.Analyzers/KhaozEngine.CodeHealth.Analyzers.csproj"
+                      ReferenceOutputAssembly="true" OutputItemType="" />
+  </ItemGroup>
+</Project>

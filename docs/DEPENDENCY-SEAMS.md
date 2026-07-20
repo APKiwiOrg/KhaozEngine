@@ -153,6 +153,19 @@ KhaozEngine.Localization.TestKit -> KhaozEngine.App   (reads StringId.Key to ext
 no umbrella (a runtime build never pulls it) and references `App` only to read `StringId`, so the edge is acyclic
 and carries no weight into shipped game code.
 
+The file-size ratchet adds one more analyzer edge, from every umbrella:
+
+```
+KhaozEngine.Game2D/Game3D/Server/Foundation -> KhaozEngine.CodeHealth.Analyzers   (packed dependency,
+                                                    PrivateAssets="none", so the analyzer runs in the consumer's build)
+```
+
+`KhaozEngine.CodeHealth.Analyzers` is a `netstandard2.0` Roslyn analyzer with no runtime dependency. It ships its
+assembly under `analyzers/dotnet/cs` and its `buildTransitive` props auto-discover the consumer's `.filesize-baseline`
+and hand it to the analyzer as an `AdditionalFile`, so the edge is analyzer-only and drags nothing into shipped game
+code. All four umbrellas carry it (a file-size ratchet is not renderer- or server-specific), so any project that
+references an umbrella gets the ratchet.
+
 ## Self-relaunch seam: process control
 
 Cooperative self-restart (`KhaozEngine.App.AppRelaunch`) adds one edge, acyclic:

@@ -70,6 +70,7 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 | **KhaozEngine.Server.Admin** | Opt-in HTTPS admin endpoint (Kestrel + bearer token over TLS) over the `ServerAdmin` surface (list/teleport/kick/broadcast, account enumeration, ban/unban, and game-registered admin actions via `GET /actions`, `GET`/`POST /actions/{name}`). The only package that references ASP.NET Core; not in the `Server` umbrella. | NetWorld, WorldStore, Microsoft.AspNetCore.App |
 | **KhaozEngine.Updates.Tool** | The `ke-updater` dotnet tool (`PackAsTool`): generate, sign, and verify delta-update manifests (RSA-2048) for the `Updates` pipeline. Author-time tool, not a runtime package. | Updates |
 | **KhaozEngine.Localization.Analyzers** | Roslyn analyzer enforcing the `LocalizedText` localization contract: `KELOC001` flags player-facing text passed as a raw `string` to a `[LocalizationStringSink]` member, `KELOC002` flags `LocalizedText.Raw(...)` outside `[LocalizationExempt]` or DEBUG code, `KELOC003` flags a bare string literal drawn straight to `Render2D.SpriteBatch.DrawString` (literals only). Ships as warnings; a repo raises any to error in `.editorconfig`. Flows to consumers via the `Game2D`/`Game3D` umbrellas. | (analyzer; no runtime deps) |
+| **KhaozEngine.CodeHealth.Analyzers** | Roslyn analyzer enforcing the fleet's file-size ratchet: `KESIZE001` flags a file listed in `.filesize-baseline` that grew past its recorded line count (it may shrink freely, never grow), `KESIZE002` flags a file not in the baseline that exceeds the 800-line cap (`KhaozFileSizeCap` overrides). Ships buildTransitive props that auto-discover the repo's `.filesize-baseline` and hand it to the analyzer as an `AdditionalFile`, so adoption is zero-touch beyond running `scripts/check-file-size.sh --init` once. The semantic authority is `scripts/check-file-size.sh` in game-template. Flows to consumers via all four umbrellas. | (analyzer, no runtime deps) |
 | **KhaozEngine.Localization.TestKit** | Test-only localization coverage guard for a game's **test project**: `LocalizationCoverage.AssertComplete` takes a key universe (a keys class of `public const string` or `StringId` fields, the neutral resx's own entries via just a `ResourceManager`, or an explicit key sequence), then asserts every key resolves in the neutral resx AND in each shipped satellite with parent fallback disabled (a missing translation fails instead of silently reading the neutral language), plus placeholder-index integrity per culture. Framework-agnostic (throws `LocalizationCoverageException`, which fails any xUnit/NUnit/MSTest test). In NO umbrella - reference it explicitly from the test project. | App |
 | **KhaozEngine.Sfx.Tool** | The `ke-sfxbake` dotnet tool (`PackAsTool`): manifest-driven bulk SFX generation + bake. Reads a per-game `sfx.manifest.jsonc`, generates each effect via the ElevenLabs sound-effects REST API, encodes with ffmpeg/oggenc, idempotent via `.sfxmeta` sidecars. Author-time tool, not a runtime package. | Serialization |
 | **KhaozEngine.PropSurface.Tool** | The `ke-propbake` dotnet tool (`PackAsTool`): bakes a 3D collision `.coll` shape for every prop (trees get a leaning trunk-hull collider) and a walkable-surface `.surf` heightmap for walkable-solid props (rocks/logs/buildings) in a kit manifest, stamping the `surface`/`heightmap` fields and feeding `PropCollisionLoader` for physics wiring. Run as the last kit-ingest step (re-ingest = re-bake). Author-time tool, not a runtime package. | Render3D |
@@ -79,10 +80,10 @@ so a game pulls in just what it needs (and a logic library or headless server ca
 
 | Metapackage | Pulls in | For |
 |---|---|---|
-| **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Telegraphs) + `Game` + `Foundation` + the `Localization.Analyzers` analyzer (applied in the consumer's build) | a desktop 2D game |
-| **KhaozEngine.Game3D** | `Game2D` (so it also carries the `Localization.Analyzers` analyzer) + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Particles.Render3D` (modern particle VFX glue + presets) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) | a desktop 3D game |
-| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the `IWorldStore` seam + `InMemoryWorldStore` only; the `.Sqlite` / `.SqlServer` durable backends are opt-in siblings, added explicitly, not bundled) + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue + `WorldPersistence`) | a headless sim server (no GPU) |
-| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Http/Identity/Locomotion/MapDoc/Dungeon/Navigation/Objectives/Persistence/Progression/Serialization/ServerStatus/Social/Collision/Physics/Terrain/Determinism/Platform/Updates) | a gameplay-logic library (no renderer) |
+| **KhaozEngine.Game2D** | 2D runtime (Windowing/Render2D/Gui/Audio/Particles/Telegraphs) + `Game` + `Foundation` + the `Localization.Analyzers` analyzer + the `CodeHealth.Analyzers` file-size ratchet (both applied in the consumer's build) | a desktop 2D game |
+| **KhaozEngine.Game3D** | `Game2D` (so it also carries the `Localization.Analyzers` and `CodeHealth.Analyzers` analyzers) + `Render3D` + `Game.Render3D` (the 3D scene bridge) + `Particles.Render3D` (modern particle VFX glue + presets) + `Telegraphs.Render3D` + `Terrain.Render3D` (chunked-LOD terrain mesh + world streaming) | a desktop 3D game |
+| **KhaozEngine.Server** | `Foundation` + netcode (`Netcode`/`.Abstractions`/`.LiteNetLib`) + `Simulation` (fixed-tick host) + `Replication` + `WorldStore` (the `IWorldStore` seam + `InMemoryWorldStore` only; the `.Sqlite` / `.SqlServer` durable backends are opt-in siblings, added explicitly, not bundled) + `Sharding` (cell grid) + `NetWorld` (authoritative movement server + client glue + `WorldPersistence`) + the `CodeHealth.Analyzers` file-size ratchet | a headless sim server (no GPU) |
+| **KhaozEngine.Foundation** | the GPU-free foundation (Primitives/App/Content/Diagnostics/Ecs/Http/Identity/Locomotion/MapDoc/Dungeon/Navigation/Objectives/Persistence/Progression/Serialization/ServerStatus/Social/Collision/Physics/Terrain/Determinism/Platform/Updates) + the `CodeHealth.Analyzers` file-size ratchet | a gameplay-logic library (no renderer) |
 
 `KhaozEngine.Commerce` is not in any umbrella; a game or server that wants the wallet adds it explicitly. Same as `WorldStore`, its `.Sqlite` / `.SqlServer` durable backends are opt-in siblings, not bundled anywhere (including `Server`).
 
@@ -154,10 +155,10 @@ Published to a private GitHub Packages feed on tagged releases, and packed to a 
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="14.6.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="14.6.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="14.6.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="14.6.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="14.7.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="14.7.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="14.7.0" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="14.7.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -202,6 +203,8 @@ KhaozEngine.Netcode/   KhaozEngine.Netcode.Abstractions/   KhaozEngine.Netcode.L
 KhaozEngine.Replication/   KhaozEngine.WorldStore/   KhaozEngine.WorldStore.Sqlite/   KhaozEngine.WorldStore.SqlServer/
 KhaozEngine.Sharding/   KhaozEngine.NetWorld/
 KhaozEngine.Server.Admin/      Opt-in HTTPS admin endpoint (Kestrel) over ServerAdmin
+# Roslyn analyzers (netstandard2.0, flow to consumers through the umbrellas)
+KhaozEngine.Localization.Analyzers/   KhaozEngine.CodeHealth.Analyzers/
 # Umbrella metapackages
 KhaozEngine.Foundation/   KhaozEngine.Game2D/   KhaozEngine.Game3D/   KhaozEngine.Server/
 # Tests, samples, tools

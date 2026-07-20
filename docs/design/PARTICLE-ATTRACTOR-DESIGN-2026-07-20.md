@@ -1,6 +1,6 @@
 # Particle attractor, design (2026-07-20)
 
-Status: shipped 14.6.0 (issue #255). Second half of the Ruinborne death pass: the skinned corpse
+Status: shipped 14.7.0 (issue #255). Second half of the Ruinborne death pass: the skinned corpse
 dissolve shipped in 14.4.0/14.5.0, this capability lets the dissolving corpse's essence visibly
 drain into the killer. Consumer: https://github.com/APKiwiOrg/Ruinborne/issues/120.
 

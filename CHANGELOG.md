@@ -5,6 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.3.0
+
+Three verified fixes: partial-sweep telegraph outlines, a documented ECS change-iteration order, and a
+draw-count-stable XorRng.Range. Minor bump: two of the three are new consumer-visible contracts.
+
+- Telegraphs: `TelegraphRenderer2D.Arc()` outlines a partial sweep with real `DrawArc` strokes plus
+  radial end caps instead of skipping the outline entirely (an Outline-mode partial arc previously
+  rendered nothing), and `Cone()` closes the wedge with the far rim arc. Full-sweep outlines stay
+  closed rings. Pixel-presence GPU regression tests, no golden changes (#120).
+- ECS: `World.Added<T>()` and `Changed<T>()` now enumerate in documented first-insertion order via
+  companion ordered lists instead of raw HashSet order, which was one future `Remove` call away from
+  going hash-seed-random on a determinism-sensitive surface. The stable order is now a public
+  contract downstream code may rely on, pinned by multi-entity tests (#121).
+- Primitives: `XorRng.Range` always consumes exactly one draw. A degenerate bound pair (max equal to
+  or below min) previously skipped its NextFloat, so authoring a fixed-value particle Lifetime,
+  Speed, or Spin silently shifted every later draw in the stream. Returned values are unchanged and
+  the non-degenerate path is byte-identical. ADOPTION NOTE, determinism-affecting: any consumer
+  config that reaches `Range` with a degenerate pair gets a one-time reshuffle of the downstream
+  stream on adopt. That includes the 3D particle Lifetime/Speed/Spin fields and the 2D
+  `Particle2DSystem` sites (fixed life or speed, zero jitter, zero-size spawn regions). Old baked
+  seeds or replays that depended on the skipped draw do not reproduce bit-identically (#122).
+
 ## 14.2.0
 
 Second backlog cleanup batch closing 18 issues: a localizable ban notice, analyzer correctness, CI

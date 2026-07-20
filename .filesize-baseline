@@ -1,0 +1,35 @@
+# .filesize-baseline - frozen sizes for source files that already exceed the size cap.
+#
+# Format: "<lines> <path>", largest first. Managed by scripts/check-file-size.sh:
+#   scripts/check-file-size.sh --init     create this file (adoption only)
+#   scripts/check-file-size.sh --update   ratchet down after shrinking something
+#
+# A listed file may shrink freely without editing this file. It may not grow. Ratchet an entry down
+# with --update once real work has landed. Adding an entry or raising a number is a deliberate
+# hand-edit, on purpose: it should show up in review as "we are blessing a new large file".
+#
+# This file is per-repo and is NOT part of the verbatim template layer.
+4484 KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
+3672 KhaozEngine.MapEditor/MapEditorScene.cs
+3137 KhaozEngine.Render3D/Scene3D.cs
+2710 KhaozEngine.MapEditor/EditorCommands.cs
+2624 KhaozEngine.Render3D/Internal/ShaderSources.cs
+2329 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
+1793 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
+1644 KhaozEngine.Locomotion/CharacterMovement.cs
+1609 KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs
+1512 KhaozEngine.MapEdit.Tool/MutationService.cs
+1316 KhaozEngine.MapEditor/EditorTool.cs
+1296 KhaozEngine.Showcase/Room2DGui.cs
+1033 KhaozEngine.Updates/UpdateApplier.cs
+994 KhaozEngine.Game.Render3D/ReplicatedCharacterAnimators.cs
+974 KhaozEngine.Windowing/AppWindow.cs
+905 KhaozEngine.Game.Tests/Game/ReplicatedCharacterAnimatorsTests.cs
+905 KhaozEngine.Dungeon/Internal/RoomGrower.cs
+879 KhaozEngine.NetWorld/WorldClient.cs
+865 KhaozEngine.Render2D/SpriteBatch.cs
+857 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
+837 KhaozEngine.Render3D/Rendering/ModelRenderer.cs
+826 KhaozEngine.Audio/AudioSystem.cs
+824 KhaozEngine.Platform/ClipboardInterop.cs
+806 KhaozEngine.Game.Tests/Physics/ConstraintTests.cs

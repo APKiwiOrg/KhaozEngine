@@ -53,4 +53,18 @@
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
     <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="" />
   </ItemGroup>
+
+  <!-- File-size ratchet, dogfooded engine-wide: every project compiles under the KESIZE analyzer
+       against the repo-root .filesize-baseline (see docs/design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md).
+       Projects that already relate to the analyzer another way (the analyzer itself, its tests, the
+       four umbrellas that carry it as a packed dependency) opt out via KhaozSkipFileSizeAnalyzer to
+       avoid duplicate ProjectReference items. -->
+  <ItemGroup Condition="'$(KhaozSkipFileSizeAnalyzer)' != 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)KhaozEngine.CodeHealth.Analyzers/KhaozEngine.CodeHealth.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory).filesize-baseline"
+                     Condition="Exists('$(MSBuildThisFileDirectory).filesize-baseline')" />
+  </ItemGroup>
 </Project>

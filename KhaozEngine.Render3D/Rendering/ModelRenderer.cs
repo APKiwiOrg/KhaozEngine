@@ -118,7 +118,7 @@ namespace KhaozEngine.Render3D.Rendering
             // (Model 0, Tint 64, Emissive 80, SpecParams 96, IsDynamic 112), so a scene that queues no dissolve is
             // byte-identical and every GPU golden holds. ModelFrag gates the noise discard + edge on x > 0, so the
             // zero default (both InstanceData construction sites zero-fill via Add(default)) is inert. A single
-            // Float2 attribute (location 13); the splat pipeline shares this layout and ignores it (terrain never
+            // Float2 attribute (location 13). The splat pipeline shares this layout and ignores it (terrain never
             // dissolves), and the CharDissolve pipeline (ModelDissolveFrag) also ignores it (it reads SpecParams.z/w).
             public Vector2 Dissolve;      // 8
             public const uint SizeInBytes = 124;
@@ -322,7 +322,7 @@ namespace KhaozEngine.Render3D.Rendering
                     // read is valid on all three backends).
                     new GpuVertexElement("IDynamic", GpuVertexElementFormat.Float1),
                     // Location 13: per-instance rigid dissolve (issue #253) - x = threshold, y = edge width. Consumed
-                    // by ModelVert (passed to ModelFrag, which gates on x > 0); the splat pipeline and the CharDissolve
+                    // by ModelVert (passed to ModelFrag, which gates on x > 0). The splat pipeline and the CharDissolve
                     // pipeline both share this layout and ignore this trailing input.
                     new GpuVertexElement("IDissolve", GpuVertexElementFormat.Float2),
                 });

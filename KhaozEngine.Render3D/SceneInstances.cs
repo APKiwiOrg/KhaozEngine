@@ -32,7 +32,7 @@ namespace KhaozEngine.Render3D
             public Matrix4x4 World { get; }
             public Color Tint { get; }
             public Material Material { get; }
-            // Rigid dissolve (issue #253): DissolveThreshold 0 = no dissolve (byte-identical old path); > 0 folds the
+            // Rigid dissolve (issue #253): DissolveThreshold 0 = no dissolve (byte-identical old path). A value > 0 folds the
             // noise discard + emissive edge into ModelFrag (InstanceData.Dissolve = (threshold, edge width), and the
             // edge colour is substituted onto InstanceData.Emissive). Mirrors SkinnedSceneInstances.Instance.
             public float DissolveThreshold { get; }

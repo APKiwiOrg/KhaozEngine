@@ -84,7 +84,7 @@ namespace KhaozEngine.Tests.Render3D
             // The per-instance vertex stream is Model (mat4, 64) + Tint + Emissive + SpecParams (3*16) + IsDynamic
             // (float, 4) + Dissolve (Vector2, 8) = 124 bytes. ModelRenderer's instance vertex layout uses
             // InstanceData.SizeInBytes as the stride and adds an IDynamic Float1 (location 12) then an IDissolve
-            // Float2 (location 13) for the two trailing fields; if the struct and the constant drift, the instanced
+            // Float2 (location 13) for the two trailing fields. If the struct and the constant drift, the instanced
             // draws fetch each instance at the wrong offset (garbled transforms/tints).
             Assert.Equal(124, (int)ModelRenderer.InstanceData.SizeInBytes);
             Assert.Equal((int)ModelRenderer.InstanceData.SizeInBytes, Marshal.SizeOf<ModelRenderer.InstanceData>());

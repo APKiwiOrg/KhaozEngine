@@ -124,6 +124,7 @@ public sealed class ParticleSystem
     public int AbsorbedTotal { get; private set; }
 
     /// <summary>Invoked once per absorbed particle, with its final state, during <see cref="Update"/>.
+    /// Position, Velocity, Rotation, and Age are current at the absorb frame. Size and Color carry the previous frame's interpolated values because absorption occurs before the frame's size and colour interpolation.
     /// Assign a cached delegate to keep the update loop allocation-free.</summary>
     public Action<Particle>? OnAbsorbed { get; set; }
 

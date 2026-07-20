@@ -11,6 +11,9 @@
          content of its own) whose only content is the ProjectReference set above; NuGet warns that
          the package has dependencies but no lib assets for any TFM, which is expected here. -->
     <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <!-- Code-free dependency group: the packed reference below carries the analyzer to consumers, and
+         the repo-wide Analyzer-typed dogfood reference would duplicate it. -->
+    <KhaozSkipFileSizeAnalyzer>true</KhaozSkipFileSizeAnalyzer>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
@@ -36,6 +39,13 @@
     <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
+    <!-- File-size ratchet analyzer: packs as a dependency so it flows to any consumer of this umbrella.
+         PrivateAssets="none" keeps the Analyzers+Build assets in the packed dependency (the
+         ProjectReference default excludes them), so the analyzer and its buildTransitive baseline
+         discovery actually apply in the consumer's build. All four umbrellas carry it, unlike the
+         localization analyzer: the ratchet applies to server and foundation code too. -->
+    <ProjectReference Include="../KhaozEngine.CodeHealth.Analyzers/KhaozEngine.CodeHealth.Analyzers.csproj"
+                      PrivateAssets="none" />
   </ItemGroup>
   <!-- Ship the game-head build defaults (CETCompat=false, overridable) so every consuming
        head inherits the standard. buildTransitive/ makes it flow whether Foundation is a

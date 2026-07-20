@@ -95,7 +95,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly Vector4[] _lightPosRadius = new Vector4[MaxPointLights];
         readonly Vector4[] _lightColorIntensity = new Vector4[MaxPointLights];
 
-        /// <summary>Per-instance vertex stream (buffer slot 1, instanceStepRate 1). 64 + 48 = 112 bytes. The
+        /// <summary>Per-instance vertex stream (buffer slot 1, instanceStepRate 1). 64 + 48 + 4 + 8 = 124 bytes. The
         /// Model matrix is a System.Numerics Matrix4x4 (row-major), read in the shader as four Float4 rows.</summary>
         public struct InstanceData
         {
@@ -112,7 +112,16 @@ namespace KhaozEngine.Render3D.Rendering
             // scene with no skinned geometry is byte-identical. A single Float1 attribute (location 12); the splat
             // pipeline shares this layout and simply ignores it (terrain is always static).
             public float IsDynamic;       // 4
-            public const uint SizeInBytes = 116;
+            // Per-instance rigid dissolve (issue #253): x = threshold (0 = fully drawn, 1 = fully dissolved,
+            // matching DrawSkinned's dissolve parameter), y = edge width (a fraction of the noise range). Appended
+            // AFTER IsDynamic on purpose: a trailing field leaves every existing element's byte offset unchanged
+            // (Model 0, Tint 64, Emissive 80, SpecParams 96, IsDynamic 112), so a scene that queues no dissolve is
+            // byte-identical and every GPU golden holds. ModelFrag gates the noise discard + edge on x > 0, so the
+            // zero default (both InstanceData construction sites zero-fill via Add(default)) is inert. A single
+            // Float2 attribute (location 13); the splat pipeline shares this layout and ignores it (terrain never
+            // dissolves), and the CharDissolve pipeline (ModelDissolveFrag) also ignores it (it reads SpecParams.z/w).
+            public Vector2 Dissolve;      // 8
+            public const uint SizeInBytes = 124;
         }
 
         readonly IGpuDevice _gd;
@@ -294,7 +303,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
 
-            // Slot 1: per-instance data (locations 5..11), one step per instance. SPIRV binds these by location
+            // Slot 1: per-instance data (locations 5..13), one step per instance. SPIRV binds these by location
             // order, so the names are placeholders.
             var instanceLayout = new GpuVertexLayoutDescription(
                 stride: InstanceData.SizeInBytes,
@@ -312,6 +321,10 @@ namespace KhaozEngine.Render3D.Rendering
                     // splat pipeline shares this instance layout and ignores it (a trailing input the shader does not
                     // read is valid on all three backends).
                     new GpuVertexElement("IDynamic", GpuVertexElementFormat.Float1),
+                    // Location 13: per-instance rigid dissolve (issue #253) - x = threshold, y = edge width. Consumed
+                    // by ModelVert (passed to ModelFrag, which gates on x > 0); the splat pipeline and the CharDissolve
+                    // pipeline both share this layout and ignore this trailing input.
+                    new GpuVertexElement("IDissolve", GpuVertexElementFormat.Float2),
                 });
 
             _pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription

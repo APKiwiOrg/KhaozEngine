@@ -193,6 +193,7 @@ layout(location=9) in vec4 ITint;
 layout(location=10) in vec4 IEmissive;
 layout(location=11) in vec4 ISpecParams;
 layout(location=12) in float IDynamic;   // dynamic-geometry decal mask (0 static world / 1 skinned); see InstanceData
+layout(location=13) in vec2 IDissolve;   // per-instance rigid dissolve (issue #253): x = threshold, y = edge width
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out float vDepth;
@@ -203,6 +204,7 @@ layout(location=6) out vec4 vEmissive;
 layout(location=7) out vec4 vSpecParams;
 layout(location=8) out vec4 vTangent;
 layout(location=9) out float vDynamic;
+layout(location=10) out vec2 vDissolve;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -217,6 +219,7 @@ void main() {
     vSpecParams = ISpecParams;
     vTangent = vec4(mat3(Model) * Tangent.xyz, Tangent.w); // rotate tangent to world; preserve handedness
     vDynamic = IDynamic;
+    vDissolve = IDissolve;
 }";
 
         public const string ModelFrag = @"#version 450
@@ -252,10 +255,23 @@ layout(location=6) in vec4 vEmissive;
 layout(location=7) in vec4 vSpecParams; // x = specular strength, y = shininess exponent, z = alpha-cutout threshold (0 = OPAQUE, no clip)
 layout(location=8) in vec4 vTangent;    // world-space tangent (xyz) + handedness (w); zero => geometric normal
 layout(location=9) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
+layout(location=10) in vec2 vDissolve;  // per-instance rigid dissolve (issue #253): x = threshold (0 = solid .. 1 = gone), y = edge width
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 " + LightingCommonGlsl + @"
+// World-space value noise for the per-instance dissolve mask (issue #253). The SAME hash/noise + scale as
+// ModelDissolveFrag (the skinned CharDissolve path), so a prop and a character dissolve with one visual language.
+float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float dnoise(vec3 p) {
+    vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    float n000 = dhash(i + vec3(0,0,0)), n100 = dhash(i + vec3(1,0,0));
+    float n010 = dhash(i + vec3(0,1,0)), n110 = dhash(i + vec3(1,1,0));
+    float n001 = dhash(i + vec3(0,0,1)), n101 = dhash(i + vec3(1,0,1));
+    float n011 = dhash(i + vec3(0,1,1)), n111 = dhash(i + vec3(1,1,1));
+    return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+               mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
+}
 void main() {
     vec3 Ngeo = normalize(vNormalW);
     // Sample ALL material maps up front, unconditionally, in binding order (Albedo, NormalMap, RoughnessMap).
@@ -298,7 +314,22 @@ void main() {
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
     computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
+    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
+    // Per-instance rigid dissolve (issue #253), gated with an if (NOT a multiply) so a draw carrying no dissolve is
+    // byte-identical to the pre-dissolve path: the else branch is exactly `lit + vEmissive.rgb`, the old expression.
+    // When dissolving, vEmissive carries the emissive EDGE colour (substituted engine-side in the Draw overload), so
+    // the base emissive is dropped and only a bright band just above the discard threshold is added - the same trade
+    // ModelDissolveFrag makes. World-space noise so the pattern is stable as instances move.
+    if (vDissolve.x > 0.0) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float edgeW = max(vDissolve.y, 1e-3);
+        float mask = dnoise(vWorldPos * 6.0);
+        if (mask < threshold) discard;          // dissolved away
+        float edge = 1.0 - smoothstep(threshold, threshold + edgeW, mask);
+        lit += vEmissive.rgb * edge;
+    } else {
+        lit += vEmissive.rgb;                   // base emissive, unchanged old path
+    }
     oColor = vec4(lit, 1.0);
     // rgb: GEOMETRIC normal for the edge pass (not the perturbed one). a: dynamic-geometry decal mask - 1 for the
     // static world (unchanged), 0 for skinned/dynamic geometry so the main ground-decal pass rejects it (issue #235).

@@ -79,14 +79,30 @@ namespace KhaozEngine.Tests.Render3D
         // ---- Model instance stream (InstanceData) + the dynamic-geometry decal tag (issue #235) ----
 
         [Fact]
-        public void InstanceData_MarshalSize_EqualsDeclaredSizeInBytes_116()
+        public void InstanceData_MarshalSize_EqualsDeclaredSizeInBytes_124()
         {
             // The per-instance vertex stream is Model (mat4, 64) + Tint + Emissive + SpecParams (3*16) + IsDynamic
-            // (float, 4) = 116 bytes. ModelRenderer's instance vertex layout uses InstanceData.SizeInBytes as the
-            // stride and adds an IDynamic Float1 element (location 12) for that last field; if the struct and the
-            // constant drift, the instanced draws fetch each instance at the wrong offset (garbled transforms/tints).
-            Assert.Equal(116, (int)ModelRenderer.InstanceData.SizeInBytes);
+            // (float, 4) + Dissolve (Vector2, 8) = 124 bytes. ModelRenderer's instance vertex layout uses
+            // InstanceData.SizeInBytes as the stride and adds an IDynamic Float1 (location 12) then an IDissolve
+            // Float2 (location 13) for the two trailing fields; if the struct and the constant drift, the instanced
+            // draws fetch each instance at the wrong offset (garbled transforms/tints).
+            Assert.Equal(124, (int)ModelRenderer.InstanceData.SizeInBytes);
             Assert.Equal((int)ModelRenderer.InstanceData.SizeInBytes, Marshal.SizeOf<ModelRenderer.InstanceData>());
+        }
+
+        [Fact]
+        public void InstanceData_FieldOffsets_KeepExistingElementsFixed_AndAppendDissolve()
+        {
+            // The dissolve field (issue #253) is appended AFTER IsDynamic so every pre-existing instance element
+            // keeps its byte offset: a scene that queues no dissolve fetches Model/Tint/Emissive/SpecParams/IsDynamic
+            // at the exact same offsets as before, which is what keeps the GPU goldens byte-identical. Assert each
+            // offset so a reorder (which would silently move location 12/13 in the vertex layout) trips here.
+            Assert.Equal(0, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.Model)));
+            Assert.Equal(64, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.Tint)));
+            Assert.Equal(80, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.Emissive)));
+            Assert.Equal(96, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.SpecParams)));
+            Assert.Equal(112, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.IsDynamic)));
+            Assert.Equal(116, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.Dissolve)));
         }
 
         [Fact]
@@ -103,6 +119,19 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("1.0 - clamp(vDynamic, 0.0, 1.0)", ShaderSources.SkinnedModelDissolveFrag);
             Assert.Contains("vDynamic = P[3].x;", ShaderSources.SkinnedModelVert);
             Assert.Contains("oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0);", ShaderSources.SplatFrag);
+        }
+
+        [Fact]
+        public void ModelShaders_CarryThePerInstanceDissolve()
+        {
+            // The rigid/instanced dissolve (issue #253) rides InstanceData.Dissolve -> IDissolve (location 13) ->
+            // vDissolve (location 10) and is folded INTO ModelFrag gated by an if (dissolve <= 0 keeps the old path
+            // byte-exact), NOT reusing ModelDissolveFrag. Assert the GLSL halves so a struct/layout change without
+            // the shader (or vice versa) trips headlessly, and that the gate is a branch and not a multiply.
+            Assert.Contains("layout(location=13) in vec2 IDissolve;", ShaderSources.ModelVert);
+            Assert.Contains("vDissolve = IDissolve;", ShaderSources.ModelVert);
+            Assert.Contains("layout(location=10) in vec2 vDissolve;", ShaderSources.ModelFrag);
+            Assert.Contains("if (vDissolve.x > 0.0)", ShaderSources.ModelFrag);
         }
 
         // ---- Splat material params tail ----

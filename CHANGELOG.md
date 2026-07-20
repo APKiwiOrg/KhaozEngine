@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.6.0
+
+Compile-time file-size ratchet: new KhaozEngine.CodeHealth.Analyzers package enforces the fleet's
+.filesize-baseline as build errors (KESIZE001 baselined file grew, KESIZE002 unlisted file over the
+800-line cap), carried by all four umbrellas. Semantics mirror game-template's
+scripts/check-file-size.sh (wc -l line parity, same exclusions, silent when a repo has no baseline),
+so the shell layers stay as belt-and-braces while the ratchet becomes IDE-visible and unbypassable
+by hook-skipping. Consumer adoption is zero-touch: packed buildTransitive props auto-discover the
+repo's .filesize-baseline, with KhaozFileSizeCap and KhaozFileSizeBaselineDir as the only knobs. The
+engine dogfoods the same ratchet via its own frozen baseline. Design:
+docs/design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md. Closes #254 engine-side, fleet adoption tracked
+per-repo.
+
 ## 14.5.0
 
 Per-instance dissolve on the rigid/instanced render path, the primitive the prop draw-distance

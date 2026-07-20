@@ -1,6 +1,6 @@
 # File-Size Ratchet as a Roslyn Analyzer (KESIZE)
 
-Status: in progress. Issue: #254. Ships in 14.6.0.
+Status: shipped in 14.6.0. Issue: #254.
 
 ## Problem
 
@@ -82,7 +82,9 @@ while the default local and IDE experience becomes unbypassable-by-accident. The
 hook idiom has no analyzer equivalent on purpose: the blessing mechanism is the baseline hand-edit.
 
 Known coverage limit: a consumer project that references no engine umbrella gets no analyzer. The
-script layers still cover those files.
+script layers still cover those files. A related edge: a toolchain that hands the compiler relative
+or PathMap-remapped source-tree paths would fail the baseline-root prefix match and silently degrade
+to script-only enforcement, which the CI script backstop still covers.
 
 ## Fleet rollout
 

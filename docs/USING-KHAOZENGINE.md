@@ -1405,6 +1405,34 @@ is a hand-edit of the baseline. Knobs: `KhaozFileSizeCap` (cap override) and
 hooks and CI check remain in place as an earlier feedback layer, the analyzer is the layer that cannot be
 skipped with `--no-verify`.
 
+**Exemptions (14.8.0).** A baseline line of the form `exempt <path>` takes a file out of the ratchet
+entirely: no frozen size, no cap, no diagnostic. It exists for files whose size is CONTENT rather
+than STRUCTURE, a shader source blob or a data table, where freezing the size just pressures the next
+contributor into splitting at an arbitrary line. That split is the failure the ratchet exists to
+prevent, so the exemption is the honest escape. Put the reason on a `#` line above the entry (the
+path is the rest of the line, so a trailing comment would be read as part of the path):
+
+```
+# size is content, not structure: one const string per shader stage
+exempt KhaozEngine.Render3D/Internal/ShaderSources.cs
+```
+
+An exempt entry wins over a numeric entry for the same path, in either order. `--init` and
+`--preview` never emit one and `--update` preserves the ones you wrote, so an exemption is only ever
+a deliberate hand-edit. What does NOT qualify: a test fixture that accreted cases, or a screen or
+frame-loop class. Those should be split by responsibility, and the ratchet pressing you to do it is
+working as intended.
+
+Compatibility: a consumer still pinned below 14.8.0 (or running an un-refreshed
+`check-file-size.sh`) does not understand `exempt` and will read the file as unlisted, so it reports
+a cap violation instead. That is a loud, correctly-shaped failure rather than silent corruption, but
+it does mean a repo should adopt exempt lines only once it is on a pin that understands them.
+
+Both diagnostics carry their own remediation in the message text, not just in the IDE-only
+description, because MSBuild prints the message and nothing else. If you hit one and the growth is
+genuinely legitimate, the answer is to ask the repo owner to bless or exempt it, never to split the
+file to make the error go away.
+
 ## In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)
 
 Renders a game's player-facing `docs/PLAY_CHANGELOG.md` (the shared changelog style, `docs/CHANGELOG-STYLE.md`)
@@ -4118,7 +4146,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.7.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.8.0" />
 ```
 
 ```csharp

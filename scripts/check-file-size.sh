@@ -11,7 +11,7 @@
 # response is splitting at line N to appease the linter, which yields two god halves and is strictly
 # worse than one. So this check does not ask "is this file big", it asks "did this file get BIGGER".
 #
-# Two rules:
+# Two rules, plus an escape hatch for the files where the rules are a category error:
 #   1. A file recorded in .filesize-baseline must not exceed its recorded size. It may shrink freely
 #      (no baseline edit needed). It may never grow.
 #   2. A file NOT in the baseline must stay under the cap (default 800 lines, FILESIZE_CAP overrides).
@@ -19,6 +19,21 @@
 # So existing debt is frozen where it stands and pressure lands only on the files that are already
 # bad, while new files get a soft ceiling. Nobody is forced into a big-bang refactor and nobody can
 # make it worse. See docs/CODE-LAYOUT-STANDARD.md for the convention this backs.
+#
+# The escape hatch: a file whose size is CONTENT rather than STRUCTURE (a shader source blob, a data
+# table) is not a ratchet candidate at all. Freezing it means every legitimate addition either
+# interrupts the user or pressures an agent into splitting the file at an arbitrary line, which is the
+# "two god halves" failure this check exists to prevent. Mark the path with an "exempt <path>" line in
+# .filesize-baseline instead of a number, with the reason on a "#" comment line above it: no baseline,
+# no cap, no diagnostic for that path, in every mode below. Always a deliberate hand-edit (see
+# write_baseline_header and docs/CODE-LAYOUT-STANDARD.md). --init and --update never write one.
+#
+# Since engine 14.6.0 the same ratchet is ALSO enforced at compile time by the
+# KhaozEngine.CodeHealth.Analyzers package (KESIZE001/002, errors), which every umbrella carries and
+# which reads this same .filesize-baseline via auto-discovered AdditionalFiles. This script stays as
+# the earlier, cheaper feedback layer (write-time hook, pre-commit, pre-push, CI) and as the
+# baseline management tool (--init/--update). The analyzer mirrors THIS script's semantics: if the
+# two ever disagree, this script is the authority and the analyzer has the bug.
 #
 # Modes (the local hook and CI share one implementation so they cannot drift on what counts):
 #   (default)   staged mode - checks the STAGED content of staged .cs files. What .githooks/pre-commit
@@ -28,9 +43,9 @@
 #               the local hook (--no-verify, another IDE, the GitHub web UI) still gets caught before
 #               it ever reaches CI.
 #   --file <path>   single-file mode - reads candidate CONTENT from stdin (not from disk) and checks it
-#               against <path>'s baseline entry, or the cap if <path> is unlisted. Lets a caller ask "if
-#               this content landed at this path, would it violate the ratchet" without writing
-#               anything anywhere. This is what the agent write-time hook
+#               against <path>'s baseline entry, the cap if <path> is unlisted, or nothing at all if
+#               <path> is exempt. Lets a caller ask "if this content landed at this path, would it
+#               violate the ratchet" without writing anything anywhere. This is what the agent write-time hook
 #               (.claude/settings.json / .codex/settings.json) invokes to simulate a Write/Edit tool
 #               call's result before it lands: PreToolUse fires before the edit reaches disk, so the
 #               hook builds the candidate content itself (the Write tool's whole content, or the
@@ -45,6 +60,9 @@
 #               deliberate act with a reviewable diff. Policy: once a baselined file has shrunk, run
 #               --update in the SAME branch so the baseline follows the new low-water mark instead of
 #               sitting stale (over-generous to the next growth) until someone else happens to notice.
+#               Carries every "exempt <path>" line through unchanged, along with its preceding "#"
+#               reason comment: exemption is a hand-edit, never touched by the ratchet, and --update
+#               rewrites the whole file, so without this it would silently drop every exemption.
 #
 # Override a blocked commit with FILESIZE_OK=1 (the same idiom as TEMPLATE_DRIFT_OK / BACKLOG_FILE_OK).
 # That override is a git-hook-level idiom only: the agent write-time hook that calls --file has no such
@@ -76,6 +94,27 @@ baseline_for() {
       if (p == want) { print $1; exit }
     }
   ' "$BASELINE"
+}
+
+# True (exit 0) when <path> has an "exempt" line in the baseline: no baseline check, no cap check, no
+# diagnostic for that path at all. An exempt entry wins over a numeric entry for the same path
+# regardless of which appears first in the file, since this scans the whole file for a match rather
+# than stopping at the first entry seen (numeric entries keep first-wins among themselves, in
+# baseline_for above). Same tolerances as baseline_for: leading whitespace allowed, path is the rest
+# of the line verbatim so it may contain spaces. The "NF >= 2" guard rejects a bare "exempt" line with
+# no path at all: without it, sub() has nothing to remove, p is left as the literal string "exempt",
+# and the line would silently exempt any path actually named "exempt".
+is_exempt() {
+  [ -f "$BASELINE" ] || return 1
+  hit=$(awk -v want="$1" '
+    /^[[:space:]]*#/ { next }
+    $1 == "exempt" && NF >= 2 {
+      p = $0
+      sub(/^[[:space:]]*exempt[[:space:]]+/, "", p)
+      if (p == want) { print "1"; exit }
+    }
+  ' "$BASELINE")
+  [ -n "$hit" ]
 }
 
 # Echo the standard "<path>: <lines> lines, ..." sentence for one file: over its baseline (when $3 is
@@ -139,7 +178,28 @@ write_baseline_header() {
 # with --update once real work has landed. Adding an entry or raising a number is a deliberate
 # hand-edit, on purpose: it should show up in review as "we are blessing a new large file".
 #
+# A path can instead be marked "exempt <path>" in place of a number, for a file whose size is CONTENT
+# rather than STRUCTURE (a shader source blob, a data table): no baseline, no cap, no diagnostic for
+# that path at all. Put the reason on a "#" comment line right above the exempt line, since the line
+# itself is the path verbatim (paths may contain spaces) and cannot also carry a trailing comment:
+#
+#   # size is content, not structure: one const string per shader stage
+#   exempt KhaozEngine.Render3D/Internal/ShaderSources.cs
+#
+# Exemption is always a deliberate hand-edit: --init and --update never write an exempt line, only a
+# human adds one, and --update carries every exempt line (and its comment) through unchanged when it
+# rewrites this file. An exempt entry wins over a numeric entry for the same path, whichever appears
+# first, because exemption is the more explicit statement.
+#
+# Compatibility note: an older check-file-size.sh, or a KhaozEngine.CodeHealth.Analyzers pin from
+# before exemption shipped, does not understand an "exempt" line. It skips the line silently (the
+# first field is not numeric), then sees that path as unlisted, so a file over the cap fails with
+# KESIZE002 / the cap violation instead of passing. That is a loud, correctly-shaped failure and not
+# silent corruption, so it is safe, but keep the engine pin and this script current in any repo that
+# uses exempt lines.
+#
 # This file is per-repo and is NOT part of the verbatim template layer.
+
 EOF
 }
 
@@ -182,6 +242,7 @@ case "$mode" in
 
     printf '%s\n' "$files" | while IFS= read -r f; do
       [ -n "$f" ] || continue
+      if is_exempt "$f"; then continue; fi
       lines=$(measure "$f")
       [ -n "$lines" ] || continue
       limit=$(baseline_for "$f")
@@ -223,6 +284,7 @@ case "$mode" in
     # every keystroke is the wrong place to nag about adoption.
     [ -f "$BASELINE" ] || exit 0
     if is_excluded "$path"; then exit 0; fi
+    if is_exempt "$path"; then exit 0; fi
     lines=$(wc -l | tr -d ' ')
     limit=$(baseline_for "$path")
     if [ -n "$limit" ]; then
@@ -275,9 +337,31 @@ case "$mode" in
         printf '%s %s\n' "$recorded" "$path"
       fi
     done | sort -rn >> "$tmp"
+    # Exempt lines are a hand-edit the ratchet never touches: carry every "exempt <path>" line through
+    # unchanged, along with any "#" comment line(s) immediately above it (the reason, by convention).
+    # This rewrites the whole file like the numeric pass above, so without this step --update would
+    # silently drop every exemption on its next run. A run of "#" lines not immediately followed by an
+    # exempt line (an unrelated comment) is discarded, and a blank line clears the buffer.
+    #
+    # The LEADING comment block is the header, and it must be skipped rather than buffered.
+    # write_baseline_header has already regenerated it into $tmp above, so buffering it here emits a
+    # SECOND copy whenever the first entry in the file is an exempt line, which is exactly where a
+    # human puts the first one (the header's own worked example sits directly above the entries).
+    # Verified: without the past_header guard, one --update on such a file doubled a 32-line header to
+    # 63 lines. The header ends at the first blank line (write_baseline_header emits one for this
+    # purpose) or at the first entry, whichever comes first.
+    awk '
+      !past_header && /^[[:space:]]*$/ { past_header = 1; next }
+      !past_header && /^[[:space:]]*#/ { next }
+      { past_header = 1 }
+      /^[[:space:]]*#/ { buf = buf $0 "\n"; next }
+      /^[[:space:]]*exempt[[:space:]]+/ { printf "%s%s\n", buf, $0; buf = ""; next }
+      { buf = "" }
+    ' "$BASELINE" >> "$tmp"
     mv "$tmp" "$BASELINE"
     n=$(grep -cE '^[0-9]+ ' "$BASELINE" || true)
-    echo "check-file-size: ratcheted $BASELINE down to $n file(s) over the $CAP-line cap."
+    x=$(grep -cE '^[[:space:]]*exempt[[:space:]]+' "$BASELINE" || true)
+    echo "check-file-size: ratcheted $BASELINE down to $n file(s) over the $CAP-line cap, $x exempt."
     ;;
 
   --preview)

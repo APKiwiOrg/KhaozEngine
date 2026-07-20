@@ -8,7 +8,28 @@
 # with --update once real work has landed. Adding an entry or raising a number is a deliberate
 # hand-edit, on purpose: it should show up in review as "we are blessing a new large file".
 #
+# A path can instead be marked "exempt <path>" in place of a number, for a file whose size is CONTENT
+# rather than STRUCTURE (a shader source blob, a data table): no baseline, no cap, no diagnostic for
+# that path at all. Put the reason on a "#" comment line right above the exempt line, since the line
+# itself is the path verbatim (paths may contain spaces) and cannot also carry a trailing comment:
+#
+#   # size is content, not structure: one const string per shader stage
+#   exempt KhaozEngine.Render3D/Internal/ShaderSources.cs
+#
+# Exemption is always a deliberate hand-edit: --init and --update never write an exempt line, only a
+# human adds one, and --update carries every exempt line (and its comment) through unchanged when it
+# rewrites this file. An exempt entry wins over a numeric entry for the same path, whichever appears
+# first, because exemption is the more explicit statement.
+#
+# Compatibility note: an older check-file-size.sh, or a KhaozEngine.CodeHealth.Analyzers pin from
+# before exemption shipped, does not understand an "exempt" line. It skips the line silently (the
+# first field is not numeric), then sees that path as unlisted, so a file over the cap fails with
+# KESIZE002 / the cap violation instead of passing. That is a loud, correctly-shaped failure and not
+# silent corruption, so it is safe, but keep the engine pin and this script current in any repo that
+# uses exempt lines.
+#
 # This file is per-repo and is NOT part of the verbatim template layer.
+
 4484 KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
 3672 KhaozEngine.MapEditor/MapEditorScene.cs
 3137 KhaozEngine.Render3D/Scene3D.cs

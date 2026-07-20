@@ -5,6 +5,54 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.8.0
+
+The KESIZE file-size ratchet stops pushing agents toward the bad split it warns against: both
+diagnostics now carry their remediation in the message text, a new `exempt` baseline line takes
+content-shaped files out of the ratchet entirely, and hand-editing `.filesize-baseline` is gated by a
+confirmation prompt instead of resting on a code review that does not happen in this fleet.
+
+- **KESIZE001/KESIZE002 messages are self-guiding.** The remediation used to live in the descriptor's
+  `description`, which MSBuild does not print, so build output and CI logs showed only a bare number
+  comparison. Verified by growing a baselined file and reading the console. That is not a cosmetic
+  gap: an agent with no guidance and no wish to interrupt splits the file at whatever line silences
+  the error, which is precisely the two-god-halves outcome the ratchet exists to prevent. Both
+  `messageFormat` strings now state what to do (put the new code in its own type, never split at an
+  arbitrary line, stop and ask when the growth is legitimate), and both descriptors set
+  `HelpLinkUri`, which MSBuild also prints. `description` keeps only what the message does not say.
+- **New `.filesize-baseline` line form: `exempt <path>`.** Takes a file out of both rules (no frozen
+  size, no cap, no diagnostic). For files whose size is CONTENT rather than STRUCTURE, a shader
+  source blob or a data table, where freezing the size only pressures the next contributor into an
+  arbitrary split. Explicitly not for a test fixture that accreted cases or a screen or frame-loop
+  class, which should be split by responsibility. An exempt entry wins over a numeric entry for the
+  same path in either order. The reason goes on a `#` line above the entry, because the path is the
+  rest of the line. `--init` and `--preview` never emit one, and `--update` preserves them, so an
+  exemption is only ever a deliberate hand-edit. Parser tolerances otherwise match the numeric form
+  exactly (leading whitespace, whitespace run after the keyword, paths containing spaces, silent skip
+  of anything that is not exactly the lowercase keyword).
+- **Behaviour change for older pins.** A consumer below 14.8.0, or an un-refreshed
+  `check-file-size.sh`, does not understand an `exempt` line, skips it, and reads the path as
+  unlisted, so an over-cap file reports a cap violation. Loud and correctly shaped rather than
+  silently wrong, but a repo should adopt exempt lines only once it is on a pin that understands
+  them.
+- **Public shape:** `BaselineFile.Parse` returns `BaselineFile.Baseline` (`Entries`, `Exempt`,
+  `IsExempt`) instead of `Dictionary<string, int>`. Minor rather than major because the package sets
+  `IncludeBuildOutput=false` and ships only under `analyzers/dotnet/cs`, so no consumer can reference
+  the type in the first place.
+- **Agent write-time gate on `.filesize-baseline` (repo governance, not shipped API).** Two
+  PreToolUse hooks in `.claude/settings.json` and `.codex/settings.json`, mirrored in game-template.
+  Both emit `permissionDecision: "ask"`, deliberately not `"deny"`: the point is a workaround the
+  user can approve, and a deny leaves no path forward after they do. A `Write|Edit` hook covers the
+  obvious edit and a `Bash` hook covers shell writes, which the first one misses entirely (found by
+  writing to the baseline with `printf >>` and getting no prompt). The Bash hook fires only when the
+  command both names the file and contains a write-shaped token, so reads stay free and
+  `scripts/check-file-size.sh --update` stays free without an exception, since its command text never
+  names the file. Ratcheting DOWN is free, hand-edited growth is confirmed.
+- `AGENTS.md` gains the rule: moving a baseline is the user's call, an arbitrary split never is.
+  Design rationale, including the corrected claim that the shell script backstops the analyzer in
+  this repo (it does not, the engine has no shell file-size layer at all), is in
+  `docs/design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md` under "14.8.0 revision".
+
 ## 14.7.0
 
 A particle attractor: motes accelerate toward a moving world-space target and are absorbed on

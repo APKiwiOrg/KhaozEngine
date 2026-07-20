@@ -132,4 +132,82 @@ public class FileSizeAnalyzerTests
         var d = Assert.Single(diags);
         Assert.Equal(10, d.Location.GetLineSpan().StartLinePosition.Line);
     }
+
+    [Fact]
+    public async Task Exempt_SuppressesWhatWouldBe002()
+    {
+        var diags = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(5000)) },
+            baseline: "# size is content, not structure\nexempt Src/Shaders.cs\n");
+        Assert.Empty(diags);
+    }
+
+    [Fact]
+    public async Task Exempt_SuppressesWhatWouldBe001()
+    {
+        var diags = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(1201)) },
+            baseline: "exempt Src/Shaders.cs\n1200 Src/Shaders.cs\n");
+        Assert.Empty(diags);
+    }
+
+    [Fact]
+    public async Task Exempt_WinsOverNumericEntry_WhenNumericComesFirst()
+    {
+        var diags = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(1201)) },
+            baseline: "1200 Src/Shaders.cs\nexempt Src/Shaders.cs\n");
+        Assert.Empty(diags);
+    }
+
+    [Fact]
+    public async Task Exempt_PathWithSpaces_Parses()
+    {
+        var diags = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Big Blob.cs", AnalyzerHarness.SourceOfLines(5000)) },
+            baseline: "exempt Src/Big Blob.cs\n");
+        Assert.Empty(diags);
+    }
+
+    [Fact]
+    public async Task Exempt_LeadingWhitespaceAndTabSeparator_AreTolerated()
+    {
+        var diags = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(5000)) },
+            baseline: "  \texempt\tSrc/Shaders.cs\n");
+        Assert.Empty(diags);
+    }
+
+    [Theory]
+    [InlineData("exempted Src/Shaders.cs")]
+    [InlineData("Exempt Src/Shaders.cs")]
+    [InlineData("EXEMPT Src/Shaders.cs")]
+    [InlineData("#exempt Src/Shaders.cs")]
+    [InlineData("# exempt Src/Shaders.cs")]
+    [InlineData("exemptSrc/Shaders.cs")]
+    [InlineData("exempt")]
+    [InlineData("exempt   ")]
+    public async Task NonExemptKeyword_IsSkippedSilently_AndExemptsNothing(string baselineLine)
+    {
+        var diags = await AnalyzerHarness.Run(
+            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(5000)) },
+            baseline: baselineLine + "\n");
+        var d = Assert.Single(diags);
+        Assert.Equal("KESIZE002", d.Id);
+    }
+
+    [Fact]
+    public async Task Exempt_DoesNotAffectOtherPaths()
+    {
+        var diags = await AnalyzerHarness.Run(
+            new[]
+            {
+                (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(5000)),
+                (Root + "/Src/Other.cs", AnalyzerHarness.SourceOfLines(801)),
+            },
+            baseline: "exempt Src/Shaders.cs\n");
+        var d = Assert.Single(diags);
+        Assert.Equal("KESIZE002", d.Id);
+        Assert.Contains("Src/Other.cs", d.GetMessage());
+    }
 }

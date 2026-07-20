@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
@@ -15,8 +14,10 @@ namespace KhaozEngine.CodeHealth.Analyzers
     /// from AdditionalFiles (no baseline means the repo has not adopted the ratchet, so the analyzer
     /// stays silent), then checks every syntax tree: a baselined file must not exceed its recorded
     /// line count (KESIZE001), an unlisted file must stay under the cap (KESIZE002, default 800,
-    /// overridable via the KhaozFileSizeCap compiler-visible property). Line count is wc -l parity:
-    /// the number of newline characters in the file.
+    /// overridable via the KhaozFileSizeCap compiler-visible property). A path on an "exempt" line in
+    /// the baseline is not checked at all: no baseline, no cap, no diagnostic, for files whose size is
+    /// content rather than structure. Line count is wc -l parity: the number of newline characters in
+    /// the file.
     /// </summary>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public sealed class FileSizeAnalyzer : DiagnosticAnalyzer
@@ -42,7 +43,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             var baselineText = baseline.GetText(context.CancellationToken);
             if (baselineText is null) return;
 
-            var entries = BaselineFile.Parse(baselineText.ToString());
+            var parsed = BaselineFile.Parse(baselineText.ToString());
             var root = NormalizeSeparators(Path.GetDirectoryName(baseline.Path) ?? string.Empty);
 
             var cap = DefaultCap;
@@ -53,11 +54,11 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 cap = parsedCap;
             }
 
-            context.RegisterSyntaxTreeAction(treeContext => CheckTree(treeContext, entries, root, cap));
+            context.RegisterSyntaxTreeAction(treeContext => CheckTree(treeContext, parsed, root, cap));
         }
 
         private static void CheckTree(
-            SyntaxTreeAnalysisContext context, Dictionary<string, int> entries, string root, int cap)
+            SyntaxTreeAnalysisContext context, BaselineFile.Baseline baseline, string root, int cap)
         {
             if (context.IsGeneratedCode) return;
 
@@ -68,11 +69,12 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (!full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)) return;
             var relative = full.Substring(root.Length + 1);
             if (IsExcluded(relative)) return;
+            if (baseline.IsExempt(relative)) return;
 
             var text = context.Tree.GetText(context.CancellationToken);
             var lineCount = CountNewlines(text);
 
-            if (entries.TryGetValue(relative, out var limit))
+            if (baseline.Entries.TryGetValue(relative, out var limit))
             {
                 if (lineCount > limit)
                     Report(context, FileSizeDiagnostics.FileGrewPastBaseline, text, relative, lineCount, limit);

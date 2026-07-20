@@ -22,12 +22,20 @@
           {
             "type": "command",
             "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in */docs/TODO.md|docs/TODO.md|*/docs/ROADMAP.md|docs/ROADMAP.md) printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"docs/TODO.md and docs/ROADMAP.md are retired: the backlog moved to GitHub Issues on 2026-07-17 and both files were deleted. Do not re-create them. File backlog work with: gh issue create --label kind/backlog --label confidence/lead. Search prior art first with scripts/ledger.sh search <term>.\"}}' ;; esac"
+          },
+          {
+            "type": "command",
+            "command": "data=$(cat); f=$(printf '%s' \"$data\" | jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.filesize-baseline) printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"Hand-editing .filesize-baseline raises a frozen size or exempts a file from the KESIZE ratchet, which is the user decision, not the agent one. Before approving, state which file, its current and proposed size, and why the growth is legitimate rather than a file that should have been split. Ratcheting DOWN after a file shrank is free and needs no approval: run scripts/check-file-size.sh --update instead.\"}}' ;; esac"
           }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "data=$(cat); cmd=$(printf '%s' \"$data\" | jq -r '.tool_input.command // \"\"'); printf '%s' \"$cmd\" | grep -q '\\.filesize-baseline' || exit 0; printf '%s' \"$cmd\" | grep -qE '(>|sed[[:space:]]+-i|tee[[:space:]]|(^|[[:space:]])(cp|mv|rm|truncate|dd)[[:space:]])' || exit 0; printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"This command writes to .filesize-baseline, which raises a frozen size or exempts a file from the KESIZE ratchet. That is the user decision, not the agent one. Reading the file is free, only writes prompt. The sanctioned downward ratchet is scripts/check-file-size.sh --update, which needs no approval because it can only lower or drop entries, never raise one.\"}}'"
+          },
           {
             "type": "command",
             "command": "data=$(cat); cmd=$(printf '%s' \"$data\" | jq -r '.tool_input.command // \"\"'); mk=0; if printf '%s' \"$cmd\" | grep -qE 'tag-release\\.sh'; then mk=1; fi; if printf '%s' \"$cmd\" | grep -qE 'git[[:space:]]+tag([[:space:]]|$)'; then printf '%s' \"$cmd\" | grep -qE 'git[[:space:]]+tag[[:space:]]+-(d|-delete|l|-list|n|-contains|-points-at|-merged|-no-merged|-verify|v)' || mk=1; fi; gate=$mk; if printf '%s' \"$cmd\" | grep -qE 'git[[:space:]]+push' && printf '%s' \"$cmd\" | grep -qE '(--tags|refs/tags/|[[:space:]]v[0-9]+\\.[0-9]+\\.[0-9]+)'; then gate=1; fi; [ \"$gate\" = 1 ] || exit 0; cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; tag=$(printf '%s' \"$cmd\" | grep -oE 'v[0-9]+\\.[0-9]+\\.[0-9]+' | head -1); [ -z \"$tag\" ] && exit 0; git fetch --tags --quiet 2>/dev/null; hit=0; if git ls-remote --tags origin \"$tag\" 2>/dev/null | grep -q \"refs/tags/$tag$\"; then hit=1; fi; if [ \"$hit\" = 0 ] && [ \"$mk\" = 1 ] && git rev-parse -q --verify \"refs/tags/$tag\" >/dev/null 2>&1; then hit=1; fi; if [ \"$hit\" = 1 ]; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Tag %s already exists (local or origin). A concurrent release likely took it. Re-read the current version and tags, bump to the next free version, rebase the CHANGELOG entry, then tag.\"}}' \"$tag\"; fi"

@@ -1,6 +1,6 @@
 # File-Size Ratchet as a Roslyn Analyzer (KESIZE)
 
-Status: shipped in 14.6.0. Issue: #254.
+Status: shipped in 14.6.0, revised in 14.8.0 (see "14.8.0 revision" at the end). Issue: #254.
 
 ## Problem
 
@@ -93,3 +93,90 @@ layer (script header and CODE-LAYOUT-STANDARD.md) with no wiring change. Each ga
 bump plus refresh-engine.sh, verified by a deliberate KESIZE001 fire-and-revert probe in that repo.
 Template pin lag (10.90.0) means scaffolded games are born analyzer-less until the template repin
 lands, filed as a game-template follow-up issue.
+
+## 14.8.0 revision
+
+Three things the 14.6.0 design got wrong, found by asking whether the ratchet could be too strict.
+
+### The guidance was invisible, so the analyzer pushed toward the failure it warned about
+
+The remediation ("put it in its own type", "do not split at an arbitrary line") was written into the
+descriptor's `description`. MSBuild prints `messageFormat` and not `description`, so anything reading
+build output, which is every agent and every CI log, saw only a bare number comparison. Verified by
+growing a baselined file and reading the console: the message ended at "(this file may shrink, not
+grow)".
+
+That is worse than a missing nicety. An agent that hits the error, has no guidance, and does not want
+to interrupt the user will split the file at whatever line makes the error stop. That is exactly the
+two-god-halves outcome the ratchet exists to prevent, so the analyzer was actively producing the
+failure mode its own unread `description` warned about. Both messages now carry their remediation
+inline and both descriptors set `HelpLinkUri` (MSBuild prints the link too). `description` keeps only
+what the message does not already say.
+
+### "Visible in review" was not true here
+
+The 14.6.0 blessing mechanism was a hand-edit of `.filesize-baseline`, justified as "a deliberate act
+with a reviewable diff". That assumes a human reviewer. In this fleet an agent routinely authors,
+merges, and pushes to `main` in one pass, so a one-line baseline raise buried in a large diff is seen
+by nobody. The blessing was silent, which made the ratchet's whole strictness story rest on an
+enforcement step that was not happening.
+
+Fixed with agent write-time hooks in `.claude/settings.json` and `.codex/settings.json`, in this repo
+and in game-template. They emit `permissionDecision: "ask"`, deliberately NOT `"deny"`. Deny is the
+right shape for the em-dash and retired-backlog-file guards, where there is no legitimate case. Here
+there is: the whole point is a workaround the user can approve, and a hard deny would leave no path
+forward after they say yes.
+
+Two hooks, because one was not enough. The `Write|Edit` hook covers the obvious edit. A `Bash` hook
+covers shell writes, which the first one misses entirely: the gap was found by writing to the
+baseline with `printf >>` during verification and getting no prompt. The Bash hook asks only when the
+command both names `.filesize-baseline` and contains a write-shaped token, so reads stay free, and
+`scripts/check-file-size.sh --update` stays free without needing an exception because its command
+text never names the file. That asymmetry is the design: tooling-driven ratcheting DOWN is free,
+hand-edited growth is confirmed.
+
+Honest limit, unchanged in spirit from the bypass note above: a compound command that hides a write,
+or an agent that edits via some path neither matcher sees, still gets through. These hooks stop the
+casual and accidental path, which is the one that actually happens. They are not an adversarial
+control.
+
+### The ratchet was a category error for content-shaped files
+
+The ratchet's own rationale is about frame-loop owners and screens: classes that accrete features
+because they are the cheapest place to put the next one. A file whose size is CONTENT rather than
+STRUCTURE was never the target. `ShaderSources.cs` (2624 lines of const shader strings) is the
+exemplar: freezing it means every legitimate shader addition either interrupts the user or pressures
+someone into an arbitrary split.
+
+So `.filesize-baseline` gains an `exempt <path>` line form, taking a file out of both rules
+entirely. Design points worth keeping:
+
+- An exemption is granted ONCE per file, where a raise is paid per growth event. That asymmetry is
+  the reason to have it at all: it makes the honest case cheap and the debt case expensive.
+- `exempt` wins over a numeric entry for the same path in either order, since it is the more explicit
+  statement. `--init`/`--preview` never emit one and `--update` preserves them, so an exemption is
+  always a deliberate hand-edit, and therefore always passes the confirm hook above.
+- The reason goes on a `#` line above the entry, not trailing, because the path is the rest of the
+  line (the same tolerance numeric entries already have, so paths may contain spaces).
+- Tests are explicitly NOT exemption candidates. A fixture that accreted cases should be split into a
+  test class per feature area, so the pressure there is correct and the wording says so.
+
+Rejected: a richer per-entry annotation format. It would have made the script's awk reader and the
+analyzer's parser both meaningfully more complex to serve one case, when a distinct keyword line that
+existing parsers already skip does the same job.
+
+Compatibility, accepted rather than engineered around: a parser that predates this (an old engine
+pin, an un-refreshed script) skips the `exempt` line silently and reads the path as unlisted, so an
+over-cap file reports a cap violation. That is a loud, correctly-shaped failure rather than silent
+corruption, which is the right direction to fail. Documented in the baseline header, the package
+README, and USING-KHAOZENGINE.md.
+
+### Correction to the 14.6.0 text above
+
+The generated-code-leniency argument claims "the script remains as CI belt-and-braces, so
+more-lenient can never let a violation ship". That is true in the game repos. It is NOT true in this
+one: the engine has no shell file-size layer at all (no pre-commit, no pre-push, no CI invocation of
+`check-file-size.sh`, which here is baseline-management only). In the engine the analyzer is the sole
+enforcement, so its leniencies have no backstop. Left as is, since the leniencies are narrow and
+erring lenient in the repo that owns the analyzer is the safer direction, but the claim as written
+was wrong and should not be relied on.

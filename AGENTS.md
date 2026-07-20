@@ -62,6 +62,18 @@ version/release work.
   (`RootNamespace` is pinned in every split project), and a new test project needs an explicit
   `<IsPackable>false</IsPackable>`.
 - Hit-test via `InputManager`/`Pointer` bounds helpers (`IsTapIn`, etc.), never raw position + button.
+- **The KESIZE file-size ratchet is compile-time, and moving a baseline is the USER's call.** When
+  KESIZE001/002 fires, the fix is to put the new code in its own type. Never split a file at an
+  arbitrary line to satisfy the check: two god halves are worse than one, and that split is the
+  failure the ratchet exists to prevent. When the growth is genuinely legitimate, STOP AND ASK rather
+  than editing `.filesize-baseline` yourself. A write-time hook turns any hand-edit of that file into
+  a confirmation prompt, so raising a frozen size or granting an exemption cannot land silently
+  inside a large diff. Ratcheting DOWN is free and needs no approval: run
+  `scripts/check-file-size.sh --update` (it can only lower or drop entries, never raise one) in the
+  same branch as the shrink, so the baseline follows the new low-water mark. An `exempt <path>` line
+  is for a file whose size is CONTENT rather than STRUCTURE (a shader source blob, a data table), and
+  never for a test fixture that accreted cases or a screen/frame-loop class, both of which should be
+  split instead.
 
 ## Build / test / release
 - `dotnet test` (root, runs `KhaozEngine.slnx` - all 17 test assemblies) - every new behaviour ships with a headless test in its matching per-area project.

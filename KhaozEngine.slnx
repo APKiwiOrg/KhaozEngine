@@ -24,6 +24,8 @@
   <Project Path="KhaozEngine.Identity.Oidc/KhaozEngine.Identity.Oidc.csproj" />
   <Project Path="KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
   <Project Path="KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+  <Project Path="KhaozEngine.CodeHealth.Analyzers/KhaozEngine.CodeHealth.Analyzers.csproj" />
+  <Project Path="KhaozEngine.CodeHealth.Analyzers.Tests/KhaozEngine.CodeHealth.Analyzers.Tests.csproj" />
   <Project Path="KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj" />
   <Project Path="KhaozEngine.Localization.Analyzers.Tests/KhaozEngine.Localization.Analyzers.Tests.csproj" />
   <Project Path="KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj" />

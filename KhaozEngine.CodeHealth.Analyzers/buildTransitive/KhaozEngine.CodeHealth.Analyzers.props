@@ -1,0 +1,17 @@
+<Project>
+  <!-- Zero-touch wiring for the file-size ratchet: find the consuming repo's .filesize-baseline by
+       walking up from the project directory (repo root by convention) and hand it to the analyzer
+       as an AdditionalFile. No baseline found means the repo has not adopted the ratchet and the
+       analyzer stays silent, matching scripts/check-file-size.sh. Override the discovered directory
+       with KhaozFileSizeBaselineDir if a repo keeps the baseline somewhere non-standard. -->
+  <PropertyGroup>
+    <KhaozFileSizeBaselineDir Condition="'$(KhaozFileSizeBaselineDir)' == ''">$([MSBuild]::GetDirectoryNameOfFileAbove('$(MSBuildProjectDirectory)', '.filesize-baseline'))</KhaozFileSizeBaselineDir>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(KhaozFileSizeBaselineDir)' != ''">
+    <AdditionalFiles Include="$(KhaozFileSizeBaselineDir)/.filesize-baseline" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Surfaces the cap override to the analyzer as build_property.KhaozFileSizeCap. -->
+    <CompilerVisibleProperty Include="KhaozFileSizeCap" />
+  </ItemGroup>
+</Project>

@@ -109,6 +109,7 @@ namespace KhaozEngine.Telegraphs
                 Vector2 c = PrimitiveRenderer.SectorRimPoint(origin, dirAngle, halfAngleRad, range, 1f);
                 p.DrawLine(b, origin, a, r.OutlineColor, r.EdgeThickness);
                 p.DrawLine(b, origin, c, r.OutlineColor, r.EdgeThickness);
+                p.DrawArc(b, origin, range, r.EdgeThickness, dirAngle - halfAngleRad, halfAngleRad * 2f, r.OutlineColor);
             }
         }
 
@@ -121,10 +122,19 @@ namespace KhaozEngine.Telegraphs
             float outer = radius + bandWidth * 0.5f;
             if (r.FillMode != FillMode.Outline)
                 p.DrawFilledArcBand(b, center, inner, outer, startAngle, sweepAngle * r.FillFraction, WithFlash(r.FillColor, r.FlashAdd));
-            if (r.FillMode != FillMode.Fill && MathF.Abs(sweepAngle) >= MathF.Tau - 0.01f)
+            if (r.FillMode != FillMode.Fill)
             {
-                p.DrawRing(b, center, inner, r.EdgeThickness, r.OutlineColor);
-                p.DrawRing(b, center, outer, r.EdgeThickness, r.OutlineColor);
+                p.DrawArc(b, center, inner, r.EdgeThickness, startAngle, sweepAngle, r.OutlineColor);
+                p.DrawArc(b, center, outer, r.EdgeThickness, startAngle, sweepAngle, r.OutlineColor);
+                if (MathF.Abs(sweepAngle) < MathF.Tau - 0.01f)
+                {
+                    // Radial end caps close the band on a partial sweep. A full ring needs none.
+                    float endAngle = startAngle + sweepAngle;
+                    Vector2 startDir = new(MathF.Cos(startAngle), MathF.Sin(startAngle));
+                    Vector2 endDir = new(MathF.Cos(endAngle), MathF.Sin(endAngle));
+                    p.DrawLine(b, center + startDir * inner, center + startDir * outer, r.OutlineColor, r.EdgeThickness);
+                    p.DrawLine(b, center + endDir * inner, center + endDir * outer, r.OutlineColor, r.EdgeThickness);
+                }
             }
         }
     }

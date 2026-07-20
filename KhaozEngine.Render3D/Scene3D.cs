@@ -1005,6 +1005,17 @@ namespace KhaozEngine.Render3D
         /// (emissive glow + specular).</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material) => _instances.Add(mesh, world, tint, material);
 
+        /// <summary>As the material overload, but dissolves this rigid instance (issue #253): <paramref name="dissolve"/>
+        /// is the 0..1 threshold (0 = solid, 1 = fully gone), with a glowing emissive edge of <paramref name="edgeColor"/>
+        /// and width <paramref name="edgeWidth"/> (a fraction of the noise range). Mirrors the <see cref="DrawSkinned(SkinnedMeshHandle,ReadOnlySpan{Matrix4x4},Matrix4x4,Color,Material,float,float,Color)"/>
+        /// dissolve overload but on the instanced path: no pipeline switch and no batching change (the discard folds
+        /// into the shared ModelFrag), so it stays one instanced draw per mesh. A <paramref name="dissolve"/> of 0
+        /// draws exactly like the material overload, so it is safe to call unconditionally while gating the value on a
+        /// fade. Presentation only - never feed sim/RNG/netcode from the dissolve value.</summary>
+        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
+            float dissolve, float edgeWidth, Color edgeColor)
+            => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor);
+
         // ---- Dynamic point/effect lights (muzzle flashes, explosions, thrusters, key projectiles). ----
 
         /// <summary>
@@ -3078,12 +3089,18 @@ namespace KhaozEngine.Render3D
                 MeshHandle mesh = inst.Mesh;
                 int slot = meshRunIndex[(mesh.Index, mesh.Generation)];
                 uint dst = writeCursor[slot]++;
+                bool dissolving = inst.Dissolving;
                 instanceData[(int)dst] = new ModelRenderer.InstanceData
                 {
                     Model = inst.World,
                     Tint = inst.Tint,
-                    Emissive = inst.Material.Emissive,
+                    // During a dissolve the emissive channel carries the edge colour and Dissolve = (threshold, edge
+                    // width) lights the gated ModelFrag term. A non-dissolving draw keeps the material emissive and a
+                    // zero Dissolve, so it is byte-identical to the pre-dissolve packing (issue #253). SpecParams.z is
+                    // left 0 for ApplyAlphaCutoffs to fill with the MASK cutoff, independent of dissolve.
+                    Emissive = dissolving ? inst.DissolveEdge : inst.Material.Emissive,
                     SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
+                    Dissolve = dissolving ? new Vector2(inst.DissolveThreshold, inst.DissolveEdgeWidth) : Vector2.Zero,
                 };
             }
         }

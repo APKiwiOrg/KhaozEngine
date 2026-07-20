@@ -95,6 +95,34 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Dissolve_SubstitutesEdgeColourForEmissive_AndPacksThresholdAndWidth()
+        {
+            // A dissolving instance (issue #253) packs the threshold + edge width into InstanceData.Dissolve and
+            // routes the edge colour onto Emissive (dropping the material's own emissive), the same trade the skinned
+            // path makes. A non-dissolving instance keeps its material emissive and a zero Dissolve (byte-identical
+            // to the pre-dissolve packing).
+            var glow = new Color(0.8f, 0.2f, 0.1f, 1f);
+            var edge = new Color(0f, 1f, 0.5f, 1f);
+            var items = new List<SceneInstances.Instance>
+            {
+                new(new MeshHandle(0), Matrix4x4.Identity, Color.White, new Material(glow, 0.7f, 64f), 0.5f, 0.15f, edge),
+                new(new MeshHandle(0), Matrix4x4.Identity, Color.White, new Material(glow, 0.7f, 64f)),
+            };
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            Scene3D.GroupInstances(items, data, runs);
+
+            // Dissolving instance: edge colour on Emissive, (threshold, width) in Dissolve.
+            Assert.Equal((Vector4)edge, data[0].Emissive);
+            Assert.Equal(0.5f, data[0].Dissolve.X, 4);
+            Assert.Equal(0.15f, data[0].Dissolve.Y, 4);
+            // Non-dissolving instance: material emissive kept, Dissolve zero (inert in the shader).
+            Assert.Equal((Vector4)glow, data[1].Emissive);
+            Assert.Equal(0f, data[1].Dissolve.X, 4);
+            Assert.Equal(0f, data[1].Dissolve.Y, 4);
+        }
+
+        [Fact]
         public void ApplyAlphaCutoffs_WritesMaskCutoffIntoSpecParamsZ_PerRun_LeavesOpaqueUntouched()
         {
             // Two runs: mesh 5 is MASK (cutoff 0.3), mesh 2 is OPAQUE (cutoff 0). Interleaved -> contiguous runs.

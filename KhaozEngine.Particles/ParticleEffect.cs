@@ -35,6 +35,11 @@ public struct ParticleEffectPhase
 
     /// <summary>Per-particle trail history depth for this phase's pool. 0 disables trails.</summary>
     public int TrailSamples;
+
+    /// <summary>Optional emission-rate envelope over the phase's active window: the effective stream rate is
+    /// <see cref="RatePerSecond"/> times <c>RateCurve.Evaluate(local / Duration)</c>. Null (the default) keeps
+    /// the flat legacy rate. Bursts are unaffected.</summary>
+    public ParticleCurve? RateCurve;
 }
 
 /// <summary>

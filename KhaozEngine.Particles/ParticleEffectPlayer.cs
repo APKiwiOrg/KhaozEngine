@@ -27,6 +27,9 @@ public sealed class ParticleEffectPlayer
 
     private readonly float _maxPhaseEnd;
 
+    private ParticleAttractor? _attractor;
+    private Action<Particle>? _onAbsorbed;
+
     /// <summary>Build a player for <paramref name="effect"/> with up to <paramref name="maxInstances"/> concurrent instances.</summary>
     public ParticleEffectPlayer(ParticleEffect effect, int maxInstances = 8, uint seed = 1)
     {
@@ -67,6 +70,72 @@ public sealed class ParticleEffectPlayer
 
     /// <summary>The particle pool for <paramref name="phaseIndex"/>, for a renderer to read.</summary>
     public ParticleSystem PhaseSystem(int phaseIndex) => _pools[phaseIndex];
+
+    /// <summary>The attractor applied to every phase pool, or null for none. Re-assign each frame to track a
+    /// moving target. Setting null releases live particles to drift and fade on their own lifetimes.
+    /// A phase opts out via <see cref="EmitterConfig.IgnoreAttractor"/> on its config.</summary>
+    public ParticleAttractor? Attractor
+    {
+        get => _attractor;
+        set
+        {
+            _attractor = value;
+            for (int ph = 0; ph < _phaseCount; ph++)
+            {
+                _pools[ph].Attractor = value;
+            }
+        }
+    }
+
+    /// <summary>Handler invoked whenever any phase pool absorbs a particle via its attractor's kill radius.
+    /// Forwarded to every phase pool.</summary>
+    public Action<Particle>? OnAbsorbed
+    {
+        get => _onAbsorbed;
+        set
+        {
+            _onAbsorbed = value;
+            for (int ph = 0; ph < _phaseCount; ph++)
+            {
+                _pools[ph].OnAbsorbed = value;
+            }
+        }
+    }
+
+    /// <summary>Particles absorbed by an attractor's kill radius across every phase pool during the last
+    /// <see cref="Update"/> call.</summary>
+    public int AbsorbedLastUpdate
+    {
+        get
+        {
+            int sum = 0;
+            for (int ph = 0; ph < _phaseCount; ph++)
+            {
+                sum += _pools[ph].AbsorbedLastUpdate;
+            }
+            return sum;
+        }
+    }
+
+    /// <summary>Total particles absorbed by an attractor's kill radius across every phase pool over the
+    /// player's lifetime.</summary>
+    public int AbsorbedTotal
+    {
+        get
+        {
+            int sum = 0;
+            for (int ph = 0; ph < _phaseCount; ph++)
+            {
+                sum += _pools[ph].AbsorbedTotal;
+            }
+            return sum;
+        }
+    }
+
+    /// <summary>Runtime multiplier on every phase's stream rate (bursts unaffected). Default 1. Drive it per
+    /// frame to tie emission to an external ramp, for example a dissolve threshold. Values &lt;= 0 emit
+    /// nothing. Does not affect already-live particles.</summary>
+    public float RateScale { get; set; } = 1f;
 
     /// <summary>True while any instance is still scheduling or any phase pool still holds live particles.</summary>
     public bool AnyAlive
@@ -151,7 +220,14 @@ public sealed class ParticleEffectPlayer
 
                 if (phase.RatePerSecond > 0f && local <= phase.Duration)
                 {
-                    int c = _rateAcc[slot].Advance(dt, phase.RatePerSecond);
+                    float scale = RateScale > 0f ? RateScale : 0f;
+                    float rate = phase.RatePerSecond * scale;
+                    if (phase.RateCurve.HasValue && rate > 0f)
+                    {
+                        float norm = phase.Duration > 0f ? Math.Clamp(local / phase.Duration, 0f, 1f) : 1f;
+                        rate *= phase.RateCurve.Value.Evaluate(norm);
+                    }
+                    int c = _rateAcc[slot].Advance(dt, rate);
                     if (c > 0)
                     {
                         EmitInto(ph, i, phase, c);

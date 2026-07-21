@@ -255,6 +255,24 @@ version/release work.
 - net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), Veldrid behind
   `KhaozEngine.Gpu` (GPU), Silk.NET.OpenAL (audio), xUnit (tests).
 
+### Agent build workaround: .buildhome (macOS gitconfig TCC)
+
+On the primary dev Mac, `~/.gitconfig` is an iCloud-symlinked file behind macOS TCC, so
+`dotnet build` / `dotnet test` can fail with an error about reading `~/.gitconfig` when run from
+sandboxed or agent contexts. When, and only when, that specific failure appears, rerun with a
+scratch HOME inside the working tree and the real NuGet cache pinned, so restore does not
+re-download:
+
+```bash
+real_home="$HOME"
+mkdir -p "$PWD/.buildhome"
+HOME="$PWD/.buildhome" NUGET_PACKAGES="$real_home/.nuget/packages" dotnet build KhaozEngine.slnx
+```
+
+Same prefix for `dotnet test`. `.buildhome/` is gitignored fleet-wide (game-template standard):
+never commit it, avoid `git add -A` around it, and let it die with the worktree. On machines
+without the TCC quirk this rule is a harmless no-op.
+
 ## Discovered work (follow-ups and chips)
 
 Two rules. The first one matters more.

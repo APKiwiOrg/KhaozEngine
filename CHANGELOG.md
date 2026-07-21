@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.10.0
+
+Two consumer-handoff APIs promoted from Ruinborne, each replacing a hand-rolled copy:
+
+- **`BatchedWriter<T>` (KhaozEngine.Persistence, #262).** Bounded async batch-write queue for a
+  server-side append-only log (chat, an economy ledger, admin actions), promoted from Ruinborne's
+  `Ruinborne.Server/Persistence/BatchedWriter.cs` (production since its 0.9.x line, backing three
+  writers there). `Enqueue` is non-blocking and never does IO; overflow drops the OLDEST queued
+  record(s), counted via `DroppedCount`. `Update(dt)`, driven by the host on its own schedule (there
+  is no internal timer), drains up to `maxBatch` records on a `flushIntervalSeconds` cadence and
+  dispatches one batched write off-thread through the injected sink. A whole-batch write failure is
+  salvaged by retrying every record individually, so one poisoned row costs one row instead of the
+  batch; `FlushAsync()` is the shutdown-drain path (ignores the interval, drains everything queued,
+  awaits every in-flight write). A `null` sink makes every member a no-op. Lives next to
+  `PersistenceQueue` in `KhaozEngine.Persistence` (already in the `Foundation`/`Server` umbrellas),
+  not a new package. Ruinborne adopts on this release and deletes its local copy.
+- **`TerrainRaycast` height-function overload (KhaozEngine.Terrain, #263).** `Raycast` gained a
+  sibling overload taking a bare `Func<float, float, float> heightAt(x, z)` instead of a concrete
+  `TerrainField`, for a consumer whose height source is not a `TerrainField` (a closed-form plane in
+  a headless unit test, or a sampler shared identically by two heads) without hand-rolling its own
+  copy of the march/bisect kernel. The `TerrainField` overload is now a thin adapter over the
+  delegate one (`Raycast(field.SampleHeight, ...)`), so both share exactly one kernel and existing
+  callers see zero behaviour change. Both overloads also gained an optional `bisectIterations`
+  parameter (default `24`, the engine's prior hardcoded value) alongside the existing `step`
+  (default `0.25f`).
+
 ## 14.9.0
 
 Four small additive parity APIs from the engine-parity audit, each replacing a hand-rolled copy in a

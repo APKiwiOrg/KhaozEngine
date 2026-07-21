@@ -71,6 +71,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
 - [Save data (`GameStorage`)](#save-data-gamestorage)
 - [Versioned save migrations (`MigrationChain<T>`)](#versioned-save-migrations-migrationchaint)
+- [Batched async writes (`BatchedWriter<T>`)](#batched-async-writes-batchedwritert)
 - [Deterministic floating point (`KhaozEngine.Determinism`)](#deterministic-floating-point-khaozenginedeterminism)
 - [Testing your game headlessly](#testing-your-game-headlessly)
 - [Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)](#device-free-shader-validation-khaozenginegpushadervalidation)
@@ -6530,8 +6531,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `SaveEncoder` (Base64 + HMAC, a versioned envelope carrying tamper-protected `SaveMetadata`), the
   `GameStorage` facade (paths + queue + settings + encoder, default-on encoding, an outcome-reporting
   recovery ladder, generation restore - see "Save data" below), the `SettingsManager<T>.StampInstall(...)`
-  convenience, and versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations"
-  below).
+  convenience, versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations"
+  below), and `BatchedWriter<T>` (a bounded async batch-write queue for a server-side append-only log -
+  see "Batched async writes" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
@@ -7007,6 +7009,61 @@ default), which read as older than every registered step: first boot logged a sp
 corruption-looking "schema version predates the oldest migration step" warning on every launch, and the
 fresh value was never actually stamped to `CurrentVersion`. A first boot or a full reset is not a
 pre-migration save, so it should never look like one. `StampCurrent` is what makes that true.
+
+## Batched async writes (`BatchedWriter<T>`)
+
+`KhaozEngine.Persistence.BatchedWriter<T>` is a bounded async batch-write queue for a server-side
+append-only log: chat transcripts, an economy ledger, admin action logs, and similar record streams
+where losing the odd row under load is acceptable but blocking the sim tick on IO is not. Promoted
+from Ruinborne, which had run it in production behind three writers since its 0.9.x line.
+
+```csharp
+using KhaozEngine.Persistence;
+
+var writer = new BatchedWriter<ChatMessage>(
+    sink: (batch, ct) => store.AppendAsync(batch, ct),   // null disables the writer entirely
+    label: "chatlog",                                     // prefixes every log line
+    logger: Log.For<BatchedWriter<ChatMessage>>(),         // optional, defaults to this
+    maxQueue: 4096, maxBatch: 256, flushIntervalSeconds: 5f);
+
+// Hot path (e.g. every chat message): never blocks, never does IO.
+writer.Enqueue(message);
+
+// Once per tick, driven by the host - there is no internal timer, so nothing flushes without this:
+writer.Update(dt);
+
+// On shutdown: drain everything queued and await every in-flight write.
+await writer.FlushAsync();
+```
+
+**Enqueue is non-blocking; overflow drops the OLDEST queued record(s).** `Enqueue` only pushes onto an
+in-memory `Queue<T>` bounded at `maxQueue`; once full, the oldest entries are evicted to make room and
+the running total is exposed via `DroppedCount`. For a forensic log this is the right trade: an old,
+unread entry is cheaper to lose than the one just produced.
+
+**`Update` owns cadence; there is no internal timer.** Call it every tick from the host loop (the same
+place a fixed-tick sim already calls everything else). It accumulates `dt` and only drains + dispatches
+a batched write once `flushIntervalSeconds` has passed, so an idle writer costs nothing between flushes.
+The write itself runs off-thread through the injected `sink`, so `Update` never blocks the caller on IO.
+A single flush dispatches at most `maxBatch` records; a queue deeper than that drains over several
+flushes rather than blocking a tick on an unbounded batch.
+
+**A whole-batch failure salvages individually instead of losing the batch.** When `sink` throws for a
+dispatched batch, `BatchedWriter<T>` retries every record in that batch through its own `sink` call. This
+assumes a sink that opens a fresh connection/transaction per call, which turns a singleton retry into
+"one row, one transaction" and isolates a single poisoned record from the rest. A record that still fails
+alone is logged (with its own content, so the bad one is diagnosable) and dropped; everything else in the
+batch survives. This is what makes one malformed row cost one row instead of the whole flush.
+
+**`FlushAsync` is the shutdown-drain path.** It ignores the flush interval, drains and dispatches
+everything still queued (still respecting `maxBatch` per dispatched write), then awaits every in-flight
+write - including one a concurrent `Update` may have just dispatched - before returning. Call it once on
+shutdown so a clean exit does not lose the tail of the queue.
+
+**A `null` sink makes the whole writer a no-op.** `Enqueue`, `Update`, and `FlushAsync` all become no-ops
+when constructed with `sink: null`, so a host can wire a writer unconditionally (e.g. local dev with no
+backing store configured) and let the null-sink instance quietly do nothing rather than branching at every
+call site.
 
 ## Deterministic floating point (`KhaozEngine.Determinism`)
 

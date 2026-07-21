@@ -55,3 +55,6 @@ networked-walk-world.db-shm
 # truth, and per-checkout. Kept out of git on purpose: a committed copy would drift and re-create
 # the docs/TODO.md sync problem that moving to Issues was meant to end.
 .ledger/
+
+# Build-home workaround dirs used by agent worktrees (HOME redirect for the gitconfig TCC issue)
+.buildhome/

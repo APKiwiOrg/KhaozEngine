@@ -150,5 +150,123 @@ namespace KhaozEngine.Tests.Terrain
             bool hit = TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, 0f, 0f), 1e12f, out _, step: 0.01f);
             Assert.False(hit);
         }
+
+        // ---- Func<float, float, float> overload: same kernel, a bare height function instead of a TerrainField ---
+
+        [Fact]
+        public void DelegateOverload_ClosedFormFlatPlane_HitsExactExpectedPoint()
+        {
+            // y = 2 everywhere: a closed-form plane, not backed by any TerrainField. Same 45-degree ray as
+            // DiagonalRay_HitsFlatGroundAtExpectedPoint, so the expected intersection is exact (x = 8, y = 2).
+            static float FlatPlane(float x, float z) => 2f;
+
+            bool hit = TerrainRaycast.Raycast(FlatPlane, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 100f, out Vector3 p);
+
+            Assert.True(hit);
+            Assert.Equal(8f, p.X, 2);
+            Assert.Equal(2f, p.Y, 2);
+            Assert.Equal(0f, p.Z, 2);
+        }
+
+        [Fact]
+        public void DelegateOverload_ClosedFormSlopedPlane_HitsExactExpectedPoint()
+        {
+            // y = x * 0.5: straight down from (4, 10, 0) must land exactly on (4, 2, 0).
+            static float SlopedPlane(float x, float z) => x * 0.5f;
+
+            bool hit = TerrainRaycast.Raycast(SlopedPlane, new Vector3(4f, 10f, 0f), new Vector3(0f, -1f, 0f), 50f, out Vector3 p);
+
+            Assert.True(hit);
+            Assert.Equal(4f, p.X, 2);
+            Assert.Equal(2f, p.Y, 2);
+            Assert.Equal(0f, p.Z, 2);
+        }
+
+        [Fact]
+        public void DelegateOverload_RayParallelAboveTerrain_Misses()
+        {
+            // Horizontal ray held above a flat plane never crosses it: same miss shape as
+            // HorizontalRayAboveGround_Misses, against a bare height function instead of a TerrainField.
+            static float FlatPlane(float x, float z) => 2f;
+
+            Assert.False(TerrainRaycast.Raycast(FlatPlane, new Vector3(0f, 10f, 0f), new Vector3(1f, 0f, 0f), 100f, out _));
+        }
+
+        [Fact]
+        public void DelegateOverload_AndFieldOverload_AgreeForTheSameField()
+        {
+            // field.SampleHeight and the delegate overload fed that same method must land on identical results:
+            // the field overload is a thin adapter over the delegate kernel, so there is exactly one code path.
+            var field = RollingField();
+            Vector3 origin = new(-20f, 15f, 7f);
+            Vector3 direction = new(1f, -0.4f, 0.1f);
+
+            bool fieldHit = TerrainRaycast.Raycast(field, origin, direction, 200f, out Vector3 fieldPoint);
+            bool delegateHit = TerrainRaycast.Raycast(field.SampleHeight, origin, direction, 200f, out Vector3 delegatePoint);
+
+            Assert.True(fieldHit);
+            Assert.Equal(fieldHit, delegateHit);
+            Assert.Equal(fieldPoint, delegatePoint);
+        }
+
+        [Fact]
+        public void DelegateOverload_AndFieldOverload_AgreeOnAMiss()
+        {
+            var field = FlatField(2f);
+            Vector3 origin = new(0f, 10f, 0f);
+            Vector3 direction = new(1f, 0f, 0f);
+
+            bool fieldHit = TerrainRaycast.Raycast(field, origin, direction, 100f, out _);
+            bool delegateHit = TerrainRaycast.Raycast(field.SampleHeight, origin, direction, 100f, out _);
+
+            Assert.False(fieldHit);
+            Assert.False(delegateHit);
+        }
+
+        [Fact]
+        public void DelegateOverload_CustomStepAndBisectIterations_AreHonored()
+        {
+            // A deliberately coarse step (5m) with zero bisection lands the hit at the first crossing sample, not
+            // refined onto the true surface: proves both optional parameters are actually threaded through to the
+            // kernel rather than silently defaulted. True crossing is at t = 8 (y = 2 plane, 45-degree ray from
+            // (0, 10, 0)); a step of 5 first crosses to below-surface at t = 10 (5, then 10), and with
+            // bisectIterations: 0 that raw sample is reported verbatim, so hit.X = 10 (unrefined), not ~8.
+            static float FlatPlane(float x, float z) => 2f;
+
+            bool hit = TerrainRaycast.Raycast(FlatPlane, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 100f,
+                out Vector3 p, step: 5f, bisectIterations: 0);
+
+            Assert.True(hit);
+            Assert.Equal(10f, p.X, 2);
+        }
+
+        [Fact]
+        public void DelegateOverload_HigherBisectIterations_RefinesCloserToTheTrueCrossing()
+        {
+            // Same coarse step as the previous case, but with a real bisection budget: the refined hit must land
+            // much closer to the true crossing (x = 8) than the unrefined coarse sample (x = 10) did.
+            static float FlatPlane(float x, float z) => 2f;
+
+            bool hit = TerrainRaycast.Raycast(FlatPlane, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 100f,
+                out Vector3 p, step: 5f, bisectIterations: 24);
+
+            Assert.True(hit);
+            Assert.Equal(8f, p.X, 2);
+        }
+
+        [Fact]
+        public void DelegateOverload_NullHeightAt_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                TerrainRaycast.Raycast((Func<float, float, float>)null!, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 10f, out _));
+        }
+
+        [Fact]
+        public void NegativeBisectIterations_Throws()
+        {
+            var field = FlatField(2f);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                TerrainRaycast.Raycast(field, new Vector3(0f, 10f, 0f), new Vector3(1f, -1f, 0f), 10f, out _, bisectIterations: -1));
+        }
     }
 }

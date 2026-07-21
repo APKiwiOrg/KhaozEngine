@@ -4905,10 +4905,29 @@ if (RayMath.IntersectAabb(ray.Origin, dir, propMin, propMax, out float tNear))
 
 `TerrainRaycast.Raycast` (`KhaozEngine.Terrain`, render-free) marches `step` in units of the direction's
 length (t units, so normalize the direction to march in world units) until the ray
-crosses `TerrainField.SampleHeight`, then bisects 24 times for a converged hit. A ray starting below the
-surface returns the origin. `RayMath.IntersectAabb` (`KhaozEngine.Primitives`, the zero-dependency leaf) is
-the box test any other spatial query can reuse. Neither depends on a renderer or a window, so both are
-headless-testable off a constructed `Ray`/`TerrainField`/box, the same standard as the rest of the engine.
+crosses `TerrainField.SampleHeight`, then bisects `bisectIterations` times (default 24) for a converged hit.
+A ray starting below the surface returns the origin. `RayMath.IntersectAabb` (`KhaozEngine.Primitives`, the
+zero-dependency leaf) is the box test any other spatial query can reuse. Neither depends on a renderer or a
+window, so both are headless-testable off a constructed `Ray`/`TerrainField`/box, the same standard as the
+rest of the engine.
+
+A sibling overload takes a bare `Func<float, float, float> heightAt(x, z)` instead of a `TerrainField`, for a
+consumer that needs to raycast a height source that is not backed by a concrete `TerrainField` (a closed-form
+plane in a headless unit test, or a sampler shared identically by two heads without either depending on
+Terrain's concrete type) without hand-rolling its own copy of the march/bisect kernel:
+
+```csharp
+// Same kernel as the TerrainField overload, fed a bare height function instead. Useful in tests against a
+// closed-form surface, or wherever the caller has a height source that isn't a TerrainField.
+static float FlatPlane(float x, float z) => 2f;
+if (TerrainRaycast.Raycast(FlatPlane, ray.Origin, dir, 200f, out Vector3 groundHit))
+    PlaceAt(groundHit);
+```
+
+The `TerrainField` overload is a thin adapter over this one (it calls `Raycast(field.SampleHeight, ...)`), so
+the two always agree for the same field: there is exactly one march/bisect code path. Both overloads expose
+`step` (default `0.25f`) and `bisectIterations` (default `24`, the engine's long-standing values, unchanged
+for existing callers) as optional parameters.
 
 ---
 

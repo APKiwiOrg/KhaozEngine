@@ -8,7 +8,8 @@ namespace KhaozEngine.MapEditor;
 
 /// <summary>GPU-free picking over a <see cref="MapDocument"/>: a camera ray against placement AABBs
 /// (<see cref="RayMath.IntersectAabb"/>), spawn marker boxes, and the analytic terrain
-/// (<see cref="TerrainRaycast.Raycast"/>). Nearest hit wins by entry distance, and placements and spawns
+/// (<see cref="TerrainRaycast.Raycast(TerrainField, Vector3, Vector3, float, out Vector3, float, int)"/>).
+/// Nearest hit wins by entry distance, and placements and spawns
 /// beat terrain at equal footing (an object entry T that ties the terrain crossing still selects the object).
 /// The picker never normalizes the ray: T values come back in units of the direction's length, so a caller
 /// that passes a normalized direction reads T directly as a world distance (the caller-normalizes contract).</summary>
@@ -123,7 +124,8 @@ public static class EditorPicking
     }
 
     /// <summary>Raycasts the analytic terrain for a ground hit, returning the surface point. A thin wrapper over
-    /// <see cref="TerrainRaycast.Raycast"/> (default coarse step). Returns false when the ray stays above the
+    /// <see cref="TerrainRaycast.Raycast(TerrainField, Vector3, Vector3, float, out Vector3, float, int)"/>
+    /// (default coarse step). Returns false when the ray stays above the
     /// surface for the whole <paramref name="maxDistance"/> (in units of the direction's length). Direction
     /// normalization is the caller's job.</summary>
     public static bool PickTerrain(TerrainField field, Vector3 origin, Vector3 direction,

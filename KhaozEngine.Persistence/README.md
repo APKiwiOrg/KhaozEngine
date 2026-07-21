@@ -172,6 +172,32 @@ queue.Enqueue(appDataPaths, "save.json", saveData);    // or Enqueue(path, json)
 queue.Flush();
 ```
 
+## BatchedWriter\<T\>
+
+Bounded async batch-write queue for a server-side append-only log (chat, an economy ledger, admin
+actions, and similar record streams), not the file-per-path saves above. `Enqueue` only pushes onto an
+in-memory queue and never does IO, so it is safe on a hot path like a sim tick. `Update(dt)`, called by
+the host every tick, drains up to `maxBatch` records on a `flushIntervalSeconds` cadence and fires one
+batched write off-thread through the injected sink - there is no internal timer, so nothing flushes
+unless `Update` is called. Overflow drops the OLDEST queued record(s) (counted via `DroppedCount`), and
+a whole-batch write failure is salvaged by retrying every record individually, so one poisoned row costs
+one row instead of the whole batch. `FlushAsync()` ignores the interval, drains everything queued, and
+awaits every in-flight write - call it once on shutdown. A `null` sink makes every member a no-op.
+
+```csharp
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Persistence;
+
+var writer = new BatchedWriter<ChatMessage>(
+    sink: (batch, ct) => store.AppendAsync(batch, ct),   // null disables the writer entirely
+    label: "chatlog",
+    logger: Log.For<BatchedWriter<ChatMessage>>());      // optional, maxQueue/maxBatch/flushIntervalSeconds too
+
+writer.Enqueue(message);     // hot path, non-blocking
+writer.Update(dt);           // once per tick, host-driven
+await writer.FlushAsync();   // shutdown drain
+```
+
 ## Settings
 
 `SettingsManager<T>` holds a strongly-typed settings object and persists it through an

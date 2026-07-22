@@ -1,7 +1,7 @@
 # Map Editor Design (MapDoc + MapEditor + ke-mapedit)
 
 Approved: 2026-07-09
-Status: **In flight.** Phases A-D shipped 10.44.0-10.67.0, and eight further rounds through 11.4.0. This
+Status: **In flight.** Phases A-D shipped 10.44.0-10.67.0, and nine further rounds through 14.12.0. This
 header said "pre-implementation" for 40+ releases after implementation began, so treat any status claim in
 this file as history unless `CHANGELOG.md` agrees. Open work lives in `docs/TODO.md`, not here.
 First adopter: Ruinborne

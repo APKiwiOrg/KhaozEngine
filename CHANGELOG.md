@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.12.0
+
+Map editor whole-zone scatter freeze: one undoable command converts a hybrid procedural document into a placements-only authored document (#270, the authored-world program).
+
+- **`FreezeZoneCommand` (KhaozEngine.MapEditor).** Bakes every scatter layer and companion layer
+  across the document bounds into explicit placements (ids `baked-<sourceLayer>-N`, tags `baked`
+  plus the source layer name, frozen Y), then removes all scatter layers, companion layers,
+  exclusions, and scatter overrides. One undoable command: revert restores the four collections
+  exactly and removes the baked block. Parity guaranteed by construction: generation reuses the
+  runtime path (`MapRuntime.BuildScatterConfig`/`BuildCompanionConfig` plus
+  `PropScatter.Generate`/`GenerateCompanions`) with exclusions and overrides applied during the
+  bake, and two freezes of the same document are byte-identical. Companions bake in the same pass
+  as their hosts, so deleting the host layer afterwards is safe. Unlike `BakeRegionCommand`
+  (per-rect, per-layer, leaves the layer behind a covering exclusion), the zone freeze is the
+  terminal form: no layers remain, so no exclusions are needed at all.
+- **Editor surfaces.** `Ctrl+Shift+F` chord in `MapEditorScene` (a one-shot document action, not a
+  rect tool mode) with status-strip reporting and a no-op message when the document has no scatter
+  or companion layers, and a `freeze_zone` ke-mapedit MCP verb returning
+  `FreezeZoneResult(PlacementCount, ScatterLayersRemoved, CompanionLayersRemoved,
+  ExclusionsRemoved, ScatterOverridesRemoved, Applied)` that never dirties the session on a no-op.
+- KESIZE note: `MapEditorScene`, `EditorToolController`, and `MutationService` became partial with
+  all new code in new files, and `MapEditorScene.cs` shrank (shortcut handling relocated), with the
+  baseline ratcheted down to follow. First consumer: Ruinborne's valley freeze
+  (https://github.com/APKiwiOrg/Ruinborne/issues/170).
+
 ## 14.11.0
 
 Layered overworld navigation ships: the multi-level bake for bridges, overhangs, and roofed interiors, cross-layer link generation, and the physics column probe, completing the vertical-worlds roadmap item (#30).

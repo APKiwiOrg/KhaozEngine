@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.11.0
+
+Layered overworld navigation ships: the multi-level bake for bridges, overhangs, and roofed interiors, cross-layer link generation, and the physics column probe, completing the vertical-worlds roadmap item (#30).
+
+- **`INavColumnProvider` (KhaozEngine.Navigation).** The many-surfaces-per-column widening of the
+  `INavSurfaceProvider` seam: `SampleColumn(x, z, Span<NavSurfaceSample>)` reports every standable
+  surface in a column bottom-up, each with its own headroom. `DelegateColumnProvider` wraps a lambda,
+  `SurfaceColumnAdapter` adapts any single-surface provider. Navigation still never references
+  Physics: a game glues its physics probe in with a one-line delegate.
+- **`NavLayerBaker.BakeOverworldLayered` (KhaozEngine.Navigation).** Decomposes the sampled columns
+  into `NavGrid` layers and returns a linked `NavSpace`. Region growing is single-valued per column
+  and holds a hard invariant: a region never contains an 8-adjacent pair of surfaces whose rise
+  exceeds `stepHeight` (a candidate that would violate it seeds another region instead), and the
+  merge pass refuses any pair with a too-tall contact anywhere. Two regions share a layer only when
+  they have no column overlap and no adjacency at all. Consequence: `StepMask` provably never fires
+  on a layered-bake layer, so the phase-1 one-cell rim erosion is gone entirely. Plateau rims, rock
+  top edges, deck edges, and ramp tops all bake standable to their true boundary. The single-layer
+  bakes (`BakeOverworld`, `BakeOverworldSteps`, `BakeOverworldHops`) are untouched.
+- **`NavLayerLinks.Generate` (KhaozEngine.Navigation).** Cross-layer links between co-registered
+  layers at Chebyshev distance 1: directed `Stair` pairs where the rise is within `stepHeight` (a
+  walked seam, the bridge deck meeting its abutment), directed `Hop` pairs in the jump band. The
+  layered bake emits these plus the existing per-layer `NavHopLinks`. Planner and follower needed no
+  changes for links: `Stair` crossings walk, `Hop` crossings surface the existing
+  `PathFollowState.Hopping` seam.
+- **`NavSpace.LayerAt(Vector3)` (KhaozEngine.Navigation).** Surface-aware position-to-layer
+  resolution: among layers with a passable surface at the position's cell, nearest surface Y wins,
+  with fallback to the `LayerOf` Y band. `GridPathPlanner.FindPath` now resolves its endpoints
+  through it, so an agent standing on a bridge deck plans from the deck layer even when its Y also
+  falls inside the ground layer's band. Single-layer spaces and height-less grids (the dungeon
+  adapter) resolve exactly as before.
+- **`PhysicsColumnProbe` (KhaozEngine.Physics).** The multi-surface widening of
+  `PhysicsGroundProbe`: a repeated downward raycast sweep reporting every standable surface in a
+  column (slope-gated by surface normal) with headroom measured to the hit above, statics-only by
+  default, lowest surfaces kept on buffer overflow. Returns `ColumnSurface` records ready to feed
+  the nav bake through the game's glue delegate.
+- Design record: `docs/design/NAV-LAYERED-SURFACES-DESIGN.md`, including the growth-invariant
+  correction the natural open-field bridge regression test forced during implementation. 50 new
+  headless tests across `KhaozEngine.Game.Tests` Navigation and Physics.
+
 ## 14.10.0
 
 Two consumer-handoff APIs promoted from Ruinborne, each replacing a hand-rolled copy:

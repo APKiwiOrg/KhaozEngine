@@ -357,6 +357,31 @@ at query time (it already does not re-touch `TerrainCollision`/`WorldColliders` 
 not to contain a third-party library, but to keep an optional data source out of a package's dependency
 graph while still letting a consumer plug one in.
 
+**Phase 2 widens the same seam to many surfaces per column, the same non-edge.** The layered overworld
+bake (`NavLayerBaker.BakeOverworldLayered`, vertical worlds phase 2, issue #30) needs more than one
+walkable surface per XZ column, since a bridge deck over a path or a roofed interior under its roof puts
+two standable surfaces at the same point, and `INavSurfaceProvider.TrySample` can only ever report one.
+`INavColumnProvider` (`SampleColumn(x, z, Span<NavSurfaceSample>) -> int`) is that widening: every
+standable surface in the column, bottom-up, each with its own headroom. It inverts exactly like
+`INavSurfaceProvider` did, so the dependency graph does not change:
+
+```
+KhaozEngine.Navigation -> KhaozEngine.Primitives   (unchanged)
+KhaozEngine.Navigation -> KhaozEngine.Collision     (unchanged)
+KhaozEngine.Navigation -> KhaozEngine.Terrain       (unchanged)
+KhaozEngine.Navigation -x KhaozEngine.Physics       (still no edge - INavColumnProvider is the seam)
+```
+
+`SurfaceColumnAdapter` wraps an `INavSurfaceProvider` so a phase-1, single-surface world can run through
+the layered bake unchanged (degenerating to one layer), and `DelegateColumnProvider` mirrors
+`DelegateSurfaceProvider` for a provider supplied as a plain delegate. The physics-side counterpart is
+`PhysicsColumnProbe` in `KhaozEngine.Physics`: a repeated downward raycast sweep that reports every
+standable surface in a column with its headroom to the hit above it, the same STATICS-ONLY stance as
+`PhysicsGroundProbe`. Physics cannot reference Navigation any more than Navigation can reference Physics
+(the layering forbids the reverse edge too), so the game glues `PhysicsColumnProbe.Sample` to
+`INavColumnProvider.SampleColumn` with a one-line delegate. No new package, no new dependency edge either
+direction.
+
 ## Three flavours of the same idea
 
 The pattern is applied at the granularity the dependency warrants:

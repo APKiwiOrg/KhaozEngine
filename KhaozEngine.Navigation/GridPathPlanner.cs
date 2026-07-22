@@ -116,15 +116,16 @@ public sealed class GridPathPlanner : IPathPlanner
     /// <summary>
     /// Finds a route from <paramref name="start"/> to <paramref name="goal"/> for an agent of
     /// <paramref name="agentRadius"/>, within <paramref name="budget"/>. Resolves each endpoint's
-    /// layer from its world Y via <see cref="NavSpace.LayerOf"/>, snaps both onto a passable cell
+    /// layer via <see cref="NavSpace.LayerAt"/> (surface-aware for layered bakes, falling back to
+    /// the <see cref="NavSpace.LayerOf"/> Y band for height-less grids), snaps both onto a passable cell
     /// within <see cref="PathQueryBudget.SnapRadius"/> (failing that, returns
     /// <see cref="NavPath.Unreachable"/>), then tries the same-layer line-of-sight fast path before
     /// falling through to the A* search, which routes within and across layers.
     /// </summary>
     public NavPath FindPath(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
     {
-        int startLayer = _space.LayerOf(start.Y);
-        int goalLayer = _space.LayerOf(goal.Y);
+        int startLayer = _space.LayerAt(start);
+        int goalLayer = _space.LayerAt(goal);
 
         NavGrid startGrid = _space.Layers[startLayer];
         NavGrid goalGrid = _space.Layers[goalLayer];

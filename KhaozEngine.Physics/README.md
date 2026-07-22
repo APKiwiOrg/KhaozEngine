@@ -46,6 +46,19 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   (`GroundMobility`), so a dynamic body under the character (a crate) is not read as ground; set
   `GroundMobility = QueryMobility.All` to stand on dynamic bodies. Additive: a game that has not adopted keeps
   passing the analytic delegates and this never runs.
+- **`PhysicsColumnProbe`** / **`ColumnSurface`** - the multi-surface widening of `PhysicsGroundProbe`:
+  `Sample(x, z, Span<ColumnSurface>)` sweeps a vertical column with repeated downward raycasts (cast from
+  `ProbeHeight`, re-cast from just below each hit, until `ProbeRange` is spent) and writes every STANDABLE
+  surface bottom-up (ascending `ColumnSurface.Height`), returning how many were written. A hit is standable
+  when its normal passes the walkable-slope gate (`MaxSlopeRadians`, default 50 degrees). A non-standable
+  hit (a wall, a bridge underside, a too-steep face) still counts as the ceiling of whatever lies beneath
+  it, which is how each `ColumnSurface.Headroom` is measured (`float.PositiveInfinity` for the topmost
+  surface). On overflow the lowest surfaces are kept and the highest dropped, deterministically, matching
+  the ground-least-affordable-to-lose convention. STATICS-ONLY by default (`GroundMobility`), the same
+  stance as `PhysicsGroundProbe`. This is the physics half of KhaozEngine.Navigation's layered overworld
+  bake: a game glues `Sample` to `INavColumnProvider` with a one-line delegate, since Physics and
+  Navigation deliberately never reference each other (see `docs/DEPENDENCY-SEAMS.md`'s surface-source
+  seam). Deterministic for a fixed physics world.
 - **`PhysicsMaterial`** - friction + restitution, `PhysicsMaterial.Default` is full friction, no bounce.
   A dynamic body's `Restitution` (0..1) drives an approximate, deterministic game-feel bounce that decays
   geometrically with restitution (NOT a true coefficient of restitution: a bounded post-solve reflection, exact

@@ -41,6 +41,15 @@ returns the layer minimizing the distance from `y` to its band center `(YMin + Y
 only layers with a finite band, ties going to the lowest index. If every layer has an infinite band, it
 returns 0.
 
+`NavSpace.LayerAt(position)` resolves a world position to a layer surface-aware, which `LayerOf`'s Y-band
+test cannot do once bands overlap (a bridge deck's Y sits inside the ground layer's band wherever the
+ground spans valleys to hills). Among the layers that carry surface heights and have a passable surface at
+the position's cell, it picks the one whose surface Y is nearest to `position.Y` (ties to the lowest
+index), so an agent standing on the deck resolves to the deck layer, not the ground below it. When no layer
+has a surface there, or none carries heights at all (the dungeon adapter's `NavGrid.FromWalkable` grids),
+it falls back to `LayerOf(position.Y)`, so every pre-layered space resolves exactly as before. With a
+single layer, always 0. `GridPathPlanner.FindPath` resolves both endpoints with `LayerAt`.
+
 `KhaozEngine.Dungeon`'s `DungeonNav.Bake` is a worked multi-layer example: one `NavGrid` layer per
 dungeon floor, joined by directed `NavLink` pairs at every stair run.
 
@@ -97,9 +106,8 @@ follower need no per-edge logic and no changes. One v1 conservatism: a step tall
 blocks its higher side by one cell (the standable top itself bakes standable, but the cell one step up
 from it does not), so under the step bake alone a too-tall step is impassable from either direction
 rather than merely steep. When the rise is within a jump budget, the hop bake below closes exactly this
-gap with a `Hop` link. A later phase (multi-level layered surfaces,
-https://github.com/APKiwiOrg/KhaozEngine/issues/30) handles rises
-beyond any jump budget by giving the tall side its own layer.
+gap with a `Hop` link. The layered overworld bake below (`NavLayerBaker.BakeOverworldLayered`) handles
+rises beyond any jump budget by giving the tall side its own layer.
 
 `NavGrid.FromSurfaces` is the lower-level entry point `BakeOverworldSteps` calls: it rasterizes a
 `(cx, cz) -> NavSurfaceSample` sampler directly, for a caller that already has per-cell surface data and
@@ -153,6 +161,78 @@ NavSpace space = NavGridBaker.BakeOverworldHops(
     jumpHeight: 1.2f);
 var planner = new GridPathPlanner(space);
 ```
+
+## Layered overworld bake (`INavColumnProvider` / `NavLayerBaker.BakeOverworldLayered`)
+
+`BakeOverworldSteps`/`BakeOverworldHops` bake one `NavGrid` layer, so two walkable surfaces at the same XZ
+(a bridge deck over a path, a roofed interior under its roof, an overhang above a trail) cannot coexist:
+whichever surface the source reports is the only one navigation ever sees. `INavColumnProvider` is the
+phase-2 widening of `INavSurfaceProvider` to many surfaces per column:
+`SampleColumn(x, z, Span<NavSurfaceSample>)` writes every standable surface bottom-up (ascending
+`NavSurfaceSample.Height`) and returns how many were written (zero when the column has nothing standable).
+Each entry's `Headroom` is the clear space above THAT surface, not the tallest one in the column. A
+provider must never write more than the buffer's length, and on overflow must drop the excess
+deterministically (by convention the highest surfaces). `KhaozEngine.Navigation` stays physics-free exactly
+as the single-surface seam does: the GAME implements the provider over its own physics world (a repeated
+downward raycast, `PhysicsColumnProbe` in `KhaozEngine.Physics`, glued with a one-line delegate) and hands
+it to `NavLayerBaker.BakeOverworldLayered`. `DelegateColumnProvider` wraps a plain delegate, mirroring
+`DelegateSurfaceProvider`. `SurfaceColumnAdapter` wraps an `INavSurfaceProvider` so a phase-1,
+single-surface world can run through the layered bake unchanged, where it degenerates to one layer.
+
+`NavLayerBaker.BakeOverworldLayered(columns, minX, minZ, maxX, maxZ, cellSize, stepHeight, agentHeight,
+jumpHeight, maxSurfacesPerColumn = 4, maxHopCells = 2, extraBlocked = null)` samples every column, drops
+surfaces whose headroom is below `agentHeight`, then decomposes the rest into regions that are
+single-valued per column by construction (8-adjacent, rise within `stepHeight`, both ends standable),
+merges disjoint step-adjacent regions, and assigns regions to layers so that two regions share a layer only
+when they have no column overlap AND no adjacency at all. That last rule is what removes the phase-1 rim
+erosion at feature boundaries (`NAV-STEP-SURFACES-DESIGN.md` decision 3): a plateau rim, a rock top edge, or
+a deck edge now bakes standable to its true boundary, because the feature and the ground it overlooks are
+separate regions on separate layers, joined only by a link. Each layer then bakes through
+`NavGrid.FromSurfaces` exactly as before, with its own surface-height `YMin`/`YMax` band. Links:
+`NavHopLinks.Generate` runs per layer for same-layer islands, then `NavLayerLinks.Generate` (below) joins
+the layers. Returns a `NavSpace`. A world with no standable surface at all returns a single fully-blocked
+layer, so the result is always a valid `NavSpace`. Throws `ArgumentNullException` for a null provider,
+`ArgumentOutOfRangeException` for an out-of-range bound, size, or budget argument (the same rules as
+`BakeOverworldHops`, plus `maxSurfacesPerColumn` must be at least 1), and `InvalidOperationException` if the
+provider violates its contract (a count outside the buffer, or surfaces out of ascending height order).
+Deterministic when the provider is.
+
+Full backward compatibility: `BakeOverworld`, `BakeOverworldSteps`, and `BakeOverworldHops` are untouched.
+A world whose columns all carry one surface produces layer 0 equal to the `BakeOverworldSteps` grid minus
+the erosion rule, plus the same hop links, so adopting the layered bake on a flat world is
+behavior-preserving where phase 1 was already correct.
+
+```csharp
+using KhaozEngine.Navigation;
+
+var columns = new DelegateColumnProvider((x, z, surfaces) =>
+{
+    Span<ColumnSurface> hits = stackalloc ColumnSurface[surfaces.Length];
+    int count = physicsProbe.Sample(x, z, hits);
+    for (int i = 0; i < count; i++)
+        surfaces[i] = new NavSurfaceSample(true, hits[i].Height, hits[i].Headroom);
+    return count;
+});
+NavSpace space = NavLayerBaker.BakeOverworldLayered(
+    columns,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f, jumpHeight: 1.2f);
+var planner = new GridPathPlanner(space);
+```
+
+## Cross-layer links (`NavLayerLinks`)
+
+`NavLayerLinks.Generate(layers, stepHeight, jumpHeight)` joins the co-registered layers a layered bake
+produces: for every Chebyshev-distance-1 pair of passable cells in two different layers, it emits a
+directed `NavLinkKind.Stair` pair when the rise is within `stepHeight` (a walked seam, a bridge deck
+meeting its abutment), or a directed `NavLinkKind.Hop` pair when the rise is in `(stepHeight, jumpHeight]`
+(a cliff edge, a rock top). Same-column (Chebyshev 0) pairs are deliberately never linked: standing under a
+ledge does not make it jumpable straight up. Every grid must carry surface heights
+(`NavGrid.HasSurfaceHeights`) and all grids must share the same dimensions, cell size, and origin, since
+cell coordinates are compared across layers, else `ArgumentException`. `ArgumentOutOfRangeException` when
+`stepHeight` is negative or `jumpHeight` does not exceed it. `NavLayerBaker.BakeOverworldLayered` calls this
+for you. Call it directly only when assembling layers some other way. Deterministic: fixed layer-pair,
+then z, then x, then direction scan order.
 
 ## Path planning (`IPathPlanner` / `GridPathPlanner` / `PathQueryBudget`)
 
@@ -295,9 +375,10 @@ produce the same waypoints.
 
 Depends on `KhaozEngine.Primitives`, `KhaozEngine.Collision` (`WorldColliders` footprints in
 `NavGridBaker`), and `KhaozEngine.Terrain` (`TerrainCollision` slope in `NavGridBaker`). In the
-`Foundation` umbrella metapackage. Unchanged by the step-aware and hop bakes: `INavSurfaceProvider` is
-the seam a game-implemented physics-probe surface source enters through (`BakeOverworldHops` reads its
-heights through the same seam as `BakeOverworldSteps`), so a downward raycast against the game's own
-`IPhysicsWorld` never becomes a dependency of this package.
+`Foundation` umbrella metapackage. Unchanged by the step-aware, hop, and layered bakes: `INavSurfaceProvider`
+and its phase-2 widening `INavColumnProvider` are the seams a game-implemented physics-probe surface source
+enters through (`BakeOverworldHops` and `BakeOverworldLayered` read heights through the same seams
+`BakeOverworldSteps` uses), so a downward raycast against the game's own `IPhysicsWorld` never becomes a
+dependency of this package.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

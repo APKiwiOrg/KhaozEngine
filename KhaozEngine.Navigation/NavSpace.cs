@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace KhaozEngine.Navigation;
 
@@ -109,5 +110,41 @@ public sealed class NavSpace
         }
 
         return bestIndex >= 0 ? bestIndex : 0;
+    }
+
+    /// <summary>
+    /// Resolves the layer a world position belongs to, surface-aware. With a single layer, always 0.
+    /// Otherwise, among the layers that carry surface heights (<see cref="NavGrid.HasSurfaceHeights"/>)
+    /// and have a passable surface at the position's cell, the layer whose surface Y is nearest to
+    /// <paramref name="position"/>.Y wins (ties to the lowest index), so an agent standing on a bridge
+    /// deck resolves to the deck layer even when its Y also falls inside the ground layer's band.
+    /// When no layer has a surface there (or none carries heights, e.g. the dungeon adapter's
+    /// <see cref="NavGrid.FromWalkable"/> grids), falls back to <see cref="LayerOf"/> on the Y band,
+    /// so every pre-layered space resolves exactly as before.
+    /// </summary>
+    public int LayerAt(Vector3 position)
+    {
+        if (Layers.Count == 1) return 0;
+
+        int bestIndex = -1;
+        float bestDistance = float.PositiveInfinity;
+        for (int i = 0; i < Layers.Count; i++)
+        {
+            NavGrid layer = Layers[i];
+            if (!layer.HasSurfaceHeights) continue;
+
+            (int cx, int cz) = layer.CellOf(position.X, position.Z);
+            float? surface = layer.SurfaceHeightAt(cx, cz);
+            if (surface is null) continue;
+
+            float distance = Math.Abs(position.Y - surface.Value);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex >= 0 ? bestIndex : LayerOf(position.Y);
     }
 }

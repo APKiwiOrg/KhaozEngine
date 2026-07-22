@@ -3877,6 +3877,60 @@ the constructor's `hopCostCells` (in cells of the source layer, default 4, kept 
 hop's octile length so paths stay optimal) and marks each hop landing waypoint `NavWaypointKind.Hop`,
 which the follower surfaces as the `Hopping` state below.
 
+### Bake a layered overworld (multi-level worlds)
+
+Even with hops, `BakeOverworldSteps`/`BakeOverworldHops` still bake one `NavGrid` layer, so two walkable
+surfaces at the same XZ (a bridge deck over a path, a roofed interior under its roof, an overhang above a
+trail) cannot coexist: whichever surface the source reports is the only one navigation ever sees.
+`NavLayerBaker.BakeOverworldLayered` reads a per-column stack of surfaces instead of one surface per cell,
+decomposes them into separate `NavGrid` layers (the bridge deck and the path beneath it each get their own
+layer), and links the layers: a walked `Stair` seam where the rise is within `stepHeight` (the deck meeting
+its abutment), or a `Hop` link where the rise is in the jump band (a cliff edge, a rock top).
+
+The surface source is `INavColumnProvider.SampleColumn(x, z, Span<NavSurfaceSample>)`, the many-surfaces
+widening of `INavSurfaceProvider`: every standable surface in the column, bottom-up, with its own headroom.
+`KhaozEngine.Navigation` never references `KhaozEngine.Physics` (see `docs/DEPENDENCY-SEAMS.md`'s
+surface-source seam), so the game glues its own physics probe to the seam. `PhysicsColumnProbe`
+(`KhaozEngine.Physics`) is the shipped physics-side source: a repeated downward raycast sweep that reports
+every standable surface in a column with its headroom to the hit above it.
+
+```csharp
+using KhaozEngine.Navigation;
+using KhaozEngine.Physics;
+
+var columnProbe = new PhysicsColumnProbe(physics);
+var columns = new DelegateColumnProvider((x, z, surfaces) =>
+{
+    Span<ColumnSurface> hits = stackalloc ColumnSurface[surfaces.Length];
+    int count = columnProbe.Sample(x, z, hits);
+    for (int i = 0; i < count; i++)
+        surfaces[i] = new NavSurfaceSample(true, hits[i].Height, hits[i].Headroom);
+    return count;
+});
+
+NavSpace space = NavLayerBaker.BakeOverworldLayered(
+    columns,
+    minX: -50f, minZ: -50f, maxX: 50f, maxZ: 50f,
+    cellSize: 0.5f, stepHeight: 0.4f, agentHeight: 1.8f, jumpHeight: 1.2f);
+var planner = new GridPathPlanner(space);
+```
+
+Hand the returned `NavSpace` to `GridPathPlanner` exactly as with any other bake: the planner and
+`PathFollower` route across the new layers with no new code. A `Stair` crossing is a plain walked waypoint,
+no special follower state. A `Hop` crossing surfaces the existing `PathFollowState.Hopping` seam described
+below: the follower suspends ground steering and hands back both hop endpoints for the game to drive its
+own lunge. Either way, resolve a waypoint's Y from `space.Layers[waypoint.Layer].SurfaceHeightAt`, not from
+`terrain.GroundHeight`, since the waypoint may sit on a layer above or below the ground.
+
+A smooth world, where every adjacent rise stays within `stepHeight`, degenerates to a single layer,
+walkable exactly as `BakeOverworldSteps` bakes it. A world with a too-tall rise (a cliff, a plateau) does
+not: region extraction still splits at that rise, so the tall feature lands on its own layer, joined back
+to the ground by a `Hop` link wherever the rise is jumpable, instead of eroding the feature's rim one cell
+back the way the single-layer bakes do (their own v1 conservatism above).
+
+See the `KhaozEngine.Navigation` package README for `INavColumnProvider`'s full contract, the region/layer
+assignment rules, and `NavLayerLinks`.
+
 ### Plan a route
 
 `GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an

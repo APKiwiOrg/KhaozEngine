@@ -287,6 +287,10 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("Maximum world Z of the rect in meters (ground plane).")] float maxZ)
         => ToolGuard.Guard(() => mutation.BakeRegion(layer, minX, minZ, maxX, maxZ));
 
+    [McpServerTool(Name = "freeze_zone"), Description("Freezes the WHOLE zone: bakes every scatter and companion layer across the document bounds into authored placements (each baked-<source>-N with an explicit Y, a baked tag, and the source layer name as a second tag), then removes all scatter layers, companion layers, exclusions, and scatter overrides, leaving a placements-only document with no procedural generation. The frozen props equal live generation. A single undoable operation. A document with no scatter or companion layers is a no-op (Applied false).")]
+    public FreezeZoneResult FreezeZone()
+        => ToolGuard.Guard(() => mutation.FreezeZone());
+
     // ---- scatter layers -------------------------------------------------------------------------------------
 
     [McpServerTool(Name = "scatter_layer_add"), Description("Appends a named procedural scatter layer with no rules. Add rules afterward with scatter_rule_add. The layer name must be unique in the document.")]

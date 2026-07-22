@@ -24,7 +24,7 @@ namespace KhaozEngine.MapEdit;
 /// dirty flag, because
 /// <see cref="MapEditSession.Mutate{T}"/> only marks dirty when its callback returns normally and a rejected
 /// mutation throws out of that callback.</summary>
-public sealed class MutationService(MapEditSession session)
+public sealed partial class MutationService(MapEditSession session)
 {
     /// <summary>The shared mutation choke point used by every verb below: applies <paramref name="command"/> to
     /// the open document, validates the result with <see cref="MapDocumentValidator"/>, and on any validation

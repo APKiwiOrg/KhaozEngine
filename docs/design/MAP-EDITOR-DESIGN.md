@@ -370,6 +370,33 @@ byte-identical in the saved document. `scatter_override_edit` called with no opt
 dirty-marking no-op: it still marks the session dirty even though nothing on the override actually
 changed, consistent with the other mutation verbs' behavior when called with no fields to change.
 
+**zone-freeze round**: Whole-zone scatter freeze (`FreezeZoneCommand`, `EditorToolController.FreezeZone`,
+`MutationService.FreezeZone`, the `freeze_zone` MCP verb). Motivated by the authored-world program
+(Ruinborne https://github.com/APKiwiOrg/Ruinborne/issues/169): `BakeRegionCommand` already freezes one
+scatter layer over one rect but leaves the layer alive behind a covering exclusion, so a zone going fully
+authored accumulates exclusions everywhere as more of it gets hand-tuned, exactly the pain the program
+wants gone. Issue #270 asked for the terminal form instead, one operation over the whole document, no
+exclusions left to add once no scatter survives. First consumer: Ruinborne's valley freeze,
+https://github.com/APKiwiOrg/Ruinborne/issues/170.
+
+Decisions: a chord (Ctrl+Shift+F / Cmd+Shift+F), not a tool mode, since freezing has no gesture to arm,
+drag, or cancel: it is a one-shot whole-document action, not a fit for the palette's mode set. Frozen
+placements carry a `baked-<source>-N` id and two tags, `baked` plus the source layer name, so a reviewer
+can tell which layer produced a prop from the tag alone with no cross-referencing needed. Scatter overrides
+are removed alongside the scatter layers, companion layers, and exclusions: an override binds to a scatter
+layer, so with no layer left it has nothing to act on and would sit as silent, pointless state in the
+document. KESIZE001 fired on `MapEditorScene.cs` for the added chord and status-strip wiring, resolved by
+splitting `HandleShortcuts` out into its own partial, `MapEditorScene.Shortcuts.cs` (also making
+`EditorToolController` and `MutationService` partial for their own `FreezeZone` members), which shrank
+`MapEditorScene.cs` below the ratchet baseline instead of growing it.
+
+Parity guarantee: the bake reuses the exact runtime calls (`MapRuntime.BuildScatterConfig`/
+`BuildCompanionConfig` feeding `PropScatter.Generate`/`GenerateCompanions`), with the document's exclusions
+and overrides applied during generation and only removed afterward, so frozen output equals live streamed
+generation for the same document. Generation order is fixed (every scatter layer in document order, then
+every companion layer in document order), so two freezes of the same document produce byte-identical
+placement lists, order included.
+
 - **Program phases**: Sculpting via the reserved `terrainOverrides` delta layer. Live
   server editing and hot reload. Multi-user editing. Polygon click-path authoring gesture
   for exclusions and regions.

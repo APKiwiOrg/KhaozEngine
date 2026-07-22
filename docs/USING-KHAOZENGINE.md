@@ -5205,7 +5205,8 @@ A hidden element is neither drawn nor pickable from the viewport, but stays sele
 `KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
 
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection
-(see Duplicate below), Delete removes the current selection, R snaps the selected placement to the ground
+(see Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see
+Freeze zone below), Delete removes the current selection, R snaps the selected placement to the ground
 (undoable, a no-op when already grounded or nothing placement-shaped is selected), Ctrl+Up / Ctrl+Down
 reorder the selected terrain feature or scatter override (see Feature apply order above, dragging a
 feature, exclusion, or scatter override row in the outline tree reorders it the same way), bare 1..9 recalls a camera bookmark and Shift+1..9 stores one
@@ -5243,6 +5244,18 @@ and a custom feature type the geometry helper cannot offset both no-op with a st
 mutation. `ke-mapedit`'s `element_duplicate` verb (below) reuses this exact clone logic, so a GUI-driven and
 an MCP-driven duplicate can never drift apart. See the `KhaozEngine.MapEditor` README's "Duplicate" section
 for the full mechanics.
+
+**Freeze zone.** Ctrl+Shift+F (Cmd+Shift+F on a Mac) runs `EditorToolController.FreezeZone()`, the
+terminal whole-zone bake: it freezes every scatter and companion layer across the document bounds into
+authored placements (`baked-<source>-N`, explicit Y, tagged `baked` plus the source layer name) and removes
+all scatter layers, companion layers, exclusions, and scatter overrides in one undoable
+`FreezeZoneCommand`, leaving a placements-only document. A chord rather than a tool mode, since freezing is
+a one-shot document action with no gesture to arm. Unlike `BakeRegion` (above), which freezes one layer over
+one rect and leaves the layer alive behind a covering exclusion, this is the terminal form: every layer,
+whole document, no exclusions left to add. A document with no scatter or companion layers is a no-op,
+landing a status-strip note instead of a phantom undo entry. `ke-mapedit`'s `freeze_zone` verb (below)
+reuses the same command, so a GUI-driven and an MCP-driven freeze can never drift apart. See the
+`KhaozEngine.MapEditor` README's "Freeze zone" section for the full mechanics.
 
 **Camera bookmarks.** Shift+1..9 stores the fly camera's pose (position, yaw, pitch) into that numbered
 slot, and a bare 1..9 recalls it. Session-only (nothing persists across a close/reopen this round), with the
@@ -5308,8 +5321,8 @@ from disk; a toggle that changes their cached form (the "Textured props" toggle)
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
 semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the
-feature apply-order and visibility mechanics, the procedural setup editing mechanics, and the bake-region and
-rename mechanics in full.
+feature apply-order and visibility mechanics, the procedural setup editing mechanics, and the bake-region,
+freeze-zone, and rename mechanics in full.
 
 ---
 
@@ -5334,7 +5347,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (68 tools).**
+**Verb surface (69 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -5344,7 +5357,7 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
 | Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
-| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `scatter_override_rename`, `scatter_override_reorder`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
+| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `scatter_override_rename`, `scatter_override_reorder`, `bake_region`, `freeze_zone`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
 | Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |

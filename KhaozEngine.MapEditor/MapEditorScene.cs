@@ -87,7 +87,7 @@ public sealed class MapEditorOptions
 /// lifecycle guards, update ordering, and save-failure handling are all headless-testable.</para>
 /// </summary>
 [LocalizationExempt]
-public class MapEditorScene : GameScene, IGameScene3D
+public partial class MapEditorScene : GameScene, IGameScene3D
 {
     /// <summary>Toolbar height in points.</summary>
     const float ToolbarHeight = 40f;
@@ -1074,42 +1074,6 @@ public class MapEditorScene : GameScene, IGameScene3D
     bool AnyEditorFocused => _inspector.HasActiveEditor
         || (KitPaletteVisible && _paletteFilter.IsFocused)
         || (SpawnMode && _spawnFilter.IsFocused);
-
-    void HandleShortcuts()
-    {
-        InputState s = Manager!.Input;
-        bool shift = s.IsDown(Key.LeftShift) || s.IsDown(Key.RightShift);
-        // Shift+Escape opens the modal exit dialog (OpenExitDialog). It deliberately stays global here, even while
-        // an inspector field or a filter is focused: it is the one chord a user needs to be able to reach FROM
-        // inside a field (leave the editor). NumberField's own bare-Escape cancel never watches the Shift-modified
-        // form, and TextInput (both the inspector's TextRow and the palette/spawn filters) has no Escape handling
-        // of its own at all, so neither can ever compete with this chord for the same keypress. HandleShortcuts
-        // never runs while the dialog is already open (OnUpdate gates the whole editor step off _exitDialog), so
-        // this only ever opens a fresh dialog, never re-opens one.
-        if (shift && s.WasPressed(Key.Escape)) { OpenExitDialog(); return; }
-
-        // Every other chord below, plus the bare R hotkey, belongs to a focused editor over the document:
-        // Ctrl+Z inside a focused NumberField should undo the field's own typed digit (TextEntry already blocks
-        // the literal keystroke), not pop a document command, and R should type into a focused name field or
-        // filter instead of snapping the selection to the ground. This aggregate query replaces the old ad hoc
-        // `_nameRow`-only guard, so every row type (Float/Text/Choice) AND the kit-palette/spawn filters block
-        // chords, not just the rename row.
-        if (AnyEditorFocused) return;
-
-        bool ctrl = s.IsCommandDown;
-        if (!ctrl)
-        {
-            if (s.WasPressed(Key.R)) SnapSelectedPlacementToGround();
-            else HandleBookmarkChord(s, shift);   // bare / Shift+1..9 (decision 9)
-            return;
-        }
-        if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
-        else if (s.WasPressed(Key.Y)) _document.Redo();
-        else if (s.WasPressed(Key.S)) SaveDocument();
-        else if (s.WasPressed(Key.D)) DuplicateSelectionChord();       // Cmd+D (decision 8)
-        else if (s.WasPressed(Key.Up)) ReorderSelectedElement(-1);     // earlier in the fold / match order
-        else if (s.WasPressed(Key.Down)) ReorderSelectedElement(+1);   // later in the fold / match order (toward winning)
-    }
 
     // Cmd+D: duplicate the current selection (decision 8). Terrain (the singleton root) has nothing to
     // duplicate, so it lands a status note instead of a mutation. An empty selection silently no-ops (nothing to

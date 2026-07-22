@@ -119,7 +119,7 @@ internal enum GizmoAffordance
 /// cancels any gesture and returns to Select, Delete removes the selection. Holds no GPU state, so the whole
 /// surface is headless-testable.
 /// </summary>
-public sealed class EditorToolController
+public sealed partial class EditorToolController
 {
     /// <summary>Cap for the pick / ground raycasts, in world units (the ray direction is caller-normalized).</summary>
     const float PickDistance = 100_000f;

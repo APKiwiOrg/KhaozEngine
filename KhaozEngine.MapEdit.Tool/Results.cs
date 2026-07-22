@@ -84,6 +84,14 @@ public sealed record MutationResult(string Verb, string Detail, bool WorldChange
 /// stop the frozen props from being re-scattered on top of themselves.</summary>
 public sealed record BakeResult(string Layer, int BakedCount, IReadOnlyList<string> BakedIds, bool ExclusionAdded);
 
+/// <summary>Result of a whole-zone freeze: how many placements were frozen from the zone's procedural scatter, and
+/// how many of each procedural collection (scatter layers, companion layers, exclusions, scatter overrides) were
+/// removed to leave a placements-only document. <see cref="Applied"/> is false when there was nothing to freeze (the
+/// document already had no scatter or companion layers), in which case every count is zero and the document is
+/// untouched.</summary>
+public sealed record FreezeZoneResult(int PlacementCount, int ScatterLayersRemoved, int CompanionLayersRemoved,
+    int ExclusionsRemoved, int ScatterOverridesRemoved, bool Applied);
+
 /// <summary>The terrain globals: the water level and noise seed plus the biome-blend and gentle/detail noise
 /// scalars the widened <c>terrain_edit</c> verb now carries.</summary>
 public sealed record TerrainInfo(int Seed, float WaterLevel, float BiomeBlend, float GentleFrequency,

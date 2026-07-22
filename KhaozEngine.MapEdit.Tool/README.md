@@ -90,7 +90,7 @@ it into the throwaway `ViewportWorld` the render call builds (`ViewportWorld.Tex
 render call gets the same textured-vs-flat choice the GUI viewport does without a live editor session
 open. Additive parameter, no new verb.
 
-## Verb surface (68 tools)
+## Verb surface (69 tools)
 
 | Group | Verbs |
 |---|---|
@@ -100,7 +100,7 @@ open. Additive parameter, no new verb.
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
 | Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
-| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `scatter_override_rename`, `scatter_override_reorder`, `bake_region`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
+| Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `scatter_override_rename`, `scatter_override_reorder`, `bake_region`, `freeze_zone`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
 | Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
@@ -139,7 +139,15 @@ share the same id string with no collision.
 `map_validate` runs the structural checks (`MapDocumentValidator`) first, then a JSON schema check when
 the structural checks pass. `bake_region` freezes a scatter layer's procedural output over a world rect
 into authored placements (`baked-<layer>-N`, an explicit ground Y, tagged `baked`) plus a covering
-exclusion scoped to that layer, so a designer can hand-tune what was procedural. `render_topdown` and
+exclusion scoped to that layer, so a designer can hand-tune what was procedural. `freeze_zone` is the
+whole-document terminal form: it bakes every scatter layer and companion layer across the document bounds
+into authored placements (`baked-<source>-N`, explicit Y, tagged `baked` plus the source layer name), then
+removes all scatter layers, companion layers, exclusions, and scatter overrides, leaving a placements-only
+document with no procedural generation left. A single undoable operation, mirroring the GUI's Ctrl+Shift+F
+chord. `FreezeZoneResult` reports `PlacementCount`, `ScatterLayersRemoved`, `CompanionLayersRemoved`,
+`ExclusionsRemoved`, `ScatterOverridesRemoved`, and `Applied`. Called on a document with no scatter or
+companion layers, it is a safe no-op: `Applied` comes back false, every count zero, and the document (and
+its dirty flag) are untouched. `render_topdown` and
 `render_view` return a PNG `ImageContentBlock` directly, no files written, preceded by a text block
 naming the framing so the client can map pixels back to world coordinates. `procedural_info` reads back
 the full terrain/biome-band/scatter-layer/companion-layer setup at full field fidelity, the read

@@ -72,7 +72,8 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 ## Keys
 
 Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection (see
-Duplicate below), Delete removes the current selection. R snaps the selected placement to the ground (an
+Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see Freeze
+zone below), Delete removes the current selection. R snaps the selected placement to the ground (an
 undoable re-move with a null Y, a no-op when nothing placement-shaped is selected or the placement is
 already grounded). Ctrl+Up and Ctrl+Down reorder the selected terrain feature or scatter override one step
 earlier or later in its list (see Feature apply order below), clamped at the list ends so a boundary press
@@ -493,6 +494,15 @@ GPU-free and fully unit-tested:
   placements (tagged `baked`, explicit Y) plus a covering exclusion, so a designer can hand-edit props that
   were procedural. It captures the generated placements on first apply and reuses them on redo, so an
   undo/redo cycle is byte-identical.
+- `FreezeZoneCommand` is the terminal whole-zone freeze: it bakes every scatter layer AND every companion
+  layer across the document bounds into authored placements (`baked-<source>-N` ids, explicit frozen Y,
+  tagged `baked` plus the source layer name) and removes all scatter layers, companion layers, exclusions,
+  and scatter overrides, leaving a placements-only document with no procedural generation left to exclude
+  against. Where `BakeRegionCommand` freezes one layer over one rect and keeps the layer alive behind a
+  covering exclusion, this is the terminal form, converting a hybrid procedural document into a fully
+  authored one. One undoable command, captured once on first apply and replayed verbatim on redo, gated by
+  a static `HasWork` check so a document already placements-only never lands a phantom undo entry. See
+  Freeze zone below.
 - `EditorToolController` is the GPU-free per-frame policy: it reads a plain `EditorFrameInput` (pick ray +
   pointer/keyboard edges) and emits commands. Select mode picks (a press either grabs a gizmo handle or, past
   `BodyDragThreshold` on the object's own body, arms a body drag on the same translate-XZ path) and drives
@@ -612,6 +622,36 @@ drift it, and a `baked` tag), and adds a matching rect exclusion scoped to that 
 props are never re-scattered on top of themselves. The generated placement list and exclusion are captured
 on the FIRST `Apply` and replayed verbatim on every redo (never regenerated), so an Apply/Revert/Apply
 cycle is byte-identical even though `PropScatter` is otherwise deterministic only against a fixed field.
+
+## Freeze zone
+
+Ctrl+Shift+F (Cmd+Shift+F on a Mac) runs `EditorToolController.FreezeZone()`
+(`MapEditorScene.FreezeZoneChord`, `MapEditorScene.Shortcuts.cs`). A chord rather than a tool mode: unlike
+the draw and bake tools, freezing has no gesture to arm, drag, or cancel, it is a one-shot whole-document
+action, so it does not belong in the tool palette. `FreezeZoneCommand.HasWork` gates it: a document with no
+scatter or companion layers already has nothing to freeze, so the chord lands the status-strip note
+"Nothing to freeze: the zone has no scatter or companion layers." instead of a phantom undo entry, the same
+no-op idiom `DuplicateSelectionChord` uses over an empty selection.
+
+Where `BakeRegionCommand` freezes one scatter layer over one dragged rect and leaves that layer alive
+behind a covering exclusion, `FreezeZoneCommand` is the terminal form: it bakes EVERY scatter layer and
+companion layer across the whole document bounds, then removes all scatter layers, companion layers,
+exclusions, AND scatter overrides. No covering exclusion is added, because once no scatter layer survives
+there is nothing left to re-scatter over the frozen props. Use it to convert a hybrid procedural document
+into a fully authored, placements-only one, the terminal step before a zone ships with no runtime scatter
+cost.
+
+Each frozen prop becomes a `MapPlacement` with a document-unique `baked-<sourceLayer>-N` id, an explicit
+frozen Y (so a later re-snap cannot drift it), and two tags: `baked` plus the source layer name, so a
+reviewer can tell which layer produced a prop from its tags alone. Companion layers are baked from the same
+host generation pass that produced their host scatter layer's placements, before the host layer is removed,
+matching how the runtime rings companions per chunk.
+
+The whole freeze is one undoable `FreezeZoneCommand`: it captures the baked placement list and the four
+removed collections (scatter layers, companion layers, exclusions, scatter overrides) on the first `Apply`
+and replays them verbatim on every redo, so an Apply/Revert/Apply cycle is byte-identical. `Revert` restores
+all four collections exactly and removes the baked block. `MapEditorScene.FreezeZoneChord` reports the
+outcome in the status strip: the placement count plus how many of each collection were removed.
 
 ## Renaming
 

@@ -67,7 +67,7 @@ namespace KhaozEngine.Tests.MapEditTool
             // Scatter
             "exclusion_add", "exclusion_edit", "exclusion_remove", "exclusion_rename", "exclusion_set_layers",
             "scatter_override_add", "scatter_override_edit", "scatter_override_remove", "scatter_override_rename",
-            "scatter_override_reorder", "bake_region",
+            "scatter_override_reorder", "bake_region", "freeze_zone",
             "scatter_layer_add", "scatter_layer_edit", "scatter_layer_remove", "scatter_layer_rename",
             "scatter_rule_add", "scatter_rule_edit", "scatter_rule_remove",
             "companion_layer_add", "companion_layer_edit", "companion_layer_remove", "companion_layer_rename",

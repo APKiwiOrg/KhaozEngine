@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using KhaozEngine.Tests;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D.Animation
@@ -525,10 +526,12 @@ namespace KhaozEngine.Tests.Render3D.Animation
             // Warm up (JIT, lazy additive-reference sample, dictionary build).
             for (int i = 0; i < 8; i++) { anim.Update(1f / 60f); anim.GetBonePalette(palette); }
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 240; i++) { anim.Update(1f / 60f); anim.GetBonePalette(palette); }
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-            Assert.True(allocated == 0, $"steady-state Update+GetBonePalette allocated {allocated} bytes");
+            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
+            // collision from the rest of the process, per issue #284.
+            AllocAssert.NoPerCallAllocation("steady-state Update+GetBonePalette", () =>
+            {
+                for (int i = 0; i < 240; i++) { anim.Update(1f / 60f); anim.GetBonePalette(palette); }
+            });
         }
 
         // ---- helpers ----

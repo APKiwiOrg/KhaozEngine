@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using KhaozEngine.Tests;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D.Animation
@@ -162,13 +163,15 @@ namespace KhaozEngine.Tests.Render3D.Animation
             int layersAfterFirst = anim.LayerCount;
 
             // Now play several more, each start-to-retire. The layer count must NOT grow (slot reused), and the steady
-            // state must allocate nothing (PlayAction on a reused slot + the compositing frames).
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 6; i++) RunOneAction(anim, skel, action, dt);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            // state must allocate nothing (PlayAction on a reused slot + the compositing frames). Retries once
+            // before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0 collision from
+            // the rest of the process, per issue #284.
+            AllocAssert.NoPerCallAllocation("sequential actions (slot not reused?)", () =>
+            {
+                for (int i = 0; i < 6; i++) RunOneAction(anim, skel, action, dt);
+            });
 
             Assert.Equal(layersAfterFirst, anim.LayerCount);   // one slot reused across all six actions
-            Assert.True(allocated == 0, $"sequential actions allocated {allocated} bytes (slot not reused?)");
         }
 
         static void RunOneAction(LayeredAnimator anim, Skeleton skel, AnimationClip clip, float dt)

@@ -432,6 +432,36 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("Name of the region to remove.")] string name)
         => ToolGuard.Guard(() => mutation.RegionRemove(name));
 
+    // ---- sculpt (terrain height-delta layer, T3, #271) -----------------------------------------------------
+
+    [McpServerTool(Name = "sculpt_apply"), Description("Applies one terrain-sculpt brush dab at a world point as a single undo step. strength and dt feed the brush core directly: meters per stroke-second for raise/lower, or a per-second blend rate for smooth/flatten/set_height, scaled by dt seconds (deterministic regardless of wall-clock time). targetHeight is required for set_height and ignored otherwise; flatten instead captures its target live, from the current ground height at (x, z). A non-positive radius or dt, or a footprint entirely outside the document's paintable sculpt bounds, is a clean no-op.")]
+    public SculptApplyResult SculptApply(
+        [Description("Brush: raise, lower, smooth, flatten, or set_height (case-insensitive).")] string brush,
+        [Description("World X of the brush centre in meters (ground plane).")] float x,
+        [Description("World Z of the brush centre in meters (ground plane).")] float z,
+        [Description("Brush radius in meters.")] float radius,
+        [Description("Brush strength: meters per stroke-second for raise/lower, a per-second blend rate for smooth/flatten/set_height.")] float strength,
+        [Description("Dab duration in stroke-seconds. The dab's effect scales with this value; 0 or negative is a no-op.")] float dt,
+        [Description("Absolute world height in meters the set_height brush blends toward. Required for set_height, ignored otherwise.")] float? targetHeight = null)
+        => ToolGuard.Guard(() => mutation.SculptApply(brush, x, z, radius, strength, dt, targetHeight));
+
+    [McpServerTool(Name = "sculpt_flatten_region"), Description("Flattens every sculpt cell whose centre falls inside the inclusive world rect to a target height in one command: an exact delta computation over the region (no falloff, no repeated dabs), landing as one undo step. A degenerate or already-flat region is a clean no-op.")]
+    public SculptFlattenRegionResult SculptFlattenRegion(
+        [Description("Minimum world X of the rect in meters (ground plane).")] float minX,
+        [Description("Minimum world Z of the rect in meters (ground plane).")] float minZ,
+        [Description("Maximum world X of the rect in meters (ground plane).")] float maxX,
+        [Description("Maximum world Z of the rect in meters (ground plane).")] float maxZ,
+        [Description("Absolute world height in meters to flatten the region to.")] float targetHeight)
+        => ToolGuard.Guard(() => mutation.SculptFlattenRegion(minX, minZ, maxX, maxZ, targetHeight));
+
+    [McpServerTool(Name = "sculpt_clear"), Description("Removes sculpt tiles, restoring analytic terrain there, in one undo step. With every rect argument null, clears the whole sculpt layer. With all four supplied, clears only the tiles whose world extent intersects the inclusive rect (the four must be supplied together or not at all). A document with no sculpt layer, or a region touching no stored tile, is a clean no-op.")]
+    public SculptClearResult SculptClear(
+        [Description("Minimum world X of the rect in meters. Null (with the other three also null) clears the whole sculpt layer.")] float? minX = null,
+        [Description("Minimum world Z of the rect in meters. Null (with the other three also null) clears the whole sculpt layer.")] float? minZ = null,
+        [Description("Maximum world X of the rect in meters. Null (with the other three also null) clears the whole sculpt layer.")] float? maxX = null,
+        [Description("Maximum world Z of the rect in meters. Null (with the other three also null) clears the whole sculpt layer.")] float? maxZ = null)
+        => ToolGuard.Guard(() => mutation.SculptClear(minX, minZ, maxX, maxZ));
+
     // ---- element duplicate (cross-kind) --------------------------------------------------------------------
 
     [McpServerTool(Name = "element_duplicate"), Description("Duplicates one document element: a deep clone with a fresh unique identity, offset +2/+2 world units on X/Z for the kinds that carry a position. Mirrors the editor's own Cmd+D duplicate exactly (same id/name prefixes, same offset, named features/exclusions/scatter overrides get a uniquified '-copy' suffix while unnamed ones stay unnamed). Terrain has no duplicate, since it is a document singleton. Exactly one of id or index must be supplied, matching the kind's own addressing.")]

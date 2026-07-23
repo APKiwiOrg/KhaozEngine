@@ -164,9 +164,10 @@ registry yields `lake`, `flatten`, `ridge`, `rim`), so a tool can list the featu
 
 `MapTerrainOverrides` is the authored sculpt/delta layer (format v2): a sparse map of
 `TerrainSculpt.TileSize` (32) square delta tiles at a chosen sculpt cell size, folded into the analytic
-terrain by `MapRuntime.BuildField`. It is the code/MCP authoring surface (the editor brushes and
-`sculpt_*` verbs land later); author cells by global cell coordinate, save/load round-trips deterministic
-tile order:
+terrain by `MapRuntime.BuildField`. It is the direct code authoring surface; the editor's sculpt brushes
+(`KhaozEngine.MapEditor`) and the `ke-mapedit` `sculpt_apply`/`sculpt_flatten_region`/`sculpt_clear` MCP
+verbs write through it too, both riding `PutTile`/`RemoveTile`. Author cells by global cell coordinate,
+save/load round-trips deterministic tile order:
 
 ```csharp
 var doc = MapDocumentFile.Load("assets/maps/valley.map.json");

@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.15.0
+
+Feature: `ke-mapedit` gains the `sculpt_*` MCP verbs (apply, flatten a region, clear tiles, and read tile
+stats), riding the T2 headless brush core through `MutationService` (T3 of the sculpt program, the final
+phase, #271).
+
+- **`sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` (KhaozEngine.MapEdit.Tool).** Applies
+  one brush dab (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single-dab
+  `TerrainSculptStrokeCommand`, so it lands as one undo step, exactly the brush core the GUI's sculpt tool
+  mode uses. `strength`/`dt` feed `TerrainSculptBrush.ComputeDab` directly (meters per stroke-second for
+  raise/lower, a per-second blend rate for smooth/flatten/set_height), so a call is deterministic regardless
+  of wall-clock time. `targetHeight` is required for `set_height` and ignored otherwise; `flatten` instead
+  captures its target live, from the field's current composited height at `(x, z)`, the same capture-on-press
+  semantics the interactive tool uses. A non-positive radius/dt, or a footprint entirely outside the
+  document's paintable sculpt bounds, is a clean no-op (`Applied` false, session left clean).
+- **`sculpt_flatten_region(minX, minZ, maxX, maxZ, targetHeight)`.** Flattens every sculpt cell whose centre
+  falls inside the inclusive world rect to `targetHeight` in one command: a new headless, no-falloff region
+  computation (`TerrainSculptRegion.ComputeFlattenRegion`), not repeated dabs, so the result is exact and
+  deterministic. Lands as one undo step, the same `TerrainSculptStrokeCommand` a brush dab uses. A
+  degenerate or already-flat region is a clean no-op.
+- **`sculpt_clear(minX?, minZ?, maxX?, maxZ?)`.** Removes sculpt tiles, restoring analytic terrain there, in
+  one undo step via a new command, `TerrainSculptClearCommand` (KhaozEngine.MapEditor): with every rect
+  argument null it clears the whole sculpt layer, with all four supplied it clears only the tiles whose
+  world extent intersects the rect (`TerrainSculptRegion.SelectClearTiles`). Drops the layer back to null
+  once it empties, the same null-when-empty invariant `TerrainSculptStrokeCommand` uses. A document with no
+  sculpt layer, or a region touching no stored tile, is a clean no-op.
+- **`sculpt_stats` read verb (`QueryService.SculptStats`).** Whether the document has a sculpt layer at all,
+  its cell size, how many tiles are stored, how many cells across those tiles carry a nonzero delta, and the
+  min/max delta among those touched cells. `ground_height`/`is_walkable` already reflect sculpted terrain
+  (composited into the field by T1), so this is the read for the raw layer's shape instead of a point sample.
+- **Shared engine-side sculpt helpers (KhaozEngine.MapEditor).** `TerrainSculptTiles.BuildTileDeltas`
+  promotes the dab-to-tile grouping logic out of `EditorToolController.ApplyDab` (T2) into a public,
+  independently tested helper both the GUI tool and the new MCP verbs call, so the two surfaces can never
+  drift apart on how a dab's writes become tiles. `TerrainSculptRegion` is the new headless region-scale
+  core (`ComputeFlattenRegion`, `SelectClearTiles`), GPU-free and document-free like `TerrainSculptBrush`.
+- Every verb is no-op-safe (never dirties the session when nothing changes) and registered in the verb
+  inventory (73 tools total, up from 69). Ruinborne repin and the first valley sculpt pass are tracked
+  separately by the program issue's game-side follow-up; T3 closes #271 on the engine side.
+
 ## 14.14.0
 
 Feature: the map editor gains a terrain-sculpt toolbar mode with raise/lower/smooth/flatten/set-height brushes, one undoable command per stroke, and stroke-scoped dirty-region viewport rebuild (T2 of the sculpt program, #271).

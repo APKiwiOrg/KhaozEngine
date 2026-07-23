@@ -256,5 +256,48 @@ namespace KhaozEngine.Tests.Terrain
                                drawRadius: 400f, lodParts: Parts(("tree", new[] { 90 })), lodDistance: 100f);
             Assert.Equal(3, si.Items.Count);         // near: all three full parts
         }
+
+        // ---- HLOD crossfade dissolveFloor: raises every prop's minimum dissolve (the whole-cluster fade-out seam) ----
+
+        [Fact]
+        public void DissolveFloor_Zero_IsByteIdenticalToNoFloor()
+        {
+            // A dissolveFloor of 0 must not perturb the old path: an in-range prop with no fade band stays solid.
+            var placements = new List<PropPlacement> { new PropPlacement("pine_a", 30f, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            PropRenderer.Queue(si, placements, Meshes(("pine_a", 3)), Vector3.Zero, drawRadius: 100f, dissolveFloor: 0f);
+            Assert.Single(si.Items);
+            Assert.Equal(0f, si.Items[0].DissolveThreshold, 5);
+        }
+
+        [Fact]
+        public void DissolveFloor_RaisesEveryPropDissolveUniformly()
+        {
+            // With no fade band, the floor is applied verbatim as each prop's dissolve (the whole cluster fades as one).
+            var placements = new List<PropPlacement>
+            {
+                new PropPlacement("pine_a", 10f, 0f, 0f, 1f, 0f, 0),
+                new PropPlacement("pine_a", 40f, 0f, 0f, 1f, 0f, 0),
+            };
+            var si = new SceneInstances();
+            PropRenderer.Queue(si, placements, Meshes(("pine_a", 3)), Vector3.Zero, drawRadius: 100f, dissolveFloor: 0.4f);
+            Assert.Equal(2, si.Items.Count);
+            foreach (var it in si.Items) Assert.Equal(0.4f, it.DissolveThreshold, 4);   // uniform, distance-independent
+        }
+
+        [Fact]
+        public void DissolveFloor_CombinesWithFadeBandByMax()
+        {
+            // Fade band [60,100] gives a prop at 80 a 0.5 dissolve. A floor of 0.7 wins (max), a floor of 0.2 loses.
+            var high = new SceneInstances();
+            PropRenderer.Queue(high, new List<PropPlacement> { new PropPlacement("pine_a", 80f, 0f, 0f, 1f, 0f, 0) },
+                Meshes(("pine_a", 3)), Vector3.Zero, drawRadius: 100f, fadeBandWidth: 40f, dissolveFloor: 0.7f);
+            Assert.Equal(0.7f, high.Items[0].DissolveThreshold, 4);
+
+            var low = new SceneInstances();
+            PropRenderer.Queue(low, new List<PropPlacement> { new PropPlacement("pine_a", 80f, 0f, 0f, 1f, 0f, 0) },
+                Meshes(("pine_a", 3)), Vector3.Zero, drawRadius: 100f, fadeBandWidth: 40f, dissolveFloor: 0.2f);
+            Assert.Equal(0.5f, low.Items[0].DissolveThreshold, 4);
+        }
     }
 }

@@ -20,7 +20,7 @@ namespace KhaozEngine.Terrain
     /// the byte-identical hard cut. <c>lodMeshes</c>/<c>lodDistance</c> swap a kit to an author-supplied far LOD mesh
     /// (from <see cref="AssetEntry.LodFile"/>) beyond <c>lodDistance</c>: a per-kit opt-in, an id with no variant just
     /// keeps its full mesh. Both are deterministic per distance, no per-frame randomness.</para>
-    /// The headless <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float)"/> overload is testable without a GPU; <see cref="DrawProps(Scene3D, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float)"/> is the Scene3D
+    /// The headless <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/> overload is testable without a GPU; <see cref="DrawProps(Scene3D, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/> is the Scene3D
     /// convenience a consumer with <c>using KhaozEngine.Terrain;</c> gets in scope.</summary>
     public static class PropRenderer
     {
@@ -28,16 +28,19 @@ namespace KhaozEngine.Terrain
         /// <paramref name="focus"/> whose <see cref="PropPlacement.Id"/> has a mesh in <paramref name="meshes"/>.
         /// Out-of-range and unknown-id placements are skipped. <paramref name="fadeBandWidth"/> (default 0 = hard cut)
         /// dissolves props across the band just inside the radius; <paramref name="lodMeshes"/> plus a positive
-        /// <paramref name="lodDistance"/> swap a kit to its far LOD variant beyond that distance. Returns the number
-        /// queued.</summary>
+        /// <paramref name="lodDistance"/> swap a kit to its far LOD variant beyond that distance.
+        /// <paramref name="dissolveFloor"/> (default 0) raises the MINIMUM dissolve applied to every emitted prop
+        /// (combined with the per-placement fade via max), the seam the HLOD crossfade uses to dissolve a whole
+        /// chunk's props out uniformly. Returns the number queued.</summary>
         public static int Queue(SceneInstances instances, IReadOnlyList<PropPlacement> placements,
                                 IReadOnlyDictionary<string, MeshHandle> meshes, Vector3 focus, float drawRadius,
                                 Color? tint = null, float fadeBandWidth = 0f,
-                                IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f)
+                                IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f,
+                                float dissolveFloor = 0f)
         {
             if (instances == null) throw new ArgumentNullException(nameof(instances));
             Color t = tint ?? Color.White;
-            return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth,
+            return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
                     if (dissolve > 0f) instances.Add(handle, world, t, Material.None, dissolve, 0f, default);
@@ -46,15 +49,17 @@ namespace KhaozEngine.Terrain
         }
 
         /// <summary>Scene3D convenience: queue the in-range props into the scene's instance buffer for this frame
-        /// (same cull + matrix + fade band + LOD selection as <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float)"/>). Returns the number drawn.</summary>
+        /// (same cull + matrix + fade band + LOD selection as <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/>). <paramref name="dissolveFloor"/>
+        /// (default 0) raises every prop's minimum dissolve, the HLOD crossfade seam. Returns the number drawn.</summary>
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
                                     IReadOnlyDictionary<string, MeshHandle> meshes, Vector3 focus, float drawRadius,
                                     Color? tint = null, float fadeBandWidth = 0f,
-                                    IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f)
+                                    IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f,
+                                    float dissolveFloor = 0f)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
-            return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth,
+            return Emit(placements, meshes, lodMeshes, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
                     if (dissolve > 0f) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default);
@@ -62,7 +67,7 @@ namespace KhaozEngine.Terrain
                 });
         }
 
-        /// <summary>Multi-part variant of <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float)"/>: each kit id maps to ONE-OR-MANY
+        /// <summary>Multi-part variant of <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/>: each kit id maps to ONE-OR-MANY
         /// <see cref="MeshHandle"/>s (a prop split into one textured sub-mesh per source material, from
         /// <see cref="Scene3D.LoadPropMeshes"/>). For every in-range placement, all of that id's parts are queued at
         /// the placement's shared scale/yaw/translation transform, so the whole prop instances as a unit and each
@@ -70,15 +75,16 @@ namespace KhaozEngine.Terrain
         /// per-instance shader indexing). The fade band and (<paramref name="lodParts"/>, <paramref name="lodDistance"/>)
         /// LOD swap work exactly as on the single-mesh form, applied to the whole prop (every part shares the one
         /// dissolve value and switches to the LOD variant together). A single-part list queues exactly one instance per
-        /// placement, byte-identical to <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float)"/>. Returns the number of PLACEMENTS drawn (not part submissions).</summary>
+        /// placement, byte-identical to <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float)"/>. Returns the number of PLACEMENTS drawn (not part submissions).</summary>
         public static int Queue(SceneInstances instances, IReadOnlyList<PropPlacement> placements,
                                 IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus,
                                 float drawRadius, Color? tint = null, float fadeBandWidth = 0f,
-                                IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null, float lodDistance = 0f)
+                                IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null, float lodDistance = 0f,
+                                float dissolveFloor = 0f)
         {
             if (instances == null) throw new ArgumentNullException(nameof(instances));
             Color t = tint ?? Color.White;
-            return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth,
+            return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
                     if (dissolve > 0f) instances.Add(handle, world, t, Material.None, dissolve, 0f, default);
@@ -86,18 +92,19 @@ namespace KhaozEngine.Terrain
                 });
         }
 
-        /// <summary>Scene3D convenience: multi-part variant of <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,MeshHandle},Vector3,float,Color?,float,IReadOnlyDictionary{string,MeshHandle},float)"/>.
+        /// <summary>Scene3D convenience: multi-part variant of <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,MeshHandle},Vector3,float,Color?,float,IReadOnlyDictionary{string,MeshHandle},float,float)"/>.
         /// Queues every part of each in-range prop at the placement transform (same cull + matrix + fade band + LOD as
-        /// the headless <see cref="Queue(SceneInstances,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},Vector3,float,Color?,float,IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},float)"/>).
+        /// the headless <see cref="Queue(SceneInstances,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},Vector3,float,Color?,float,IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},float,float)"/>).
         /// Returns the number of placements drawn.</summary>
         public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
                                     IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus,
                                     float drawRadius, Color? tint = null, float fadeBandWidth = 0f,
-                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null, float lodDistance = 0f)
+                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null, float lodDistance = 0f,
+                                    float dissolveFloor = 0f)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
-            return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth,
+            return EmitParts(placements, parts, lodParts, lodDistance, focus, drawRadius, fadeBandWidth, dissolveFloor,
                 (handle, world, dissolve) =>
                 {
                     if (dissolve > 0f) scene.Draw(handle, world, t, Material.None, dissolve, 0f, default);
@@ -119,7 +126,8 @@ namespace KhaozEngine.Terrain
 
         static int Emit(IReadOnlyList<PropPlacement> placements, IReadOnlyDictionary<string, MeshHandle> meshes,
                         IReadOnlyDictionary<string, MeshHandle>? lodMeshes, float lodDistance,
-                        Vector3 focus, float drawRadius, float fadeBandWidth, Action<MeshHandle, Matrix4x4, float> sink)
+                        Vector3 focus, float drawRadius, float fadeBandWidth, float dissolveFloor,
+                        Action<MeshHandle, Matrix4x4, float> sink)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
@@ -143,7 +151,8 @@ namespace KhaozEngine.Terrain
                 Matrix4x4 world = Matrix4x4.CreateScale(p.Scale)
                                   * Matrix4x4.CreateRotationY(p.Yaw)
                                   * Matrix4x4.CreateTranslation(p.X, p.Y, p.Z);
-                sink(handle, world, DissolveAt(d2, fadeInner, fadeBand));
+                // Per-placement fade band OR the uniform HLOD crossfade floor, whichever discards more.
+                sink(handle, world, MathF.Max(DissolveAt(d2, fadeInner, fadeBand), dissolveFloor));
                 count++;
             }
             return count;
@@ -155,7 +164,8 @@ namespace KhaozEngine.Terrain
         static int EmitParts(IReadOnlyList<PropPlacement> placements,
                              IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                              IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts, float lodDistance,
-                             Vector3 focus, float drawRadius, float fadeBandWidth, Action<MeshHandle, Matrix4x4, float> sink)
+                             Vector3 focus, float drawRadius, float fadeBandWidth, float dissolveFloor,
+                             Action<MeshHandle, Matrix4x4, float> sink)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (parts == null) throw new ArgumentNullException(nameof(parts));
@@ -179,7 +189,8 @@ namespace KhaozEngine.Terrain
                 Matrix4x4 world = Matrix4x4.CreateScale(p.Scale)
                                   * Matrix4x4.CreateRotationY(p.Yaw)
                                   * Matrix4x4.CreateTranslation(p.X, p.Y, p.Z);
-                float dissolve = DissolveAt(d2, fadeInner, fadeBand);
+                // Whole prop shares one dissolve: per-placement fade band OR the uniform HLOD crossfade floor, max.
+                float dissolve = MathF.Max(DissolveAt(d2, fadeInner, fadeBand), dissolveFloor);
                 for (int j = 0; j < handles.Count; j++) sink(handles[j], world, dissolve);
                 count++;
             }

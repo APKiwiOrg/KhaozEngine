@@ -487,5 +487,122 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Empty(load.LayerProps[0]);
             Assert.Equal(addedOnUpgrade, world.Removed.Count);   // every body from the upgrade removed
         });
+
+        // --- HLOD merged-mesh bake (L3) -------------------------------------------------------------------------
+
+        // A small per-kit source-mesh set for the HLOD merge: one sphere per id (enough triangles that a weld reduces).
+        static IReadOnlyDictionary<string, GltfMesh> KitSource(params string[] ids)
+        {
+            var d = new Dictionary<string, GltfMesh>();
+            foreach (string id in ids) d[id] = MeshPrimitives.Sphere(radius: 1f, rings: 8, segments: 10);
+            return d;
+        }
+
+        [Fact]
+        public void BuildCpu_WithNoHlodLayer_ProducesNoHlodMeshes()
+        {
+            // Config-off equivalence: a sink whose layers never opted into HLOD produces no HLOD meshes at all, so the
+            // whole HLOD path is inert and the build is what it was pre-L3.
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            var sink = new Scene3DChunkSink(scene: null!, field, scatter, NoMeshes(), chunkSize: 60f, propDrawRadius: 90f);
+
+            var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(new ChunkCoord(0, 0), lod: 0);
+
+            Assert.Null(cpu.HlodMeshes);
+        }
+
+        [Fact]
+        public void BuildCpu_WithHlodLayer_BakesMergedMeshForGameplayAndDecor()
+        {
+            // The HLOD merged mesh is baked for BOTH rings (a decor chunk renders the merged mesh in place of the props
+            // it never scatters), while the render-only decor invariant holds: decor still has no individual props.
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            PropLayer layer = PropLayer.ScatterLayer(scatter, NoMeshes(), 90f)
+                .WithHlod(KitSource("pine_a"), hlodDistance: 120f, weldCell: 2f);
+            var sink = new Scene3DChunkSink(scene: null!, field, new[] { layer }, chunkSize: 60f);
+            var coord = new ChunkCoord(0, 0);
+
+            var gameplay = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0, ring: ChunkRing.Gameplay);
+            Assert.NotEmpty(gameplay.LayerProps[0]);            // gameplay scatters the props
+            Assert.NotNull(gameplay.HlodMeshes);
+            Assert.NotNull(gameplay.HlodMeshes![0]);
+            Assert.True(gameplay.HlodMeshes[0]!.TriangleCount > 0);
+
+            var decor = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 2, ring: ChunkRing.Decor);
+            Assert.Empty(decor.LayerProps[0]);                  // render-only: no individual props
+            Assert.NotNull(decor.HlodMeshes![0]);               // but the merged mesh IS baked
+            Assert.True(decor.HlodMeshes[0]!.TriangleCount > 0);
+        }
+
+        [Fact]
+        public void BuildCpu_HlodMesh_IsDeterministic_ByteIdentical()
+        {
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            PropLayer layer = PropLayer.ScatterLayer(scatter, NoMeshes(), 90f)
+                .WithHlod(KitSource("pine_a"), hlodDistance: 120f, weldCell: 2f);
+            var sink = new Scene3DChunkSink(scene: null!, field, new[] { layer }, chunkSize: 60f);
+            var coord = new ChunkCoord(0, 0);
+
+            GltfMesh a = ((Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0)).HlodMeshes![0]!;
+            GltfMesh b = ((Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0)).HlodMeshes![0]!;
+
+            Assert.Equal(a.Vertices.Length, b.Vertices.Length);
+            Assert.Equal(a.Indices32.Length, b.Indices32.Length);
+            for (int i = 0; i < a.Vertices.Length; i++)
+                Assert.Equal(a.Vertices[i].Position, b.Vertices[i].Position);
+            for (int i = 0; i < a.Indices32.Length; i++) Assert.Equal(a.Indices32[i], b.Indices32[i]);
+        }
+
+        [GpuFact]
+        public void Load_UploadsHlodHandle_AndTierReLodKeepsItCached() => WithScene(scene =>
+        {
+            // The merged mesh is field-determined and tier-independent, so a pure tier re-LOD keeps the cached handle
+            // (no GPU re-upload) - the same cache discipline the terrain collider and prop statics get.
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            PropLayer layer = PropLayer.ScatterLayer(scatter, NoMeshes(), 90f)
+                .WithHlod(KitSource("pine_a"), hlodDistance: 120f, weldCell: 2f);
+            var sink = new Scene3DChunkSink(scene, field, new[] { layer }, chunkSize: 60f);
+            var coord = new ChunkCoord(0, 0);
+
+            object handle = sink.Load(coord, lod: 0);
+            var load = (Scene3DChunkSink.ChunkLoad)handle;
+            Assert.NotNull(load.HlodMeshHandles);
+            Assert.NotNull(load.HlodMeshHandles![0]);
+            MeshHandle before = load.HlodMeshHandles[0]!.Value;
+
+            sink.ReLod(coord, handle, lod: 1);   // tier change only, field untouched
+
+            MeshHandle after = load.HlodMeshHandles![0]!.Value;
+            Assert.Equal(before.Index, after.Index);            // same handle: not re-uploaded
+            Assert.Equal(before.Generation, after.Generation);
+        });
+
+        [GpuFact]
+        public void ReLod_AfterFieldSwapToEmpty_RebuildsHlodMeshToNull() => WithScene(scene =>
+        {
+            // Cluster cache invalidation: an Invalidate-style field rebuild (same tier + ring) rebuilds the merged mesh
+            // from the fresh scatter. Carving the chunk below water empties the scatter, so the merged mesh drops to
+            // null - proving the cache is rebuilt on Invalidate, not stale-held.
+            TerrainField fieldA = Flat(5f);
+            TerrainField fieldB = Flat(5f, waterLevel: 10f);    // carved: no candidate clears the water
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            PropLayer layer = PropLayer.ScatterLayer(scatter, NoMeshes(), 90f)
+                .WithHlod(KitSource("pine_a"), hlodDistance: 120f, weldCell: 2f);
+            var sink = new Scene3DChunkSink(scene, fieldA, new[] { layer }, chunkSize: 60f);
+            var coord = new ChunkCoord(0, 0);
+
+            object handle = sink.Load(coord, lod: 0);
+            var load = (Scene3DChunkSink.ChunkLoad)handle;
+            Assert.NotNull(load.HlodMeshHandles![0]);           // pre-carve: the chunk's props merge into a mesh
+
+            sink.UpdateField(fieldB);
+            sink.ReLod(coord, handle, lod: 0);                  // same tier + ring = field rebuild
+
+            Assert.Null(load.HlodMeshHandles![0]);              // rebuilt from the now-empty scatter: no merged mesh
+        });
     }
 }

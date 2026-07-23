@@ -99,6 +99,10 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   representation (`LodMeshes`/`LodPartMeshes`). `FadeBandWidth` (default 0 = hard cut) dissolves props across the
   band just inside `DrawRadius`; a positive `LodDistance` with LOD variants swaps a kit to its far mesh past that
   distance. `Scene3DChunkSink.Draw` reads whichever mesh set is set and threads the fade band + LOD through.
+  `layer.WithHlod(sourceMeshes, hlodDistance, weldCell, crossfadeWidth = 0)` returns a copy with **HLOD** on: past
+  `HlodDistance` the chunk cluster swaps its individual props for one merged coarse mesh (baked from `sourceMeshes`,
+  see `PropHlod`), crossfading the two across `HlodCrossfadeWidth`. Defaults off, so a layer without `WithHlod`
+  always draws its props.
 - **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
   extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
   overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a
@@ -117,6 +121,19 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   rides each part's material state (set at load via `LoadPropMeshes`), so a MASK leaf-card kit scatters and
   draws through this path with its silhouette carved, exactly like an opaque prop (see the Render3D README's
   "Alpha cutout" bullet).
+- **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
+  `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and
+  concatenates into one `GltfMesh` (per-kit opt-in, an id with no source mesh contributes nothing).
+  `PropHlod.Weld(mesh, cellSize)` is a vertex-cluster decimator: vertices in the same cubic cell collapse to one
+  averaged vertex (position, normal, colour) and degenerate triangles drop, cutting the triangle count while
+  silhouettes and canopy colour hold at range (the spike measured a 41-prop cluster 139,608 -> 16,178 tris at a
+  1.5 m cell). `PropHlod.BuildMergedMesh(placements, sourceMeshes, weldCellSize)` is the one-call bake (merge, then
+  weld when the cell is positive), and `PropHlod.CrossfadeAt(distance, hlodDistance, crossfadeWidth)` is the 0..1
+  distance crossfade curve. All pure and deterministic, so the bake reproduces byte-for-byte - `Scene3DChunkSink`
+  runs it as a RUNTIME bake at chunk load (cached per cluster in the chunk handle, freed on unload, rebuilt only
+  on an Invalidate field rebuild), and the same function is offline-ready if a future artifact bake wants it. The
+  merged mesh keeps flat **vertex-colour** albedo (from the `PropLoader.LoadProp` source form), so it renders
+  through the existing untextured `Scene3D.Draw` path with no atlas, no impostor card, and no new shader.
 - **`TerrainChunkCollision`** - extracts a chunk's SURFACE triangles (skirts excluded, winding flipped so
   the collidable face points up) into a static `TriangleMeshShape`. `Build(TerrainChunkMesh)` or
   `Build(GltfMesh, surfaceVertexCount)`; returns null for an empty chunk. Render-free (no GPU), so terrain

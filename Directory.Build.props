@@ -22,7 +22,7 @@
          Updates/Collision/Physics/Physics.Bepu/Netcode/Netcode.Abstractions/Netcode.LiteNetLib/WorldStore/WorldStore.Sqlite/
          WorldStore.SqlServer/NetWorld). Bump here to release them together; this is the version the
          doc-version guard checks. -->
-    <KhaozEngineVersion>14.17.0</KhaozEngineVersion>
+    <KhaozEngineVersion>14.18.0</KhaozEngineVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwiOrg/KhaozEngine</PackageProjectUrl>

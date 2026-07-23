@@ -5,6 +5,12 @@ distance hiding, and the arc was pulled forward from data-gated to active). Road
 Interim bridge while this ships: Ruinborne brute-forces full-island residency, affordable at 450 m
 world scale and explicitly not at continent scale.
 
+**Status: Complete.** All three phases shipped: L1 (14.16.0, far-field terrain tiers + decor ring +
+collision decouple), L2 (14.17.0, prop fade band + manifest LOD meshes), L3 (14.18.0, merged-coarse-mesh
+HLOD). The spike (decision 5) chose merged coarse mesh over billboard impostor. See the L3 implementation
+round below for the runtime-vs-offline bake decision. Shipped API + usage live in `CHANGELOG.md`,
+`docs/USING-KHAOZENGINE.md`, and `KhaozEngine.Terrain.Render3D/README.md`, not here.
+
 ## Problem
 
 The engine renders exactly one residency disk of terrain around the camera and hard-culls props at
@@ -71,3 +77,61 @@ The target is a continent-scale world whose far field renders for real.
 - World partitioning and streamed persistence (tracked separately in #269).
 - GPU timestamp queries (Veldrid 4.9.0 has none, CPU-encode timings and RenderFrameStats stand in).
 - Alpha-to-coverage, unless the L3 spike demands it.
+
+## L3 implementation round (14.18.0)
+
+The spike (issue #276 comment) rendered both candidate shapes for one real forest cluster and chose the
+**merged coarse mesh**: same draw collapse as the impostor (1 draw / 1 instance), adequate fidelity at
+range, robust to a free/orbiting camera (no atlas, no flat-card skew, no popping beyond the crossfade),
+and it drops into the existing mesh upload + `Scene3D.Draw` path with zero new shader work, where the
+impostor would have needed an atlas packer, a per-instance billboard fade, and multi-direction bake +
+crossfade (three subsystems that do not exist). Impostors stay on the table as a later opt-in tier for the
+extreme far ring if profiling ever shows the merged triangle count actually hurts (it does not at these
+scales: even 1000 clusters at 16k tris is 16M tris, nothing for a modern GPU).
+
+**Bake shape: RUNTIME bake at chunk load, cached per cluster. No offline artifact, no `ke-hlodbake` tool
+for v1.** Decision 5 sketched an author-time `ke-hlodbake` following the `ke-propbake` manifest-stamping
+pattern, but that was written before the runtime picture was clear. The judgment call, made here with the
+code in hand:
+
+- The merge inputs (prop placements) are 100% deterministic from `(TerrainField, ScatterConfig, chunk
+  area)` via `PropScatter.Generate` - the *exact same call* `Scene3DChunkSink` already makes for every
+  gameplay chunk, already on a worker thread in `BuildCpu`. Adding the merge+weld there is a pure-CPU
+  extension of an existing off-thread step, not a new pipeline.
+- The source meshes are small kit meshes already loaded in memory. No new asset, no new file format or
+  loader, no manifest field, no content-validation surface.
+- An offline `ke-hlodbake` artifact would need ALL of: a manifest field, a baked-mesh file format + loader,
+  content validation, a bake CLI, and manifest stamping - a lot of pipeline to precompute something that is
+  cheap and deterministic to compute at boot (the spike merged+welded 41 props in microseconds of CPU).
+- The streamer lifecycle already owns per-chunk load/unload with an off-thread CPU build and a frame-thread
+  GPU apply. The HLOD mesh fits it exactly: merge+weld in `BuildCpu`, upload in `Apply`, free in `Unload`.
+  The "cache" is the chunk handle itself - one merged mesh per loaded chunk per layer, rebuilt only on
+  load / re-LOD / Invalidate, exactly like the terrain mesh, and stable across a pure tier/ring re-LOD
+  (the placements are field-determined, so the coarse geometry does not change with the render tier).
+- The door to offline is not closed: the library API `PropHlod.BuildMergedMesh(placements, sourceMeshes,
+  weldCellSize)` is a pure function of its inputs, so it is the ready-made core of a future `ke-hlodbake`
+  with zero rework if a continent-scale profile ever shows a per-boot merge cost that matters. Runtime-first
+  defers that pipeline until it is needed, rather than building it speculatively.
+
+**Cluster granularity: one chunk = one cluster (v1).** The library API is cluster-agnostic (it merges any
+placement list), but the runtime applies it at chunk granularity because that aligns with the streamer's
+load/unload unit and the per-chunk crossfade distance. Multi-chunk clustering (one merged mesh spanning an
+NxN block) is a future option the same `PropHlod` API supports without change.
+
+**Vertex-colour texturing.** The spike showed flat vertex-colour merged meshes are adequate at range, so
+the merge source is `PropLoader.LoadProp`'s flat form, whose per-vertex colour already folds in each
+material's alpha-weighted average albedo. The merged mesh therefore renders through the existing untextured
+`Scene3D.Draw` vertex-colour path with zero extra texture memory, no atlas packer, and no new shader - the
+one atlas-packer dependency the impostor would have forced is avoided on this side too. A baked albedo atlas
+on the merged mesh is only worth reaching for if its texture fidelity ever proves necessary.
+
+**Crossfade.** One merged mesh per chunk, so the swap is decided per chunk (chunk-centre distance), not per
+placement. Across the crossfade band the props draw with a uniform `dissolveFloor` = t (added to
+`PropRenderer`, combined with the L2 fade band by max) and the merged mesh draws at dissolve = 1 - t, so the
+two complementary halves hand off through the 14.5.0 rigid-dissolve primitive with no new shader.
+
+**Golden.** No committed per-backend reference grid was baked. Coverage is a non-golden `[GpuFact]`
+(pixel-presence + `RenderFrameStats`, backend-agnostic, mirroring L2's `PropFadeBandGpuTests`): a 100-prop
+cluster collapses from ~100 instances to one merged instance past the HLOD distance while screen coverage
+holds. A `Golden`-named far-cluster test was not added because the cross-platform bake+verify loop
+(decision 6) could not be closed in this session, and an assertion-only test needs no bake.

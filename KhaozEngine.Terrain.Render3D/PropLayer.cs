@@ -53,6 +53,27 @@ namespace KhaozEngine.Terrain
         /// mesh, unchanged behaviour). Only meaningful when the layer carries LOD variants.</summary>
         public float LodDistance { get; }
 
+        /// <summary>Per-kit FLAT source meshes for the layer's HLOD merge (the <c>PropLoader.LoadProp</c> vertex-colour
+        /// form, or an authored low-poly proxy). Null when the layer has no HLOD (the default). When set with a positive
+        /// <see cref="HlodDistance"/>, <see cref="Scene3DChunkSink"/> bakes ONE coarse merged mesh per chunk cluster
+        /// from this layer's placements (<see cref="PropHlod.BuildMergedMesh"/>, welded at <see cref="HlodWeldCell"/>)
+        /// and renders it as a single instance beyond <see cref="HlodDistance"/> in place of the individual props. A
+        /// per-kit opt-in like the LOD set: a placement whose id is absent contributes nothing to the merge.</summary>
+        public IReadOnlyDictionary<string, GltfMesh>? HlodSourceMeshes { get; }
+        /// <summary>Horizontal distance (chunk-centre to focus) at which this layer's chunk cluster swaps its
+        /// individual props for the merged HLOD mesh. Default 0 = no HLOD (every chunk always draws its props,
+        /// byte-identical to before). Only meaningful with <see cref="HlodSourceMeshes"/> set.</summary>
+        public float HlodDistance { get; }
+        /// <summary>Vertex-cluster weld cell size (metres) for the HLOD merge: source vertices in the same cubic cell
+        /// collapse to one, cutting the triangle count (see <see cref="PropHlod.Weld"/>). A non-positive cell keeps the
+        /// full-detail merge (no decimation). Only meaningful with <see cref="HlodSourceMeshes"/> set.</summary>
+        public float HlodWeldCell { get; }
+        /// <summary>Width (metres) of the crossfade band centred on <see cref="HlodDistance"/>: across it the props
+        /// dissolve out and the merged HLOD mesh dissolves in (both via the 14.5.0 rigid-dissolve primitive,
+        /// deterministic by distance). Default 0 = a hard swap at <see cref="HlodDistance"/>. See
+        /// <see cref="PropHlod.CrossfadeAt"/>.</summary>
+        public float HlodCrossfadeWidth { get; }
+
         static readonly IReadOnlyDictionary<string, MeshHandle> EmptyMeshes = new Dictionary<string, MeshHandle>();
 
         // Invariant (enforced by the private ctor + ScatterLayer/CompanionLayer factories): a non-companion
@@ -62,12 +83,18 @@ namespace KhaozEngine.Terrain
         // multi-part one.
         public bool IsCompanion => Companions != null;
 
+        /// <summary>True when this layer bakes and draws an HLOD merged mesh: it has HLOD source meshes AND a positive
+        /// <see cref="HlodDistance"/>. When false the layer always draws its individual props (unchanged behaviour).</summary>
+        public bool HasHlod => HlodSourceMeshes != null && HlodDistance > 0f;
+
         PropLayer(ScatterConfig? scatter, CompanionConfig? companions, int hostLayerIndex,
                   IReadOnlyDictionary<string, MeshHandle> meshes,
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? partMeshes, float drawRadius,
                   float fadeBandWidth,
                   IReadOnlyDictionary<string, MeshHandle>? lodMeshes,
-                  IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes, float lodDistance)
+                  IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes, float lodDistance,
+                  IReadOnlyDictionary<string, GltfMesh>? hlodSourceMeshes = null,
+                  float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f)
         {
             Scatter = scatter;
             Companions = companions;
@@ -79,6 +106,24 @@ namespace KhaozEngine.Terrain
             LodMeshes = lodMeshes;
             LodPartMeshes = lodPartMeshes;
             LodDistance = lodDistance;
+            HlodSourceMeshes = hlodSourceMeshes;
+            HlodDistance = hlodDistance;
+            HlodWeldCell = hlodWeldCell;
+            HlodCrossfadeWidth = hlodCrossfadeWidth;
+        }
+
+        /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
+        /// merge, the <paramref name="hlodDistance"/> at which a chunk cluster swaps to the merged mesh, the
+        /// <paramref name="weldCell"/> the merge decimates at, and an optional <paramref name="crossfadeWidth"/>.
+        /// Applies to either representation (single-handle or multi-part) - the individual props still draw through
+        /// their own mesh set, and the HLOD merged mesh (built from the flat source meshes) takes over past the
+        /// distance. Keeps every other knob (fade band, LOD variants, draw radius) intact.</summary>
+        public PropLayer WithHlod(IReadOnlyDictionary<string, GltfMesh> sourceMeshes, float hlodDistance,
+                                  float weldCell, float crossfadeWidth = 0f)
+        {
+            if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
+            return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
+                LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth);
         }
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).

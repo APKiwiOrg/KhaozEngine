@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Terrain
@@ -39,6 +40,7 @@ namespace KhaozEngine.Terrain
         readonly bool _ownsMaterial;
         readonly TerrainLodConfig _lodConfig;
         readonly int _collisionLod;
+        readonly bool _anyHlod;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
         bool _disposed;
 
@@ -110,6 +112,10 @@ namespace KhaozEngine.Terrain
             if (collisionLod < 0)
                 throw new ArgumentOutOfRangeException(nameof(collisionLod), collisionLod, "Collision LOD tier must be non-negative.");
             _collisionLod = collisionLod;
+            // Whether any layer bakes an HLOD merged mesh. When none does, BuildCpu / Apply / Draw skip the HLOD path
+            // entirely, so a sink with no HLOD layer is byte-identical to the pre-HLOD sink.
+            for (int i = 0; i < layers.Count; i++)
+                if (layers[i].HasHlod) { _anyHlod = true; break; }
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
@@ -155,6 +161,11 @@ namespace KhaozEngine.Terrain
             public StaticHandle TerrainCollider;
             /// <summary>Whether <see cref="TerrainCollider"/> holds a live terrain surface body for this chunk.</summary>
             public bool HasTerrainCollider;
+            /// <summary>The uploaded HLOD merged mesh per layer (index-aligned to the sink's layers), or null when the
+            /// sink has no HLOD layer. An entry is null when that layer has no HLOD or the merge produced no geometry.
+            /// The coarse mesh for a layer is stable across a tier/ring re-LOD (placements are field-determined) and
+            /// rebuilt only on an Invalidate field rebuild, so it is cached here rather than per frame.</summary>
+            public MeshHandle?[]? HlodMeshHandles;
 
             /// <summary>Back-compat alias: the first layer's placements.</summary>
             public IReadOnlyList<PropPlacement> Props =>
@@ -201,6 +212,11 @@ namespace KhaozEngine.Terrain
             /// <see cref="Mesh"/>: the collision resolution never follows the render tier, so a re-LOD keeps the same
             /// collision body. Reuses <see cref="Mesh"/> when the collision tier equals the render tier.</summary>
             public TerrainChunkMesh? CollisionMesh;
+            /// <summary>The coarse HLOD merged mesh per layer (index-aligned to the layers), or null when the sink has
+            /// no HLOD layer. An entry is null when that layer has no HLOD or the cluster produced no geometry. Built
+            /// off the analytic scatter (deterministic per chunk + field) for BOTH rings, since a decor chunk renders
+            /// the merged mesh in place of the props it never scatters. CPU-only - the GPU upload happens in Apply.</summary>
+            public GltfMesh?[]? HlodMeshes;
         }
 
         MeshHandle UploadMesh(TerrainChunkMesh mesh) =>
@@ -224,15 +240,32 @@ namespace KhaozEngine.Terrain
         public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring = ChunkRing.Gameplay)
         {
             TerrainChunkRegion region = ChunkGrid.RegionOf(coord, _chunkSize);
+            // Scatter is needed for a gameplay chunk's props AND for any HLOD merge (even on a decor chunk, whose
+            // merged mesh stands in for the props it never scatters). Compute it once when either applies.
+            IReadOnlyList<PropPlacement>[]? scatter = ring == ChunkRing.Gameplay || _anyHlod ? ScatterLayersFor(coord) : null;
             var cpu = new CpuBuild
             {
                 Mesh = TerrainChunkBuilder.Build(_field, region, lod, _lodConfig),
-                LayerProps = ring == ChunkRing.Gameplay ? ScatterLayersFor(coord) : EmptyLayers(),
+                LayerProps = ring == ChunkRing.Gameplay ? scatter! : EmptyLayers(),
             };
             // Terrain collision surface at the FIXED collision tier, only for a gameplay chunk that opts in. Reuse the
             // render mesh when the tiers coincide (the common near-chunk case), else mesh a second grid off-thread.
             if (ring == ChunkRing.Gameplay && _collideTerrain)
                 cpu.CollisionMesh = _collisionLod == lod ? cpu.Mesh : TerrainChunkBuilder.Build(_field, region, _collisionLod, _lodConfig);
+            // HLOD merged mesh per layer: merge + weld this cluster's placements into one coarse world-space mesh
+            // (deterministic per chunk + field, so a runtime bake at load reproduces). Built for both rings.
+            if (_anyHlod)
+            {
+                var hlod = new GltfMesh?[_layers.Count];
+                for (int i = 0; i < _layers.Count; i++)
+                {
+                    PropLayer layer = _layers[i];
+                    if (!layer.HasHlod) continue;
+                    GltfMesh m = PropHlod.BuildMergedMesh(scatter![i], layer.HlodSourceMeshes!, layer.HlodWeldCell);
+                    hlod[i] = m.TriangleCount > 0 ? m : null;   // an empty cluster uploads nothing
+                }
+                cpu.HlodMeshes = hlod;
+            }
             return cpu;
         }
 
@@ -265,7 +298,9 @@ namespace KhaozEngine.Terrain
                     if (_collideTerrain && _physics is not null && cpu.CollisionMesh is not null)
                         load.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, cpu.CollisionMesh, out load.TerrainCollider);
                 }
-                // Decor chunk: render-only. No scatter (LayerProps is empty), no statics/dynamics/terrain collider.
+                // Decor chunk: render-only for physics. No scatter (LayerProps is empty), no statics/dynamics/terrain
+                // collider - but its HLOD merged mesh IS uploaded (a decor chunk shows the far forest as one instance).
+                UploadHlod(load, cpu);
                 return load;
             }
 
@@ -328,7 +363,37 @@ namespace KhaozEngine.Terrain
                         relod.HasTerrainCollider = ChunkTerrainCollision.Add(_physics, cpu.CollisionMesh, out relod.TerrainCollider);
                 }
             }
+
+            // HLOD merged mesh: the coarse geometry is field-determined and tier/ring-independent, so a pure tier or
+            // ring re-LOD keeps the cached handle (no GPU churn). Only a field rebuild (editor Invalidate after a
+            // field swap) rebuilds it, mirroring how the placements + terrain surface refresh only then.
+            if (_anyHlod && fieldRebuild)
+            {
+                UnloadHlod(relod);
+                UploadHlod(relod, cpu);
+            }
             return relod;
+        }
+
+        // Upload each layer's freshly built HLOD merged mesh into its own MeshHandle (the vertex-colour untextured
+        // path, one instanced draw). A no-op when the sink has no HLOD layer. Called on a fresh load and on a field
+        // rebuild; the caller unloads the previous handles first on a rebuild.
+        void UploadHlod(ChunkLoad load, CpuBuild cpu)
+        {
+            if (!_anyHlod || cpu.HlodMeshes is null) return;
+            load.HlodMeshHandles = new MeshHandle?[_layers.Count];
+            for (int i = 0; i < _layers.Count; i++)
+                if (cpu.HlodMeshes[i] is { } mesh)
+                    load.HlodMeshHandles[i] = _scene.LoadMesh(mesh);
+        }
+
+        // Free a chunk's uploaded HLOD meshes and clear the handle array. Idempotent (null handles / already cleared).
+        void UnloadHlod(ChunkLoad load)
+        {
+            if (load.HlodMeshHandles is null) return;
+            for (int i = 0; i < load.HlodMeshHandles.Length; i++)
+                if (load.HlodMeshHandles[i] is { } handle) _scene.UnloadMesh(handle);
+            load.HlodMeshHandles = null;
         }
 
         public object Load(ChunkCoord coord, int lod, ChunkRing ring = ChunkRing.Gameplay) =>
@@ -347,31 +412,72 @@ namespace KhaozEngine.Terrain
                 ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
                 load.HasTerrainCollider = false;
             }
+            UnloadHlod(load);
             _scene.UnloadMesh(load.Mesh);
             _loaded.Remove(coord);
         }
 
-        /// <summary>Draw every loaded chunk mesh and each layer's in-range props (XZ-culled to that layer's draw radius).</summary>
+        /// <summary>Draw every loaded chunk mesh and each layer's in-range props (XZ-culled to that layer's draw
+        /// radius). A layer with HLOD swaps a chunk cluster's individual props for its merged coarse mesh past
+        /// <see cref="PropLayer.HlodDistance"/>, crossfading the two across
+        /// <see cref="PropLayer.HlodCrossfadeWidth"/> by the chunk-centre distance (both dissolves via the 14.5.0
+        /// rigid primitive, deterministic by distance).</summary>
         public void Draw(Vector3 focus)
         {
-            foreach (ChunkLoad load in _loaded.Values)
+            foreach (KeyValuePair<ChunkCoord, ChunkLoad> kv in _loaded)
             {
+                ChunkLoad load = kv.Value;
                 _scene.DrawTerrainChunk(load.Mesh);
+
+                // Chunk-centre horizontal distance drives the per-cluster HLOD crossfade (one merged mesh per chunk,
+                // so the swap is decided per chunk, not per placement). Only computed when a layer needs it.
+                Vector2 center = ChunkGrid.CenterOf(kv.Key, _chunkSize);
+                float cdx = center.X - focus.X, cdz = center.Y - focus.Z;
+                float chunkDist = MathF.Sqrt(cdx * cdx + cdz * cdz);
+
                 for (int i = 0; i < _layers.Count; i++)
                 {
                     PropLayer layer = _layers[i];
-                    // A multi-part layer draws every kit id's sub-meshes as a unit. A single-handle layer draws one
-                    // mesh per id (byte-identical to before). Exactly one representation is set per layer. Each layer's
-                    // fade band + far LOD variants (both defaulting to the old hard-cut, full-mesh behaviour) ride
-                    // through to the prop draw so props dissolve near the radius and switch to LOD meshes past it.
-                    if (layer.PartMeshes is { } partMeshes)
-                        _scene.DrawProps(load.LayerProps[i], partMeshes, focus, layer.DrawRadius,
-                            tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes, lodDistance: layer.LodDistance);
+                    MeshHandle? hlodHandle = layer.HasHlod && load.HlodMeshHandles is { } hh ? hh[i] : null;
+                    if (hlodHandle is { } merged)
+                    {
+                        // Crossfade: props dissolve out (floor = t) up to the far edge, the merged mesh dissolves in
+                        // (1 - t) from the near edge. Skip whichever side is fully gone so the common near/far case is
+                        // one draw, and the band draws both complementary halves.
+                        float t = PropHlod.CrossfadeAt(chunkDist, layer.HlodDistance, layer.HlodCrossfadeWidth);
+                        if (t < 1f)
+                            DrawLayerProps(load.LayerProps[i], layer, focus, dissolveFloor: t);
+                        if (t > 0f)
+                        {
+                            float hlodDissolve = 1f - t;
+                            if (hlodDissolve > 0f)
+                                _scene.Draw(merged, Matrix4x4.Identity, Color.White, Material.None, hlodDissolve, 0f, default);
+                            else
+                                _scene.Draw(merged, Matrix4x4.Identity, Color.White);
+                        }
+                    }
                     else
-                        _scene.DrawProps(load.LayerProps[i], layer.Meshes, focus, layer.DrawRadius,
-                            tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes, lodDistance: layer.LodDistance);
+                    {
+                        DrawLayerProps(load.LayerProps[i], layer, focus, dissolveFloor: 0f);
+                    }
                 }
             }
+        }
+
+        // Draw one layer's in-range props. A multi-part layer draws every kit id's sub-meshes as a unit; a single-handle
+        // layer draws one mesh per id (byte-identical to before). Exactly one representation is set per layer. Each
+        // layer's fade band + far LOD variants (both defaulting to the old hard-cut, full-mesh behaviour) ride through,
+        // plus the uniform HLOD crossfade dissolveFloor (0 = unchanged) when the cluster is fading out to its HLOD mesh.
+        void DrawLayerProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor)
+        {
+            if (layer.PartMeshes is { } partMeshes)
+                _scene.DrawProps(placements, partMeshes, focus, layer.DrawRadius,
+                    tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes,
+                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor);
+            else
+                _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
+                    tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes,
+                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor);
         }
 
         /// <summary>Free every still-loaded chunk's GPU mesh and clear the ring, so a sink teardown while the same
@@ -393,6 +499,7 @@ namespace KhaozEngine.Terrain
                     ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
                     load.HasTerrainCollider = false;
                 }
+                UnloadHlod(load);
                 _scene.UnloadMesh(load.Mesh);
             }
             _loaded.Clear();

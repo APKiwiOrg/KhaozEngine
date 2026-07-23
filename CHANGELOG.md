@@ -5,6 +5,52 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.18.0
+
+Feature: merged-coarse-mesh HLOD closes the LOD/HLOD arc (L3, and the final phase, of #276). A far chunk
+cluster's props collapse into ONE welded coarse mesh drawn as a single instance, crossfading against the
+individual props by the chunk-centre distance, so a continent-scale forest horizon renders for real at a
+handful of triangles and one draw per cluster instead of hundreds of props. The spike decided merged coarse
+mesh over billboard impostor (same draw collapse, robust to a free camera, no atlas packer or new shader), and
+the merge keeps flat vertex-colour albedo so it adds zero texture memory. Off by default, so every existing
+consumer is untouched. Design: `docs/design/LOD-HLOD-DESIGN.md` (round L3), which is now Complete.
+
+- **`PropHlod` merge+weld library (KhaozEngine.Terrain.Render3D).** `PropHlod.Merge(placements, sourceMeshes)`
+  transforms each placement's flat source mesh to world space and concatenates into one `GltfMesh` (per-kit
+  opt-in, an absent id contributes nothing). `PropHlod.Weld(mesh, cellSize)` is a vertex-cluster decimator:
+  vertices in the same cubic cell collapse to one averaged vertex (position, normal, colour), degenerate
+  triangles dropped. `PropHlod.BuildMergedMesh(placements, sourceMeshes, weldCellSize)` is the one-call bake
+  (merge, then weld when the cell is positive). `PropHlod.CrossfadeAt(distance, hlodDistance, crossfadeWidth)`
+  is the 0..1 distance crossfade curve. All are pure and deterministic, so the bake reproduces byte-for-byte.
+
+- **Runtime consumption is a RUNTIME bake at chunk load, cached per cluster - no offline artifact, no
+  `ke-hlodbake` tool.** The merge inputs (prop placements) are already deterministic from the field + scatter
+  config that `Scene3DChunkSink` computes for every chunk, and kit meshes are small, so the sink bakes the
+  merged mesh in `BuildCpu` (off the frame thread), uploads it in `Apply`, and frees it on unload - the same
+  lifecycle the terrain mesh gets. This is simpler and correct for v1 (see the design doc round entry for the
+  offline-vs-runtime reasoning), and `PropHlod.BuildMergedMesh` is offline-ready if a future continent-scale
+  bake ever wants it.
+
+- **`PropLayer.WithHlod(sourceMeshes, hlodDistance, weldCell, crossfadeWidth)` config surface** (consistent with
+  the L1/L2 knobs, defaults OFF). A layer opted into HLOD carries per-kit flat source meshes (the
+  `PropLoader.LoadProp` vertex-colour form, or an authored proxy), an `HlodDistance`, an `HlodWeldCell`, and an
+  `HlodCrossfadeWidth`. Beyond `HlodDistance` a chunk cluster renders its merged coarse mesh as one instance in
+  place of the individual props. Across `HlodCrossfadeWidth` the two crossfade (props dissolve out, merged mesh
+  dissolves in) via the 14.5.0 rigid-dissolve primitive, deterministic by distance, no per-frame randomness and
+  no new shader. Decor-ring chunks (render-only for physics) now show the merged mesh too, so the far field is
+  visible forest, not bare terrain. `PropRenderer.DrawProps`/`Queue` gain a trailing `dissolveFloor` (default 0,
+  byte-identical) that the crossfade uses to dissolve a whole cluster's props out uniformly, combined with the
+  L2 fade band by max.
+
+- **Tests.** Headless merge determinism (byte-identical mesh), weld reduction bounds + colour averaging + the
+  cell guard, the crossfade curve, the `dissolveFloor` (zero = byte-identical, combined-by-max), sink
+  config-off equivalence (no HLOD layer bakes no HLOD mesh), the merged mesh baked for both rings (decor shows
+  it without scattering props), bake determinism, and GPU-gated cache tests (a tier re-LOD keeps the cached
+  handle, an Invalidate field rebuild rebuilds it). GPU: a non-golden `[GpuFact]` (pixel-presence +
+  `RenderFrameStats`, backend-agnostic like L2's `PropFadeBandGpuTests`) proves the wire - a 100-prop cluster
+  collapses to one merged instance past the HLOD distance while coverage holds. No new golden, so no
+  cross-platform gate.
+
 ## 14.17.0
 
 Feature: prop presentation gets a distance fade band and optional far LOD meshes (L2 of the LOD/HLOD arc,

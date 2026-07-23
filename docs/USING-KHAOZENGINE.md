@@ -4314,7 +4314,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.17.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.18.0" />
 ```
 
 ```csharp
@@ -4693,6 +4693,35 @@ registered at a FIXED tier (`collisionLod`, default 0 = the densest, matching th
 independent of the render tier, so a render re-LOD never rebuilds the physics triangle-mesh body. Prop static
 bodies are likewise kept across a pure tier re-LOD (placements are LOD-independent); both rebuild only on load,
 unload, a ring change, or an editor `Invalidate` (field swap).
+
+### Far props: HLOD merged clusters
+
+The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD
+(hierarchical LOD) closes that gap: past a configurable distance a chunk cluster's individual props collapse into
+ONE merged coarse mesh drawn as a single instance, so a continent-scale forest horizon renders at a handful of
+triangles and one draw per cluster. Opt a layer in with `WithHlod`:
+
+```csharp
+// The flat vertex-colour source meshes to merge (one per kit id) - PropLoader.LoadProp's form, whose per-vertex
+// colour already carries each material's average albedo, so the merged mesh needs no texture atlas.
+var hlodSource = new Dictionary<string, GltfMesh>();
+foreach (AssetEntry e in manifest.Props) hlodSource[e.Id] = PropLoader.LoadProp(e);
+
+var treeLayer = PropLayer.ScatterLayer(forest, treeMeshes, drawRadius: 320f, fadeBandWidth: 40f)
+    .WithHlod(hlodSource, hlodDistance: 220f, weldCell: 1.5f, crossfadeWidth: 40f);
+```
+
+Beyond `hlodDistance` (chunk-centre to focus, in metres) the cluster draws its merged mesh instead of the props.
+Across `crossfadeWidth` the two crossfade - the props dissolve out and the merged mesh dissolves in, both through
+the 14.5.0 rigid-dissolve primitive, deterministic by distance with no per-frame randomness (a `crossfadeWidth` of
+0 is a hard swap). `weldCell` is the vertex-cluster weld size (metres): bigger cells decimate harder (trunks go
+blobby, canopy shape and colour hold), 0 keeps the full-detail merge. Decor-ring chunks show the merged mesh too,
+so the far field is visible forest rather than bare terrain, while staying render-only for physics (no scatter, no
+prop colliders). The bake is a **runtime** merge+weld at chunk load (`PropHlod.BuildMergedMesh`, pure and
+deterministic), cached per cluster in the chunk handle and freed on unload - there is no offline artifact to
+generate and no manifest field to stamp. Everything defaults off, so a layer without `WithHlod` draws its props at
+every distance exactly as before. `PropHlod.Merge` / `Weld` / `CrossfadeAt` are public if you want the pieces
+directly (a bake tool, a custom sink).
 
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
 walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the

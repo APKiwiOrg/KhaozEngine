@@ -3528,8 +3528,8 @@ is absent or empty the field keeps its **exact pure-analytic fast path** (height
 to the no-sculpt field), so unsculpted zones pay nothing. Composition is pure data over a pure function, so
 the same document always yields the same heights. A v1 document (no sculpt layer) loads unchanged as v2 with
 byte-identical terrain via the built-in migration. Build a `TerrainField(config, sculpt)` directly with your
-own `TerrainSculpt` if you are not going through a document. Editor brushes and `sculpt_*` MCP verbs land in
-later phases; see `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
+own `TerrainSculpt` if you are not going through a document. The map editor's sculpt brushes author this layer
+(see Map editor below); the `sculpt_*` MCP verbs land in T3. See `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 
 ---
 
@@ -4283,7 +4283,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.13.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.14.0" />
 ```
 
 ```csharp
@@ -5113,8 +5113,11 @@ plain click with no hold behaves exactly as before. `DrawExclusion` / `DrawScatt
 (drag a disc, shift-drag a rect), `EditFeature`
 (click-places a default-parameterized feature of the list-selected `PlaceFeatureType` at the terrain hit),
 `BakeRegion` (drag a rect, freezes `BakeLayer`'s procedural scatter into authored placements plus a covering
-exclusion). Five tools are one shot (`DrawExclusion`, `DrawScatterOverride`, `DrawRegion`, `BakeRegion`,
-`EditFeature`): a completed
+exclusion), `SculptTerrain` (sculpt the document's authored height deltas, `MapDocument.TerrainOverrides`,
+with a raise/lower/smooth/flatten/set-height brush - a press-drag-release stroke is one undo step, the brush
+op/radius/strength are in the inspector, and it stays armed like `Select`, not one-shot, see the
+`KhaozEngine.MapEditor` README's Terrain sculpt section). Five tools are one shot (`DrawExclusion`,
+`DrawScatterOverride`, `DrawRegion`, `BakeRegion`, `EditFeature`): a completed
 gesture (the release, or the click that places a feature) drops back to `Select` automatically, while an
 abandoned or sub-threshold gesture keeps the tool armed. The toolbar tab bar mirrors the live controller mode
 every frame, so it re-highlights the `Select` tab on its own when a one-shot tool returns (or Escape

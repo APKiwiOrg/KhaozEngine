@@ -5,6 +5,35 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.14.0
+
+Feature: the map editor gains a terrain-sculpt toolbar mode with raise/lower/smooth/flatten/set-height brushes, one undoable command per stroke, and stroke-scoped dirty-region viewport rebuild (T2 of the sculpt program, #271).
+
+- **Sculpt tool mode (KhaozEngine.MapEditor).** A new `EditorToolMode.SculptTerrain` toolbar tab drives the
+  brush: a press-drag-release stroke sculpts the document's authored height deltas
+  (`MapDocument.TerrainOverrides`, the T1 layer) through the undoable command layer. The brush parameters live in
+  the inspector when the tool is active: the brush op (`SculptBrush.Raise` / `Lower` / `Smooth` / `Flatten` /
+  `SetHeight`), radius (world units), strength, and the set-height target. New controller API on
+  `EditorToolController`: `Brush`, `BrushRadius`, `BrushStrength`, `SetHeight`, and `IsSculpting`.
+- **Brush math (`TerrainSculptBrush`, GPU-free).** A pure function from a brush dab (op, world centre, radius,
+  strength, frame dt) to per-cell height-delta writes, over a world-space disc with a smoothstep `Falloff` (1 at
+  the centre, 0 at the rim). Raise/lower add or remove `strength * falloff * dt` meters; smooth blends each delta
+  toward its 3x3 neighbourhood mean (on the delta field, so it never fights the procedural base); flatten and
+  set-height blend the composited surface toward the press-point height or an inspector height. Strength is meters
+  per stroke-second, so a stroke is deterministic given its (centre, dt) dab sequence and an instantaneous click
+  is a no-op. `SculptBounds` clamps the footprint to the cells of tiles that lie wholly within the document
+  bounds, so the brush never creates a tile the validating writer would refuse.
+- **One undo step per stroke (`TerrainSculptStrokeCommand`).** Each frame's dab is a stroke command the on-stack
+  one absorbs via `TryMerge`, keeping each touched tile's earliest pre-stroke grid and latest final grid, so the
+  whole stroke is one undo entry. Undo restores every touched tile exactly, removes tiles the stroke created, and
+  drops a layer the stroke created back to null (byte-identical to no sculpting). The command reports a bounded
+  `DirtyRegion` over the stroke footprint, so the viewport re-meshes only the chunks the stroke touched (the
+  existing `ViewportWorld.PartialRebuild` dirty-region path) rather than the whole world.
+- **T1 authoring API (KhaozEngine.MapDoc).** `MapTerrainOverrides.PutTile` is now public and a new
+  `RemoveTile(tileX, tileZ)` drops a tile, so the stroke command can restore or remove whole tiles on undo.
+- Ships with no `sculpt_*` MCP verbs yet: T3 adds the verbs and the Ruinborne adoption. See
+  `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
+
 ## 14.13.0
 
 Feature: map document format v2 adds the `terrainOverrides` terrain sculpt layer, authored height deltas composited inside `TerrainField` (T1 of the sculpt program, #271).

@@ -358,6 +358,34 @@ one-shots back to `Select` so the next click picks it rather than placing anothe
 outside the registry's four built-ins has no editor default, so a click with such a type selected consumes
 the click but places nothing. `Delete` on a selected feature routes through `RemoveFeatureCommand`.
 
+## Terrain sculpt
+
+`EditorToolMode.SculptTerrain` (the Sculpt toolbar tab) sculpts the document's authored height deltas
+(`MapDocument.TerrainOverrides`, the sculpt layer added in map format v2) with a brush. A press-drag-release
+stroke is one undo step: each frame's dab picks the terrain point under the cursor
+(`EditorPicking.PickTerrain`, the same ground raycast the place tools use) and applies the brush, and the dabs
+coalesce into a single `TerrainSculptStrokeCommand` via `TryMerge`, exactly like the transform-gizmo drag.
+
+The inspector shows the brush parameters while the tool is active (`BuildSculptInspector`), editing the
+controller directly (they are tool settings, not document edits, so they carry no undo gesture):
+
+- **Brush** (`EditorToolController.Brush`, a `SculptBrush`): `Raise` / `Lower` add or remove height, `Smooth`
+  blends each delta toward its 3x3 neighbourhood mean (over the delta field, so it softens sculpted features
+  without fighting the procedural base), `Flatten` blends the surface toward the height under the first press,
+  `SetHeight` blends toward the **Set height** value.
+- **Radius** (`BrushRadius`, world units) is the disc footprint; the falloff (`TerrainSculptBrush.Falloff`, a
+  smoothstep) is 1 at the centre and eases to 0 at the rim.
+- **Strength** (`BrushStrength`) is meters per stroke-second for raise/lower and a per-second blend rate for the
+  toward-a-target brushes, so a stroke builds up while held and is deterministic given its dab sequence.
+
+The brush math (`TerrainSculptBrush.ComputeDab`) and the stroke command are GPU-free and headless-tested. The
+footprint is clamped (`SculptBounds`) to the cells of tiles that lie wholly within the document bounds, so the
+brush never creates a tile the validating writer refuses (a consequence is a dead strip up to one tile wide on
+a non-tile-aligned edge). The stroke command reports a bounded `DirtyRegion` over its footprint, so the
+viewport re-meshes only the chunks the stroke touched (`ViewportWorld.PartialRebuild`) rather than the whole
+world. Undo restores every touched tile exactly, removing tiles the stroke created and dropping a layer it
+created back to null. The `sculpt_*` MCP verbs are T3, not in this release.
+
 ## Feature apply order
 
 Terrain features fold in list order: `MapRuntime.BuildField` runs each feature's height modifier on the
@@ -503,6 +531,12 @@ GPU-free and fully unit-tested:
   authored one. One undoable command, captured once on first apply and replayed verbatim on redo, gated by
   a static `HasWork` check so a document already placements-only never lands a phantom undo entry. See
   Freeze zone below.
+- `TerrainSculptStrokeCommand` is one undoable sculpt stroke: each frame's brush dab is a stroke command the
+  on-stack one absorbs via `TryMerge`, keeping every touched tile's earliest pre-stroke grid and latest final
+  grid, so the whole press-drag-release gesture is one undo entry. Undo restores each tile exactly, removes
+  tiles the stroke created, and drops a stroke-created layer back to null (byte-identical to no sculpting). It
+  reports a bounded `DirtyRegion` so only the touched chunks re-mesh. The brush math (`TerrainSculptBrush`) and
+  the footprint clamp (`SculptBounds`) that feed it are pure and headless-tested. See Terrain sculpt above.
 - `EditorToolController` is the GPU-free per-frame policy: it reads a plain `EditorFrameInput` (pick ray +
   pointer/keyboard edges) and emits commands. Select mode picks (a press either grabs a gizmo handle or, past
   `BodyDragThreshold` on the object's own body, arms a body drag on the same translate-XZ path) and drives

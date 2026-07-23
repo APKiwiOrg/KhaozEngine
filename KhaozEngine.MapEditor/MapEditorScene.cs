@@ -148,15 +148,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     /// <summary>Alpha multiplier applied to a selected overlay's fill (clamped to 1) so it also firms up.</summary>
     const float OverlaySelectAlphaBoost = 1.7f;
 
-    // Order-locked to the EditorToolMode enum: the toolbar reads back through (EditorToolMode)ActiveIndex, so a new
-    // label appends LAST alongside the enum's own last member, never inserts.
-    static readonly LocalizedText[] ToolLabels =
-    {
-        LocalizedText.Raw("Select"), LocalizedText.Raw("Prop"), LocalizedText.Raw("Spawn"),
-        LocalizedText.Raw("Exclude"), LocalizedText.Raw("Region"), LocalizedText.Raw("Feature"),
-        LocalizedText.Raw("Bake"), LocalizedText.Raw("Override"),
-    };
-
     // Pre-built gizmo mesh sets returned by ComputeGizmoMeshes, avoiding per-frame allocations.
     static readonly GizmoMesh[] FullGizmoMeshes = new[] { GizmoMesh.TranslateArrowsFull, GizmoMesh.YawRing, GizmoMesh.ScaleHandle };
     static readonly GizmoMesh[] MoveScaleRotateGizmoMeshes = new[] { GizmoMesh.TranslateArrowsXZ, GizmoMesh.YawRing, GizmoMesh.ScaleHandle };
@@ -569,6 +560,10 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         {
             if (!KitPaletteVisible) _paletteFilter.Unfocus();
             if (!SpawnMode) _spawnFilter.Unfocus();
+            // Entering or leaving sculpt swaps the inspector between the brush panel and the selection panel, which
+            // only a selection change would otherwise rebuild.
+            if ((_lastChromeMode == EditorToolMode.SculptTerrain) != (_controller.Mode == EditorToolMode.SculptTerrain))
+                RebuildInspector();
             _lastChromeMode = _controller.Mode;
         }
 
@@ -1789,6 +1784,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _inspectorScatterNames = null;
         _inspectorRuleCount = null;
         _inspectorCompanionMismatch = null;
+        if (SculptMode) { BuildSculptInspector(); return; }   // a tool-mode panel, not a selection panel
         EditorSelection sel = _document.Selection;
         switch (sel.Kind)
         {

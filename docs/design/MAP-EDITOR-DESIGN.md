@@ -1,7 +1,8 @@
 # Map Editor Design (MapDoc + MapEditor + ke-mapedit)
 
 Approved: 2026-07-09
-Status: **In flight.** Phases A-D shipped 10.44.0-10.67.0, and nine further rounds through 14.12.0. This
+Status: **In flight.** Phases A-D shipped 10.44.0-10.67.0, and eleven further rounds through 14.14.0 (most
+recently the terrain sculpt layer, T1 field/format in 14.13.0 and T2 editor brushes in 14.14.0). This
 header said "pre-implementation" for 40+ releases after implementation began, so treat any status claim in
 this file as history unless `CHANGELOG.md` agrees. Open work lives in `docs/TODO.md`, not here.
 First adopter: Ruinborne
@@ -399,6 +400,39 @@ generation for the same document. Generation order is fixed (every scatter layer
 every companion layer in document order), so two freezes of the same document produce byte-identical
 placement lists, order included.
 
-- **Program phases**: Sculpting brushes over the `terrainOverrides` delta layer (the format + field
-  composition shipped in 14.13.0 as T1; editor brushes are T2). Live server editing and hot reload.
-  Multi-user editing. Polygon click-path authoring gesture for exclusions and regions.
+**sculpt-brushes round (T2)**: The terrain-sculpt editor surface (`EditorToolMode.SculptTerrain`,
+`TerrainSculptBrush`, `SculptBounds`, `TerrainSculptStrokeCommand`, and the brush inspector), sculpting the
+`terrainOverrides` delta layer T1 shipped in 14.13.0. Design contract:
+`docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`. Motivated by the authored-world program (Ruinborne
+https://github.com/APKiwiOrg/Ruinborne/issues/169), which needs hand-authored topology the parametric
+pipeline cannot express.
+
+Decisions: a real tool mode, not a chord, since sculpting is a gesture (press-drag-release) with a footprint
+to arm and drag, unlike the zone freeze. Five brushes (raise, lower, smooth, flatten, set-height). Strength
+is meters per stroke-second (raise/lower) and a per-second blend rate (the toward-a-target brushes), scaled
+by the frame dt, so a stroke is deterministic given its (centre, dt) dab sequence and an instantaneous click
+is a no-op, matching how a sculpt brush builds up while held. Smooth blends toward the neighbourhood mean of
+the **delta** field, not the composited surface, so it softens sculpted features without writing deltas that
+fight the procedural base (over unsculpted terrain a zero-mean leaves it untouched). The footprint is clamped
+(`SculptBounds`) to the cells of tiles wholly inside the document bounds, because the validating writer
+refuses a stored tile whose 32-cell extent leaves the bounds, so the brush can never author an unsaveable
+tile (the cost is a dead strip up to one tile wide on a non-tile-aligned edge). One `TerrainSculptStrokeCommand`
+per stroke, built by the per-frame dab commands merging into the on-stack one (the transform-gizmo drag
+precedent), keeping each tile's earliest pre-stroke grid and latest final grid so undo is exact (including
+removing tiles the stroke created and nulling a layer it created). The stroke reports a bounded `DirtyRegion`,
+so it re-meshes only the touched chunks via the existing `ViewportWorld.PartialRebuild` dirty-region path
+rather than the full rebuild terrain-scalar edits still take.
+
+KESIZE001 fired again on `EditorTool.cs` for the new tool mode, resolved by extracting `DuplicateSelection`
+into its own partial `EditorToolDuplicate.cs` (and moving `MapEditorScene.ToolLabels` into the new
+`MapEditorScene.Sculpt.cs`), which shrank both frozen files below the ratchet instead of growing them, the
+same split-not-grow move the zone-freeze round used.
+
+**Deferred out of this round (sculpt-brushes)**: no viewport brush-cursor ring is drawn yet (the ground pick
+that positions the brush is in place, but the disc outline that would show the radius/position is not), so the
+brush footprint is not previewed in the viewport, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/274.
+The `sculpt_*` MCP verbs (`sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear`, tile-stat reads) and the
+Ruinborne repin + first valley sculpt pass are T3, tracked by the sculpt program design doc and #271.
+
+- **Program phases**: Live server editing and hot reload. Multi-user editing. Polygon click-path authoring
+  gesture for exclusions and regions.

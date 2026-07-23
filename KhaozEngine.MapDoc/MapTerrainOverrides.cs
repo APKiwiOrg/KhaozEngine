@@ -84,13 +84,19 @@ public sealed class MapTerrainOverrides
         return found;
     }
 
-    /// <summary>Adds or replaces a whole tile (used by the loader). The tile is stored as-is, keyed by its
-    /// own coordinate.</summary>
-    internal void PutTile(MapSculptTile tile)
+    /// <summary>Adds or replaces a whole tile, keyed by its own coordinate (the loader rebuilding a saved tile,
+    /// and the editor's undoable sculpt stroke restoring a captured tile). The tile is stored as-is, so the
+    /// caller hands over ownership of its <see cref="MapSculptTile.Deltas"/> array (pass a copy to keep editing
+    /// it independently).</summary>
+    public void PutTile(MapSculptTile tile)
     {
         ArgumentNullException.ThrowIfNull(tile);
         _tiles[Key(tile.TileX, tile.TileZ)] = tile;
     }
+
+    /// <summary>Drops the tile at a tile coordinate, so a sculpt stroke that created it can be undone back to the
+    /// analytic base (the cells it covered read 0 again). Returns whether a tile was actually removed.</summary>
+    public bool RemoveTile(int tileX, int tileZ) => _tiles.Remove(Key(tileX, tileZ));
 
     MapSculptTile? TileFor(int cellX, int cellZ, bool create)
     {

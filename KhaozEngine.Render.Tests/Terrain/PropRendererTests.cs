@@ -92,5 +92,169 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(green, si.Items[0].Tint);
         }
+
+        // ---- Fade band (issue #44): dissolve ramps 0..1 over [drawRadius - fadeBandWidth, drawRadius] ----
+
+        static Dictionary<string, IReadOnlyList<MeshHandle>> Parts(params (string id, int[] slots)[] entries)
+        {
+            var d = new Dictionary<string, IReadOnlyList<MeshHandle>>();
+            foreach (var (id, slots) in entries)
+            {
+                var list = new MeshHandle[slots.Length];
+                for (int i = 0; i < slots.Length; i++) list[i] = new MeshHandle(slots[i]);
+                d[id] = list;
+            }
+            return d;
+        }
+
+        // Place a single "pine_a" at horizontal distance `dist` along +X and read back its dissolve threshold.
+        static float DissolveAtDistance(float dist, float drawRadius, float fadeBandWidth)
+        {
+            var placements = new List<PropPlacement> { new PropPlacement("pine_a", dist, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            PropRenderer.Queue(si, placements, Meshes(("pine_a", 3)), Vector3.Zero, drawRadius, fadeBandWidth: fadeBandWidth);
+            return si.Items.Count == 1 ? si.Items[0].DissolveThreshold : float.NaN;
+        }
+
+        [Fact]
+        public void FadeBand_Zero_KeepsHardCut_NoDissolve()
+        {
+            // Band 0 = today's behaviour: an in-range prop carries no dissolve (the byte-identical old path).
+            Assert.Equal(0f, DissolveAtDistance(dist: 50f, drawRadius: 100f, fadeBandWidth: 0f), 5);
+            Assert.Equal(0f, DissolveAtDistance(dist: 99f, drawRadius: 100f, fadeBandWidth: 0f), 5);
+        }
+
+        [Fact]
+        public void FadeBand_InsideInnerRadius_NoDissolve()
+        {
+            // drawRadius 100, band 40 -> fade starts at 60. A prop at 50 is fully solid.
+            Assert.Equal(0f, DissolveAtDistance(dist: 50f, drawRadius: 100f, fadeBandWidth: 40f), 5);
+            Assert.Equal(0f, DissolveAtDistance(dist: 60f, drawRadius: 100f, fadeBandWidth: 40f), 5);   // exactly at the inner edge
+        }
+
+        [Fact]
+        public void FadeBand_AcrossBand_RampsZeroToOne_ByDistance()
+        {
+            // fade band [60,100]: 80 is the midpoint (0.5), 100 is fully dissolved (1). Deterministic per distance.
+            Assert.Equal(0.5f, DissolveAtDistance(dist: 80f, drawRadius: 100f, fadeBandWidth: 40f), 4);
+            Assert.Equal(0.75f, DissolveAtDistance(dist: 90f, drawRadius: 100f, fadeBandWidth: 40f), 4);
+            Assert.Equal(1f, DissolveAtDistance(dist: 100f, drawRadius: 100f, fadeBandWidth: 40f), 4);
+        }
+
+        [Fact]
+        public void FadeBand_Deterministic_SameDistanceSameDissolve()
+        {
+            // No per-frame randomness: two reads of the same placement/config yield the identical dissolve.
+            float a = DissolveAtDistance(dist: 85f, drawRadius: 100f, fadeBandWidth: 40f);
+            float b = DissolveAtDistance(dist: 85f, drawRadius: 100f, fadeBandWidth: 40f);
+            Assert.Equal(a, b);
+        }
+
+        [Fact]
+        public void FadeBand_WiderThanRadius_Clamped_StartsAtFocus_ReachesOneAtRadius()
+        {
+            // Band 200 > radius 100: clamped so the fade starts at the focus (dist 0 -> 0) and still reaches 1 at the
+            // radius, never dissolving a prop at the focus.
+            Assert.Equal(0f, DissolveAtDistance(dist: 0f, drawRadius: 100f, fadeBandWidth: 200f), 4);
+            Assert.Equal(0.5f, DissolveAtDistance(dist: 50f, drawRadius: 100f, fadeBandWidth: 200f), 4);
+            Assert.Equal(1f, DissolveAtDistance(dist: 100f, drawRadius: 100f, fadeBandWidth: 200f), 4);
+        }
+
+        [Fact]
+        public void FadeBand_OutOfRange_StillCulled()
+        {
+            // The fade band does not extend the draw radius: past drawRadius the prop is culled, not drawn dissolved.
+            var placements = new List<PropPlacement> { new PropPlacement("pine_a", 150f, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            int n = PropRenderer.Queue(si, placements, Meshes(("pine_a", 3)), Vector3.Zero, drawRadius: 100f, fadeBandWidth: 40f);
+            Assert.Equal(0, n);
+            Assert.Empty(si.Items);
+        }
+
+        [Fact]
+        public void FadeBand_Parts_AppliesOneDissolveToEveryPart()
+        {
+            // A multi-part prop in the band: all of its parts carry the same dissolve so the whole prop fades coherently.
+            var placements = new List<PropPlacement> { new PropPlacement("tree", 80f, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            int n = PropRenderer.Queue(si, placements, Parts(("tree", new[] { 1, 2, 3 })), Vector3.Zero,
+                                       drawRadius: 100f, fadeBandWidth: 40f);
+            Assert.Equal(1, n);
+            Assert.Equal(3, si.Items.Count);
+            foreach (var it in si.Items) Assert.Equal(0.5f, it.DissolveThreshold, 4);
+        }
+
+        // ---- LOD mesh variant selection: beyond lodDistance, a kit swaps to its far mesh (per-kit opt-in) ----
+
+        static int MeshSlotAtDistance(float dist, float lodDistance,
+            Dictionary<string, MeshHandle> meshes, Dictionary<string, MeshHandle>? lod)
+        {
+            var placements = new List<PropPlacement> { new PropPlacement("pine_a", dist, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            PropRenderer.Queue(si, placements, meshes, Vector3.Zero, drawRadius: 400f,
+                               lodMeshes: lod, lodDistance: lodDistance);
+            return si.Items.Count == 1 ? si.Items[0].Mesh.Index : -1;
+        }
+
+        [Fact]
+        public void Lod_WithinDistance_UsesFullMesh()
+        {
+            int slot = MeshSlotAtDistance(dist: 50f, lodDistance: 100f, Meshes(("pine_a", 7)), Meshes(("pine_a", 50)));
+            Assert.Equal(7, slot);   // near: full mesh
+        }
+
+        [Fact]
+        public void Lod_BeyondDistance_SelectsVariant()
+        {
+            int slot = MeshSlotAtDistance(dist: 150f, lodDistance: 100f, Meshes(("pine_a", 7)), Meshes(("pine_a", 50)));
+            Assert.Equal(50, slot);  // far: LOD variant
+        }
+
+        [Fact]
+        public void Lod_NoVariantForKit_FallsBackToFullMesh()
+        {
+            // The LOD set has a variant for a DIFFERENT kit, so this kit keeps its full mesh even out past lodDistance.
+            int slot = MeshSlotAtDistance(dist: 150f, lodDistance: 100f, Meshes(("pine_a", 7)), Meshes(("rock_a", 50)));
+            Assert.Equal(7, slot);
+        }
+
+        [Fact]
+        public void Lod_ZeroDistance_NeverSwitches()
+        {
+            // lodDistance 0 disables switching: every prop draws its full mesh regardless of distance.
+            int slot = MeshSlotAtDistance(dist: 300f, lodDistance: 0f, Meshes(("pine_a", 7)), Meshes(("pine_a", 50)));
+            Assert.Equal(7, slot);
+        }
+
+        [Fact]
+        public void Lod_NullVariants_NeverSwitches()
+        {
+            // No LOD set at all: unchanged behaviour, full mesh at every distance.
+            int slot = MeshSlotAtDistance(dist: 300f, lodDistance: 100f, Meshes(("pine_a", 7)), lod: null);
+            Assert.Equal(7, slot);
+        }
+
+        [Fact]
+        public void Lod_Parts_BeyondDistance_SelectsVariantParts()
+        {
+            // Multi-part LOD: past lodDistance the whole prop switches to the variant's part list.
+            var placements = new List<PropPlacement> { new PropPlacement("tree", 150f, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            int n = PropRenderer.Queue(si, placements, Parts(("tree", new[] { 1, 2, 3 })), Vector3.Zero,
+                                       drawRadius: 400f, lodParts: Parts(("tree", new[] { 90 })), lodDistance: 100f);
+            Assert.Equal(1, n);
+            Assert.Single(si.Items);                 // the LOD variant is a single simplified part
+            Assert.Equal(90, si.Items[0].Mesh.Index);
+        }
+
+        [Fact]
+        public void Lod_Parts_WithinDistance_UsesFullParts()
+        {
+            var placements = new List<PropPlacement> { new PropPlacement("tree", 50f, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            PropRenderer.Queue(si, placements, Parts(("tree", new[] { 1, 2, 3 })), Vector3.Zero,
+                               drawRadius: 400f, lodParts: Parts(("tree", new[] { 90 })), lodDistance: 100f);
+            Assert.Equal(3, si.Items.Count);         // near: all three full parts
+        }
     }
 }

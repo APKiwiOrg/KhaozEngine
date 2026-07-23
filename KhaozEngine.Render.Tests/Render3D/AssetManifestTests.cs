@@ -208,5 +208,34 @@ namespace KhaozEngine.Tests.Render3D
             AssetManifest m = AssetManifest.Parse(json);
             Assert.Null(m.Props[0].Category);
         }
+
+        [Fact]
+        public void Parse_LodFile_ReadWhenPresent()
+        {
+            const string json = """
+            { "props": [ { "id": "pine_a", "file": "pine_a.glb", "heightMeters": 14, "lodFile": "pine_a_lod.glb" } ] }
+            """;
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.Equal("pine_a_lod.glb", m.Props[0].LodFile);
+        }
+
+        [Fact]
+        public void Parse_LodFile_DefaultsNullWhenAbsent()
+        {
+            string json = @"{ ""props"": [ { ""id"": ""p"", ""file"": ""p.glb"", ""heightMeters"": 2.0 } ] }";
+            AssetManifest m = AssetManifest.Parse(json);
+            Assert.Null(m.Props[0].LodFile);
+        }
+
+        [Fact]
+        public void Parse_RelativeLodFile_ResolvesAgainstBaseDir()
+        {
+            const string json = """
+            { "props": [ { "id": "pine_a", "file": "pine_a.glb", "heightMeters": 14, "lodFile": "lod/pine_a_lod.glb" } ] }
+            """;
+            string baseDir = Path.Combine("X", "kit");
+            AssetManifest m = AssetManifest.Parse(json, baseDir);
+            Assert.Equal(Path.Combine(baseDir, "lod", "pine_a_lod.glb"), m.Props[0].LodFile);
+        }
     }
 }

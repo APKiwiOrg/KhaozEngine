@@ -119,5 +119,43 @@ namespace KhaozEngine.Tests.Render3D
             var ex = Assert.ThrowsAny<Exception>(() => PropLoader.LoadProp(entry));
             Assert.Contains("ghost", ex.Message);
         }
+
+        // ---- LoadPropLodAuto (author-supplied far LOD variant) ----
+
+        [Fact]
+        public void LoadPropLodAuto_NoLodFile_ReturnsNull()
+        {
+            // No lodFile declared -> no variant, the caller keeps the full mesh at every distance (unchanged behaviour).
+            var entry = new AssetEntry("box", "box.glb", heightMeters: 11f, "test", "CC0");
+            Assert.Null(PropLoader.LoadPropLodAuto(entry));
+        }
+
+        [Fact]
+        public void LoadPropLodAuto_LoadsVariant_NormalizedToDeclaredHeight()
+        {
+            // The LOD glb is a separate low-poly file; it normalizes to the SAME declared height as the full mesh so
+            // the runtime swap is size-stable. Untextured entry -> exactly one flat part.
+            string lodPath = WriteBoxGlb();
+            try
+            {
+                var entry = new AssetEntry("box", "box.glb", heightMeters: 11f, "test", "CC0", lodFile: lodPath);
+                var parts = PropLoader.LoadPropLodAuto(entry);
+                Assert.NotNull(parts);
+                Assert.Single(parts!);
+                (Vector3 mn, Vector3 mx) = Bbox(parts![0].Mesh);
+                Assert.Equal(11f, mx.Y - mn.Y, 2);
+                Assert.Equal(0f, mn.Y, 2);
+            }
+            finally { File.Delete(lodPath); }
+        }
+
+        [Fact]
+        public void LoadPropLodAuto_MissingLodFile_ThrowsWithContext()
+        {
+            var entry = new AssetEntry("stump", "stump.glb", 5f, "test", "CC0",
+                lodFile: Path.Combine(Path.GetTempPath(), "no_such_lod_xyz.glb"));
+            var ex = Assert.ThrowsAny<Exception>(() => PropLoader.LoadPropLodAuto(entry));
+            Assert.Contains("stump", ex.Message);
+        }
     }
 }

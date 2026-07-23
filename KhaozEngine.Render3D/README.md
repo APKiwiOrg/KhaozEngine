@@ -417,6 +417,16 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   shape the multi-part **scatter** path wants (`KhaozEngine.Terrain.PropLayer` / `Scene3DChunkSink` /
   `PropRenderer.DrawProps`, in `KhaozEngine.Terrain.Render3D` - see that package's README). A single-part
   list uploads to one handle, identical to a plain `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`.
+- Far LOD variants (author-supplied): a manifest entry may declare an optional `"lodFile"`
+  (`AssetEntry.LodFile`, resolved against the manifest dir like `file`, null when absent), a hand-authored
+  low-poly glTF for the prop. `PropLoader.LoadPropLodAuto(AssetEntry, PropValidation?) ->
+  IReadOnlyList<GltfMeshPart>?` loads it exactly as `LoadPropAuto` loads the full mesh (the `Textured` flag
+  chooses textured parts vs a flat part), normalized to the SAME `HeightMeters` so the runtime swap is
+  size-stable, and returns **null** when no `lodFile` is declared (the kit then has no variant and keeps its
+  full mesh at every distance). Upload the returned parts like the full mesh into a parallel LOD set that
+  `KhaozEngine.Terrain.PropLayer` carries (`LodMeshes`/`LodPartMeshes` at `LodDistance`), where
+  `PropRenderer` swaps to them past the distance. **The engine ships no mesh decimator, so `ke-propbake` does
+  NOT generate this** - the far mesh is authored by hand and placed beside the full one.
 - `PropCollisionBake` - offline bakes a `PhysicsShape` from a normalized prop mesh for the `.coll` format.
   Classification: trees -> `BakeTrunkCylinder` (a thin trunk cylinder, `BakeTrunkHull` retained but no longer
   the default); buildings -> `TriangleMeshShape`; rocks/short solids -> `BakeConvexHull`. `PropBakePlan.For`

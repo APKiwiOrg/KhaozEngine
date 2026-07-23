@@ -42,12 +42,14 @@ namespace KhaozEngine.Render3D
         public static GltfMesh LoadProp(AssetEntry entry, PropValidation? validation = null)
             => Normalize(LoadRaw(entry), entry.HeightMeters, validation, entry.Id);
 
-        static GltfMesh LoadRaw(AssetEntry entry)
+        static GltfMesh LoadRaw(AssetEntry entry) => LoadRaw(entry.File, entry.Id);
+
+        static GltfMesh LoadRaw(string file, string id)
         {
-            try { return GltfLoader.LoadFlattenedAlbedo(entry.File); }
+            try { return GltfLoader.LoadFlattenedAlbedo(file); }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);
+                throw new InvalidOperationException($"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex);
             }
         }
 
@@ -99,13 +101,34 @@ namespace KhaozEngine.Render3D
                 ? LoadPropParts(entry, validation)
                 : new[] { new GltfMeshPart(LoadProp(entry, validation), default) };
 
-        static IReadOnlyList<GltfMeshPart> LoadRawParts(AssetEntry entry)
+        static IReadOnlyList<GltfMeshPart> LoadRawParts(AssetEntry entry) => LoadRawParts(entry.File, entry.Id);
+
+        static IReadOnlyList<GltfMeshPart> LoadRawParts(string file, string id)
         {
-            try { return GltfLoader.LoadPartsWithMaterials(entry.File); }
+            try { return GltfLoader.LoadPartsWithMaterials(file); }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"PropLoader could not load prop '{entry.Id}' from '{entry.File}': {ex.Message}", ex);
+                throw new InvalidOperationException($"PropLoader could not load prop '{id}' from '{file}': {ex.Message}", ex);
             }
+        }
+
+        /// <summary>Load the AUTHOR-SUPPLIED far LOD variant for a prop the same way <see cref="LoadPropAuto"/> loads
+        /// the full mesh (the manifest <see cref="AssetEntry.Textured"/> flag chooses textured parts vs a single flat
+        /// part), normalized to the entry's <see cref="AssetEntry.HeightMeters"/> so the far mesh is the SAME
+        /// on-screen size as the full one and the runtime swap is seamless. Returns null when the entry declares no
+        /// <see cref="AssetEntry.LodFile"/> (the common case): the caller then simply has no LOD variant for that kit
+        /// and <c>KhaozEngine.Terrain.PropRenderer</c> keeps drawing its full mesh at every distance. Upload the
+        /// returned parts exactly like the full mesh (<see cref="Scene3D.LoadPropMeshes"/> for a per-kit part list, or
+        /// wrap the single flat part as one handle) into a parallel LOD mesh set. The engine ships no mesh decimator,
+        /// so this is never generated for you - author the low-poly glTF by hand. Throws
+        /// <see cref="InvalidOperationException"/> (with the entry id) if the declared LOD file cannot be loaded or is
+        /// implausibly sized.</summary>
+        public static IReadOnlyList<GltfMeshPart>? LoadPropLodAuto(AssetEntry entry, PropValidation? validation = null)
+        {
+            if (string.IsNullOrWhiteSpace(entry.LodFile)) return null;
+            return entry.Textured
+                ? NormalizeParts(LoadRawParts(entry.LodFile!, entry.Id), entry.HeightMeters, validation, entry.Id)
+                : new[] { new GltfMeshPart(Normalize(LoadRaw(entry.LodFile!, entry.Id), entry.HeightMeters, validation, entry.Id), default) };
         }
 
         /// <summary>Normalize a set of raw material parts as ONE prop: scale + recentre every part by a single

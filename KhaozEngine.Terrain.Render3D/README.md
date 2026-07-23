@@ -89,13 +89,16 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
     the caller must flush in-flight builds first (`TerrainStreamer.FlushPendingBuilds`) before swapping, so a
     build already running against the old field cannot land after the swap. The map editor runs its streamer
     synchronously, so that ordering concern does not apply there.
-- **`PropLayer`** - one scatter or companion layer's config + mesh set + draw radius.
-  `PropLayer.ScatterLayer(scatter, meshes, drawRadius)` / `CompanionLayer(hostLayerIndex, companions, meshes,
-  drawRadius)` each have two overloads: the original `IReadOnlyDictionary<string, MeshHandle>` (one mesh per
-  kit id) and a multi-part `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many mesh PARTS
-  per kit id - a multi-material textured prop split into one textured sub-mesh per source material, from
-  `Scene3D.LoadPropMeshes`). Exactly one of a layer's `Meshes`/`PartMeshes` is set. `Scene3DChunkSink.Draw`
-  reads whichever is set.
+- **`PropLayer`** - one scatter or companion layer's config + mesh set + draw radius, plus its dissolve fade
+  band and optional far LOD variants. `PropLayer.ScatterLayer(scatter, meshes, drawRadius, fadeBandWidth = 0,
+  lodMeshes = null, lodDistance = 0)` / `CompanionLayer(hostLayerIndex, companions, meshes, drawRadius, ...)`
+  each have two overloads: the original `IReadOnlyDictionary<string, MeshHandle>` (one mesh per kit id) and a
+  multi-part `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many mesh PARTS per kit id - a
+  multi-material textured prop split into one textured sub-mesh per source material, from
+  `Scene3D.LoadPropMeshes`). Exactly one of a layer's `Meshes`/`PartMeshes` is set, and its LOD set matches that
+  representation (`LodMeshes`/`LodPartMeshes`). `FadeBandWidth` (default 0 = hard cut) dissolves props across the
+  band just inside `DrawRadius`; a positive `LodDistance` with LOD variants swaps a kit to its far mesh past that
+  distance. `Scene3DChunkSink.Draw` reads whichever mesh set is set and threads the fade band + LOD through.
 - **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
   extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
   overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a
@@ -103,8 +106,14 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   placement's shared scale/yaw/translation transform, so the whole prop instances as a unit. A single-part
   list produces byte-identical submissions to the single-handle form (same `SceneInstances` path, no new
   per-instance shader indexing), so adopting the multi-part overload costs nothing for an untextured/flat
-  prop. See `KhaozEngine.Render3D/README.md` ("Manifest-driven textured opt-in") for `LoadPropAuto` /
-  `LoadPropMeshes`, the load-side half of this seam. Alpha-cutout foliage needs nothing here: the cutoff
+  prop. Two optional presentation knobs (both defaulting to today's exact behaviour): `fadeBandWidth` turns
+  the hard cut at the draw radius into a **dissolve fade band** (issue #44) - each prop's rigid dissolve
+  (the 14.5.0 opaque-noise-discard primitive, so overlapping fades never sort-fight) ramps deterministically
+  0..1 by horizontal distance over `[drawRadius - fadeBandWidth, drawRadius]`, so props thin out instead of
+  popping; and `lodMeshes`/`lodParts` + `lodDistance` swap a kit to an author-supplied far LOD mesh past
+  `lodDistance` (per-kit opt-in, an id with no variant keeps its full mesh). See
+  `KhaozEngine.Render3D/README.md` ("Manifest-driven textured opt-in", "Far LOD variants") for `LoadPropAuto` /
+  `LoadPropMeshes` / `LoadPropLodAuto`, the load-side half of this seam. Alpha-cutout foliage needs nothing here: the cutoff
   rides each part's material state (set at load via `LoadPropMeshes`), so a MASK leaf-card kit scatters and
   draws through this path with its silhouette carved, exactly like an opaque prop (see the Render3D README's
   "Alpha cutout" bullet).

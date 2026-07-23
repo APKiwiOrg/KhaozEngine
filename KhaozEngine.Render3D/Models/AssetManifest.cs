@@ -51,14 +51,22 @@ namespace KhaozEngine.Render3D
         /// palettes and other kit browsers. Null when the manifest declares none, in which case a consumer such as
         /// <c>KhaozEngine.MapEditor.ViewportWorld.KindCategories</c> falls back to the manifest's own file stem.</summary>
         public string? Category { get; }
+        /// <summary>Path to an optional AUTHOR-SUPPLIED far LOD glTF/GLB for this prop, or null when none. The engine
+        /// ships no mesh decimator, so <c>ke-propbake</c> does NOT generate this: it is a hand-made low-poly variant
+        /// the author places beside the full mesh, loaded via <see cref="PropLoader.LoadPropLodAuto"/> and normalized
+        /// to the same <see cref="HeightMeters"/> so the swap is size-stable.
+        /// <c>KhaozEngine.Terrain.PropRenderer</c> draws it beyond a per-layer LOD distance, keeping a forest's far
+        /// silhouettes at a fraction of the triangles. Resolved against the manifest directory like
+        /// <see cref="File"/>. Null = the prop draws its full mesh at every distance (unchanged behaviour).</summary>
+        public string? LodFile { get; }
         public AssetEntry(string id, string file, float heightMeters, string source, string license,
                           ColliderShape? collider = null, bool surface = false, string? heightmap = null,
                           string? collisionShape = null, string? collisionProxy = null, bool textured = false,
-                          string? category = null)
+                          string? category = null, string? lodFile = null)
         {
             Id = id; File = file; HeightMeters = heightMeters; Source = source; License = license; Collider = collider;
             Surface = surface; Heightmap = heightmap; CollisionShape = collisionShape; CollisionProxy = collisionProxy;
-            Textured = textured; Category = category;
+            Textured = textured; Category = category; LodFile = lodFile;
         }
     }
 
@@ -121,9 +129,10 @@ namespace KhaozEngine.Render3D
                 string? collisionShape = string.IsNullOrWhiteSpace(p.CollisionShape) ? null : ResolveFile(p.CollisionShape!, baseDir);
                 string? collisionProxy = string.IsNullOrWhiteSpace(p.CollisionProxy) ? null : ResolveFile(p.CollisionProxy!, baseDir);
                 string? category = string.IsNullOrWhiteSpace(p.Category) ? null : p.Category;
+                string? lodFile = string.IsNullOrWhiteSpace(p.LodFile) ? null : ResolveFile(p.LodFile!, baseDir);
                 entries.Add(new AssetEntry(p.Id!, ResolveFile(p.File!, baseDir), p.HeightMeters,
                                            p.Source ?? "", p.License ?? "", ParseCollider(p.Id!, p.Collider),
-                                           p.Surface, heightmap, collisionShape, collisionProxy, p.Textured, category));
+                                           p.Surface, heightmap, collisionShape, collisionProxy, p.Textured, category, lodFile));
             }
             return new AssetManifest(entries);
         }
@@ -175,6 +184,7 @@ namespace KhaozEngine.Render3D
                 [JsonPropertyName("collisionProxy")] public string? CollisionProxy { get; set; }
                 [JsonPropertyName("textured")] public bool Textured { get; set; }
                 [JsonPropertyName("category")] public string? Category { get; set; }
+                [JsonPropertyName("lodFile")] public string? LodFile { get; set; }
             }
 
             public sealed class ColliderDto

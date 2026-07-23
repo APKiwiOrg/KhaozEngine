@@ -361,11 +361,15 @@ namespace KhaozEngine.Terrain
                 {
                     PropLayer layer = _layers[i];
                     // A multi-part layer draws every kit id's sub-meshes as a unit. A single-handle layer draws one
-                    // mesh per id (byte-identical to before). Exactly one representation is set per layer.
+                    // mesh per id (byte-identical to before). Exactly one representation is set per layer. Each layer's
+                    // fade band + far LOD variants (both defaulting to the old hard-cut, full-mesh behaviour) ride
+                    // through to the prop draw so props dissolve near the radius and switch to LOD meshes past it.
                     if (layer.PartMeshes is { } partMeshes)
-                        _scene.DrawProps(load.LayerProps[i], partMeshes, focus, layer.DrawRadius);
+                        _scene.DrawProps(load.LayerProps[i], partMeshes, focus, layer.DrawRadius,
+                            tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes, lodDistance: layer.LodDistance);
                     else
-                        _scene.DrawProps(load.LayerProps[i], layer.Meshes, focus, layer.DrawRadius);
+                        _scene.DrawProps(load.LayerProps[i], layer.Meshes, focus, layer.DrawRadius,
+                            tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes, lodDistance: layer.LodDistance);
                 }
             }
         }

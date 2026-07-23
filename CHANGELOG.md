@@ -5,6 +5,48 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.17.0
+
+Feature: prop presentation gets a distance fade band and optional far LOD meshes (L2 of the LOD/HLOD arc,
+#276). Props now dissolve out across a configurable band at the draw radius instead of popping (closing the
+long-tracked #44), and a kit can carry an author-supplied low-poly variant that swaps in past a per-layer
+distance, so a forest keeps its far silhouettes at a fraction of the triangles. Both default to today's exact
+behaviour, so every existing consumer is untouched. No new shader work: the fade reuses the 14.5.0 per-instance
+rigid dissolve (opaque noise discard, so overlapping fades never sort-fight). Design:
+`docs/design/LOD-HLOD-DESIGN.md`.
+
+- **`PropLayer.FadeBandWidth` + fade-band wiring in `PropRenderer` (KhaozEngine.Terrain.Render3D), closing
+  #44.** All four `PropRenderer.Queue`/`DrawProps` overloads (single-mesh and multi-part, `SceneInstances` and
+  `Scene3D`) gain a trailing optional `fadeBandWidth` (default `0` = today's hard cut, byte-identical). When it
+  is positive, a placement's rigid dissolve ramps **deterministically by horizontal distance** from 0 (solid) at
+  `drawRadius - fadeBandWidth` to 1 (fully discarded) at `drawRadius`, where the noise discard leaves nothing
+  just as the cull removes it, so the handoff never pops. No per-frame randomness: same distance, same dissolve.
+  A band wider than the radius is clamped so the fade starts at the focus but still reaches 1 at the radius. The
+  fade carries no emissive edge (a clean thin-out, not a glowing death dissolve). Every part of a multi-part prop
+  shares the one dissolve value so the prop fades coherently. `Scene3DChunkSink.Draw` threads each layer's
+  `FadeBandWidth` through, so streamed props fade for free once a layer opts in.
+
+- **Optional per-kit far LOD meshes: `AssetEntry.LodFile`, `PropLoader.LoadPropLodAuto`, `PropLayer.LodMeshes`/
+  `LodPartMeshes` + `LodDistance`, and distance selection in `PropRenderer`.** The prop manifest grows an
+  optional `lodFile` per entry (resolved against the manifest dir like `file`, null when absent = unchanged).
+  `PropLoader.LoadPropLodAuto(entry)` loads that variant the same way `LoadPropAuto` loads the full mesh (the
+  `textured` flag chooses textured parts vs a flat part), normalized to the SAME `heightMeters` so the swap is
+  size-stable, and returns null when no `lodFile` is declared. A `PropLayer` carries the loaded variants
+  (`LodMeshes` for a single-handle layer, `LodPartMeshes` for a multi-part one) plus a `LodDistance`; the
+  `ScatterLayer`/`CompanionLayer` factories gain trailing optional params for them. `PropRenderer` swaps a
+  placement to its LOD variant beyond `LodDistance` (a per-kit opt-in: an id with no variant, or `LodDistance`
+  `0`, keeps its full mesh at every distance, unchanged). **`ke-propbake` does NOT generate LOD meshes** - the
+  engine ships no mesh decimator, so a far variant is a hand-authored low-poly glTF placed beside the full mesh
+  (documented on `AssetEntry.LodFile` and in the manifest docs).
+
+- **Tests.** Headless fade-curve coverage (dissolve per distance across the band, zero inside, hard cut when the
+  band is 0, the over-wide-band clamp, determinism, and every part of a multi-part prop) and LOD-selection
+  coverage (correct mesh/parts per distance, per-kit fallback, disabled at distance 0 and with no variants) in
+  `PropRendererTests`; `lodFile` parse/resolve in `AssetManifestTests`; `LoadPropLodAuto` load/normalize/null/throw
+  in `PropLoaderTests`; and a non-golden `PropFadeBandGpuTests` `[GpuFact]` that drives the whole
+  distance-to-dissolve-to-GPU wire through the real `DrawProps` path and asserts the prop thins monotonically as
+  the focus nears the radius (pixel-presence, backend-agnostic, no bake).
+
 ## 14.16.0
 
 Feature: terrain streaming grows a real far field (L1 of the LOD/HLOD arc, #276): the LOD tiers become

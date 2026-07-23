@@ -3683,8 +3683,39 @@ scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);
 mesh parts per kit id, from `Scene3D.LoadPropMeshes`) for scattering multi-material textured props - see
 "Manifest-driven textured opt-in and multi-part scatter" below. See the 3D World room (`Room3D`) in
 `KhaozEngine.Showcase` for the full wiring. Textured prop materials have landed (single-material via
-`LoadPropWithMaterial`, multi-material via `LoadPropParts` - see "Textured props" below). Mesh-LOD/impostors
-and animated props are later sub-projects. Terrain PBR splat textures are covered in "Textured terrain" below.
+`LoadPropWithMaterial`, multi-material via `LoadPropParts` - see "Textured props" below). Terrain PBR splat
+textures are covered in "Textured terrain" below.
+
+**Fade band + far LOD meshes (both opt-in, defaulting to the hard cut / full mesh).** Every `DrawProps`/`Queue`
+overload takes a trailing optional `fadeBandWidth` (default 0). When it is positive, props **dissolve** across
+the ring `[drawRadius - fadeBandWidth, drawRadius]` instead of popping at the cut - the dissolve ramps
+deterministically 0 (solid) to 1 (fully gone) by horizontal distance, reusing the rigid dissolve primitive
+(opaque noise discard, so overlapping fades never sort-fight). This closes the long-standing hard-pop at the
+draw radius:
+
+```csharp
+scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f, fadeBandWidth: 25f);
+```
+
+A kit can also carry an **author-supplied far LOD mesh** that swaps in past a distance. Declare an optional
+`"lodFile"` on the manifest entry, load it with `PropLoader.LoadPropLodAuto(entry)` (null when the entry has
+none) into a parallel LOD set, and pass it plus a `lodDistance`:
+
+```csharp
+var lodMeshes = new Dictionary<string, MeshHandle>();
+foreach (AssetEntry e in manifest.Props)
+    if (PropLoader.LoadPropLodAuto(e) is { } lodParts)          // null unless the entry declares a lodFile
+        lodMeshes[e.Id] = scene.LoadPropMeshes(lodParts)[0];    // one flat part for an untextured LOD mesh
+scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 200f,
+                fadeBandWidth: 40f, lodMeshes: lodMeshes, lodDistance: 120f);
+```
+
+A kit with no `lodFile` (or `lodDistance: 0`) keeps its full mesh at every distance - the swap is a per-kit
+opt-in. The engine ships **no mesh decimator**, so `ke-propbake` does not generate the LOD mesh: author the
+low-poly glTF by hand and place it beside the full one. On the streamed path, set `PropLayer.FadeBandWidth`,
+`LodMeshes`/`LodPartMeshes`, and `LodDistance` (via the `ScatterLayer`/`CompanionLayer` factory params) and
+`Scene3DChunkSink.Draw` threads them through for you. Animated props and cluster impostors (HLOD) are later
+sub-projects.
 
 ### GLB requirements for the flat kit path
 
@@ -4283,7 +4314,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.16.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.17.0" />
 ```
 
 ```csharp

@@ -27,33 +27,33 @@ namespace KhaozEngine.Tests.Terrain
     sealed class FakeAsyncChunkSink : IAsyncChunkSink, IDisposable
     {
         readonly object _buildsLock = new();
-        public readonly List<(ChunkCoord coord, int lod)> Builds = new();       // BuildCpu ran (background)
-        public readonly List<(ChunkCoord coord, int lod, bool relod)> Applies = new();  // Apply ran (frame)
+        public readonly List<(ChunkCoord coord, int lod, ChunkRing ring)> Builds = new();       // BuildCpu ran (background)
+        public readonly List<(ChunkCoord coord, int lod, ChunkRing ring, bool relod)> Applies = new();  // Apply ran (frame)
         public readonly List<ChunkCoord> Unloads = new();
         public int DisposeCount;
 
-        sealed class Handle { public ChunkCoord Coord; public int Lod; }
-        sealed class Payload { public ChunkCoord Coord; public int Lod; }
+        sealed class Handle { public ChunkCoord Coord; public int Lod; public ChunkRing Ring; }
+        sealed class Payload { public ChunkCoord Coord; public int Lod; public ChunkRing Ring; }
 
-        public object BuildCpu(ChunkCoord coord, int lod)
+        public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring)
         {
-            lock (_buildsLock) Builds.Add((coord, lod));
-            return new Payload { Coord = coord, Lod = lod };
+            lock (_buildsLock) Builds.Add((coord, lod, ring));
+            return new Payload { Coord = coord, Lod = lod, Ring = ring };
         }
 
-        public object Apply(ChunkCoord coord, int lod, object cpuBuild, object? existing)
+        public object Apply(ChunkCoord coord, int lod, ChunkRing ring, object cpuBuild, object? existing)
         {
             var p = (Payload)cpuBuild;
-            if (p.Coord != coord || p.Lod != lod)
-                throw new InvalidOperationException("payload did not match the coord/lod it was applied for");
-            Applies.Add((coord, lod, existing is not null));
-            if (existing is Handle h) { h.Lod = lod; return h; }
-            return new Handle { Coord = coord, Lod = lod };
+            if (p.Coord != coord || p.Lod != lod || p.Ring != ring)
+                throw new InvalidOperationException("payload did not match the coord/lod/ring it was applied for");
+            Applies.Add((coord, lod, ring, existing is not null));
+            if (existing is Handle h) { h.Lod = lod; h.Ring = ring; return h; }
+            return new Handle { Coord = coord, Lod = lod, Ring = ring };
         }
 
         // Synchronous IChunkSink members (used only when the streamer runs in synchronous mode).
-        public object Load(ChunkCoord coord, int lod) => Apply(coord, lod, BuildCpu(coord, lod), existing: null);
-        public void ReLod(ChunkCoord coord, object handle, int lod) => Apply(coord, lod, BuildCpu(coord, lod), handle);
+        public object Load(ChunkCoord coord, int lod, ChunkRing ring) => Apply(coord, lod, ring, BuildCpu(coord, lod, ring), existing: null);
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring) => Apply(coord, lod, ring, BuildCpu(coord, lod, ring), handle);
         public void Unload(ChunkCoord coord, object handle) => Unloads.Add(coord);
         public void Dispose() => DisposeCount++;
 
@@ -81,11 +81,11 @@ namespace KhaozEngine.Tests.Terrain
         public void Scheduler_last_request_wins_and_supersedes_the_earlier_build()
         {
             var manual = new ManualBuildDispatcher();
-            var sched = new ChunkBuildScheduler<int>((_, lod) => lod, manual);   // payload = the LOD it built at
+            var sched = new ChunkBuildScheduler<int>((_, lod, _) => lod, manual);   // payload = the LOD it built at
             var c = new ChunkCoord(0, 0);
 
-            sched.Request(c, 1);
-            sched.Request(c, 2);          // supersedes the LOD-1 request
+            sched.Request(c, 1, ChunkRing.Gameplay);
+            sched.Request(c, 2, ChunkRing.Gameplay);          // supersedes the LOD-1 request
             manual.RunAll();              // BOTH bodies run and enqueue (LOD 1 is now stale)
             sched.Pump();
 
@@ -99,10 +99,10 @@ namespace KhaozEngine.Tests.Terrain
         public void Scheduler_cancel_discards_an_in_flight_build_result()
         {
             var manual = new ManualBuildDispatcher();
-            var sched = new ChunkBuildScheduler<int>((_, lod) => lod, manual);
+            var sched = new ChunkBuildScheduler<int>((_, lod, _) => lod, manual);
             var c = new ChunkCoord(3, -1);
 
-            sched.Request(c, 0);
+            sched.Request(c, 0, ChunkRing.Gameplay);
             sched.Cancel(c);              // left the ring before the body ran
             manual.RunAll();              // body runs, enqueues a now-stale completion
             sched.Pump();
@@ -116,16 +116,16 @@ namespace KhaozEngine.Tests.Terrain
         public void Scheduler_re_request_after_cancel_builds_again()
         {
             var manual = new ManualBuildDispatcher();
-            var sched = new ChunkBuildScheduler<int>((_, lod) => lod, manual);
+            var sched = new ChunkBuildScheduler<int>((_, lod, _) => lod, manual);
             var c = new ChunkCoord(2, 2);
 
-            sched.Request(c, 0);
+            sched.Request(c, 0, ChunkRing.Gameplay);
             manual.RunAll();
             sched.Cancel(c);
             sched.Pump();
             Assert.Equal(0, sched.ReadyCount);    // cancelled result dropped
 
-            sched.Request(c, 0);                  // re-enters the ring
+            sched.Request(c, 0, ChunkRing.Gameplay);                  // re-enters the ring
             manual.RunAll();
             sched.Pump();
             Assert.Equal(1, sched.ReadyCount);    // rebuilt, not stuck
@@ -135,10 +135,10 @@ namespace KhaozEngine.Tests.Terrain
         public void Scheduler_surfaces_a_build_fault_on_the_frame_thread()
         {
             var manual = new ManualBuildDispatcher();
-            var sched = new ChunkBuildScheduler<int>((_, _) => throw new InvalidOperationException("boom"), manual);
+            var sched = new ChunkBuildScheduler<int>((_, _, _) => throw new InvalidOperationException("boom"), manual);
             var c = new ChunkCoord(0, 0);
 
-            sched.Request(c, 0);
+            sched.Request(c, 0, ChunkRing.Gameplay);
             manual.RunAll();
             ChunkBuildException ex = Assert.Throws<ChunkBuildException>(() => sched.Pump());
             Assert.Equal(c, ex.Coord);

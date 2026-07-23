@@ -5,21 +5,23 @@ using System.Collections.Generic;
 namespace KhaozEngine.Terrain
 {
     /// <summary>A completed background chunk build, ready for the frame thread to turn into GPU buffers. Carries the
-    /// coord, the LOD it was built at, and the opaque CPU payload the sink produced (mesh + scatter). The generation
-    /// token is internal bookkeeping (last-request-wins).</summary>
+    /// coord, the LOD and <see cref="ChunkRing"/> it was built at, and the opaque CPU payload the sink produced
+    /// (mesh + scatter). The generation token is internal bookkeeping (last-request-wins).</summary>
     public readonly struct ChunkBuild<T>
     {
         /// <summary>The chunk this build is for.</summary>
         public ChunkCoord Coord { get; }
         /// <summary>The LOD tier the payload was built at.</summary>
         public int Lod { get; }
+        /// <summary>The residency ring the payload was built for.</summary>
+        public ChunkRing Ring { get; }
         /// <summary>The sink's opaque CPU payload (hand back to its apply step on the frame thread).</summary>
         public T Payload { get; }
         internal long Generation { get; }
 
-        internal ChunkBuild(ChunkCoord coord, int lod, T payload, long generation)
+        internal ChunkBuild(ChunkCoord coord, int lod, ChunkRing ring, T payload, long generation)
         {
-            Coord = coord; Lod = lod; Payload = payload; Generation = generation;
+            Coord = coord; Lod = lod; Ring = ring; Payload = payload; Generation = generation;
         }
     }
 
@@ -53,7 +55,7 @@ namespace KhaozEngine.Terrain
     /// CPU payload (mesh + scatter for the production sink) and is never touched here beyond being carried through.</para></summary>
     public sealed class ChunkBuildScheduler<T> : IDisposable
     {
-        readonly Func<ChunkCoord, int, T> _build;
+        readonly Func<ChunkCoord, int, ChunkRing, T> _build;
         readonly IChunkBuildDispatcher _dispatcher;
 
         // Frame-thread-only bookkeeping. _current tracks every chunk with an outstanding or ready build (last request
@@ -67,23 +69,24 @@ namespace KhaozEngine.Terrain
         long _nextGen = 1;
         bool _disposed;
 
-        struct Slot { public long Gen; public int Lod; public bool Ready; }
+        struct Slot { public long Gen; public int Lod; public ChunkRing Ring; public bool Ready; }
 
         readonly struct Completion
         {
             public readonly ChunkCoord Coord;
             public readonly int Lod;
+            public readonly ChunkRing Ring;
             public readonly long Gen;
             public readonly T Payload;
             public readonly Exception? Error;
-            public Completion(ChunkCoord coord, int lod, long gen, T payload, Exception? error)
-            { Coord = coord; Lod = lod; Gen = gen; Payload = payload; Error = error; }
+            public Completion(ChunkCoord coord, int lod, ChunkRing ring, long gen, T payload, Exception? error)
+            { Coord = coord; Lod = lod; Ring = ring; Gen = gen; Payload = payload; Error = error; }
         }
 
         /// <summary>Build the scheduler over <paramref name="build"/> (the sink's CPU build step, run on a worker
         /// thread). <paramref name="dispatcher"/> chooses how builds run, or null for the default <see cref="TaskChunkBuildDispatcher"/>
         /// (the thread pool).</summary>
-        public ChunkBuildScheduler(Func<ChunkCoord, int, T> build, IChunkBuildDispatcher? dispatcher = null)
+        public ChunkBuildScheduler(Func<ChunkCoord, int, ChunkRing, T> build, IChunkBuildDispatcher? dispatcher = null)
         {
             _build = build ?? throw new ArgumentNullException(nameof(build));
             _dispatcher = dispatcher ?? new TaskChunkBuildDispatcher();
@@ -108,24 +111,29 @@ namespace KhaozEngine.Terrain
         /// asked for at the same LOD.</summary>
         public int RequestedLod(ChunkCoord coord) => _current.TryGetValue(coord, out Slot s) ? s.Lod : -1;
 
-        /// <summary>(Re)request a build for <paramref name="coord"/> at <paramref name="lod"/>. Bumps the chunk's
-        /// generation, so any earlier build for it still running or sitting ready is now stale and will be discarded
-        /// instead of applied (last request wins). Dispatches the CPU build onto the dispatcher.</summary>
-        public void Request(ChunkCoord coord, int lod)
+        /// <summary>The <see cref="ChunkRing"/> of the most recent request for <paramref name="coord"/>, or
+        /// <see cref="ChunkRing.Gameplay"/> when the scheduler is not tracking it (meaningful only alongside a
+        /// non-negative <see cref="RequestedLod"/>). Lets the streamer detect a ring change with no tier change.</summary>
+        public ChunkRing RequestedRing(ChunkCoord coord) => _current.TryGetValue(coord, out Slot s) ? s.Ring : ChunkRing.Gameplay;
+
+        /// <summary>(Re)request a build for <paramref name="coord"/> at <paramref name="lod"/> and <paramref name="ring"/>.
+        /// Bumps the chunk's generation, so any earlier build for it still running or sitting ready is now stale and
+        /// will be discarded instead of applied (last request wins). Dispatches the CPU build onto the dispatcher.</summary>
+        public void Request(ChunkCoord coord, int lod, ChunkRing ring)
         {
             long gen = _nextGen++;
-            _current[coord] = new Slot { Gen = gen, Lod = lod, Ready = false };
+            _current[coord] = new Slot { Gen = gen, Lod = lod, Ring = ring, Ready = false };
             _ready.Remove(coord);   // an earlier ready build for this coord is superseded by the newer request
 
-            Func<ChunkCoord, int, T> build = _build;
+            Func<ChunkCoord, int, ChunkRing, T> build = _build;
             ConcurrentQueue<Completion> done = _done;
             _dispatcher.Schedule(() =>
             {
                 T payload = default!;
                 Exception? error = null;
-                try { payload = build(coord, lod); }
+                try { payload = build(coord, lod, ring); }
                 catch (Exception e) { error = e; }
-                done.Enqueue(new Completion(coord, lod, gen, payload, error));
+                done.Enqueue(new Completion(coord, lod, ring, gen, payload, error));
             });
         }
 
@@ -157,7 +165,7 @@ namespace KhaozEngine.Terrain
 
                 s.Ready = true;
                 _current[c.Coord] = s;
-                _ready[c.Coord] = new ChunkBuild<T>(c.Coord, c.Lod, c.Payload, c.Gen);
+                _ready[c.Coord] = new ChunkBuild<T>(c.Coord, c.Lod, c.Ring, c.Payload, c.Gen);
             }
         }
 

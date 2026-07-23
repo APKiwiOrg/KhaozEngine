@@ -357,5 +357,135 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Empty(load.Statics);                        // carved: no props left, so no live statics remain
             Assert.Equal(staticsBefore, world.Removed.Count);  // every stale static was torn down, none leaked
         });
+
+        // --- Decor ring + collision decouple (L1) -----------------------------------------------------------------
+
+        [Fact]
+        public void BuildCpu_for_a_decor_chunk_skips_scatter_and_the_collision_mesh()
+        {
+            // A decor chunk is render-only: BuildCpu produces the mesh but no scatter and no collision surface, so a
+            // far ring costs mesh only. Gameplay produces both. Headless (BuildCpu is CPU-only) - collideTerrain needs
+            // a physics world in the ctor, but BuildCpu never touches it.
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            var world = new FakePhysicsWorld();
+            var sink = new Scene3DChunkSink(scene: null!, field, scatter, NoMeshes(), chunkSize: 60f, propDrawRadius: 90f,
+                physics: world, collideTerrain: true);
+            var coord = new ChunkCoord(0, 0);
+
+            var gameplay = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0, ring: ChunkRing.Gameplay);
+            Assert.NotEmpty(gameplay.LayerProps[0]);       // not vacuous: this chunk scatters trees when gameplay
+            Assert.NotNull(gameplay.CollisionMesh);        // gameplay gets a collision surface
+
+            var decor = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0, ring: ChunkRing.Decor);
+            Assert.NotNull(decor.Mesh);                    // decor still meshes the terrain (it is visible)
+            Assert.Empty(decor.LayerProps[0]);             // but no scatter
+            Assert.Null(decor.CollisionMesh);              // and no collision surface
+        }
+
+        [GpuFact]
+        public void Decor_chunk_Apply_registers_no_statics_or_terrain_collider() => WithScene(scene =>
+        {
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            var shapes = new Dictionary<string, PhysicsShape> { ["pine_a"] = new BoxShape(new Vector3(0.5f, 1f, 0.5f)) };
+            var world = new FakePhysicsWorld();
+            var sink = new Scene3DChunkSink(scene, field, scatter, NoMeshes(), chunkSize: 60f, propDrawRadius: 90f,
+                physics: world, collisionShapes: shapes, collideTerrain: true);
+            var coord = new ChunkCoord(0, 0);
+
+            var load = (Scene3DChunkSink.ChunkLoad)sink.Load(coord, lod: 2, ring: ChunkRing.Decor);
+
+            Assert.Empty(load.LayerProps[0]);              // render-only: no props
+            Assert.Empty(load.Statics);                     // no prop colliders
+            Assert.False(load.HasTerrainCollider);          // no terrain collider
+            Assert.Empty(world.Added);                      // nothing hit the physics world at all
+        });
+
+        [GpuFact]
+        public void ReLod_TierChange_KeepsTheTerrainColliderBodyUnchanged() => WithScene(scene =>
+        {
+            // The collision decouple: the terrain surface collider is registered at a FIXED resolution, so a render
+            // re-LOD (tier 0 -> tier 1) must NOT tear down and rebuild the physics body.
+            TerrainField field = Flat(5f);
+            var world = new FakePhysicsWorld();
+            var sink = new Scene3DChunkSink(scene, field, new ScatterConfig(), NoMeshes(), chunkSize: 60f, propDrawRadius: 90f,
+                physics: world, collideTerrain: true);   // no collisionShapes: only the terrain collider is in play
+            var coord = new ChunkCoord(0, 0);
+
+            object handle = sink.Load(coord, lod: 0, ring: ChunkRing.Gameplay);
+            var load = (Scene3DChunkSink.ChunkLoad)handle;
+            Assert.True(load.HasTerrainCollider);
+            StaticHandle bodyBefore = load.TerrainCollider;
+            int addedBefore = world.Added.Count;      // 1: the terrain surface body
+            Assert.Equal(1, addedBefore);
+
+            sink.ReLod(coord, handle, lod: 1, ring: ChunkRing.Gameplay);   // render re-LOD, same gameplay ring
+
+            Assert.True(load.HasTerrainCollider);
+            Assert.Equal(bodyBefore, load.TerrainCollider);   // same body handle: never rebuilt
+            Assert.Empty(world.Removed);             // collider not removed
+            Assert.Equal(addedBefore, world.Added.Count);     // collider not re-added
+        });
+
+        [GpuFact]
+        public void ReLod_TierChange_KeepsPropStaticsUnchanged() => WithScene(scene =>
+        {
+            // Placements are LOD-independent, so a pure tier re-LOD (no field change) must keep the prop static
+            // bodies rather than tear them down and rebuild - the flagged re-LOD churn fix.
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            var shapes = new Dictionary<string, PhysicsShape> { ["pine_a"] = new BoxShape(new Vector3(0.5f, 1f, 0.5f)) };
+            var world = new FakePhysicsWorld();
+            var sink = new Scene3DChunkSink(scene, field, scatter, NoMeshes(), chunkSize: 60f, propDrawRadius: 90f,
+                physics: world, collisionShapes: shapes);
+            var coord = new ChunkCoord(0, 0);
+
+            object handle = sink.Load(coord, lod: 0, ring: ChunkRing.Gameplay);
+            var load = (Scene3DChunkSink.ChunkLoad)handle;
+            var before = load.Statics.ToList();
+            Assert.NotEmpty(before);
+            int addedOnLoad = world.Added.Count;
+
+            sink.ReLod(coord, handle, lod: 1, ring: ChunkRing.Gameplay);   // tier change, same field, same ring
+
+            Assert.Equal(before, load.Statics);            // exact same handles, in order: never torn down
+            Assert.Empty(world.Removed);          // nothing removed
+            Assert.Equal(addedOnLoad, world.Added.Count);  // nothing re-added
+        });
+
+        [GpuFact]
+        public void ReLod_DecorToGameplay_GainsCollidersThenLosesThemOnRetreat() => WithScene(scene =>
+        {
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            var shapes = new Dictionary<string, PhysicsShape> { ["pine_a"] = new BoxShape(new Vector3(0.5f, 1f, 0.5f)) };
+            var world = new FakePhysicsWorld();
+            var sink = new Scene3DChunkSink(scene, field, scatter, NoMeshes(), chunkSize: 60f, propDrawRadius: 90f,
+                physics: world, collisionShapes: shapes, collideTerrain: true);
+            var coord = new ChunkCoord(0, 0);
+
+            // Load as decor: render-only, nothing registered.
+            object handle = sink.Load(coord, lod: 2, ring: ChunkRing.Decor);
+            var load = (Scene3DChunkSink.ChunkLoad)handle;
+            Assert.Empty(load.Statics);
+            Assert.False(load.HasTerrainCollider);
+            Assert.Empty(world.Added);
+
+            // Approach: upgrade to gameplay. Scatter + prop colliders + terrain collider all appear.
+            sink.ReLod(coord, handle, lod: 0, ring: ChunkRing.Gameplay);
+            Assert.NotEmpty(load.Statics);
+            Assert.True(load.HasTerrainCollider);
+            int addedOnUpgrade = world.Added.Count;
+            Assert.True(addedOnUpgrade > 0);
+            Assert.Empty(world.Removed);
+
+            // Retreat: downgrade to decor. Everything the upgrade added is torn down, nothing left live.
+            sink.ReLod(coord, handle, lod: 2, ring: ChunkRing.Decor);
+            Assert.Empty(load.Statics);
+            Assert.False(load.HasTerrainCollider);
+            Assert.Empty(load.LayerProps[0]);
+            Assert.Equal(addedOnUpgrade, world.Removed.Count);   // every body from the upgrade removed
+        });
     }
 }

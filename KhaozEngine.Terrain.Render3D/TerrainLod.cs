@@ -1,27 +1,31 @@
-using System;
-
 namespace KhaozEngine.Terrain
 {
-    /// <summary>Distance-to-LOD mapping for chunked terrain. PickLod chooses a tier from camera distance (near =
-    /// dense, far = coarse); ResolutionFor gives that tier's grid resolution (segments per chunk edge). Which
-    /// chunks exist and when they rebuild is the World streaming sub-project, not this one.</summary>
+    /// <summary>Distance-to-LOD mapping for chunked terrain, kept as a thin facade over
+    /// <see cref="TerrainLodConfig.Default"/> so callers that do not thread a custom config still get the default
+    /// tiers. <see cref="PickLod"/> chooses a tier from camera distance (near = dense, far = coarse);
+    /// <see cref="ResolutionFor"/> gives that tier's grid resolution. The tiers themselves (and adding far tiers or a
+    /// game-specific table) live in <see cref="TerrainLodConfig"/>; wire a custom one through
+    /// <see cref="StreamerConfig.LodConfig"/> and the <see cref="Scene3DChunkSink"/>. Which chunks exist and when they
+    /// rebuild is the streaming sub-project, not this one.</summary>
     public static class TerrainLod
     {
-        public const int TierCount = 3;
+        /// <summary>The default tier table (legacy 64/32/16 at 80 m/200 m plus the coarser far tiers). Shorthand for
+        /// <see cref="TerrainLodConfig.Default"/>.</summary>
+        public static TerrainLodConfig Default => TerrainLodConfig.Default;
+
+        /// <summary>The first tier boundary (metres) in the default config. Retained for back-compat.</summary>
         public const float NearMax = 80f;
+
+        /// <summary>The second tier boundary (metres) in the default config. Retained for back-compat.</summary>
         public const float MidMax = 200f;
 
-        static readonly int[] Resolutions = { 64, 32, 16 };  // per chunk edge, by tier
+        /// <summary>Number of tiers in the default config.</summary>
+        public static int TierCount => TerrainLodConfig.Default.TierCount;
 
-        /// <summary>Tier 0 (dense) within NearMax, 1 within MidMax, else 2 (coarse). Monotone in distance.</summary>
-        public static int PickLod(float distance)
-        {
-            if (distance < NearMax) return 0;
-            if (distance < MidMax) return 1;
-            return 2;
-        }
+        /// <summary>Tier index for a camera distance, from the default config. Monotone in distance.</summary>
+        public static int PickLod(float distance) => TerrainLodConfig.Default.PickLod(distance);
 
-        /// <summary>Grid resolution (segments per chunk edge) for a tier. Clamped to the valid tier range.</summary>
-        public static int ResolutionFor(int lod) => Resolutions[Math.Clamp(lod, 0, TierCount - 1)];
+        /// <summary>Grid resolution (segments per chunk edge) for a tier, from the default config.</summary>
+        public static int ResolutionFor(int lod) => TerrainLodConfig.Default.ResolutionFor(lod);
     }
 }

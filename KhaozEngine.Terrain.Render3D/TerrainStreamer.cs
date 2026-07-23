@@ -32,6 +32,7 @@ namespace KhaozEngine.Terrain
     {
         readonly StreamerConfig _config;
         readonly IChunkSink _sink;
+        readonly TerrainLodConfig _lodConfig;
         readonly Dictionary<ChunkCoord, Entry> _loaded = new();
 
         // Set only when async build is active (config asked for it AND the sink supports the split seam). Null => the
@@ -42,15 +43,21 @@ namespace KhaozEngine.Terrain
 
         bool _disposed;
 
-        sealed class Entry { public object Handle = null!; public int Lod; }
+        sealed class Entry { public object Handle = null!; public int Lod; public ChunkRing Ring; }
 
         /// <summary>Build the streamer over a config and sink. <paramref name="dispatcher"/> chooses how background
         /// builds run when async is active (null uses the thread pool). Tests inject a manual dispatcher to control
-        /// completion order. It is ignored in synchronous mode.</summary>
+        /// completion order. It is ignored in synchronous mode. Throws if the hysteresis band is degenerate
+        /// (<see cref="StreamerConfig.UnloadRadius"/> must exceed the outer load radius).</summary>
         public TerrainStreamer(StreamerConfig config, IChunkSink sink, IChunkBuildDispatcher? dispatcher = null)
         {
-            _config = config;
             _sink = sink ?? throw new ArgumentNullException(nameof(sink));
+            if (config.UnloadRadius <= config.OuterRadius)
+                throw new ArgumentException(
+                    $"UnloadRadius ({config.UnloadRadius}) must exceed the outer load radius ({config.OuterRadius}) so the hysteresis band stops churn.",
+                    nameof(config));
+            _config = config;
+            _lodConfig = config.ResolvedLodConfig;
             if (config.Async && sink is IAsyncChunkSink asyncSink)
             {
                 _async = true;
@@ -59,12 +66,22 @@ namespace KhaozEngine.Terrain
             }
         }
 
+        /// <summary>The residency ring for a chunk at Euclidean chunk-distance-squared <paramref name="chunkDistSq"/>
+        /// from the player's chunk: <see cref="ChunkRing.Gameplay"/> within <see cref="StreamerConfig.LoadRadius"/>,
+        /// else <see cref="ChunkRing.Decor"/>.</summary>
+        ChunkRing RingAt(int chunkDistSq) =>
+            chunkDistSq <= _config.LoadRadius * _config.LoadRadius ? ChunkRing.Gameplay : ChunkRing.Decor;
+
         /// <summary>The chunks currently loaded (applied, with a live GPU mesh) after this frame's ops. In async mode a
         /// chunk whose build is still in flight is NOT counted here until it is applied.</summary>
         public IReadOnlyCollection<ChunkCoord> Loaded => _loaded.Keys;
 
         /// <summary>The LOD tier a loaded chunk is currently built at, or -1 if not loaded.</summary>
         public int LodOf(ChunkCoord coord) => _loaded.TryGetValue(coord, out Entry? e) ? e.Lod : -1;
+
+        /// <summary>The residency ring a loaded chunk is currently built for, or null if not loaded. A decor chunk is
+        /// render-only (no scatter or physics); a gameplay chunk is simulated.</summary>
+        public ChunkRing? RingOf(ChunkCoord coord) => _loaded.TryGetValue(coord, out Entry? e) ? e.Ring : null;
 
         /// <summary>Unload every currently-loaded chunk through the sink and clear the ring (after this <see cref="Loaded"/>
         /// is empty), discarding any outstanding async builds. Call before a streaming rebuild that keeps the same
@@ -146,25 +163,29 @@ namespace KhaozEngine.Terrain
                 }
             }
 
-            // 2. Gather pending load + re-LOD ops over the load disk, each with a metre distance for nearest-first.
-            int r = _config.LoadRadius;
+            // 2. Gather pending load + re-LOD ops over the load disk (out to the OUTER radius, so decor chunks load
+            //    too), each with a metre distance for nearest-first. A loaded chunk needs a rebuild when its tier OR
+            //    its ring changed (a ring change adds/drops scatter + colliders even at the same tier).
+            int r = _config.OuterRadius;
             float loadSq = r * (float)r;
             var pending = new List<Pending>();
             for (int dz = -r; dz <= r; dz++)
             for (int dx = -r; dx <= r; dx++)
             {
-                if (dx * dx + dz * dz > loadSq) continue;
+                int chunkDistSq = dx * dx + dz * dz;
+                if (chunkDistSq > loadSq) continue;
                 var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
 
                 Vector2 center = ChunkGrid.CenterOf(c, cs);
                 float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
                 float metreDist = MathF.Sqrt(mdx * mdx + mdz * mdz);
-                int lod = TerrainLod.PickLod(metreDist);
+                int lod = _lodConfig.PickLod(metreDist);
+                ChunkRing ring = RingAt(chunkDistSq);
 
                 if (!_loaded.TryGetValue(c, out Entry? e))
-                    pending.Add(new Pending(c, lod, metreDist, isLoad: true));
-                else if (e.Lod != lod)
-                    pending.Add(new Pending(c, lod, metreDist, isLoad: false));
+                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true));
+                else if (e.Lod != lod || e.Ring != ring)
+                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false));
             }
 
             // 3. Process nearest-first, capped at MaxLoadsPerFrame.
@@ -175,14 +196,15 @@ namespace KhaozEngine.Terrain
                 Pending p = pending[i];
                 if (p.IsLoad)
                 {
-                    object handle = _sink.Load(p.Coord, p.Lod);
-                    _loaded[p.Coord] = new Entry { Handle = handle, Lod = p.Lod };
+                    object handle = _sink.Load(p.Coord, p.Lod, p.Ring);
+                    _loaded[p.Coord] = new Entry { Handle = handle, Lod = p.Lod, Ring = p.Ring };
                 }
                 else
                 {
                     Entry e = _loaded[p.Coord];
-                    _sink.ReLod(p.Coord, e.Handle, p.Lod);
+                    _sink.ReLod(p.Coord, e.Handle, p.Lod, p.Ring);
                     e.Lod = p.Lod;
+                    e.Ring = p.Ring;
                 }
             }
         }
@@ -225,35 +247,42 @@ namespace KhaozEngine.Terrain
                 }
             }
 
-            // 2. Request builds over the load disk (UNBUDGETED - the build runs off the frame thread). Fresh load for
-            //    unloaded chunks. Re-LOD when the tier changed. The scheduler's last-request-wins drops stale builds.
-            int r = _config.LoadRadius;
+            // 2. Request builds over the load disk out to the OUTER radius (UNBUDGETED - the build runs off the frame
+            //    thread), so decor chunks load too. Fresh load for unloaded chunks. Re-LOD when the tier OR the ring
+            //    changed (a ring change adds/drops scatter + colliders). The scheduler's last-request-wins drops stale
+            //    builds.
+            int r = _config.OuterRadius;
             float loadSq = r * (float)r;
             for (int dz = -r; dz <= r; dz++)
             for (int dx = -r; dx <= r; dx++)
             {
-                if (dx * dx + dz * dz > loadSq) continue;
+                int chunkDistSq = dx * dx + dz * dz;
+                if (chunkDistSq > loadSq) continue;
                 var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
 
                 Vector2 center = ChunkGrid.CenterOf(c, cs);
                 float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
-                int lod = TerrainLod.PickLod(MathF.Sqrt(mdx * mdx + mdz * mdz));
+                int lod = _lodConfig.PickLod(MathF.Sqrt(mdx * mdx + mdz * mdz));
+                ChunkRing ring = RingAt(chunkDistSq);
                 int reqLod = sched.RequestedLod(c);
+                // The in-flight request already targets exactly this (tier, ring). When untracked reqLod is -1, so
+                // this is false and a fresh request goes out.
+                bool requestMatches = reqLod == lod && sched.RequestedRing(c) == ring;
 
                 if (_loaded.TryGetValue(c, out Entry? e))
                 {
-                    if (e.Lod != lod)
+                    if (e.Lod != lod || e.Ring != ring)
                     {
-                        if (reqLod != lod) sched.Request(c, lod);   // re-LOD (supersede a different in-flight re-LOD)
+                        if (!requestMatches) sched.Request(c, lod, ring);   // re-LOD / ring change (supersede a stale one)
                     }
                     else if (reqLod != -1)
                     {
-                        sched.Cancel(c);   // tier returned to the applied LOD, drop the now-stale in-flight re-LOD
+                        sched.Cancel(c);   // tier + ring returned to the applied state, drop the now-stale in-flight rebuild
                     }
                 }
-                else if (reqLod != lod)
+                else if (!requestMatches)
                 {
-                    sched.Request(c, lod);   // fresh load, or re-target an in-flight load whose tier changed
+                    sched.Request(c, lod, ring);   // fresh load, or re-target an in-flight load whose tier/ring changed
                 }
             }
 
@@ -292,7 +321,7 @@ namespace KhaozEngine.Terrain
         void InvalidateLoaded(ChunkCoord coord)
         {
             if (_loaded.TryGetValue(coord, out Entry? e))
-                _sink.ReLod(coord, e.Handle, e.Lod);
+                _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
         }
 
         void ApplyBuilds(IReadOnlyList<ChunkBuild<object>> builds)
@@ -301,8 +330,8 @@ namespace KhaozEngine.Terrain
             {
                 ChunkBuild<object> rb = builds[i];
                 object? existing = _loaded.TryGetValue(rb.Coord, out Entry? e) ? e.Handle : null;
-                object handle = _asyncSink!.Apply(rb.Coord, rb.Lod, rb.Payload, existing);
-                _loaded[rb.Coord] = new Entry { Handle = handle, Lod = rb.Lod };
+                object handle = _asyncSink!.Apply(rb.Coord, rb.Lod, rb.Ring, rb.Payload, existing);
+                _loaded[rb.Coord] = new Entry { Handle = handle, Lod = rb.Lod, Ring = rb.Ring };
             }
         }
 
@@ -323,10 +352,11 @@ namespace KhaozEngine.Terrain
         {
             public readonly ChunkCoord Coord;
             public readonly int Lod;
+            public readonly ChunkRing Ring;
             public readonly float Dist;
             public readonly bool IsLoad;
-            public Pending(ChunkCoord coord, int lod, float dist, bool isLoad)
-            { Coord = coord; Lod = lod; Dist = dist; IsLoad = isLoad; }
+            public Pending(ChunkCoord coord, int lod, ChunkRing ring, float dist, bool isLoad)
+            { Coord = coord; Lod = lod; Ring = ring; Dist = dist; IsLoad = isLoad; }
         }
     }
 }

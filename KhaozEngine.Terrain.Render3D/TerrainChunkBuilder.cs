@@ -10,9 +10,18 @@ namespace KhaozEngine.Terrain
     /// standard Render3D mesh data plus a parallel splat array and an AABB.</summary>
     public static class TerrainChunkBuilder
     {
+        /// <summary>Mesh a chunk at <paramref name="lod"/> using the default LOD tier table
+        /// (<see cref="TerrainLodConfig.Default"/>). Byte-identical to the pre-data-driven behaviour for tiers 0/1/2.</summary>
         public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, float skirtDepth = 0.3f, float snowLine = 60f)
+            => Build(field, region, lod, TerrainLodConfig.Default, skirtDepth, snowLine);
+
+        /// <summary>Mesh a chunk at <paramref name="lod"/>, resolving the tier's grid resolution through
+        /// <paramref name="lodConfig"/> (so a game's custom tier table meshes at its own resolutions). The
+        /// <paramref name="lodConfig"/> must be the same one the streamer picks tiers with, or a tier index means a
+        /// different resolution on each side.</summary>
+        public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, TerrainLodConfig lodConfig, float skirtDepth = 0.3f, float snowLine = 60f)
         {
-            int res = TerrainLod.ResolutionFor(lod);
+            int res = lodConfig.ResolutionFor(lod);
             int cols = res + 1;
             var verts = new List<ModelVertex>(cols * cols + cols * 4);
             var splat = new List<TerrainSplatWeights>(cols * cols + cols * 4);

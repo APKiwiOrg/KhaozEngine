@@ -6,20 +6,32 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
 
 ## Types
 
-- **`TerrainChunkBuilder.Build(field, region, lod)`** -> **`TerrainChunkMesh`** - samples the field on
-  a LOD-chosen grid into a `Render3D` `GltfMesh` with ~0.3 m edge skirts (mismatched-LOD neighbours stay
-  crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a height/slope vertex-colour
-  ramp, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device.
-- **`TerrainLod`** - `PickLod(distance)` maps camera distance to 3 tiers, `ResolutionFor(lod)` gives
-  the grid resolution. **`TerrainChunkRegion`** is the square world tile to mesh (default 60 m).
+- **`TerrainChunkBuilder.Build(field, region, lod[, lodConfig])`** -> **`TerrainChunkMesh`** - samples the
+  field on a LOD-chosen grid into a `Render3D` `GltfMesh` with ~0.3 m edge skirts (mismatched-LOD neighbours
+  stay crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a height/slope vertex-colour
+  ramp, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device. The `lodConfig` overload
+  resolves the tier's resolution through a custom table; the plain overload uses `TerrainLodConfig.Default`.
+- **`TerrainLodConfig`** + **`TerrainLodTier`** - data-driven LOD tiers: an ordered list of
+  `(Resolution, MaxDistance)` tiers, validated (strictly descending resolutions, strictly ascending distances,
+  the coarsest at `float.PositiveInfinity`). `PickLod(distance)` -> tier index, `ResolutionFor(lod)` -> grid
+  resolution. `TerrainLodConfig.Default` reproduces the legacy 64/32/16 at 80 m/200 m byte-for-byte and adds
+  coarser 8- and 4-segment far tiers so a distant chunk costs a few hundred triangles. **`TerrainLod`** is a
+  thin facade over `Default` (`PickLod`/`ResolutionFor`). **`TerrainChunkRegion`** is the square world tile to
+  mesh (default 60 m).
 - **`TerrainScene3D`** extensions - `Scene3D.LoadTerrainChunk` / `DrawTerrainChunk` (world-space
   vertices, identity transform) and `LoadTerrainMaterial` (realize a layered material once, share the
   handle across every chunk).
 - **`TerrainStreamer`** + **`StreamerConfig`** - keeps the world loaded in a ring around the player:
-  hysteresis unload band (`UnloadRadius > LoadRadius` stops boundary churn), re-LOD when a loaded
-  chunk's tier changes, nearest-first ordering. Pure bookkeeping over **`ChunkCoord`**/**`ChunkGrid`**
-  driving an injected **`IChunkSink`**, so it is headless-testable with a fake sink. `UnloadAll`/`Dispose`
-  free the loaded ring instead of leaking it.
+  hysteresis unload band (`UnloadRadius` greater than the outer load radius stops boundary churn), re-LOD when a
+  loaded chunk's tier OR residency ring changes, nearest-first ordering. Pure bookkeeping over
+  **`ChunkCoord`**/**`ChunkGrid`** driving an injected **`IChunkSink`**, so it is headless-testable with a fake
+  sink. `UnloadAll`/`Dispose` free the loaded ring instead of leaking it.
+  - **Decor ring / far field.** `StreamerConfig` carries a **`DecorRadius`** (chunk units, default 0 = off) and
+    a **`LodConfig`**. `LoadRadius` is the gameplay radius; chunks between it and `DecorRadius` load as
+    render-only **`ChunkRing.Decor`** chunks (coarse mesh, no scatter or physics), so a real horizon costs mesh
+    only. A decor chunk upgrades to gameplay on approach (gaining scatter + colliders) and downgrades on
+    retreat, via the same re-LOD path a tier change uses. **`RingOf(coord)`** reports a loaded chunk's ring. The
+    same `LodConfig` must be wired to the sink; both default to `TerrainLodConfig.Default`.
   - **Async build (default).** With `StreamerConfig.Async` set (it is by default) and an `IAsyncChunkSink`
     sink, each chunk's CPU mesh build runs on a background thread and only the GPU upload happens on the
     frame thread, so a streamed chunk is no longer a full CPU-mesh-build hitch. `MaxLoadsPerFrame` then caps
@@ -37,10 +49,13 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
     change the next time it loads naturally. Both overloads flush any in-flight async builds first, so a
     build already running against the old state cannot land after the invalidation and overwrite it. Pair
     with `Scene3DChunkSink.UpdateField` below: swap the field, then invalidate the touched area.
-- **`IAsyncChunkSink`** (extends `IChunkSink`) - the split seam the async streamer uses: **`BuildCpu(coord,
-  lod)`** builds the chunk's mesh + scatter with no GPU (safe on a worker thread), **`Apply(coord, lod,
-  cpuBuild, existing)`** creates/replaces the GPU buffers + physics on the frame thread. `Scene3DChunkSink`
-  implements it. A custom sink that implements only `IChunkSink` still streams (synchronously).
+- **`IChunkSink`** / **`IAsyncChunkSink`** - the load/unload seam the streamer drives. Every build call carries
+  a **`ChunkRing`** (`Gameplay` / `Decor`) so the sink knows how much of a chunk to build:
+  **`Load(coord, lod, ring)`** / **`ReLod(coord, handle, lod, ring)`**, and the async split
+  **`BuildCpu(coord, lod, ring)`** (mesh + scatter, no GPU, safe on a worker thread) +
+  **`Apply(coord, lod, ring, cpuBuild, existing)`** (GPU buffers + physics on the frame thread).
+  `Scene3DChunkSink` implements `IAsyncChunkSink` and defaults the ring to `Gameplay` for direct callers; a
+  custom sink implementing only `IChunkSink` still streams (synchronously).
 - **`ChunkBuildScheduler<T>`** + **`ChunkBuild<T>`** - the GPU-free heart of async streaming: per-chunk
   generation tokens dispatch each build, collect the finished ones, and drop the superseded (a newer re-LOD)
   or cancelled (left the ring) results before they can be applied (last request wins). Pure `ChunkCoord`
@@ -49,20 +64,25 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   queues them to control completion order. A faulted build surfaces as a **`ChunkBuildException`** on the
   frame thread (during `Pump`/`Flush`), never a silent stuck chunk.
 - **`Scene3DChunkSink`** - the production sink: builds each chunk's mesh + scatters **`PropLayer`**s
-  (each layer with its own config, mesh set, and draw radius), re-LODs meshes AND re-adopts the freshly
-  scattered props in place (byte-identical after a pure LOD change, freshly correct after a field swap plus
-  invalidate), draws every loaded chunk + in-range props per frame, and optionally adds baked prop collision
-  statics to an `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params), refreshed on re-LOD and
-  removed on unload. A game may also
+  (each layer with its own config, mesh set, and draw radius) for a `Gameplay` chunk, re-LODs meshes AND
+  re-adopts the freshly scattered props in place (byte-identical after a pure LOD change, freshly correct
+  after a field swap plus invalidate), draws every loaded chunk + in-range props per frame, and optionally
+  adds baked prop collision statics to an `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params). A
+  **`Decor`**-ring chunk is render-only: the sink skips scatter, prop colliders, dynamics, and terrain
+  collision for it. The `lodConfig` ctor param sets the tier table it meshes with (must match the streamer's).
+  A game may also
   pass an **`IChunkDynamicsSource`** (`dynamicsSource` ctor param, requires `physics`) to spawn dynamic
   bodies per chunk: the source yields **`DynamicSpawn`**s (shape + pose + `DynamicBodyDescription`) for a
   chunk, the sink registers them on load and removes them on unload. Mechanism only - the game decides what
   spawns where; the engine just registers what the source returns. The **`collideTerrain`** ctor flag
-  (opt-in, requires `physics`) additionally registers each chunk's SURFACE as a static triangle-mesh body on
-  load (rebuilt on re-LOD, removed on unload), so the terrain surface is part of the unified physics query
-  path (raycasts, capsule sweeps, dynamic-body rest all see it) instead of only the analytic
-  `TerrainCollision` ground-follow delegate. Off by default: a game keeps the analytic delegate path exactly
-  as before.
+  (opt-in, requires `physics`) additionally registers each gameplay chunk's SURFACE as a static triangle-mesh
+  body, so the terrain surface is part of the unified physics query path (raycasts, capsule sweeps,
+  dynamic-body rest all see it) instead of only the analytic `TerrainCollision` ground-follow delegate. Off by
+  default: a game keeps the analytic delegate path exactly as before.
+  - **Collision LOD is decoupled from render LOD.** The terrain collider registers at a FIXED tier
+    (`collisionLod` ctor param, default 0 = densest), so a render re-LOD never rebuilds the physics
+    triangle-mesh body. Prop static bodies are likewise KEPT across a pure tier re-LOD (placements are
+    LOD-independent); both rebuild only on load, unload, a ring change, or an editor invalidate (field swap).
   - **`UpdateField(field)`** swaps the field every FUTURE chunk build reads (mesh height/splat plus prop
     scatter). An already-loaded chunk keeps its OLD field's shape until the caller invalidates or re-LODs it
     (`TerrainStreamer.Invalidate`); this call only changes what a build starting after it reads. In async mode

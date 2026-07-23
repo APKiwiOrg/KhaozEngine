@@ -14,15 +14,15 @@ namespace KhaozEngine.Tests.Terrain
     // the TerrainStreamer.Dispose() "dispose the sink it owns" path is observable headless (DisposeCount).
     sealed class FakeChunkSink : IChunkSink, IDisposable
     {
-        public readonly List<(ChunkCoord coord, int lod)> Loads = new();
-        public readonly List<(ChunkCoord coord, int lod)> ReLods = new();
+        public readonly List<(ChunkCoord coord, int lod, ChunkRing ring)> Loads = new();
+        public readonly List<(ChunkCoord coord, int lod, ChunkRing ring)> ReLods = new();
         public readonly List<ChunkCoord> Unloads = new();
         // Per-Update op counts (load + relod), reset by the test harness between Updates.
         public int OpsThisFrame;
         public int DisposeCount;
 
-        public object Load(ChunkCoord coord, int lod) { Loads.Add((coord, lod)); OpsThisFrame++; return new Box(coord); }
-        public void ReLod(ChunkCoord coord, object handle, int lod) { ReLods.Add((coord, lod)); OpsThisFrame++; }
+        public object Load(ChunkCoord coord, int lod, ChunkRing ring) { Loads.Add((coord, lod, ring)); OpsThisFrame++; return new Box(coord); }
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring) { ReLods.Add((coord, lod, ring)); OpsThisFrame++; }
         public void Unload(ChunkCoord coord, object handle) { Unloads.Add(coord); }
         public void Dispose() => DisposeCount++;
 
@@ -40,14 +40,14 @@ namespace KhaozEngine.Tests.Terrain
 
         public HandleTrackingSink(Scene3DChunkSink inner) => _inner = inner;
 
-        public object Load(ChunkCoord coord, int lod)
+        public object Load(ChunkCoord coord, int lod, ChunkRing ring)
         {
-            object handle = _inner.Load(coord, lod);
+            object handle = _inner.Load(coord, lod, ring);
             _handles[coord] = handle;
             return handle;
         }
 
-        public void ReLod(ChunkCoord coord, object handle, int lod) => _inner.ReLod(coord, handle, lod);
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring) => _inner.ReLod(coord, handle, lod, ring);
 
         public void Unload(ChunkCoord coord, object handle)
         {
@@ -172,6 +172,102 @@ namespace KhaozEngine.Tests.Terrain
             Pump(s, sink, new Vector3(5 * 60f + 30f, 0f, 30f), 6);   // stand on the target chunk -> LOD 0
             Assert.Equal(0, s.LodOf(target));
             Assert.Contains(sink.ReLods, r => r.coord == target);
+        }
+
+        // --- Decor ring (far/render-only chunks) --------------------------------------------------------------------
+
+        [Fact]
+        public void Decor_ring_loads_render_only_chunks_beyond_the_gameplay_radius()
+        {
+            // Gameplay radius 2, decor radius 5: chunks within 2 are Gameplay, chunks in (2,5] are render-only Decor.
+            var cfg = new StreamerConfig(LoadRadius: 2, UnloadRadius: 7, MaxLoadsPerFrame: 10000, ChunkSize: 60f, DecorRadius: 5);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+
+            Pump(s, sink, new Vector3(30f, 0f, 30f), frames: 3);   // player at center of chunk (0,0)
+
+            // Chunks load out to the OUTER (decor) radius, not just the gameplay radius.
+            Assert.Contains(new ChunkCoord(4, 0), s.Loaded);       // chunk distance 4: inside decor, outside gameplay
+            Assert.Contains(new ChunkCoord(0, 0), s.Loaded);
+
+            foreach (ChunkCoord c in s.Loaded)
+            {
+                int d2 = c.X * c.X + c.Z * c.Z;
+                ChunkRing expected = d2 <= 2 * 2 ? ChunkRing.Gameplay : ChunkRing.Decor;
+                Assert.Equal(expected, s.RingOf(c));
+            }
+            // The far chunk is decor, the origin is gameplay: not a vacuous all-one-ring assertion.
+            Assert.Equal(ChunkRing.Decor, s.RingOf(new ChunkCoord(4, 0)));
+            Assert.Equal(ChunkRing.Gameplay, s.RingOf(new ChunkCoord(0, 0)));
+            // Every recorded load carried the ring the streamer resolved for that chunk.
+            foreach (var l in sink.Loads)
+            {
+                int d2 = (l.coord.X) * (l.coord.X) + (l.coord.Z) * (l.coord.Z);
+                Assert.Equal(d2 <= 4 ? ChunkRing.Gameplay : ChunkRing.Decor, l.ring);
+            }
+        }
+
+        [Fact]
+        public void Decor_chunk_upgrades_to_gameplay_on_approach_and_downgrades_on_retreat()
+        {
+            var cfg = new StreamerConfig(LoadRadius: 2, UnloadRadius: 9, MaxLoadsPerFrame: 10000, ChunkSize: 60f, DecorRadius: 5);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            var target = new ChunkCoord(4, 0);
+
+            // Stand at the origin: target chunk-distance 4 -> render-only Decor.
+            Pump(s, sink, new Vector3(30f, 0f, 30f), 3);
+            Assert.Equal(ChunkRing.Decor, s.RingOf(target));
+
+            // Walk onto the target chunk: distance 0 -> Gameplay. Expect a re-LOD that upgrades its ring.
+            sink.ReLods.Clear();
+            Pump(s, sink, new Vector3(4 * 60f + 30f, 0f, 30f), 4);
+            Assert.Equal(ChunkRing.Gameplay, s.RingOf(target));
+            Assert.Contains(sink.ReLods, r => r.coord == target && r.ring == ChunkRing.Gameplay);
+
+            // Retreat to the origin: target back to Decor via a downgrade re-LOD.
+            sink.ReLods.Clear();
+            Pump(s, sink, new Vector3(30f, 0f, 30f), 4);
+            Assert.Equal(ChunkRing.Decor, s.RingOf(target));
+            Assert.Contains(sink.ReLods, r => r.coord == target && r.ring == ChunkRing.Decor);
+        }
+
+        [Fact]
+        public void Far_chunks_select_the_coarse_far_tiers_across_the_extended_table()
+        {
+            // A big decor radius reaches metre distances that only the default config's far tiers (8, then 4 segments)
+            // cover, so LodOf must track PickLod all the way out - not saturate at the old terminal tier 2.
+            var cfg = new StreamerConfig(LoadRadius: 4, UnloadRadius: 24, MaxLoadsPerFrame: 100000, ChunkSize: 60f, DecorRadius: 20);
+            var sink = new FakeChunkSink();
+            var s = new TerrainStreamer(cfg, sink);
+            var pos = new Vector3(30f, 0f, 30f);
+
+            Pump(s, sink, pos, 3);
+
+            TerrainLodConfig lod = TerrainLodConfig.Default;
+            bool sawTier3 = false, sawTier4 = false;
+            foreach (ChunkCoord c in s.Loaded)
+            {
+                Vector2 center = ChunkGrid.CenterOf(c, 60f);
+                float dist = Vector2.Distance(new Vector2(pos.X, pos.Z), center);
+                int expected = lod.PickLod(dist);
+                Assert.Equal(expected, s.LodOf(c));
+                if (expected == 3) sawTier3 = true;
+                if (expected == 4) sawTier4 = true;
+            }
+            Assert.True(sawTier3, "the 20-chunk decor disk should include tier-3 (8-segment) chunks");
+            Assert.True(sawTier4, "the 20-chunk decor disk should include tier-4 (4-segment) chunks");
+        }
+
+        [Fact]
+        public void Ctor_rejects_a_degenerate_hysteresis_band()
+        {
+            // UnloadRadius must exceed the OUTER load radius (max of gameplay + decor), else oscillation churns.
+            Assert.Throws<ArgumentException>(() =>
+                new TerrainStreamer(new StreamerConfig(LoadRadius: 4, UnloadRadius: 4, MaxLoadsPerFrame: 3, ChunkSize: 60f), new FakeChunkSink()));
+            // A decor radius past the unload radius is the same failure.
+            Assert.Throws<ArgumentException>(() =>
+                new TerrainStreamer(new StreamerConfig(LoadRadius: 4, UnloadRadius: 6, MaxLoadsPerFrame: 3, ChunkSize: 60f, DecorRadius: 6), new FakeChunkSink()));
         }
 
         [Fact]

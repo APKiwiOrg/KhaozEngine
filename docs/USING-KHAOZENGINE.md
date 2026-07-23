@@ -4283,7 +4283,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.15.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.16.0" />
 ```
 
 ```csharp
@@ -4584,13 +4584,14 @@ streamer.Update(playerPos, dt);   // request builds (off-thread) / unload (hyste
 sink.Draw(playerPos);             // draws every loaded chunk + its in-range props
 ```
 
-`Update(playerPos, dt)` each frame: (1) **requests** builds for chunks inside `LoadRadius` (Euclidean
+`Update(playerPos, dt)` each frame: (1) **requests** builds for chunks inside the outer load radius (Euclidean
 chunk-distance) that are not yet loaded, (2) **unloads** chunks past `UnloadRadius` immediately, (3) **re-LODs**
-loaded chunks whose `TerrainLod.PickLod(distance-to-chunk-center)` tier changed (the chunk is rebuilt at the new
-resolution), and (4) **applies** the completed builds nearest-first, at most `MaxLoadsPerFrame` per update.
-`UnloadRadius > LoadRadius` is a **hysteresis band** that stops churn when the player oscillates across a chunk
-boundary. `StreamerConfig.Default` is LoadRadius 4 (~240 m view) / UnloadRadius 6 / MaxLoadsPerFrame 3 / 60 m
-chunks.
+loaded chunks whose LOD tier (from `PickLod(distance-to-chunk-center)`) OR residency ring changed (the chunk is
+rebuilt at the new resolution / ring), and (4) **applies** the completed builds nearest-first, at most
+`MaxLoadsPerFrame` per update. `UnloadRadius` greater than the outer load radius is a **hysteresis band** that
+stops churn when the player oscillates across a chunk boundary. `StreamerConfig.Default` is LoadRadius 4
+(~240 m gameplay disk) / UnloadRadius 6 / MaxLoadsPerFrame 3 / 60 m chunks, with no decor ring (see the far
+field below to opt into one).
 
 **Async build (default).** With `StreamerConfig.Async` set (the default) and an `IAsyncChunkSink` sink (the
 production `Scene3DChunkSink` is one), each chunk's CPU mesh build runs on a **background thread** and only the
@@ -4619,6 +4620,48 @@ implement `IChunkSink` (or `IAsyncChunkSink` for background build) yourself and 
 background-build machinery is reusable on its own: **`ChunkBuildScheduler<T>`** (the GPU-free generation-token
 core) over an **`IChunkBuildDispatcher`** (`TaskChunkBuildDispatcher` = the thread pool). Multi-cell server
 sharding is a separate sub-project.
+
+### Far field: data-driven LOD tiers, the decor ring, and collision LOD
+
+The LOD tiers are data-driven through **`TerrainLodConfig`** (an ordered list of `TerrainLodTier(Resolution,
+MaxDistance)`, validated: strictly descending resolutions, strictly ascending distances, the coarsest tier at
+`float.PositiveInfinity`). `TerrainLodConfig.Default` reproduces the legacy 64/32/16 tiers at 80 m/200 m
+byte-for-byte and adds coarser 8- and 4-segment far tiers, so a chunk at 2 km costs a few hundred triangles
+instead of the mid tier's few thousand. Wire the SAME config to both the streamer (`StreamerConfig.LodConfig`)
+and the sink (`Scene3DChunkSink`'s `lodConfig`), or a tier index means a different resolution on each side.
+Both default to `TerrainLodConfig.Default`, so the default wiring aligns for free; `TerrainLod.PickLod` /
+`ResolutionFor` are a thin facade over the default config for callers that never customize it.
+
+To render a real horizon, give the streamer a **decor radius** past the gameplay radius:
+
+```csharp
+var lod = TerrainLodConfig.Default;                      // or your own tier table
+var cfg = StreamerConfig.Default with
+{
+    DecorRadius = 20,                                     // load render-only terrain out to ~1.2 km
+    UnloadRadius = 22,                                    // must exceed the OUTER (decor) radius
+    LodConfig = lod,
+};
+var sink = new Scene3DChunkSink(scene, field, layers, chunkSize,
+                                lodConfig: lod, collideTerrain: true, collisionLod: 0);
+var streamer = new TerrainStreamer(cfg, sink);
+```
+
+`LoadRadius` is now the **gameplay radius**: chunks within it are full `ChunkRing.Gameplay` chunks (scatter +
+prop colliders + optional terrain collision). Chunks between `LoadRadius` and `DecorRadius` are render-only
+`ChunkRing.Decor` chunks - the streamer loads out to the larger of the two, but the sink skips scatter,
+colliders, dynamics, and terrain collision for a decor chunk (it is scenery the simulation never touches), so
+seeing the far field costs the coarse terrain mesh only. A decor chunk **upgrades** to gameplay on approach
+(gaining scatter + colliders) and **downgrades** on retreat, through the same re-LOD path a tier change uses.
+`DecorRadius` defaults to 0 (no decor ring - every loaded chunk is gameplay, the pre-14.16 behaviour), and
+`StreamerConfig.Default` leaves it there, so nothing changes until you opt in. `TerrainStreamer.RingOf(coord)`
+reports a loaded chunk's ring.
+
+**Collision LOD is decoupled from render LOD.** With `collideTerrain` on, the terrain surface collider is
+registered at a FIXED tier (`collisionLod`, default 0 = the densest, matching the old near-chunk resolution),
+independent of the render tier, so a render re-LOD never rebuilds the physics triangle-mesh body. Prop static
+bodies are likewise kept across a pure tier re-LOD (placements are LOD-independent); both rebuild only on load,
+unload, a ring change, or an editor `Invalidate` (field swap).
 
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
 walking already frees each chunk as it leaves the ring, but if you tear streaming down and rebuild it while the

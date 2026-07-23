@@ -5,6 +5,49 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.16.0
+
+Feature: terrain streaming grows a real far field (L1 of the LOD/HLOD arc, #276): the LOD tiers become
+data-driven with coarser far tiers, a decor ring renders distant chunks mesh-only (no scatter or physics),
+and terrain collision registers at one fixed resolution so a render re-LOD no longer rebuilds the physics
+body. This alone gives a continent-scale horizon and retires a consumer's full-island-residency bridge.
+Design: `docs/design/LOD-HLOD-DESIGN.md`.
+
+- **`TerrainLodConfig` + `TerrainLodTier` (KhaozEngine.Terrain.Render3D), data-driven LOD tiers.** An
+  ordered list of `(Resolution, MaxDistance)` tiers, validated (strictly descending resolutions, strictly
+  ascending distances, at least one tier, the coarsest reaching `float.PositiveInfinity`). `PickLod(distance)`
+  picks a tier index, `ResolutionFor(lod)` its grid resolution. `TerrainLod` is now a thin facade over
+  `TerrainLodConfig.Default`, which reproduces the legacy 64/32/16 tiers at 80 m/200 m **byte-for-byte** (the
+  near-tier meshes are unchanged, proven in `TerrainLodConfigTests`) and adds coarser 8-segment (to 500 m,
+  then 1000 m) and 4-segment (beyond) far tiers, so a chunk at 2 km costs a few hundred triangles instead of
+  the mid tier's few thousand. `TerrainChunkBuilder.Build` gains an overload taking the config; the old
+  overload delegates to the default. The unused `TerrainLod.TierCount` constant is now a property and the
+  private resolution table was removed (the facade holds no state).
+
+- **`ChunkRing` (Gameplay/Decor) + `StreamerConfig.DecorRadius`, the decor ring.** `StreamerConfig` gains a
+  `DecorRadius` (chunk units, default 0 = off) and a `LodConfig`. `LoadRadius` is now the GAMEPLAY radius;
+  chunks between it and `DecorRadius` load as render-only `Decor` chunks - the streamer loads out to the
+  larger of the two and `UnloadRadius` must exceed it (enforced in the streamer ctor). The sink skips scatter,
+  prop colliders, dynamics, and terrain collision for a decor chunk (it is scenery the simulation never
+  touches), so seeing the far field costs the coarse terrain mesh only. A decor chunk upgrades to gameplay on
+  approach (gaining scatter + colliders) and downgrades on retreat, through the same re-LOD path a tier change
+  uses. `TerrainStreamer.RingOf(coord)` reports a loaded chunk's ring.
+
+- **Collision LOD decoupled from render LOD.** With `collideTerrain` on, `Scene3DChunkSink` registers the
+  terrain surface collider at a FIXED tier (`collisionLod`, default 0 = the densest, matching the old
+  near-chunk resolution) built off-thread, independent of the render tier - a render re-LOD no longer tears
+  down and rebuilds the triangle-mesh body. The flagged prop-collider churn is fixed too: a pure tier re-LOD
+  keeps the existing prop static bodies (placements are LOD-independent) instead of removing and re-adding
+  them every tier crossing. Both are rebuilt only on load, unload, ring change, or an editor invalidate
+  (field swap).
+
+- **Sink interface carries the ring (seam change).** `IChunkSink.Load`/`ReLod` and
+  `IAsyncChunkSink.BuildCpu`/`Apply`, plus `ChunkBuildScheduler`'s build func and `ChunkBuild<T>`, now carry
+  the `ChunkRing`. The production `Scene3DChunkSink` methods default the ring to `Gameplay`, so direct callers
+  (and the pre-decor-ring wiring) are unaffected; only a custom `IChunkSink`/`IAsyncChunkSink` implementor
+  must add the parameter. `StreamerConfig.Default` keeps `DecorRadius = 0`, so the map editor, the showcase,
+  and any Default consumer stream exactly as before until they opt into a decor radius.
+
 ## 14.15.0
 
 Feature: `ke-mapedit` gains the `sculpt_*` MCP verbs (apply, flatten a region, clear tiles, and read tile

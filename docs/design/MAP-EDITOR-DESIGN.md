@@ -116,8 +116,9 @@ is the canonical, current field-by-field description):
   hand-coded `TownBuilding` pattern. Also the output of the bake-region tool.
 - **Spawns**: NPC spawn markers (archetype id, position, enabled, tags).
 - **Regions**: named shapes with tags, interpreted by the game.
-- **TerrainOverrides**: reserved. Schema-defined, rejected if present in v1. Future home of
-  the sculpt delta layer.
+- **TerrainOverrides**: the sculpt delta layer (map format v2, shipped in 14.13.0 as sculpt T1).
+  Sparse 32x32 height-delta tiles composited inside `TerrainField`; code/MCP-authorable now, editor
+  brushes are T2. See `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 
 Ground snapping happens deterministically against the generated field at load time, so both
 heads agree by construction (one loader, one field).
@@ -240,7 +241,8 @@ READMEs, USING-KHAOZENGINE, DEPENDENCY-SEAMS, CHANGELOG).
 
 ## Explicit non-goals (v1)
 
-- Terrain sculpting and heightmap painting (format-reserved, not implemented).
+- Terrain sculpting brushes and heightmap painting in the editor (the `terrainOverrides` format layer
+  shipped in 14.13.0, but the editor brush surface is a later phase, not v1).
 - Live editing of a running server, and live document reload.
 - Multi-user editing, editor collaboration.
 - Asset import/bake tooling changes (ke-propbake and the Blender scripts are unchanged).
@@ -397,6 +399,6 @@ generation for the same document. Generation order is fixed (every scatter layer
 every companion layer in document order), so two freezes of the same document produce byte-identical
 placement lists, order included.
 
-- **Program phases**: Sculpting via the reserved `terrainOverrides` delta layer. Live
-  server editing and hot reload. Multi-user editing. Polygon click-path authoring gesture
-  for exclusions and regions.
+- **Program phases**: Sculpting brushes over the `terrainOverrides` delta layer (the format + field
+  composition shipped in 14.13.0 as T1; editor brushes are T2). Live server editing and hot reload.
+  Multi-user editing. Polygon click-path authoring gesture for exclusions and regions.

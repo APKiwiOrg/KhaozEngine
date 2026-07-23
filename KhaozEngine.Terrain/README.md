@@ -7,9 +7,18 @@ up regardless of load order. Plain `float` math throughout.
 
 ## Types
 
-- **`TerrainField`** - `SampleHeight` folds three layers in order: biome-band shaping (smoothstep
-  blended), base coordinate-hash fractal noise, then an ordered feature list. Also `SampleNormal`
-  (central finite difference), `SampleBiome` (dominant band), and `WaterLevel`.
+- **`TerrainField`** - `SampleHeight` folds the analytic layers in order (biome-band shaping, smoothstep
+  blended, base coordinate-hash fractal noise, then an ordered feature list), then adds the authored
+  sculpt delta when a `TerrainSculpt` is attached. Also `SampleNormal` (central finite difference over
+  the composited height, at the sculpt cell size when sculpted), `SampleBiome` (dominant band), and
+  `WaterLevel`. The `TerrainField(TerrainConfig, TerrainSculpt?)` constructor takes the sculpt layer; a
+  null or empty one keeps the exact pure-analytic fast path.
+- **`TerrainSculpt`** (+ **`TerrainSculptTile`**) - runtime composition of hand-authored height deltas
+  over the analytic base: a sparse map of 32x32 (`TerrainSculpt.TileSize`) delta tiles at a fixed cell
+  size. `SampleDelta(x, z)` bilinearly interpolates the authored deltas between cell centers and returns
+  0 outside every stored tile. Read-only and deterministic, so composited terrain stays stateless.
+  Documents author the tiles as the `terrainOverrides` block (`KhaozEngine.MapDoc`), and
+  `MapRuntime.BuildField` builds and attaches this.
 - **`TerrainConfig`** / **`BiomeBand`** / **`BiomeId`** - authoring inputs. Defaults give a single
   gentle meadow band, supply `Biomes` (designed regions along world Z) and `Features` for more.
 - **`TerrainNoise`** - stateless coordinate-hash noise (`Hash2`, `ValueNoise`, `Fbm`, `Turbulence`,

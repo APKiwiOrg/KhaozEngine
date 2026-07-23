@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc;
 
@@ -20,8 +21,8 @@ public static class MapDocumentValidator
             errors.Add("id must be non-empty.");
         if (!(doc.Bounds.MaxX > doc.Bounds.MinX) || !(doc.Bounds.MaxZ > doc.Bounds.MinZ))
             errors.Add("bounds must satisfy MaxX > MinX and MaxZ > MinZ.");
-        if (doc.TerrainOverrides is not null)
-            errors.Add("terrainOverrides is reserved for a future format version and must be absent or null.");
+        if (doc.TerrainOverrides is { } overrides)
+            ValidateOverrides(overrides, doc.Bounds, errors);
 
         var layerNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapScatterLayer layer in doc.ScatterLayers)
@@ -105,6 +106,28 @@ public static class MapDocumentValidator
         }
 
         return errors;
+    }
+
+    /// <summary>The sculpt layer's cell size must be positive, and every stored tile's world extent (its
+    /// cell centers) must lie within the document bounds. This is what makes the writer refuse an
+    /// out-of-bounds tile: <see cref="MapDocumentFile.Save"/> validates before writing.</summary>
+    static void ValidateOverrides(MapTerrainOverrides overrides, MapBounds bounds, List<string> errors)
+    {
+        if (!(overrides.CellSize > 0f))
+        {
+            errors.Add("terrainOverrides.cellSize must be positive.");
+            return;
+        }
+        const int last = TerrainSculpt.TileSize - 1;
+        foreach (MapSculptTile tile in overrides.Tiles)
+        {
+            float minX = tile.TileX * TerrainSculpt.TileSize * overrides.CellSize;
+            float minZ = tile.TileZ * TerrainSculpt.TileSize * overrides.CellSize;
+            float maxX = (tile.TileX * TerrainSculpt.TileSize + last) * overrides.CellSize;
+            float maxZ = (tile.TileZ * TerrainSculpt.TileSize + last) * overrides.CellSize;
+            if (minX < bounds.MinX || maxX > bounds.MaxX || minZ < bounds.MinZ || maxZ > bounds.MaxZ)
+                errors.Add($"terrainOverrides tile ({tile.TileX}, {tile.TileZ}) extent [{minX}..{maxX}] x [{minZ}..{maxZ}] leaves the document bounds.");
+        }
     }
 
     static void CheckLayerRefs(List<string>? layers, HashSet<string> known, string where, List<string> errors)

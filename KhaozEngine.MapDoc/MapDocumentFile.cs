@@ -17,6 +17,14 @@ public sealed class MapDocumentLoadOptions
 
     internal readonly SortedDictionary<int, Func<JsonObject, JsonObject>> Migrations = new();
 
+    /// <summary>Creates load options with the built-in format migrations pre-registered, so an on-disk
+    /// document at any prior format version loads without the caller wiring the engine's own steps. A game
+    /// may still register additional steps (for its own synthetic older versions) on top.</summary>
+    public MapDocumentLoadOptions()
+    {
+        RegisterMigration(1, MigrateV1ToV2);
+    }
+
     /// <summary>Registers the transform from <paramref name="fromVersion"/> to fromVersion + 1. The step does
     /// only the data change; the loader stamps formatVersion afterwards.</summary>
     /// <exception cref="ArgumentException">A step from this version is already registered.</exception>
@@ -27,6 +35,16 @@ public sealed class MapDocumentLoadOptions
             throw new ArgumentException($"A migration from formatVersion {fromVersion} is already registered.", nameof(fromVersion));
         Migrations.Add(fromVersion, step);
     }
+
+    /// <summary>v1 -> v2: v1 documents carried no sculpt layer (terrainOverrides was reserved and had to be
+    /// absent or null), so a migrated v1 document simply has no overrides. Drop any placeholder null key so
+    /// it deserializes as no sculpt layer and the terrain stays byte-identical to the analytic field.</summary>
+    static JsonObject MigrateV1ToV2(JsonObject root)
+    {
+        if (root["terrainOverrides"] is null)
+            root.Remove("terrainOverrides");
+        return root;
+    }
 }
 
 /// <summary>Load/save for zone map documents. Loading parses (JSONC-tolerant), migrates old format versions,
@@ -34,8 +52,10 @@ public sealed class MapDocumentLoadOptions
 /// map documents are dev-authored content, so a bad document fails a boot loudly instead of being quarantined.</summary>
 public static class MapDocumentFile
 {
-    /// <summary>The format version this engine build reads and writes.</summary>
-    public const int CurrentFormatVersion = 1;
+    /// <summary>The format version this engine build reads and writes. v2 added the
+    /// <see cref="MapDocument.TerrainOverrides"/> sculpt/delta layer; v1 documents migrate to it with an
+    /// empty layer (byte-identical terrain).</summary>
+    public const int CurrentFormatVersion = 2;
 
     public static MapDocument Load(string path, MapDocumentLoadOptions? options = null)
     {

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json.Nodes;
 using KhaozEngine.Content;
 using KhaozEngine.MapDoc;
 using Xunit;
@@ -164,7 +163,7 @@ namespace KhaozEngine.Tests.MapDoc
         [Fact]
         public void LoadText_TooNewVersion_Throws()
         {
-            string json = MapDocumentFile.SaveText(SampleDoc()).Replace("\"formatVersion\": 1", "\"formatVersion\": 99");
+            string json = MapDocumentFile.SaveText(SampleDoc()).Replace("\"formatVersion\": 2", "\"formatVersion\": 99");
             var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(json));
             Assert.Contains("99", ex.Message);
         }
@@ -172,16 +171,18 @@ namespace KhaozEngine.Tests.MapDoc
         [Fact]
         public void LoadText_OldVersionWithoutMigration_Throws()
         {
-            string json = MapDocumentFile.SaveText(SampleDoc()).Replace("\"formatVersion\": 1", "\"formatVersion\": 0");
+            // formatVersion 0 has no registered migration path (the built-in steps start at 1 -> 2).
+            string json = MapDocumentFile.SaveText(SampleDoc()).Replace("\"formatVersion\": 2", "\"formatVersion\": 0");
             Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(json));
         }
 
         [Fact]
         public void LoadText_RegisteredMigration_Runs()
         {
-            // Synthetic v0: displayName lived under "name". The migration renames it.
+            // Synthetic v0: displayName lived under "name". The custom 0 -> 1 step renames it, then the
+            // built-in 1 -> 2 step runs, so a v0 document climbs the whole chain to the current version.
             string json = MapDocumentFile.SaveText(SampleDoc())
-                .Replace("\"formatVersion\": 1", "\"formatVersion\": 0")
+                .Replace("\"formatVersion\": 2", "\"formatVersion\": 0")
                 .Replace("\"displayName\": \"Test Zone\"", "\"name\": \"Test Zone\"");
             var options = new MapDocumentLoadOptions();
             options.RegisterMigration(0, root =>
@@ -205,9 +206,6 @@ namespace KhaozEngine.Tests.MapDoc
 
             var badBounds = SampleDoc(); badBounds.Bounds.MaxX = badBounds.Bounds.MinX;
             Assert.Contains(MapDocumentValidator.Validate(badBounds, registry), e => e.Contains("bounds"));
-
-            var reserved = SampleDoc(); reserved.TerrainOverrides = new JsonObject();
-            Assert.Contains(MapDocumentValidator.Validate(reserved, registry), e => e.Contains("terrainOverrides"));
 
             var dupPlacement = SampleDoc();
             dupPlacement.Placements.Add(new MapPlacement { Id = "inn", Kind = "building_inn", X = 0f, Z = 0f });

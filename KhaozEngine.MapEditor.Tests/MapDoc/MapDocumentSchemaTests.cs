@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.MapDoc
         public void WrongTypes_FailSchema()
         {
             string json = MapDocumentFile.SaveText(MapDocumentFileTests.SampleDoc())
-                .Replace("\"formatVersion\": 1", "\"formatVersion\": \"one\"");
+                .Replace("\"formatVersion\": 2", "\"formatVersion\": \"one\"");
             ValidationReport report = JsonSchemaValidator.Validate(json, MapDocumentSchema.GetJson());
             Assert.False(report.IsValid);
         }

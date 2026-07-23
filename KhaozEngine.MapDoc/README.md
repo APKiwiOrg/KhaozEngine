@@ -43,8 +43,15 @@ A map document (`MapDocument`) has:
   which start a game uses at runtime is game code's concern. Games read `doc.PlayerSpawns` directly, the
   same way they read `spawns` (no `MapRuntime` builder).
 - **`regions`** - named, tagged shapes for quest areas, safe zones, triggers, interpreted by the game.
-- **`terrainOverrides`** - reserved for a future sculpt/delta layer. Must be absent or null in format
-  version 1, the validator rejects anything else, so sculpting lands later as a version bump, not a break.
+- **`terrainOverrides`** (`MapTerrainOverrides`, format v2) - the terrain sculpt/delta layer: a sparse map
+  of 32x32 delta tiles (`MapSculptTile`) at a document-chosen sculpt cell size (the block header, default
+  0.5 m), only touched tiles stored. Deltas are float meters added to the analytic height, bilinearly
+  sampled between cell centers at runtime. `MapRuntime.BuildField` folds them into the `TerrainField`, so
+  every terrain consumer inherits authored terrain with no signature change. Absent or null means no
+  sculpting (byte-identical to the analytic field). The type has a code-level authoring API (`SetDelta` /
+  `AddDelta` / `GetDelta` at a global cell, `TileCount`, `IsEmpty`, `TryGetTile`, ordered `Tiles`), and
+  the validating writer refuses a tile whose extent leaves the document bounds. See the sculpt section
+  below.
 
 ## Schema
 
@@ -67,7 +74,7 @@ A small, complete `valley.map.json`:
 ```json
 {
   "$schema": "./mapdoc.schema.json",
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "valley",
   "displayName": "The Valley",
   "bounds": { "minX": -120, "minZ": -120, "maxX": 120, "maxZ": 120 },
@@ -153,16 +160,46 @@ instead of silently dropping it.
 `MapDocRegistry.FeatureTypes` enumerates the registered discriminators in registration order (the default
 registry yields `lake`, `flatten`, `ridge`, `rim`), so a tool can list the feature types it can place.
 
-## Format versioning
+## Terrain sculpt layer (`terrainOverrides`)
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes. Loading a
-document with an older `formatVersion` runs registered migrations
-(`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
-until it reaches the current version. A document newer than the engine, or an old one with no registered
-migration path, fails to load. Saving always writes the current version.
+`MapTerrainOverrides` is the authored sculpt/delta layer (format v2): a sparse map of
+`TerrainSculpt.TileSize` (32) square delta tiles at a chosen sculpt cell size, folded into the analytic
+terrain by `MapRuntime.BuildField`. It is the code/MCP authoring surface (the editor brushes and
+`sculpt_*` verbs land later); author cells by global cell coordinate, save/load round-trips deterministic
+tile order:
 
 ```csharp
-var options = new MapDocumentLoadOptions();
+var doc = MapDocumentFile.Load("assets/maps/valley.map.json");
+doc.TerrainOverrides ??= new MapTerrainOverrides(cellSize: 0.5f);   // header cell size, default 0.5 m
+doc.TerrainOverrides.SetDelta(cellX: 12, cellZ: -4, delta: 2.5f);   // raise cell (12,-4) by 2.5 m
+doc.TerrainOverrides.AddDelta(cellX: 13, cellZ: -4, delta: -1f);    // add a lower delta next to it
+float d = doc.TerrainOverrides.GetDelta(12, -4);                    // 2.5, or 0 where no tile covers
+MapDocumentFile.Save(doc, "assets/maps/valley.map.json");           // refuses a tile that leaves bounds
+
+var field = MapRuntime.BuildField(doc, MapDocRegistry.CreateDefault());
+float h = field.SampleHeight(6f, -2f);   // analytic height + the bilinear sculpt delta
+```
+
+A global cell `(cellX, cellZ)` has its center at world `(cellX * cellSize, cellZ * cellSize)`; deltas are
+meters, bilinearly interpolated between cell centers so sculpts stay smooth at any query resolution. Only
+touched tiles are stored, and an absent or empty block leaves terrain byte-identical to the analytic field
+(the field keeps its pure-analytic fast path). `TileCount`, `IsEmpty`, `TryGetTile`, and the ordered
+`Tiles` snapshot round out the read side. The composition itself lives in `KhaozEngine.Terrain`
+(`TerrainSculpt`); see `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
+
+## Format versioning
+
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 2,
+which added `terrainOverrides`). Loading a document with an older `formatVersion` runs migrations
+(`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
+until it reaches the current version. The engine's own steps are pre-registered by the
+`MapDocumentLoadOptions` constructor: v1 -> v2 loads a v1 document (which had no sculpt layer) with an
+empty layer and byte-identical terrain. A document newer than the engine, or an old one with no migration
+path, fails to load. Saving always writes the current version. A game can register additional steps for
+its own synthetic older versions:
+
+```csharp
+var options = new MapDocumentLoadOptions();   // built-in 1 -> 2 already registered
 options.RegisterMigration(0, root =>
 {
     root["displayName"] = root["name"]?.GetValue<string>();   // v0 called it "name"
@@ -177,9 +214,9 @@ var doc = MapDocumentFile.Load(path, options);
 Map documents are dev-authored content, not runtime state: `MapDocumentFile.Load`/`Save` throw
 `MapDocumentException` on a read error, invalid JSON, a missing or out-of-range `formatVersion`, a
 deserialization error, or any semantic validation failure (`MapDocumentValidator`, for example a duplicate
-id, an unknown scatter layer reference, or `terrainOverrides` present). A game boots against a bad
-document and fails loudly with a precise error rather than quarantining it and limping on, the opposite of
-the quarantine handling runtime cell blobs get.
+id, an unknown scatter layer reference, or a `terrainOverrides` tile that leaves the document bounds). A
+game boots against a bad document and fails loudly with a precise error rather than quarantining it and
+limping on, the opposite of the quarantine handling runtime cell blobs get.
 
 Depends on `KhaozEngine.Primitives`, `KhaozEngine.Serialization`, `KhaozEngine.Content`, and
 `KhaozEngine.Terrain`. GPU-free. In the `Foundation` umbrella. The GUI editor (`KhaozEngine.MapEditor`)

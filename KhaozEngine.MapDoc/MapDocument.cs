@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using KhaozEngine.Terrain;
 
@@ -28,9 +27,11 @@ public sealed class MapDocument
     public List<MapPlayerSpawn> PlayerSpawns { get; set; } = new();
     public List<MapRegion> Regions { get; set; } = new();
 
-    /// <summary>Reserved for the future sculpt/delta layer. Must be absent or null in format version 1
-    /// (the validator rejects anything else), so sculpting lands later as a version bump, not a break.</summary>
-    public JsonNode? TerrainOverrides { get; set; }
+    /// <summary>The authored terrain sculpt/delta layer (format version 2). Null or absent means no
+    /// sculpting, so the terrain is the pure analytic field; a present block adds hand-authored height
+    /// deltas that <see cref="MapRuntime.BuildField"/> folds into the <see cref="TerrainField"/>. The
+    /// validating writer refuses tiles whose extent leaves <see cref="Bounds"/>.</summary>
+    public MapTerrainOverrides? TerrainOverrides { get; set; }
 }
 
 /// <summary>The zone's XZ extent.</summary>

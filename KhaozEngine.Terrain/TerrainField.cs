@@ -4,22 +4,31 @@ using System.Numerics;
 namespace KhaozEngine.Terrain
 {
     /// <summary>
-    /// The analytic terrain height field: the single source of truth for ground height. SampleHeight folds
-    /// three layers in order - biome shape (designed regions, smoothstep-blended), base coordinate-hash noise,
-    /// then an ordered feature list (lakes/ridges/flatten). Stateless: the height at (x,z) depends only on
-    /// (x,z,seed), so server and client agree and streamed chunks line up regardless of load order.
+    /// The terrain height field: the single source of truth for ground height. SampleHeight folds the
+    /// analytic layers in order - biome shape (designed regions, smoothstep-blended), base coordinate-hash
+    /// noise, then an ordered feature list (lakes/ridges/flatten) - and then adds the authored sculpt delta
+    /// when a non-empty <see cref="TerrainSculpt"/> is attached. Stateless: the height at (x,z) depends only
+    /// on (x,z,seed) and the sculpt data, so server and client agree and streamed chunks line up regardless
+    /// of load order.
     /// </summary>
     public sealed class TerrainField
     {
         readonly TerrainConfig _cfg;
         readonly BiomeBand[] _bands;
+        readonly TerrainSculpt? _sculpt;
 
-        public TerrainField(TerrainConfig config)
+        public TerrainField(TerrainConfig config) : this(config, null) { }
+
+        /// <summary>Builds the field over an optional authored sculpt layer. A null or empty
+        /// <paramref name="sculpt"/> keeps the pure-analytic fast path (heights and normals identical to the
+        /// no-sculpt field), so unsculpted zones pay nothing.</summary>
+        public TerrainField(TerrainConfig config, TerrainSculpt? sculpt)
         {
             _cfg = config ?? throw new ArgumentNullException(nameof(config));
             _bands = (config.Biomes is { Length: > 0 })
                 ? config.Biomes
                 : new[] { new BiomeBand { Start = float.NegativeInfinity, End = float.PositiveInfinity, Biome = BiomeId.Meadow, BaseHeight = 0f, HillAmplitude = 0f } };
+            _sculpt = sculpt is { IsEmpty: false } ? sculpt : null;
         }
 
         public float WaterLevel => _cfg.WaterLevel;
@@ -47,7 +56,8 @@ namespace KhaozEngine.Terrain
         }
 
         /// <summary>The one source of truth for ground height at a world point. Folds biome shape, base
-        /// coordinate-hash noise, then each feature in order. Stateless in (x,z,seed).</summary>
+        /// coordinate-hash noise, then each feature in order, then adds the authored sculpt delta when a
+        /// sculpt layer is attached. Stateless in (x,z,seed) and the sculpt data.</summary>
         public float SampleHeight(float x, float z)
         {
             var shape = ShapeAt(z);
@@ -59,13 +69,18 @@ namespace KhaozEngine.Terrain
             if (feats != null)
                 for (int i = 0; i < feats.Length; i++)
                     h = feats[i].Apply(x, z, h);
+
+            if (_sculpt != null)
+                h += _sculpt.SampleDelta(x, z);
             return h;
         }
 
-        /// <summary>Surface normal via central finite difference (eps = 1 m). Flat ground returns +Y.</summary>
+        /// <summary>Surface normal via central finite difference over the composited height. The step is 1 m
+        /// on the analytic fast path (no sculpt), and the sculpt cell size when a sculpt layer is attached, so
+        /// slope gates read the sculpted surface rather than the analytic one. Flat ground returns +Y.</summary>
         public Vector3 SampleNormal(float x, float z)
         {
-            const float eps = 1f;
+            float eps = _sculpt is null ? 1f : _sculpt.CellSize;
             float hxp = SampleHeight(x + eps, z), hxm = SampleHeight(x - eps, z);
             float hzp = SampleHeight(x, z + eps), hzm = SampleHeight(x, z - eps);
             var n = new Vector3(-(hxp - hxm) / (2f * eps), 1f, -(hzp - hzm) / (2f * eps));

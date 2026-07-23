@@ -5,6 +5,38 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.13.0
+
+Feature: map document format v2 adds the `terrainOverrides` terrain sculpt layer, authored height deltas composited inside `TerrainField` (T1 of the sculpt program, #271).
+
+- **Format v2 `terrainOverrides` (KhaozEngine.MapDoc).** The previously-reserved
+  `MapDocument.TerrainOverrides` becomes a real sculpt/delta layer: a sparse map of 32x32 delta tiles
+  (`MapTerrainOverrides` / `MapSculptTile`) at a document-chosen sculpt cell size (the block header,
+  default 0.5 m). Only touched tiles are stored, deltas are float meters added to the analytic height.
+  `MapDocumentFile.CurrentFormatVersion` is now `2`. A v1 document (which required `terrainOverrides`
+  absent or null) migrates to v2 with an empty layer and byte-identical terrain via a built-in
+  `MapDocumentLoadOptions` migration (1 -> 2), so no consumer has to wire it up. The type has a
+  code-level authoring API (`SetDelta` / `AddDelta` / `GetDelta` at a global cell, `TileCount`,
+  `IsEmpty`, `TryGetTile`, ordered `Tiles`) sufficient for tests and future tools, and serializes as
+  `{ cellSize, tiles: [ { tileX, tileZ, deltas[1024] } ] }` in deterministic tile order.
+- **Composition inside `TerrainField` (KhaozEngine.Terrain).** A new `TerrainSculpt` (built from a cell
+  size and `TerrainSculptTile` blocks) bilinearly interpolates authored deltas between cell centers,
+  returning 0 outside every stored tile. The new `TerrainField(TerrainConfig, TerrainSculpt?)`
+  constructor folds it in: `SampleHeight` adds the bilinear delta, and `SampleNormal` recomputes the
+  normal by central differences over the composited height at the sculpt cell size when a sculpt is
+  attached (so slope gates read the sculpted surface). When the layer is absent or empty, the field
+  keeps its exact pure-analytic fast path (heights AND normals byte-identical to the no-sculpt field),
+  so unsculpted zones pay nothing. Every existing terrain consumer (chunk streamer, physics mesh, nav
+  bakes, ground-snap, editor viewport) inherits authored terrain with no signature change.
+- **Wiring and validation.** `MapRuntime.BuildField` attaches the runtime sculpt built from the
+  document's override block (and exposes `MapRuntime.BuildSculpt` for callers building fields directly).
+  `MapDocumentValidator` and the embedded `mapdoc.schema.json` gained the block, and the validating
+  writer refuses a tile whose world extent leaves the document bounds. Composition is pure data over a
+  pure function, so the same document loaded twice yields identical heights.
+- Ships with no editor surface: the layer is MCP- and code-authorable only in T1. Editor brushes (T2)
+  and the `sculpt_*` MCP verbs plus Ruinborne adoption (T3) follow. See
+  `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
+
 ## 14.12.1
 
 Fix: `PhysicsColumnProbe.Sample` no longer stacks phantom surfaces when its vertical sweep passes through a solid convex static (#273).

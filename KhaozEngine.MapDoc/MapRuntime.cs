@@ -57,9 +57,26 @@ public static class MapRuntime
         };
     }
 
-    /// <summary>Builds the terrain field for the document.</summary>
+    /// <summary>Builds the terrain field for the document, folding in the authored sculpt layer
+    /// (<see cref="MapDocument.TerrainOverrides"/>) when the document has one. With no overrides the field
+    /// takes its pure-analytic fast path, so every current terrain consumer inherits authored terrain with
+    /// no signature change.</summary>
     public static TerrainField BuildField(MapDocument doc, MapDocRegistry registry)
-        => new(BuildTerrainConfig(doc, registry));
+    {
+        TerrainConfig config = BuildTerrainConfig(doc, registry);
+        return new TerrainField(config, BuildSculpt(doc.TerrainOverrides));
+    }
+
+    /// <summary>The runtime sculpt layer for the document's override block, or null when there is no
+    /// sculpting (an absent or empty block), so the field keeps its analytic fast path.</summary>
+    public static TerrainSculpt? BuildSculpt(MapTerrainOverrides? overrides)
+    {
+        if (overrides is null || overrides.IsEmpty) return null;
+        var tiles = new List<TerrainSculptTile>(overrides.TileCount);
+        foreach (MapSculptTile tile in overrides.Tiles)
+            tiles.Add(new TerrainSculptTile(tile.TileX, tile.TileZ, tile.Deltas));
+        return new TerrainSculpt(overrides.CellSize, tiles);
+    }
 
     /// <summary>One scatter layer as an engine <see cref="ScatterConfig"/>. The legacy clearing disc is zeroed
     /// (documents author clearings as exclusion shapes), and only the exclusions/overrides whose layer filter

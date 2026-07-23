@@ -3494,6 +3494,43 @@ tileable PBR layers, triplanar); without one the weights are blended into a heig
 (`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. For water, see
 `Scene3D.DrawWater` and `PixelPostProcessSettings.Water` in the Render3D section above.
 
+### Authored sculpt layer (`TerrainSculpt` / map format v2 `terrainOverrides`)
+
+The analytic field shapes topology parametrically (seed, biome bands, lake/ridge/flatten features). To
+hand-author topology the parametric pipeline cannot express (a custom cliff line, a canyon), a **sculpt
+layer** composites authored height deltas over the analytic base *inside* `TerrainField`, so every consumer
+(chunk streamer, physics mesh, nav bakes, ground-snap, editor viewport) inherits it with no code change.
+
+The layer is a sparse map of 32 x 32 (`TerrainSculpt.TileSize`) delta tiles at a fixed sculpt cell size
+(default 0.5 m), stored in the map document's `terrainOverrides` block (`KhaozEngine.MapDoc`,
+`MapTerrainOverrides`) and authored by global cell coordinate:
+
+```csharp
+doc.TerrainOverrides ??= new MapTerrainOverrides(cellSize: 0.5f);   // header cell size, once per document
+doc.TerrainOverrides.SetDelta(cellX: 12, cellZ: -4, delta: 2.5f);   // raise a cell 2.5 m above analytic
+doc.TerrainOverrides.AddDelta(cellX: 13, cellZ: -4, delta: -1f);    // accumulate onto a cell
+float d = doc.TerrainOverrides.GetDelta(12, -4);                    // 2.5, or 0 where no tile covers
+// TileCount / IsEmpty / TryGetTile / the ordered Tiles snapshot round out the read side.
+```
+
+`MapRuntime.BuildField` builds the runtime `TerrainSculpt` from the block and attaches it, so
+`SampleHeight` returns analytic height plus the bilinear delta (`using KhaozEngine.Terrain;`):
+
+```csharp
+var field = MapRuntime.BuildField(doc, MapDocRegistry.CreateDefault());
+float h = field.SampleHeight(6f, -2f);   // analytic + authored delta
+Vector3 n = field.SampleNormal(6f, -2f); // recomputed from the composited surface at the sculpt cell size
+```
+
+A global cell `(cellX, cellZ)` sits at world `(cellX * cellSize, cellZ * cellSize)`; deltas are meters,
+bilinearly interpolated between cell centers so sculpts stay smooth at any query resolution. When the layer
+is absent or empty the field keeps its **exact pure-analytic fast path** (heights and normals byte-identical
+to the no-sculpt field), so unsculpted zones pay nothing. Composition is pure data over a pure function, so
+the same document always yields the same heights. A v1 document (no sculpt layer) loads unchanged as v2 with
+byte-identical terrain via the built-in migration. Build a `TerrainField(config, sculpt)` directly with your
+own `TerrainSculpt` if you are not going through a document. Editor brushes and `sculpt_*` MCP verbs land in
+later phases; see `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
+
 ---
 
 ## Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)
@@ -4246,7 +4283,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.12.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.13.0" />
 ```
 
 ```csharp
@@ -4853,7 +4890,7 @@ version or the load fails.
 
 **Boot fails loud.** Map documents are dev-authored content, not runtime state: a read error, invalid
 JSON, a bad or unmigratable `formatVersion`, or any `MapDocumentValidator` failure (a duplicate id, an
-unknown scatter layer reference, the reserved `terrainOverrides` section present) throws
+unknown scatter layer reference, a `terrainOverrides` tile that leaves the document bounds) throws
 `MapDocumentException`, so a game does not boot on a bad document, the opposite of how the engine
 quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
 the full section list and a complete example document.

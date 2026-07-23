@@ -53,9 +53,12 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   when its normal passes the walkable-slope gate (`MaxSlopeRadians`, default 50 degrees). A non-standable
   hit (a wall, a bridge underside, a too-steep face) still counts as the ceiling of whatever lies beneath
   it, which is how each `ColumnSurface.Headroom` is measured (`float.PositiveInfinity` for the topmost
-  surface). On overflow the lowest surfaces are kept and the highest dropped, deterministically, matching
-  the ground-least-affordable-to-lose convention. STATICS-ONLY by default (`GroundMobility`), the same
-  stance as `PhysicsGroundProbe`. This is the physics half of KhaozEngine.Navigation's layered overworld
+  surface). A SOLID convex static (box, hull, or compound) yields exactly one standable surface per exposed
+  top face, never a stack: the sweep recognises the inside-solid self-hits BepuPhysics reports as the ray
+  descends through the body's interior and skips them (each such body's underside bounds the headroom of the
+  first real surface beneath it). On overflow the lowest surfaces are kept and the highest dropped,
+  deterministically, matching the ground-least-affordable-to-lose convention. STATICS-ONLY by default
+  (`GroundMobility`), the same stance as `PhysicsGroundProbe`. This is the physics half of KhaozEngine.Navigation's layered overworld
   bake: a game glues `Sample` to `INavColumnProvider` with a one-line delegate, since Physics and
   Navigation deliberately never reference each other (see `docs/DEPENDENCY-SEAMS.md`'s surface-source
   seam). Deterministic for a fixed physics world.

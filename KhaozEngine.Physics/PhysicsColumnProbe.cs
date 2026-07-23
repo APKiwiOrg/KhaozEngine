@@ -23,12 +23,27 @@ public readonly record struct ColumnSurface(float Height, float Headroom);
 /// docs/DEPENDENCY-SEAMS.md's surface-source seam). Statics-only by default, the same stance as
 /// <see cref="PhysicsGroundProbe"/>: a crate parked under a bridge is not a nav surface.
 /// Deterministic for a fixed physics world.
+/// <para>A SOLID convex static (box, hull, or compound) yields exactly one standable surface per
+/// exposed top face, never a stack: the sweep recognises the inside-solid self-hits BepuPhysics reports
+/// while the ray descends through the body's interior and skips them, so only real faces become
+/// surfaces. The body's underside bounds the headroom of the first real surface beneath it.</para>
 /// </summary>
 public sealed class PhysicsColumnProbe
 {
     /// <summary>The vertical nudge below each hit the next cast starts from, in world units. Large
     /// enough to escape the surface just hit, small enough that no two real surfaces fit inside it.</summary>
     const float DescendEpsilon = 0.01f;
+
+    /// <summary>Distance below which a downward hit is treated as an INSIDE-SOLID self-hit rather than a
+    /// surface the column crosses. BepuPhysics' convex ray test returns a hit at t == 0 with the hit
+    /// point sitting on the cast origin whenever that origin lies inside a solid convex (box, hull, or
+    /// any convex child of a compound). Re-casting <see cref="DescendEpsilon"/> below such a hit lands
+    /// still inside the same solid, so left unchecked the sweep re-hits it every centimetre and stacks a
+    /// run of phantom surfaces through the solid's interior. A genuine face - including every tread of a
+    /// staircase mesh and the top of each disjoint child of a compound across the gap between children -
+    /// is reported at a clearly positive distance, so this threshold filters ONLY the interior
+    /// self-hits, not legitimate same-body surfaces. Verified against BepuPhysics 2.4.</summary>
+    const float InsideSolidEpsilon = 1e-4f;
 
     readonly IPhysicsWorld _world;
 
@@ -69,6 +84,10 @@ public sealed class PhysicsColumnProbe
         float castY = ProbeHeight;
         float remaining = ProbeRange;
         float ceilingAbove = float.PositiveInfinity;
+        // Y of the last surface written, so each accepted surface stays strictly below the previous one
+        // by at least DescendEpsilon (keeps the results monotonic even if a backend ever reports two
+        // faces at the same height). Starts at +inf so the first hit is always eligible.
+        float lastAcceptedY = float.PositiveInfinity;
 
         // The sweep walks top-down, so results land here highest-first and are reversed into
         // ascending order at the end. On overflow the FIRST (highest) entry is shifted out, so the
@@ -78,23 +97,37 @@ public sealed class PhysicsColumnProbe
         while (remaining > 0f
             && _world.Raycast(new Vector3(x, castY, z), -Vector3.UnitY, remaining, out RayHit hit, Filter))
         {
-            bool standable = hit.Normal.LengthSquared() > 1e-12f
-                && Vector3.Normalize(hit.Normal).Y >= minWalkableNormalY;
+            // A hit that barely travelled is the cast origin itself, sitting inside a solid convex (Bepu
+            // returns t == 0 there; see InsideSolidEpsilon). It is not a surface the column crosses, so it
+            // can never be standable - skipping it here is what stops one solid stacking a run of phantom
+            // surfaces down its interior (issue #273). It still advances the descent below.
+            bool insideSolid = hit.Distance <= InsideSolidEpsilon;
 
-            if (standable)
+            if (!insideSolid)
             {
-                float headroom = float.IsPositiveInfinity(ceilingAbove)
-                    ? float.PositiveInfinity
-                    : ceilingAbove - hit.Point.Y;
+                bool standable = hit.Normal.LengthSquared() > 1e-12f
+                    && Vector3.Normalize(hit.Normal).Y >= minWalkableNormalY;
 
-                if (found == surfaces.Length)
+                if (standable && hit.Point.Y <= lastAcceptedY - DescendEpsilon)
                 {
-                    for (int i = 1; i < found; i++) surfaces[i - 1] = surfaces[i];
-                    found--;
+                    float headroom = float.IsPositiveInfinity(ceilingAbove)
+                        ? float.PositiveInfinity
+                        : ceilingAbove - hit.Point.Y;
+
+                    if (found == surfaces.Length)
+                    {
+                        for (int i = 1; i < found; i++) surfaces[i - 1] = surfaces[i];
+                        found--;
+                    }
+                    surfaces[found++] = new ColumnSurface(hit.Point.Y, headroom);
+                    lastAcceptedY = hit.Point.Y;
                 }
-                surfaces[found++] = new ColumnSurface(hit.Point.Y, headroom);
             }
 
+            // Every hit bounds the clear space below it. For a genuine face that is the face itself; while
+            // the sweep descends through a solid's interior the successive inside-solid samples trace the
+            // solid down to its underside, so the first real surface below the solid measures its headroom
+            // to that underside (a solid deck's underside becomes the ground's ceiling), not to the deck top.
             ceilingAbove = hit.Point.Y;
             float nextY = hit.Point.Y - DescendEpsilon;
             remaining -= castY - nextY;

@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.12.1
+
+Fix: `PhysicsColumnProbe.Sample` no longer stacks phantom surfaces when its vertical sweep passes through a solid convex static (#273).
+
+- **`PhysicsColumnProbe` (KhaozEngine.Physics).** A downward `BepuPhysicsWorld.Raycast` whose origin
+  lies inside a solid convex (box, hull, or any convex child of a compound) returns a hit at t == 0 on
+  the cast origin. The sweep re-cast `DescendEpsilon` (~1 cm) below each hit to escape the surface, but
+  for a solid that landed still inside it, so every re-cast re-hit the same body and one solid produced a
+  run of ~(top-half-height / DescendEpsilon) phantom "standable" surfaces down its interior. With a small
+  caller buffer the phantom run overflowed the span and the keep-lowest-on-overflow rule evicted the real
+  top, so a solid prop baked with no navigable surface at all. The sweep now classifies any hit whose ray
+  barely travelled (`hit.Distance <= 1e-4`) as an inside-solid self-hit at the cast origin and skips it:
+  a solid convex yields exactly one standable surface per exposed top face. Genuine faces (every tread of
+  a staircase mesh, the top of each disjoint child of a compound across the gap between them) are reported
+  at a clearly positive distance and still handled, so same-body surfaces at different heights are kept -
+  the dedup is positional per descent step, not per body. Accepted surfaces stay strictly monotonically
+  descending by at least `DescendEpsilon`, and the underside of a solid the sweep passed through bounds the
+  headroom of the first real surface beneath it (a solid deck's underside becomes the ground's ceiling).
+  Verified against BepuPhysics 2.4 for box, convex hull, and compound. The scripted fake-world contract
+  tests are unchanged (the fake world never produces an inside-origin hit); new headless tests against the
+  real `BepuPhysicsWorld` pin the single-box, stacked-boxes, solid-deck-over-ground, and tall-solid cases.
+  Ruinborne can drop its `ProbeColumnBudget` sweep-buffer + headroom-filter workaround on the next repin.
+
 ## 14.12.0
 
 Map editor whole-zone scatter freeze: one undoable command converts a hybrid procedural document into a placements-only authored document (#270, the authored-world program).

@@ -67,4 +67,8 @@ public sealed class QueryTools(QueryService query)
     [McpServerTool(Name = "scatter_overrides_info"), Description("Reads the scatter overrides of the live session document, in document order. That order is first-match-wins significant: an earlier override shadows a later one whose shape also covers the same point. The read counterpart to scatter_override_add/scatter_override_edit/scatter_override_remove/scatter_override_rename/scatter_override_reorder.")]
     public ScatterOverridesInfo ScatterOverridesInfo()
         => ToolGuard.Guard(query.ScatterOverridesInfo);
+
+    [McpServerTool(Name = "sculpt_stats"), Description("Reads the terrain sculpt/delta layer's tile stats: whether the document has one at all, its cell size, how many tiles are stored, how many cells across those tiles actually carry a nonzero delta, and the min/max delta among those touched cells. The read counterpart to sculpt_apply/sculpt_flatten_region/sculpt_clear. ground_height already reflects sculpted terrain (composited into the field), so use it for a point sample; this reads the raw layer's shape instead.")]
+    public SculptStatsResult SculptStats()
+        => ToolGuard.Guard(query.SculptStats);
 }

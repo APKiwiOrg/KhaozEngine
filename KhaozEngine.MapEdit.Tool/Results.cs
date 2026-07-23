@@ -165,3 +165,31 @@ public sealed record ScatterOverrideInfo(int Index, string? Name, string ShapeKi
 /// <c>scatter_override_add</c>/<c>scatter_override_edit</c>/<c>scatter_override_remove</c>/
 /// <c>scatter_override_rename</c>/<c>scatter_override_reorder</c>.</summary>
 public sealed record ScatterOverridesInfo(IReadOnlyList<ScatterOverrideInfo> ScatterOverrides);
+
+/// <summary>Result of a <c>sculpt_apply</c> brush dab: the resolved brush name, the dab's centre and radius, how
+/// many sculpt cells it actually changed, and the min/max delta among those changed cells (meters, null when
+/// nothing changed). <see cref="Applied"/> is false for a clean no-op (a non-positive radius or dt, or a footprint
+/// entirely outside the document's paintable sculpt bounds), in which case the other numeric fields are all
+/// zero/null and the document is left untouched.</summary>
+public sealed record SculptApplyResult(string Brush, float X, float Z, float Radius, int TouchedCellCount,
+    float? DeltaMin, float? DeltaMax, bool Applied);
+
+/// <summary>Result of a <c>sculpt_flatten_region</c> call: the flattened rect and target height, how many sculpt
+/// cells actually changed, and the min/max delta among those changed cells (meters, null when nothing changed).
+/// <see cref="Applied"/> is false for a clean no-op (a degenerate or already-flat region), in which case the
+/// document is left untouched.</summary>
+public sealed record SculptFlattenRegionResult(float MinX, float MinZ, float MaxX, float MaxZ, float TargetHeight,
+    int TouchedCellCount, float? DeltaMin, float? DeltaMax, bool Applied);
+
+/// <summary>Result of a <c>sculpt_clear</c> call: how many sculpt tiles were removed. <see cref="Applied"/> is
+/// false for a clean no-op (no sculpt layer, or a region that touches no stored tile), in which case the document
+/// is left untouched.</summary>
+public sealed record SculptClearResult(int TilesRemoved, bool Applied);
+
+/// <summary>Result of <c>sculpt_stats</c>: the sculpt layer's shape (whether one exists at all, and its cell size),
+/// how many tiles are stored, how many cells across those tiles actually carry a nonzero delta, and the min/max
+/// delta among those touched cells. <see cref="HasLayer"/> false means the document has no sculpt layer at all (a
+/// v1-shaped document, or one never sculpted), in which case every other field is its default
+/// (<see cref="CellSize"/> 0, counts 0, min/max null).</summary>
+public sealed record SculptStatsResult(bool HasLayer, float CellSize, int TileCount, int TouchedCellCount,
+    float? DeltaMin, float? DeltaMax);

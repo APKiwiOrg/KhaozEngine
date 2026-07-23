@@ -1,10 +1,11 @@
 # Map Editor Design (MapDoc + MapEditor + ke-mapedit)
 
 Approved: 2026-07-09
-Status: **In flight.** Phases A-D shipped 10.44.0-10.67.0, and eleven further rounds through 14.14.0 (most
-recently the terrain sculpt layer, T1 field/format in 14.13.0 and T2 editor brushes in 14.14.0). This
+Status: **In flight.** Phases A-D shipped 10.44.0-10.67.0, and twelve further rounds through 14.15.0 (most
+recently the terrain sculpt layer, T1 field/format in 14.13.0, T2 editor brushes in 14.14.0, and T3
+`sculpt_*` MCP verbs in 14.15.0, closing the sculpt program's engine side, #271). This
 header said "pre-implementation" for 40+ releases after implementation began, so treat any status claim in
-this file as history unless `CHANGELOG.md` agrees. Open work lives in `docs/TODO.md`, not here.
+this file as history unless `CHANGELOG.md` agrees. Open work lives in the repo's GitHub Issues, not here.
 First adopter: Ruinborne
 
 ## Problem
@@ -433,6 +434,49 @@ that positions the brush is in place, but the disc outline that would show the r
 brush footprint is not previewed in the viewport, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/274.
 The `sculpt_*` MCP verbs (`sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear`, tile-stat reads) and the
 Ruinborne repin + first valley sculpt pass are T3, tracked by the sculpt program design doc and #271.
+
+**sculpt-verbs round (T3, final phase)**: The `ke-mapedit` MCP surface for the sculpt layer
+(`sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear`, `sculpt_stats`), riding the T2 headless brush core
+through `MutationService`, closing the sculpt program's engine side (#271; Ruinborne repin and the first
+valley sculpt pass are the game-side follow-up, tracked separately). Design contract:
+`docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
+
+Decisions: `sculpt_apply` executes one brush dab as a single-dab `TerrainSculptStrokeCommand` (one undo
+step), reusing `TerrainSculptBrush.ComputeDab` and a newly-promoted, shared tile-grouping helper
+(`TerrainSculptTiles.BuildTileDeltas`, lifted out of `EditorToolController.ApplyDab` so the GUI tool and the
+MCP verb build tiles identically instead of carrying two copies of that logic). `strength`/`dt` cross the
+wire as the same two numbers the brush core takes (not a single collapsed "magnitude"), keeping the MCP
+verb a thin, 1:1 wrapper over the headless core, matching how every other verb in this file's MCP surface is
+a thin `ToolGuard`-wrapped delegate with no logic of its own. `flatten`'s target is captured live from the
+field's current composited height at the call's point (mirroring the interactive tool's capture-on-press),
+so the verb needs no separate flatten-target parameter.
+
+`sculpt_flatten_region` is a genuinely different computation, not a loop of `sculpt_apply` calls: a new
+headless, no-falloff region function (`TerrainSculptRegion.ComputeFlattenRegion`) sets every covered cell's
+delta directly from `targetHeight - analyticHeight`, so a flattened region reads the exact target height
+edge to edge, which a falloff-based dab sequence could not guarantee. `sculpt_clear` needed its own command
+(`TerrainSculptClearCommand`) rather than reusing `TerrainSculptStrokeCommand`, since a clear's `Apply`
+removes tiles (`MapTerrainOverrides.RemoveTile`) where a stroke's `Apply` writes them: the two commands run
+in opposite directions, so they cannot share one class. A new tile-selection helper
+(`TerrainSculptRegion.SelectClearTiles`) picks tile-granularity intersection against an optional rect (all
+four rect args together or none, the sole "whole-layer clear" signal), matching the design doc's "remove
+all sculpt tiles (or tiles intersecting an optional region)" wording, which chose tile granularity over the
+per-cell granularity `sculpt_flatten_region` uses.
+
+Every verb follows the established two-lock-acquisition no-op-safe pattern (`FreezeZone`'s precedent): a
+cheap read-only check via `MapEditSession.WithDocument` decides whether there is anything to do, and only a
+genuine change reaches `MapEditSession.Mutate`, so a no-op (a non-positive radius/dt, an already-flat
+region, a region that touches no stored tile, or a document with no sculpt layer at all) never marks the
+session dirty. `sculpt_stats` is the read counterpart other verb groups already have a peer for
+(`exclusions_info`/`scatter_overrides_info`): tile count, cell size, touched-cell count (cells with a
+nonzero delta, not raw tile capacity), and the min/max delta among those. It does not duplicate
+`ground_height`/`is_walkable`, which already read composited (sculpted) height through T1's field
+integration; `sculpt_stats` reads the raw layer's shape instead of a point sample. No new command needed
+for `sculpt_apply`/`sculpt_flatten_region` beyond the existing `TerrainSculptStrokeCommand`: both compute a
+set of cell writes through a different pure function (the brush core for one, the region function for the
+other) and hand the same writes to the same tile-building and stroke-command machinery, so undo/redo,
+tile-creation, and layer-nulling semantics are identical across every write path regardless of which MCP
+verb produced them.
 
 - **Program phases**: Live server editing and hot reload. Multi-user editing. Polygon click-path authoring
   gesture for exclusions and regions.

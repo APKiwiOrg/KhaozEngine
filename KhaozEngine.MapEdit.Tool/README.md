@@ -90,18 +90,19 @@ it into the throwaway `ViewportWorld` the render call builds (`ViewportWorld.Tex
 render call gets the same textured-vs-flat choice the GUI viewport does without a live editor session
 open. Additive parameter, no new verb.
 
-## Verb surface (69 tools)
+## Verb surface (73 tools)
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info`, `sculpt_stats` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
 | Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
 | Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `scatter_override_rename`, `scatter_override_reorder`, `bake_region`, `freeze_zone`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
+| Sculpt | `sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear` |
 | Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
 
@@ -159,6 +160,27 @@ overrides, whose lookup is first-match-wins) with its index, optional name, shap
 `min (x1, z1), max (x2, z2)`, polygon: `N points`), and its layer targeting, plus (for overrides)
 the density multiplier and the `Kinds` substitution in the same `"id"`/`"id:weight"` convention
 `procedural_info` uses, so a read value round-trips straight into `scatter_override_add`/`edit`.
+
+`sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
+(`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`,
+so it lands as one undo step, exactly the brush core the GUI's sculpt tool mode uses. `strength` and `dt`
+feed the brush math directly (meters per stroke-second for raise/lower, a per-second blend rate for
+smooth/flatten/set_height, scaled by `dt`), so a call is deterministic regardless of wall-clock time.
+`targetHeight` is required for `set_height` and ignored otherwise; `flatten` instead captures its target
+live, from the current ground height at `(x, z)`. `sculpt_flatten_region(minX, minZ, maxX, maxZ,
+targetHeight)` flattens every sculpt cell whose centre falls inside the rect to `targetHeight` in one
+command: an exact delta computation over the region (no falloff, no repeated dabs), not an approximation
+built from many `sculpt_apply` calls. `sculpt_clear(minX?, minZ?, maxX?, maxZ?)` removes sculpt tiles,
+restoring analytic terrain there, in one undo step; with every rect argument null it clears the whole
+sculpt layer, and with all four supplied it clears only the tiles whose world extent intersects the rect
+(the four must be supplied together or not at all). All three are clean no-ops when nothing changes (a
+non-positive radius/dt, an already-flat region, a document with no sculpt layer, or a region touching no
+stored tile): `Applied` comes back false and the document (and its dirty flag) are untouched. `sculpt_stats`
+is the read counterpart: whether the document has a sculpt layer at all, its cell size, how many tiles are
+stored, how many cells across those tiles carry a nonzero delta, and the min/max delta among those touched
+cells. `ground_height`/`is_walkable` already reflect sculpted terrain (composited into the field by
+`TerrainField.SampleHeight`), so use those for a point sample; `sculpt_stats` reads the raw layer's shape
+instead. Design contract: [`docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`](../docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md).
 
 Biome bands and scatter/companion layers are closed-shape types (not open unions like features and
 shapes), so they cross the wire as typed flat parameters instead of json: `biome_band_add`/

@@ -4283,7 +4283,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.14.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.15.0" />
 ```
 
 ```csharp
@@ -5387,20 +5387,37 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (69 tools).**
+**Verb surface (73 tools).**
 
 | Group | Verbs |
 |---|---|
 | Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
-| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info` |
+| Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info`, `sculpt_stats` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
 | Player spawns | `player_spawn_add`, `player_spawn_move`, `player_spawn_set_yaw`, `player_spawn_set_enabled`, `player_spawn_rename`, `player_spawn_remove` |
 | Terrain | `terrain_edit`, `feature_add`, `feature_edit`, `feature_remove`, `feature_reorder`, `feature_rename`, `biome_band_add`, `biome_band_edit`, `biome_band_remove` |
 | Scatter | `exclusion_add`, `exclusion_edit`, `exclusion_remove`, `exclusion_rename`, `exclusion_set_layers`, `scatter_override_add`, `scatter_override_edit`, `scatter_override_remove`, `scatter_override_rename`, `scatter_override_reorder`, `bake_region`, `freeze_zone`, `scatter_layer_add`, `scatter_layer_edit`, `scatter_layer_remove`, `scatter_layer_rename`, `scatter_rule_add`, `scatter_rule_edit`, `scatter_rule_remove`, `companion_layer_add`, `companion_layer_edit`, `companion_layer_remove`, `companion_layer_rename` |
 | Regions | `region_add`, `region_edit_shape`, `region_rename`, `region_remove` |
+| Sculpt | `sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear` |
 | Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
+
+`sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
+(`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
+(one undo step), the same brush core the GUI's sculpt tool mode uses. `strength`/`dt` feed the brush math
+directly (meters per stroke-second for raise/lower, a per-second blend rate for smooth/flatten/set_height),
+so a call is deterministic regardless of wall-clock time; `targetHeight` is required for `set_height` and
+ignored otherwise, while `flatten` captures its target live from the current ground height at `(x, z)`.
+`sculpt_flatten_region(minX, minZ, maxX, maxZ, targetHeight)` flattens every sculpt cell whose centre falls
+inside the rect to `targetHeight` in one exact, no-falloff command instead of repeated dabs.
+`sculpt_clear(minX?, minZ?, maxX?, maxZ?)` removes sculpt tiles, restoring analytic terrain there, in one
+undo step: every rect argument null clears the whole layer, all four supplied clears only the intersecting
+tiles. All three are clean no-ops when nothing changes (`Applied` false, document and dirty flag untouched).
+`sculpt_stats` is the read counterpart: whether a sculpt layer exists, its cell size, tile count,
+touched-cell count, and delta min/max; `ground_height`/`is_walkable` already reflect sculpted terrain
+(composited into the field), so use those for a point sample instead. Design contract:
+`docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 
 `scatter_override_rename(index, name?)` renames a scatter override, a null or empty name clearing it back
 to unnamed. `scatter_override_reorder(fromIndex, toIndex)` moves one between list positions: unlike an

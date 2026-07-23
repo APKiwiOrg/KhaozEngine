@@ -384,7 +384,18 @@ brush never creates a tile the validating writer refuses (a consequence is a dea
 a non-tile-aligned edge). The stroke command reports a bounded `DirtyRegion` over its footprint, so the
 viewport re-meshes only the chunks the stroke touched (`ViewportWorld.PartialRebuild`) rather than the whole
 world. Undo restores every touched tile exactly, removing tiles the stroke created and dropping a layer it
-created back to null. The `sculpt_*` MCP verbs are T3, not in this release.
+created back to null.
+
+`TerrainSculptTiles.BuildTileDeltas` groups a dab's per-cell writes into tiles (prior/final capture, dab-bounds
+footprint): a public helper both this tool's `ApplyDab` and the `ke-mapedit` `sculpt_apply`/`sculpt_flatten_region`
+MCP verbs call, so the GUI and MCP surfaces build tiles identically. `TerrainSculptRegion` is the headless
+region-scale sculpt core the MCP verbs ride: `ComputeFlattenRegion` sets every cell in a rect to an exact
+target height with no falloff (unlike a brush dab), and `SelectClearTiles` picks the tiles a clear touches
+(a whole layer, or only the tiles intersecting an optional rect). `TerrainSculptClearCommand` is the
+undoable clear command (`SculptTileClear` captures a removed tile's prior grid), dropping the layer back to
+null once emptied, the same convention `TerrainSculptStrokeCommand` uses for a layer it created. See the
+`KhaozEngine.MapEdit.Tool` README's "sculpt" verbs for the MCP surface, and
+`docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md` for the full design.
 
 ## Feature apply order
 
@@ -537,6 +548,10 @@ GPU-free and fully unit-tested:
   tiles the stroke created, and drops a stroke-created layer back to null (byte-identical to no sculpting). It
   reports a bounded `DirtyRegion` so only the touched chunks re-mesh. The brush math (`TerrainSculptBrush`) and
   the footprint clamp (`SculptBounds`) that feed it are pure and headless-tested. See Terrain sculpt above.
+- `TerrainSculptClearCommand` is the undoable counterpart for a sculpt clear (the `ke-mapedit` `sculpt_clear`
+  verb): it removes the tiles it was built with (`SculptTileClear`, a tile coordinate plus its captured prior
+  grid) and drops the layer back to null once emptied; undo restores each removed tile's prior grid, recreating
+  the layer if the clear nulled it. See Terrain sculpt above.
 - `EditorToolController` is the GPU-free per-frame policy: it reads a plain `EditorFrameInput` (pick ray +
   pointer/keyboard edges) and emits commands. Select mode picks (a press either grabs a gizmo handle or, past
   `BodyDragThreshold` on the object's own body, arms a body drag on the same translate-XZ path) and drives

@@ -107,61 +107,7 @@ public sealed partial class EditorToolController
             currentDelta, (x, z) => baseField.SampleHeight(x, z));
         if (writes.Count == 0) return;
 
-        List<SculptTileDelta> tiles = BuildTileDeltas(overrides, cellSize, writes, out RectArea dabBounds);
+        List<SculptTileDelta> tiles = TerrainSculptTiles.BuildTileDeltas(overrides, cellSize, writes, out RectArea dabBounds);
         _document.Execute(new TerrainSculptStrokeCommand(createdLayer, cellSize, tiles, dabBounds));
     }
-
-    // Groups a dab's per-cell writes into tiles, snapshotting each touched tile's prior grid (null when the tile
-    // does not exist yet) and building its final grid (prior-or-zero with the writes applied). Also returns the
-    // dab's world footprint, padded one cell for the bilinear reach of a delta into its neighbours, for the
-    // command's dirty region.
-    static List<SculptTileDelta> BuildTileDeltas(MapTerrainOverrides? overrides, float cellSize,
-        IReadOnlyList<TerrainSculptBrush.CellWrite> writes, out RectArea dabBounds)
-    {
-        const int span = TerrainSculpt.TileSize;
-        var work = new Dictionary<long, (int Tx, int Tz, float[]? Prior, float[] Final)>();
-        int minCx = int.MaxValue, minCz = int.MaxValue, maxCx = int.MinValue, maxCz = int.MinValue;
-
-        for (int i = 0; i < writes.Count; i++)
-        {
-            TerrainSculptBrush.CellWrite w = writes[i];
-            if (w.CellX < minCx) minCx = w.CellX;
-            if (w.CellX > maxCx) maxCx = w.CellX;
-            if (w.CellZ < minCz) minCz = w.CellZ;
-            if (w.CellZ > maxCz) maxCz = w.CellZ;
-
-            int tx = FloorDiv(w.CellX, span), tz = FloorDiv(w.CellZ, span);
-            long key = ((long)tx << 32) | (uint)tz;
-            if (!work.TryGetValue(key, out (int Tx, int Tz, float[]? Prior, float[] Final) entry))
-            {
-                float[]? prior = null;
-                float[] final;
-                if (overrides is not null && overrides.TryGetTile(tx, tz, out MapSculptTile existing))
-                {
-                    prior = (float[])existing.Deltas.Clone();
-                    final = (float[])existing.Deltas.Clone();
-                }
-                else
-                {
-                    final = new float[span * span];
-                }
-                entry = (tx, tz, prior, final);
-                work[key] = entry;
-            }
-            int lx = w.CellX - tx * span, lz = w.CellZ - tz * span;
-            entry.Final[lz * span + lx] = w.Delta;
-        }
-
-        var tiles = new List<SculptTileDelta>(work.Count);
-        foreach ((int Tx, int Tz, float[]? Prior, float[] Final) e in work.Values)
-            tiles.Add(new SculptTileDelta(e.Tx, e.Tz, e.Prior, e.Final));
-
-        dabBounds = new RectArea(
-            minCx * cellSize - cellSize, minCz * cellSize - cellSize,
-            maxCx * cellSize + cellSize, maxCz * cellSize + cellSize);
-        return tiles;
-    }
-
-    // Floor-divide a global cell index by the tile size, correct for negative cells (matches MapTerrainOverrides).
-    static int FloorDiv(int cell, int span) => cell >= 0 ? cell / span : (cell - (span - 1)) / span;
 }

@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 68 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 73 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -45,14 +45,16 @@ namespace KhaozEngine.Tests.MapEditTool
         /// reuses those same command classes and the GUI's own clone helpers. Round 8 Task 2 adds exclusions_info
         /// and scatter_overrides_info, the read counterparts to the exclusion_* and scatter_override_* mutation
         /// verbs that procedural_info does not cover (that read only reflects terrain, scatter layers, and
-        /// companion layers).</summary>
+        /// companion layers). The terrain sculpt layer's T3 (#271) adds sculpt_apply (one brush dab),
+        /// sculpt_flatten_region (an exact region flatten), sculpt_clear (drop tiles back to analytic), and
+        /// sculpt_stats (the read counterpart: tile count, cell size, touched-cell count, delta min/max).</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
             "map_open", "map_create", "map_save", "map_validate", "map_summary",
             // Query
             "ground_height", "is_walkable", "placements_in_rect", "scatter_preview_in_rect", "find_flat_area",
-            "procedural_info", "exclusions_info", "scatter_overrides_info",
+            "procedural_info", "exclusions_info", "scatter_overrides_info", "sculpt_stats",
             // Placements
             "placement_add", "placement_move", "placement_rotate", "placement_scale", "placement_rename",
             "placement_remove",
@@ -73,6 +75,8 @@ namespace KhaozEngine.Tests.MapEditTool
             "companion_layer_add", "companion_layer_edit", "companion_layer_remove", "companion_layer_rename",
             // Regions
             "region_add", "region_edit_shape", "region_rename", "region_remove",
+            // Sculpt (terrain height-delta layer, T3, #271)
+            "sculpt_apply", "sculpt_flatten_region", "sculpt_clear",
             // Element duplicate (cross-kind: placement, spawn, player spawn, feature, exclusion, scatter
             // override, region, biome band, scatter layer, companion layer)
             "element_duplicate",
@@ -287,6 +291,47 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.Equal(-28f, clone.X);
                 Assert.Equal(22f, clone.Z);
                 Assert.True(session.IsDirty);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public async Task SculptApply_ThroughMcp_MutatesSessionAndReportsTouchedCells()
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            string dir = NewTempDir();
+            try
+            {
+                string path = Path.Combine(dir, "zone.map.json");
+                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
+
+                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+
+                await harness.Client.CallToolAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+
+                CallToolResult result = await harness.Client.CallToolAsync("sculpt_apply",
+                    new Dictionary<string, object?>
+                    {
+                        ["brush"] = "raise", ["x"] = 8.0, ["z"] = 8.0, ["radius"] = 2.5, ["strength"] = 4.0, ["dt"] = 0.5,
+                    },
+                    cancellationToken: cts.Token);
+                Assert.NotEqual(true, result.IsError);
+
+                SculptApplyResult sculpt = Deserialize<SculptApplyResult>(result);
+                Assert.True(sculpt.Applied);
+                Assert.True(sculpt.TouchedCellCount > 0);
+
+                var session = harness.Services.GetRequiredService<MapEditSession>();
+                Assert.NotNull(session.WithDocument((doc, _) => doc.TerrainOverrides));
+                Assert.True(session.IsDirty);
+
+                CallToolResult stats = await harness.Client.CallToolAsync("sculpt_stats",
+                    new Dictionary<string, object?>(), cancellationToken: cts.Token);
+                Assert.NotEqual(true, stats.IsError);
+                SculptStatsResult statsResult = Deserialize<SculptStatsResult>(stats);
+                Assert.True(statsResult.HasLayer);
+                Assert.Equal(sculpt.TouchedCellCount, statsResult.TouchedCellCount);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

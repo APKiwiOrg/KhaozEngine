@@ -260,6 +260,37 @@ public sealed class QueryService(MapEditSession session)
         });
     }
 
+    /// <summary>Reads the sculpt/delta layer's tile stats (T3 of the terrain sculpt layer, #271): whether the
+    /// document has one at all, its cell size, how many tiles are stored, how many cells across those tiles
+    /// actually carry a nonzero delta, and the min/max delta among those touched cells. Nothing here mutates or
+    /// samples the terrain field, it only reflects the document's stored tiles. A document with no
+    /// <see cref="MapDocument.TerrainOverrides"/> reports <see cref="SculptStatsResult.HasLayer"/> false with every
+    /// other field at its default.</summary>
+    public SculptStatsResult SculptStats()
+    {
+        return session.WithDocument((doc, _) =>
+        {
+            MapTerrainOverrides? overrides = doc.TerrainOverrides;
+            if (overrides is null) return new SculptStatsResult(false, 0f, 0, 0, null, null);
+
+            int touched = 0;
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (MapSculptTile tile in overrides.Tiles)
+            {
+                foreach (float delta in tile.Deltas)
+                {
+                    if (delta == 0f) continue;
+                    touched++;
+                    if (delta < min) min = delta;
+                    if (delta > max) max = delta;
+                }
+            }
+
+            return new SculptStatsResult(true, overrides.CellSize, overrides.TileCount, touched,
+                touched == 0 ? null : min, touched == 0 ? null : max);
+        });
+    }
+
     /// <summary>The shape's kind tag: <c>"disc"</c>/<c>"rect"</c>/<c>"polygon"</c>, or <c>"(none)"</c> for a null
     /// shape. Mirrors <c>KhaozEngine.MapEditor.MapEditorScene.ShapeKind</c> (that method is private to the GUI
     /// project, so this is a read-side twin rather than a shared call, kept in step by the same closed

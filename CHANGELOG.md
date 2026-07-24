@@ -5,6 +5,49 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.19.0
+
+Feature: nameplates gain opt-in edge-aware placement so a close-up look-up at a tall target no longer
+runs the plate off the top of the screen. A projected anchor near the viewport top previously had no
+style knob to pull the plate back on-screen. Requested by Ruinborne on a 2.2m NPC. Closes #289.
+
+- **`NameplateEdgeBehavior` (KhaozEngine.Render3D), a new public enum.** `None` (value 0, the default) is
+  today's unclamped placement, byte-identical for every existing caller. `Clamp` clamps the plate into
+  the viewport, inset by `EdgeMargin` on both axes. `Deflect` clamps horizontally like `Clamp`, and on top
+  overflow moves the plate beside the anchor (vertically centred on it, on whichever side has more room,
+  fully inside the viewport) instead of clamping it down over the creature's face.
+
+- **Three new `NameplateStyle` init props.** `EdgeBehavior` (default `None`). `EdgeMargin`, the viewport
+  edge inset in pixels (the `Default` preset carries `4f`, inert while `EdgeBehavior` is `None`).
+  `EdgeHysteresis`, `Deflect`-only: extra headroom in pixels the normal position must regain before a
+  deflected plate returns above the anchor. Values `<= 0` mean half the plate height, so the exit
+  threshold scales with plate size instead of needing a per-style tune.
+
+- **New file `NameplatePlacement.cs`: `NameplatePlacement.Place(anchor, size, viewportWidth,
+  viewportHeight, in style, ref state)`.** Pure, GPU-free placement math returning the panel rect,
+  headless-testable like the rest of the layout code. `NameplatePlacementState` is a new public struct
+  the caller holds one per plate across frames, exposing `IsDeflected`. Deflection is sticky with a
+  hysteresis band, so a plate near the threshold never flips between above and beside on alternate frames
+  as the camera jitters.
+
+- **`NameplateRenderer.Draw` gains a stateful overload.** The existing signature is unchanged and now
+  delegates to a new overload that inserts `ref NameplatePlacementState placementState` after
+  `viewportHeight`. The stateless one starts from a fresh state every call, which is fine for `None` and
+  `Clamp` (both stateless). A fresh state re-enters deflection on every call while the top overflow
+  persists, so a Deflect plate drawn through the stateless overload does keep sitting beside the anchor.
+  What it loses is the hysteresis band (the plate snaps back the moment overflow clears, so it can
+  flicker at the entry threshold) and the sticky side (the side is re-picked from the room split every
+  call, so it can swap sides as the anchor crosses the midline). The stateful overload is what carries
+  both across frames.
+
+- Deflect exists instead of always clamping because a downward clamp covers the creature's face in
+  exactly the case that triggers it: a close-up look-up at a tall or raised target, where the plate's
+  natural position sits above the top edge. Moving it beside the anchor keeps it readable without
+  occluding the thing it labels.
+
+- **Tests.** 15 headless tests (`NameplatePlacementTests.cs`) pin the placement maths for all three
+  behaviors and the deflect state machine, including the hysteresis band and the sticky-side switch.
+
 ## 14.18.0
 
 Feature: merged-coarse-mesh HLOD closes the LOD/HLOD arc (L3, and the final phase, of #276). A far chunk

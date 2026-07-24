@@ -22,10 +22,14 @@ namespace KhaozEngine.Render3D
     /// <see cref="NameplateEdgeBehavior.Deflect"/>'s hysteresis only works through the stateful overload below: the
     /// stateless <see cref="Draw(SpriteBatch,SpriteFont,Texture2D,IIsoCamera3D,Vector3,Vector3,in Nameplate,in NameplateStyle,int,int,float,Vector3?)"/>
     /// re-evaluates from a fresh <see cref="NameplatePlacementState"/> every call, which is fine for <see
-    /// cref="NameplateEdgeBehavior.None"/> and <see cref="NameplateEdgeBehavior.Clamp"/> (both stateless) but means
-    /// a Deflect plate drawn through it can never stay deflected across frames. A game tracking per-entity
-    /// nameplates should keep one <see cref="NameplatePlacementState"/> per plate and call the stateful overload,
-    /// and must not share that state across plates: doing so lets one plate's deflection leak into another's.
+    /// cref="NameplateEdgeBehavior.None"/> and <see cref="NameplateEdgeBehavior.Clamp"/> (both stateless). A fresh
+    /// state re-enters deflection on every call while the top overflow persists, so a Deflect plate drawn through
+    /// the stateless overload does keep sitting beside the anchor. What it loses is the hysteresis band (the plate
+    /// snaps back the moment overflow clears, so it can flicker at the entry threshold) and the sticky side (the
+    /// side is re-picked from the room split every call, so it can swap sides as the anchor crosses the midline). A
+    /// game tracking per-entity nameplates should keep one <see cref="NameplatePlacementState"/> per plate and
+    /// call the stateful overload, and must not share that state across plates: doing so lets one plate's
+    /// deflection leak into another's.
     /// </remarks>
     public static class NameplateRenderer
     {

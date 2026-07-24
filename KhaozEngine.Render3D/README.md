@@ -447,6 +447,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     (`.Default` = the opaque unified plate; drop `PanelFill` alpha + set `TitleShadow` for the panel-less pill).
     `NameplateLayout.Measure` is the pure, GPU-free panel-size math (headless-testable); `NameplateBar.Fraction` is
     clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. No per-frame heap allocation.
+    Opt-in edge-aware placement via `NameplateStyle.EdgeBehavior` (a `NameplateEdgeBehavior`: `None` is the
+    default, byte-identical to before):
+    `Clamp` insets the plate into the viewport by `EdgeMargin` on both axes, `Deflect` also moves it beside the
+    anchor on top overflow instead of clamping down over the anchor's face, with an `EdgeHysteresis` band so a
+    plate near the threshold never flips between above and beside frame to frame. `NameplatePlacement.Place` is the
+    pure, GPU-free placement math behind both modes (headless-testable, like `NameplateLayout.Measure`), and the
+    stateful `Draw` overload threads a caller-held `NameplatePlacementState` (one per plate) so `Deflect`'s
+    hysteresis survives across frames.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
   - `AnimationSampler` / `AnimationPlayer` - one-shot pose sampling and a stateful single-clip player with a

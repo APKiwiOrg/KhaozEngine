@@ -4314,7 +4314,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.18.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.19.0" />
 ```
 
 ```csharp
@@ -5793,6 +5793,63 @@ var pill = NameplateStyle.Default with
 
 Set `MaxWidth` (>0) to cap the panel width; the title is ellipsized (ASCII "...") to fit. The panel size math is
 exposed render-free as `NameplateLayout.Measure(font, plate, style)` if you want to place or batch plates yourself.
+
+#### Edge-aware placement (`NameplateEdgeBehavior`, 14.19.0)
+
+By default a plate is centred above the anchor with no clamping (`NameplateStyle.EdgeBehavior` is
+`NameplateEdgeBehavior.None`, the default). A close-up look-up at a tall or raised target can then project the
+anchor near the viewport top and run the plate off-screen. Two opt-in behaviors keep it inside the viewport:
+
+- **`NameplateEdgeBehavior.Clamp`** clamps the plate into the viewport, inset by `NameplateStyle.EdgeMargin`
+  pixels on both axes.
+- **`NameplateEdgeBehavior.Deflect`** clamps horizontally like `Clamp`, but on top overflow moves the plate
+  beside the anchor (vertically centred on it, on whichever side has more room) instead of clamping it down
+  over the anchor. Prefer `Deflect` for a character's head anchor: a downward clamp covers the face in exactly
+  the case that triggers it, a close-up look-up at a tall target.
+
+`Deflect`'s hysteresis (the sticky side choice and the band that stops the plate flipping between above and
+beside as the camera jitters at the threshold) only works when you hold a `NameplatePlacementState` per plate
+across frames and call the stateful `Draw` overload. Extending the plate loop above:
+
+```csharp
+var placementStates = new Dictionary<NetId, NameplatePlacementState>();   // one per entity, kept across frames
+var style = NameplateStyle.Default with { EdgeBehavior = NameplateEdgeBehavior.Deflect };
+
+batch.Begin();
+foreach (EntityRenderState e in client.Snapshot())
+    if (e.DisplayName is { } name)
+    {
+        var plate = new Nameplate
+        {
+            Title = name,
+            TitleColor = Color.White,
+            Bars = new[] { new NameplateBar(e.Health / e.MaxHealth, green, darkTrack) },
+        };
+        NameplatePlacementState state = placementStates.TryGetValue(e.Id, out var s) ? s : default;
+        NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
+            plate, style, fbW, fbH, ref state, maxDistance: 90f, cullFrom: localPlayerPos);
+        placementStates[e.Id] = state;
+    }
+batch.End();
+```
+
+Do not share one `NameplatePlacementState` across plates. Doing so lets one plate's deflection leak into
+another's placement. The stateless `Draw` overload (the one used earlier in this section, with no `ref`
+parameter) re-evaluates from a fresh state every call. A fresh state re-enters deflection on every call
+while the top overflow persists, so a plate drawn through the stateless overload does keep sitting beside
+the anchor. What it loses is the hysteresis band (the plate snaps back the moment overflow clears, so it
+can flicker at the entry threshold) and the sticky side (the side is re-picked from the room split every
+call, so it can swap sides as the anchor crosses the midline).
+
+`NameplateStyle.EdgeMargin` is the pixel inset from every viewport edge both `Clamp` and `Deflect` respect
+(the `Default` preset carries `4f`). It is inert while `EdgeBehavior` is `None`. `NameplateStyle.EdgeHysteresis`
+is `Deflect`-only: the extra headroom in pixels the normal above-anchor position must regain before a
+deflected plate returns there. A value `<= 0` means half the plate height, so the exit threshold scales with
+plate size instead of needing a per-style tune.
+
+The placement math itself is exposed render-free as `NameplatePlacement.Place(anchor, size, viewportWidth,
+viewportHeight, in style, ref state)`, the same pure function `NameplateRenderer.Draw` calls internally, if you
+want to place a plate without drawing it.
 
 ### Sharded authoritative server (many players / a large world)
 

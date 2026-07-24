@@ -11,12 +11,21 @@ namespace KhaozEngine.Render3D
     /// horizontally on that pixel and bottom-anchors it there (so the plate floats above the head), then draws the
     /// panel, title and bars screen-space via <see cref="SpriteBatch.DrawRounded(Texture2D, Vector4, Color, float, float, float, float)"/> and
     /// <see cref="SpriteBatch.DrawString(SpriteFont,string,Vector2,Color,float)"/> on the shared white texture.
+    /// The placement itself (baseline, plus the optional <see cref="NameplateStyle.EdgeBehavior"/> clamp/deflect)
+    /// is <see cref="NameplatePlacement.Place"/>. This class projects the anchor and draws the result.
     /// </summary>
     /// <remarks>
     /// Call it from the consumer's 2D pass, BETWEEN the <see cref="SpriteBatch"/>'s <c>Begin</c>/<c>End</c> and after
     /// the 3D scene is drawn. Like <see cref="WorldLabel"/> it is screen-space and NOT depth-tested, so a plate is not
     /// hidden behind terrain or props (occlusion is out of scope). Plates that are empty, behind the camera, off the
     /// depth range, or beyond <c>maxDistance</c> are skipped (returns <c>false</c>). No per-frame heap allocation.
+    /// <see cref="NameplateEdgeBehavior.Deflect"/>'s hysteresis only works through the stateful overload below: the
+    /// stateless <see cref="Draw(SpriteBatch,SpriteFont,Texture2D,IIsoCamera3D,Vector3,Vector3,in Nameplate,in NameplateStyle,int,int,float,Vector3?)"/>
+    /// re-evaluates from a fresh <see cref="NameplatePlacementState"/> every call, which is fine for <see
+    /// cref="NameplateEdgeBehavior.None"/> and <see cref="NameplateEdgeBehavior.Clamp"/> (both stateless) but means
+    /// a Deflect plate drawn through it can never stay deflected across frames. A game tracking per-entity
+    /// nameplates should keep one <see cref="NameplatePlacementState"/> per plate and call the stateful overload,
+    /// and must not share that state across plates: doing so lets one plate's deflection leak into another's.
     /// </remarks>
     public static class NameplateRenderer
     {
@@ -32,6 +41,14 @@ namespace KhaozEngine.Render3D
         /// Projects and draws one nameplate. Returns <c>true</c> if drawn, <c>false</c> if culled (empty plate, behind
         /// the camera, off-screen/off the depth range, or beyond <paramref name="maxDistance"/>).
         /// </summary>
+        /// <remarks>
+        /// Stateless convenience overload: it evaluates <see cref="NameplatePlacement.Place"/> from a fresh <see
+        /// cref="NameplatePlacementState"/> every call, so <see cref="NameplateStyle.EdgeBehavior"/> of <see
+        /// cref="NameplateEdgeBehavior.None"/> or <see cref="NameplateEdgeBehavior.Clamp"/> behave identically to
+        /// the stateful overload. <see cref="NameplateEdgeBehavior.Deflect"/>'s hysteresis needs state carried
+        /// across frames, so use the overload below (with a <see cref="NameplatePlacementState"/> kept per plate)
+        /// for that behaviour instead.
+        /// </remarks>
         /// <param name="batch">An in-progress (Begun) sprite batch to draw into.</param>
         /// <param name="font">The font the title renders with.</param>
         /// <param name="white">A 1x1 white texture for the solid panel/bar fills (the diagnostics-overlay convention).</param>
@@ -39,19 +56,55 @@ namespace KhaozEngine.Render3D
         /// <param name="worldPos">The world anchor (e.g. the avatar's feet/centre).</param>
         /// <param name="offset">World offset added before projecting (e.g. <c>(0, headHeight, 0)</c> to float above the head).</param>
         /// <param name="plate">The nameplate model (title + bars).</param>
-        /// <param name="style">The look (panel, padding, bar geometry).</param>
+        /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
         /// <param name="viewportWidth">Framebuffer width in pixels.</param>
         /// <param name="viewportHeight">Framebuffer height in pixels.</param>
         /// <param name="maxDistance">If &gt; 0, plates whose anchor is farther than this from <paramref name="cullFrom"/>
         /// (or the camera eye when null) are culled. 0 draws regardless of distance.</param>
-        /// <param name="cullFrom">Optional anchor the <paramref name="maxDistance"/> ring is measured from; null = the
-        /// camera eye. Pass the viewer-player's position so plates cull on player-to-target distance (matches
-        /// <see cref="WorldLabel"/>).</param>
+        /// <param name="cullFrom">Optional anchor the <paramref name="maxDistance"/> ring is measured from, or the
+        /// camera eye when null. Pass the viewer-player's position so plates cull on player-to-target distance
+        /// (matches <see cref="WorldLabel"/>).</param>
         public static bool Draw(
             SpriteBatch batch, SpriteFont font, Texture2D white,
             IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
             in Nameplate plate, in NameplateStyle style,
             int viewportWidth, int viewportHeight,
+            float maxDistance = 0f, Vector3? cullFrom = null)
+        {
+            NameplatePlacementState state = default;
+            return Draw(batch, font, white, camera, worldPos, offset, plate, style,
+                viewportWidth, viewportHeight, ref state, maxDistance, cullFrom);
+        }
+
+        /// <summary>
+        /// Projects and draws one nameplate, the same as the overload above, but with a caller-held <paramref
+        /// name="placementState"/> so <see cref="NameplateEdgeBehavior.Deflect"/>'s hysteresis works across
+        /// frames. Keep one <see cref="NameplatePlacementState"/> per plate/entity and pass the same instance in
+        /// every frame. Do not share one instance across plates, or one plate's deflection leaks into another's.
+        /// </summary>
+        /// <param name="batch">An in-progress (Begun) sprite batch to draw into.</param>
+        /// <param name="font">The font the title renders with.</param>
+        /// <param name="white">A 1x1 white texture for the solid panel/bar fills (the diagnostics-overlay convention).</param>
+        /// <param name="camera">The camera whose projection places the plate.</param>
+        /// <param name="worldPos">The world anchor (e.g. the avatar's feet/centre).</param>
+        /// <param name="offset">World offset added before projecting (e.g. <c>(0, headHeight, 0)</c> to float above the head).</param>
+        /// <param name="plate">The nameplate model (title + bars).</param>
+        /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
+        /// <param name="viewportWidth">Framebuffer width in pixels.</param>
+        /// <param name="viewportHeight">Framebuffer height in pixels.</param>
+        /// <param name="placementState">This plate's carried-over <see cref="NameplateEdgeBehavior.Deflect"/> state.
+        /// Keep one instance per plate across frames. A fresh instance behaves as not-yet-deflected.</param>
+        /// <param name="maxDistance">If &gt; 0, plates whose anchor is farther than this from <paramref name="cullFrom"/>
+        /// (or the camera eye when null) are culled. 0 draws regardless of distance.</param>
+        /// <param name="cullFrom">Optional anchor the <paramref name="maxDistance"/> ring is measured from, or the
+        /// camera eye when null. Pass the viewer-player's position so plates cull on player-to-target distance
+        /// (matches <see cref="WorldLabel"/>).</param>
+        public static bool Draw(
+            SpriteBatch batch, SpriteFont font, Texture2D white,
+            IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+            in Nameplate plate, in NameplateStyle style,
+            int viewportWidth, int viewportHeight,
+            ref NameplatePlacementState placementState,
             float maxDistance = 0f, Vector3? cullFrom = null)
         {
             if (batch is null || font is null || white is null || camera is null || plate.IsEmpty) return false;
@@ -63,10 +116,11 @@ namespace KhaozEngine.Render3D
             Vector2 size = NameplateLayout.Measure(font, plate, style);
             if (size.X <= 0f || size.Y <= 0f) return false;
 
-            // Centre horizontally on the projected pixel; bottom-anchor the panel there so it floats above the head.
-            float left = pixel.X - size.X * 0.5f;
-            float top = pixel.Y - size.Y;
-            var panelRect = new Vector4(left, top, size.X, size.Y);
+            // NameplatePlacement centres the panel horizontally on the projected pixel and bottom-anchors it
+            // there by default (so it floats above the head), then applies style.EdgeBehavior on top.
+            Vector4 panelRect = NameplatePlacement.Place(pixel, size, viewportWidth, viewportHeight, style, ref placementState);
+            float left = panelRect.X;
+            float top = panelRect.Y;
 
             // Panel fill (skip when transparent -> panel-less look) then optional border.
             if (style.PanelFill.A > 0f)

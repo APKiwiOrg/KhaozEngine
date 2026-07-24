@@ -15,8 +15,11 @@ namespace KhaozEngine.Tests.Terrain
     /// and its multi-part overload (issue #286): the frozen, author-supplied placement kind, its collider opt-out,
     /// and that <see cref="PropLayer.WithHlod"/> carries both through unchanged. Then the sink wiring:
     /// <see cref="PlacementBuckets"/>, the shared per-chunk seam in <c>ScatterLayersFor</c> (a placement layer
-    /// serves a bucket where a scatter layer generates), and the collider gating in
-    /// <c>LayerRegistersColliders</c>. Headless apart from one GPU-gated end-to-end collider test.</summary>
+    /// serves a bucket where a scatter layer generates), the collider gating in <c>LayerRegistersColliders</c>, and
+    /// the downstream parity that seam buys for free: a placement layer's <c>BuildCpu</c> HLOD bake and its
+    /// <c>PropRenderer.Queue</c> fade/LOD selection match the scatter layer that produced its placements, chunk for
+    /// chunk. Headless apart from one GPU-gated end-to-end collider test; pixel-presence GPU coverage of a
+    /// placement layer drawing is in the companion <c>PlacementLayerGpuTests.cs</c>.</summary>
     public class PlacementLayerTests
     {
         static IReadOnlyDictionary<string, MeshHandle> NoMeshes() => new Dictionary<string, MeshHandle>();
@@ -445,6 +448,146 @@ namespace KhaozEngine.Tests.Terrain
                 PropLayer.CompanionLayer(0, comp, NoMeshes(), 40f),
             }, chunkSize: ZoneChunk);
             Assert.Equal(2, hosted.ScatterLayersFor(new ChunkCoord(0, 0)).Length);
+        }
+
+        // --- HLOD / decor / fade-LOD downstream parity (issue #276 L3 + #286) ---------------------------------------
+        // The bucket seam above makes BuildCpu, Apply, and Draw shared code between a scatter layer and a placement
+        // layer fed its output. These lock that the sharing actually holds where it matters most: the HLOD merge
+        // bake, the decor-ring behaviour, the off path when no layer opts into HLOD, and the real fade/LOD selection
+        // PropRenderer.Queue performs when drawing.
+
+        static void AssertMeshByteIdentical(GltfMesh a, GltfMesh b)
+        {
+            Assert.Equal(a.Vertices.Length, b.Vertices.Length);
+            Assert.Equal(a.Indices32.Length, b.Indices32.Length);
+            for (int i = 0; i < a.Vertices.Length; i++)
+            {
+                Assert.Equal(a.Vertices[i].Position, b.Vertices[i].Position);
+                Assert.Equal(a.Vertices[i].Normal, b.Vertices[i].Normal);
+                Assert.Equal(a.Vertices[i].Color, b.Vertices[i].Color);
+            }
+            for (int i = 0; i < a.Indices32.Length; i++) Assert.Equal(a.Indices32[i], b.Indices32[i]);
+        }
+
+        [Fact]
+        public void BuildCpu_HlodParity_PlacementVsScatter()
+        {
+            // The HLOD merge reads the same per-chunk scatter the render props do, so a placement layer fed a
+            // scattered zone's whole output must bake a byte-identical HLOD mesh to the scatter layer that produced
+            // it, at every chunk of the zone.
+            TerrainField field = Flat(5f);
+            ScatterConfig cfg = NoJitterKind("pine_a", seed: 3, cell: ZoneCell);
+            IReadOnlyList<PropPlacement> whole = WholeZone(field, cfg);
+            var source = new Dictionary<string, GltfMesh> { ["pine_a"] = MeshPrimitives.Box(1.5f) };
+
+            var scatterSink = new Scene3DChunkSink(scene: null!, field, new[]
+            {
+                PropLayer.ScatterLayer(cfg, NoMeshes(), 90f).WithHlod(source, hlodDistance: 50f, weldCell: 2f),
+            }, chunkSize: ZoneChunk);
+            var placementSink = new Scene3DChunkSink(scene: null!, field, new[]
+            {
+                PropLayer.PlacementLayer(whole, NoMeshes(), 90f).WithHlod(source, hlodDistance: 50f, weldCell: 2f),
+            }, chunkSize: ZoneChunk);
+
+            foreach (ChunkCoord coord in ZoneCoords())
+            {
+                var scatterCpu = (Scene3DChunkSink.CpuBuild)scatterSink.BuildCpu(coord, lod: 0, ChunkRing.Gameplay);
+                var placementCpu = (Scene3DChunkSink.CpuBuild)placementSink.BuildCpu(coord, lod: 0, ChunkRing.Gameplay);
+
+                Assert.NotNull(scatterCpu.HlodMeshes![0]);
+                Assert.NotNull(placementCpu.HlodMeshes![0]);
+                AssertMeshByteIdentical(scatterCpu.HlodMeshes[0]!, placementCpu.HlodMeshes[0]!);
+            }
+        }
+
+        [Fact]
+        public void BuildCpu_DecorRing_PlacementLayer_BakesHlodWithoutProps()
+        {
+            // A placement layer's decor ring behaves exactly like a scatter layer's (Scene3DChunkSinkTests'
+            // BuildCpu_WithHlodLayer_BakesMergedMeshForGameplayAndDecor): render-only, so LayerProps carries no
+            // individual props, but the merged mesh still stands in for them - and it is the SAME mesh the gameplay
+            // ring bakes for that chunk, since the merge is a pure function of the chunk's placements, not the ring.
+            TerrainField field = Flat(5f);
+            ScatterConfig cfg = NoJitterKind("pine_a", seed: 3, cell: ZoneCell);
+            IReadOnlyList<PropPlacement> whole = WholeZone(field, cfg);
+            var source = new Dictionary<string, GltfMesh> { ["pine_a"] = MeshPrimitives.Box(1.5f) };
+            PropLayer layer = PropLayer.PlacementLayer(whole, NoMeshes(), 90f).WithHlod(source, hlodDistance: 50f, weldCell: 2f);
+            var sink = new Scene3DChunkSink(scene: null!, field, new[] { layer }, chunkSize: ZoneChunk);
+            var coord = new ChunkCoord(0, 0);
+
+            var gameplay = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 0, ChunkRing.Gameplay);
+            var decor = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 2, ChunkRing.Decor);
+
+            Assert.Single(decor.LayerProps);
+            Assert.Empty(decor.LayerProps[0]);
+            Assert.NotNull(decor.HlodMeshes![0]);
+            AssertMeshByteIdentical(gameplay.HlodMeshes![0]!, decor.HlodMeshes[0]!);
+        }
+
+        [Fact]
+        public void BuildCpu_NoHlod_PlacementLayer_NoHlodMeshes()
+        {
+            // Config-off equivalence for a placement-only layer list: with no layer opted into WithHlod, BuildCpu
+            // produces no HLOD meshes at all (locks the sink's _anyHlod off path), mirroring the scatter-layer
+            // equivalent Scene3DChunkSinkTests.BuildCpu_WithNoHlodLayer_ProducesNoHlodMeshes.
+            TerrainField field = Flat(5f);
+            IReadOnlyList<PropPlacement> placements = OnePlacement();
+            var sink = new Scene3DChunkSink(scene: null!, field,
+                new[] { PropLayer.PlacementLayer(placements, NoMeshes(), 90f) }, chunkSize: ZoneChunk);
+
+            var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(new ChunkCoord(0, 0), lod: 0);
+
+            Assert.Null(cpu.HlodMeshes);
+        }
+
+        [Fact]
+        public void Queue_FadeLodSelectionParity_PlacementVsScatter()
+        {
+            // The fade/LOD selection code itself (PropRenderer.Queue) is exercised headlessly in PropRendererTests;
+            // this proves it selects and dissolves IDENTICALLY when fed a placement layer's chunk bucket vs the
+            // scatter layer that produced it (issue #286) - the real selection code, not just a comparison of the
+            // raw PropPlacement lists (already locked by Sink_PlacementLayer_MatchesScatterEquivalentPerChunk).
+            TerrainField field = Flat(5f);
+            ScatterConfig cfg = NoJitterKind("pine_a", seed: 3, cell: ZoneCell);
+            IReadOnlyList<PropPlacement> whole = WholeZone(field, cfg);
+            var meshes = new Dictionary<string, MeshHandle> { ["pine_a"] = new MeshHandle(3) };
+            var lodMeshes = new Dictionary<string, MeshHandle> { ["pine_a"] = new MeshHandle(9) };
+            const float drawRadius = 60f;
+            const float fadeBandWidth = 40f;   // fade starts at 20: spans solid, fading, and out-of-range placements
+            const float lodDistance = 25f;     // spans full-mesh-near and lod-mesh-far placements too
+
+            var scatterSink = new Scene3DChunkSink(scene: null!, field, new[]
+            {
+                PropLayer.ScatterLayer(cfg, meshes, drawRadius, fadeBandWidth, lodMeshes, lodDistance),
+            }, chunkSize: ZoneChunk);
+            var placementSink = new Scene3DChunkSink(scene: null!, field, new[]
+            {
+                PropLayer.PlacementLayer(whole, meshes, drawRadius, fadeBandWidth, lodMeshes, lodDistance),
+            }, chunkSize: ZoneChunk);
+
+            var coord = new ChunkCoord(0, 0);
+            IReadOnlyList<PropPlacement> fromScatter = scatterSink.ScatterLayersFor(coord)[0];
+            IReadOnlyList<PropPlacement> fromPlacement = placementSink.ScatterLayersFor(coord)[0];
+            Assert.NotEmpty(fromScatter);
+
+            var focus = new Vector3(30f, 0f, 30f);   // chunk centre: distances span both the fade band and the LOD swap
+
+            var scatterQueue = new SceneInstances();
+            int scatterCount = PropRenderer.Queue(scatterQueue, fromScatter, meshes, focus, drawRadius,
+                fadeBandWidth: fadeBandWidth, lodMeshes: lodMeshes, lodDistance: lodDistance);
+            var placementQueue = new SceneInstances();
+            int placementCount = PropRenderer.Queue(placementQueue, fromPlacement, meshes, focus, drawRadius,
+                fadeBandWidth: fadeBandWidth, lodMeshes: lodMeshes, lodDistance: lodDistance);
+
+            Assert.Equal(scatterCount, placementCount);
+            Assert.Equal(scatterQueue.Items.Count, placementQueue.Items.Count);
+            for (int i = 0; i < scatterQueue.Items.Count; i++)
+            {
+                Assert.Equal(scatterQueue.Items[i].Mesh.Index, placementQueue.Items[i].Mesh.Index);
+                Assert.Equal(scatterQueue.Items[i].World, placementQueue.Items[i].World);
+                Assert.Equal(scatterQueue.Items[i].DissolveThreshold, placementQueue.Items[i].DissolveThreshold, 5);
+                Assert.Equal(scatterQueue.Items[i].Tint, placementQueue.Items[i].Tint);
+            }
         }
 
         [GpuFact]

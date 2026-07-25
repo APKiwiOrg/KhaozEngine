@@ -74,8 +74,8 @@ namespace KhaozEngine.Render3D
 
     /// <summary>
     /// The look of a <see cref="Nameplate"/> - panel, padding, and bar geometry - separated from its data so one
-    /// widget covers the archetypes: the opaque unified plate (<see cref="Default"/>), and a panel-less "classic"
-    /// pill (set <see cref="PanelFill"/> alpha to 0 and supply a <see cref="TitleShadow"/> for readability).
+    /// widget covers the archetypes: the opaque unified plate (<see cref="Default"/>), and the panel-less
+    /// name-only look (<see cref="TextOnly"/>) that pairs with <see cref="NameplateTier.Text"/>.
     /// </summary>
     public readonly struct NameplateStyle
     {
@@ -121,8 +121,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// The unified-plate preset: an opaque dark rounded panel, a subtle light border, one-bar geometry, no title
-        /// shadow. Tweak it with a <c>with</c> expression, e.g. <c>NameplateStyle.Default with { PanelFill =
-        /// NameplateStyle.Default.PanelFill.WithAlpha(0f), TitleShadow = Color.Black }</c> for the classic pill.
+        /// shadow. Tweak it with a <c>with</c> expression, or start from <see cref="TextOnly"/> instead when the
+        /// panel-less name-only look is what you want.
         /// </summary>
         public static NameplateStyle Default => new NameplateStyle
         {
@@ -143,6 +143,21 @@ namespace KhaozEngine.Render3D
             EdgeBehavior = NameplateEdgeBehavior.None,
             EdgeMargin = 4f,
             EdgeHysteresis = 0f,
+        };
+
+        /// <summary>
+        /// The panel-less name-only look for <see cref="NameplateTier.Text"/>: the panel and border draws are
+        /// skipped (zero fill alpha, zero border thickness), and the black <see cref="TitleShadow"/> keeps the
+        /// bare text readable over the world behind it. Pair this style with a <see cref="Nameplate"/> that has
+        /// no <see cref="Nameplate.Bars"/>: the style hides the panel, the data drops the bar. Inherits <see
+        /// cref="Default"/>'s <see cref="EdgeBehavior"/> (<see cref="NameplateEdgeBehavior.None"/>).
+        /// </summary>
+        public static NameplateStyle TextOnly => Default with
+        {
+            PanelFill = Default.PanelFill.WithAlpha(0f),
+            PanelBorderThickness = 0f,
+            MinBarWidth = 0f,
+            TitleShadow = Color.Black,
         };
     }
 }

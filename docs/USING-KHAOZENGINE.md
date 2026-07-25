@@ -4314,7 +4314,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.21.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.21.1" />
 ```
 
 ```csharp
@@ -5809,9 +5809,12 @@ foreach (EntityRenderState e in client.Snapshot())
 batch.End();
 ```
 
-`WorldLabel.Draw` projects via the new `IIsoCamera3D.WorldToScreen(world, w, h, out pixel)` (the forward inverse of
-`ScreenToRay`; `false` when the point is behind the camera) and draws centered `SpriteFont` text. If you want to
-place labels yourself, call `WorldToScreen` directly. Labels are screen-space and drawn on top - they are **not**
+`WorldLabel.Draw` composes its anchor from two `IIsoCamera3D.WorldToScreen(world, w, h, out pixel)` calls (the
+forward inverse of `ScreenToRay`, returning `false` when the head point is behind the camera): the head point (`worldPos +
+offset`) drives screen Y and a body column (`worldPos` plus only the lateral part of `offset`) drives screen X, so
+the label hangs screen-above the visible body instead of leaning toward it off-centre. It draws centered
+`SpriteFont` text at that anchor. If you want to place labels yourself, call `WorldToScreen` directly. Labels are
+screen-space and drawn on top - they are **not**
 depth-tested, so a name is not hidden when its owner stands behind terrain or a prop (occluded nameplates are out
 of scope).
 
@@ -5852,8 +5855,9 @@ foreach (EntityRenderState e in client.Snapshot())
 batch.End();
 ```
 
-`NameplateRenderer.Draw` projects `worldPos + offset` via `IIsoCamera3D.WorldToScreen` exactly like `WorldLabel`,
-centres the panel horizontally on the head pixel and bottom-anchors it there (the plate floats above the head). It
+`NameplateRenderer.Draw` composes its anchor from the head point and a body column exactly like `WorldLabel` (see
+above), centres the panel horizontally on the composed anchor's X and bottom-anchors it there (the plate floats
+above the visible body). It
 returns `false` on the same cull paths (empty plate, behind camera, off-screen, beyond `maxDistance` - the distance
 predicate is the shared `NameplateRenderer.ShouldCull`, identical to `WorldLabel.ShouldCull`). Like `WorldLabel` it
 is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw; the draw path allocates no

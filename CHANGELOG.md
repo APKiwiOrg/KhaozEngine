@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.21.1
+
+Fix: nameplates and world labels no longer lean sideways off an off-centre entity, and no longer swap side as the camera orbits.
+
+- **`NameplateAnchorProjection.Project` (KhaozEngine.Render3D, internal).** `NameplateRenderer.Draw` and
+  `WorldLabel.Draw` projected the single world point `worldPos + offset` and centred the plate on it. A
+  world-vertical offset (the head-height float) projects screen-vertically only when the entity sits on
+  the camera's central vertical plane, so an off-centre entity's plate leaned horizontally toward or away
+  from it (measured up to 0.54x of a wolf's apparent height at ordinary look-down pitches), and the lean
+  flipped side as the camera orbited past the entity's centre plane. Reported by Ruinborne from its
+  0.10.10 tier-adoption playtest. The new internal `NameplateAnchorProjection.Project` composes the anchor
+  from two projections instead: the body column (`worldPos` plus only the lateral X/Z part of the offset)
+  drives screen X, and the head point (`worldPos` plus the full offset) drives screen Y, so the plate now
+  hangs screen-vertically above the visible body at every screen position. Culling is unchanged (the head
+  point failing to project still culls the draw, exactly as before) and a caller's deliberate lateral
+  offset stays honoured, folded into the body column's X projection rather than dropped.
+- Applied to both `NameplateRenderer` (the stateful `Draw` overload both public overloads flow through)
+  and `WorldLabel`, which shared the defect.
+- No public API change, `NameplateAnchorProjection` is internal, so this is a patch.
+- Tests: 6 headless facts (`NameplateAnchorProjectionTests.cs`) drive a real `FollowCamera3D`, pinning the
+  raw lean, the two-projection composition, the centred no-op, the lateral-offset path, the cull, and the
+  side-flip regression.
+
 ## 14.21.0
 
 Feature: nameplates gain presentation tiers, so a crowd of nearby entities does not draw a stack of full

@@ -4761,6 +4761,7 @@ using KhaozEngine.Terrain.Render3D;
 
 // doc was frozen by FreezeZone: ids "baked-<source>-N", tagged "baked" plus the source layer name.
 MapDocument doc = MapDocumentFile.Load("assets/maps/valley.map.json");
+var registry = MapDocRegistry.CreateDefault();
 TerrainField field = MapRuntime.BuildField(doc, registry);
 
 IReadOnlyList<PropPlacement> BakedPlacements(string sourceLayer)
@@ -4969,7 +4970,7 @@ The 3D World room in `KhaozEngine.Showcase` places one of these procedural textu
 `Scene3DChunkSink` now accepts N `PropLayer`s, so a scene can have sparse tall trees at a long draw radius
 alongside dense short-radius ground cover, with a companion layer that rings each tree base with foliage, or
 a placement layer replaying a frozen, author-supplied list instead of generating one at runtime (see Frozen
-zones: placement layers, above). Foliage ids carry no collider - this is render-only; the server, client
+zones: placement layers, above). Foliage ids carry no collider - this is render-only. The server, client
 prediction, and collision are untouched.
 
 ```csharp

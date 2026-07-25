@@ -6,10 +6,12 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// Draws a <see cref="Nameplate"/> (a rounded panel with a centred title and stacked <see cref="NameplateBar"/>s)
-    /// anchored above a world point - the MMO-style successor to <see cref="WorldLabel"/>. It projects
-    /// <c>worldPos + offset</c> through the camera's <see cref="IIsoCamera3D.WorldToScreen"/>, centres the panel
-    /// horizontally on that pixel and bottom-anchors it there (so the plate floats above the head), then draws the
-    /// panel, title and bars screen-space via <see cref="SpriteBatch.DrawRounded(Texture2D, Vector4, Color, float, float, float, float)"/> and
+    /// anchored above a world point - the MMO-style successor to <see cref="WorldLabel"/>. It projects the anchor
+    /// pixel via <see cref="NameplateAnchorProjection.Project"/> (the head point <c>worldPos + offset</c> drives
+    /// screen Y, the body column <c>worldPos</c> plus only the lateral part of <c>offset</c> drives screen X, so a
+    /// perspective camera's horizontal lean on an off-centre entity does not put the plate beside it), centres the
+    /// panel horizontally on that pixel and bottom-anchors it there (so the plate floats above the head), then
+    /// draws the panel, title and bars screen-space via <see cref="SpriteBatch.DrawRounded(Texture2D, Vector4, Color, float, float, float, float)"/> and
     /// <see cref="SpriteBatch.DrawString(SpriteFont,string,Vector2,Color,float)"/> on the shared white texture.
     /// The placement itself (baseline, plus the optional <see cref="NameplateStyle.EdgeBehavior"/> clamp/deflect)
     /// is <see cref="NameplatePlacement.Place"/>. This class projects the anchor and draws the result.
@@ -58,7 +60,11 @@ namespace KhaozEngine.Render3D
         /// <param name="white">A 1x1 white texture for the solid panel/bar fills (the diagnostics-overlay convention).</param>
         /// <param name="camera">The camera whose projection places the plate.</param>
         /// <param name="worldPos">The world anchor (e.g. the avatar's feet/centre).</param>
-        /// <param name="offset">World offset added before projecting (e.g. <c>(0, headHeight, 0)</c> to float above the head).</param>
+        /// <param name="offset">World offset applied before projecting (e.g. <c>(0, headHeight, 0)</c> to float above
+        /// the head). Its full value (including the vertical part) drives the head point that decides screen Y.
+        /// Only its lateral (X/Z) part feeds the body-column projection that decides screen X (see
+        /// <see cref="NameplateAnchorProjection.Project"/>), so a perspective camera's lean does not put the plate
+        /// beside the entity, while a deliberate lateral nudge still moves the anchor.</param>
         /// <param name="plate">The nameplate model (title + bars).</param>
         /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
         /// <param name="viewportWidth">Framebuffer width in pixels.</param>
@@ -91,7 +97,11 @@ namespace KhaozEngine.Render3D
         /// <param name="white">A 1x1 white texture for the solid panel/bar fills (the diagnostics-overlay convention).</param>
         /// <param name="camera">The camera whose projection places the plate.</param>
         /// <param name="worldPos">The world anchor (e.g. the avatar's feet/centre).</param>
-        /// <param name="offset">World offset added before projecting (e.g. <c>(0, headHeight, 0)</c> to float above the head).</param>
+        /// <param name="offset">World offset applied before projecting (e.g. <c>(0, headHeight, 0)</c> to float above
+        /// the head). Its full value (including the vertical part) drives the head point that decides screen Y.
+        /// Only its lateral (X/Z) part feeds the body-column projection that decides screen X (see
+        /// <see cref="NameplateAnchorProjection.Project"/>), so a perspective camera's lean does not put the plate
+        /// beside the entity, while a deliberate lateral nudge still moves the anchor.</param>
         /// <param name="plate">The nameplate model (title + bars).</param>
         /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
         /// <param name="viewportWidth">Framebuffer width in pixels.</param>
@@ -115,7 +125,7 @@ namespace KhaozEngine.Render3D
 
             Vector3 cullOrigin = cullFrom ?? camera.Eye;
             if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
-            if (!camera.WorldToScreen(worldPos + offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
+            if (!NameplateAnchorProjection.Project(camera, worldPos, offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
 
             Vector2 size = NameplateLayout.Measure(font, plate, style);
             if (size.X <= 0f || size.Y <= 0f) return false;
@@ -153,7 +163,7 @@ namespace KhaozEngine.Render3D
                 batch.DrawString(font, title, new Vector2(titleX, innerTop), plate.TitleColor, style.FontScale);
             }
 
-            // Bars stacked full inner width below the title; compute each rect in the loop (no per-frame list alloc).
+            // Bars stacked full inner width below the title. Compute each rect in the loop (no per-frame list alloc).
             float y = innerTop + titleH;
             bool contentAbove = titleH > 0f;
             if (plate.Bars is { } bars)

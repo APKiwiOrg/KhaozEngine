@@ -6,9 +6,12 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// Draws a string anchored to a world point as a screen-space label - the centralized nameplate / world-text
-    /// helper (e.g. a player name floating above their head). It projects <c>worldPos + offset</c> through the
-    /// camera's <see cref="IIsoCamera3D.WorldToScreen"/>, then draws <c>text</c> centred horizontally and lifted so
-    /// it sits above that pixel, via <see cref="SpriteBatch.DrawString(SpriteFont,string,Vector2,Color,float)"/>.
+    /// helper (e.g. a player name floating above their head). It projects the anchor pixel via
+    /// <see cref="NameplateAnchorProjection.Project"/> (the head point <c>worldPos + offset</c> drives screen Y, the
+    /// body column <c>worldPos</c> plus only the lateral part of <c>offset</c> drives screen X, so a perspective
+    /// camera's horizontal lean on an off-centre entity does not put the label beside it), then draws <c>text</c>
+    /// centred horizontally and lifted so it sits above that pixel, via
+    /// <see cref="SpriteBatch.DrawString(SpriteFont,string,Vector2,Color,float)"/>.
     /// Reuses the shipped <see cref="SpriteFont"/>/<see cref="SpriteBatch"/> text path - no per-name texture/atlas.
     /// </summary>
     /// <remarks>
@@ -29,7 +32,11 @@ namespace KhaozEngine.Render3D
         /// <param name="camera">The camera whose projection places the label.</param>
         /// <param name="worldPos">The world anchor (e.g. the avatar's feet/centre).</param>
         /// <param name="offset">World-space offset added to <paramref name="worldPos"/> before projecting (e.g.
-        /// <c>(0, headHeight, 0)</c> to float the name above the head).</param>
+        /// <c>(0, headHeight, 0)</c> to float the name above the head). Its full value (including the vertical part)
+        /// drives the head point that decides screen Y. Only its lateral (X/Z) part feeds the body-column
+        /// projection that decides screen X (see <see cref="NameplateAnchorProjection.Project"/>), so a perspective
+        /// camera's lean does not put the label beside the entity, while a deliberate lateral nudge still moves the
+        /// anchor.</param>
         /// <param name="text">The label text (empty/null is a no-op).</param>
         /// <param name="color">Text color (RGBA).</param>
         /// <param name="viewportWidth">Framebuffer width in pixels.</param>
@@ -49,10 +56,10 @@ namespace KhaozEngine.Render3D
             if (batch is null || font is null || camera is null || string.IsNullOrEmpty(text)) return false;
             Vector3 cullOrigin = cullFrom ?? camera.Eye;
             if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
-            if (!camera.WorldToScreen(worldPos + offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
+            if (!NameplateAnchorProjection.Project(camera, worldPos, offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
 
             Vector2 size = font.Measure(text) * scale;
-            // Centre horizontally on the projected pixel; anchor the text's BOTTOM there so it floats above the point.
+            // Centre horizontally on the projected pixel. Anchor the text's BOTTOM there so it floats above the point.
             var topLeft = new Vector2(pixel.X - size.X * 0.5f, pixel.Y - size.Y);
             batch.DrawString(font, text, topLeft, color, scale);
             return true;

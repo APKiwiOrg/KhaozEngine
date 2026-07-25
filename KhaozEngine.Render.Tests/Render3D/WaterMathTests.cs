@@ -9,9 +9,11 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// Pure headless coverage for the water surface math (scrolling-normal perturbation, Schlick fresnel tint,
-    /// Blinn-Phong sun glint, depth-sampled shore fade) and the settings / grid / UBO plumbing. No GPU; WaterMath is
-    /// the single source both this test and the GLSL WaterFrag follow (see the in-source mirror comment).
+    /// Pure headless coverage for the water surface math that predates 14.23.0 (scrolling-normal perturbation,
+    /// Schlick fresnel tint, the legacy Blinn-Phong sun glint, depth-sampled shore fade) plus the settings / grid /
+    /// UBO plumbing. No GPU; WaterMath is the single source both this test and the GLSL WaterFrag follow (see the
+    /// in-source mirror comment). The 14.23.0 additions live in <see cref="WaterSurfaceMathTests"/> (grid focus
+    /// warp, absorption, reflection, GGX glint, foam) and <see cref="GerstnerWaveTests"/> (the swell).
     /// </summary>
     public class WaterMathTests
     {

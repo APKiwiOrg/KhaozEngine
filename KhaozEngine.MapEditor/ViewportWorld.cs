@@ -243,7 +243,7 @@ public sealed class ViewportWorld : IDisposable
         // One water plane per frame, covering the whole document at the live water level. Always submitted while
         // the Water group is on, with no "skip when dry" guard: the water pass is depth-tested against the terrain
         // and its shore-fade drives the alpha to zero at the waterline, so a level below all terrain renders
-        // nothing at negligible cost (a fixed 17x17 grid, one draw). Deriving the plane live from the document
+        // nothing at negligible cost (a fixed-budget grid, one draw). Deriving the plane live from the document
         // means a water-level edit shows up without a rebuild. The wholesale rebuild an EditTerrainCommand triggers
         // is for scatter (which skips underwater candidates), not for the surface.
         if (visibility.GetGroup(VisibilityGroup.Water))

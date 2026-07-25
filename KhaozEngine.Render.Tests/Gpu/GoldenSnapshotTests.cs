@@ -521,14 +521,13 @@ namespace KhaozEngine.Tests.Gpu
             return n == 0 ? (0f, 0f, 0f) : ((float)(r / n / 255.0), (float)(g / n / 255.0), (float)(b / n / 255.0));
         }
 
-        // Rendering gap #5: the animated water surface (normal perturbation, sky-derived fresnel tint, key-light sun
-        // glint, depth-sampled shore fade). A deep lakebed tile sits well below the water surface (so the open-water
-        // region is fully opaque - depth-below-surface far past ShoreFadeDistance) while a shallow shelf ramps up
-        // near one side to a dry "beach" box that pokes ABOVE the surface (the water pass's own depth test occludes
-        // it), so the shelf's slope crosses the fade band and the frame shows both open water (glint + fresnel tint)
-        // and a genuine soft shoreline. Time is FROZEN (EffectTimeSeconds = 0, the same mechanism scene3d_beam locks)
-        // so the golden is deterministic despite the animated per-pixel wave math. Off (the default, no DrawWater
-        // call) stays byte-stable via the untouched scene3d golden - this is a pure ADDITIVE opt-in pass.
+        // Rendering gap #5: the animated water surface (domain-warped three-layer normals, distance detail fade,
+        // shallow-water body blend, sky-derived fresnel tint, key-light sun glint, depth-sampled shore fade). A deep
+        // lakebed tile sits well below the surface (open water: past both ShoreFadeDistance and ShallowDepth, so
+        // fully opaque and fully DEEP-tinted) while a shallow shelf ramps up near one side to a dry "beach" box that
+        // pokes ABOVE the surface (occluded by the water pass's own depth test), so the shelf crosses both the alpha
+        // feather and the shallow tint band. Time is FROZEN (EffectTimeSeconds = 0, the mechanism scene3d_beam locks)
+        // for determinism. Off (no DrawWater call, the default) stays byte-stable via the untouched scene3d golden.
         [GpuFact]
         public void Golden3D_Water()
         {
@@ -544,9 +543,8 @@ namespace KhaozEngine.Tests.Gpu
                     // Baked with outline on; pinned explicit when the engine default flipped to off.
                     scene.Post.Outline = true;
                     scene.Post.BackgroundColor = new Color(0.10f, 0.12f, 0.16f, 1f);
-                    // Sky ON so the water's fresnel horizon tint has the same cohesive sky-derived look the brief
-                    // asks for (water borrows the sky's palette by default; harmonized in WaterSettings' own
-                    // defaults too, so this also exercises an explicit override agreeing with a custom sky).
+                    // Sky ON so the water's fresnel horizon tint reads as the same cohesive sky-derived palette
+                    // (harmonized in WaterSettings' defaults too, so this also exercises an agreeing override).
                     scene.Post.Sky.Enabled = true;
                     // Ortho iso camera: pin the stylized backdrop anchor (the world projection degenerates under
                     // parallel view rays) so this golden stays byte-identical to the pre-SunAnchor behaviour.
@@ -566,31 +564,34 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Water.ShoreFadeDistance = 0.7f;
                     scene.Post.Water.GlintStrength = 0.8f;
                     scene.Post.Water.GlintExponent = 100f;
+                    scene.Post.Water.ShallowColor = new Color(0.20f, 0.46f, 0.44f, 0.78f);
+                    scene.Post.Water.ShallowDepth = 0.45f;       // scene-sized: shelf (~0.4) shallow, lakebed (~0.9) deep
+                    scene.Post.Water.WaveWarpStrength = 0.75f;   // the three new defaults, pinned explicit
+                    scene.Post.Water.DetailFadeDistance = 40f;   // camera ~9 units out: detail near full, fade live
+                    scene.Post.Water.DistantDetailScale = 0.18f;
                     scene.Camera.Frame(new Vector3(0.1f, 0.3f, 0.2f), new Vector3(6f, 5f, 6f));
                     scene.EffectTimeSeconds = 0f;   // static frame => deterministic golden (no wave scroll)
                 },
                 drawFrame: scene =>
                 {
-                    // Deep lakebed at y in [0, 0.1]: with the surface at y=1.0, depth-below-surface is ~0.9 in open
-                    // water - well past ShoreFadeDistance (0.7), so the open-water region is fully opaque.
+                    // Deep lakebed at y in [0, 0.1]: surface at y=1.0, so depth-below-surface ~0.9 in open water,
+                    // past BOTH ShoreFadeDistance (0.7) and ShallowDepth (0.45) - fully opaque, fully deep-tinted.
                     scene.Draw(lakebed, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.20f, 0.24f, 0.20f, 1f));
-                    // Shallow shelf at y in [0.55, 0.65], offset toward +X/-Z: depth-below-surface ~0.35-0.45, inside
-                    // the fade band, so its footprint reads as a soft shoreline gradient rather than a hard clip.
+                    // Shallow shelf at y in [0.55, 0.65] toward +X/-Z: depth ~0.35-0.45, inside both bands, so its
+                    // footprint reads as a shallow-tinted soft shoreline gradient rather than a hard clip.
                     scene.Draw(shelf, Matrix4x4.CreateTranslation(2.4f, 0.55f, -2.4f), new Color(0.55f, 0.48f, 0.32f, 1f));
-                    // A dry beach box whose top (y=1.4) pokes ABOVE the water surface (y=1.0): the water pass's own
-                    // depth test occludes it, locking the "geometry above the surface occludes water" invariant.
+                    // A dry beach box whose top (y=1.4) pokes ABOVE the surface: the water pass's own depth test
+                    // occludes it, locking the "geometry above the surface occludes water" invariant.
                     scene.Draw(beach, Matrix4x4.CreateTranslation(3.6f, 0.6f, -3.6f), new Color(0.62f, 0.56f, 0.38f, 1f));
                     scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 1.0f, centerZ: 0f, halfExtentX: 4.5f));
                 },
                 frames: 2);
 
-            // Anti-degeneracy guard: the water region must show real per-cell colour variation (animated-normal
-            // shading + fresnel gradient + glint), not a flat single-colour sheet (the failure mode a broken bake -
-            // e.g. the fragment falling through to a constant tint with no lighting - would produce). Sample the
-            // grid cells that fall within the water plane's world footprint by re-deriving their approximate screen
-            // position is overkill for a coarse guard; instead require a healthy SPREAD of distinct blue-ish
-            // (water-dominant) cell brightnesses across the whole downsampled grid, which only happens when the
-            // fresnel/glint/normal terms actually vary per pixel.
+            // Anti-degeneracy guard: the water region must show real per-cell colour variation (wave-normal shading
+            // + fresnel gradient + glint + shallow blend), not a flat single-colour sheet - the failure mode a
+            // broken bake produces when the fragment falls through to a constant tint. Re-deriving each cell's
+            // world footprint is overkill for a coarse guard, so instead require a healthy SPREAD of blue-dominant
+            // cell brightnesses across the whole downsampled grid, which only happens when those terms really vary.
             float[] guardGrid = GoldenCompare.Downsample(rgba, W, H);
             int waterCells = 0;
             float minBrightness = float.MaxValue, maxBrightness = float.MinValue;
@@ -612,9 +613,8 @@ namespace KhaozEngine.Tests.Gpu
                 "expected a sizeable visible water region. Check the DrawWater plane/camera framing.");
             Assert.True(maxBrightness - minBrightness >= 0.08f,
                 $"scene3d_water's blue-dominant cells only span brightness {minBrightness:F3}..{maxBrightness:F3} " +
-                "(range < 0.08); a real animated water surface should show meaningful cell-to-cell variation from " +
-                "the fresnel gradient + sun glint + shore fade, not a flat single-colour sheet. Check the fragment " +
-                "is actually computing the normal/fresnel/glint terms instead of falling back to a constant tint.");
+                "(range < 0.08); the fresnel gradient + sun glint + shore fade + shallow blend should vary cell to " +
+                "cell. Check the fragment computes those terms instead of falling back to a constant tint.");
 
             GoldenCompare.AssertOrUpdate("scene3d_water", rgba, W, H);
         }

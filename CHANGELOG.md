@@ -5,6 +5,62 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.22.0
+
+Feature: the water surface stops tiling. Its two axis-aligned sine octaves are replaced by a domain-warped
+three-layer field at mutually irrational frequencies, the fine layers now fade with camera distance, and the
+body colour blends toward a shallow tint as the seabed rises to meet the surface. Reported from a Ruinborne
+playtest, where an island world made water a large visible surface for the first time and the shader's
+simplicity showed as a checkerboard repeat at distance. Closes #278.
+
+- **The wave normal field is now three directional layers over a domain-warped sample position** (internal
+  `WaterMath.WaveNormal` + the mirrored GLSL `waterNormal`). The layers point along 20, 115 and -51 degrees,
+  so none is axis-aligned and no two are parallel, and their frequency multipliers (1, the golden ratio,
+  sqrt 7) are mutually irrational, so their repeat periods never come back into phase. Amplitudes are picked
+  so the summed max slope stays near the old field's, which keeps the chop character at a given
+  `NormalStrength`. **This part has no off switch, deliberately:** the old field's two octaves were
+  axis-separable and exactly `2*pi*WaveScale`-periodic in both axes, which IS the checkerboard, so keeping it
+  reachable would just keep the defect reachable. Measured over 400 sample points, the old field matched
+  itself exactly (mean normal delta 0.000) at that period, while the new field's best self-match anywhere
+  from a quarter to six times that shift is 0.135, against 0.202 for two unrelated points.
+- **`WaterSettings.WaveWarpStrength` (new, default `0.75`).** A slow, large-scale displacement of the sample
+  position applied before the wave layers, in multiples of `WaveScale`. Its wavelength is roughly five times
+  the base layer's, so it bends the field over a much longer distance than the waves themselves repeat over.
+  `0` disables it. The warp's Jacobian is deliberately not folded into the analytic slope: it is
+  low-frequency next to the layers it feeds, so treating it as a slowly varying reparametrization costs a
+  few percent of gradient accuracy on a normal-only surface and saves four transcendentals per pixel.
+- **`WaterSettings.DetailFadeDistance` (new, default `60`) and `DistantDetailScale` (new, default `0.18`).**
+  The two fine wave layers fade toward `DistantDetailScale` over `DetailFadeDistance` world units of camera
+  distance, leaving the broad base swell in the far field. This is the anti-shimmer knob: high-frequency
+  normals sampled below a pixel alias into a crawling moire, and a tight `GlintExponent` turns that into
+  sparkle. `DetailFadeDistance = 0` disables the fade. The base layer never fades, so the far field stays
+  water rather than becoming a mirror.
+- **`WaterSettings.ShallowColor` (new) and `ShallowDepth` (new, default `2.5`).** The BODY colour blends from
+  `DeepColor` to `ShallowColor` as the reconstructed ground rises to the surface, so a coastal shelf reads as
+  a lighter fringe instead of the deep tint running right up to the waterline. It is applied before the
+  fresnel blend toward `HorizonColor`, so a grazing view of the shallows still picks up the sky. Kept
+  separate from `ShoreFadeDistance` on purpose: that is the tight ALPHA feather at the edge (centimetres),
+  this is the tint band (metres). `ShallowDepth = 0` disables the blend. The default `ShallowColor` is a
+  modest lift off `DeepColor`, not a tropical lagoon.
+- **The pre-14.22.0 look is reachable as `WaveWarpStrength = 0`, `DetailFadeDistance = 0`,
+  `ShallowDepth = 0`.** That restores the old unwarped, distance-flat, single-body-colour surface. It does
+  not restore the two-octave field, per the note above. Documented on `WaterSettings` itself too.
+- **Water UBO reshaped: 256 -> 272 bytes** (`WaterRenderer.WaterUbo`, and the `Water` block in both
+  `WaterVert` and `WaterFrag`). Adds `ShallowColor` and `DetailParams`, and DROPS the dead `Res` member,
+  which nothing had read since the fragment moved to `textureSize` (one of the follow-ups listed on #51,
+  taken here because the block was changing shape anyway). `WaterRenderer.PackUbo` loses its now-unused
+  `renderWidth`/`renderHeight` parameters. Because a dynamic-offset slot must be 256-byte aligned, the
+  per-plane stride is now 512 (the payload rounded up, `ModelRenderer.Align256`'s convention) rather than
+  equal to the payload, and a new `UboLayoutTests` case guards that stride against the payload.
+- **Internal `WaterMath` gains `DomainWarp`, `DetailScale`, `ShallowWeight` and `ShallowTint`**, each
+  mirroring its GLSL half exactly, with 20 new headless cases in `WaterMathTests` (105 water assertions
+  total). Two of them are the anti-regression pair: one fails if the field ever repeats at the legacy
+  `2*pi*WaveScale` period again, the other if it goes axis-separable again.
+- **Golden `scene3d_water` re-baked** on all three backends (the wave crests moved, so every water cell did).
+  The scene now pins the new knobs explicitly and sizes `ShallowDepth` to its 10-unit pond, so one frame
+  locks both ends of the shallow blend: the shelf reads shallow, the deep lakebed reads deep. Every other
+  golden is untouched, since the pass only runs when a `DrawWater` request is queued.
+
 ## 14.21.0
 
 Feature: nameplates gain presentation tiers, so a crowd of nearby entities does not draw a stack of full

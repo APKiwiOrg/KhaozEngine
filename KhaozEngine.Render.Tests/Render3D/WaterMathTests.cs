@@ -20,7 +20,8 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void WaveNormal_zero_strength_is_flat_up()
         {
-            var n = WaterMath.WaveNormal(3f, -2f, timeSeconds: 1.5f, waveScale: 2f, waveSpeed: 0.5f, normalStrength: 0f);
+            var n = WaterMath.WaveNormal(3f, -2f, timeSeconds: 1.5f, waveScale: 2f, waveSpeed: 0.5f, normalStrength: 0f,
+                warpStrength: 0.75f, detailScale: 1f);
             Assert.Equal(Vector3.UnitY, n);
         }
 
@@ -33,7 +34,8 @@ namespace KhaozEngine.Tests.Render3D
                 float x = (float)(rnd.NextDouble() * 20 - 10);
                 float z = (float)(rnd.NextDouble() * 20 - 10);
                 float t = (float)(rnd.NextDouble() * 30);
-                var n = WaterMath.WaveNormal(x, z, t, waveScale: 2.5f, waveSpeed: 0.35f, normalStrength: 0.35f);
+                var n = WaterMath.WaveNormal(x, z, t, waveScale: 2.5f, waveSpeed: 0.35f, normalStrength: 0.35f,
+                    warpStrength: 0.75f, detailScale: 1f);
                 Assert.Equal(1f, n.Length(), 3);
             }
         }
@@ -42,8 +44,8 @@ namespace KhaozEngine.Tests.Render3D
         public void WaveNormal_stronger_perturbation_tilts_further_from_up()
         {
             const float x = 1.3f, z = 0.7f, t = 2f, scale = 2f, speed = 0.4f;
-            var weak = WaterMath.WaveNormal(x, z, t, scale, speed, normalStrength: 0.1f);
-            var strong = WaterMath.WaveNormal(x, z, t, scale, speed, normalStrength: 0.6f);
+            var weak = WaterMath.WaveNormal(x, z, t, scale, speed, normalStrength: 0.1f, warpStrength: 0.75f, detailScale: 1f);
+            var strong = WaterMath.WaveNormal(x, z, t, scale, speed, normalStrength: 0.6f, warpStrength: 0.75f, detailScale: 1f);
             float weakTilt = Vector3.Distance(weak, Vector3.UnitY);
             float strongTilt = Vector3.Distance(strong, Vector3.UnitY);
             Assert.True(strongTilt > weakTilt, $"stronger normalStrength should tilt further from up: weak={weakTilt}, strong={strongTilt}");
@@ -52,8 +54,10 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void WaveNormal_animates_over_time()
         {
-            var n0 = WaterMath.WaveNormal(2f, 2f, timeSeconds: 0f, waveScale: 2f, waveSpeed: 1f, normalStrength: 0.4f);
-            var n1 = WaterMath.WaveNormal(2f, 2f, timeSeconds: 5f, waveScale: 2f, waveSpeed: 1f, normalStrength: 0.4f);
+            var n0 = WaterMath.WaveNormal(2f, 2f, timeSeconds: 0f, waveScale: 2f, waveSpeed: 1f, normalStrength: 0.4f,
+                warpStrength: 0.75f, detailScale: 1f);
+            var n1 = WaterMath.WaveNormal(2f, 2f, timeSeconds: 5f, waveScale: 2f, waveSpeed: 1f, normalStrength: 0.4f,
+                warpStrength: 0.75f, detailScale: 1f);
             Assert.NotEqual(n0, n1);
         }
 
@@ -61,17 +65,191 @@ namespace KhaozEngine.Tests.Render3D
         public void WaveNormal_frozen_time_is_deterministic()
         {
             // The golden freezes EffectTimeSeconds; same inputs must reproduce bit-identical output every call.
-            var a = WaterMath.WaveNormal(4f, -1f, 0f, 2.5f, 0.35f, 0.35f);
-            var b = WaterMath.WaveNormal(4f, -1f, 0f, 2.5f, 0.35f, 0.35f);
+            var a = WaterMath.WaveNormal(4f, -1f, 0f, 2.5f, 0.35f, 0.35f, 0.75f, 1f);
+            var b = WaterMath.WaveNormal(4f, -1f, 0f, 2.5f, 0.35f, 0.35f, 0.75f, 1f);
             Assert.Equal(a, b);
         }
 
         [Fact]
         public void WaveNormal_degenerate_scale_does_not_throw_or_nan()
         {
-            var n = WaterMath.WaveNormal(1f, 1f, 1f, waveScale: 0f, waveSpeed: 1f, normalStrength: 0.5f);
+            var n = WaterMath.WaveNormal(1f, 1f, 1f, waveScale: 0f, waveSpeed: 1f, normalStrength: 0.5f,
+                warpStrength: 0.75f, detailScale: 1f);
             Assert.False(float.IsNaN(n.X) || float.IsNaN(n.Y) || float.IsNaN(n.Z));
             Assert.Equal(1f, n.Length(), 3);
+        }
+
+        [Fact]
+        public void WaveNormal_does_not_repeat_at_the_legacy_octave_period()
+        {
+            // This is the regression the whole three-layer field exists for. The old two-octave field was EXACTLY
+            // periodic with period 2*pi*waveScale along both world axes (every octave phase advanced by a whole
+            // multiple of 2*pi over that step), which is the checkerboard players reported at distance. Step by
+            // exactly that period in X and in Z and require the normal to actually change: with the old field this
+            // assert would pass through unchanged normals on every single sample.
+            const float scale = 2.5f, speed = 0.35f, strength = 0.5f, t = 3.1f;
+            float period = 2f * MathF.PI * scale;
+            var rnd = new Random(11);
+            int repeatsX = 0, repeatsZ = 0;
+            for (int i = 0; i < 40; i++)
+            {
+                float x = (float)(rnd.NextDouble() * 60 - 30);
+                float z = (float)(rnd.NextDouble() * 60 - 30);
+                var baseN = WaterMath.WaveNormal(x, z, t, scale, speed, strength, 0.75f, 1f);
+                var stepX = WaterMath.WaveNormal(x + period, z, t, scale, speed, strength, 0.75f, 1f);
+                var stepZ = WaterMath.WaveNormal(x, z + period, t, scale, speed, strength, 0.75f, 1f);
+                if (Vector3.Distance(baseN, stepX) < 1e-3f) repeatsX++;
+                if (Vector3.Distance(baseN, stepZ) < 1e-3f) repeatsZ++;
+            }
+            Assert.True(repeatsX == 0 && repeatsZ == 0,
+                $"the wave field repeated at the legacy 2*pi*waveScale period ({repeatsX} of 40 in X, {repeatsZ} of 40 in Z); " +
+                "that period returning is the visible checkerboard tiling coming back.");
+        }
+
+        [Fact]
+        public void WaveNormal_is_not_axis_separable()
+        {
+            // The old field's dHdx depended only on x-ish terms and dHdz only on z-ish terms, so moving along Z
+            // alone left the X tilt component untouched at a fixed X. Every new layer is directional (its phase
+            // mixes both axes), so a pure-Z step must move the X tilt too.
+            const float scale = 2f, speed = 0.4f, strength = 0.5f, t = 1.7f;
+            var a = WaterMath.WaveNormal(0.4f, 0.9f, t, scale, speed, strength, 0.75f, 1f);
+            var b = WaterMath.WaveNormal(0.4f, 3.9f, t, scale, speed, strength, 0.75f, 1f);
+            Assert.True(MathF.Abs(a.X - b.X) > 1e-3f,
+                $"a pure-Z step left the X tilt at {a.X} vs {b.X}: the field went axis-separable again.");
+        }
+
+        [Fact]
+        public void WaveNormal_detail_scale_zero_leaves_only_the_base_swell()
+        {
+            // detailScale gates layers 2 and 3 only, so dropping it must change the normal but never flatten it:
+            // the broad base layer still tilts the surface. (A flat result would mean the base layer got gated too,
+            // which would make the far field a mirror.)
+            const float x = 2.2f, z = -3.4f, t = 4f, scale = 2.5f, speed = 0.35f, strength = 0.5f;
+            var full = WaterMath.WaveNormal(x, z, t, scale, speed, strength, 0.75f, 1f);
+            var baseOnly = WaterMath.WaveNormal(x, z, t, scale, speed, strength, 0.75f, 0f);
+            Assert.NotEqual(full, baseOnly);
+            Assert.True(Vector3.Distance(baseOnly, Vector3.UnitY) > 1e-3f,
+                "detailScale 0 flattened the surface entirely; the base swell must survive the distance fade.");
+            Assert.Equal(1f, baseOnly.Length(), 3);
+        }
+
+        [Fact]
+        public void WaveNormal_warp_strength_changes_the_field_and_zero_disables_it()
+        {
+            const float x = 5f, z = -2f, t = 2.5f, scale = 2.5f, speed = 0.35f, strength = 0.4f;
+            var warped = WaterMath.WaveNormal(x, z, t, scale, speed, strength, 0.75f, 1f);
+            var unwarped = WaterMath.WaveNormal(x, z, t, scale, speed, strength, 0f, 1f);
+            Assert.NotEqual(warped, unwarped);
+            // The off value is the documented legacy-look setting, so it must be exactly the un-displaced sample.
+            Assert.Equal(unwarped, WaterMath.WaveNormal(x, z, t, scale, speed, strength, -1f, 1f));
+        }
+
+        // ---- Domain warp ----------------------------------------------------------------------------------------
+
+        [Fact]
+        public void DomainWarp_zero_or_negative_strength_is_the_identity()
+        {
+            Assert.Equal(new Vector2(3f, -4f), WaterMath.DomainWarp(3f, -4f, 2f, 2.5f, 0f));
+            Assert.Equal(new Vector2(3f, -4f), WaterMath.DomainWarp(3f, -4f, 2f, 2.5f, -0.5f));
+        }
+
+        [Fact]
+        public void DomainWarp_displaces_and_scales_with_strength_and_wave_scale()
+        {
+            var p = new Vector2(6f, 1.5f);
+            var weak = WaterMath.DomainWarp(p.X, p.Y, 1f, 2.5f, 0.25f);
+            var strong = WaterMath.DomainWarp(p.X, p.Y, 1f, 2.5f, 1f);
+            float weakOffset = Vector2.Distance(p, weak), strongOffset = Vector2.Distance(p, strong);
+            Assert.True(weakOffset > 0f, "a positive warp strength must actually displace the sample position.");
+            Assert.True(strongOffset > weakOffset, $"warp offset should grow with strength: {weakOffset} vs {strongOffset}");
+            // Amplitude is in multiples of waveScale, so a bigger wave scale warps proportionally further.
+            var bigScale = WaterMath.DomainWarp(p.X, p.Y, 1f, 10f, 1f);
+            Assert.True(Vector2.Distance(p, bigScale) > strongOffset);
+        }
+
+        [Fact]
+        public void DomainWarp_is_deterministic_and_finite_at_a_degenerate_scale()
+        {
+            Assert.Equal(WaterMath.DomainWarp(1f, 2f, 3f, 2.5f, 0.75f), WaterMath.DomainWarp(1f, 2f, 3f, 2.5f, 0.75f));
+            var d = WaterMath.DomainWarp(1f, 2f, 3f, 0f, 0.75f);
+            Assert.False(float.IsNaN(d.X) || float.IsNaN(d.Y) || float.IsInfinity(d.X) || float.IsInfinity(d.Y));
+        }
+
+        // ---- Distance detail fade -------------------------------------------------------------------------------
+
+        [Fact]
+        public void DetailScale_zero_or_negative_fade_distance_disables_the_fade()
+        {
+            Assert.Equal(1f, WaterMath.DetailScale(cameraDistance: 500f, fadeDistance: 0f, distantScale: 0.18f));
+            Assert.Equal(1f, WaterMath.DetailScale(cameraDistance: 500f, fadeDistance: -3f, distantScale: 0.18f));
+        }
+
+        [Fact]
+        public void DetailScale_is_full_at_the_camera_and_the_floor_past_the_fade_distance()
+        {
+            Assert.Equal(1f, WaterMath.DetailScale(0f, 60f, 0.18f), 4);
+            Assert.Equal(0.18f, WaterMath.DetailScale(60f, 60f, 0.18f), 4);
+            Assert.Equal(0.18f, WaterMath.DetailScale(4000f, 60f, 0.18f), 4);
+        }
+
+        [Fact]
+        public void DetailScale_is_monotonic_decreasing_with_distance()
+        {
+            float prev = float.MaxValue;
+            for (float d = 0f; d <= 80f; d += 4f)
+            {
+                float s = WaterMath.DetailScale(d, 60f, 0.18f);
+                Assert.True(s <= prev + 1e-6f, $"detail scale rose at distance {d}: {s} after {prev}");
+                prev = s;
+            }
+        }
+
+        [Fact]
+        public void DetailScale_clamps_the_distant_floor_into_range()
+        {
+            Assert.Equal(0f, WaterMath.DetailScale(100f, 60f, -2f), 4);
+            Assert.Equal(1f, WaterMath.DetailScale(100f, 60f, 5f), 4);
+        }
+
+        // ---- Shallow-water blend --------------------------------------------------------------------------------
+
+        [Fact]
+        public void ShallowWeight_is_one_at_the_waterline_and_zero_in_deep_water()
+        {
+            Assert.Equal(1f, WaterMath.ShallowWeight(0f, 2.5f), 4);
+            Assert.Equal(0f, WaterMath.ShallowWeight(2.5f, 2.5f), 4);
+            Assert.Equal(0f, WaterMath.ShallowWeight(40f, 2.5f), 4);
+        }
+
+        [Fact]
+        public void ShallowWeight_zero_depth_disables_the_blend()
+        {
+            Assert.Equal(0f, WaterMath.ShallowWeight(0f, 0f));
+            Assert.Equal(0f, WaterMath.ShallowWeight(0.1f, -1f));
+        }
+
+        [Fact]
+        public void ShallowWeight_is_monotonic_decreasing_with_depth()
+        {
+            float prev = float.MaxValue;
+            for (float d = 0f; d <= 3f; d += 0.2f)
+            {
+                float w = WaterMath.ShallowWeight(d, 2.5f);
+                Assert.True(w <= prev + 1e-6f, $"shallow weight rose at depth {d}: {w} after {prev}");
+                prev = w;
+            }
+        }
+
+        [Fact]
+        public void ShallowTint_reaches_the_shallow_colour_at_the_waterline_and_deep_beyond()
+        {
+            var deep = new Vector3(0.05f, 0.18f, 0.28f);
+            var shallow = new Vector3(0.14f, 0.34f, 0.38f);
+            Assert.Equal(shallow, WaterMath.ShallowTint(deep, shallow, depthBelowSurface: 0f, shallowDepth: 2.5f));
+            Assert.Equal(deep, WaterMath.ShallowTint(deep, shallow, depthBelowSurface: 9f, shallowDepth: 2.5f));
+            // Disabled blend keeps the body colour exactly as deep, whatever the depth.
+            Assert.Equal(deep, WaterMath.ShallowTint(deep, shallow, depthBelowSurface: 0f, shallowDepth: 0f));
         }
 
         // ---- Fresnel tint ---------------------------------------------------------------------------------------
@@ -263,6 +441,29 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(s.WaveScale > 0f);
             Assert.True(s.GlintStrength > 0f);
             Assert.True(s.ShoreFadeDistance > 0f);
+            // The three 14.22.0 additions ship ON, so a consumer that only calls DrawWater gets the fixed surface.
+            Assert.True(s.WaveWarpStrength > 0f);
+            Assert.True(s.DetailFadeDistance > 0f);
+            Assert.True(s.ShallowDepth > 0f);
+            Assert.InRange(s.DistantDetailScale, 0f, 1f);
+            // The shallow body colour is a lift off the deep one (lighter, more transparent), not an unrelated hue.
+            Assert.True(s.ShallowColor.R > s.DeepColor.R && s.ShallowColor.G > s.DeepColor.G && s.ShallowColor.B > s.DeepColor.B);
+            Assert.True(s.ShallowColor.A < s.DeepColor.A);
+            // The shallows tint reads over metres; the waterline alpha feather over centimetres. Conflating them is
+            // the mistake this pair of knobs exists to prevent.
+            Assert.True(s.ShallowDepth > s.ShoreFadeDistance);
+        }
+
+        [Fact]
+        public void Settings_legacy_look_switches_are_all_reachable_by_zero()
+        {
+            // The documented pre-14.22.0 restore: every added behaviour is off at 0 (WaterSettings' own remarks and
+            // the CHANGELOG both name these three). The wave FIELD itself is deliberately not reversible - it was
+            // the tiling defect.
+            var s = new WaterSettings { WaveWarpStrength = 0f, DetailFadeDistance = 0f, ShallowDepth = 0f };
+            Assert.Equal(1f, WaterMath.DetailScale(999f, s.DetailFadeDistance, s.DistantDetailScale));
+            Assert.Equal(0f, WaterMath.ShallowWeight(0f, s.ShallowDepth));
+            Assert.Equal(new Vector2(7f, 8f), WaterMath.DomainWarp(7f, 8f, 3f, s.WaveScale, s.WaveWarpStrength));
         }
 
         // ---- UBO packing -------------------------------------------------------------------------------------------
@@ -273,6 +474,7 @@ namespace KhaozEngine.Tests.Render3D
             var settings = new WaterSettings
             {
                 DeepColor = new Color(0.05f, 0.2f, 0.3f, 0.9f),
+                ShallowColor = new Color(0.15f, 0.35f, 0.4f, 0.8f),
                 HorizonColor = new Color(0.6f, 0.7f, 0.8f, 0.7f),
                 WaveScale = 3f,
                 WaveSpeed = 0.4f,
@@ -281,6 +483,10 @@ namespace KhaozEngine.Tests.Render3D
                 GlintStrength = 0.5f,
                 GlintExponent = 120f,
                 Opacity = 0.95f,
+                WaveWarpStrength = 0.6f,
+                DetailFadeDistance = 45f,
+                DistantDetailScale = 0.2f,
+                ShallowDepth = 3.5f,
             };
             var clipVp = Matrix4x4.CreateLookAt(new Vector3(0, 5, 5), Vector3.Zero, Vector3.UnitY);
             var rawVp = clipVp;   // identical here; the test only checks each field lands, not the clip-correction path
@@ -288,7 +494,7 @@ namespace KhaozEngine.Tests.Render3D
             var lightColor = new Color(1f, 0.95f, 0.86f, 1f);
             var camPos = new Vector3(1f, 2f, 3f);
 
-            var u = WaterRenderer.PackUbo(clipVp, rawVp, light, lightColor, camPos, settings, timeSeconds: 2.5f, renderWidth: 480, renderHeight: 320);
+            var u = WaterRenderer.PackUbo(clipVp, rawVp, light, lightColor, camPos, settings, timeSeconds: 2.5f);
 
             Assert.Equal(clipVp, u.ViewProj);
             Matrix4x4.Invert(rawVp, out var expectedInv);
@@ -307,8 +513,12 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(settings.GlintStrength, u.ShoreGlint.Y, 4);
             Assert.Equal(settings.GlintExponent, u.ShoreGlint.Z, 4);
             Assert.Equal(settings.Opacity, u.ShoreGlint.W, 4);
-            Assert.Equal(1f / 480f, u.Res.X, 6);
-            Assert.Equal(1f / 320f, u.Res.Y, 6);
+            Assert.Equal(settings.ShallowColor.G, u.ShallowColor.Y, 4);
+            Assert.Equal(settings.ShallowColor.A, u.ShallowColor.W, 4);
+            Assert.Equal(settings.WaveWarpStrength, u.DetailParams.X, 4);
+            Assert.Equal(settings.DetailFadeDistance, u.DetailParams.Y, 4);
+            Assert.Equal(settings.DistantDetailScale, u.DetailParams.Z, 4);
+            Assert.Equal(settings.ShallowDepth, u.DetailParams.W, 4);
         }
     }
 }

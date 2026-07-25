@@ -21,7 +21,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class WaterRenderer : IDisposable
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 8 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 9 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -31,19 +31,23 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 LightColor;
             public Vector4 CameraPos;
             public Vector4 DeepColor;
+            public Vector4 ShallowColor;
             public Vector4 HorizonColor;
             public Vector4 WaveParams;    // x=waveScale, y=waveSpeed, z=normalStrength, w=time
             public Vector4 ShoreGlint;    // x=shoreFadeDistance, y=glintStrength, z=glintExponent, w=opacity
-            public Vector4 Res;           // xy = 1/renderWidth, 1/renderHeight
+            public Vector4 DetailParams;  // x=warpStrength, y=detailFadeDistance, z=distantDetailScale, w=shallowDepth
         }
 
-        /// <summary>Byte size of <see cref="WaterUbo"/>. 2*64 (mat4) + 8*16 (vec4) = 256.</summary>
-        internal const uint PayloadBytes = 256;
+        /// <summary>Byte size of <see cref="WaterUbo"/>. 2*64 (mat4) + 9*16 (vec4) = 272.</summary>
+        internal const uint PayloadBytes = 272;
         // Per-plane stride in the shared UBO: each plane's params occupy their OWN slot, selected at draw time by a
         // dynamic offset (i * SlotBytes), matching the GroundDecalRenderer precedent so a multi-plane frame never
-        // shares/overwrites a slot no matter how a backend orders buffer writes vs draws. PayloadBytes (256) is
-        // already a dynamic-offset-safe alignment, so the slot stride equals the payload exactly.
-        const int SlotBytes = 256;
+        // shares/overwrites a slot no matter how a backend orders buffer writes vs draws. A dynamic offset must be
+        // 256-byte aligned on every backend, so the stride is the payload rounded UP to the next multiple of 256
+        // (the ModelRenderer.Align256 convention) rather than the payload itself: 272 -> 512. The unused tail per
+        // slot is never read (the bound range is PayloadBytes, matching OverlayMeshRenderer's payload-sized range
+        // over a 256-strided buffer) and costs half a kilobyte per queued plane, which is noise.
+        internal const int SlotBytes = 512;
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -140,14 +144,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// <c>gl_Position</c> (mirrors every other pass in this file, e.g. <see cref="GpuClip.Correct"/> at the
         /// <see cref="Draw"/> call site).</summary>
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
-            Color lightColor, Vector3 cameraPos, WaterSettings settings, float timeSeconds, int renderWidth, int renderHeight)
+            Color lightColor, Vector3 cameraPos, WaterSettings settings, float timeSeconds)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
+            Vector4 shallow = settings.ShallowColor;
             Vector4 horizon = settings.HorizonColor;
             Vector4 lightCol = lightColor;
-            float invW = renderWidth > 0 ? 1f / renderWidth : 0f;
-            float invH = renderHeight > 0 ? 1f / renderHeight : 0f;
             return new WaterUbo
             {
                 ViewProj = clipViewProj,
@@ -156,10 +159,12 @@ namespace KhaozEngine.Render3D.Rendering
                 LightColor = lightCol,
                 CameraPos = new Vector4(cameraPos, 0f),
                 DeepColor = deep,
+                ShallowColor = shallow,
                 HorizonColor = horizon,
                 WaveParams = new Vector4(settings.WaveScale, settings.WaveSpeed, settings.NormalStrength, timeSeconds),
                 ShoreGlint = new Vector4(settings.ShoreFadeDistance, settings.GlintStrength, settings.GlintExponent, settings.Opacity),
-                Res = new Vector4(invW, invH, 0f, 0f),
+                DetailParams = new Vector4(settings.WaveWarpStrength, settings.DetailFadeDistance,
+                    settings.DistantDetailScale, settings.ShallowDepth),
             };
         }
 
@@ -178,7 +183,7 @@ namespace KhaozEngine.Render3D.Rendering
             Span<Vector3> gridPos = stackalloc Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
             for (int i = 0; i < planes.Length; i++)
             {
-                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, timeSeconds, res.Width, res.Height);
+                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, timeSeconds);
                 cl.UpdateBuffer(_ubo!, (uint)(i * SlotBytes), in u);
             }
 

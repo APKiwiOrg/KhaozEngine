@@ -2302,8 +2302,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
     current art direction is preserved, just with headroom added.
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
-  animated water surface - a flat, alpha-blended plane with procedural normal perturbation, a fresnel-style blend
-  between a deep tint and a sky-derived horizon tint, a key-light specular sun glint, and depth-sampled shore fade.
+  animated water surface - a flat, alpha-blended plane with a domain-warped three-layer procedural normal field, a
+  camera-distance detail fade, a depth-driven shallow-water body blend, a fresnel-style blend toward a sky-derived
+  horizon tint, a key-light specular sun glint, and a depth-sampled shore fade at the waterline.
   **No reflections/probes** (roadmap gap #9 is separate and not attempted here) - this is a stylized surface,
   not a physically accurate one.
   - **Request** (per-frame, WHERE to draw): call `scene.DrawWater(new WaterPlane(centerX, surfaceY, centerZ,
@@ -2311,11 +2312,27 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     No call this frame means the water pass never runs - existing scenes stay byte-stable, matching the `Sky`/`Bloom`
     opt-in convention. Cleared every `Begin()` like the decal/shadow-blob queues.
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
-    scene-appearance bags reached off `Post`): `DeepColor`/`HorizonColor` (the fresnel-blended tint; `HorizonColor`
-    defaults close to `Sky.HorizonColor` so an enabled sky + enabled water read as one cohesive scene without
-    hand-matching colours), `WaveScale`/`WaveSpeed` (the two scrolling normal-perturbation octaves), `NormalStrength`
-    (0 = flat mirror), `ShoreFadeDistance` (world units the alpha softens over near the shore), `GlintStrength`/
-    `GlintExponent` (the sun highlight), and `Opacity`.
+    scene-appearance bags reached off `Post`): `DeepColor`/`ShallowColor` (the body tint, blended by depth over
+    `ShallowDepth`) and `HorizonColor` (fresnel-blended on top; it defaults close to `Sky.HorizonColor` so an
+    enabled sky + enabled water read as one cohesive scene without hand-matching colours), `WaveScale`/`WaveSpeed`
+    (the scrolling wave layers), `NormalStrength` (0 = flat mirror), `WaveWarpStrength` (the tiling-breakup domain
+    warp), `DetailFadeDistance`/`DistantDetailScale` (the distance fade of the fine layers), `ShoreFadeDistance`
+    (world units the alpha softens over near the shore), `GlintStrength`/`GlintExponent` (the sun highlight), and
+    `Opacity`.
+  - **Wave field, and why it is shaped this way** (fixes the reported checkerboard tiling): three directional wave
+    layers at 20 / 115 / -51 degrees, so none is axis-aligned and no two are parallel, with mutually irrational
+    frequency multipliers (1, phi, sqrt 7) so their repeat periods never come back into phase. They are sampled at
+    a domain-WARPED position - a slow, large-scale displacement whose wavelength is ~5x the base layer's, so it
+    bends the field over a much longer distance than the waves repeat over. The two fine layers additionally fade
+    toward `DistantDetailScale` over `DetailFadeDistance` of camera distance, which is what stops the far field
+    aliasing into a crawling moire (and, with a tight `GlintExponent`, into sparkle); the base swell never fades,
+    so distance never turns the surface into a mirror. The pre-14.22.0 look is `WaveWarpStrength = 0`,
+    `DetailFadeDistance = 0`, `ShallowDepth = 0` - which restores everything EXCEPT the field itself, since the
+    old two-octave field was axis-separable and exactly `2*pi*WaveScale`-periodic, i.e. it was the tiling.
+  - **Shallow blend**: the same reconstructed ground depth the shore fade uses also blends the BODY colour from
+    `DeepColor` to `ShallowColor` over `ShallowDepth` world units, applied BEFORE the fresnel blend so a grazing
+    view of the shallows still picks up the sky. Keep it distinct from `ShoreFadeDistance`: the tint band reads
+    over metres, the alpha feather at the waterline over centimetres. `ShallowDepth = 0` disables it.
   - **Mechanism**: drawn AFTER the sky and the ground decals, BEFORE the MRT resolve, as its own small pass (like
     `SkyRenderer`/`GroundDecalRenderer`) into the lit colour + read-only scene depth. Depth test ON (`Less`, so
     terrain/props above the surface occlude it - the "rock poking out of the lake" case) but depth WRITE OFF (so it
@@ -2333,9 +2350,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     alpha to 0 as the ground approaches the surface height over `ShoreFadeDistance` world units - so the waterline
     reads as a soft transition instead of a hard clip. A flat, deep lakebed reads fully opaque in open water; a
     shallow shelf near the shore fades progressively.
-  - The pure math (`WaterMath`, internal: scrolling-normal perturbation, Schlick fresnel, Blinn-Phong glint,
-    shore-fade curve, grid tessellation sizing) is headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert`
-    exactly.
+  - The pure math (`WaterMath`, internal: the three-layer wave normal, the domain warp, the distance detail fade,
+    the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing) is
+    headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;
@@ -4314,7 +4331,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.21.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.22.0" />
 ```
 
 ```csharp

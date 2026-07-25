@@ -409,12 +409,24 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void WaterUbo_MarshalSize_EqualsPayloadBytesConstant_And_GlslBlock()
         {
-            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 8 vec4 (LightDir, LightColor, CameraPos, DeepColor,
-            // HorizonColor, WaveParams, ShoreGlint, Res) = 128 + 128 = 256 bytes. If the struct or the shader block
-            // drift apart, the per-plane water UBO upload smears the colours/wave/glint params. Other half:
-            // ShaderSources.WaterFrag.
+            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 9 vec4 (LightDir, LightColor, CameraPos, DeepColor,
+            // ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams) = 128 + 144 = 272 bytes. If the
+            // struct or the shader block drift apart, the per-plane water UBO upload smears the
+            // colours/wave/glint/detail params. Other half: ShaderSources.WaterFrag.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + 8 * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(2 * 64 + 9 * 16, (int)WaterRenderer.PayloadBytes);
+        }
+
+        [Fact]
+        public void WaterUbo_SlotStride_Is256Aligned_And_HoldsTheWholePayload()
+        {
+            // The per-plane slot is selected by a DYNAMIC OFFSET (i * SlotBytes), which every backend requires to be
+            // 256-byte aligned - so the stride is the payload rounded up, not the payload itself. Getting this wrong
+            // is silent on Metal and a validation error / garbage params elsewhere, and the payload grew past 256 in
+            // 14.22.0, which is exactly when that stops being automatic.
+            Assert.Equal(0, WaterRenderer.SlotBytes % 256);
+            Assert.True(WaterRenderer.SlotBytes >= (int)WaterRenderer.PayloadBytes,
+                $"water UBO slot stride {WaterRenderer.SlotBytes} is smaller than its {WaterRenderer.PayloadBytes}-byte payload: adjacent planes would overwrite each other.");
         }
 
         [Fact]
@@ -424,7 +436,8 @@ namespace KhaozEngine.Tests.Render3D
             // rename/reorder on the shader side that silently changes the layout trips here. Other half:
             // ShaderSources.WaterFrag.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
-                "vec4 CameraPos;", "vec4 DeepColor;", "vec4 HorizonColor;", "vec4 WaveParams;", "vec4 ShoreGlint;", "vec4 Res;" })
+                "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
+                "vec4 ShoreGlint;", "vec4 DetailParams;" })
                 Assert.True(ShaderSources.WaterFrag.Contains(member),
                     $"WaterFrag lost '{member}': the Water UBO block drifted from WaterRenderer.WaterUbo. Fix ShaderSources.WaterFrag or the struct.");
         }
@@ -435,7 +448,8 @@ namespace KhaozEngine.Tests.Render3D
             // The vertex stage only READS ViewProj, but the block must be declared identically in both stages
             // (same one-UBO-per-set buffer) or the two stages disagree on the layout the driver builds.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
-                "vec4 CameraPos;", "vec4 DeepColor;", "vec4 HorizonColor;", "vec4 WaveParams;", "vec4 ShoreGlint;", "vec4 Res;" })
+                "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
+                "vec4 ShoreGlint;", "vec4 DetailParams;" })
                 Assert.True(ShaderSources.WaterVert.Contains(member),
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
         }

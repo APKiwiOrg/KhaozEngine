@@ -257,16 +257,21 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus
   `PixelPostProcessSettings.Water` (a `WaterSettings`, **default no request queued = no pass, no cost**) draws an
   opt-in animated water surface - a flat, alpha-blended, procedurally-perturbed plane with a fresnel-style blend
-  between `DeepColor` and a sky-derived `HorizonColor`, a key-light specular sun glint (`GlintStrength`/
-  `GlintExponent`), and depth-sampled shore fade (`ShoreFadeDistance`). **No reflections/probes** (out of scope) -
+  between the depth-driven body colour (`DeepColor`/`ShallowColor` over `ShallowDepth`) and a sky-derived
+  `HorizonColor`, a key-light specular sun glint (`GlintStrength`/`GlintExponent`), and depth-sampled shore fade
+  (`ShoreFadeDistance`). The wave normals are three non-axis-aligned scrolling layers at mutually irrational
+  frequencies over a domain-warped sample position (`WaveWarpStrength`), so the surface has no repeating tile, with
+  the fine layers attenuated by camera distance (`DetailFadeDistance`/`DistantDetailScale`) so the far field does
+  not shimmer. **No reflections/probes** (out of scope) -
   a stylized surface. Drawn after the sky + ground decals, before the MRT resolve, with depth test ON (`Less`,
   so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the outline
   pass reads is untouched - matching the ground-decal/beam/textured-billboard depth-interleave convention). Time is
   driven by the same `Scene3D.EffectTimeSeconds` clock the beam pulse/scroll uses (freeze it for a deterministic
   frame). The shore fade reconstructs the ground height under each water pixel from the resolved scene depth via
   the same `gl_FragCoord` + raw-inverse-view-projection convention the ground-decal pass uses. The pure math is
-  `WaterMath` (internal: scrolling-normal perturbation, Schlick fresnel, Blinn-Phong glint, shore-fade curve, grid
-  tessellation), headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag` exactly.
+  `WaterMath` (internal: the three-layer wave normal, domain warp, distance detail fade, shallow-blend and
+  shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation), headless-tested and mirroring the GLSL
+  `WaterVert`/`WaterFrag` exactly.
 - Modern particle pass: `Scene3D.DrawParticle(in ParticleSprite)` / `DrawParticles(ReadOnlySpan<ParticleSprite>)`
   queue procedural particle sprites that render as ONE premultiplied-alpha instanced draw after the water pass and
   BEFORE the post chain, so additive sprites feed bloom and every sprite flows through the pixel post like meshes.

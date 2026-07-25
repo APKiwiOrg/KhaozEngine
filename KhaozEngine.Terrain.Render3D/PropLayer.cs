@@ -4,23 +4,37 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Terrain
 {
-    /// <summary>One prop layer for the multi-layer <see cref="Scene3DChunkSink"/>: either a <em>scatter</em> layer
-    /// (an independent <see cref="ScatterConfig"/>, e.g. sparse trees at a long draw radius) or a <em>companion</em>
+    /// <summary>One prop layer for the multi-layer <see cref="Scene3DChunkSink"/>: a <em>scatter</em> layer
+    /// (an independent <see cref="ScatterConfig"/>, e.g. sparse trees at a long draw radius), a <em>companion</em>
     /// layer (a <see cref="CompanionConfig"/> + the index of its host scatter layer, e.g. understory foliage rung
-    /// around the trees at a short draw radius). Each layer carries its own mesh set and draw radius - the short
-    /// radius on a dense layer is what keeps it affordable, and each layer sets its own dissolve fade band
-    /// (<see cref="FadeBandWidth"/>) and optional far LOD variants (<see cref="LodMeshes"/> / <see cref="LodPartMeshes"/>
-    /// at <see cref="LodDistance"/>). Build one with
-    /// <see cref="ScatterLayer(ScatterConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float)"/> or
-    /// <see cref="CompanionLayer(int, CompanionConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float)"/> (or their
-    /// multi-part overloads).</summary>
+    /// around the trees at a short draw radius), or a <em>placement</em> layer (a frozen, author-supplied list of
+    /// exact <see cref="PropPlacement"/>s, issue #286, e.g. a frozen zone's authored decor with no procedural
+    /// generation). Each layer carries its own mesh set and draw radius - the short radius on a dense layer is what
+    /// keeps it affordable, and each layer sets its own dissolve fade band (<see cref="FadeBandWidth"/>) and optional
+    /// far LOD variants (<see cref="LodMeshes"/> / <see cref="LodPartMeshes"/> at <see cref="LodDistance"/>). Build
+    /// one with
+    /// <see cref="ScatterLayer(ScatterConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float)"/>,
+    /// <see cref="CompanionLayer(int, CompanionConfig, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float)"/>, or
+    /// <see cref="PlacementLayer(IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, float, float, IReadOnlyDictionary{string, MeshHandle}, float, bool)"/>
+    /// (or their multi-part overloads).</summary>
     public readonly struct PropLayer
     {
         public ScatterConfig? Scatter { get; }
         public CompanionConfig? Companions { get; }
         /// <summary>For a companion layer, the index (into the sink's layer list) of the scatter layer whose
-        /// placements are the hosts. Unused (-1) for a scatter layer.</summary>
+        /// placements are the hosts. Unused (-1) for a scatter layer or a placement layer.</summary>
         public int HostLayerIndex { get; }
+        /// <summary>Frozen, author-supplied placements for a placement layer (issue #286): used verbatim instead of
+        /// runtime procedural generation, e.g. a frozen zone's authored decor. Null for a scatter or companion layer,
+        /// which generate their placements procedurally instead. When set, <see cref="Scene3DChunkSink"/> buckets
+        /// these placements by chunk coordinate once at construction and streams them exactly like any other
+        /// layer kind.</summary>
+        public IReadOnlyList<PropPlacement>? Placements { get; }
+        /// <summary>Whether this layer's props register physics colliders in the sink. True for every scatter and
+        /// companion layer (unchanged behaviour) and true by default for a placement layer. A placement layer opts
+        /// out via <c>colliders: false</c> on its factory when the placements are render-only and the consuming
+        /// game registers their physics separately (issue #286).</summary>
+        public bool RegisterColliders { get; }
         /// <summary>The single-handle mesh set: one <see cref="MeshHandle"/> per kit id (the flat/untextured form).
         /// Always non-null: an empty dictionary for a multi-part layer (which carries its meshes in
         /// <see cref="PartMeshes"/> instead).</summary>
@@ -76,12 +90,17 @@ namespace KhaozEngine.Terrain
 
         static readonly IReadOnlyDictionary<string, MeshHandle> EmptyMeshes = new Dictionary<string, MeshHandle>();
 
-        // Invariant (enforced by the private ctor + ScatterLayer/CompanionLayer factories): a non-companion
-        // layer always has a non-null Scatter, and a companion layer always has a non-null Companions. Exactly one of
-        // Meshes (single-handle) / PartMeshes (multi-part) carries the layer's props. The other is empty/null. LOD
-        // variants (when present) match that representation: LodMeshes for a single-handle layer, LodPartMeshes for a
-        // multi-part one.
+        // Invariant (enforced by the private ctor + ScatterLayer/CompanionLayer/PlacementLayer factories): exactly
+        // one of Scatter, Companions, or Placements is set - a scatter layer has a non-null Scatter, a companion
+        // layer a non-null Companions, and a placement layer (issue #286) a non-null Placements, with the other two
+        // null. Exactly one of Meshes (single-handle) / PartMeshes (multi-part) carries the layer's props. The other
+        // is empty/null. LOD variants (when present) match that representation: LodMeshes for a single-handle layer,
+        // LodPartMeshes for a multi-part one.
         public bool IsCompanion => Companions != null;
+        /// <summary>True for a placement layer (issue #286): its props come from a frozen, author-supplied
+        /// <see cref="Placements"/> list instead of runtime procedural generation. False for a scatter or companion
+        /// layer.</summary>
+        public bool IsPlacement => Placements != null;
 
         /// <summary>True when this layer bakes and draws an HLOD merged mesh: it has HLOD source meshes AND a positive
         /// <see cref="HlodDistance"/>. When false the layer always draws its individual props (unchanged behaviour).</summary>
@@ -94,7 +113,8 @@ namespace KhaozEngine.Terrain
                   IReadOnlyDictionary<string, MeshHandle>? lodMeshes,
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes, float lodDistance,
                   IReadOnlyDictionary<string, GltfMesh>? hlodSourceMeshes = null,
-                  float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f)
+                  float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f,
+                  IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true)
         {
             Scatter = scatter;
             Companions = companions;
@@ -110,6 +130,8 @@ namespace KhaozEngine.Terrain
             HlodDistance = hlodDistance;
             HlodWeldCell = hlodWeldCell;
             HlodCrossfadeWidth = hlodCrossfadeWidth;
+            Placements = placements;
+            RegisterColliders = registerColliders;
         }
 
         /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
@@ -123,7 +145,8 @@ namespace KhaozEngine.Terrain
         {
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
-                LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth);
+                LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
+                Placements, RegisterColliders);
         }
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
@@ -178,6 +201,41 @@ namespace KhaozEngine.Terrain
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             if (hostLayerIndex < 0) throw new ArgumentOutOfRangeException(nameof(hostLayerIndex));
             return new PropLayer(null, companions, hostLayerIndex, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes, lodDistance);
+        }
+
+        /// <summary>A placement layer: a frozen, author-supplied list of exact <paramref name="placements"/>
+        /// (issue #286), streamed by the sink exactly like a scatter or companion layer, with no procedural
+        /// generation - e.g. a frozen zone's authored decor (single-handle mesh set). The sink buckets
+        /// <paramref name="placements"/> by chunk coordinate once at construction, and every knob the scatter
+        /// overload supports - <paramref name="fadeBandWidth"/>, (<paramref name="lodMeshes"/>,
+        /// <paramref name="lodDistance"/>), and <see cref="WithHlod"/> - applies unchanged. <paramref name="colliders"/>
+        /// defaults true. Pass false to keep the layer render-only when the consuming game registers physics for
+        /// these placements outside the sink.</summary>
+        public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
+            IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true)
+        {
+            if (placements == null) throw new ArgumentNullException(nameof(placements));
+            if (meshes == null) throw new ArgumentNullException(nameof(meshes));
+            return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
+                placements: placements, registerColliders: colliders);
+        }
+
+        /// <summary>A placement layer whose kits are MULTI-PART (additive companion to the single-handle overload):
+        /// each id's parts instance as a unit at every placement. Same frozen, author-supplied
+        /// <paramref name="placements"/> (issue #286), the same bucket-once-at-construction behaviour, and the same
+        /// knob set as the single-handle overload, with LOD variants supplied as parallel part lists via
+        /// <paramref name="lodPartMeshes"/>. <paramref name="colliders"/> defaults true. Pass false to keep the
+        /// layer render-only when the consuming game registers physics for these placements outside the sink.</summary>
+        public static PropLayer PlacementLayer(IReadOnlyList<PropPlacement> placements,
+            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
+            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
+            bool colliders = true)
+        {
+            if (placements == null) throw new ArgumentNullException(nameof(placements));
+            if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
+            return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
+                lodDistance, placements: placements, registerColliders: colliders);
         }
     }
 }

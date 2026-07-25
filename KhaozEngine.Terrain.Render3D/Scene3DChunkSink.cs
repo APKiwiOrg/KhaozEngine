@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Physics;
 using KhaozEngine.Primitives;
@@ -10,8 +11,9 @@ namespace KhaozEngine.Terrain
     /// <summary>The production <see cref="IChunkSink"/>: turns the streamer's load/unload/re-LOD calls into real
     /// <see cref="Scene3D"/> work. Holds one or more <see cref="PropLayer"/>s - each scatter layer has its own
     /// <see cref="ScatterConfig"/>, mesh set, and draw radius (a dense ground-cover layer at a short radius can
-    /// ride alongside the sparse tree layer at a long one), and each companion layer rings its host scatter
-    /// layer's placements with foliage. <c>Load</c> builds the chunk mesh at the requested LOD
+    /// ride alongside the sparse tree layer at a long one), each companion layer rings its host layer's
+    /// placements with foliage, and each placement layer (issue #286) serves a frozen author-supplied list
+    /// bucketed by chunk at construction instead of generating. <c>Load</c> builds the chunk mesh at the requested LOD
     /// (<see cref="TerrainChunkBuilder"/>) + scatters every layer for the chunk; <c>ReLod</c> rebuilds the mesh in
     /// place and re-adopts the freshly scattered props (byte-identical after a pure LOD change, freshly correct
     /// after a field swap plus invalidate); <c>Unload</c> frees the mesh; <c>Draw</c> queues every
@@ -41,15 +43,25 @@ namespace KhaozEngine.Terrain
         readonly TerrainLodConfig _lodConfig;
         readonly int _collisionLod;
         readonly bool _anyHlod;
+        /// <summary>Each placement layer's placements split by chunk coord (index-aligned to the layers, null for
+        /// every other layer), or null when no layer carries placements. Built once in the ctor: the list is frozen,
+        /// so the split never has to be redone. See <see cref="PlacementBuckets"/>.</summary>
+        readonly Dictionary<ChunkCoord, PropPlacement[]>[]? _placementBuckets;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
         bool _disposed;
 
-        /// <summary>Multi-layer sink. Each <see cref="PropLayer"/> is a scatter layer or a companion layer; a
-        /// companion layer's <see cref="PropLayer.HostLayerIndex"/> must point at a scatter layer in
-        /// <paramref name="layers"/>. The splat <paramref name="material"/> is caller-owned unless
+        /// <summary>Multi-layer sink. Each <see cref="PropLayer"/> is a scatter layer, a companion layer, or a
+        /// placement layer (issue #286, a frozen author-supplied list bucketed by chunk here at construction). A
+        /// companion layer's <see cref="PropLayer.HostLayerIndex"/> must point at a scatter or placement layer in
+        /// <paramref name="layers"/>, either of which yields a per-chunk host list the companions derive from. The
+        /// splat <paramref name="material"/> is caller-owned unless
         /// <paramref name="ownsMaterial"/> is set (see the class remarks). When <paramref name="physics"/> is
-        /// given, each scatter layer's props are added as static bodies on chunk load (using the per-prop-id
-        /// shapes in <paramref name="collisionShapes"/>) and removed on unload; null physics = no collision.
+        /// given, each registering layer's props are added as static bodies on chunk load and removed on unload
+        /// (using the per-prop-id shapes in <paramref name="collisionShapes"/>, so a prop id with no shape entry
+        /// registers nothing). A placement layer follows its <see cref="PropLayer.RegisterColliders"/> flag at
+        /// any index, while any other layer registers only at index 0, so a scatter or companion layer above
+        /// index 0 registers no colliders (issue #288). Null physics means no collision. See
+        /// <see cref="LayerRegistersColliders"/>.
         /// When <paramref name="dynamicsSource"/> is given (physics must also be set), the game-supplied source
         /// yields dynamic bodies per chunk that are registered on load and removed on unload (mechanism only:
         /// the engine registers exactly what the source emits, the source decides what spawns where).
@@ -77,27 +89,35 @@ namespace KhaozEngine.Terrain
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
-            _layers = layers ?? throw new ArgumentNullException(nameof(layers));
-            if (layers.Count == 0)
+            if (layers == null) throw new ArgumentNullException(nameof(layers));
+            // Snapshot the caller's list: the sink's per-layer state (_placementBuckets, HLOD flags) is
+            // fixed-length and built once below, so the layer set is snapshotted here rather than left aliased
+            // to the caller's own List<PropLayer>, which the caller could otherwise keep mutating after
+            // construction and desync from what was validated and bucketed.
+            PropLayer[] snapshot = layers.ToArray();
+            _layers = snapshot;
+            if (snapshot.Length == 0)
                 throw new ArgumentException("At least one PropLayer is required.", nameof(layers));
-            for (int i = 0; i < layers.Count; i++)
+            for (int i = 0; i < snapshot.Length; i++)
             {
-                PropLayer l = layers[i];
+                PropLayer l = snapshot[i];
                 if (l.IsCompanion)
                 {
-                    if (l.HostLayerIndex < 0 || l.HostLayerIndex >= layers.Count)
+                    if (l.HostLayerIndex < 0 || l.HostLayerIndex >= snapshot.Length)
                         throw new ArgumentException(
                             $"PropLayer {i}: companion HostLayerIndex {l.HostLayerIndex} is out of range.", nameof(layers));
-                    if (layers[l.HostLayerIndex].IsCompanion)
+                    if (snapshot[l.HostLayerIndex].IsCompanion)
                         throw new ArgumentException(
-                            $"PropLayer {i}: companion host {l.HostLayerIndex} must be a scatter layer.", nameof(layers));
+                            $"PropLayer {i}: companion host {l.HostLayerIndex} must be a scatter or placement layer.",
+                            nameof(layers));
                 }
-                else if (l.Scatter == null)
+                else if (l.Scatter == null && l.Placements == null)
                 {
-                    throw new ArgumentException($"PropLayer {i} has neither a Scatter nor a Companions config.", nameof(layers));
+                    throw new ArgumentException($"PropLayer {i} has no Scatter config, Companions config, or Placements.", nameof(layers));
                 }
             }
             _chunkSize = chunkSize;
+            _placementBuckets = PlacementBuckets.Build(snapshot, chunkSize);
             _material = material;
             _ownsMaterial = ownsMaterial;
             _physics = physics;
@@ -114,8 +134,8 @@ namespace KhaozEngine.Terrain
             _collisionLod = collisionLod;
             // Whether any layer bakes an HLOD merged mesh. When none does, BuildCpu / Apply / Draw skip the HLOD path
             // entirely, so a sink with no HLOD layer is byte-identical to the pre-HLOD sink.
-            for (int i = 0; i < layers.Count; i++)
-                if (layers[i].HasHlod) { _anyHlod = true; break; }
+            for (int i = 0; i < snapshot.Length; i++)
+                if (snapshot[i].HasHlod) { _anyHlod = true; break; }
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
@@ -172,15 +192,19 @@ namespace KhaozEngine.Terrain
                 LayerProps.Length > 0 ? LayerProps[0] : Array.Empty<PropPlacement>();
         }
 
-        /// <summary>The deterministic placements for every layer of a chunk (pure; headless-testable). Scatter
-        /// layers first, then companion layers derived from their host layer's placements for THIS chunk.</summary>
+        /// <summary>The deterministic placements for every layer of a chunk (pure, headless-testable). Scatter and
+        /// placement layers first, then companion layers derived from their host layer's placements for THIS chunk.
+        /// A placement layer serves its pre-bucketed placements for the chunk at this seam instead of generating
+        /// (nothing downstream can tell the two apart), so everything past here is shared with the scatter path.</summary>
         internal IReadOnlyList<PropPlacement>[] ScatterLayersFor(ChunkCoord coord)
         {
             RectArea area = ChunkGrid.AreaOf(coord, _chunkSize);
             var layers = new IReadOnlyList<PropPlacement>[_layers.Count];
             for (int i = 0; i < _layers.Count; i++)
                 if (!_layers[i].IsCompanion)
-                    layers[i] = PropScatter.Generate(_field, _layers[i].Scatter!, area);
+                    layers[i] = _layers[i].IsPlacement
+                        ? (_placementBuckets![i].TryGetValue(coord, out PropPlacement[]? bucket) ? bucket : Array.Empty<PropPlacement>())
+                        : PropScatter.Generate(_field, _layers[i].Scatter!, area);
             for (int i = 0; i < _layers.Count; i++)
                 if (_layers[i].IsCompanion)
                     layers[i] = PropScatter.GenerateCompanions(_field, layers[_layers[i].HostLayerIndex], _layers[i].Companions!);
@@ -196,7 +220,8 @@ namespace KhaozEngine.Terrain
         /// This call only changes what a FUTURE build reads. In async mode the caller must flush in-flight builds
         /// (<see cref="TerrainStreamer.FlushPendingBuilds"/>) before swapping, so a build already running against
         /// the old field cannot land after the swap. The map editor runs the streamer in synchronous mode, so this
-        /// does not apply there.</summary>
+        /// does not apply there. A placement layer ignores the field by construction: its buckets are fixed at ctor
+        /// time, so a swap never changes what it serves.</summary>
         public void UpdateField(TerrainField field) => _field = field ?? throw new ArgumentNullException(nameof(field));
 
         /// <summary>The opaque CPU payload <see cref="BuildCpu"/> hands to <see cref="Apply"/>: the pure-CPU mesh and
@@ -217,6 +242,24 @@ namespace KhaozEngine.Terrain
             /// off the analytic scatter (deterministic per chunk + field) for BOTH rings, since a decor chunk renders
             /// the merged mesh in place of the props it never scatters. CPU-only - the GPU upload happens in Apply.</summary>
             public GltfMesh?[]? HlodMeshes;
+        }
+
+        /// <summary>Whether layer <paramref name="layerIndex"/>'s props register static collision bodies. A placement
+        /// layer follows its own <see cref="PropLayer.RegisterColliders"/> flag (on by default, off via
+        /// <c>colliders: false</c> when the game registers that zone's physics itself). Every other layer keeps the
+        /// long-standing rule that only layer 0 registers, so a scatter or companion layer above index 0 contributes
+        /// nothing (issue #288). Pure, so the rule is headless-testable without a physics world.</summary>
+        internal bool LayerRegistersColliders(int layerIndex) =>
+            _layers[layerIndex].IsPlacement ? _layers[layerIndex].RegisterColliders : layerIndex == 0;
+
+        // Register this chunk's prop static bodies, one pass over the layers that take colliders (see
+        // LayerRegistersColliders). ChunkStatics.AddAll filters per prop id against the shape map, so a layer whose
+        // ids have no shapes adds nothing. Callers check _physics / _collisionShapes before calling.
+        void AddStatics(ChunkLoad load)
+        {
+            for (int i = 0; i < _layers.Count; i++)
+                if (LayerRegistersColliders(i))
+                    ChunkStatics.AddAll(_physics!, _collisionShapes!, load.LayerProps[i], load.Statics);
         }
 
         MeshHandle UploadMesh(TerrainChunkMesh mesh) =>
@@ -292,7 +335,7 @@ namespace KhaozEngine.Terrain
                 if (ring == ChunkRing.Gameplay)
                 {
                     if (_physics is not null && _collisionShapes is not null)
-                        ChunkStatics.AddAll(_physics, _collisionShapes, load.Props, load.Statics);
+                        AddStatics(load);
                     if (_physics is not null && _dynamicsSource is not null)
                         ChunkDynamics.AddAll(_physics, _dynamicsSource.SpawnsFor(coord), load.Dynamics);
                     if (_collideTerrain && _physics is not null && cpu.CollisionMesh is not null)
@@ -334,7 +377,7 @@ namespace KhaozEngine.Terrain
                 {
                     ChunkStatics.RemoveAll(_physics, relod.Statics);
                     if (ring == ChunkRing.Gameplay)
-                        ChunkStatics.AddAll(_physics, _collisionShapes, relod.Props, relod.Statics);
+                        AddStatics(relod);
                 }
             }
 

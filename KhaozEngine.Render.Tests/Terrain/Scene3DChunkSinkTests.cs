@@ -225,7 +225,7 @@ namespace KhaozEngine.Tests.Terrain
                 new Scene3DChunkSink(scene: null!, field,
                     new[] { PropLayer.CompanionLayer(5, comp, NoMeshes(), 40f) }, chunkSize: 60f));
 
-            // Companion host points at another companion (must be a scatter layer).
+            // Companion host points at another companion (must be a scatter or placement layer).
             Assert.Throws<ArgumentException>(() =>
                 new Scene3DChunkSink(scene: null!, field, new[]
                 {

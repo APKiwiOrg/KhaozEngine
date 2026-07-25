@@ -89,20 +89,29 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
     the caller must flush in-flight builds first (`TerrainStreamer.FlushPendingBuilds`) before swapping, so a
     build already running against the old field cannot land after the swap. The map editor runs its streamer
     synchronously, so that ordering concern does not apply there.
-- **`PropLayer`** - one scatter or companion layer's config + mesh set + draw radius, plus its dissolve fade
-  band and optional far LOD variants. `PropLayer.ScatterLayer(scatter, meshes, drawRadius, fadeBandWidth = 0,
-  lodMeshes = null, lodDistance = 0)` / `CompanionLayer(hostLayerIndex, companions, meshes, drawRadius, ...)`
-  each have two overloads: the original `IReadOnlyDictionary<string, MeshHandle>` (one mesh per kit id) and a
-  multi-part `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many mesh PARTS per kit id - a
-  multi-material textured prop split into one textured sub-mesh per source material, from
-  `Scene3D.LoadPropMeshes`). Exactly one of a layer's `Meshes`/`PartMeshes` is set, and its LOD set matches that
-  representation (`LodMeshes`/`LodPartMeshes`). `FadeBandWidth` (default 0 = hard cut) dissolves props across the
-  band just inside `DrawRadius`; a positive `LodDistance` with LOD variants swaps a kit to its far mesh past that
+- **`PropLayer`** - one scatter, companion, or placement layer's config + mesh set + draw radius, plus its
+  dissolve fade band and optional far LOD variants. `PropLayer.ScatterLayer(scatter, meshes, drawRadius,
+  fadeBandWidth = 0, lodMeshes = null, lodDistance = 0)` / `CompanionLayer(hostLayerIndex, companions, meshes,
+  drawRadius, ...)` / `PlacementLayer(placements, meshes, drawRadius, fadeBandWidth = 0, lodMeshes = null,
+  lodDistance = 0, colliders = true)` (issue #286) each have two overloads: the original
+  `IReadOnlyDictionary<string, MeshHandle>` (one mesh per kit id) and a multi-part
+  `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many mesh PARTS per kit id - a multi-material
+  textured prop split into one textured sub-mesh per source material, from `Scene3D.LoadPropMeshes`). Exactly
+  one of a layer's `Meshes`/`PartMeshes` is set, and its LOD set matches that representation
+  (`LodMeshes`/`LodPartMeshes`). `FadeBandWidth` (default 0 = hard cut) dissolves props across the band just
+  inside `DrawRadius`. A positive `LodDistance` with LOD variants swaps a kit to its far mesh past that
   distance. `Scene3DChunkSink.Draw` reads whichever mesh set is set and threads the fade band + LOD through.
   `layer.WithHlod(sourceMeshes, hlodDistance, weldCell, crossfadeWidth = 0)` returns a copy with **HLOD** on: past
   `HlodDistance` the chunk cluster swaps its individual props for one merged coarse mesh (baked from `sourceMeshes`,
   see `PropHlod`), crossfading the two across `HlodCrossfadeWidth`. Defaults off, so a layer without `WithHlod`
-  always draws its props.
+  always draws its props. A placement layer carries a frozen, author-supplied `IReadOnlyList<PropPlacement>`
+  instead of a `ScatterConfig`/`CompanionConfig` - `Scene3DChunkSink` buckets it by chunk coord once at
+  construction and streams it through the exact same per-chunk path, so every knob above applies unchanged.
+  `colliders` (default true) registers a static body for the layer's placements at ANY layer index. Pass
+  `colliders: false` to keep it render-only when the game registers that zone's physics itself outside the
+  sink. Scatter and companion layers keep the older layer-0-only collider rule (issue #288): only a layer at
+  index 0 registers colliders. A placement layer instead follows its `colliders` flag regardless of where it
+  sits in the list.
 - **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
   extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
   overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a

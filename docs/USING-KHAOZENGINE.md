@@ -4314,7 +4314,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.19.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.20.0" />
 ```
 
 ```csharp
@@ -4741,6 +4741,84 @@ The splat material handed to `Scene3DChunkSink` is **caller-owned by default**: 
 never freed per-chunk, so you must `scene.UnloadSplatMaterial(handle)` it yourself (or reuse it for the rebuilt
 sink). Pass `ownsMaterial: true` to the ctor to hand it to the sink, whose `Dispose` then frees it too.
 
+### Frozen zones: placement layers
+
+A frozen (placements-only) zone - the terminal `FreezeZone` bake (see Freeze zone below), or any other
+author-supplied placement list - streams through the same `Scene3DChunkSink` instead of a game hand-drawing
+a whole-zone `DrawProps` list every frame. `PropLayer.PlacementLayer(placements, meshes, drawRadius,
+fadeBandWidth = 0, lodMeshes = null, lodDistance = 0, colliders = true)` (issue #286) wraps a plain
+`IReadOnlyList<PropPlacement>` as a layer the sink streams, re-LODs, and unloads exactly like a scatter
+layer, with no procedural generation at load time. The multi-part overload takes `partMeshes`/`lodPartMeshes`
+the same way `ScatterLayer` does.
+
+Ruinborne-shaped: one baked list per source scatter layer, one `PlacementLayer` each, the tree layer keeping
+its far HLOD cluster:
+
+```csharp
+using KhaozEngine.MapDoc;
+using KhaozEngine.Terrain;
+
+// doc was frozen by FreezeZone: ids "baked-<source>-N", tagged "baked" plus the source layer name.
+MapDocument doc = MapDocumentFile.Load("assets/maps/valley.map.json");
+var registry = MapDocRegistry.CreateDefault();
+TerrainField field = MapRuntime.BuildField(doc, registry);
+
+IReadOnlyList<PropPlacement> BakedPlacements(string sourceLayer)
+{
+    var result = new List<PropPlacement>();
+    foreach (MapPlacement p in doc.Placements)
+    {
+        if (!p.Tags.Contains(sourceLayer)) continue;
+        float y = p.Y ?? field.SampleHeight(p.X, p.Z);
+        result.Add(new PropPlacement(p.Kind, p.X, y, p.Z, p.Scale, p.Yaw, 0));
+    }
+    return result;
+}
+
+var layers = new PropLayer[]
+{
+    // trees: HLOD unchanged, physics comes from the sink like any other layer.
+    PropLayer.PlacementLayer(BakedPlacements("trees"), treeMeshes, drawRadius: 320f, fadeBandWidth: 40f)
+        .WithHlod(hlodSource, hlodDistance: 220f, weldCell: 1.5f, crossfadeWidth: 40f),
+
+    // ferns: render-only - the game already baked the zone's static colliders once outside the sink.
+    PropLayer.PlacementLayer(BakedPlacements("ferns"), fernMeshes, drawRadius: 40f, colliders: false),
+};
+
+var sink = new Scene3DChunkSink(scene, field, layers, chunkSize: TerrainChunkRegion.DefaultSize);
+```
+
+The sink buckets each layer's placements by chunk coord once at construction (`ChunkGrid.CoordOf`, the same
+grid the streamer loads with), not per frame, so a frozen zone with tens of thousands of placements costs one
+split instead of a repeated scan. The sink keeps its own bucketed copy of every placement for its lifetime, in
+addition to the caller's list (which the layer also holds), so a zone's placements are resident twice. Every
+knob a scatter layer supports - `fadeBandWidth`, (`lodMeshes`/`lodPartMeshes`, `lodDistance`), `WithHlod` and
+its decor-ring merged mesh - behaves identically given the same placements, since the sink streams a placement
+layer through the exact same per-chunk path a scatter layer uses. The engine takes a plain placement list:
+filtering by tag (or dropping `baked` placements that no longer apply) is the game's job before it hands the
+list to `PlacementLayer`, not the sink's.
+
+**Frozen zones do not track the field.** A placement layer is field-independent: its buckets and baked Y are
+fixed at construction, so a later `UpdateField` plus `Invalidate` re-meshes the terrain under it but never
+moves the props or their static colliders, and a consumer who re-carves terrain under a frozen zone must
+re-freeze or re-supply the placements to match. A companion layer hosted off a placement layer does not
+inherit that immunity: companion generation resamples the field's height per companion, so after a field
+swap a frozen host keeps its stale Y while its companions re-ground to the new surface.
+
+**Colliders default on** (`colliders: true`), registering a static body for every placement at ANY layer
+index - unlike a scatter or companion layer, which only ever registers at layer 0 (the long-standing rule,
+issue #288). Pass `colliders: false` to keep a layer render-only when the game builds that zone's physics
+once outside the sink instead: both heads need the identical body set for client prediction to match server
+authority, and a headless server has no `Scene3D` to build a `Scene3DChunkSink` from in the first place, so
+building the bodies once from the same frozen list both heads already share is the only path that works
+uniformly on either head.
+
+**Edge-bucketing caveat.** A scatter layer assigns a cell to a chunk by its un-jittered CELL CENTRE
+(`PropScatter.Generate`), while a placement layer buckets each placement by its own final position. Freezing
+a jittered scatter into placements can therefore move a prop whose jitter crossed a chunk boundary into the
+neighbouring chunk once replayed as a `PlacementLayer` - it still draws exactly once with an identical
+transform, only its chunk (and so its HLOD cluster) membership can differ at the edge.
+
 ---
 
 ## Textured terrain (PBR splat)
@@ -4898,12 +4976,13 @@ The 3D World room in `KhaozEngine.Showcase` places one of these procedural textu
 ## Ground-cover scatter and understory companions
 
 `Scene3DChunkSink` now accepts N `PropLayer`s, so a scene can have sparse tall trees at a long draw radius
-alongside dense short-radius ground cover, with a companion layer that rings each tree base with foliage.
-Foliage ids carry no collider - this is render-only; the server, client prediction, and collision are untouched.
+alongside dense short-radius ground cover, with a companion layer that rings each tree base with foliage, or
+a placement layer replaying a frozen, author-supplied list instead of generating one at runtime (see Frozen
+zones: placement layers, above). Foliage ids carry no collider - this is render-only. The server, client
+prediction, and collision are untouched.
 
 ```csharp
 using KhaozEngine.Terrain;
-using KhaozEngine.Terrain.Render3D;
 
 // Three layers: trees (scatter), ferns (scatter, short radius), fern ring around each tree (companion).
 var layers = new PropLayer[]
@@ -5392,7 +5471,8 @@ for the full mechanics.
 terminal whole-zone bake: it freezes every scatter and companion layer across the document bounds into
 authored placements (`baked-<source>-N`, explicit Y, tagged `baked` plus the source layer name) and removes
 all scatter layers, companion layers, exclusions, and scatter overrides in one undoable
-`FreezeZoneCommand`, leaving a placements-only document. A chord rather than a tool mode, since freezing is
+`FreezeZoneCommand`, leaving a placements-only document. See Frozen zones: placement layers, above, for how
+a frozen zone streams at runtime. A chord rather than a tool mode, since freezing is
 a one-shot document action with no gesture to arm. Unlike `BakeRegion` (above), which freezes one layer over
 one rect and leaves the layer alive behind a covering exclusion, this is the terminal form: every layer,
 whole document, no exclusions left to add. A document with no scatter or companion layers is a no-op,

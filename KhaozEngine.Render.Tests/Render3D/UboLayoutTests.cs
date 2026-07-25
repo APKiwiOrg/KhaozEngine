@@ -418,14 +418,22 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void WaterUbo_SlotStride_Is256Aligned_And_HoldsTheWholePayload()
+        public void WaterUbo_BoundRangeAndStride_SatisfyTheD3D11ConstantCountRule()
         {
-            // The per-plane slot is selected by a DYNAMIC OFFSET (i * SlotBytes), which every backend requires to be
-            // 256-byte aligned - so the stride is the payload rounded up, not the payload itself. Getting this wrong
-            // is silent on Metal and a validation error / garbage params elsewhere, and the payload grew past 256 in
-            // 14.22.0, which is exactly when that stops being automatic.
-            Assert.Equal(0, WaterRenderer.SlotBytes % 256);
-            Assert.True(WaterRenderer.SlotBytes >= (int)WaterRenderer.PayloadBytes,
+            // D3D11's PSSetConstantBuffers1 requires FirstConstant AND NumConstants to be multiples of 16 constants,
+            // and Veldrid 4.9.0 derives them as offset/16 and max(size, 256)/16 with NO rounding. So a bound size
+            // under 256 is padded to 256 and is fine, an exact multiple of 256 is fine, and ANYTHING IN BETWEEN
+            // yields a non-multiple-of-16 count that D3D11 rejects outright - leaving the whole cbuffer unbound, so
+            // the shader reads zeros. That is not hypothetical: 14.22.0 grew this payload to 272 and binding 272
+            // made every water fragment read opacity 0 and discard, so D3D11/WARP rendered NO WATER while Metal and
+            // Vulkan were perfect. Only the cross-backend bake caught it.
+            //
+            // This asserts the fix as an invariant on the two numbers rather than on the backend: the bound range
+            // (SlotBytes, not PayloadBytes) is 256-aligned, and it covers the payload so a plane's params are whole.
+            Assert.True(WaterRenderer.SlotBytes % 256 == 0,
+                $"water UBO bound range {WaterRenderer.SlotBytes} is not a multiple of 256: D3D11 will reject the " +
+                "constant-buffer binding and the water pass will silently render nothing on that backend.");
+            Assert.True(WaterRenderer.SlotBytes >= WaterRenderer.PayloadBytes,
                 $"water UBO slot stride {WaterRenderer.SlotBytes} is smaller than its {WaterRenderer.PayloadBytes}-byte payload: adjacent planes would overwrite each other.");
         }
 

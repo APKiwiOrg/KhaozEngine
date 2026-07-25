@@ -38,16 +38,30 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 DetailParams;  // x=warpStrength, y=detailFadeDistance, z=distantDetailScale, w=shallowDepth
         }
 
-        /// <summary>Byte size of <see cref="WaterUbo"/>. 2*64 (mat4) + 9*16 (vec4) = 272.</summary>
+        /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
+        /// 2*64 (mat4) + 9*16 (vec4) = 272.</summary>
         internal const uint PayloadBytes = 272;
-        // Per-plane stride in the shared UBO: each plane's params occupy their OWN slot, selected at draw time by a
-        // dynamic offset (i * SlotBytes), matching the GroundDecalRenderer precedent so a multi-plane frame never
-        // shares/overwrites a slot no matter how a backend orders buffer writes vs draws. A dynamic offset must be
-        // 256-byte aligned on every backend, so the stride is the payload rounded UP to the next multiple of 256
-        // (the ModelRenderer.Align256 convention) rather than the payload itself: 272 -> 512. The unused tail per
-        // slot is never read (the bound range is PayloadBytes, matching OverlayMeshRenderer's payload-sized range
-        // over a 256-strided buffer) and costs half a kilobyte per queued plane, which is noise.
-        internal const int SlotBytes = 512;
+
+        /// <summary>
+        /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
+        /// slot, selected at draw time by a dynamic offset (i * SlotBytes), matching the GroundDecalRenderer
+        /// precedent so a multi-plane frame never shares/overwrites a slot no matter how a backend orders buffer
+        /// writes vs draws.
+        /// <para>
+        /// **It must be a multiple of 256, and so must the BOUND RANGE - which is why the range is SlotBytes and
+        /// not PayloadBytes.** D3D11's <c>PSSetConstantBuffers1</c> requires both <c>FirstConstant</c> and
+        /// <c>NumConstants</c> to be multiples of 16 constants, and Veldrid 4.9.0 computes them as
+        /// <c>firstConstant = offset / 16</c> and <c>numConstants = max(size, 256) / 16</c> with no rounding
+        /// (Veldrid.D3D11.D3D11CommandList). So a bound size UNDER 256 is padded up to 256 and is fine (that is why
+        /// OverlayMeshRenderer's 128-byte range works), and any exact multiple of 256 is fine, but anything in
+        /// between yields a non-multiple-of-16 count that D3D11 REJECTS: the whole cbuffer is then left unbound and
+        /// the shader reads zeros. This bit: 14.22.0 grew the payload from 256 to 272 and binding that size made
+        /// every water fragment read opacity 0 and discard, so D3D11 rendered no water at all while Metal and
+        /// Vulkan were perfect. Round the payload UP to 256 here (ModelRenderer.Align256's convention), never bind
+        /// the raw payload size. UboLayoutTests guards it.
+        /// </para>
+        /// </summary>
+        internal const uint SlotBytes = 512;   // Align256(272)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -111,7 +125,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             _set?.Dispose();
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex, _gd.PointSampler,
-                new GpuBufferRange(_ubo!, 0, PayloadBytes)));
+                new GpuBufferRange(_ubo!, 0, SlotBytes)));
             _bound = res; _boundGen = res.Generation;
         }
 
@@ -122,7 +136,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_ubo != null && _capacity >= planeCount) return;
             _capacity = Math.Max(planeCount, _capacity == 0 ? 4 : _capacity * 2);
             _ubo?.Dispose();
-            _ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * SlotBytes), GpuBufferUsage.UniformBuffer));
+            _ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)_capacity * SlotBytes, GpuBufferUsage.UniformBuffer));
             _set?.Dispose(); _set = null;
         }
 
@@ -184,7 +198,7 @@ namespace KhaozEngine.Render3D.Rendering
             for (int i = 0; i < planes.Length; i++)
             {
                 var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, timeSeconds);
-                cl.UpdateBuffer(_ubo!, (uint)(i * SlotBytes), in u);
+                cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
             }
 
             cl.SetFramebuffer(res.ColorDepthFB);
@@ -194,7 +208,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 int n = WaterMath.BuildGridPositions(planes[i], gridPos);
                 cl.UpdateBuffer<Vector3>(_vb!, 0, gridPos.Slice(0, n));
-                cl.SetGraphicsResourceSet(0, _set!, (uint)(i * SlotBytes));
+                cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
                 cl.SetVertexBuffer(0, _vb!);
                 cl.DrawIndexed((uint)WaterMath.GridIndexCount, 1, 0, 0, 0);
             }

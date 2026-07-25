@@ -444,7 +444,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   - `NameplateRenderer.Draw(...)` - the MMO-style plate that supersedes `WorldLabel`: a rounded panel (`DrawRounded`
     on a white texture) holding a centred title and stacked `NameplateBar`s (health/resource meters). Data-driven
     via the `Nameplate` model (title + `Bars` list, add more bars without a rewrite) and styled by `NameplateStyle`
-    (`.Default` = the opaque unified plate; drop `PanelFill` alpha + set `TitleShadow` for the panel-less pill).
+    (`.Default` = the opaque unified plate, `.TextOnly` = the panel-less name-only preset for the `Text` tier).
     `NameplateLayout.Measure` is the pure, GPU-free panel-size math (headless-testable); `NameplateBar.Fraction` is
     clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. No per-frame heap allocation.
     Opt-in edge-aware placement via `NameplateStyle.EdgeBehavior` (a `NameplateEdgeBehavior`: `None` is the
@@ -454,7 +454,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     plate near the threshold never flips between above and beside frame to frame. `NameplatePlacement.Place` is the
     pure, GPU-free placement math behind both modes (headless-testable, like `NameplateLayout.Measure`), and the
     stateful `Draw` overload threads a caller-held `NameplatePlacementState` (one per plate) so `Deflect`'s
-    hysteresis survives across frames.
+    hysteresis survives across frames. Opt-in presentation tiers via `NameplateTiers.Resolve(focusPixel, onScreen,
+    distance, viewportWidth, viewportHeight, in config, pinned, ref state)`, a pure per-entity resolver picking
+    `NameplateTier.Hidden` / `.Text` / `.Full` from a `NameplateTierConfig` distance ladder (`FullDistance`,
+    `TextDistance`, both with a derived hysteresis band) and a normalized centre-ellipse look-at gate
+    (`FocusRadius`, also derived), with a caller `pinned` override forcing `Full`. Same enter-at-edge, exit-past-band
+    stability contract as the placement hysteresis above. `NameplateTierState` is the caller-held per-entity state
+    (one per plate, exposing `Tier`). `.TextOnly` pairs with `NameplateTier.Text`: zero panel alpha, zero border,
+    zero `MinBarWidth`, a black `TitleShadow`, drawn against a `Nameplate` carrying no `Bars`.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
   - `AnimationSampler` / `AnimationPlayer` - one-shot pose sampling and a stateful single-clip player with a

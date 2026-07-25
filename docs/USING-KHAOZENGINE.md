@@ -4314,7 +4314,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.20.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.21.0" />
 ```
 
 ```csharp
@@ -5860,16 +5860,11 @@ is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at
 per-frame heap (bar rects are computed in the loop).
 
 `NameplateStyle` is the look, split from the data. `NameplateStyle.Default` is the unified opaque-plate preset
-(dark rounded panel, subtle border, one-bar geometry). Tweak it with a `with` expression, or reach the panel-less
-"classic pill" look (just a name with a drop shadow, no panel) by dropping the fill alpha and adding a shadow:
-
-```csharp
-var pill = NameplateStyle.Default with
-{
-    PanelFill = NameplateStyle.Default.PanelFill.WithAlpha(0f),   // no panel
-    TitleShadow = Color.Black,                                    // readability without a plate
-};
-```
+(dark rounded panel, subtle border, one-bar geometry). Tweak it with a `with` expression, or start from
+`NameplateStyle.TextOnly` for the panel-less name-only look (zero panel fill alpha, zero border, a black
+`TitleShadow` for readability without a panel) - see
+[Presentation tiers](#presentation-tiers-nameplatetier-distance-and-look-at-gate-14210) below for when
+that preset is the right one.
 
 Set `MaxWidth` (>0) to cap the panel width; the title is ellipsized (ASCII "...") to fit. The panel size math is
 exposed render-free as `NameplateLayout.Measure(font, plate, style)` if you want to place or batch plates yourself.
@@ -5930,6 +5925,82 @@ plate size instead of needing a per-style tune.
 The placement math itself is exposed render-free as `NameplatePlacement.Place(anchor, size, viewportWidth,
 viewportHeight, in style, ref state)`, the same pure function `NameplateRenderer.Draw` calls internally, if you
 want to place a plate without drawing it.
+
+#### Presentation tiers (`NameplateTier`, distance and look-at gate, 14.21.0)
+
+A crowd of nearby entities inside the cull ring still all draw full plates by default - `NameplateEdgeBehavior`
+only decides WHERE a plate sits, not WHETHER it draws at all. **`NameplateTiers.Resolve`** is a pure per-entity
+resolver deciding `NameplateTier.Hidden`, `.Text` (name only), or `.Full` (the whole plate) from distance and a
+look-at gate, so only the entity the player is near or actually looking at earns the full treatment.
+
+`Resolve` checks, in order: a caller `pinned` override forces `Full` regardless of everything else (a hostile
+target the player is fighting, whose health bar must stay trackable no matter where the camera looks), then the
+`onScreen` cull resolves `Hidden`, then the look-at gate, then the distance ladder. Every boundary enters at the
+raw edge and exits only past edge plus band, the same stability contract `Deflect`'s hysteresis above uses, so a
+player standing still at exactly the tier boundary, or looking near the edge of the focus ellipse, never
+flickers the plate frame to frame.
+
+`NameplateTierConfig` tunes both gates. `Default` is a readable starting point:
+
+- `FullDistance` (default `15`) - the plate is `Full` at or under this distance.
+- `TextDistance` (default `0`) - the plate is at least `Text` out to this distance. `0` means unbounded: text
+  stays visible at any distance the caller's own cull ring still lets through.
+- `DistanceHysteresis` (default `0`, meaning derived) - extra distance beyond a ladder edge required to leave
+  the nearer tier. `<= 0` derives `FullDistance * 0.1`, so the band scales with the tier's own range.
+- `FocusRadius` (default `0.6`) - the look-at gate: a normalized centre-ellipse radius the projected focus point
+  must fall inside for the plate to be eligible to show at all. `<= 0` disables the gate, so distance alone
+  decides the tier.
+- `FocusHysteresis` (default `0`, meaning derived) - extra normalized radius beyond `FocusRadius` required to
+  hide an already-visible plate. `<= 0` derives `0.15`.
+
+`Resolve`'s `focusPixel` should be the projected BODY of the entity, not the plate anchor used for placement. A
+close-up look-up at a tall creature puts the head anchor (the plate's usual anchor point) near the screen edge
+in exactly the case where the player IS looking at it, which would fail the focus gate for the wrong reason -
+project a body point (chest height, say) separately from the head offset you pass to `NameplateRenderer.Draw`.
+
+`NameplateStyle.TextOnly` is the panel-less name-only look built for the `Text` tier (zero panel fill alpha,
+zero border, zero `MinBarWidth`, a black `TitleShadow`). Pair it with a `Nameplate` that carries no `Bars`: the
+style hides the panel, the data drops the bar. Hold one `NameplateTierState` per entity across frames (the same
+per-entity contract `NameplatePlacementState` already uses), and resolve the tier before building the plate so
+`Hidden` can skip the draw entirely. Extending the `Deflect` loop above:
+
+```csharp
+var tierStates = new Dictionary<NetId, NameplateTierState>();   // one per entity, alongside placementStates
+var tierConfig = NameplateTierConfig.Default;
+
+batch.Begin();
+foreach (EntityRenderState e in client.Snapshot())
+    if (e.DisplayName is { } name)
+    {
+        camera.WorldToScreen(e.Position + new Vector3(0, chestHeight, 0), fbW, fbH, out Vector2 focusPixel);
+        bool onScreen = camera.WorldToScreen(e.Position + new Vector3(0, headHeight, 0), fbW, fbH, out _);
+        float distance = Vector3.Distance(localPlayerPos, e.Position);
+        bool pinned = combat.IsEngagedWith(e.Id);   // the game's own combat signal
+
+        NameplateTierState tierState = tierStates.TryGetValue(e.Id, out var t) ? t : default;
+        NameplateTier tier = NameplateTiers.Resolve(
+            focusPixel, onScreen, distance, fbW, fbH, tierConfig, pinned, ref tierState);
+        tierStates[e.Id] = tierState;
+        if (tier == NameplateTier.Hidden)
+            continue;
+
+        var plate = new Nameplate
+        {
+            Title = name,
+            TitleColor = Color.White,
+            Bars = tier == NameplateTier.Full
+                ? new[] { new NameplateBar(e.Health / e.MaxHealth, green, darkTrack) }
+                : null,
+        };
+        var tierStyle = tier == NameplateTier.Full ? style : NameplateStyle.TextOnly;
+
+        NameplatePlacementState placementState = placementStates.TryGetValue(e.Id, out var s) ? s : default;
+        NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
+            plate, tierStyle, fbW, fbH, ref placementState, maxDistance: 90f, cullFrom: localPlayerPos);
+        placementStates[e.Id] = placementState;
+    }
+batch.End();
+```
 
 ### Sharded authoritative server (many players / a large world)
 

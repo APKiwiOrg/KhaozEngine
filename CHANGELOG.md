@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.21.0
+
+Feature: nameplates gain presentation tiers, so a crowd of nearby entities does not draw a stack of full
+plates the player never reads. Companion to 14.19.0's edge-aware placement. Requested by Ruinborne
+(https://github.com/APKiwiOrg/Ruinborne/issues/188). Closes #291.
+
+- **`NameplateTier` (KhaozEngine.Render3D), a new public enum.** `Hidden` (draw nothing), `Text` (name
+  only, panel-less), `Full` (the whole plate: panel, title, bars).
+- **`NameplateTierState`, a new public struct.** Caller-held one per entity across frames, the same
+  contract `NameplatePlacementState` already uses. A default instance resolves `Hidden`, so a
+  first-seen entity always enters upward on its first call.
+- **`NameplateTierConfig`, a new public readonly struct (init props + a static `Default`).**
+  `FullDistance` (Full at or under this distance, default 15). `TextDistance` (Text out to this
+  distance, 0 means unbounded, default 0). `DistanceHysteresis` (extra distance required to leave a
+  nearer tier, `<= 0` derives `FullDistance * 0.1`). `FocusRadius` (the look-at gate: a normalized
+  centre-ellipse radius the projected focus point must fall inside to be eligible at all, `<= 0`
+  disables the gate, default 0.6). `FocusHysteresis` (extra radius required to hide an already-visible
+  plate, `<= 0` derives 0.15).
+- **`NameplateTiers.Resolve(focusPixel, onScreen, distance, viewportWidth, viewportHeight, in config,
+  pinned, ref state)`, a new public pure resolver.** Resolution order: `pinned` forces `Full` over
+  everything, then the `onScreen` cull resolves `Hidden`, then the focus gate, then the distance
+  ladder. Every boundary enters at the raw edge and exits only past edge plus band, the same stability
+  contract as the deflect hysteresis, so a value jittering at a threshold (a player standing still at
+  exactly the tier boundary, or looking near the edge of the focus ellipse) never flickers the
+  presentation frame to frame. `focusPixel` should be the projected BODY of the entity, not the plate
+  anchor: a close-up look-up at a tall creature puts the head anchor near the screen edge in exactly
+  the case where the player IS looking at it, which would fail the gate for the wrong reason.
+- **`NameplateStyle.TextOnly`, a new static preset.** The panel-less name-only look for the `Text`
+  tier: zero panel fill alpha, zero border thickness, zero `MinBarWidth`, a black `TitleShadow` for
+  readability without a panel. Pair it with a `Nameplate` that carries no `Bars`, the style hides the
+  panel and the data drops the bar.
+- A caller resolves the tier once per entity per frame and draws accordingly: nothing on `Hidden`,
+  `TextOnly` with no bars on `Text`, the full styled plate on `Full`.
+- Docs: `docs/USING-KHAOZENGINE.md` gains a "Presentation tiers" subsection alongside edge-aware
+  placement, and its older panel-less-pill snippet now points at `TextOnly` instead of a hand-rolled
+  `with` expression. Package README updated.
+- Tests: 13 headless tests (`NameplateTierTests.cs`) pin the resolver's ordering, both hysteresis
+  bands, the pin, and the `TextOnly` preset.
+
 ## 14.20.0
 
 Feature: placements-based PropLayer, so a frozen placements-only zone streams through the chunk sink

@@ -55,11 +55,12 @@ namespace KhaozEngine.Terrain
         /// <paramref name="layers"/>, either of which yields a per-chunk host list the companions derive from. The
         /// splat <paramref name="material"/> is caller-owned unless
         /// <paramref name="ownsMaterial"/> is set (see the class remarks). When <paramref name="physics"/> is
-        /// given, LAYER 0's props plus every placement layer that keeps <see cref="PropLayer.RegisterColliders"/>
-        /// on are added as static bodies on chunk load (using the per-prop-id shapes in
-        /// <paramref name="collisionShapes"/>, so a prop id with no shape entry registers nothing) and removed on
-        /// unload. Null physics means no collision, and a scatter or companion layer above index 0 registers no
-        /// colliders (issue #288). See <see cref="LayerRegistersColliders"/>.
+        /// given, each registering layer's props are added as static bodies on chunk load and removed on unload
+        /// (using the per-prop-id shapes in <paramref name="collisionShapes"/>, so a prop id with no shape entry
+        /// registers nothing). A placement layer follows its <see cref="PropLayer.RegisterColliders"/> flag at
+        /// any index, while any other layer registers only at index 0, so a scatter or companion layer above
+        /// index 0 registers no colliders (issue #288). Null physics means no collision. See
+        /// <see cref="LayerRegistersColliders"/>.
         /// When <paramref name="dynamicsSource"/> is given (physics must also be set), the game-supplied source
         /// yields dynamic bodies per chunk that are registered on load and removed on unload (mechanism only:
         /// the engine registers exactly what the source emits, the source decides what spawns where).

@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Terrain
     /// serves a bucket where a scatter layer generates), the collider gating in <c>LayerRegistersColliders</c>, and
     /// the downstream parity that seam buys for free: a placement layer's <c>BuildCpu</c> HLOD bake and its
     /// <c>PropRenderer.Queue</c> fade/LOD selection match the scatter layer that produced its placements, chunk for
-    /// chunk. Headless apart from one GPU-gated end-to-end collider test; pixel-presence GPU coverage of a
+    /// chunk. Headless apart from one GPU-gated end-to-end collider test. Pixel-presence GPU coverage of a
     /// placement layer drawing is in the companion <c>PlacementLayerGpuTests.cs</c>.</summary>
     public class PlacementLayerTests
     {
@@ -543,8 +543,8 @@ namespace KhaozEngine.Tests.Terrain
         [Fact]
         public void Queue_FadeLodSelectionParity_PlacementVsScatter()
         {
-            // The fade/LOD selection code itself (PropRenderer.Queue) is exercised headlessly in PropRendererTests;
-            // this proves it selects and dissolves IDENTICALLY when fed a placement layer's chunk bucket vs the
+            // The fade/LOD selection code itself (PropRenderer.Queue) is exercised headlessly in PropRendererTests.
+            // This proves it selects and dissolves IDENTICALLY when fed a placement layer's chunk bucket vs the
             // scatter layer that produced it (issue #286) - the real selection code, not just a comparison of the
             // raw PropPlacement lists (already locked by Sink_PlacementLayer_MatchesScatterEquivalentPerChunk).
             TerrainField field = Flat(5f);

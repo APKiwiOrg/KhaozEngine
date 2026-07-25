@@ -10,12 +10,12 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// GPU coverage of a placement layer (issue #286) drawn through the REAL <see cref="Scene3DChunkSink.Load"/> +
-    /// <see cref="Scene3DChunkSink.Draw"/> wire, not a bare <c>PropRenderer.Queue</c> call. Pixel-presence, NOT a
-    /// golden (so no new bake and no cross-platform gate): one hand-placed prop renders as visible pixels, and the
+    /// <see cref="Scene3DChunkSink.Draw"/> wire, not a bare <c>PropRenderer.Queue</c> call. Pixel-presence only,
+    /// no baseline image (so no new bake and no cross-platform gate): one hand-placed prop renders as visible pixels, and the
     /// same scene with an empty placement list renders none. This proves the whole runtime path - a frozen
     /// placement list, through the sink's per-chunk bucket, to the GPU - actually lands a placement layer on
     /// screen. The knobs (fade band, LOD, HLOD, collider gating) are exercised headlessly in
-    /// <c>PlacementLayerTests</c> / <c>PropRendererTests</c>; this only proves the wire carries pixels. Skipped
+    /// <c>PlacementLayerTests</c> / <c>PropRendererTests</c>. This only proves the wire carries pixels. Skipped
     /// unless KE_GPU_TESTS is set (see <see cref="GpuFactAttribute"/>).
     /// <para>The terrain chunk the sink also draws sits far below the origin (<see cref="FarBelowField"/>), while
     /// the camera is framed tightly on the origin prop exactly like <c>PropFadeBandGpuTests</c>. With an

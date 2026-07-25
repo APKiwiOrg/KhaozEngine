@@ -20,8 +20,10 @@ namespace KhaozEngine.Windowing.Actions
     ///
     /// <para><b>Combining multiple bindings (documented semantics):</b>
     /// <list type="bullet">
-    /// <item><b>Button</b>: OR. The action is down if ANY binding is down; pressed if any binding's press edge fires
-    /// this frame AND the action was not already down last frame; released is the symmetric was-down-now-up edge.</item>
+    /// <item><b>Button</b>: OR. The action is down if ANY binding is down. Pressed fires if any binding's press
+    /// edge fires this frame and the action was not already down last frame. Released fires if any binding's
+    /// release edge fires this frame and the action is not down now, the symmetric case. See
+    /// <see cref="WasPressed"/> / <see cref="WasReleased"/> for the same-frame-tap composition.</item>
     /// <item><b>Axis1D</b>: SUM then clamp to [-1, 1]. Bindings add (so a stick at 0.3 plus a key at 1 saturates), and
     /// the result is clamped.</item>
     /// <item><b>Axis2D</b>: per-component SUM, then the WASD/keyboard composites are normalized so a diagonal is length
@@ -168,9 +170,18 @@ namespace KhaozEngine.Windowing.Actions
         }
 
         /// <summary>
-        /// True only on the frame the button action went down. Uses each binding's own press edge (key/gamepad-button
-        /// press sets) OR'd, gated so it does not fire if the action was already down last frame; composite/axis
-        /// sources contribute a was-up/now-down edge against the previous snapshot.
+        /// True only on the frame the button action went down. The primary signal is the down/prev comparison
+        /// below (down now, up last frame): correct for a normal hold, and correct for several overlapping bindings
+        /// since the OR across bindings happens before the transition check, not after. That alone misses a
+        /// same-frame tap, where a binding's press AND release both queue within one <see cref="Update"/> (a frame
+        /// hitch, or the engine's own background-throttle rates): <see cref="EvaluateDown"/> samples the current
+        /// down state once per frame, after both events already cancelled out, so the down/prev comparison never
+        /// sees an edge at all. To catch that, a non-composite binding (<see cref="InputSource.IsComposite"/> false:
+        /// a key, mouse button, or gamepad button) also contributes its own snapshot press edge
+        /// (<see cref="InputSource.EvaluatePressed"/>), gated on the action not already being down last frame so an
+        /// already-held action never re-fires when a second binding's press edge lands on top of it. Composite/axis
+        /// sources have no snapshot edge of their own and keep deriving their edge purely from the down/prev
+        /// comparison, unchanged.
         /// </summary>
         public bool WasPressed(string actionId)
         {
@@ -179,16 +190,37 @@ namespace KhaozEngine.Windowing.Actions
             // Press edge = down now, up last frame. This composes the OR-over-bindings "down" set (which already
             // uses each binding's snapshot state) with the map's previous-frame memory, so a single held-then-released
             // binding re-fires correctly and multiple bindings never double-fire.
-            return _downNow[actionId] && !_downPrev[actionId];
+            if (_downNow[actionId] && !_downPrev[actionId]) return true;
+            if (_downPrev[actionId]) return false; // already down last frame: no binding's press edge can re-fire it
+            // Same-frame tap: the down/prev comparison above saw no edge (never observed as down), but a
+            // non-composite binding's own snapshot may have seen a genuine press this frame. Composite/axis sources
+            // always report false here (see InputSource.EvaluatePressed), so they fall through unaffected.
+            int player = (int)PlayerIndex;
+            foreach (var b in _bindings[actionId])
+                if (!b.Source.IsComposite && b.Source.EvaluatePressed(_input, player)) return true;
+            return false;
         }
 
-        /// <summary>True only on the frame the button action went up (was-down last frame, up now, or a snapshot release edge).</summary>
+        /// <summary>
+        /// True only on the frame the button action went up. Symmetric with <see cref="WasPressed"/>: the primary
+        /// signal is the down/prev comparison (down last frame, up now), plus, for a non-composite binding, its own
+        /// snapshot release edge (<see cref="InputSource.EvaluateReleased"/>) gated on the action not being down
+        /// now, so a same-frame tap on a binding still registers a release even though the down/prev comparison
+        /// never saw the action move, while a binding's release edge can never force a release while another
+        /// binding still holds the action down. Composite/axis sources are unaffected, exactly as before.
+        /// </summary>
         public bool WasReleased(string actionId)
         {
             RequireAction(actionId);
             if (!_hasFrame) return false;
             // Release edge = down last frame, up now. Symmetric with WasPressed against the previous snapshot.
-            return _downPrev[actionId] && !_downNow[actionId];
+            if (_downPrev[actionId] && !_downNow[actionId]) return true;
+            if (_downNow[actionId]) return false; // still down now: no binding's release edge can force a release
+            // Same-frame tap, symmetric with WasPressed above.
+            int player = (int)PlayerIndex;
+            foreach (var b in _bindings[actionId])
+                if (!b.Source.IsComposite && b.Source.EvaluateReleased(_input, player)) return true;
+            return false;
         }
 
         /// <summary>

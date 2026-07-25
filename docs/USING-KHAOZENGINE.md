@@ -517,11 +517,12 @@ public sealed class InputState   // immutable per-frame snapshot; InputState.Emp
     IReadOnlyList<GamepadState> Gamepads, Touches;  // ctor args optional, default empty
     bool WindowFocused;                             // optional trailing ctor arg, default true (Empty = false)
     IReadOnlySet<Key> KeysRepeated;                 // optional trailing ctor arg, default empty
+    IReadOnlySet<MouseButton> MouseReleased;        // optional trailing ctor arg, default empty
 }
 
 bool IsDown(Key) / WasPressed(Key) / WasReleased(Key);
 bool WasRepeated(Key) / WasTyped(Key);   // OS auto-repeat tick / press-or-repeat
-bool IsDown(MouseButton) / WasPressed(MouseButton);
+bool IsDown(MouseButton) / WasPressed(MouseButton) / WasReleased(MouseButton);
 GamepadState Gamepad(int i = 0);  GamepadState PrimaryGamepad { get; }
 ```
 
@@ -533,6 +534,12 @@ then recurring at the OS repeat rate); `AppWindow` fills `KeysRepeated` from GLF
 stays the press edge only (auto-repeat excluded), so existing callers are unchanged; `WasTyped(Key)` is the union
 (`WasPressed || WasRepeated`) - the "a character was typed this frame" signal hold-to-repeat text entry wants.
 `TextEntry`/`TextInput` use it, so a held Backspace or character key repeats with no game code.
+
+`MouseReleased` (since 14.25.0) is the mouse counterpart to `KeysReleased`, read via `WasReleased(MouseButton)`.
+Before it existed the mouse had a press edge but no release edge, so a rebindable action bound to a mouse button
+via `InputSource.FromMouseButton(...)` reported a permanently-false release and any consumer wanting one had to
+re-derive it by hand against the previous frame. It is an optional trailing constructor argument, so hand-built
+snapshots that omit it simply carry an empty set.
 
 `WindowFocused` is `true` while the window owning this snapshot is the frontmost (OS-focused) window. The render
 loop keeps running and the cursor stays live while the window is in the background, so gate input that should stop
@@ -4378,7 +4385,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.24.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.25.0" />
 ```
 
 ```csharp

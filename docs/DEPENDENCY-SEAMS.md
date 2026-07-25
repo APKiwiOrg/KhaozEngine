@@ -399,7 +399,12 @@ The pattern is applied at the granularity the dependency warrants:
    the rest of the engine an immutable snapshot or an engine-native type. There is no second backend planned,
    but the dependency is still corralled to one place so it cannot leak across the codebase. The input rule
    ("only `AppWindow` touches Silk.NET/GLFW input statics") is enforced as a hard rule in
-   [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) and `../AGENTS.md`.
+   [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) and `../AGENTS.md`. Since 14.25.0 the containment is split in
+   two: `AppWindow` owns the Silk/GLFW binding and the platform reads, and `InputAccumulator` owns the pure
+   raw-event to `InputState` state machine with those reads passed in as arguments. The rule is unchanged
+   (`AppWindow` is still the sole toucher), but the half that has no platform dependency is now on the testable
+   side of the line, which is what the rule was always for. Two bugs, focus-loss release semantics and
+   first-frame cursor priming, had no headless test purely because that half sat inside the GLFW-bound class.
 
 ## GPU-backend invariant: ONE uniform buffer per pipeline (Metal via Veldrid/SPIRV-Cross)
 
@@ -473,7 +478,7 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Server heartbeat | `../KhaozEngine.ServerStatus/ServerHeartbeat.cs` (`IServerHeartbeatSink`, `Null`/`InMemory` sinks), `ServerHeartbeatService.cs` | game-side SQL upsert (not in the engine) |
 | Social / presence | `../KhaozEngine.Social/ISocialProvider.cs`, `NullSocialProvider.cs`, `SocialPresenceController.cs` | `../KhaozEngine.Social.Discord/DiscordSocialProvider.cs` (+ `Internal/DiscordIpcClient.cs`, `NamedPipeDiscordTransport.cs`) |
 | Player identity | `../KhaozEngine.Identity/IIdentityProvider.cs`, `IIdentityValidator.cs`, `ITokenCache.cs`, `IBrowserLauncher.cs`, `ILoopbackListener.cs`, `IdentitySession.cs`, `SessionToken.cs`, `FileTokenCache.cs` | `../KhaozEngine.Identity.Oidc/OidcClientProvider.cs`, `OidcTokenValidator.cs`, `SystemBrowserLauncher.cs`, `HttpLoopbackListener.cs`; `../KhaozEngine.Identity.Discord/DiscordClientProvider.cs`, `DiscordTokenValidator.cs` |
-| Windowing/input | `../KhaozEngine.Windowing/AppWindow.cs` (sole toucher) | Silk.NET/GLFW, contained |
+| Windowing/input | `../KhaozEngine.Windowing/AppWindow.cs` (sole toucher; the pure event-to-snapshot half is `InputAccumulator.cs`) | Silk.NET/GLFW, contained |
 | glTF load | `../KhaozEngine.Render3D/Models/GltfLoader.cs` (contains SharpGLTF) | (containment) |
 | Image decode | `../KhaozEngine.Render2D/ImageRgba.cs` (contains StbImageSharp) | (containment) |
 | Font rasterization | `../KhaozEngine.Render2D/SpriteFont.cs` (contains StbTrueTypeSharp) | (containment) |

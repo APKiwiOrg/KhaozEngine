@@ -47,6 +47,33 @@ namespace KhaozEngine.Tests.Windowing
                 left, right, leftTrigger, rightTrigger);
         }
 
+        /// <summary>Like <see cref="Frame"/> but does not merge <paramref name="pressed"/> into
+        /// <paramref name="down"/> - the shape AppWindow produces when a key's press and release both queue within
+        /// one Update (a frame hitch, or the background-throttle rates), so a key can sit in both
+        /// <paramref name="pressed"/> and <paramref name="released"/> while never appearing in
+        /// <paramref name="down"/>.</summary>
+        static InputState RawFrame(
+            IEnumerable<Key>? down = null, IEnumerable<Key>? pressed = null, IEnumerable<Key>? released = null,
+            params GamepadState[] pads)
+        {
+            return new InputState(
+                new HashSet<Key>(down ?? Array.Empty<Key>()), new HashSet<Key>(pressed ?? Array.Empty<Key>()),
+                new HashSet<Key>(released ?? Array.Empty<Key>()), new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 0f, 960, 540, pads);
+        }
+
+        /// <summary>The <see cref="GamepadState"/> counterpart to <see cref="RawFrame"/>: no pressed/down merge.</summary>
+        static GamepadState RawPad(
+            int index = 0, IEnumerable<GamepadButton>? down = null, IEnumerable<GamepadButton>? pressed = null,
+            IEnumerable<GamepadButton>? released = null, Vector2 left = default, Vector2 right = default,
+            float leftTrigger = 0f, float rightTrigger = 0f)
+        {
+            return new GamepadState(
+                index, new HashSet<GamepadButton>(down ?? Array.Empty<GamepadButton>()),
+                new HashSet<GamepadButton>(pressed ?? Array.Empty<GamepadButton>()),
+                new HashSet<GamepadButton>(released ?? Array.Empty<GamepadButton>()), left, right, leftTrigger, rightTrigger);
+        }
+
         // ---- button action evaluation + edge detection ----------------------
 
         [Fact]
@@ -107,6 +134,91 @@ namespace KhaozEngine.Tests.Windowing
             map.Update(Frame(down: new[] { Key.LeftControl }, pressed: new[] { Key.RightControl })); // second presses while first held
             Assert.False(map.WasPressed("fire")); // already down last frame -> no new press edge
             Assert.True(map.IsDown("fire"));
+        }
+
+        [Fact]
+        public void Button_SameFrameTap_Key_FiresBothPressedAndReleased()
+        {
+            // AppWindow can hand ActionMap a snapshot where a key sits in BOTH KeysPressed and KeysReleased but
+            // never in KeysDown (a KeyDown+KeyUp both queue within one frame - any hitch, or routinely at the
+            // engine's background-throttle rates). EvaluateDown alone can't see this: it samples IsDown once per
+            // Update, after both events already cancelled out.
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("tap"), InputSource.FromKey(Key.Space));
+
+            map.Update(RawFrame()); // baseline
+            map.Update(RawFrame(pressed: new[] { Key.Space }, released: new[] { Key.Space }));
+            Assert.False(map.IsDown("tap")); // never observed as held
+            Assert.True(map.WasPressed("tap"));
+            Assert.True(map.WasReleased("tap"));
+
+            map.Update(RawFrame()); // must not re-fire next frame
+            Assert.False(map.WasPressed("tap"));
+            Assert.False(map.WasReleased("tap"));
+        }
+
+        [Fact]
+        public void Button_SameFrameTap_GamepadButton_FiresBothPressedAndReleased()
+        {
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("tap"), InputSource.FromGamepadButton(GamepadButton.A));
+
+            map.Update(Frame(pads: Pad()));
+            map.Update(Frame(pads: RawPad(pressed: new[] { GamepadButton.A }, released: new[] { GamepadButton.A })));
+            Assert.False(map.IsDown("tap"));
+            Assert.True(map.WasPressed("tap"));
+            Assert.True(map.WasReleased("tap"));
+
+            map.Update(Frame(pads: Pad()));
+            Assert.False(map.WasPressed("tap"));
+            Assert.False(map.WasReleased("tap"));
+        }
+
+        [Fact]
+        public void Button_PressEdge_BothBindingsDownSameFrame_FiresOnce()
+        {
+            // Distinct from Button_PressEdge_DoesNotDoubleFire_WhenTwoBindingsOverlap above (staggered frames): both
+            // bindings go down on the SAME frame here, then one taps while the other keeps holding.
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("fire"),
+                InputSource.FromKey(Key.LeftControl), InputSource.FromKey(Key.RightControl));
+
+            map.Update(Frame());
+            map.Update(Frame(pressed: new[] { Key.LeftControl, Key.RightControl })); // both press together
+            Assert.True(map.WasPressed("fire"));
+
+            map.Update(Frame(down: new[] { Key.LeftControl, Key.RightControl })); // both still held
+            Assert.False(map.WasPressed("fire"));
+
+            // RightControl taps (press + release, never down) while LeftControl keeps holding: the action was
+            // already down, so no re-fire, and it never stopped being down, so no false release either.
+            map.Update(RawFrame(
+                down: new[] { Key.LeftControl }, pressed: new[] { Key.RightControl }, released: new[] { Key.RightControl }));
+            Assert.True(map.IsDown("fire"));
+            Assert.False(map.WasPressed("fire"));
+            Assert.False(map.WasReleased("fire"));
+        }
+
+        [Fact]
+        public void Button_CompositeTrigger_EdgesUnaffectedBySameFrameTapFix()
+        {
+            // A composite source (IsComposite = true) has no snapshot press/release edge of its own -
+            // InputSource.EvaluatePressed/EvaluateReleased always return false for it - so its button edges still
+            // come purely from the down/prev comparison, exactly as before this fix.
+            var map = new ActionMap();
+            map.AddAction(InputAction.Button("boost"), InputSource.Trigger(GamepadTriggerSide.Right));
+
+            map.Update(Frame());
+            map.Update(Frame(pads: Pad(rightTrigger: 0.9f))); // squeeze past threshold
+            Assert.True(map.WasPressed("boost"));
+            Assert.False(map.WasReleased("boost"));
+
+            map.Update(Frame(pads: Pad(rightTrigger: 0.9f))); // held
+            Assert.False(map.WasPressed("boost"));
+
+            map.Update(Frame()); // released
+            Assert.False(map.WasPressed("boost"));
+            Assert.True(map.WasReleased("boost"));
         }
 
         // ---- axis1D evaluation ---------------------------------------------

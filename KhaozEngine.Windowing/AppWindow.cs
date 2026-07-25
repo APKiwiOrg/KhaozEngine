@@ -64,28 +64,20 @@ namespace KhaozEngine.Windowing
         readonly IGpuCommandList _cl;
         readonly Frame _frame = new();
 
-        // Edge-tracking input state (mirrors the previous model). Silk fires KeyDown/KeyUp/MouseDown/MouseUp/Scroll
-        // on its event pump; we accumulate into per-frame sets and snapshot them once per render callback.
-        readonly HashSet<Key> _keysDown = new();
-        readonly HashSet<Key> _pressed = new();
-        readonly HashSet<Key> _released = new();
-        // Keys that fired a GLFW REPEAT this frame (held past the OS repeat delay). Silk's high-level keyboard drops
-        // REPEAT, so we capture it off the raw GLFW key callback; snapshotted + cleared per frame like _pressed.
-        readonly HashSet<Key> _repeated = new();
+        // The edge-tracking input state machine. Silk and GLFW fire key/button down, up, repeat and scroll on the
+        // event pump, this window translates each raw event into engine types and hands it over, and the frame
+        // loop asks for one immutable snapshot per render callback. Everything past the translation lives in
+        // InputAccumulator so it is testable without a window.
+        readonly InputAccumulator _accumulator = new();
         // The chained GLFW key callback (held so the native delegate isn't GC'd) and Silk's previous callback we
         // re-invoke from it so the high-level KeyDown/KeyUp keep firing. See WireKeyRepeat.
         Silk.NET.GLFW.GlfwCallbacks.KeyCallback? _keyCallback;
         Silk.NET.GLFW.GlfwCallbacks.KeyCallback? _prevKeyCallback;
-        readonly HashSet<MouseButton> _mouseDown = new();
-        readonly HashSet<MouseButton> _mousePressed = new();
         readonly SilkGamepadReader _gamepads = new();
         // Rumble OUTPUT seam. The Silk sink is the ONLY place touching the vibration motors (mirror of the
         // AppWindow-only input-static rule); the driver wraps it with the pure envelope mixer. Built lazily on first
         // access so a window that never rumbles pays nothing. Ticked each frame in Run so pulses decay + auto-stop.
         Rumble.IRumble? _rumble;
-        Vector2 _lastMouse;
-        float _wheelAccum;
-        bool _focused = true;   // windows open focused; Silk's FocusChanged keeps this in sync.
         bool _minimized;        // OS-iconified. Silk's StateChanged keeps this in sync. Drives the background throttle.
 
         readonly int _maxFrames;
@@ -511,8 +503,6 @@ namespace KhaozEngine.Windowing
                     () => GlfwClipboard.ReadText(glfwWindow),
                     text => GlfwClipboard.WriteText(glfwWindow, text));
             }
-
-            _lastMouse = Vector2.Zero;
         }
 
         /// <summary>
@@ -751,7 +741,7 @@ namespace KhaozEngine.Windowing
 
                 // Background-throttle decision for this frame (pure). A minimized window skips render + present. An
                 // unfocused-but-visible one still renders at a lowered cap. A focused window renders at the base cap.
-                FramePlan plan = _backgroundThrottle.Plan(new WindowActivity(_focused, _minimized), _effectiveBaseCapHz);
+                FramePlan plan = _backgroundThrottle.Plan(new WindowActivity(_accumulator.IsFocused, _minimized), _effectiveBaseCapHz);
                 bool render = plan.RenderAndPresent;
 
                 _frame.Dt = fdt; _frame.Input = input; _frame.Width = w; _frame.Height = h;
@@ -809,21 +799,23 @@ namespace KhaozEngine.Windowing
         {
             // Track OS focus so BuildInput can stamp it onto the snapshot. Silk keeps the render loop running and
             // reports a live cursor while unfocused, so without this consumers would see hover/clicks as if focused.
-            _window.FocusChanged += focused => _focused = focused;
+            // Losing focus also releases everything currently held (see InputAccumulator.OnFocusChanged), because the
+            // OS can swallow the matching key-up while the window is in the background.
+            _window.FocusChanged += _accumulator.OnFocusChanged;
             // Track OS minimize (iconify) so the frame loop can skip render + present while minimized (the window has
             // no drawable then) and idle. StateChanged also reports Maximized/Fullscreen/Normal. Only Minimized matters
             // here. Per the input hard rule, AppWindow is the only class touching the Silk window statics.
             _window.StateChanged += state => _minimized = state == WindowState.Minimized;
             foreach (IKeyboard kb in _input.Keyboards)
             {
-                kb.KeyDown += (_, key, _) => { if (MapKey(key, out Key k) && _keysDown.Add(k)) _pressed.Add(k); };
-                kb.KeyUp += (_, key, _) => { if (MapKey(key, out Key k) && _keysDown.Remove(k)) _released.Add(k); };
+                kb.KeyDown += (_, key, _) => { if (MapKey(key, out Key k)) _accumulator.OnKeyDown(k); };
+                kb.KeyUp += (_, key, _) => { if (MapKey(key, out Key k)) _accumulator.OnKeyUp(k); };
             }
             foreach (IMouse m in _input.Mice)
             {
-                m.MouseDown += (_, btn) => { if (MapMouse(btn, out MouseButton b) && _mouseDown.Add(b)) _mousePressed.Add(b); };
-                m.MouseUp += (_, btn) => { if (MapMouse(btn, out MouseButton b)) _mouseDown.Remove(b); };
-                m.Scroll += (_, wheel) => _wheelAccum += wheel.Y;
+                m.MouseDown += (_, btn) => { if (MapMouse(btn, out MouseButton b)) _accumulator.OnMouseDown(b); };
+                m.MouseUp += (_, btn) => { if (MapMouse(btn, out MouseButton b)) _accumulator.OnMouseUp(b); };
+                m.Scroll += (_, wheel) => _accumulator.OnScroll(wheel.Y);
             }
             WireKeyRepeat();
         }
@@ -832,11 +824,11 @@ namespace KhaozEngine.Windowing
         /// Capture OS key auto-repeat. GLFW fires a <c>REPEAT</c> key action while a key is held (after the user's
         /// OS repeat delay, then at the OS repeat rate), but Silk's high-level keyboard maps only PRESS/RELEASE and
         /// drops REPEAT, so <see cref="WireInput"/>'s KeyDown/KeyUp never see it. We install our own GLFW key callback
-        /// to record repeats into <see cref="_repeated"/>, then CHAIN to Silk's previous callback so its KeyDown/KeyUp
-        /// (and thus <see cref="_pressed"/>/<see cref="_released"/>) keep working unchanged. GLFW key codes share the
+        /// to report repeats to <see cref="InputAccumulator.OnKeyRepeat"/>, then CHAIN to Silk's previous callback so
+        /// its KeyDown/KeyUp (and thus the press and release edges) keep working unchanged. GLFW key codes share the
         /// <see cref="SilkKey"/> integer values, so we reuse <see cref="MapKey"/>. Per the input hard rule, this is the
-        /// only place the GLFW statics are touched; callbacks run on the GLFW/main thread during the frame poll (same
-        /// as the KeyDown handler), so the shared sets need no locking.
+        /// only place the GLFW statics are touched. Callbacks run on the GLFW/main thread during the frame poll (same
+        /// as the KeyDown handler), so the accumulator's sets need no locking.
         /// </summary>
         unsafe void WireKeyRepeat()
         {
@@ -848,38 +840,29 @@ namespace KhaozEngine.Windowing
             _keyCallback = (window, key, code, action, mods) =>
             {
                 if (action == GlfwInputAction.Repeat && MapKey((SilkKey)(int)key, out Key k))
-                    _repeated.Add(k);
+                    _accumulator.OnKeyRepeat(k);
                 _prevKeyCallback?.Invoke(window, key, code, action, mods); // keep Silk's KeyDown/KeyUp alive
             };
             // SetKeyCallback returns the previously-installed callback (Silk's); capture it to re-invoke above.
             _prevKeyCallback = glfw.SetKeyCallback(handle, _keyCallback);
         }
 
+        /// <summary>Read this frame's Silk state (cursor, framebuffer size, gamepads) and let
+        /// <see cref="InputAccumulator"/> fold it together with the accumulated edges into the frame's snapshot.
+        /// This window does the platform reads, the accumulator owns the state machine.</summary>
         InputState BuildInput()
         {
-            Vector2 pos = _lastMouse;
             var mice = _input.Mice;
-            // Silk/GLFW report the cursor in LOGICAL points; the render viewport (Frame.Width/Height ->
+            bool hasMouse = mice.Count > 0;
+            // Silk/GLFW report the cursor in LOGICAL points, while the render viewport (Frame.Width/Height ->
             // DesignViewport / SpriteBatch.Begin) is in FRAMEBUFFER pixels. On a HiDPI display (Retina Mac at 2x,
             // scaled Windows) those differ, so scale the cursor into framebuffer space to keep input and rendering
             // in one coordinate system (otherwise Pointer hit-testing is off by the DPI factor). 1x = no-op.
-            if (mice.Count > 0) pos = ToFramebuffer(mice[0].Position);
-            Vector2 delta = pos - _lastMouse;
+            Vector2 pos = hasMouse ? ToFramebuffer(mice[0].Position) : Vector2.Zero;
 
-            var input = new InputState(
-                new HashSet<Key>(_keysDown), new HashSet<Key>(_pressed), new HashSet<Key>(_released),
-                new HashSet<MouseButton>(_mouseDown), new HashSet<MouseButton>(_mousePressed),
-                pos, delta, _wheelAccum,
-                _window.FramebufferSize.X, _window.FramebufferSize.Y,
-                _gamepads.Read(_input.Gamepads), windowFocused: _focused, repeated: new HashSet<Key>(_repeated));
-
-            _pressed.Clear();
-            _released.Clear();
-            _repeated.Clear();
-            _mousePressed.Clear();
-            _lastMouse = pos;
-            _wheelAccum = 0f;
-            return input;
+            return _accumulator.Snapshot(
+                pos, hasMouse, _window.FramebufferSize.X, _window.FramebufferSize.Y,
+                _gamepads.Read(_input.Gamepads));
         }
 
         /// <summary>Scale a logical-point cursor position into framebuffer pixels (DPI factor per axis; 1x = identity).</summary>

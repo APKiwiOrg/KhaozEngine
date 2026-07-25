@@ -63,6 +63,15 @@ Windowing + input foundation for the custom MonoGame-free stack.
   press-edge only) so text fields hold-to-repeat. `IsCommandDown` is true while either Ctrl key or either Super
   (Cmd) key is held, the one cross-platform check for a "command modifier" keyboard chord (Ctrl+Z / Cmd+Z,
   Ctrl+S / Cmd+S, and so on) so a game or editor tests one property instead of OR-ing all four keys itself.
+  `WasReleased(MouseButton)` / `MouseReleased` (since 14.25.0) give the mouse the release edge the keyboard
+  already had.
+- `InputAccumulator` (since 14.25.0) - the raw-event to snapshot state machine, split out of `AppWindow` so it is
+  headless-testable. It owns the held/pressed/released sets and turns OS callbacks (`OnKeyDown`, `OnMouseUp`,
+  `OnScroll`, `OnFocusChanged`, ...) into one immutable `InputState` per `Snapshot(...)` call, with the platform
+  reads passed in as arguments. `AppWindow` keeps the Silk/GLFW binding and delegates, so the input hard rule is
+  unchanged: `AppWindow` is still the only class touching the Silk input statics. Games do not construct this
+  directly, they read `Frame.Input`. It exists so focus-loss release semantics and first-frame cursor priming can
+  be tested without a window.
 - `AppWindow.SetIcon(params WindowIcon[])` sets the runtime window/taskbar icon. `WindowIcon` is one already-decoded,
   tightly-packed RGBA8 image (top-left origin); pass several sizes (16/32/48...) and GLFW picks per DPI. On Windows
   it sets the title bar + Alt-Tab (`WM_SETICON`) **and** the taskbar button: GLFW only sets `WM_SETICON`, which does

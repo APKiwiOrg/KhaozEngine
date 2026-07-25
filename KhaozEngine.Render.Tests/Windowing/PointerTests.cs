@@ -12,6 +12,17 @@ namespace KhaozEngine.Tests.Windowing
         static readonly Vector2 Outside = new(10, 10);
         static readonly Rect Box = new(100, 100, 200, 80);
 
+        // Genuinely outside the 960x540 client area Frame uses below, unlike Inside/Outside above,
+        // which both sit inside it (the OS-capture drag bug, KhaozEngine#90, needs a real
+        // out-of-client-area coordinate to reproduce). HugeBox is sized to contain Inside,
+        // FarBeyondEdge, NegativeBeyondEdge, and Reentry all at once, so the bounds-based queries
+        // (IsPressingIn and friends) can be asserted against one widget rect across a drag that
+        // strays past the window edge.
+        static readonly Vector2 FarBeyondEdge = new(1200, 700);
+        static readonly Vector2 NegativeBeyondEdge = new(-50, -50);
+        static readonly Vector2 Reentry = new(200, 160);
+        static readonly Rect HugeBox = new(-5000, -5000, 10000, 10000);
+
         static InputState Frame(Vector2 pos, bool leftDown) => Frame(pos, leftDown, true);
 
         static InputState Frame(Vector2 pos, bool leftDown, bool focused)
@@ -207,6 +218,143 @@ namespace KhaozEngine.Tests.Windowing
             p.ConsumeGesture();
             Assert.True(p.IsDragStartIn(Box));
             Assert.True(p.IsPressingIn(Box));
+        }
+
+        // --- OS-capture drag fixes (KhaozEngine#90): a held button must stay latched once a valid
+        // in-window press opens it, regardless of where the cursor strays afterward, and a press
+        // that never validly opened the latch must stay ignored no matter where the cursor wanders
+        // while still held. ---
+
+        [Fact]
+        public void Drag_beyond_the_client_area_stays_down_and_keeps_its_original_press_origin()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(Frame(Inside, true));          // press begins in-window
+            Assert.True(p.IsJustPressed);
+            Assert.Equal(Inside, p.PressOrigin);
+
+            p.Update(Frame(FarBeyondEdge, true));   // OS keeps delivering coords past the client area
+            Assert.True(p.IsDown);
+            Assert.False(p.IsJustReleased);
+            Assert.False(p.IsJustPressed);
+            Assert.Equal(Inside, p.PressOrigin);    // origin untouched
+
+            Assert.True(p.IsDraggingIn(HugeBox));
+            Assert.True(p.IsDragStartIn(HugeBox));
+            Assert.True(p.IsPressingIn(HugeBox));
+            Assert.Equal(FarBeyondEdge - Inside, p.GetDragDelta(HugeBox));
+        }
+
+        [Fact]
+        public void Reentering_the_window_mid_drag_does_not_refire_just_pressed_or_move_the_press_origin()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(Frame(Inside, true));          // press begins in-window at Inside
+            p.Update(Frame(FarBeyondEdge, true));   // strays outside, still held
+            p.Update(Frame(Reentry, true));         // back inside at a DIFFERENT point, still held
+
+            Assert.True(p.IsDown);
+            Assert.False(p.IsJustPressed);          // re-entry must not look like a fresh press
+            Assert.Equal(Inside, p.PressOrigin);    // origin stays the ORIGINAL point, not Reentry
+        }
+
+        [Fact]
+        public void Releasing_the_button_while_outside_the_client_area_fires_exactly_one_just_released()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(Frame(Inside, true));          // press
+            p.Update(Frame(FarBeyondEdge, true));   // strays outside, still held
+            Assert.False(p.IsJustReleased);
+
+            p.Update(Frame(FarBeyondEdge, false));  // released while still outside
+            Assert.True(p.IsJustReleased);
+            Assert.False(p.IsDown);
+
+            p.Update(Frame(FarBeyondEdge, false));  // stays released
+            Assert.False(p.IsJustReleased);         // the release is a one-frame pulse, not sustained
+        }
+
+        [Fact]
+        public void Press_that_begins_outside_the_client_area_is_ignored_while_it_stays_outside()
+        {
+            var p = new Pointer();
+            p.Update(Frame(FarBeyondEdge, false));
+            p.Update(Frame(FarBeyondEdge, true));   // press begins OUTSIDE the client area
+            Assert.False(p.IsDown);
+            Assert.False(p.IsJustPressed);
+
+            p.Update(Frame(FarBeyondEdge, true));   // still held, still outside -> still ignored
+            Assert.False(p.IsDown);
+            Assert.False(p.IsJustPressed);
+        }
+
+        [Fact]
+        public void Press_that_begins_outside_latches_at_entry_if_still_held_unchanged_pre_existing_behaviour()
+        {
+            // Not a regression: this is the pre-fix behaviour too, for a press that begins outside
+            // the client area and is dragged in while still held (IsDown && inWindow flips true the
+            // instant both are true). KhaozEngine#90 is only about a press that VALIDLY begins
+            // in-window and later strays outside, see Drag_beyond_the_client_area_stays_down...
+            var p = new Pointer();
+            p.Update(Frame(FarBeyondEdge, false));
+            p.Update(Frame(FarBeyondEdge, true));   // press begins OUTSIDE the client area
+            p.Update(Frame(Inside, true));          // dragged inside, still held -> latches here
+            Assert.True(p.IsDown);
+            Assert.True(p.IsJustPressed);
+            Assert.Equal(Inside, p.PressOrigin);    // origin is the ENTRY point, not the outside start
+        }
+
+        [Fact]
+        public void Negative_coordinates_dragging_outside_stays_down_and_keeps_the_press_origin()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Inside, false));
+            p.Update(Frame(Inside, true));
+            p.Update(Frame(NegativeBeyondEdge, true));
+            Assert.True(p.IsDown);
+            Assert.False(p.IsJustReleased);
+            Assert.Equal(Inside, p.PressOrigin);
+            Assert.True(p.IsDraggingIn(HugeBox));
+        }
+
+        [Fact]
+        public void Negative_coordinates_a_press_that_begins_there_is_still_ignored()
+        {
+            var p = new Pointer();
+            p.Update(Frame(NegativeBeyondEdge, false));
+            p.Update(Frame(NegativeBeyondEdge, true));
+            Assert.False(p.IsDown);
+            Assert.False(p.IsJustPressed);
+        }
+
+        [Fact]
+        public void Middle_and_right_buttons_latch_the_same_way_as_left_when_the_cursor_strays_outside()
+        {
+            var down = new HashSet<MouseButton> { MouseButton.Middle, MouseButton.Right };
+            var none = new HashSet<MouseButton>();
+
+            static InputState WithButtons(Vector2 pos, IReadOnlySet<MouseButton> heldButtons) => new(
+                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                heldButtons, new HashSet<MouseButton>(), pos, Vector2.Zero, 0, 960, 540);
+
+            var p = new Pointer();
+            p.Update(WithButtons(Inside, none));
+            p.Update(WithButtons(Inside, down));               // fresh press, in-window
+            Assert.True(p.IsMiddleDown);
+            Assert.True(p.IsRightDown);
+
+            p.Update(WithButtons(FarBeyondEdge, down));        // strays outside, still held
+            Assert.True(p.IsMiddleDown);
+            Assert.True(p.IsRightDown);
+            Assert.False(p.IsMiddleJustReleased);
+            Assert.False(p.IsRightJustReleased);
+
+            p.Update(WithButtons(FarBeyondEdge, none));        // released outside
+            Assert.True(p.IsMiddleJustReleased);
+            Assert.True(p.IsRightJustReleased);
         }
     }
 }

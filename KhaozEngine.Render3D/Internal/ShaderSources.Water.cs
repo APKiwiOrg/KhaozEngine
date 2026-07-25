@@ -4,7 +4,7 @@ namespace KhaozEngine.Render3D.Internal
     /// The stylized ocean surface (2 of the renderer's shader sources: <see cref="WaterVert"/> +
     /// <see cref="WaterFrag"/>). Part of the <see cref="ShaderSources"/> partial: see ShaderSources.cs for the
     /// shared contract (GLSL #version 450, cross-compiled at load via the GPU seam's SPIR-V path). Split out of
-    /// ShaderSources.Sky.cs in 14.23.0, when the swell/reflection/foam work grew the pair past the size at which
+    /// ShaderSources.Sky.cs in 14.24.0, when the swell/reflection/foam work grew the pair past the size at which
     /// it was reasonable to keep it inside the sky file.
     /// </summary>
     internal static partial class ShaderSources

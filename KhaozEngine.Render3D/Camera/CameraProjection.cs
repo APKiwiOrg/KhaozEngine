@@ -5,7 +5,7 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// Shared world-to-screen projection math, the forward inverse of the cameras' <c>ScreenToRay</c> unprojection,
     /// so <see cref="FollowCamera3D"/> and <see cref="IsoCamera3D"/> implement
-    /// <see cref="IIsoCamera3D.WorldToScreen"/> identically (same pixel convention: top-left origin, y-down).
+    /// <see cref="IIsoCamera3D.WorldToScreen(Vector3, int, int, out Vector2)"/> identically (same pixel convention: top-left origin, y-down).
     /// </summary>
     internal static class CameraProjection
     {

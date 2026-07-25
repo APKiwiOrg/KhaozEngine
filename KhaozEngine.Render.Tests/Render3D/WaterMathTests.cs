@@ -9,10 +9,10 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// Pure headless coverage for the water surface math that predates 14.23.0 (scrolling-normal perturbation,
+    /// Pure headless coverage for the water surface math that predates 14.24.0 (scrolling-normal perturbation,
     /// Schlick fresnel tint, the legacy Blinn-Phong sun glint, depth-sampled shore fade) plus the settings / grid /
     /// UBO plumbing. No GPU; WaterMath is the single source both this test and the GLSL WaterFrag follow (see the
-    /// in-source mirror comment). The 14.23.0 additions live in <see cref="WaterSurfaceMathTests"/> (grid focus
+    /// in-source mirror comment). The 14.24.0 additions live in <see cref="WaterSurfaceMathTests"/> (grid focus
     /// warp, absorption, reflection, GGX glint, foam) and <see cref="GerstnerWaveTests"/> (the swell).
     /// </summary>
     public class WaterMathTests
@@ -457,7 +457,7 @@ namespace KhaozEngine.Tests.Render3D
             // the mistake this pair of knobs exists to prevent.
             Assert.True(s.ShallowDepth > s.ShoreFadeDistance);
 
-            // The 14.23.0 additions also ship ON, so DrawWater alone gets the stylized ocean, not the flat sheet.
+            // The 14.24.0 additions also ship ON, so DrawWater alone gets the stylized ocean, not the flat sheet.
             Assert.True(s.SwellAmplitude > 0f);
             Assert.True(s.SwellWavelength > 0f);
             Assert.InRange(s.SwellSteepness, 0f, 1f);          // above 1 the surface folds through itself
@@ -493,7 +493,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Settings_1422_look_is_reachable_knob_by_knob()
         {
-            // The 14.23.0 restore, one knob per feature, INDEPENDENTLY (this is the standing A/B rule: a new look
+            // The 14.24.0 restore, one knob per feature, INDEPENDENTLY (this is the standing A/B rule: a new look
             // must be comparable against the one it replaced without rebuilding the engine). Each assertion below
             // is the point at which that feature stops contributing anything.
             var s = new WaterSettings

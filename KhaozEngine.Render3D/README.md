@@ -467,7 +467,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     boundaries preserved); `PropBakePlan.ForProxy` keeps the surface rule. See `tools/proxy-authoring/`.
 
 - World-space overlays drawn screen-space in the 2D pass after the 3D scene (project a world point via
-  `IIsoCamera3D.WorldToScreen`, distance-cull, not depth-tested):
+  `IIsoCamera3D.WorldToScreen`, distance-cull, not depth-tested). `WorldToScreen` and every `Draw`/`Resolve`
+  below have two overloads: framebuffer ints for a framebuffer-space pass, and an `IDesignViewport` overload
+  for a design-space HUD pass (a `SpriteBatch.Begin(IDesignViewport)`). The `IDesignViewport` overload remaps
+  NDC onto `WindowBounds` (the whole window, letterbox bars included), exact on any window aspect. Calling
+  the int overload with design dims instead is only correct when the window happens to match the design
+  aspect, which is the defect the `IDesignViewport` overloads exist to close:
   - `WorldLabel.Draw(...)` - a single centred name floating above a world point (text only). `WorldLabel.ShouldCull`
     exposes the distance predicate render-free.
   - `NameplateRenderer.Draw(...)` - the MMO-style plate that supersedes `WorldLabel`: a rounded panel (`DrawRounded`
@@ -483,8 +488,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     plate near the threshold never flips between above and beside frame to frame. `NameplatePlacement.Place` is the
     pure, GPU-free placement math behind both modes (headless-testable, like `NameplateLayout.Measure`), and the
     stateful `Draw` overload threads a caller-held `NameplatePlacementState` (one per plate) so `Deflect`'s
-    hysteresis survives across frames. Opt-in presentation tiers via `NameplateTiers.Resolve(focusPixel, onScreen,
-    distance, viewportWidth, viewportHeight, in config, pinned, ref state)`, a pure per-entity resolver picking
+    hysteresis survives across frames (both the framebuffer-int and `IDesignViewport` `Draw` overloads carry a
+    stateless and a stateful form). Opt-in presentation tiers via `NameplateTiers.Resolve(focusPixel, onScreen,
+    distance, viewportWidth, viewportHeight, in config, pinned, ref state)` (or the `IDesignViewport` overload, its
+    focus ellipse normalized over `WindowBounds`), a pure per-entity resolver picking
     `NameplateTier.Hidden` / `.Text` / `.Full` from a `NameplateTierConfig` distance ladder (`FullDistance`,
     `TextDistance`, both with a derived hysteresis band) and a normalized centre-ellipse look-at gate
     (`FocusRadius`, also derived), with a caller `pinned` override forcing `Full`. Same enter-at-edge, exit-past-band

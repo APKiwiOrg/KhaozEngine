@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// Pure headless coverage for the 14.23.0 water surface additions: the camera-focused grid warp, per-channel
+    /// Pure headless coverage for the 14.24.0 water surface additions: the camera-focused grid warp, per-channel
     /// depth absorption, the reflected-sky blend, the GGX glint and its roughness widening, and the two foam
     /// sources. No GPU; <see cref="WaterMath"/> and <see cref="SkyMath.ShadeDirection"/> are the single source
     /// both this test and the GLSL <c>WaterFrag</c> follow.

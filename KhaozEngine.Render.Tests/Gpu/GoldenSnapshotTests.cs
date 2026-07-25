@@ -557,7 +557,7 @@ namespace KhaozEngine.Tests.Gpu
                     // AND agrees with the sky's sun disc (both derive from the same LightDirection).
                     scene.Post.LightDirection = new Vector3(-0.45f, -0.75f, -0.4f);
                     // Every water knob for this scene, pinned explicit, in WaterSceneTuning (the palette, the
-                    // pre-14.23.0 knobs, and the ocean-to-lake rescale the 14.23.0 swell/absorption/foam defaults
+                    // pre-14.24.0 knobs, and the ocean-to-lake rescale the 14.24.0 swell/absorption/foam defaults
                     // need at this doll-house scale). It lives there rather than here because this file is at its
                     // size ratchet and a scene description is not test logic.
                     WaterSceneTuning.ApplyGoldenLake(scene.Post.Water);

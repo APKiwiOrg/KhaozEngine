@@ -56,7 +56,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The complete water configuration for the <c>scene3d_water</c> golden: the shared lake rescale above
-        /// plus this scene's own palette and pre-14.23.0 knobs, every one pinned explicit so a change to an engine
+        /// plus this scene's own palette and pre-14.24.0 knobs, every one pinned explicit so a change to an engine
         /// DEFAULT cannot silently move a golden that is supposed to be locking rendering behaviour. Kept out of
         /// GoldenSnapshotTests because that file is at its size ratchet and this is a self-contained scene
         /// description, not test logic.

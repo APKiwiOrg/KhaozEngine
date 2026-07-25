@@ -16,7 +16,7 @@ namespace KhaozEngine.Render3D
     /// <see cref="PixelPostProcessSettings.Sky"/>), and this is a stylized LDR surface, not a physically accurate
     /// one.
     /// <para>
-    /// <b>Reaching the 14.22.0 look.</b> Every 14.23.0 addition has an off value and they are independent, so the
+    /// <b>Reaching the 14.22.0 look.</b> Every 14.24.0 addition has an off value and they are independent, so the
     /// previous release's surface is reachable knob by knob:
     /// <c>SwellAmplitude = 0</c> (flat plane, no displacement, no whitecaps),
     /// <c>GridFocusBias = 1</c> (the uniform surface grid),

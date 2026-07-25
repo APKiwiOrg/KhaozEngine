@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -16,7 +17,45 @@ namespace KhaozEngine.Render3D
         /// y-down, matching the displayed image). Returns <c>false</c> with <paramref name="screenPixel"/> = default
         /// when the point is not in front of the camera (behind it, or outside the near/far depth range), so a caller
         /// can skip drawing a label for it; <c>true</c> with the pixel otherwise. Pure math; headless-testable.
+        /// <paramref name="viewportWidth"/>/<paramref name="viewportHeight"/> are FRAMEBUFFER pixels for a
+        /// framebuffer-space drawing pass. A design-space HUD pass (a <c>SpriteBatch.Begin</c> with a design
+        /// viewport) must use the <see cref="WorldToScreen(Vector3, IDesignViewport, out Vector2)"/> overload
+        /// instead, or the anchor drifts on any window whose aspect differs from the design aspect.
         /// </summary>
         bool WorldToScreen(Vector3 world, int viewportWidth, int viewportHeight, out Vector2 screenPixel);
+
+        /// <summary>
+        /// The DESIGN-SPACE projection for a HUD overlay drawn through a <c>SpriteBatch.Begin(IDesignViewport)</c>
+        /// pass. The <see cref="WorldToScreen(Vector3, int, int, out Vector2)"/> overload maps NDC onto the given
+        /// rect directly, which lines up with the visible 3D scene only when those ints are the real framebuffer
+        /// size and the drawing pass is framebuffer-space. Calling it with the design viewport's own
+        /// <see cref="IDesignViewport.Width"/>/<see cref="IDesignViewport.Height"/> instead is only correct when
+        /// the window happens to be exactly the design aspect: on any other window shape (a letterbox or
+        /// pillarbox bar under <see cref="IDesignViewport"/>'s fit-style scaling) the anchor drifts by ndc times
+        /// the letterbox offset on the loose axis. This overload remaps NDC onto
+        /// <see cref="IDesignViewport.WindowBounds"/> (the whole window expressed in design space) instead, which
+        /// is exact for every scale mode, so a design-space pass must call this one rather than the int overload
+        /// with the design dims. Requires the camera's aspect ratio to be driven from the real framebuffer, which
+        /// is what makes the int-with-design-dims call wrong in the first place.
+        /// </summary>
+        /// <param name="world">The world point to project.</param>
+        /// <param name="designViewport">The design viewport the HUD pass is drawing through.</param>
+        /// <param name="designPixel">The projected point in design space, or <c>default</c> when culled.</param>
+        /// <returns><c>true</c> if the point is drawable (in front of the camera, within depth range), <c>false</c>
+        /// otherwise.</returns>
+        bool WorldToScreen(Vector3 world, IDesignViewport designViewport, out Vector2 designPixel)
+        {
+            if (!WorldToScreen(world, designViewport.Width, designViewport.Height, out Vector2 raw))
+            {
+                designPixel = default;
+                return false;
+            }
+
+            Rect window = designViewport.WindowBounds;
+            designPixel = new Vector2(
+                window.X + raw.X / designViewport.Width * window.Width,
+                window.Y + raw.Y / designViewport.Height * window.Height);
+            return true;
+        }
     }
 }

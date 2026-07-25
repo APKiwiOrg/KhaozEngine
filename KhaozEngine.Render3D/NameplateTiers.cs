@@ -1,11 +1,12 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// What to draw for one entity's nameplate this frame: nothing, the name only, or the full plate. Resolved by
-    /// <see cref="NameplateTiers.Resolve"/> from distance and gaze so a crowd of nearby, unfocused entities does
+    /// <see cref="NameplateTiers.Resolve(Vector2, bool, float, int, int, in NameplateTierConfig, bool, ref NameplateTierState)"/> from distance and gaze so a crowd of nearby, unfocused entities does
     /// not draw a stack of full plates the player never reads.
     /// </summary>
     public enum NameplateTier : byte
@@ -21,7 +22,7 @@ namespace KhaozEngine.Render3D
 
     /// <summary>
     /// Caller-held state for one entity's tier hysteresis, carried across frames by whichever loop calls <see
-    /// cref="NameplateTiers.Resolve"/>, alongside whatever else it already keeps per-entity (the same contract
+    /// cref="NameplateTiers.Resolve(Vector2, bool, float, int, int, in NameplateTierConfig, bool, ref NameplateTierState)"/>, alongside whatever else it already keeps per-entity (the same contract
     /// <see cref="NameplatePlacementState"/> already uses). A default instance resolves to <see
     /// cref="NameplateTier.Hidden"/>, so a first-seen entity resolves upward on its first call: entering a tier is
     /// always at the raw edge, so starting Hidden costs nothing.
@@ -32,12 +33,12 @@ namespace KhaozEngine.Render3D
         // (which tier, and therefore which edge and band apply next) reads off one field.
         internal byte Value;
 
-        /// <summary>The tier this entity resolved to on its last <see cref="NameplateTiers.Resolve"/> call.</summary>
+        /// <summary>The tier this entity resolved to on its last <see cref="NameplateTiers.Resolve(Vector2, bool, float, int, int, in NameplateTierConfig, bool, ref NameplateTierState)"/> call.</summary>
         public readonly NameplateTier Tier => (NameplateTier)Value;
     }
 
     /// <summary>
-    /// Tuning for <see cref="NameplateTiers.Resolve"/>: the distance ladder and the look-at gate, each with its own
+    /// Tuning for <see cref="NameplateTiers.Resolve(Vector2, bool, float, int, int, in NameplateTierConfig, bool, ref NameplateTierState)"/>: the distance ladder and the look-at gate, each with its own
     /// hysteresis band.
     /// </summary>
     public readonly struct NameplateTierConfig
@@ -51,7 +52,7 @@ namespace KhaozEngine.Render3D
         /// <see cref="FullDistance"/> * 0.1, so the band scales with the tier's own range instead of needing a
         /// per-config tune.</summary>
         public float DistanceHysteresis { get; init; }
-        /// <summary>The look-at gate: a normalized centre-ellipse radius (see <see cref="NameplateTiers.Resolve"/>)
+        /// <summary>The look-at gate: a normalized centre-ellipse radius (see <see cref="NameplateTiers.Resolve(Vector2, bool, float, int, int, in NameplateTierConfig, bool, ref NameplateTierState)"/>)
         /// the projected focus point must fall inside for the plate to be eligible to show at all. Values &lt;= 0
         /// disable the gate entirely, so distance alone decides the tier.</summary>
         public float FocusRadius { get; init; }
@@ -83,7 +84,8 @@ namespace KhaozEngine.Render3D
     /// threshold (a player standing still at exactly the tier boundary, or looking near the edge of the focus
     /// ellipse) must not flip the presentation frame to frame.
     ///
-    /// <see cref="Resolve"/>'s <c>focusPixel</c> should be the projected BODY of the entity, not the plate
+    /// <see cref="Resolve(Vector2, bool, float, int, int, in NameplateTierConfig, bool, ref NameplateTierState)"/>'s
+    /// <c>focusPixel</c> should be the projected BODY of the entity, not the plate
     /// anchor. A close-up look-up at a tall creature puts the head anchor (the plate's usual anchor point) near
     /// the screen edge in exactly the case where the player IS looking at it, which would fail the gate for the
     /// wrong reason.
@@ -100,7 +102,12 @@ namespace KhaozEngine.Render3D
         /// entity's body, not its plate anchor, see the remarks above).</param>
         /// <param name="onScreen">Whether the entity's anchor projects onto the viewport at all.</param>
         /// <param name="distance">Player-to-entity distance in the caller's world units.</param>
-        /// <param name="viewportWidth">Viewport width in pixels, for normalizing the focus ellipse.</param>
+        /// <param name="viewportWidth">Viewport width in pixels, for normalizing the focus ellipse. Framebuffer-space
+        /// overload: pair it with a framebuffer-space projection (and a <paramref name="focusPixel"/> in the same
+        /// space). A design-space HUD pass must use the <see cref="IDesignViewport"/> overload instead, with a
+        /// <paramref name="focusPixel"/> that came from the design-aware
+        /// <see cref="IIsoCamera3D.WorldToScreen(Vector3, IDesignViewport, out Vector2)"/>, or the gaze gate reads
+        /// against the wrong rect.</param>
         /// <param name="viewportHeight">Viewport height in pixels, for normalizing the focus ellipse.</param>
         /// <param name="config">Tuning for the distance ladder and the focus gate.</param>
         /// <param name="pinned">True forces <see cref="NameplateTier.Full"/> regardless of everything else (the
@@ -109,6 +116,51 @@ namespace KhaozEngine.Render3D
         /// <param name="state">This entity's carried hysteresis state, updated in place.</param>
         public static NameplateTier Resolve(
             Vector2 focusPixel, bool onScreen, float distance, int viewportWidth, int viewportHeight,
+            in NameplateTierConfig config, bool pinned, ref NameplateTierState state)
+        {
+            float halfW = viewportWidth * 0.5f;
+            float halfH = viewportHeight * 0.5f;
+            return ResolveCore(focusPixel, onScreen, distance, halfW, halfH, halfW, halfH, config, pinned, ref state);
+        }
+
+        /// <summary>
+        /// The DESIGN-SPACE overload of <see cref="Resolve(Vector2, bool, float, int, int, in NameplateTierConfig,
+        /// bool, ref NameplateTierState)"/>, for a HUD pass drawn through a <c>SpriteBatch.Begin(IDesignViewport)</c>
+        /// pass. The focus ellipse is normalized over <see cref="IDesignViewport.WindowBounds"/> (the whole window
+        /// the player actually sees), not <see cref="IDesignViewport.DesignBounds"/>, so the gaze gate is about the
+        /// visible screen rather than the inset design rect under a letterboxed scale mode. <paramref
+        /// name="focusPixel"/> must come from the design-aware
+        /// <see cref="IIsoCamera3D.WorldToScreen(Vector3, IDesignViewport, out Vector2)"/> overload so both operate
+        /// in the same space.
+        /// </summary>
+        /// <param name="focusPixel">The projected design-space point the gaze check measures against (the
+        /// entity's body, not its plate anchor).</param>
+        /// <param name="onScreen">Whether the entity's anchor projects onto the viewport at all.</param>
+        /// <param name="distance">Player-to-entity distance in the caller's world units.</param>
+        /// <param name="designViewport">The design viewport the HUD pass is drawing through.</param>
+        /// <param name="config">Tuning for the distance ladder and the focus gate.</param>
+        /// <param name="pinned">True forces <see cref="NameplateTier.Full"/> regardless of everything else.</param>
+        /// <param name="state">This entity's carried hysteresis state, updated in place.</param>
+        public static NameplateTier Resolve(
+            Vector2 focusPixel, bool onScreen, float distance, IDesignViewport designViewport,
+            in NameplateTierConfig config, bool pinned, ref NameplateTierState state)
+        {
+            Rect window = designViewport.WindowBounds;
+            float halfW = window.Width * 0.5f;
+            float halfH = window.Height * 0.5f;
+            float centerX = window.X + halfW;
+            float centerY = window.Y + halfH;
+            return ResolveCore(focusPixel, onScreen, distance, centerX, centerY, halfW, halfH, config, pinned, ref state);
+        }
+
+        // Shared resolution body for both overloads: only the focus-gate ellipse's centre and half-extents differ
+        // between them (the int overload's rect starts at the origin, so its centre equals its own half-extent,
+        // while the design overload's centre is WindowBounds' own centre, which is offset from the origin under a
+        // letterboxed scale mode). Everything else - the pin, the on-screen cull, and the distance ladder - is
+        // independent of viewport space entirely.
+        static NameplateTier ResolveCore(
+            Vector2 focusPixel, bool onScreen, float distance,
+            float focusCenterX, float focusCenterY, float focusHalfW, float focusHalfH,
             in NameplateTierConfig config, bool pinned, ref NameplateTierState state)
         {
             if (pinned)
@@ -125,10 +177,8 @@ namespace KhaozEngine.Render3D
 
             if (config.FocusRadius > 0f)
             {
-                float halfW = viewportWidth * 0.5f;
-                float halfH = viewportHeight * 0.5f;
-                float dx = (focusPixel.X - halfW) / halfW;
-                float dy = (focusPixel.Y - halfH) / halfH;
+                float dx = (focusPixel.X - focusCenterX) / focusHalfW;
+                float dy = (focusPixel.Y - focusCenterY) / focusHalfH;
                 float r = MathF.Sqrt(dx * dx + dy * dy);
                 float focusBand = config.FocusHysteresis > 0f ? config.FocusHysteresis : 0.15f;
 

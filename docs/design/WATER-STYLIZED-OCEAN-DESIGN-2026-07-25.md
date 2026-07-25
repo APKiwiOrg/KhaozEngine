@@ -1,8 +1,8 @@
 # Stylized ocean: swell, sky reflection, GGX glint, depth grading, foam
 
-Design rationale for the 14.23.0 water rework. Issue: #295. Predecessor: #278 (de-tiling, 14.22.0).
+Design rationale for the 14.24.0 water rework. Issue: #295. Predecessor: #278 (de-tiling, 14.22.0).
 
-This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 14.23.0,
+This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 14.24.0,
 `docs/USING-KHAOZENGINE.md` (Render3D -> Water) and `KhaozEngine.Render3D/README.md`.
 
 ## The problem

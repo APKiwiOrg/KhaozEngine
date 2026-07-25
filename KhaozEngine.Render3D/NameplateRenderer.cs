@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// Draws a <see cref="Nameplate"/> (a rounded panel with a centred title and stacked <see cref="NameplateBar"/>s)
     /// anchored above a world point - the MMO-style successor to <see cref="WorldLabel"/>. It projects the anchor
-    /// pixel via <see cref="NameplateAnchorProjection.Project"/> (the head point <c>worldPos + offset</c> drives
+    /// pixel via <see cref="NameplateAnchorProjection.Project(IIsoCamera3D, Vector3, Vector3, int, int, out Vector2)"/> (the head point <c>worldPos + offset</c> drives
     /// screen Y, the body column <c>worldPos</c> plus only the lateral part of <c>offset</c> drives screen X, so a
     /// perspective camera's horizontal lean on an off-centre entity does not put the plate beside it), centres the
     /// panel horizontally on that pixel and bottom-anchors it there (so the plate floats above the head), then
@@ -63,11 +63,14 @@ namespace KhaozEngine.Render3D
         /// <param name="offset">World offset applied before projecting (e.g. <c>(0, headHeight, 0)</c> to float above
         /// the head). Its full value (including the vertical part) drives the head point that decides screen Y.
         /// Only its lateral (X/Z) part feeds the body-column projection that decides screen X (see
-        /// <see cref="NameplateAnchorProjection.Project"/>), so a perspective camera's lean does not put the plate
+        /// <see cref="NameplateAnchorProjection.Project(IIsoCamera3D, Vector3, Vector3, int, int, out Vector2)"/>), so a perspective camera's lean does not put the plate
         /// beside the entity, while a deliberate lateral nudge still moves the anchor.</param>
         /// <param name="plate">The nameplate model (title + bars).</param>
         /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
-        /// <param name="viewportWidth">Framebuffer width in pixels.</param>
+        /// <param name="viewportWidth">Framebuffer width in pixels. Framebuffer-space overload: pair it with a
+        /// framebuffer-space drawing pass. A design-space HUD pass (a <c>SpriteBatch.Begin</c> with a design
+        /// viewport) must use the <see cref="IDesignViewport"/> overload instead, or the plate drifts on any
+        /// window whose aspect differs from the design aspect.</param>
         /// <param name="viewportHeight">Framebuffer height in pixels.</param>
         /// <param name="maxDistance">If &gt; 0, plates whose anchor is farther than this from <paramref name="cullFrom"/>
         /// (or the camera eye when null) are culled. 0 draws regardless of distance.</param>
@@ -100,11 +103,14 @@ namespace KhaozEngine.Render3D
         /// <param name="offset">World offset applied before projecting (e.g. <c>(0, headHeight, 0)</c> to float above
         /// the head). Its full value (including the vertical part) drives the head point that decides screen Y.
         /// Only its lateral (X/Z) part feeds the body-column projection that decides screen X (see
-        /// <see cref="NameplateAnchorProjection.Project"/>), so a perspective camera's lean does not put the plate
+        /// <see cref="NameplateAnchorProjection.Project(IIsoCamera3D, Vector3, Vector3, int, int, out Vector2)"/>), so a perspective camera's lean does not put the plate
         /// beside the entity, while a deliberate lateral nudge still moves the anchor.</param>
         /// <param name="plate">The nameplate model (title + bars).</param>
         /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
-        /// <param name="viewportWidth">Framebuffer width in pixels.</param>
+        /// <param name="viewportWidth">Framebuffer width in pixels. Framebuffer-space overload: pair it with a
+        /// framebuffer-space drawing pass. A design-space HUD pass (a <c>SpriteBatch.Begin</c> with a design
+        /// viewport) must use the <see cref="IDesignViewport"/> overload instead, or the plate drifts on any
+        /// window whose aspect differs from the design aspect.</param>
         /// <param name="viewportHeight">Framebuffer height in pixels.</param>
         /// <param name="placementState">This plate's carried-over <see cref="NameplateEdgeBehavior.Deflect"/> state.
         /// Keep one instance per plate across frames. A fresh instance behaves as not-yet-deflected.</param>
@@ -127,6 +133,92 @@ namespace KhaozEngine.Render3D
             if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
             if (!NameplateAnchorProjection.Project(camera, worldPos, offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
 
+            return DrawAt(batch, font, white, pixel, plate, style, viewportWidth, viewportHeight, ref placementState);
+        }
+
+        /// <summary>
+        /// Projects and draws one nameplate for a DESIGN-SPACE HUD pass (a <c>SpriteBatch.Begin</c> taken with
+        /// <paramref name="designViewport"/>), the design-space counterpart of the framebuffer-pixel stateless
+        /// overload above. Anchors via the design-aware <see cref="NameplateAnchorProjection.Project(IIsoCamera3D,
+        /// Vector3, Vector3, IDesignViewport, out Vector2)"/> and places the panel against
+        /// <paramref name="designViewport"/>'s own width/height (the plate rect, <see
+        /// cref="NameplateStyle.EdgeMargin"/>, and deflect all live in design space, matching where the panel is
+        /// actually drawn).
+        /// </summary>
+        /// <param name="batch">An in-progress (Begun) sprite batch to draw into.</param>
+        /// <param name="font">The font the title renders with.</param>
+        /// <param name="white">A 1x1 white texture for the solid panel/bar fills (the diagnostics-overlay convention).</param>
+        /// <param name="camera">The camera whose projection places the plate.</param>
+        /// <param name="worldPos">The world anchor (e.g. the avatar's feet/centre).</param>
+        /// <param name="offset">World offset applied before projecting (e.g. <c>(0, headHeight, 0)</c> to float above
+        /// the head). See the framebuffer-pixel overload's doc for the body-column/head-point composition.</param>
+        /// <param name="plate">The nameplate model (title + bars).</param>
+        /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
+        /// <param name="designViewport">The design viewport the HUD pass is drawing through.</param>
+        /// <param name="maxDistance">If &gt; 0, plates whose anchor is farther than this from <paramref name="cullFrom"/>
+        /// (or the camera eye when null) are culled. 0 draws regardless of distance.</param>
+        /// <param name="cullFrom">Optional anchor the <paramref name="maxDistance"/> ring is measured from, or the
+        /// camera eye when null.</param>
+        public static bool Draw(
+            SpriteBatch batch, SpriteFont font, Texture2D white,
+            IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+            in Nameplate plate, in NameplateStyle style,
+            IDesignViewport designViewport,
+            float maxDistance = 0f, Vector3? cullFrom = null)
+        {
+            NameplatePlacementState state = default;
+            return Draw(batch, font, white, camera, worldPos, offset, plate, style,
+                designViewport, ref state, maxDistance, cullFrom);
+        }
+
+        /// <summary>
+        /// Projects and draws one nameplate for a DESIGN-SPACE HUD pass, the same as the overload above, but with
+        /// a caller-held <paramref name="placementState"/> so <see cref="NameplateEdgeBehavior.Deflect"/>'s
+        /// hysteresis works across frames (mirrors the framebuffer-pixel stateful overload).
+        /// </summary>
+        /// <param name="batch">An in-progress (Begun) sprite batch to draw into.</param>
+        /// <param name="font">The font the title renders with.</param>
+        /// <param name="white">A 1x1 white texture for the solid panel/bar fills (the diagnostics-overlay convention).</param>
+        /// <param name="camera">The camera whose projection places the plate.</param>
+        /// <param name="worldPos">The world anchor (e.g. the avatar's feet/centre).</param>
+        /// <param name="offset">World offset applied before projecting (e.g. <c>(0, headHeight, 0)</c> to float above
+        /// the head).</param>
+        /// <param name="plate">The nameplate model (title + bars).</param>
+        /// <param name="style">The look (panel, padding, bar geometry, and <see cref="NameplateStyle.EdgeBehavior"/>).</param>
+        /// <param name="designViewport">The design viewport the HUD pass is drawing through.</param>
+        /// <param name="placementState">This plate's carried-over <see cref="NameplateEdgeBehavior.Deflect"/> state.
+        /// Keep one instance per plate across frames. A fresh instance behaves as not-yet-deflected.</param>
+        /// <param name="maxDistance">If &gt; 0, plates whose anchor is farther than this from <paramref name="cullFrom"/>
+        /// (or the camera eye when null) are culled. 0 draws regardless of distance.</param>
+        /// <param name="cullFrom">Optional anchor the <paramref name="maxDistance"/> ring is measured from, or the
+        /// camera eye when null.</param>
+        public static bool Draw(
+            SpriteBatch batch, SpriteFont font, Texture2D white,
+            IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+            in Nameplate plate, in NameplateStyle style,
+            IDesignViewport designViewport,
+            ref NameplatePlacementState placementState,
+            float maxDistance = 0f, Vector3? cullFrom = null)
+        {
+            if (batch is null || font is null || white is null || camera is null || designViewport is null || plate.IsEmpty) return false;
+
+            Vector3 cullOrigin = cullFrom ?? camera.Eye;
+            if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
+            if (!NameplateAnchorProjection.Project(camera, worldPos, offset, designViewport, out Vector2 pixel)) return false;
+
+            return DrawAt(batch, font, white, pixel, plate, style, designViewport.Width, designViewport.Height, ref placementState);
+        }
+
+        // Shared draw body for every Draw overload once the anchor pixel and the viewport dims it places against
+        // (framebuffer pixels or a design viewport's own Width/Height) are known: measures the plate, places the
+        // panel rect (NameplatePlacement.Place, including the optional edge clamp/deflect), then draws the panel,
+        // title, and bars. Returns false when the plate measures to nothing (e.g. an empty title with no bars,
+        // since Nameplate.IsEmpty already filtered the fully-empty case before this runs).
+        static bool DrawAt(
+            SpriteBatch batch, SpriteFont font, Texture2D white,
+            Vector2 pixel, in Nameplate plate, in NameplateStyle style,
+            int viewportWidth, int viewportHeight, ref NameplatePlacementState placementState)
+        {
             Vector2 size = NameplateLayout.Measure(font, plate, style);
             if (size.X <= 0f || size.Y <= 0f) return false;
 

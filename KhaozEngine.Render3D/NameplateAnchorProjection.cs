@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -6,7 +7,7 @@ namespace KhaozEngine.Render3D
     /// Composes the nameplate/world-label screen anchor from two projections instead of one, to fix the
     /// perspective lean: a world-vertical offset (e.g. <c>(0, headHeight, 0)</c>) projects screen-vertically
     /// only when the entity sits on the camera's central vertical plane. Off that plane, a perspective camera's
-    /// <see cref="IIsoCamera3D.WorldToScreen"/> leans the head-point pixel horizontally away from the entity's
+    /// <see cref="IIsoCamera3D.WorldToScreen(Vector3, int, int, out Vector2)"/> leans the head-point pixel horizontally away from the entity's
     /// own body column (zero lean at screen centre, the sign flipping as the entity crosses that centre
     /// plane), so projecting <c>worldPos + offset</c> alone puts the plate beside the entity instead of above
     /// it, and swaps side as the camera orbits.
@@ -51,10 +52,46 @@ namespace KhaozEngine.Render3D
             }
 
             Vector3 basePoint = worldPos + new Vector3(offset.X, 0f, offset.Z);
-            pixel = camera.WorldToScreen(basePoint, viewportWidth, viewportHeight, out Vector2 basePixel)
-                ? new Vector2(basePixel.X, topPixel.Y)
-                : topPixel;
+            bool baseProjects = camera.WorldToScreen(basePoint, viewportWidth, viewportHeight, out Vector2 basePixel);
+            pixel = Compose(topPixel, baseProjects, basePixel);
             return true;
         }
+
+        /// <summary>
+        /// The DESIGN-SPACE overload of <see cref="Project(IIsoCamera3D, Vector3, Vector3, int, int, out Vector2)"/>,
+        /// for a HUD pass drawn through a <c>SpriteBatch.Begin(IDesignViewport)</c> pass. Same composition (body
+        /// column drives X, head point drives Y), projected through
+        /// <see cref="IIsoCamera3D.WorldToScreen(Vector3, IDesignViewport, out Vector2)"/> instead of the
+        /// framebuffer-pixel overload, so the result lands correctly in design space on any window aspect.
+        /// </summary>
+        /// <param name="camera">The camera whose projection places the anchor.</param>
+        /// <param name="worldPos">The world anchor the caller passed in (e.g. the entity's feet/centre).</param>
+        /// <param name="offset">World-space offset added before projecting (e.g. <c>(0, headHeight, 0)</c> to
+        /// float above the head). Only its lateral (X/Z) part feeds the body-column projection that drives
+        /// screen X. The full offset (including the vertical part) still drives screen Y via the head point.</param>
+        /// <param name="designViewport">The design viewport the HUD pass is drawing through.</param>
+        /// <param name="pixel">The composed anchor pixel (body-column X, head-point Y) in design space, or
+        /// <c>default</c> when culled.</param>
+        /// <returns><c>true</c> if the head point projects (drawable), <c>false</c> if culled.</returns>
+        internal static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+            IDesignViewport designViewport, out Vector2 pixel)
+        {
+            if (!camera.WorldToScreen(worldPos + offset, designViewport, out Vector2 topPixel))
+            {
+                pixel = default;
+                return false;
+            }
+
+            Vector3 basePoint = worldPos + new Vector3(offset.X, 0f, offset.Z);
+            bool baseProjects = camera.WorldToScreen(basePoint, designViewport, out Vector2 basePixel);
+            pixel = Compose(topPixel, baseProjects, basePixel);
+            return true;
+        }
+
+        // Shared fallback semantics for both overloads: the base (body-column) projection drives X when it
+        // projects at all, falling back to the head point's own X (unchanged from before this fix) when the
+        // steep-edge case (head clears the near plane but the feet do not) leaves the base point unprojectable.
+        static Vector2 Compose(Vector2 topPixel, bool baseProjects, Vector2 basePixel) =>
+            baseProjects ? new Vector2(basePixel.X, topPixel.Y) : topPixel;
     }
 }

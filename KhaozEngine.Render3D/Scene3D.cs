@@ -1298,9 +1298,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Queue one animated water surface for this frame: a flat plane at <paramref name="plane"/>'s world height
-        /// and XZ footprint, drawn after the sky + ground decals with a fresnel-style deep/horizon tint, a key-light
-        /// sun glint, and depth-sampled shore fade (see <see cref="WaterSettings"/> on <see cref="Post"/> for the
-        /// look knobs). Opt-in: no <see cref="DrawWater(in WaterPlane)"/> call this frame means the water pass
+        /// and XZ footprint, drawn after the sky + ground decals with a domain-warped non-tiling wave normal field,
+        /// a distance detail fade, a depth-driven shallow/deep tint blended toward the horizon by fresnel, a
+        /// key-light sun glint, and a shore fade (see <see cref="WaterSettings"/> on <see cref="Post"/> for knobs). Opt-in: no <see cref="DrawWater(in WaterPlane)"/> call this frame means the water pass
         /// (<see cref="Rendering.WaterRenderer"/>) never runs, so existing scenes stay byte-stable. Presentation
         /// only; cleared in <see cref="Begin"/>. Call once per frame per distinct body of water (a game with several
         /// separate lakes/ponds queues one <see cref="WaterPlane"/> each).

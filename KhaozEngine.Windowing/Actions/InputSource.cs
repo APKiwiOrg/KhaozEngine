@@ -18,8 +18,7 @@ namespace KhaozEngine.Windowing.Actions
         /// <summary>A single keyboard <see cref="Key"/> (button-like: down / pressed / released edges).</summary>
         Key = 1,
 
-        /// <summary>A single mouse button (button-like). Note: the snapshot carries no mouse "released" set, so
-        /// the released edge is unavailable for mouse sources (see <see cref="InputSource.EvaluateReleased"/>).</summary>
+        /// <summary>A single mouse button (button-like: down / pressed / released edges, same as a key).</summary>
         MouseButton = 2,
 
         /// <summary>A single gamepad <see cref="GamepadButton"/> on the map's player pad (button-like).</summary>
@@ -274,15 +273,18 @@ namespace KhaozEngine.Windowing.Actions
         }
 
         /// <summary>
-        /// True only on the frame this source went up (release edge). Available for keys and gamepad buttons via the
-        /// snapshot's released sets. Mouse sources have NO released edge (the snapshot carries no mouse-released set),
-        /// so this always returns false for a mouse source; the action layer derives mouse/axis release edges itself.
+        /// True only on the frame this source went up (release edge), read straight from the snapshot's released
+        /// sets. Every plain button source has one: keys via <see cref="InputState.KeysReleased"/>, mouse buttons
+        /// via <see cref="InputState.MouseReleased"/>, and gamepad buttons via the pad's own released set. Axis and
+        /// composite sources have no release edge of their own, so this returns false for them and the action layer
+        /// derives theirs against the previous frame.
         /// </summary>
         public bool EvaluateReleased(InputState input, int playerIndex)
         {
             switch (Kind)
             {
                 case InputSourceKind.Key: return input.WasReleased(Key);
+                case InputSourceKind.MouseButton: return input.WasReleased(MouseButton);
                 case InputSourceKind.GamepadButton: return input.Gamepad(playerIndex).WasReleased(GamepadButton);
                 default: return false;
             }

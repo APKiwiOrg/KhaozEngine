@@ -44,6 +44,15 @@ namespace KhaozEngine.Windowing
         public IReadOnlySet<Key> KeysRepeated { get; }
         public IReadOnlySet<MouseButton> MouseDown { get; }
         public IReadOnlySet<MouseButton> MousePressed { get; }
+        /// <summary>
+        /// Mouse buttons that went up this frame (the release edge), the exact mirror of
+        /// <see cref="KeysReleased"/>. Read it via <see cref="WasReleased(MouseButton)"/>. Empty in headless
+        /// frames unless a test fills it, and empty for any builder that predates the parameter, so a consumer
+        /// wanting a release edge on every platform should treat "not in this set" as "no release this frame".
+        /// A focus loss surfaces every held button here at once (see <see cref="InputAccumulator"/>), so a drag
+        /// still ends cleanly when the OS swallows the real button-up.
+        /// </summary>
+        public IReadOnlySet<MouseButton> MouseReleased { get; }
         public Vector2 MousePosition { get; }
         public Vector2 MouseDelta { get; }
         public float ScrollDelta { get; }
@@ -63,6 +72,7 @@ namespace KhaozEngine.Windowing
         public bool WindowFocused { get; }
 
         static readonly IReadOnlySet<Key> EmptyKeys = new HashSet<Key>();
+        static readonly IReadOnlySet<MouseButton> EmptyMouseButtons = new HashSet<MouseButton>();
 
         public static readonly InputState Empty = new(
             new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
@@ -74,11 +84,13 @@ namespace KhaozEngine.Windowing
             IReadOnlySet<MouseButton> mouseDown, IReadOnlySet<MouseButton> mousePressed,
             Vector2 mousePosition, Vector2 mouseDelta, float scrollDelta, int width, int height,
             IReadOnlyList<GamepadState>? gamepads = null, IReadOnlyList<TouchPoint>? touches = null,
-            bool windowFocused = true, IReadOnlySet<Key>? repeated = null)
+            bool windowFocused = true, IReadOnlySet<Key>? repeated = null,
+            IReadOnlySet<MouseButton>? mouseReleased = null)
         {
             KeysDown = down; KeysPressed = pressed; KeysReleased = released;
             KeysRepeated = repeated ?? EmptyKeys;
             MouseDown = mouseDown; MousePressed = mousePressed;
+            MouseReleased = mouseReleased ?? EmptyMouseButtons;
             MousePosition = mousePosition; MouseDelta = mouseDelta; ScrollDelta = scrollDelta;
             Width = width; Height = height;
             Gamepads = gamepads ?? System.Array.Empty<GamepadState>();
@@ -117,5 +129,7 @@ namespace KhaozEngine.Windowing
             || IsDown(Key.LeftSuper) || IsDown(Key.RightSuper);
         public bool IsDown(MouseButton button) => MouseDown.Contains(button);
         public bool WasPressed(MouseButton button) => MousePressed.Contains(button);
+        /// <summary>True only on the frame <paramref name="button"/> went up.</summary>
+        public bool WasReleased(MouseButton button) => MouseReleased.Contains(button);
     }
 }

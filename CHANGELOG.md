@@ -5,6 +5,72 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.25.0
+
+Fix: five input-model correctness bugs, filed together by the 2026-07-18 full-engine review and fixed together
+because they are one subsystem. A held drag no longer cancels when the cursor leaves the window, a tap that
+presses and releases inside one frame no longer vanishes from `ActionMap`, held keys and buttons are released on
+focus loss instead of sticking, the first frame's `MouseDelta` is zero instead of the whole cursor position, and
+the mouse gains the release edge the keyboard already had. Closes #89, #90, #91, #92, #93.
+
+Two of these had no headless test because they lived inside `AppWindow`, on the GLFW side of the engine's own
+input seam. That is now fixed structurally rather than worked around.
+
+- **`InputAccumulator` (new, `KhaozEngine.Windowing`).** The raw-event to snapshot state machine, split out of
+  `AppWindow`. It owns the held/pressed/released sets and turns OS callbacks (`OnKeyDown`, `OnKeyUp`,
+  `OnKeyRepeat`, `OnMouseDown`, `OnMouseUp`, `OnScroll`, `OnFocusChanged`) into one immutable `InputState` per
+  `Snapshot(cursorPosition, hasMouse, width, height, gamepads)` call, with the platform reads passed in as
+  arguments. `AppWindow` keeps the Silk/GLFW binding and delegates to it, so the input hard rule is unchanged:
+  `AppWindow` is still the only class that touches the Silk input statics. The engine has always documented that
+  rule as the thing keeping input headless-testable, but the state machine itself sat on the wrong side of it,
+  which is precisely why the focus-loss and first-frame-delta bugs had no test. Games do not construct this,
+  they read `Frame.Input` as before. `AppWindow.cs` drops from 974 to 957 lines and its size baseline ratchets
+  down to match.
+- **Held input is released on focus loss (#91).** Nothing cleared the held sets when the window lost focus, so a
+  key-up or button-up swallowed by the OS while backgrounded (Cmd-Tab mid-keypress, Mission Control, a global
+  hotkey eating the release) left that input reading held forever once focus returned. The unfocused transition
+  now moves everything held into the released sets and clears the down sets, so consumers see one clean release
+  edge. It fires on a real focus change only, so a platform that re-reports the same state each poll cannot
+  re-release a key the player has pressed since.
+- **First-frame `MouseDelta` is zero (#92).** `_lastMouse` started at the origin and was never primed, so frame
+  one's delta equalled the raw cursor position, roughly `(960, 540)` on a 2x display with the cursor near the
+  window centre. Any mouse-look or free-look camera reading `MouseDelta` snapped hard on the first frame before
+  the player touched the mouse. The first snapshot now reports a zero delta and primes the position. The guard
+  is an explicit "have I sampled a cursor yet" flag rather than a position comparison, because a real cursor
+  position of exactly `(0, 0)` would otherwise mask the same bug, and a window that opens with no mouse attached
+  still reports zero on the first frame one appears.
+- **`InputState.MouseReleased` and `WasReleased(MouseButton)` (#93).** The snapshot carried
+  `KeysDown`/`KeysPressed`/`KeysReleased` for the keyboard but only `MouseDown`/`MousePressed` for the mouse, so
+  the mouse had a press edge and no release edge. `InputSource.EvaluateReleased` documented that gap as a
+  limitation and returned false for every mouse source, meaning a rebindable action bound via
+  `InputSource.FromMouseButton(...)` had a permanently-false release. It now reads the new set. The constructor
+  parameter is optional and trailing, so every existing caller compiles and behaves unchanged and a hand-built
+  snapshot that omits it carries an empty set.
+- **`Pointer` no longer cancels a drag at the window edge (#90).** `Pointer.Update` applied its client-area gate
+  to the held-button read, not just to a fresh press, so during an OS-capture drag past the window edge the
+  button flipped to not-held while physically still down. That is exactly the `IsJustReleased` transition, so
+  `IsDragStartIn`, `GetDragDelta`, `IsPressingIn` and `IsDraggingIn` all saw a spurious release, reaching
+  `Slider`, `GuiSurface`'s slider path, `NumberField`, `ScrollablePanel` and the map editor's `PannableCanvas`.
+  Re-entering the window then re-fired a fresh press and reset `PressOrigin`, so the drag restarted from a new
+  origin with a visible jump. The button state now latches: `IsDown && (was down last frame || in window)`, which
+  gates the fresh-press edge on the client area and sustains the latch from the held read. A press that begins
+  outside the window is still ignored. This reads only `IsDown`, exactly as the previous code did, so no
+  `InputState` producer has to start populating anything new (see #300 for why that mattered).
+- **`ActionMap` no longer drops a same-frame tap (#89).** `Update` derived its edges purely from an `IsDown`
+  read, so when a press and release both queued within one frame (any frame hitch, and routinely at the engine's
+  own background-throttle rates of 15 Hz unfocused and 10 Hz minimized) the two cancelled out before `Update`
+  sampled them and both `WasPressed` and `WasReleased` returned false. Raw `InputState` consumers saw that tap
+  fine, so it was invisible to the rebindable-action system alone. A non-composite binding now also contributes
+  its own snapshot edge via `InputSource.EvaluatePressed`/`EvaluateReleased`, which already implemented this
+  correctly and had zero callers. The contribution is gated on the action's previous-frame state, so an
+  already-held action cannot re-fire when a second binding's press lands on top of it. Composite and axis-as-
+  button sources have no snapshot edge and keep deriving theirs from the previous frame, unchanged. `WasPressed`'s
+  XML doc already claimed it used each binding's own press edge, which was false until now.
+
+Follow-up filed, deliberately not fixed here: #300 covers the same same-frame-tap gap in `Pointer` (the mouse
+analogue of #89) plus the roughly 30 test helpers that build an `InputState` with an empty `MousePressed`, which
+is what makes that fix a cross-cutting migration rather than a one-liner.
+
 ## 14.24.0
 
 Feature: the water surface becomes an ocean. A Gerstner swell displaces the surface grid so waves have shape

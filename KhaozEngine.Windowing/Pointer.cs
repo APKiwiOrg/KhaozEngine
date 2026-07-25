@@ -51,7 +51,12 @@ namespace KhaozEngine.Windowing
         /// Derive the pointer from this frame's input, mapping the cursor into design space through
         /// <paramref name="viewport"/> so all bounds helpers hit-test in design coordinates (matching draws
         /// made via <c>SpriteBatch.Begin(IDesignViewport)</c>). Pass null for raw window-pixel coordinates.
-        /// The in-window guard still uses the raw window position.
+        /// The in-window guard still uses the raw window position, and gates only the frame a button first
+        /// latches down: once latched, it stays down for as long as it is physically held, even after the
+        /// cursor strays outside the client area (an OS-capture drag, e.g. a slider or a pan dragged past
+        /// the window edge). A press that begins outside the client area is ignored unless the cursor
+        /// re-enters the client area while the button is still held, at which point it latches there
+        /// (unchanged from the prior behaviour).
         /// </summary>
         public void Update(InputState input, IDesignViewport? viewport)
         {
@@ -66,9 +71,22 @@ namespace KhaozEngine.Windowing
                 || (screen.X >= 0 && screen.Y >= 0 && screen.X < input.Width && screen.Y < input.Height);
 
             _pos = viewport != null ? viewport.ScreenToDesign(screen) : screen;
-            _down = input.IsDown(MouseButton.Left) && inWindow;
-            _mid = input.IsDown(MouseButton.Middle) && inWindow;
-            _right = input.IsDown(MouseButton.Right) && inWindow;
+
+            // Gate inWindow only on the frame a button first latches down, then sustain the latch
+            // purely from the held read regardless of where the cursor has since strayed
+            // (KhaozEngine#90). Without this, an OS-capture drag reads the held button as released
+            // the instant the cursor crosses the client-area boundary, and re-entry re-latches as a
+            // fresh press that resets pressOrigin mid-drag. Reads only IsDown, matching the original
+            // contract (no MousePressed needed). _wasDown/_wasMid/_wasRight were captured from last
+            // frame's latch above, before this frame's reassignment: "held && (wasLatched ||
+            // inWindow)" reads as already latched, so ignore inWindow, or not latched, so this is a
+            // fresh transition and inWindow must gate it.
+            bool leftHeld = input.IsDown(MouseButton.Left);
+            _down = leftHeld && (_wasDown || inWindow);
+            bool midHeld = input.IsDown(MouseButton.Middle);
+            _mid = midHeld && (_wasMid || inWindow);
+            bool rightHeld = input.IsDown(MouseButton.Right);
+            _right = rightHeld && (_wasRight || inWindow);
 
             // A fresh press starts a fresh, unconsumed gesture.
             if (IsJustPressed) { _pressOrigin = _pos; _consumed = false; }

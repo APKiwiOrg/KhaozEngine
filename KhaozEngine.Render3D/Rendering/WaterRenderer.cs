@@ -9,9 +9,10 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// Draws the queued <see cref="WaterPlane"/> as an animated, flat, alpha-blended surface into the lit color
-    /// attachment + read-only scene depth (ColorDepthFB), sampling the resolved scene depth to soften the alpha
-    /// near the shore. Runs AFTER the sky and the ground-decal passes and BEFORE <see cref="RenderResources.ResolveColor"/>,
+    /// Draws the queued <see cref="WaterPlane"/> as an animated, swell-displaced, alpha-blended surface into the
+    /// lit color attachment + read-only scene depth (ColorDepthFB), sampling the resolved scene depth for the
+    /// depth grading, the shore foam and the waterline alpha feather. Runs AFTER the sky and the ground-decal
+    /// passes and BEFORE <see cref="RenderResources.ResolveColor"/>,
     /// so it is occluded by geometry above it (depth test ON) but never corrupts the normal/linear-depth MRT the
     /// outline pass reads (depth WRITE off - see the in-source note on <see cref="ShaderSources.WaterVert"/>). One
     /// draw per queued plane (its own dynamic-offset UBO slot, mirroring <see cref="GroundDecalRenderer"/>'s
@@ -21,7 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class WaterRenderer : IDisposable
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 9 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 19 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -36,11 +37,21 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 WaveParams;    // x=waveScale, y=waveSpeed, z=normalStrength, w=time
             public Vector4 ShoreGlint;    // x=shoreFadeDistance, y=glintStrength, z=glintExponent, w=opacity
             public Vector4 DetailParams;  // x=warpStrength, y=detailFadeDistance, z=distantDetailScale, w=shallowDepth
+            public Vector4 SkyHorizon;    // rgb, the reflected sky's horizon colour
+            public Vector4 SkyZenith;     // rgb, the reflected sky's zenith colour
+            public Vector4 SkySunColor;   // rgb, the reflected sun disc + halo colour
+            public Vector4 SkyParams;     // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
+            public Vector4 ReflectGlint;  // x=skyReflStrength, y=skyReflSunStrength, z=glintRoughness, w=glintDistantRoughness
+            public Vector4 SwellParams;   // x=amplitude, y=wavelength, z=directionRadians, w=spreadRadians
+            public Vector4 SwellShape;    // x=steepness, y=speedScale, z=componentCount, w=seed
+            public Vector4 Absorption;    // rgb = per-metre coefficients (all-zero = legacy blend), w unused
+            public Vector4 FoamColor;     // rgba
+            public Vector4 FoamParams;    // x=strength, y=crestCoverage, z=shoreWidth, w=patternScale
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + 9*16 (vec4) = 272.</summary>
-        internal const uint PayloadBytes = 272;
+        /// 2*64 (mat4) + 19*16 (vec4) = 432.</summary>
+        internal const uint PayloadBytes = 432;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -61,7 +72,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 512;   // Align256(272)
+        internal const uint SlotBytes = 512;   // Align256(432)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -76,6 +87,10 @@ namespace KhaozEngine.Render3D.Rendering
         // vertex positions differ per plane, re-uploaded per draw), so these are allocated once and never regrown.
         IGpuBuffer? _vb;
         IGpuBuffer? _ib;
+        // Heap-allocated once, not stackalloc'd per draw: at GridResolution 97 the position scratch is 113 KB and
+        // the index scratch 216 KB, both far past what belongs on the stack.
+        readonly Vector3[] _gridScratch = new Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
+        readonly float[] _axisScratch = new float[2 * WaterMath.GridResolution];
 
         public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput)
         {
@@ -147,24 +162,37 @@ namespace KhaozEngine.Render3D.Rendering
             const uint icount = WaterMath.GridIndexCount;
             _vb = _gd.Factory.CreateBuffer(new GpuBufferDescription(vcount * 12u, GpuBufferUsage.VertexBuffer));   // Vector3 = 12 bytes
             _ib = _gd.Factory.CreateBuffer(new GpuBufferDescription(icount * sizeof(uint), GpuBufferUsage.IndexBuffer));
-            Span<uint> indices = stackalloc uint[(int)icount];
+            uint[] indices = new uint[icount];   // built once, then thrown away: the index layout never changes
             WaterMath.BuildGridIndices(indices);
-            _gd.UpdateBuffer(_ib, 0, indices.ToArray());
+            _gd.UpdateBuffer(_ib, 0, indices);
         }
 
-        /// <summary>Pure: pack one plane + the frame's light/camera/settings into the UBO. <paramref name="rawViewProj"/>
-        /// is the RAW (not clip-corrected) view-projection so the fragment's depth reconstruction matches the
-        /// ground-decal convention; <paramref name="clipViewProj"/> is the SEPARATE clip-corrected copy for
-        /// <c>gl_Position</c> (mirrors every other pass in this file, e.g. <see cref="GpuClip.Correct"/> at the
-        /// <see cref="Draw"/> call site).</summary>
+        /// <summary>Pure: pack one plane + the frame's light/camera/water/sky settings into the UBO.
+        /// <paramref name="rawViewProj"/> is the RAW (not clip-corrected) view-projection so the fragment's depth
+        /// reconstruction matches the ground-decal convention; <paramref name="clipViewProj"/> is the SEPARATE
+        /// clip-corrected copy for <c>gl_Position</c> (mirrors every other pass in this file, e.g.
+        /// <see cref="GpuClip.Correct"/> at the <see cref="Draw"/> call site).
+        /// <para>
+        /// <paramref name="sky"/> supplies the palette the surface REFLECTS, and it is read whether or not the sky
+        /// PASS is enabled: a scene can legitimately want reflective water over a custom background, and forcing
+        /// the game to hand-match a second copy of the sky colours is exactly the drift the shared settings bag
+        /// exists to avoid. <see cref="SkySettings.Enabled"/> is deliberately NOT consulted here; only
+        /// <see cref="SkySettings.SunEnabled"/> is, because a sky with no sun should not reflect one.
+        /// </para>
+        /// </summary>
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
-            Color lightColor, Vector3 cameraPos, WaterSettings settings, float timeSeconds)
+            Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
             Vector4 shallow = settings.ShallowColor;
             Vector4 horizon = settings.HorizonColor;
             Vector4 lightCol = lightColor;
+            Vector4 skyHorizon = sky.HorizonColor;
+            Vector4 skyZenith = sky.ZenithColor;
+            Vector4 skySun = sky.SunColor;
+            Vector4 absorption = settings.AbsorptionPerMetre;
+            Vector4 foam = settings.FoamColor;
             return new WaterUbo
             {
                 ViewProj = clipViewProj,
@@ -179,6 +207,21 @@ namespace KhaozEngine.Render3D.Rendering
                 ShoreGlint = new Vector4(settings.ShoreFadeDistance, settings.GlintStrength, settings.GlintExponent, settings.Opacity),
                 DetailParams = new Vector4(settings.WaveWarpStrength, settings.DetailFadeDistance,
                     settings.DistantDetailScale, settings.ShallowDepth),
+                SkyHorizon = skyHorizon,
+                SkyZenith = skyZenith,
+                SkySunColor = skySun,
+                SkyParams = new Vector4(sky.SunEnabled ? 1f : 0f, sky.SunRadius, sky.HaloStrength, sky.HaloFalloff),
+                ReflectGlint = new Vector4(settings.SkyReflectionStrength, settings.SkyReflectionSunStrength,
+                    settings.GlintRoughness, settings.GlintDistantRoughness),
+                SwellParams = new Vector4(settings.SwellAmplitude, settings.SwellWavelength,
+                    GerstnerWaves.DegreesToRadians(settings.SwellDirectionDegrees),
+                    GerstnerWaves.DegreesToRadians(settings.SwellSpreadDegrees)),
+                SwellShape = new Vector4(settings.SwellSteepness, settings.SwellSpeed,
+                    Math.Clamp(settings.SwellComponents, 1, GerstnerWaves.MaxComponents), settings.SwellSeed),
+                Absorption = absorption,
+                FoamColor = foam,
+                FoamParams = new Vector4(settings.FoamStrength, settings.FoamCrestCoverage,
+                    settings.FoamShoreWidth, settings.FoamPatternScale),
             };
         }
 
@@ -186,7 +229,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// guarantees the model + sky + decal passes are complete and the framebuffer is free to rebind. No-op when
         /// <paramref name="planes"/> is empty.</summary>
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
-            Matrix4x4 viewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos, WaterSettings settings, float timeSeconds)
+            Matrix4x4 viewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos, WaterSettings settings,
+            SkySettings sky, float timeSeconds)
         {
             if (planes.Length == 0) return;
             EnsureUboCapacity(planes.Length);
@@ -194,10 +238,9 @@ namespace KhaozEngine.Render3D.Rendering
             BindTargets(res);
 
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
-            Span<Vector3> gridPos = stackalloc Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
             for (int i = 0; i < planes.Length; i++)
             {
-                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, timeSeconds);
+                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds);
                 cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
             }
 
@@ -206,8 +249,11 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetIndexBuffer(_ib!, GpuIndexFormat.UInt32);
             for (int i = 0; i < planes.Length; i++)
             {
-                int n = WaterMath.BuildGridPositions(planes[i], gridPos);
-                cl.UpdateBuffer<Vector3>(_vb!, 0, gridPos.Slice(0, n));
+                // The grid concentrates its vertices around the camera's XZ (clamped inside the plane by
+                // BuildGridPositions), so the fixed vertex budget lands where the displaced swell actually reads.
+                int n = WaterMath.BuildGridPositions(planes[i], cameraPos.X, cameraPos.Z, settings.GridFocusBias,
+                    _gridScratch, _axisScratch);
+                cl.UpdateBuffer<Vector3>(_vb!, 0, _gridScratch.AsSpan(0, n));
                 cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
                 cl.SetVertexBuffer(0, _vb!);
                 cl.DrawIndexed((uint)WaterMath.GridIndexCount, 1, 0, 0, 0);

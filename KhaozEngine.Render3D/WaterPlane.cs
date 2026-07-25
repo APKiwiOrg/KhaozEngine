@@ -3,18 +3,20 @@ using System.Numerics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// One flat water surface queued for this frame: a rectangular region on the XZ plane at a fixed world height.
+    /// One water surface queued for this frame: a rectangular region on the XZ plane at a fixed still-water
+    /// height (the Gerstner swell displaces the surface around it).
     /// Presentation only; cleared each <see cref="Scene3D.Begin"/> like <see cref="ShadowBlob"/> and
     /// <see cref="GroundDecal"/>. Submit with <see cref="Scene3D.DrawWater(in WaterPlane)"/> - no request queued
     /// means no water pass runs (opt-in, byte-stable when unused).
     /// </summary>
     /// <remarks>
     /// The plane is centered at (<see cref="CenterX"/>, <see cref="SurfaceY"/>, <see cref="CenterZ"/>) and spans
-    /// <see cref="HalfExtentX"/> / <see cref="HalfExtentZ"/> either side along X/Z. It is drawn as an
-    /// axis-aligned tessellated grid (see <see cref="Internal.WaterMath.GridResolution"/>) so the animated normal
-    /// perturbation has enough vertices to read as a wavy surface rather than a flat-shaded quad; the wave motion
-    /// itself is entirely per-pixel (fragment) so the CPU tessellation only needs to be "screen-space sufficient",
-    /// not simulation-accurate.
+    /// <see cref="HalfExtentX"/> / <see cref="HalfExtentZ"/> either side along X/Z. It is drawn as a tessellated
+    /// grid (see <see cref="Internal.WaterMath.GridResolution"/>) whose vertices the vertex shader displaces by
+    /// the swell, so the grid IS the wave shape rather than merely a carrier for a per-pixel normal. That grid is
+    /// a FIXED vertex budget however large this plane is, spread non-uniformly toward the camera by
+    /// <see cref="WaterSettings.GridFocusBias"/>; a very large plane therefore gets a very large plane's worth of
+    /// resolution rather than a quadratic vertex count.
     /// </remarks>
     public readonly struct WaterPlane
     {

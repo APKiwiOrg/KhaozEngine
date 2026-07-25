@@ -129,6 +129,9 @@ namespace KhaozEngine.Tests.Gpu
                     s.Post.Water.HorizonColor = new Color(0.60f, 0.70f, 0.80f, 0.75f);
                     s.Post.Water.GlintStrength = 0.9f;
                     s.Post.Water.GlintExponent = 100f;
+                    // Same doll-house rescale the water golden uses: the 14.23.0 swell/absorption/foam defaults are
+                    // sized for an ocean, and this lake is 10 units across. See WaterSceneTuning.
+                    WaterSceneTuning.ApplyLakeScale(s.Post.Water, uniformGrid: true);
                     s.Camera.Frame(new Vector3(0.1f, 0.6f, 0.2f), new Vector3(7f, 5f, 7f));
                 },
                 drawFrame: s =>

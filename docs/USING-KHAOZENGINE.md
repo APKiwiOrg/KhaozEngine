@@ -2302,37 +2302,84 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
     current art direction is preserved, just with headroom added.
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
-  animated water surface - a flat, alpha-blended plane with a domain-warped three-layer procedural normal field, a
-  camera-distance detail fade, a depth-driven shallow-water body blend, a fresnel-style blend toward a sky-derived
-  horizon tint, a key-light specular sun glint, and a depth-sampled shore fade at the waterline.
-  **No reflections/probes** (roadmap gap #9 is separate and not attempted here) - this is a stylized surface,
-  not a physically accurate one.
+  stylized ocean surface - a Gerstner swell displacing the surface grid, a domain-warped three-layer procedural
+  ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
+  fresnel blend toward the analytically reflected sky, a GGX sun glint with distance/footprint roughness widening,
+  procedural whitecap and shoreline foam, and a depth-sampled shore fade at the waterline.
+  **No refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the analytic
+  sky only (issue #54 records probes/SSR as not planned at the current bar). This is a stylized LDR surface, not a
+  physically accurate one.
   - **Request** (per-frame, WHERE to draw): call `scene.DrawWater(new WaterPlane(centerX, surfaceY, centerZ,
     halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
     No call this frame means the water pass never runs - existing scenes stay byte-stable, matching the `Sky`/`Bloom`
     opt-in convention. Cleared every `Begin()` like the decal/shadow-blob queues.
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
-    scene-appearance bags reached off `Post`): `DeepColor`/`ShallowColor` (the body tint, blended by depth over
-    `ShallowDepth`) and `HorizonColor` (fresnel-blended on top; it defaults close to `Sky.HorizonColor` so an
-    enabled sky + enabled water read as one cohesive scene without hand-matching colours), `WaveScale`/`WaveSpeed`
-    (the scrolling wave layers), `NormalStrength` (0 = flat mirror), `WaveWarpStrength` (the tiling-breakup domain
-    warp), `DetailFadeDistance`/`DistantDetailScale` (the distance fade of the fine layers), `ShoreFadeDistance`
-    (world units the alpha softens over near the shore), `GlintStrength`/`GlintExponent` (the sun highlight), and
-    `Opacity`.
-  - **Wave field, and why it is shaped this way** (fixes the reported checkerboard tiling): three directional wave
-    layers at 20 / 115 / -51 degrees, so none is axis-aligned and no two are parallel, with mutually irrational
-    frequency multipliers (1, phi, sqrt 7) so their repeat periods never come back into phase. They are sampled at
-    a domain-WARPED position - a slow, large-scale displacement whose wavelength is ~5x the base layer's, so it
-    bends the field over a much longer distance than the waves repeat over. The two fine layers additionally fade
-    toward `DistantDetailScale` over `DetailFadeDistance` of camera distance, which is what stops the far field
-    aliasing into a crawling moire (and, with a tight `GlintExponent`, into sparkle); the base swell never fades,
-    so distance never turns the surface into a mirror. The pre-14.22.0 look is `WaveWarpStrength = 0`,
-    `DetailFadeDistance = 0`, `ShallowDepth = 0` - which restores everything EXCEPT the field itself, since the
-    old two-octave field was axis-separable and exactly `2*pi*WaveScale`-periodic, i.e. it was the tiling.
-  - **Shallow blend**: the same reconstructed ground depth the shore fade uses also blends the BODY colour from
-    `DeepColor` to `ShallowColor` over `ShallowDepth` world units, applied BEFORE the fresnel blend so a grazing
-    view of the shallows still picks up the sky. Keep it distinct from `ShoreFadeDistance`: the tint band reads
-    over metres, the alpha feather at the waterline over centimetres. `ShallowDepth = 0` disables it.
+    scene-appearance bags reached off `Post`). Grouped by what they do:
+    - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients;
+      all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`.
+    - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
+      `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
+    - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
+      `SwellSteepness`, `SwellSpeed`, `SwellSeed`, `SwellComponents` (1..6), and `GridFocusBias` (surface-grid
+      vertex concentration near the camera; 1 = uniform).
+    - *Ripple detail*: `WaveScale`/`WaveSpeed`/`NormalStrength`, `WaveWarpStrength` (the tiling-breakup domain
+      warp), `DetailFadeDistance`/`DistantDetailScale`.
+    - *Glint*: `GlintStrength`, `GlintRoughness` (0 or less selects the legacy Blinn-Phong lobe on
+      `GlintExponent`), `GlintDistantRoughness`.
+    - *Foam*: `FoamColor`, `FoamStrength` (0 = off), `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`.
+    - *Shore*: `ShoreFadeDistance` (world units the alpha softens over at the waterline).
+  - **Swell** (the shape): a stack of Gerstner (trochoidal) components displaced in the VERTEX stage, so crests
+    pinch, troughs flatten, and the surface has a real silhouette instead of shading painted on a flat sheet. You
+    tune WIND, not a wave table: the whole stack is generated from amplitude + longest wavelength + direction +
+    spread + steepness + speed + seed + count, both on the CPU (`GerstnerWaves`, headless-tested) and in the shader
+    from the same seven scalars. Wavelengths ladder down geometrically, amplitudes are proportional to wavelength,
+    and each component's speed comes from the deep-water dispersion relation, so long rollers genuinely overtake
+    the short chop. `SwellSteepness` is capped at 1, the point past which the surface would fold through itself.
+  - **Surface grid**: a fixed 97x97 budget (9,409 vertices, 18,432 triangles, one draw per plane), spread
+    NON-uniformly by `GridFocusBias` toward the camera. That matters because the plane is whatever size the
+    consumer asks for: at a 600-unit half-extent a uniform grid puts vertices 12 units apart and cannot carry a
+    42-unit swell, while a biased grid runs roughly half a unit at the camera through 10 units at 90 out to 22 at
+    the far edge. The trade is that the mesh is camera-relative, so vertices slide through the wave field as the
+    camera moves - continuous, never popping, and invisible in the dense near field. On a small water body the
+    camera can see all of, turn it down or leave it at 1.
+  - **Ripple field, and why it is shaped this way** (fixed the reported checkerboard tiling in 14.22.0): three
+    directional layers at 20 / 115 / -51 degrees, so none is axis-aligned and no two are parallel, with mutually
+    irrational frequency multipliers (1, phi, sqrt 7) so their repeat periods never come back into phase. They are
+    sampled at a domain-WARPED position - a slow, large-scale displacement whose wavelength is ~5x the base
+    layer's. The two fine layers additionally fade toward `DistantDetailScale` over `DetailFadeDistance` of camera
+    distance. These ride ON TOP of the swell as small-scale texture; the swell supplies the shape.
+  - **Reflection**: the fresnel term blends the body colour toward the sky evaluated along the REFLECTED view ray
+    (`SkyMath.ShadeDirection`, the same gradient + disc the background sky pass paints, evaluated per-direction
+    rather than per-screen-pixel), using `Post.Sky`'s palette whether or not the sky PASS is enabled. This is what
+    removes the two-tone banding a single flat `HorizonColor` produces: every fragment gets the colour of the sky
+    it is actually pointing at. `SkyReflectionSunStrength` defaults below 1 because the sharp part of the reflected
+    sun is already supplied by the glint lobe, and carrying both at full strength double-counts it.
+  - **Glint**: a peak-normalized GGX lobe (so `GlintStrength` means the same brightness as the legacy Blinn-Phong
+    one) whose roughness widens toward `GlintDistantRoughness` wherever the surface is under-sampled - by camera
+    distance over `DetailFadeDistance`, or by the pixel's world FOOTPRINT against the ripple wavelength, whichever
+    is worse. The footprint measure is the one that is actually right (what aliases is a wave narrower than a
+    pixel; distance is a proxy that breaks under a wide FOV, under the ortho iso camera, and at a resolution other
+    than the one it was tuned at). Widening the lobe keeps sub-pixel detail as variance instead of discarding it,
+    so the far field settles into a soft sheen rather than a crawling sparkle.
+  - **Depth grading**: the reconstructed ground depth drives per-channel Beer-Lambert transmittance
+    (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
+    several times faster than blue, the ramp bends through green-teal instead of running straight down the line
+    between two colours, which is what keeps the midtones clean. An all-zero `AbsorptionPerMetre` restores the
+    14.22.0 two-stop smoothstep over `ShallowDepth`. Keep both distinct from `ShoreFadeDistance`: the colour band
+    reads over metres, the alpha feather at the waterline over centimetres.
+  - **Foam**: two procedural sources, no texture assets. Whitecaps come from the determinant of the swell's
+    horizontal Jacobian (how much a patch of still water is squeezed by the trochoidal pinch), so foam appears
+    where a wave is actually breaking rather than at an arbitrary height threshold, and it is normalized by
+    `SwellSteepness` so `FoamCrestCoverage` means the same fraction of the sea at any steepness. The shoreline band
+    comes from the depth term - and because that depth is measured under the DISPLACED surface, the swell carries
+    the foam line up and down the beach for free. Both are multiplied by a scrolling three-layer pattern
+    thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`).
+  - **Reaching the 14.22.0 look**: every addition is independently reachable at zero - `SwellAmplitude = 0`,
+    `GridFocusBias = 1`, `SkyReflectionStrength = 0`, `GlintRoughness = 0`, `AbsorptionPerMetre = default`,
+    `FoamStrength = 0`, plus `ShallowColor = new(0.14f, 0.34f, 0.38f, 0.80f)` for the old default tint. The
+    pre-14.22.0 look then needs `WaveWarpStrength = 0`, `DetailFadeDistance = 0`, `ShallowDepth = 0` on top - which
+    restores everything EXCEPT the ripple field itself, since the old two-octave field was axis-separable and
+    exactly `2*pi*WaveScale`-periodic, i.e. it WAS the tiling.
   - **Mechanism**: drawn AFTER the sky and the ground decals, BEFORE the MRT resolve, as its own small pass (like
     `SkyRenderer`/`GroundDecalRenderer`) into the lit colour + read-only scene depth. Depth test ON (`Less`, so
     terrain/props above the surface occlude it - the "rock poking out of the lake" case) but depth WRITE OFF (so it
@@ -4331,7 +4378,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.22.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.23.0" />
 ```
 
 ```csharp

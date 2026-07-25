@@ -395,8 +395,10 @@ namespace KhaozEngine.Tests.Render3D
         public void BuildGridPositions_covers_the_requested_extent()
         {
             var plane = new WaterPlane(centerX: 2f, surfaceY: 1.5f, centerZ: -3f, halfExtentX: 4f, halfExtentZ: 2f);
-            Span<Vector3> verts = stackalloc Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
-            int n = WaterMath.BuildGridPositions(plane, verts);
+            // Heap, not stackalloc: the grid is 9,409 vertices (113 KB) since the swell made the mesh the wave.
+            var verts = new Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
+            var axes = new float[2 * WaterMath.GridResolution];
+            int n = WaterMath.BuildGridPositions(plane, focusX: 2f, focusZ: -3f, bias: 1f, verts, axes);
             Assert.Equal(WaterMath.GridResolution * WaterMath.GridResolution, n);
 
             float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
@@ -413,7 +415,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void BuildGridIndices_produces_the_documented_count_and_valid_range()
         {
-            Span<uint> indices = stackalloc uint[WaterMath.GridIndexCount];
+            var indices = new uint[WaterMath.GridIndexCount];
             int n = WaterMath.BuildGridIndices(indices);
             Assert.Equal(WaterMath.GridIndexCount, n);
             const uint maxVertex = WaterMath.GridResolution * WaterMath.GridResolution - 1;
@@ -452,6 +454,26 @@ namespace KhaozEngine.Tests.Render3D
             // The shallows tint reads over metres; the waterline alpha feather over centimetres. Conflating them is
             // the mistake this pair of knobs exists to prevent.
             Assert.True(s.ShallowDepth > s.ShoreFadeDistance);
+
+            // The 14.23.0 additions also ship ON, so DrawWater alone gets the stylized ocean, not the flat sheet.
+            Assert.True(s.SwellAmplitude > 0f);
+            Assert.True(s.SwellWavelength > 0f);
+            Assert.InRange(s.SwellSteepness, 0f, 1f);          // above 1 the surface folds through itself
+            Assert.InRange(s.SwellComponents, 1, GerstnerWaves.MaxComponents);
+            Assert.True(s.GridFocusBias > 1f);                 // 1 would be the uniform grid
+            Assert.InRange(s.SkyReflectionStrength, 0f, 1f);
+            Assert.InRange(s.SkyReflectionSunStrength, 0f, 1f);
+            Assert.True(s.GlintRoughness > 0f);                // > 0 selects GGX over the legacy Blinn-Phong lobe
+            Assert.True(s.GlintDistantRoughness > s.GlintRoughness);   // the far field must widen, never sharpen
+            Assert.True(s.FoamStrength > 0f);
+            Assert.InRange(s.FoamCrestCoverage, 0f, 1f);
+            Assert.True(s.FoamShoreWidth > 0f);
+            Assert.True(s.FoamPatternScale > 0f);
+            // Absorption is per-channel and red must die fastest, or the gradient runs straight instead of bending
+            // through green-teal, which is the entire reason it is not a scalar lerp.
+            Assert.True(s.AbsorptionPerMetre.R > s.AbsorptionPerMetre.G);
+            Assert.True(s.AbsorptionPerMetre.G > s.AbsorptionPerMetre.B);
+            Assert.True(s.AbsorptionPerMetre.B > 0f);
         }
 
         [Fact]
@@ -464,6 +486,54 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1f, WaterMath.DetailScale(999f, s.DetailFadeDistance, s.DistantDetailScale));
             Assert.Equal(0f, WaterMath.ShallowWeight(0f, s.ShallowDepth));
             Assert.Equal(new Vector2(7f, 8f), WaterMath.DomainWarp(7f, 8f, 3f, s.WaveScale, s.WaveWarpStrength));
+        }
+
+        [Fact]
+        public void Settings_1422_look_is_reachable_knob_by_knob()
+        {
+            // The 14.23.0 restore, one knob per feature, INDEPENDENTLY (this is the standing A/B rule: a new look
+            // must be comparable against the one it replaced without rebuilding the engine). Each assertion below
+            // is the point at which that feature stops contributing anything.
+            var s = new WaterSettings
+            {
+                SwellAmplitude = 0f,        // flat plane again: no displacement, and no fold for whitecaps to read
+                GridFocusBias = 1f,         // the uniform surface grid
+                SkyReflectionStrength = 0f, // fresnel blends toward the flat HorizonColor again
+                GlintRoughness = 0f,        // the Blinn-Phong lobe on GlintExponent
+                AbsorptionPerMetre = new Color(0f, 0f, 0f, 0f),   // the two-stop ShallowDepth blend
+                FoamStrength = 0f,          // no foam at all
+            };
+
+            // Swell off: no components are generated at all, so the vertex stage's whole loop is skipped.
+            Span<GerstnerWaves.Component> comps = stackalloc GerstnerWaves.Component[GerstnerWaves.MaxComponents];
+            Assert.Equal(0, GerstnerWaves.BuildComponents(s.SwellAmplitude, s.SwellWavelength, 0.5f, 0.9f,
+                s.SwellSteepness, s.SwellSpeed, s.SwellSeed, s.SwellComponents, comps));
+            var flat = GerstnerWaves.Evaluate(3f, -7f, 1.25f, s.SwellSteepness, ReadOnlySpan<GerstnerWaves.Component>.Empty);
+            Assert.Equal(Vector3.Zero, flat.Offset);
+            Assert.Equal(Vector3.UnitY, flat.Normal);
+            Assert.Equal(0f, flat.Fold);
+
+            // Uniform grid: the focus warp is the identity, bit-for-bit (an early return, not a near-miss).
+            for (int i = 0; i <= 8; i++)
+            {
+                float u = i / 8f;
+                Assert.Equal(u, WaterMath.FocusWarp(u, focus: 0.3f, bias: s.GridFocusBias));
+            }
+
+            // Reflection off: whatever the sky is doing, the surface uses exactly the flat horizon tint.
+            var horizon = new Vector3(0.6f, 0.7f, 0.8f);
+            Assert.Equal(horizon, WaterMath.ReflectionColor(horizon, new Vector3(1f, 0f, 0f), s.SkyReflectionStrength));
+
+            // Glint: a non-positive roughness is the documented selector for the legacy lobe. The shader branches on
+            // the same comparison, so this pins the selector itself, not just the value.
+            Assert.False(s.GlintRoughness > 0f);
+
+            // Absorption off: an all-zero coefficient is the documented fallback to the two-stop blend.
+            var absorb = new Vector3(s.AbsorptionPerMetre.R, s.AbsorptionPerMetre.G, s.AbsorptionPerMetre.B);
+            Assert.Equal(0f, absorb.X + absorb.Y + absorb.Z);
+
+            // Foam off: zero strength zeroes the combined amount whatever the two sources say.
+            Assert.Equal(0f, WaterMath.FoamAmount(whitecap: 1f, shoreFoam: 1f, pattern: 1f, strength: s.FoamStrength));
         }
 
         // ---- UBO packing -------------------------------------------------------------------------------------------
@@ -487,6 +557,34 @@ namespace KhaozEngine.Tests.Render3D
                 DetailFadeDistance = 45f,
                 DistantDetailScale = 0.2f,
                 ShallowDepth = 3.5f,
+                SkyReflectionStrength = 0.8f,
+                SkyReflectionSunStrength = 0.3f,
+                GlintRoughness = 0.25f,
+                GlintDistantRoughness = 0.55f,
+                SwellAmplitude = 0.7f,
+                SwellWavelength = 33f,
+                SwellDirectionDegrees = 90f,
+                SwellSpreadDegrees = 45f,
+                SwellSteepness = 0.4f,
+                SwellSpeed = 0.9f,
+                SwellSeed = 2.5f,
+                SwellComponents = 5,
+                AbsorptionPerMetre = new Color(0.5f, 0.2f, 0.1f, 0f),
+                FoamColor = new Color(0.9f, 0.95f, 1f, 0.85f),
+                FoamStrength = 0.7f,
+                FoamCrestCoverage = 0.6f,
+                FoamShoreWidth = 2f,
+                FoamPatternScale = 1.5f,
+            };
+            var sky = new SkySettings
+            {
+                HorizonColor = new Color(0.7f, 0.75f, 0.85f, 1f),
+                ZenithColor = new Color(0.2f, 0.4f, 0.7f, 1f),
+                SunColor = new Color(1f, 0.9f, 0.7f, 1f),
+                SunEnabled = true,
+                SunRadius = 0.07f,
+                HaloStrength = 0.4f,
+                HaloFalloff = 0.2f,
             };
             var clipVp = Matrix4x4.CreateLookAt(new Vector3(0, 5, 5), Vector3.Zero, Vector3.UnitY);
             var rawVp = clipVp;   // identical here; the test only checks each field lands, not the clip-correction path
@@ -494,7 +592,7 @@ namespace KhaozEngine.Tests.Render3D
             var lightColor = new Color(1f, 0.95f, 0.86f, 1f);
             var camPos = new Vector3(1f, 2f, 3f);
 
-            var u = WaterRenderer.PackUbo(clipVp, rawVp, light, lightColor, camPos, settings, timeSeconds: 2.5f);
+            var u = WaterRenderer.PackUbo(clipVp, rawVp, light, lightColor, camPos, settings, sky, timeSeconds: 2.5f);
 
             Assert.Equal(clipVp, u.ViewProj);
             Matrix4x4.Invert(rawVp, out var expectedInv);
@@ -519,6 +617,55 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(settings.DetailFadeDistance, u.DetailParams.Y, 4);
             Assert.Equal(settings.DistantDetailScale, u.DetailParams.Z, 4);
             Assert.Equal(settings.ShallowDepth, u.DetailParams.W, 4);
+
+            // Sky palette: taken from SkySettings, not duplicated on WaterSettings, so the water reflects the same
+            // sky the background pass paints.
+            Assert.Equal(sky.HorizonColor.R, u.SkyHorizon.X, 4);
+            Assert.Equal(sky.ZenithColor.B, u.SkyZenith.Z, 4);
+            Assert.Equal(sky.SunColor.G, u.SkySunColor.Y, 4);
+            Assert.Equal(1f, u.SkyParams.X, 4);
+            Assert.Equal(sky.SunRadius, u.SkyParams.Y, 4);
+            Assert.Equal(sky.HaloStrength, u.SkyParams.Z, 4);
+            Assert.Equal(sky.HaloFalloff, u.SkyParams.W, 4);
+
+            Assert.Equal(settings.SkyReflectionStrength, u.ReflectGlint.X, 4);
+            Assert.Equal(settings.SkyReflectionSunStrength, u.ReflectGlint.Y, 4);
+            Assert.Equal(settings.GlintRoughness, u.ReflectGlint.Z, 4);
+            Assert.Equal(settings.GlintDistantRoughness, u.ReflectGlint.W, 4);
+
+            Assert.Equal(settings.SwellAmplitude, u.SwellParams.X, 4);
+            Assert.Equal(settings.SwellWavelength, u.SwellParams.Y, 4);
+            // Degrees in the settings, radians in the UBO: the shader only ever sees radians.
+            Assert.Equal(MathF.PI / 2f, u.SwellParams.Z, 4);
+            Assert.Equal(MathF.PI / 4f, u.SwellParams.W, 4);
+            Assert.Equal(settings.SwellSteepness, u.SwellShape.X, 4);
+            Assert.Equal(settings.SwellSpeed, u.SwellShape.Y, 4);
+            Assert.Equal(5f, u.SwellShape.Z, 4);
+            Assert.Equal(settings.SwellSeed, u.SwellShape.W, 4);
+
+            Assert.Equal(settings.AbsorptionPerMetre.R, u.Absorption.X, 4);
+            Assert.Equal(settings.AbsorptionPerMetre.B, u.Absorption.Z, 4);
+            Assert.Equal(settings.FoamColor.A, u.FoamColor.W, 4);
+            Assert.Equal(settings.FoamStrength, u.FoamParams.X, 4);
+            Assert.Equal(settings.FoamCrestCoverage, u.FoamParams.Y, 4);
+            Assert.Equal(settings.FoamShoreWidth, u.FoamParams.Z, 4);
+            Assert.Equal(settings.FoamPatternScale, u.FoamParams.W, 4);
+        }
+
+        [Fact]
+        public void PackUbo_clamps_the_component_count_into_the_shader_loop_bound()
+        {
+            // The GLSL loop is bounded by a compile-time 6 with an early break on this value. An out-of-range count
+            // reaching the shader would silently drop components (too high) or run none (too low), so the clamp
+            // lives here, at the one place the value crosses into the UBO.
+            var high = new WaterSettings { SwellComponents = 99 };
+            var low = new WaterSettings { SwellComponents = -3 };
+            var vp = Matrix4x4.Identity;
+            var sky = new SkySettings();
+            Assert.Equal(GerstnerWaves.MaxComponents,
+                (int)WaterRenderer.PackUbo(vp, vp, -Vector3.UnitY, Color.White, Vector3.Zero, high, sky, 0f).SwellShape.Z);
+            Assert.Equal(1,
+                (int)WaterRenderer.PackUbo(vp, vp, -Vector3.UnitY, Color.White, Vector3.Zero, low, sky, 0f).SwellShape.Z);
         }
     }
 }

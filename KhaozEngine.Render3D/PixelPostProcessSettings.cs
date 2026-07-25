@@ -56,8 +56,9 @@ namespace KhaozEngine.Render3D
         /// and the LDR-not-HDR caveat.</summary>
         public BloomSettings Bloom = new();
 
-        /// <summary>Animated water surface look-and-feel (deep/shallow/horizon tint colours, wave scale/speed/warp,
-        /// distance detail fade, shallow and shore fade distances, sun glint strength). Lives here alongside <see cref="Sky"/> (both are scene-wide appearance bags reached off
+        /// <summary>Stylized water surface look-and-feel (body colours + depth absorption, the Gerstner swell,
+        /// ripple scale/speed/warp and its distance detail fade, the sky-reflection blend, the GGX glint, foam, and
+        /// the shore fade). Lives here alongside <see cref="Sky"/> - whose palette the water REFLECTS - (both are scene-wide appearance bags reached off
         /// <c>Post</c>); WHERE to draw water each frame is the separate per-frame
         /// <see cref="Scene3D.DrawWater(in WaterPlane)"/> request. No request queued this frame means no water pass
         /// runs at all, regardless of these settings - existing scenes stay byte-stable. See

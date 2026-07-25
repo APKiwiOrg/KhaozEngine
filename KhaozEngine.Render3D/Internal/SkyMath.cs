@@ -154,6 +154,59 @@ namespace KhaozEngine.Render3D.Internal
             return col;
         }
 
+        /// <summary>
+        /// The same sky, evaluated along a world-space DIRECTION instead of a screen pixel. Mirrored by the GLSL
+        /// <c>skyAlongDirection</c> in <c>WaterFrag</c>, which uses it for the water surface's reflection: a water
+        /// fragment needs to know what the sky looks like where its reflected view ray points, and that has no
+        /// screen position (it is usually a direction that is nowhere on screen at all).
+        /// <para>
+        /// Same gradient, same disc-plus-halo shape and the same <see cref="SkySettings"/> numbers as
+        /// <see cref="Shade"/>, with two necessary reinterpretations. The gradient runs off the direction's
+        /// ELEVATION (<c>y</c> 0 = horizon, 1 = zenith) rather than off screen height. And the sun distance is the
+        /// CHORD between the two unit directions rather than a screen-space NDC distance, so
+        /// <paramref name="sunRadius"/> and <paramref name="haloFalloff"/> read as angular sizes here (chord and
+        /// angle agree to within a percent over the range a sun disc covers). Keeping one set of knobs for both
+        /// evaluations is the point: the sky the water reflects and the sky the camera sees stay the same sky.
+        /// </para>
+        /// </summary>
+        /// <param name="direction">Unit direction to sample (normally the reflected view ray).</param>
+        /// <param name="sunDirection">Unit direction TO the sun (see <see cref="SunDirectionFromLight"/>).</param>
+        /// <param name="horizon">Horizon gradient colour RGB.</param>
+        /// <param name="zenith">Zenith gradient colour RGB.</param>
+        /// <param name="sunColor">Sun disc + halo colour RGB.</param>
+        /// <param name="sunEnabled">Whether the sun disc + halo contribute at all.</param>
+        /// <param name="sunRadius">Angular radius of the solid disc (chord units).</param>
+        /// <param name="haloStrength">Peak intensity of the halo around the disc.</param>
+        /// <param name="haloFalloff">Angular width of the halo falloff (chord units).</param>
+        /// <param name="sunStrength">How much of the disc + halo this evaluation carries, 0..1. The water
+        /// reflection scales it down because the sharp part of the reflected sun is already supplied by its own
+        /// specular lobe, and carrying both at full strength double-counts the sun.</param>
+        public static Vector3 ShadeDirection(Vector3 direction, Vector3 sunDirection,
+            Vector3 horizon, Vector3 zenith, Vector3 sunColor,
+            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunStrength)
+        {
+            float up = Math.Clamp(direction.Y, 0f, 1f);
+            float t = Smoothstep(0f, 1f, up);
+            Vector3 col = Vector3.Lerp(horizon, zenith, t);
+
+            float strength = Math.Clamp(sunStrength, 0f, 1f);
+            if (sunEnabled && strength > 0f)
+            {
+                float d = (direction - sunDirection).Length();
+                float feather = MathF.Max(haloFalloff * 0.25f, 1e-4f);
+                float disc = 1f - Smoothstep(sunRadius, sunRadius + feather, d);
+                float halo = 0f;
+                if (haloStrength > 0f && haloFalloff > 0f)
+                {
+                    float beyond = MathF.Max(0f, d - sunRadius);
+                    halo = haloStrength * MathF.Exp(-beyond / haloFalloff);
+                }
+                float sun = Math.Clamp((disc + halo) * strength, 0f, 1f);
+                col = Vector3.Lerp(col, sunColor, sun);
+            }
+            return col;
+        }
+
         /// <summary>GLSL-identical smoothstep (Hermite) so the mirrored shader matches this host math. Returns 0 for
         /// x&lt;=edge0, 1 for x&gt;=edge1, a smooth cubic between.</summary>
         static float Smoothstep(float edge0, float edge1, float x)

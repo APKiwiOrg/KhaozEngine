@@ -1297,10 +1297,10 @@ namespace KhaozEngine.Render3D
         internal ShadowResolution ResolvedShadows() => Post.Quality.Shadows.ResolveFor(_gd.Capabilities);
 
         /// <summary>
-        /// Queue one animated water surface for this frame: a flat plane at <paramref name="plane"/>'s world height
-        /// and XZ footprint, drawn after the sky + ground decals with a domain-warped non-tiling wave normal field,
-        /// a distance detail fade, a depth-driven shallow/deep tint blended toward the horizon by fresnel, a
-        /// key-light sun glint, and a shore fade (see <see cref="WaterSettings"/> on <see cref="Post"/> for knobs). Opt-in: no <see cref="DrawWater(in WaterPlane)"/> call this frame means the water pass
+        /// Queue one stylized water surface for this frame, over <paramref name="plane"/>'s still-water height and XZ footprint,
+        /// drawn after the sky + ground decals: a Gerstner swell displacing the surface grid, a domain-warped non-tiling ripple
+        /// normal field with a distance detail fade, per-channel depth absorption blended toward the analytically reflected sky
+        /// by fresnel, a GGX sun glint, whitecap + shoreline foam, and a shore fade (knobs: <see cref="WaterSettings"/> on <see cref="Post"/>). Opt-in: no <see cref="DrawWater(in WaterPlane)"/> call this frame means the water pass
         /// (<see cref="Rendering.WaterRenderer"/>) never runs, so existing scenes stay byte-stable. Presentation
         /// only; cleared in <see cref="Begin"/>. Call once per frame per distinct body of water (a game with several
         /// separate lakes/ponds queues one <see cref="WaterPlane"/> each).
@@ -2248,7 +2248,7 @@ namespace KhaozEngine.Render3D
             if (_waterPlanes.Count > 0)
             {
                 _water.Draw(cl, _res, CollectionsMarshal.AsSpan(_waterPlanes), ActiveCamera.ViewProjection,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, EffectTimeSeconds);
+                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds);
                 _frameStats.DrawCalls++;
             }
 

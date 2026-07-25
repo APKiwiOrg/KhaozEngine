@@ -556,19 +556,11 @@ namespace KhaozEngine.Tests.Gpu
                     // Key light angled so the sun sits up-and-toward-camera - lands a specular glint on the water
                     // AND agrees with the sky's sun disc (both derive from the same LightDirection).
                     scene.Post.LightDirection = new Vector3(-0.45f, -0.75f, -0.4f);
-                    scene.Post.Water.DeepColor = new Color(0.04f, 0.16f, 0.26f, 0.92f);
-                    scene.Post.Water.HorizonColor = new Color(0.60f, 0.70f, 0.80f, 0.75f);
-                    scene.Post.Water.WaveScale = 0.9f;         // tight enough that several ripple crests fit across the plane
-                    scene.Post.Water.WaveSpeed = 0.4f;
-                    scene.Post.Water.NormalStrength = 0.8f;    // strong enough that the ripple shading reads clearly at 480x320
-                    scene.Post.Water.ShoreFadeDistance = 0.7f;
-                    scene.Post.Water.GlintStrength = 0.8f;
-                    scene.Post.Water.GlintExponent = 100f;
-                    scene.Post.Water.ShallowColor = new Color(0.20f, 0.46f, 0.44f, 0.78f);
-                    scene.Post.Water.ShallowDepth = 0.45f;       // scene-sized: shelf (~0.4) shallow, lakebed (~0.9) deep
-                    scene.Post.Water.WaveWarpStrength = 0.75f;   // the three new defaults, pinned explicit
-                    scene.Post.Water.DetailFadeDistance = 40f;   // camera ~9 units out: detail near full, fade live
-                    scene.Post.Water.DistantDetailScale = 0.18f;
+                    // Every water knob for this scene, pinned explicit, in WaterSceneTuning (the palette, the
+                    // pre-14.23.0 knobs, and the ocean-to-lake rescale the 14.23.0 swell/absorption/foam defaults
+                    // need at this doll-house scale). It lives there rather than here because this file is at its
+                    // size ratchet and a scene description is not test logic.
+                    WaterSceneTuning.ApplyGoldenLake(scene.Post.Water);
                     scene.Camera.Frame(new Vector3(0.1f, 0.3f, 0.2f), new Vector3(6f, 5f, 6f));
                     scene.EffectTimeSeconds = 0f;   // static frame => deterministic golden (no wave scroll)
                 },

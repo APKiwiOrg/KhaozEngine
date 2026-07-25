@@ -5,6 +5,124 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.23.0
+
+Feature: the water surface becomes an ocean. A Gerstner swell displaces the surface grid so waves have shape
+and a silhouette, the fresnel reflection samples the analytic sky along the reflected ray instead of one flat
+colour, the sun glint becomes a GGX lobe that widens where the surface is under-sampled, the body colour is
+graded by per-channel Beer-Lambert absorption instead of a two-stop blend, and procedural whitecap and
+shoreline foam ship. Direction chosen with the user: stylized-AAA (the Wind Waker / Sea of Thieves read),
+not photoreal, because the consumer pulling on it is a toon-styled island world. Follows the 14.22.0
+de-tiling work, which fixed the repeat but left the surface reading flat and two-tone. Closes #295, #292.
+
+Every addition is independently reachable at zero, so the 14.22.0 surface stays one knob away for an A/B
+(see "Reaching the 14.22.0 look" at the end of this entry).
+
+- **Gerstner swell (`WaterSettings.SwellAmplitude` default `0.45`, `SwellWavelength` `42`,
+  `SwellDirectionDegrees` `30`, `SwellSpreadDegrees` `55`, `SwellSteepness` `0.6`, `SwellSpeed` `0.6`,
+  `SwellSeed` `0`, `SwellComponents` `4`).** Up to six trochoidal components displace the surface grid
+  HORIZONTALLY and vertically in the vertex stage, so crests pinch and troughs flatten and the surface has a
+  real silhouette rather than shading painted on a flat sheet. `SwellAmplitude = 0` leaves the plane flat.
+  - **Wind, not a wave table.** The whole stack is generated from those scalars, on the CPU (the new internal
+    `GerstnerWaves`, headless-tested) and identically in the shader from the same seven UBO floats, so the
+    swell costs two vec4s regardless of component count and a consumer tunes a sea rather than authoring
+    waves. Wavelengths ladder down geometrically by a non-halving ratio (no component is a harmonic of
+    another, so the sum has no short repeat), amplitudes are proportional to wavelength (every component
+    carries the same steepness), and angular speeds come from the deep-water dispersion relation
+    `omega = sqrt(g*k)`, so the long rollers genuinely overtake the short chop.
+  - **`SwellSteepness` is normalized per component** as `Q_i = steepness / (k_i * A_i * n)`, which makes
+    `sum(Q_i * k_i * A_i)` equal the knob exactly. That is the no-self-intersection condition, so 1 is a hard
+    ceiling rather than a guess, and it is what lets the foam threshold below be steepness-independent.
+  - **`SwellSeed`** offsets the component phases only, leaving direction, ladder and shape untouched, so two
+    water bodies can share a wind without sharing crests.
+- **Surface grid: 17x17 -> 97x97, spread non-uniformly (`WaterSettings.GridFocusBias`, default `1.8`).** The
+  grid was 17x17 while the surface was flat and every wave was a per-pixel normal; once the swell displaces
+  real geometry the grid IS the wave, and 17x17 across a 1200-unit plane puts vertices 75 units apart, which
+  cannot carry a 42-unit wavelength at all. The budget is now 9,409 vertices / 18,432 triangles per plane
+  (still one draw, a 113 KB vertex upload), and `GridFocusBias` is a power warp that concentrates them around
+  the camera: on a 600-unit half-extent plane cells run about half a unit at the focus, 10 units at 90 out,
+  22 at the far edge. `GridFocusBias = 1` is the uniform grid, bit-for-bit. The trade-off is a
+  camera-relative mesh, so vertices slide through the wave field as the camera moves - continuous, never
+  popping, and invisible in the dense near field. Turn it down on a small water body the camera sees all of.
+- **Analytic sky reflection (`WaterSettings.SkyReflectionStrength` default `1`,
+  `SkyReflectionSunStrength` default `0.35`).** The fresnel term now blends the body colour toward the sky
+  evaluated ALONG THE REFLECTED VIEW RAY rather than toward one flat `HorizonColor`. This is the fix for the
+  two-tone banding: a single horizon colour makes the whole surface ramp between exactly two colours and the
+  ramp shows as a hard band, while a reflected sky gives every fragment the colour of the sky it is actually
+  pointing at.
+  - **New `SkyMath.ShadeDirection`** (internal), mirrored by the GLSL `skyAlongDirection`: the same gradient
+    and the same disc-plus-halo shape as the background sky pass, evaluated per world DIRECTION instead of
+    per screen pixel, because a reflected ray has no screen position. The gradient runs off the direction's
+    elevation and the sun distance is the chord between unit directions, so `SkySettings.SunRadius` and
+    `HaloFalloff` read as angular sizes there. One set of knobs for both evaluations, so the sky the water
+    reflects and the sky the camera sees stay the same sky.
+  - The palette comes from `PixelPostProcessSettings.Sky` whether or not the sky PASS is enabled (a scene can
+    want reflective water over a custom background); only `SunEnabled` is consulted, since a sky with no sun
+    should not reflect one. `SkyReflectionSunStrength` defaults below 1 because the sharp part of the
+    reflected sun is already supplied by the glint lobe below, and carrying both at full strength
+    double-counts the sun and blows out the sun path.
+- **GGX sun glint (`WaterSettings.GlintRoughness` default `0.22`, `GlintDistantRoughness` default `0.5`).**
+  The Blinn-Phong lobe is replaced by a peak-normalized GGX/Trowbridge-Reitz one. Peak normalization is
+  deliberate: it drops the `1/(pi*alpha^2)` factor that would send a tight lobe into the thousands, and it
+  keeps `GlintStrength` meaning the same brightness in both paths so they are directly A/B-able. GGX's long
+  tail is what makes the sun path read as thousands of individual facets fading into haze, which a Phong
+  lobe cannot do. `GlintRoughness = 0` or less selects the legacy lobe on `GlintExponent`.
+  - **Roughness widening replaces normal fading as the specular anti-aliasing mechanism, and it is
+    footprint-aware.** The lobe widens toward `GlintDistantRoughness` by whichever measure is worse: camera
+    distance over `DetailFadeDistance`, or the pixel's world-space FOOTPRINT (`fwidth`) against the ripple
+    wavelength. The footprint measure is the one that is actually correct - what aliases is a wave whose
+    wavelength has fallen below a pixel, and distance is a proxy that is wrong under a wide field of view,
+    wrong under the orthographic iso camera (where footprint barely changes with distance), and wrong at any
+    resolution other than the one the distance default was tuned at. Widening the LOBE keeps the sub-pixel
+    detail as variance instead of throwing it away, so the far field settles into a soft sheen rather than
+    either a crawling sparkle or a dead mirror. This is #292, which asked for exactly these two techniques.
+- **Depth-graded body colour (`WaterSettings.AbsorptionPerMetre`, default `(0.55, 0.24, 0.14)`).** The
+  two-stop `ShallowDepth` smoothstep is replaced by per-channel Beer-Lambert transmittance
+  `exp(-coefficient * depth)` over the reconstructed water depth, blending `ShallowColor` down into
+  `DeepColor`. Because red is absorbed several times faster than blue, the ramp bends through green-teal
+  instead of running straight down the line between two colours, and that curve is what keeps the midtones
+  clean rather than muddy - the specific failure a scalar lerp between two colours has. An ALL-ZERO
+  coefficient (the `Color` default) restores the 14.22.0 two-stop blend over `ShallowDepth`.
+  - `WaterSettings.ShallowColor`'s default moves to a cleaner turquoise `(0.24, 0.62, 0.62, 0.78)`, since
+    per-channel absorption keeps the midtones graphic and the shallow end no longer has to be a modest lift
+    off the deep colour to avoid a wash. The old default is `(0.14, 0.34, 0.38, 0.80)`.
+- **Foam (`WaterSettings.FoamColor`, `FoamStrength` default `0.85`, `FoamCrestCoverage` default `0.65`,
+  `FoamShoreWidth` default `1.6`, `FoamPatternScale` default `2.2`).** Two procedural sources, no texture
+  assets. `FoamStrength = 0` disables both and skips the branch.
+  - **Whitecaps** come from the determinant of the swell's horizontal JACOBIAN - how much a patch of still
+    water is squeezed by the trochoidal pinch - so foam appears where a wave is genuinely breaking rather
+    than wherever the surface happens to be high. It is normalized by `SwellSteepness` (see the Q
+    normalization above), so `FoamCrestCoverage` means the same fraction of the sea at any steepness instead
+    of silently changing when a shape knob moves. At the defaults that is strong foam on about 5% of the
+    surface and a trace on about 8%; a headless test pins that band, because the golden's anti-degeneracy
+    guard would sail straight past a foam-free ocean.
+  - **The shoreline band** comes from the same reconstructed depth the shore fade uses. Because that depth is
+    measured under the DISPLACED surface, a passing crest deepens the water beneath it and the foam line runs
+    up and down the beach with the swell at no extra cost.
+  - Both are multiplied by a scrolling three-layer pattern at mutually irrational frequencies on
+    non-axis-aligned headings (same construction as the ripple field, same reason: a product of axis-aligned
+    sines would paint a visible grid of foam blobs), thresholded tightly into clean graphic lobes rather than
+    the soft photoreal scum a gentle threshold gives. It drifts at `WaveSpeed`, so foam moves with the water
+    rather than on a clock of its own.
+- **Water UBO grows from 272 to 432 bytes** (2 mat4 + 19 vec4) for the sky palette, reflection/glint,
+  swell, absorption and foam lanes. The bound range stays `SlotBytes` = 512, still a multiple of 256: that
+  is the D3D11 `NumConstants` trap 14.22.0 hit, where binding the raw 272-byte payload left the whole
+  cbuffer unbound and D3D11 rendered no water at all while Metal and Vulkan were perfect. `UboLayoutTests`
+  pins the invariant and the full member list on both stages.
+- **`WaterVert`/`WaterFrag` move to their own `ShaderSources.Water.cs` partial**, out of
+  `ShaderSources.Sky.cs`, which is the established `ShaderSources.<Domain>.cs` split. The UBO block is now a
+  shared GLSL constant included by both stages, so the two declarations cannot drift.
+- **Not in scope, recorded so it is not assumed:** refraction (needs a colour copy the water pass can read,
+  and it deliberately runs before the colour resolve), screen-space reflections and environment probes
+  (#54 records these as not planned at the current bar; the analytic sky reflection is the substitute),
+  caustics on the seabed, and the submerged/underwater view. Per-body water volumes stay #275.
+- **Reaching the 14.22.0 look**, knob by knob and independently: `SwellAmplitude = 0` (flat plane, and no
+  fold for whitecaps to read), `GridFocusBias = 1` (the uniform grid), `SkyReflectionStrength = 0` (the flat
+  `HorizonColor` again), `GlintRoughness = 0` (the Blinn-Phong lobe on `GlintExponent`),
+  `AbsorptionPerMetre = default` i.e. all-zero (the two-stop `ShallowDepth` blend), `FoamStrength = 0`, and
+  `ShallowColor = new(0.14f, 0.34f, 0.38f, 0.80f)` for the old tint. `WaterSettings`' own remarks carry the
+  same list, and a headless test asserts each switch really is the off position.
+
 ## 14.22.0
 
 Feature: the water surface stops tiling. Its two axis-aligned sine octaves are replaced by a domain-warped

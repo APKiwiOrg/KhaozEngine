@@ -4,12 +4,13 @@ using System.Numerics;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// Pure, GPU-free mirror of the water FRAGMENT shader's domain-warped procedural-normal, distance detail fade,
+    /// Pure, GPU-free mirror of the water FRAGMENT shader's domain warp, distance detail fade,
     /// depth grading (both the Beer-Lambert and the legacy two-stop path), fresnel/reflection tint, GGX and legacy
     /// specular glint, foam, and shore-fade math, plus the CPU-side surface-grid layout (<c>WaterFrag</c> in
     /// <see cref="ShaderSources"/> MUST mirror this exactly, like
     /// <see cref="SkyMath"/> mirrors <c>SkyFrag</c> and <see cref="SurfaceShading"/> mirrors <c>ModelFrag</c>).
-    /// The VERTEX shader's Gerstner swell is the sibling mirror <see cref="GerstnerWaves"/>.
+    /// The VERTEX shader's Gerstner swell is the sibling mirror <see cref="GerstnerWaves"/>, and the ripple slope
+    /// spectrum is <see cref="RippleSpectrum"/>.
     /// Documents the intended math and makes it headless-unit-testable. No GPU state, no allocations.
     /// </summary>
     internal static class WaterMath
@@ -61,8 +62,8 @@ namespace KhaozEngine.Render3D.Internal
         /// <c>domainWarp</c> exactly. <paramref name="warpStrength"/> is in multiples of
         /// <paramref name="waveScale"/>; 0 or less returns the input position unchanged.
         /// <para>
-        /// The warp's Jacobian is deliberately NOT folded into <see cref="WaveNormal"/>'s analytic slope: the warp
-        /// is low-frequency next to the layers it feeds, so treating it as a slowly varying reparametrization costs
+        /// The warp's Jacobian is deliberately NOT folded into the ripple spectrum's analytic slope: the warp
+        /// is low-frequency next to the components it feeds, so treating it as a slowly varying reparametrization costs
         /// a few percent of gradient accuracy on a normal-only stylized surface and saves four more transcendentals
         /// per pixel. The result is still a smooth, well-formed, unit-length normal field.
         /// </para>
@@ -99,47 +100,6 @@ namespace KhaozEngine.Render3D.Internal
             float s = Smoothstep(0f, fadeDistance, cameraDistance);
             float far = Math.Clamp(distantScale, 0f, 1f);
             return (1f - s) + far * s;   // mix(1, far, s)
-        }
-
-        /// <summary>
-        /// Three-layer scrolling perturbation of a flat-up normal (0,1,0), in world XZ, time-driven, over a
-        /// domain-warped sample position. Mirrors the GLSL <c>waterNormal</c> function exactly (same op order, same
-        /// constants) so C# and the shader agree bit-for-bit modulo float rounding. Layer 1 is the broad base swell
-        /// and always runs at full amplitude; layers 2 and 3 are the fine detail and are scaled by
-        /// <paramref name="detailScale"/> (see <see cref="DetailScale"/>).
-        /// </summary>
-        /// <param name="worldX">World-space X of the shaded point.</param>
-        /// <param name="worldZ">World-space Z of the shaded point.</param>
-        /// <param name="timeSeconds">Animation clock (frozen for a deterministic golden).</param>
-        /// <param name="waveScale">World-space wavelength of the base layer (larger = broader swell).</param>
-        /// <param name="waveSpeed">Scroll speed.</param>
-        /// <param name="normalStrength">Perturbation amplitude (0 = flat mirror normal).</param>
-        /// <param name="warpStrength">Domain-warp displacement in multiples of <paramref name="waveScale"/>.</param>
-        /// <param name="detailScale">Amplitude multiplier for the two fine layers (1 = full, 0 = base swell only).</param>
-        public static Vector3 WaveNormal(float worldX, float worldZ, float timeSeconds,
-            float waveScale, float waveSpeed, float normalStrength, float warpStrength, float detailScale)
-        {
-            float scale = MathF.Max(waveScale, 1e-4f);
-            float invScale = 1f / scale;
-            float t = timeSeconds * waveSpeed;
-
-            Vector2 p = DomainWarp(worldX, worldZ, t, waveScale, warpStrength);
-
-            // Each layer is a plane wave h_i = A_i * sin(k_i * (d_i . p) + s_i * t), so its analytic slope is
-            // A_i * k_i * d_i * cos(same phase). cos() is the derivative of sin(); one cos per layer is the whole
-            // per-pixel cost. The heights themselves are never sampled (normal-only surface).
-            float k1 = invScale * F1, k2 = invScale * F2, k3 = invScale * F3;
-            float g1 = A1 * k1 * MathF.Cos((D1X * p.X + D1Z * p.Y) * k1 + t * S1);
-            float g2 = A2 * k2 * MathF.Cos((D2X * p.X + D2Z * p.Y) * k2 + t * S2) * detailScale;
-            float g3 = A3 * k3 * MathF.Cos((D3X * p.X + D3Z * p.Y) * k3 + t * S3) * detailScale;
-
-            float dHdx = g1 * D1X + g2 * D2X + g3 * D3X;
-            float dHdz = g1 * D1Z + g2 * D2Z + g3 * D3Z;
-
-            // Tilt the flat-up normal by that slope, scaled by normalStrength, then renormalize.
-            Vector3 n = new(-dHdx * normalStrength, 1f, -dHdz * normalStrength);
-            float len = n.Length();
-            return len > 1e-8f ? n / len : Vector3.UnitY;
         }
 
         /// <summary>Schlick-style fresnel term: 0 at normal incidence (looking straight down, deep tint dominates),
@@ -342,6 +302,19 @@ namespace KhaozEngine.Render3D.Internal
                 aliasT = Math.Clamp(pixelFootprint / (rippleWavelength * 0.5f), 0f, 1f);
             float t = MathF.Max(distanceT, aliasT);
             return nearRoughness + (far - nearRoughness) * t;
+        }
+
+        /// <summary>
+        /// Tilt a flat-up normal by a slope, scaled by <paramref name="normalStrength"/>, then renormalize. Split
+        /// out of the retired three-cosine <c>WaveNormal</c> so the ripple spectrum (see
+        /// <see cref="RippleSpectrum"/>, which produces a slope and a variance alongside it) can share the same
+        /// tail and stay bit-comparable with the field it replaced.
+        /// </summary>
+        public static Vector3 SlopeToNormal(float dhdx, float dhdz, float normalStrength)
+        {
+            Vector3 n = new(-dhdx * normalStrength, 1f, -dhdz * normalStrength);
+            float len = n.Length();
+            return len > 1e-8f ? n / len : Vector3.UnitY;
         }
 
         /// <summary>Combine the swell's smooth analytic normal with the ripple field's perturbation of a flat-up

@@ -178,10 +178,9 @@ namespace KhaozEngine.Render3D
 
         // ---- Ripple detail (fragment normal field) -----------------------------------------------------------
 
-        /// <summary>World-space size of one ripple layer's tiling (larger = broader, slower-looking chop). Sets the
-        /// wavelength of the broad base ripple layer; the two finer layers derive theirs from it via fixed
-        /// irrational multipliers. These layers ride ON TOP of the Gerstner swell as small-scale detail. Default
-        /// <c>2.5</c>.</summary>
+        /// <summary>World-space size of the LONGEST ripple component (larger = broader, slower-looking chop). The
+        /// rest of the spectrum ladders down from it by <see cref="RippleLacunarity"/>. These ride ON TOP of the
+        /// Gerstner swell as small-scale detail. Default <c>2.5</c>.</summary>
         public float WaveScale = 2.5f;
 
         /// <summary>How fast the scrolling ripple layers animate (world units / second-ish; drives the
@@ -190,7 +189,9 @@ namespace KhaozEngine.Render3D
         public float WaveSpeed = 0.35f;
 
         /// <summary>Strength of the procedural ripple normal perturbation (0 = the swell's own smooth normal with
-        /// no chop on top, larger = choppier-looking ripples). Default <c>0.35</c>.</summary>
+        /// no chop on top, larger = choppier-looking ripples). The spectrum is normalized to a fixed slope
+        /// variance, so this keeps the same meaning whatever <see cref="RippleComponents"/>,
+        /// <see cref="RippleLacunarity"/> and <see cref="RippleGain"/> are set to. Default <c>0.35</c>.</summary>
         public float NormalStrength = 0.35f;
 
         /// <summary>How far a slow, large-scale domain warp displaces the ripple sample position before the three
@@ -200,8 +201,61 @@ namespace KhaozEngine.Render3D
         /// <c>0</c> disables the warp. Default <c>0.75</c>.</summary>
         public float WaveWarpStrength = 0.75f;
 
-        /// <summary>Camera distance (world units) over which the two FINE ripple layers fade out toward
-        /// <see cref="DistantDetailScale"/>, leaving only the base ripple and the swell in the far field. It is
+        /// <summary>
+        /// How many cosine components make up the ripple slope spectrum, clamped to 1..12. This is the knob that
+        /// decides whether the surface reads as water or as a ruled pattern: three coherent cosines (what shipped
+        /// through 14.24.0) have a slope that is constant along families of parallel lines, so they draw ribbons,
+        /// and at distance those ribbons beat against the pixel grid into moire. Ten spreads the same slope energy
+        /// over roughly five octaves and every heading, which is what a real wind sea does.
+        /// <para>
+        /// Cost is one cosine per component per pixel. Amplitudes are renormalized whenever this changes, so the
+        /// surface keeps the same apparent chop at any count and this trades cost against richness only. Default
+        /// <c>10</c>.
+        /// </para>
+        /// </summary>
+        public int RippleComponents = 10;
+
+        /// <summary>Wave-number ratio between successive ripple components: the spectrum's bandwidth per component.
+        /// Deliberately not 2, which would make every component an exact octave harmonic of the one before it and
+        /// reintroduce a shared repeat. Default <c>1.48</c>, giving about five octaves at the default component
+        /// count.</summary>
+        public float RippleLacunarity = 1.48f;
+
+        /// <summary>Height-amplitude ratio between successive ripple components. Slope amplitude therefore scales
+        /// as <c>RippleGain * RippleLacunarity</c> per step, so a product near 1 spreads slope energy evenly across
+        /// the octaves (roughly a real wind-sea slope spectrum), below 1 biases toward the long ripples, above 1
+        /// toward the fine ones, which is where sun glitter comes from. Default <c>0.66</c>, a hair under even.
+        /// </summary>
+        public float RippleGain = 0.66f;
+
+        /// <summary>Rotates the ripple spectrum's heading fan and offsets its phases. Decorrelates two water bodies
+        /// that share a look. Default <c>0</c>.</summary>
+        public float RippleSeed = 0f;
+
+        /// <summary>
+        /// Pixel footprints per wavelength below which a ripple component (and, on the same measure, the swell's
+        /// shading contrast) fades out of the normal. The Nyquist floor is 2; the default sits above it so a
+        /// component fades BEFORE it starts aliasing rather than during.
+        /// <para>
+        /// This is the physics half of the anti-aliasing and it is why distance banding cannot come back through a
+        /// knob: whatever the other settings say, a wave the pixel cannot resolve stops contributing a normal.
+        /// What it contributes instead is lobe width, via <see cref="VarianceToRoughness"/>.
+        /// <c>0</c> disables the band-limit entirely and restores the 14.24.0 behaviour of oscillating the normal
+        /// at any frequency, moire included. Default <c>4</c>.
+        /// </para>
+        /// </summary>
+        public float FootprintSamples = 4f;
+
+        /// <summary>How much of the slope variance the footprint band-limit removes is transferred into the GGX
+        /// glint lobe (Toksvig-style), so the surface conserves energy as detail is band-limited away rather than
+        /// turning to glass at range. <c>0</c> disables the transfer, leaving distant water smooth and
+        /// under-lit. Only the GGX path can receive it, since the legacy Blinn-Phong lobe has no roughness.
+        /// Default <c>1</c>.</summary>
+        public float VarianceToRoughness = 1f;
+
+        /// <summary>Camera distance (world units) over which every ripple component ABOVE the longest fades
+        /// toward <see cref="DistantDetailScale"/>. This is now an ARTISTIC extra layered on top of the footprint
+        /// band-limit (<see cref="FootprintSamples"/>), which handles the physics on its own; it is
         /// also the distance over which <see cref="GlintRoughness"/> widens toward
         /// <see cref="GlintDistantRoughness"/>. <c>0</c> or less disables both fades, so the fine layers run at
         /// full strength to the horizon and the glint keeps its near-field roughness. Default <c>60</c>.</summary>

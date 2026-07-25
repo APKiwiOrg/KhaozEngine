@@ -35,6 +35,8 @@ namespace KhaozEngine.Render3D.Internal
     vec4 Absorption;    // rgb = per-metre absorption coefficients (all-zero = legacy two-stop blend), w unused
     vec4 FoamColor;     // rgba
     vec4 FoamParams;    // x=strength, y=crestCoverage, z=shoreWidth, w=patternScale
+    vec4 RippleSpectrum;   // x=componentCount, y=lacunarity, z=gain, w=seed
+    vec4 FootprintParams;  // x=samplesPerWavelength (0 = band-limit off), y=varianceToRoughness, z/w reserved
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -78,7 +80,7 @@ const float KE_GRAVITY = 9.81;
 const float KE_LAMBDA_DECAY = 0.685;
 const float KE_TWO_PI = 6.28318531;
 const float KE_SEED_STRIDE = 1.61803399;
-const int   KE_MAX_COMPONENTS = 6;
+const int   KE_MAX_COMPONENTS = 8;
 
 void main() {
     float amplitude = SwellParams.x, wavelength = SwellParams.y;
@@ -166,6 +168,12 @@ layout(location=0) out vec4 oColor;
 
 const float KE_WHITECAP_SOFTNESS = 0.18;   // mirrors WaterMath.WhitecapSoftness
 const float KE_TWO_PI = 6.28318531;
+const int   KE_MAX_RIPPLES = 12;           // mirrors RippleSpectrum.MaxComponents
+const int   KE_MAX_SWELL = 8;              // mirrors GerstnerWaves.MaxComponents
+const float KE_GOLDEN_ANGLE = 2.39996323;  // mirrors RippleSpectrum.GoldenAngle
+const float KE_PHASE_STRIDE = 4.74311;     // mirrors RippleSpectrum.PhaseStride
+const float KE_LEGACY_SLOPE_VARIANCE = 2.72317;   // mirrors RippleSpectrum.LegacySlopeVariance
+const float KE_LAMBDA_DECAY = 0.685;       // mirrors GerstnerWaves.LambdaDecay
 
 // Mirrors WaterMath.DomainWarp exactly: a slow, large-scale displacement of the sample position applied BEFORE the
 // ripple layers, so their pattern is bent over a distance several times their own wavelength. Its Jacobian is
@@ -188,28 +196,69 @@ float detailScaleFor(float camDist, float fadeDistance, float distantScale) {
     return mix(1.0, clamp(distantScale, 0.0, 1.0), s);
 }
 
-// Mirrors WaterMath.WaveNormal exactly: three non-axis-aligned scrolling ripple layers at mutually irrational
-// frequencies over the warped position, analytic slope -> tilted flat-up normal. Layers 2 and 3 (the fine detail)
-// are scaled by `detail`; layer 1 (the broad chop) always runs full. This rides ON TOP of the Gerstner swell,
-// which supplies the shape; these supply the surface texture.
-vec3 waterNormal(vec2 xz, float time, float waveScale, float waveSpeed, float normalStrength,
-                 float warpStrength, float detail) {
+// Mirrors RippleSpectrum.Resolve exactly: how much of a component of this wavelength survives at this pixel.
+// 1 while the wavelength is comfortably wider than `samples` footprints, smoothly to 0 as it drops below. This is
+// the half of band-limiting 14.24.0 left out: that release widened the specular LOBE by footprint, but left the
+// normal FIELD oscillating at frequencies the pixel cannot resolve, and that is precisely what moire is.
+float rippleResolve(float wavelength, float footprint, float samples) {
+    if (footprint <= 0.0 || samples <= 0.0) return 1.0;
+    float need = footprint * samples;
+    if (need <= 1e-8) return 1.0;
+    return smoothstep(0.0, 1.0, clamp(wavelength / need, 0.0, 1.0));
+}
+
+// Mirrors RippleSpectrum.Build + Slope exactly: generate the ripple spectrum from four scalars and evaluate its
+// band-limited slope. Returns (dH/dx, dH/dz, removed slope variance).
+//
+// This replaced three fixed cosines. Three coherent cosines do not make a surface, they make a RULED pattern:
+// their summed slope is constant along a family of parallel lines, the domain warp only bends those lines rather
+// than breaking them, and at distance they beat against the pixel grid into moire. Headings here step by the
+// golden angle so no two are parallel and no subset lines up at any count, wave numbers climb geometrically over
+// several octaves, and amplitudes are normalized so the whole set carries the same slope variance the old field
+// did - which is what keeps NormalStrength meaning what it meant.
+vec3 waterSlope(vec2 xz, float time, float waveScale, float waveSpeed, float warpStrength, float detail,
+                float footprint, float samples) {
     float scale = max(waveScale, 1e-4);
-    float invScale = 1.0 / scale;
+    float k0 = 1.0 / scale;
     float t = time * waveSpeed;
     vec2 p = domainWarp(xz, t, waveScale, warpStrength);
 
-    vec2 d1 = vec2(0.93969262, 0.34202014);    // 20 deg
-    vec2 d2 = vec2(-0.42261826, 0.90630779);   // 115 deg
-    vec2 d3 = vec2(0.62932039, -0.77714596);   // -51 deg
-    float k1 = invScale * 1.0, k2 = invScale * 1.61803399, k3 = invScale * 2.64575131;
-    float g1 = 1.0 * k1 * cos(dot(d1, p) * k1 + t * 1.0);
-    float g2 = 0.62 * k2 * cos(dot(d2, p) * k2 + t * -1.37) * detail;
-    float g3 = 0.32 * k3 * cos(dot(d3, p) * k3 + t * 0.83) * detail;
+    int n = clamp(int(RippleSpectrum.x + 0.5), 1, KE_MAX_RIPPLES);
+    float lac = max(RippleSpectrum.y, 1.01);
+    float g = clamp(RippleSpectrum.z, 0.05, 1.5);
+    float seed = RippleSpectrum.w;
 
-    float dHdx = g1 * d1.x + g2 * d2.x + g3 * d3.x;
-    float dHdz = g1 * d1.y + g2 * d2.y + g3 * d3.y;
-    vec3 n = vec3(-dHdx * normalStrength, 1.0, -dHdz * normalStrength);
+    // Closed-form geometric sum, matched literally by the CPU mirror so the two round alike.
+    float r = g * lac;
+    float rr = r * r;
+    float sumSq = abs(1.0 - rr) < 1e-6 ? float(n) : (1.0 - pow(rr, float(n))) / (1.0 - rr);
+    float norm = sqrt(KE_LEGACY_SLOPE_VARIANCE / max(sumSq, 1e-6));
+
+    float dhdx = 0.0, dhdz = 0.0, lost = 0.0;
+    for (int i = 0; i < KE_MAX_RIPPLES; i++) {
+        if (i >= n) break;
+        float fi = float(i);
+        float angle = seed + fi * KE_GOLDEN_ANGLE;
+        float k = k0 * pow(lac, fi);
+        float slopeAmp = norm * k0 * pow(r, fi);
+        float scroll = sqrt(pow(lac, fi));             // omega ~ sqrt(k), normalized to 1 at i = 0
+        float phase = fi * KE_PHASE_STRIDE + seed * (fi + 1.0) * 1.61803399;
+        vec2 d = vec2(cos(angle), sin(angle));
+
+        float keep = rippleResolve(KE_TWO_PI / max(k, 1e-8), footprint, samples);
+        if (i > 0) keep *= detail;                     // DetailFadeDistance stays an artistic extra, on top
+
+        float gg = slopeAmp * keep * cos(dot(d, p) * k + t * scroll + phase);
+        dhdx += gg * d.x;
+        dhdz += gg * d.y;
+        lost += slopeAmp * slopeAmp * (1.0 - keep * keep) * 0.5;   // variance of a cosine is A^2/2
+    }
+    return vec3(dhdx, dhdz, lost);
+}
+
+// Mirrors WaterMath.SlopeToNormal exactly.
+vec3 slopeToNormal(float dhdx, float dhdz, float normalStrength) {
+    vec3 n = vec3(-dhdx * normalStrength, 1.0, -dhdz * normalStrength);
     float len = length(n);
     return len > 1e-8 ? n / len : vec3(0.0, 1.0, 0.0);
 }
@@ -284,13 +333,45 @@ void main() {
     vec3 V = camDist > 1e-8 ? toEye / camDist : vec3(0.0, 1.0, 0.0);
     float detail = detailScaleFor(camDist, detailFadeDist, distantDetail);
 
-    // Shading normal: the swell's smooth analytic normal (interpolated from the vertex stage) with the ripple
-    // field's horizontal tilt added in. Mirrors WaterMath.CombineNormals.
+    float footprintSamples = FootprintParams.x, varianceGain = max(FootprintParams.y, 0.0);
+
+    // Ripple spectrum, band-limited to this pixel. slope.xy is the surviving slope, slope.z the variance the
+    // band-limit removed (handed to the glint lobe below rather than discarded).
+    vec3 slope = waterSlope(vWorldPos.xz, time, waveScale, waveSpeed, warpStrength, detail,
+                            footprint, footprintSamples);
+    vec3 ripple = slopeToNormal(slope.x, slope.y, normalStrength);
+
+    // Swell shading attenuation (mirrors RippleSpectrum.SwellAttenuation). The crest GEOMETRY is untouched - the
+    // silhouette is the point of the swell - but once a crest is narrower than the pixels drawing it, its shading
+    // contrast is what reads as parallel rules ruled across the horizon, so that contrast fades with the same
+    // footprint measure and its variance goes to the lobe too. Every swell component carries the same slope
+    // amplitude by construction (height amplitude is proportional to wavelength), so a plain mean is correct.
+    float swellAtten = 1.0;
+    float swellLostVar = 0.0;
+    float swAmp = SwellParams.x, swLambda = SwellParams.y;
+    if (swAmp > 0.0 && swLambda > 0.0) {
+        int sn = clamp(int(SwellShape.z + 0.5), 1, KE_MAX_SWELL);
+        float lambdaSum = swLambda * (1.0 - pow(KE_LAMBDA_DECAY, float(sn))) / (1.0 - KE_LAMBDA_DECAY);
+        float swSlopeAmp = KE_TWO_PI * swAmp / max(lambdaSum, 1e-6);
+        float keepSum = 0.0;
+        for (int i = 0; i < KE_MAX_SWELL; i++) {
+            if (i >= sn) break;
+            keepSum += rippleResolve(swLambda * pow(KE_LAMBDA_DECAY, float(i)), footprint, footprintSamples);
+        }
+        swellAtten = keepSum / float(sn);
+        swellLostVar = float(sn) * swSlopeAmp * swSlopeAmp * 0.5 * (1.0 - swellAtten * swellAtten);
+    }
+
+    // Shading normal: the attenuated swell normal with the ripple field's horizontal tilt added in.
+    // Mirrors WaterMath.CombineNormals over the attenuated swell.
     vec3 nSwell = normalize(vSwellNormal);
-    vec3 ripple = waterNormal(vWorldPos.xz, time, waveScale, waveSpeed, normalStrength, warpStrength, detail);
-    vec3 nSum = vec3(nSwell.x + ripple.x, nSwell.y, nSwell.z + ripple.z);
+    vec3 nSum = vec3(nSwell.x * swellAtten + ripple.x, nSwell.y, nSwell.z * swellAtten + ripple.z);
     float nLen = length(nSum);
     vec3 N = nLen > 1e-8 ? nSum / nLen : vec3(0.0, 1.0, 0.0);
+
+    // Total slope variance the band-limit removed. The ripple half scales with NormalStrength squared (it is a
+    // slope that NormalStrength multiplies); the swell half is geometry and does not.
+    float lostSlopeVariance = slope.z * normalStrength * normalStrength + swellLostVar;
 
     // Ground reconstruction: recover the world position of whatever the opaque pass left under this pixel, from
     // the resolved scene depth (the ground-decal pass's gl_FragCoord + raw-inverse-view-projection convention -
@@ -364,6 +445,9 @@ void main() {
                                                footprint, max(waveScale, 1e-4) * KE_TWO_PI);
                 float a = max(rough, 1e-3);
                 a *= a;                                // alpha = roughness^2
+                // Toksvig-style transfer: detail the pixel cannot resolve becomes lobe width, not lost energy.
+                // Without it, band-limited distant water goes to glass instead of to a believable sheen.
+                a = min(sqrt(a * a + 2.0 * max(lostSlopeVariance, 0.0) * varianceGain), 1.0);
                 float a2 = a * a;
                 float denom = ndoth * ndoth * (a2 - 1.0) + 1.0;
                 float lobe = a2 / max(denom, 1e-6);

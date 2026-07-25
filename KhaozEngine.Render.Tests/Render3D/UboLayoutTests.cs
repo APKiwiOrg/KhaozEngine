@@ -411,11 +411,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 19 vec4 (LightDir, LightColor, CameraPos,
             // DeepColor, ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams, SkyHorizon, SkyZenith,
-            // SkySunColor, SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams)
-            // = 128 + 304 = 432 bytes. If the struct or the shader block drift apart, the per-plane water UBO
+            // SkySunColor, SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
+            // RippleSpectrum, FootprintParams) = 128 + 336 = 464 bytes. If the struct or the shader block drift apart, the per-plane water UBO
             // upload smears the colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + 19 * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(2 * 64 + 21 * 16, (int)WaterRenderer.PayloadBytes);
         }
 
         [Fact]
@@ -448,7 +448,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
                 "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
-                "vec4 FoamColor;", "vec4 FoamParams;" })
+                "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;" })
                 Assert.True(ShaderSources.WaterFrag.Contains(member),
                     $"WaterFrag lost '{member}': the Water UBO block drifted from WaterRenderer.WaterUbo. Fix ShaderSources.WaterFrag or the struct.");
         }
@@ -462,7 +462,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
                 "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
-                "vec4 FoamColor;", "vec4 FoamParams;" })
+                "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;" })
                 Assert.True(ShaderSources.WaterVert.Contains(member),
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
         }

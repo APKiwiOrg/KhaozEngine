@@ -47,11 +47,13 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Absorption;    // rgb = per-metre coefficients (all-zero = legacy blend), w unused
             public Vector4 FoamColor;     // rgba
             public Vector4 FoamParams;    // x=strength, y=crestCoverage, z=shoreWidth, w=patternScale
+            public Vector4 RippleSpectrum;   // x=componentCount, y=lacunarity, z=gain, w=seed
+            public Vector4 FootprintParams;  // x=samplesPerWavelength, y=varianceToRoughness, z/w reserved
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + 19*16 (vec4) = 432.</summary>
-        internal const uint PayloadBytes = 432;
+        /// 2*64 (mat4) + 21*16 (vec4) = 464.</summary>
+        internal const uint PayloadBytes = 464;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -72,7 +74,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 512;   // Align256(432)
+        internal const uint SlotBytes = 512;   // Align256(464)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -222,6 +224,10 @@ namespace KhaozEngine.Render3D.Rendering
                 FoamColor = foam,
                 FoamParams = new Vector4(settings.FoamStrength, settings.FoamCrestCoverage,
                     settings.FoamShoreWidth, settings.FoamPatternScale),
+                RippleSpectrum = new Vector4(
+                    Math.Clamp(settings.RippleComponents, 1, Internal.RippleSpectrum.MaxComponents),
+                    settings.RippleLacunarity, settings.RippleGain, settings.RippleSeed),
+                FootprintParams = new Vector4(settings.FootprintSamples, settings.VarianceToRoughness, 0f, 0f),
             };
         }
 

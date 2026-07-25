@@ -13,16 +13,18 @@ namespace KhaozEngine.Render3D.Internal
     /// A Gerstner (trochoidal) wave moves each surface point on a circle rather than only up and down, so crests
     /// pinch and troughs flatten: that is the shape a plain sum-of-sines height field cannot produce, and it is what
     /// gives the surface a real silhouette instead of a flat sheet with shading painted on it. The wave layers in
-    /// <see cref="WaterMath.WaveNormal"/> stay exactly as they were and ride ON TOP of this as the small-scale
-    /// ripple detail; this class is only the long swell.
+    /// <see cref="RippleSpectrum"/> ride ON TOP of this as the small-scale ripple detail; this class is only the
+    /// long swell.
     /// </para>
     /// </summary>
     internal static class GerstnerWaves
     {
         /// <summary>Largest component count the generator (and the mirrored GLSL loop) supports. The GLSL loop is
         /// bounded by this constant with an early break on the runtime count, which is the form every backend's
-        /// cross-compiler handles without an unroll hazard.</summary>
-        public const int MaxComponents = 6;
+        /// cross-compiler handles without an unroll hazard. Raised from 6 to 8 in 14.25.0: a denser ladder makes
+        /// the near-field sea less regular, and the cost is one sin/cos pair per component per VERTEX, which is
+        /// cheap next to the per-pixel ripple spectrum.</summary>
+        public const int MaxComponents = 8;
 
         /// <summary>Deep-water gravity (m/s^2) for the dispersion relation below. A constant, not a knob: changing it
         /// only rescales what <see cref="WaterSettings.SwellSpeed"/> already does.</summary>
@@ -33,7 +35,7 @@ namespace KhaozEngine.Render3D.Internal
         /// would repeat over the longest wavelength. 0.685 keeps them mutually incommensurate, so the summed swell
         /// has no short repeat, which is the same reasoning as the irrational frequency multipliers in
         /// <see cref="WaterMath"/>'s ripple layers.</summary>
-        const float LambdaDecay = 0.685f;
+        public const float LambdaDecay = 0.685f;
 
         const float TwoPi = 6.28318531f;
 

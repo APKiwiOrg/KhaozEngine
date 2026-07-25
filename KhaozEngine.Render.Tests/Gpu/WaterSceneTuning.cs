@@ -52,6 +52,16 @@ namespace KhaozEngine.Tests.Gpu
             water.FoamCrestCoverage = 0.65f;
             water.FoamShoreWidth = 0.35f;      // scene-sized: the shallow shelf sits about this far under
             water.FoamPatternScale = 0.45f;
+
+            // 14.26.0 ripple spectrum + footprint band-limit, pinned at their shipped defaults. They are all
+            // unit-less or footprint-relative, so nothing here needs the lake rescale; they are pinned only so a
+            // change to an engine DEFAULT cannot silently move a golden that exists to lock rendering behaviour.
+            water.RippleComponents = 10;
+            water.RippleLacunarity = 1.48f;
+            water.RippleGain = 0.66f;
+            water.RippleSeed = 0f;
+            water.FootprintSamples = 4f;
+            water.VarianceToRoughness = 1f;
         }
 
         /// <summary>

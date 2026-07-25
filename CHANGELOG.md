@@ -5,6 +5,76 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.26.0
+
+Fix: the ocean stops reading as a repeating texture at distance. The ripple normal field, three fixed cosines
+since the surface was first written, becomes a generated ten-component slope spectrum, and the footprint-aware
+band-limiting that 14.24.0 applied only to the specular lobe is extended to the normal FIELD, which is where the
+moire actually came from. Reported from a Ruinborne playtest of 14.24.0: "there are 'lines' over the whole ocean
+which look very textured/tiled and it looks very basic from even a slight distance. Upclose its masked."
+Closes #299.
+
+- **The ripple field is a generated spectrum (new internal `RippleSpectrum`, mirrored by the GLSL
+  `waterSlope`).** Three coherent cosines do not make a surface, they make a RULED pattern: their summed slope is
+  constant along a family of parallel lines, so the eye reads parallel ribbons. The domain warp bends those
+  ribbons rather than breaking them, and at distance they beat against the pixel grid into moire. It is the same
+  coherence defect the 14.22.0 checkerboard was, one level up.
+  - **Headings step by the golden angle** from a seeded start, so no two components are parallel and no subset
+    lines up, at ANY count. Hand-picked headings always leave a dominant ribbon direction; that is what the
+    previous 20 / 115 / -51 degree triple had.
+  - **Wave numbers ladder geometrically** by `RippleLacunarity`, spanning about five octaves at the defaults
+    against the old field's 1.4. Deliberately not a factor of 2, which would make every component an exact octave
+    harmonic of the one before it and re-introduce a shared repeat.
+  - **Amplitudes are renormalized to the old field's total slope variance**, in closed form, whenever the count,
+    lacunarity or gain changes. That is what keeps `NormalStrength` meaning the same amount of visible chop
+    instead of those three knobs each silently doubling as a chop-strength knob. A headless test pins it.
+  - **Scroll rate follows the deep-water dispersion relation** (`omega ~ sqrt(k)`), so short ripples travel
+    across the long ones instead of the whole field sliding rigidly.
+  - New knobs: `WaterSettings.RippleComponents` (default `10`, 1..12), `RippleLacunarity` (`1.48`), `RippleGain`
+    (`0.66`), `RippleSeed` (`0`). Cost is one cosine per component per pixel; the normalization means the count
+    trades cost against richness only.
+- **Footprint band-limiting now applies to the normal field, not just the lobe (`FootprintSamples`, default
+  `4`).** 14.24.0 widened the GGX roughness by pixel footprint, which fixed specular sparkle, but it left the
+  normal oscillating at frequencies the pixel could not resolve, and an unresolvable normal oscillation IS moire.
+  Each component now fades out of the normal once its wavelength drops below `FootprintSamples` pixel footprints
+  (the Nyquist floor is 2; the default sits above it so a component fades before it aliases rather than during).
+  This is per-component, so the long ripples survive where the short ones go, which leaves a readable surface
+  rather than flat water. `0` disables it and restores the 14.24.0 behaviour.
+- **The removed slope variance is transferred into the specular lobe (`VarianceToRoughness`, default `1`).** A
+  Toksvig-style transfer: a patch of water whose ripples are too small to resolve does not become a mirror, it
+  becomes a rougher surface, so the sub-pixel slope distribution that used to be geometry becomes lobe width.
+  Band-limiting without the transfer would trade stripes for glass. `0` disables it. Only the GGX path can
+  receive it, since the legacy Blinn-Phong lobe has no roughness.
+- **The swell's shading contrast fades on the same footprint measure.** The crest GEOMETRY is untouched (the
+  silhouette is the whole point of the swell), but once a crest is narrower than the pixels drawing it, its
+  shading is what reads as parallel rules across the horizon. Every swell component carries the same slope
+  amplitude by construction, so the attenuation is a plain mean over the ladder, and its lost variance goes to
+  the lobe too.
+- **Swell component ceiling raised from 6 to 8** (`GerstnerWaves.MaxComponents`). A denser ladder makes the
+  near-field sea less regular, and the cost is one sin/cos pair per component per VERTEX.
+- **Sun glitter now exists (#299).** That issue proved a tight `GlintRoughness` rendered the sun path as smooth
+  continuous ribbons at every setting down to 0.04, because a tight lobe traces iso-slope contours and a
+  three-cosine field's contours are continuous lines. Against a five-octave spectrum the same lobe samples a
+  different facet per pixel and the path breaks into scattered points. Verified by rendering the issue's own
+  repro settings before and after; evidence dumps in the new `WaterDistanceBandingProbe`.
+- **`WaterMath.WaveNormal` is retired.** Nothing mirrors it any more, and a function whose documentation claims
+  the GLSL mirrors it exactly when nothing does is worse than no function. Its field-shape invariants (unit
+  normals, no repeat at the legacy period, not axis-separable, warp behaviour, determinism) moved to
+  `RippleSpectrumTests` against the live field, since they are properties of the water surface rather than of
+  that particular field. `WaterMath.SlopeToNormal` is split out of its tail and is public API within the
+  assembly.
+- **New GPU probe, `WaterDistanceBandingProbe`.** Dump-only PNGs (not goldens) of an open ocean at the two
+  viewpoints the artifact was reported from, plus the tight-lobe glitter case, at the shipped defaults. The
+  14.24.0 goldens could never have caught this: both frame a 9-unit lake from a corner under an ORTHOGRAPHIC
+  camera, where every ripple is comfortably resolved and neither artifact can appear.
+- **Water UBO grows from 432 to 464 bytes** (2 mat4 + 21 vec4) for the spectrum and footprint lanes. The bound
+  range stays 512, still 256-aligned per the D3D11 `NumConstants` rule `UboLayoutTests` pins.
+- **Legacy reachability, and where it stops.** `FootprintSamples = 0` restores 14.24.0's unbounded normal
+  oscillation, `VarianceToRoughness = 0` its lobe behaviour, and `RippleComponents = 3` a sparse three-component
+  spectrum. The exact pre-14.26.0 three-cosine FIELD is deliberately not reachable: its fixed headings and fixed
+  frequency ratios are precisely what draw the ribbons, so keeping it reachable would only keep the defect
+  reachable. Same call, and the same reasoning, as the 14.22.0 checkerboard field.
+
 ## 14.25.0
 
 Fix: five input-model correctness bugs, filed together by the 2026-07-18 full-engine review and fixed together

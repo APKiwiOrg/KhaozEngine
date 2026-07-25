@@ -206,3 +206,44 @@ Recorded here and in #295 so they are not assumed to be oversights: refraction, 
 environment probes (#54 records these as not planned at the current bar), seabed caustics, and the
 submerged/underwater view (its own program, touching the camera and post chain rather than this shader).
 Per-body water volumes remain #275; this shader takes no position on where water exists.
+
+## 14.26.0 revision: the ripple field was the wrong shape
+
+Shipped as 14.26.0, closing #299. Recorded here rather than in a new doc because it corrects a decision made
+above rather than starting a program.
+
+**What this doc got wrong.** The "Ripple field, and why it is shaped this way" reasoning inherited from 14.22.0
+is sound about TILING and wrong about COHERENCE. Making three cosines non-axis-aligned and mutually irrational
+removes the finite repeat, which is what 14.22.0 was asked to do, and the field genuinely has no tile. But three
+cosines of any orientation have a slope that is constant along families of parallel lines, so they draw parallel
+ribbons. A non-tiling ruled pattern is still a ruled pattern. The domain warp, which this doc leaned on as the
+tiling-breakup mechanism, bends those ribbons over a long distance without breaking them, so it masks the defect
+up close (where the bend is visible within a screen) and does nothing at range (where it is not). That is
+precisely the "upclose its masked" half of the user's report.
+
+**The second miss is narrower and more mechanical.** 14.24.0 introduced footprint-aware band-limiting and applied
+it only to the specular lobe. That fixed sparkle and left moire, because moire is what an unresolvable NORMAL
+oscillation looks like, and the normal field was never band-limited at all. The design doc treats
+`glintRoughnessAt` as "the correct band-limiting response and already wired", which is half true: it is the
+correct response for the lobe and does not touch the field.
+
+**What replaced it.** A generated spectrum: headings on a golden-angle walk so no two components are parallel at
+any count, wave numbers over about five octaves, amplitudes renormalized in closed form to the old field's total
+slope variance so `NormalStrength` survives the change. Then per-component footprint band-limiting of the normal,
+with the removed slope variance transferred into the GGX lobe rather than discarded, and the same footprint
+measure attenuating the swell's shading contrast (not its geometry) so crests stop reading as parallel rules on
+the horizon.
+
+**The general lesson worth keeping.** Both misses have the same shape: a property was verified in the regime the
+tests covered and assumed in the regime they did not. Every water golden frames a 9-unit lake from a corner under
+an ORTHOGRAPHIC camera, where every ripple is resolved and no footprint problem can exist. The artifact lives
+entirely in the perspective far field, so no golden could have caught it, and the anti-degeneracy guard would not
+have either. The fix for that is the new `WaterDistanceBandingProbe`, which renders the open ocean at the
+viewpoints the report came from and dumps PNGs for a human. A number would not have worked: the first metric
+tried here (row-to-row luminance step) moved the WRONG WAY across a fix that is unambiguous by eye, because it
+measures tonal range and the fix widened it.
+
+**Still not reachable, deliberately.** The exact three-cosine field, on the same grounds the 14.22.0 checkerboard
+was not kept reachable: the coherence IS the defect. What is reachable is `FootprintSamples = 0` (14.24.0's
+unbounded normal oscillation), `VarianceToRoughness = 0` (its lobe behaviour) and `RippleComponents = 3` (a
+sparse spectrum, though with golden-angle headings rather than the old fixed ones).

@@ -21,7 +21,7 @@ namespace KhaozEngine.Render3D.Internal
     {
         /// <summary>Largest component count the generator (and the mirrored GLSL loop) supports. The GLSL loop is
         /// bounded by this constant with an early break on the runtime count, which is the form every backend's
-        /// cross-compiler handles without an unroll hazard. Raised from 6 to 8 in 14.25.0: a denser ladder makes
+        /// cross-compiler handles without an unroll hazard. Raised from 6 to 8 in 14.26.0: a denser ladder makes
         /// the near-field sea less regular, and the cost is one sin/cos pair per component per VERTEX, which is
         /// cheap next to the per-pixel ripple spectrum.</summary>
         public const int MaxComponents = 8;

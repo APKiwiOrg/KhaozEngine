@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
     /// Pure headless coverage for the water ripple SLOPE SPECTRUM that replaced the three fixed cosines in
-    /// 14.25.0: the generator, the per-component footprint band-limit, the slope-variance-to-roughness transfer,
+    /// 14.26.0: the generator, the per-component footprint band-limit, the slope-variance-to-roughness transfer,
     /// and the swell shading attenuation. No GPU; <see cref="RippleSpectrum"/> is the single source both this test
     /// and the GLSL <c>waterSlope</c> follow. The field-shape invariants the old three-cosine tests asserted
     /// (unit normals, no repeat at the legacy period, not axis-separable, warp behaviour, determinism) are carried

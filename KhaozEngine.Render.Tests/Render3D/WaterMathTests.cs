@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// Pure headless coverage for the water surface math that predates 14.24.0 (Schlick fresnel tint, the legacy
     /// Blinn-Phong sun glint, depth-sampled shore fade, the domain warp and the detail fade) plus the settings /
-    /// grid / UBO plumbing. The ripple SLOPE FIELD moved to <see cref="RippleSpectrumTests"/> in 14.25.0 when the
+    /// grid / UBO plumbing. The ripple SLOPE FIELD moved to <see cref="RippleSpectrumTests"/> in 14.26.0 when the
     /// three fixed cosines were replaced by a generated spectrum. No GPU; WaterMath is the single source both this test and the GLSL WaterFrag follow (see the
     /// in-source mirror comment). The 14.24.0 additions live in <see cref="WaterSurfaceMathTests"/> (grid focus
     /// warp, absorption, reflection, GGX glint, foam) and <see cref="GerstnerWaveTests"/> (the swell).

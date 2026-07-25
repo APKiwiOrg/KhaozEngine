@@ -280,9 +280,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     coverage means the same at any steepness) and a shoreline band from the reconstructed depth, both broken up by
     a scrolling pattern thresholded into graphic lobes.
 
-  On top of that the ripple normal field is unchanged from 14.22.0: three non-axis-aligned scrolling layers at
-  mutually irrational frequencies over a domain-warped sample position (`WaveWarpStrength`), so it has no repeating
-  tile, with the fine layers attenuated by camera distance (`DetailFadeDistance`/`DistantDetailScale`). Plus the
+  On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
+  golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
+  five octaves, amplitudes renormalized to a fixed slope variance so `NormalStrength` keeps its meaning, sampled at
+  a domain-warped position (`WaveWarpStrength`). Each component is band-limited out of the normal once it falls
+  below `FootprintSamples` pixel footprints, and the removed slope variance is transferred into the GGX lobe
+  (`VarianceToRoughness`, Toksvig-style) so distant water becomes a rougher surface rather than stripes or glass;
+  the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
+  artistic extra layered on top. Plus the
   depth-sampled shore fade (`ShoreFadeDistance`) and `Opacity`.
   **No refraction, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
   LDR surface. Drawn after the sky + ground decals, before the MRT resolve, one draw per plane, with depth test ON
@@ -294,8 +299,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   convention the ground-decal pass uses; because that measurement is taken under the DISPLACED surface, a passing
   crest carries the waterline and the foam line up the beach for free. The pure math is `WaterMath` (the ripple
   normal, domain warp, distance detail fade, grid layout and focus warp, absorption, reflection blend, GGX and
-  legacy glint, roughness widening, foam) and `GerstnerWaves` (the swell), both internal, headless-tested and
-  mirroring the GLSL `WaterVert`/`WaterFrag` exactly.
+  legacy glint, roughness widening, foam), `RippleSpectrum` (the ripple spectrum, the footprint band-limit and the
+  variance transfer) and `GerstnerWaves` (the swell), all internal, headless-tested and mirroring the GLSL
+  `WaterVert`/`WaterFrag` exactly.
 - Modern particle pass: `Scene3D.DrawParticle(in ParticleSprite)` / `DrawParticles(ReadOnlySpan<ParticleSprite>)`
   queue procedural particle sprites that render as ONE premultiplied-alpha instanced draw after the water pass and
   BEFORE the post chain, so additive sprites feed bloom and every sprite flows through the pixel post like meshes.

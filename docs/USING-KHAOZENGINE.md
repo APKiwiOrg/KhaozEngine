@@ -2330,7 +2330,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `SwellSteepness`, `SwellSpeed`, `SwellSeed`, `SwellComponents` (1..6), and `GridFocusBias` (surface-grid
       vertex concentration near the camera; 1 = uniform).
     - *Ripple detail*: `WaveScale`/`WaveSpeed`/`NormalStrength`, `WaveWarpStrength` (the tiling-breakup domain
-      warp), `DetailFadeDistance`/`DistantDetailScale`.
+      warp), the spectrum shape (`RippleComponents`/`RippleLacunarity`/`RippleGain`/`RippleSeed`), the footprint
+      band-limit (`FootprintSamples`, `VarianceToRoughness`), and `DetailFadeDistance`/`DistantDetailScale`.
     - *Glint*: `GlintStrength`, `GlintRoughness` (0 or less selects the legacy Blinn-Phong lobe on
       `GlintExponent`), `GlintDistantRoughness`.
     - *Foam*: `FoamColor`, `FoamStrength` (0 = off), `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`.
@@ -2349,12 +2350,21 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     the far edge. The trade is that the mesh is camera-relative, so vertices slide through the wave field as the
     camera moves - continuous, never popping, and invisible in the dense near field. On a small water body the
     camera can see all of, turn it down or leave it at 1.
-  - **Ripple field, and why it is shaped this way** (fixed the reported checkerboard tiling in 14.22.0): three
-    directional layers at 20 / 115 / -51 degrees, so none is axis-aligned and no two are parallel, with mutually
-    irrational frequency multipliers (1, phi, sqrt 7) so their repeat periods never come back into phase. They are
-    sampled at a domain-WARPED position - a slow, large-scale displacement whose wavelength is ~5x the base
-    layer's. The two fine layers additionally fade toward `DistantDetailScale` over `DetailFadeDistance` of camera
-    distance. These ride ON TOP of the swell as small-scale texture; the swell supplies the shape.
+  - **Ripple spectrum, and why it is shaped this way**: ten cosine components (`RippleComponents`) generated
+    from four scalars, with headings stepping by the GOLDEN ANGLE so no two are parallel and no subset lines up,
+    wave numbers laddering by `RippleLacunarity` over about five octaves, and amplitudes renormalized to a fixed
+    total slope variance so `NormalStrength` keeps its meaning whatever the other three are set to. Scroll rate
+    follows `omega ~ sqrt(k)`, so short ripples travel across long ones. This replaced three fixed cosines in
+    14.26.0: three coherent cosines have a slope that is constant along families of parallel lines, so they draw
+    ribbons rather than a surface, the domain warp (`WaveWarpStrength`) only bends those ribbons, and at distance
+    they beat into moire. They ride ON TOP of the swell, which supplies the shape.
+  - **Footprint band-limiting** (`FootprintSamples`, `VarianceToRoughness`): a component fades out of the NORMAL
+    once its wavelength drops below `FootprintSamples` pixel footprints, per component, so the long ripples
+    survive where the short ones go. The slope variance that removes is transferred into the GGX lobe
+    (Toksvig-style), so distant water settles into a smooth fresnel gradient with a believable sheen instead of
+    either stripes (no band-limit) or glass (band-limit without transfer). The swell's shading contrast fades on
+    the same measure, leaving its crest geometry untouched. This is the physics half of the anti-aliasing and it
+    is why distance banding cannot come back through a knob: `DetailFadeDistance` is an artistic extra on top.
   - **Reflection**: the fresnel term blends the body colour toward the sky evaluated along the REFLECTED view ray
     (`SkyMath.ShadeDirection`, the same gradient + disc the background sky pass paints, evaluated per-direction
     rather than per-screen-pixel), using `Post.Sky`'s palette whether or not the sky PASS is enabled. This is what
@@ -2381,7 +2391,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     comes from the depth term - and because that depth is measured under the DISPLACED surface, the swell carries
     the foam line up and down the beach for free. Both are multiplied by a scrolling three-layer pattern
     thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`).
-  - **Reaching the 14.22.0 look**: every addition is independently reachable at zero - `SwellAmplitude = 0`,
+  - **Reaching the previous look**: every addition is independently reachable at zero. For 14.24.0:
+    `FootprintSamples = 0` (unbounded normal oscillation), `VarianceToRoughness = 0`, `RippleComponents = 3`. The
+    exact three-cosine FIELD is deliberately NOT reachable, on the same grounds as the 14.22.0 checkerboard: its
+    fixed headings are what draw the ribbons. For 14.22.0 on top of that - `SwellAmplitude = 0`,
     `GridFocusBias = 1`, `SkyReflectionStrength = 0`, `GlintRoughness = 0`, `AbsorptionPerMetre = default`,
     `FoamStrength = 0`, plus `ShallowColor = new(0.14f, 0.34f, 0.38f, 0.80f)` for the old default tint. The
     pre-14.22.0 look then needs `WaveWarpStrength = 0`, `DetailFadeDistance = 0`, `ShallowDepth = 0` on top - which
@@ -4385,7 +4398,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.25.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.26.0" />
 ```
 
 ```csharp

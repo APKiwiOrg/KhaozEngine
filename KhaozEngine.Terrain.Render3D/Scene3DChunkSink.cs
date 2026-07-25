@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Physics;
 using KhaozEngine.Primitives;
@@ -88,18 +89,24 @@ namespace KhaozEngine.Terrain
         {
             _scene = scene;
             _field = field ?? throw new ArgumentNullException(nameof(field));
-            _layers = layers ?? throw new ArgumentNullException(nameof(layers));
-            if (layers.Count == 0)
+            if (layers == null) throw new ArgumentNullException(nameof(layers));
+            // Snapshot the caller's list: the sink's per-layer state (_placementBuckets, HLOD flags) is
+            // fixed-length and built once below, so the layer set is snapshotted here rather than left aliased
+            // to the caller's own List<PropLayer>, which the caller could otherwise keep mutating after
+            // construction and desync from what was validated and bucketed.
+            PropLayer[] snapshot = layers.ToArray();
+            _layers = snapshot;
+            if (snapshot.Length == 0)
                 throw new ArgumentException("At least one PropLayer is required.", nameof(layers));
-            for (int i = 0; i < layers.Count; i++)
+            for (int i = 0; i < snapshot.Length; i++)
             {
-                PropLayer l = layers[i];
+                PropLayer l = snapshot[i];
                 if (l.IsCompanion)
                 {
-                    if (l.HostLayerIndex < 0 || l.HostLayerIndex >= layers.Count)
+                    if (l.HostLayerIndex < 0 || l.HostLayerIndex >= snapshot.Length)
                         throw new ArgumentException(
                             $"PropLayer {i}: companion HostLayerIndex {l.HostLayerIndex} is out of range.", nameof(layers));
-                    if (layers[l.HostLayerIndex].IsCompanion)
+                    if (snapshot[l.HostLayerIndex].IsCompanion)
                         throw new ArgumentException(
                             $"PropLayer {i}: companion host {l.HostLayerIndex} must be a scatter or placement layer.",
                             nameof(layers));
@@ -110,7 +117,7 @@ namespace KhaozEngine.Terrain
                 }
             }
             _chunkSize = chunkSize;
-            _placementBuckets = PlacementBuckets.Build(layers, chunkSize);
+            _placementBuckets = PlacementBuckets.Build(snapshot, chunkSize);
             _material = material;
             _ownsMaterial = ownsMaterial;
             _physics = physics;
@@ -127,8 +134,8 @@ namespace KhaozEngine.Terrain
             _collisionLod = collisionLod;
             // Whether any layer bakes an HLOD merged mesh. When none does, BuildCpu / Apply / Draw skip the HLOD path
             // entirely, so a sink with no HLOD layer is byte-identical to the pre-HLOD sink.
-            for (int i = 0; i < layers.Count; i++)
-                if (layers[i].HasHlod) { _anyHlod = true; break; }
+            for (int i = 0; i < snapshot.Length; i++)
+                if (snapshot[i].HasHlod) { _anyHlod = true; break; }
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat

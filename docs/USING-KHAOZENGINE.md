@@ -4757,7 +4757,6 @@ its far HLOD cluster:
 ```csharp
 using KhaozEngine.MapDoc;
 using KhaozEngine.Terrain;
-using KhaozEngine.Terrain.Render3D;
 
 // doc was frozen by FreezeZone: ids "baked-<source>-N", tagged "baked" plus the source layer name.
 MapDocument doc = MapDocumentFile.Load("assets/maps/valley.map.json");
@@ -4791,11 +4790,20 @@ var sink = new Scene3DChunkSink(scene, field, layers, chunkSize: TerrainChunkReg
 
 The sink buckets each layer's placements by chunk coord once at construction (`ChunkGrid.CoordOf`, the same
 grid the streamer loads with), not per frame, so a frozen zone with tens of thousands of placements costs one
-split instead of a repeated scan. Every knob a scatter layer supports - `fadeBandWidth`, (`lodMeshes`/
-`lodPartMeshes`, `lodDistance`), `WithHlod` and its decor-ring merged mesh - behaves identically given the
-same placements, since the sink streams a placement layer through the exact same per-chunk path a scatter
-layer uses. The engine takes a plain placement list: filtering by tag (or dropping `baked` placements that no
-longer apply) is the game's job before it hands the list to `PlacementLayer`, not the sink's.
+split instead of a repeated scan. The sink keeps its own bucketed copy of every placement for its lifetime, in
+addition to the caller's list (which the layer also holds), so a zone's placements are resident twice. Every
+knob a scatter layer supports - `fadeBandWidth`, (`lodMeshes`/`lodPartMeshes`, `lodDistance`), `WithHlod` and
+its decor-ring merged mesh - behaves identically given the same placements, since the sink streams a placement
+layer through the exact same per-chunk path a scatter layer uses. The engine takes a plain placement list:
+filtering by tag (or dropping `baked` placements that no longer apply) is the game's job before it hands the
+list to `PlacementLayer`, not the sink's.
+
+**Frozen zones do not track the field.** A placement layer is field-independent: its buckets and baked Y are
+fixed at construction, so a later `UpdateField` plus `Invalidate` re-meshes the terrain under it but never
+moves the props or their static colliders, and a consumer who re-carves terrain under a frozen zone must
+re-freeze or re-supply the placements to match. A companion layer hosted off a placement layer does not
+inherit that immunity: companion generation resamples the field's height per companion, so after a field
+swap a frozen host keeps its stale Y while its companions re-ground to the new surface.
 
 **Colliders default on** (`colliders: true`), registering a static body for every placement at ANY layer
 index - unlike a scatter or companion layer, which only ever registers at layer 0 (the long-standing rule,
@@ -4975,7 +4983,6 @@ prediction, and collision are untouched.
 
 ```csharp
 using KhaozEngine.Terrain;
-using KhaozEngine.Terrain.Render3D;
 
 // Three layers: trees (scatter), ferns (scatter, short radius), fern ring around each tree (companion).
 var layers = new PropLayer[]

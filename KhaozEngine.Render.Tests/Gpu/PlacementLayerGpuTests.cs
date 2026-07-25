@@ -96,7 +96,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             int covered = CoveredPixelsFor(Array.Empty<PropPlacement>());
 
-            Assert.Equal(0, covered);
+            // A real regression (the prop drawing despite an empty list) covers thousands of pixels, so this
+            // small tolerance keeps full discriminating power while surviving backend rasterization noise (a
+            // stray sub-threshold pixel on WARP/lavapipe, which the weekly cross-platform workflow runs unfiltered).
+            Assert.True(covered < 4, $"expected only background pixels, got {covered} covered");
         }
     }
 }

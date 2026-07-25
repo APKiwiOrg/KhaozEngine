@@ -109,8 +109,9 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   construction and streams it through the exact same per-chunk path, so every knob above applies unchanged.
   `colliders` (default true) registers a static body for the layer's placements at ANY layer index. Pass
   `colliders: false` to keep it render-only when the game registers that zone's physics itself outside the
-  sink. A scatter or companion layer keeps the older layer-0-only collider rule (issue #288) regardless of
-  index.
+  sink. Scatter and companion layers keep the older layer-0-only collider rule (issue #288): only a layer at
+  index 0 registers colliders. A placement layer instead follows its `colliders` flag regardless of where it
+  sits in the list.
 - **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
   extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
   overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a

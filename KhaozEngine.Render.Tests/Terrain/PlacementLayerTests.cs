@@ -224,6 +224,8 @@ namespace KhaozEngine.Tests.Terrain
         // The whole-zone placement list a frozen zone would ship: one Generate call over the 3x3 chunk block
         // (-1,-1)..(1,1), which is exactly what a placement layer is handed instead of a runtime config.
         static IReadOnlyList<PropPlacement> WholeZone(TerrainField field, ScatterConfig cfg) =>
+            // RectArea is (minX, minZ, maxX, maxZ): the 2f * ZoneChunk args are the zone's MAX bounds, not
+            // sizes - [-ZoneChunk, 2*ZoneChunk) on each axis covers exactly the 3x3 chunk grid below.
             PropScatter.Generate(field, cfg, new RectArea(-ZoneChunk, -ZoneChunk, 2f * ZoneChunk, 2f * ZoneChunk));
 
         static IEnumerable<ChunkCoord> ZoneCoords()
@@ -591,7 +593,7 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [GpuFact]
-        public void Placement_layer_statics_follow_its_collider_flag() => WithScene(scene =>
+        public void PlacementLayer_Statics_FollowColliderFlag() => WithScene(scene =>
         {
             // End-to-end through Apply: a placement layer above index 0 registers its props as static bodies when it
             // keeps colliders on, and registers none when it opts out - while layer 0's scatter statics are the same

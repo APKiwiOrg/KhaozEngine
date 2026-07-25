@@ -161,7 +161,10 @@ namespace KhaozEngine.Render3D
         /// unit half-extent a uniform grid puts its vertices more than a dozen units apart, which cannot carry a
         /// <see cref="SwellWavelength"/>-scale wave. The trade-off is that the mesh is then camera-relative, so
         /// vertices slide through the wave field as the camera moves. The slide is continuous (nothing pops) and
-        /// the near field is dense enough that resampling a smooth long wave there is invisible.
+        /// the near field is dense enough that resampling a smooth long wave there is invisible. A consumer that
+        /// already re-centres its <see cref="WaterPlane"/> on the camera every frame (the usual pattern for an
+        /// open ocean) has a fully camera-locked mesh and gets the focus exactly centred, which is the best case
+        /// for this warp: symmetric, and stable frame to frame.
         /// </para>
         /// <para>
         /// At the default, on a 600-unit half-extent plane with the camera in the middle, cells run from about half

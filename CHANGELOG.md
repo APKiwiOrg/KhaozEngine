@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.20.0
+
+Feature: placements-based PropLayer, so a frozen placements-only zone streams through the chunk sink
+with the full LOD/HLOD arc instead of hand-drawn whole-zone draw lists. Closes #286.
+
+- `PropLayer.PlacementLayer` factories (single-handle and multi-part): a third layer kind carrying an
+  explicit `IReadOnlyList<PropPlacement>` (a frozen zone's baked props) instead of a `ScatterConfig`,
+  with the same trailing knobs as `ScatterLayer` (`drawRadius`, `fadeBandWidth`, `lodMeshes` /
+  `lodPartMeshes` + `lodDistance`) and `WithHlod` applying unchanged. New `PropLayer.Placements`,
+  `PropLayer.RegisterColliders`, and `PropLayer.IsPlacement` members.
+- `Scene3DChunkSink` buckets each placement layer by chunk coord once at construction (internal
+  `PlacementBuckets`, keyed by `ChunkGrid.CoordOf`) and serves the bucket at the same per-chunk seam
+  where scatter layers generate, so the L2 fade band, LOD variant selection, L3 HLOD runtime bake +
+  per-cluster cache + crossfade, decor-ring merged mesh, re-LOD, and unload are all the same shared
+  code paths. A placement layer is field-independent: `UpdateField` + invalidate re-meshes terrain
+  under it but never moves its props or colliders.
+- Colliders: scatter-layer parity by default. A placement layer registers gameplay-ring static bodies
+  from the same shape map at ANY index, with a per-layer opt-out (`colliders: false`) for a game that
+  builds its zone physics once outside the sink. Scatter and companion layers keep the historical
+  layer-0-only rule exactly (#288 tracks that question). A companion layer may host off a placement
+  layer (per-chunk derivation, tested), though its companions still re-ground to the live field.
+- The multi-layer ctor now snapshots the caller's layer list, so mutating the original `List` after
+  construction can no longer desync the sink's fixed-length per-layer state.
+- Zero behavior change for existing consumers: a sink with no placement layers takes the same code
+  paths, registers the same colliders, and allocates nothing new.
+- Docs: `docs/USING-KHAOZENGINE.md` gains a "Frozen zones: placement layers" section as the blessed
+  frozen-zone path (with the edge-bucketing caveat: scatter assigns cells by centre, buckets go by
+  final position, so an edge-jittered prop can change chunk membership) and the freeze-zone flow now
+  points at it. Package README updated.
+- Tests: headless bucketing determinism/coverage, tiling vs a whole-zone reference, per-chunk
+  scatter-equivalence parity, HLOD bake + decor-ring parity, fade/LOD selection regression lock via
+  `PropRenderer.Queue`, collider gating rules, and two non-golden GPU pixel-presence facts through
+  the real sink wire.
+
 ## 14.19.0
 
 Feature: nameplates gain opt-in edge-aware placement so a close-up look-up at a tall target no longer

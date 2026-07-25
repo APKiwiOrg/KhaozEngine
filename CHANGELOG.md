@@ -49,9 +49,16 @@ simplicity showed as a checkerboard repeat at distance. Closes #278.
   `WaterVert` and `WaterFrag`). Adds `ShallowColor` and `DetailParams`, and DROPS the dead `Res` member,
   which nothing had read since the fragment moved to `textureSize` (one of the follow-ups listed on #51,
   taken here because the block was changing shape anyway). `WaterRenderer.PackUbo` loses its now-unused
-  `renderWidth`/`renderHeight` parameters. Because a dynamic-offset slot must be 256-byte aligned, the
-  per-plane stride is now 512 (the payload rounded up, `ModelRenderer.Align256`'s convention) rather than
-  equal to the payload, and a new `UboLayoutTests` case guards that stride against the payload.
+  `renderWidth`/`renderHeight` parameters. The per-plane slot stride is now 512, the payload rounded up per
+  `ModelRenderer.Align256`, **and the BOUND RANGE is that 512 rather than the 272-byte payload.** That last
+  part is load-bearing: D3D11's `PSSetConstantBuffers1` needs `FirstConstant` and `NumConstants` to be
+  multiples of 16 constants, and Veldrid 4.9.0 derives them as `offset / 16` and `max(size, 256) / 16` with
+  no rounding, so binding 272 asked for 17 constants, D3D11 rejected the call, the whole cbuffer was left
+  unbound, and every water fragment read opacity 0 and discarded. D3D11 rendered NO WATER while Metal and
+  Vulkan were pixel-perfect, and only the cross-backend bake caught it. A bound size under 256 is padded up
+  to 256, which is why the 128-byte `OverlayMeshRenderer` range never hit this. A new `UboLayoutTests` case
+  asserts the rule on those constants, and the other five `GpuBufferRange` bindings were swept (all under
+  256, or already `Align256`'d).
 - **Internal `WaterMath` gains `DomainWarp`, `DetailScale`, `ShallowWeight` and `ShallowTint`**, each
   mirroring its GLSL half exactly, with 20 new headless cases in `WaterMathTests` (105 water assertions
   total). Two of them are the anti-regression pair: one fails if the field ever repeats at the legacy

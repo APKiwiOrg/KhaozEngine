@@ -5,6 +5,43 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.23.0
+
+Fix: HUD nameplates and world labels no longer drift off their anchor on a window whose aspect
+differs from the design aspect. `IIsoCamera3D.WorldToScreen`, `NameplateRenderer.Draw`,
+`WorldLabel.Draw`, and `NameplateTiers.Resolve` took only framebuffer ints, but a design-space HUD
+pass (the documented fleet pattern) called them with the design viewport's own width/height, which
+is only correct when the window happens to be exactly the design aspect. On any other window shape
+the anchor drifted by ndc times the letterbox offset on the loose axis: zero at screen centre,
+sign-flipping across it, and reaching entity size on wide windows. Ruinborne hit it live in a
+resized window (plates swapping side beside wolves while orbiting,
+https://github.com/APKiwiOrg/Ruinborne/issues/192). Closes #294.
+
+- **`IIsoCamera3D.WorldToScreen(Vector3 world, IDesignViewport designViewport, out Vector2
+  designPixel)`, a new default interface member (no implementor breaks).** Remaps the projected NDC
+  onto `IDesignViewport.WindowBounds`, the whole window mapped back into design space including the
+  letterbox/pillarbox bars, rather than the design rect alone, so it lands exactly on `Fit`, `Fill`,
+  and `Stretch` scale modes alike. `WindowBounds` (not `DesignBounds`) is the fix's core insight: the
+  design rect sits inset with bars under a fit-style scale, and a caller filling from `Width`/`Height`
+  alone stops at the design edge instead of covering the window the player actually sees.
+- **New `IDesignViewport` overloads on `NameplateRenderer.Draw` (stateless and stateful) and
+  `WorldLabel.Draw`**, taking the design viewport in place of the two framebuffer ints, and
+  projecting through the new design-aware `WorldToScreen` above.
+- **New `IDesignViewport` overload on `NameplateTiers.Resolve`.** The focus-gate ellipse normalizes
+  over `WindowBounds` (the visible window), not `DesignBounds`, so the gaze gate reads against the
+  screen the player sees rather than the inset design rect under a letterboxed scale mode. Its
+  `focusPixel` must come from the design-aware `WorldToScreen` overload so both operate in the same
+  space.
+- **The existing framebuffer-int overloads are unchanged and stay right for a genuine
+  framebuffer-space drawing pass** (their docs now say so explicitly). Only a design-space HUD pass
+  needs the new ones.
+- **Consumers should switch every design-space HUD nameplate/world-label call to the new
+  `IDesignViewport` overloads.** Hardpoint (the other 3D consumer) should be swept next.
+- **Tests:** 6 headless facts (`NameplateDesignProjectionTests.cs`), headlined by the round-trip law:
+  a design-aware anchor pushed through `DesignToScreen` lands on the exact window pixel the 3D scene
+  rendered the entity at, on a non-design-aspect window. The rest pin the old path's drift, the
+  `Fit`/`Stretch` degenerate cases, the head/body composition, and the tier gate.
+
 ## 14.22.0
 
 Feature: the water surface stops tiling. Its two axis-aligned sine octaves are replaced by a domain-warped

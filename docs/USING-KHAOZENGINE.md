@@ -4331,7 +4331,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.22.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.23.0" />
 ```
 
 ```csharp
@@ -5816,22 +5816,28 @@ string token = SignedToken.Mint(accountId, "Daniel", DateTimeOffset.UtcNow.AddHo
 
 It rides every AoI snapshot (UTF-8, capped at `MoveProtocol.MaxDisplayNameBytes` = 64 bytes) and surfaces on the
 client as `EntityRenderState.DisplayName` (`null` when the entity has none). Draw it above the avatar by projecting
-the head with the camera and using the `WorldLabel` helper, in your 2D pass after the 3D scene:
+the head with the camera and using the `WorldLabel` helper, in your 2D pass after the 3D scene. A HUD label like
+this is drawn in a **design-space** pass (`batch.Begin(Viewport, ...)`, `Viewport` being `GameApp`'s
+`IDesignViewport`), so use the `IDesignViewport` overload rather than the framebuffer-int one, or the label drifts
+on any window whose aspect differs from the design aspect (see
+[Design-space vs framebuffer-space projection](#design-space-vs-framebuffer-space-projection-worldtoscreenidesignviewport-14230)
+below):
 
 ```csharp
-batch.Begin();
+batch.Begin(Viewport, SamplerMode.Point);
 foreach (EntityRenderState e in client.Snapshot())
     if (e.DisplayName is { } name)
-        WorldLabel.Draw(batch, font, camera, e.Position, new Vector3(0, headHeight, 0), name, Color.White, fbW, fbH);
+        WorldLabel.Draw(batch, font, camera, e.Position, new Vector3(0, headHeight, 0), name, Color.White, Viewport);
 batch.End();
 ```
 
-`WorldLabel.Draw` composes its anchor from two `IIsoCamera3D.WorldToScreen(world, w, h, out pixel)` calls (the
-forward inverse of `ScreenToRay`, returning `false` when the head point is behind the camera): the head point (`worldPos +
-offset`) drives screen Y and a body column (`worldPos` plus only the lateral part of `offset`) drives screen X, so
-the label hangs screen-above the visible body instead of leaning toward it off-centre. It draws centered
-`SpriteFont` text at that anchor. If you want to place labels yourself, call `WorldToScreen` directly. Labels are
-screen-space and drawn on top - they are **not**
+`WorldLabel.Draw` composes its anchor from two `IIsoCamera3D.WorldToScreen(world, designViewport, out designPixel)`
+calls (the forward inverse of `ScreenToRay`, returning `false` when the head point is behind the camera): the head
+point (`worldPos + offset`) drives screen Y and a body column (`worldPos` plus only the lateral part of `offset`)
+drives screen X, so the label hangs screen-above the visible body instead of leaning toward it off-centre. It draws
+centered `SpriteFont` text at that anchor. If you want to place labels yourself, call `WorldToScreen` directly (the
+`IDesignViewport` overload for a design-space pass, or the framebuffer-int overload for a framebuffer-space one).
+Labels are screen-space and drawn on top - they are **not**
 depth-tested, so a name is not hidden when its owner stands behind terrain or a prop (occluded nameplates are out
 of scope).
 
@@ -5840,12 +5846,30 @@ third-person camera that orbits offset from the player, pass `cullFrom: localPla
 player-to-target distance and don't pop in/out as the camera rotates around a stationary scene:
 
 ```csharp
-WorldLabel.Draw(batch, font, camera, e.Position, headOffset, name, Color.White, fbW, fbH,
+WorldLabel.Draw(batch, font, camera, e.Position, headOffset, name, Color.White, Viewport,
     maxDistance: 90f, cullFrom: localPlayerPos);
 ```
 
 The cull predicate is also exposed render-free as `WorldLabel.ShouldCull(worldPos, cullFrom, maxDistance)` if you
 want to filter the label set before drawing.
+
+#### Design-space vs framebuffer-space projection (`WorldToScreen(IDesignViewport)`, 14.23.0)
+
+A HUD nameplate or world label normally draws in a **design-space** 2D pass, a `SpriteBatch.Begin(Viewport, ...)`
+taken with the game's `IDesignViewport` (`GameApp.Viewport`), so panel size, margins, and text scale stay the same
+across every window size. `IIsoCamera3D.WorldToScreen(world, designViewport, out designPixel)` is the design-aware
+projection for that pass: it remaps the projected NDC onto `IDesignViewport.WindowBounds` (the whole window mapped
+back into design space, letterbox/pillarbox bars included, not just the inset `DesignBounds` rect), which lands
+exactly for `Fit`, `Fill`, and `Stretch` scale modes alike.
+
+The older `WorldToScreen(world, viewportWidth, viewportHeight, out screenPixel)` overload remains for a genuine
+**framebuffer-space** pass with no `IDesignViewport` at all (a raw post-process overlay sized off the swapchain,
+say). Calling it with the design viewport's own `Width`/`Height` instead of real framebuffer pixels only lines up
+with the 3D scene when the window happens to be exactly the design aspect: on any other window shape the anchor
+drifts by ndc times the letterbox offset on the loose axis, zero at screen centre, flipping side across it, and
+reaching entity size on a wide window. `NameplateRenderer.Draw`, `WorldLabel.Draw`, and `NameplateTiers.Resolve`
+each carry the same pair of overloads for the same reason, and every example in this section uses the
+`IDesignViewport` one.
 
 #### The nameplate widget (name + bars plate)
 
@@ -5856,7 +5880,7 @@ plate per entity and draw it in the same 2D pass, after the 3D scene:
 
 ```csharp
 var white = /* a 1x1 white Texture2D, as DiagnosticsOverlay uses */;
-batch.Begin();
+batch.Begin(Viewport, SamplerMode.Point);
 foreach (EntityRenderState e in client.Snapshot())
     if (e.DisplayName is { } name)
     {
@@ -5867,7 +5891,7 @@ foreach (EntityRenderState e in client.Snapshot())
             Bars = new[] { new NameplateBar(e.Health / e.MaxHealth, green, darkTrack) },
         };
         NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
-            plate, NameplateStyle.Default, fbW, fbH, maxDistance: 90f, cullFrom: localPlayerPos);
+            plate, NameplateStyle.Default, Viewport, maxDistance: 90f, cullFrom: localPlayerPos);
     }
 batch.End();
 ```
@@ -5911,7 +5935,7 @@ across frames and call the stateful `Draw` overload. Extending the plate loop ab
 var placementStates = new Dictionary<NetId, NameplatePlacementState>();   // one per entity, kept across frames
 var style = NameplateStyle.Default with { EdgeBehavior = NameplateEdgeBehavior.Deflect };
 
-batch.Begin();
+batch.Begin(Viewport, SamplerMode.Point);
 foreach (EntityRenderState e in client.Snapshot())
     if (e.DisplayName is { } name)
     {
@@ -5923,7 +5947,7 @@ foreach (EntityRenderState e in client.Snapshot())
         };
         NameplatePlacementState state = placementStates.TryGetValue(e.Id, out var s) ? s : default;
         NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
-            plate, style, fbW, fbH, ref state, maxDistance: 90f, cullFrom: localPlayerPos);
+            plate, style, Viewport, ref state, maxDistance: 90f, cullFrom: localPlayerPos);
         placementStates[e.Id] = state;
     }
 batch.End();
@@ -5989,18 +6013,18 @@ per-entity contract `NameplatePlacementState` already uses), and resolve the tie
 var tierStates = new Dictionary<NetId, NameplateTierState>();   // one per entity, alongside placementStates
 var tierConfig = NameplateTierConfig.Default;
 
-batch.Begin();
+batch.Begin(Viewport, SamplerMode.Point);
 foreach (EntityRenderState e in client.Snapshot())
     if (e.DisplayName is { } name)
     {
-        camera.WorldToScreen(e.Position + new Vector3(0, chestHeight, 0), fbW, fbH, out Vector2 focusPixel);
-        bool onScreen = camera.WorldToScreen(e.Position + new Vector3(0, headHeight, 0), fbW, fbH, out _);
+        camera.WorldToScreen(e.Position + new Vector3(0, chestHeight, 0), Viewport, out Vector2 focusPixel);
+        bool onScreen = camera.WorldToScreen(e.Position + new Vector3(0, headHeight, 0), Viewport, out _);
         float distance = Vector3.Distance(localPlayerPos, e.Position);
         bool pinned = combat.IsEngagedWith(e.Id);   // the game's own combat signal
 
         NameplateTierState tierState = tierStates.TryGetValue(e.Id, out var t) ? t : default;
         NameplateTier tier = NameplateTiers.Resolve(
-            focusPixel, onScreen, distance, fbW, fbH, tierConfig, pinned, ref tierState);
+            focusPixel, onScreen, distance, Viewport, tierConfig, pinned, ref tierState);
         tierStates[e.Id] = tierState;
         if (tier == NameplateTier.Hidden)
             continue;
@@ -6017,7 +6041,7 @@ foreach (EntityRenderState e in client.Snapshot())
 
         NameplatePlacementState placementState = placementStates.TryGetValue(e.Id, out var s) ? s : default;
         NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
-            plate, tierStyle, fbW, fbH, ref placementState, maxDistance: 90f, cullFrom: localPlayerPos);
+            plate, tierStyle, Viewport, ref placementState, maxDistance: 90f, cullFrom: localPlayerPos);
         placementStates[e.Id] = placementState;
     }
 batch.End();

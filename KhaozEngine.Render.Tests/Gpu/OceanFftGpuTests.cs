@@ -229,6 +229,42 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(decayed < grown * 0.6f, $"foam did not dissipate: peak went {grown} -> {decayed}");
         }
 
+        // ---- Reconfiguration -------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Changing the cascade count or the resolution rebuilds every resource whose SHAPE depends on them - the
+        /// buffers, the map array, and (because compute specialization constants are not exposed, #312, so the
+        /// resolution is substituted into the source) both pipelines. It is the one path that disposes live GPU
+        /// resources mid-session, so it is also the one that can leave a dangling binding or drop work on the
+        /// floor. Ends back at the original shape to prove the rebuild is not one-way.
+        /// </summary>
+        [GpuFact]
+        public void ChangingTheCascadeCountOrResolutionRebuildsAndKeepsProducing()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
+
+            using var producer = new OceanFftProducer(dev);
+            float t = 0f;
+            foreach ((int cascades, int resolution) in new[] { (2, N), (3, N), (3, 64), (1, 64), (2, N) })
+            {
+                WaterSeaState sea = Sea();
+                sea.CascadeCount = cascades;
+                sea.CascadeResolution = resolution;
+                t += 1f / 60f;
+                Assert.True(RunFrame(dev, producer, Settings(sea), t));
+                Assert.Equal(cascades, producer.CascadeCount);
+                Assert.Equal(resolution, producer.Resolution);
+
+                // Read the coarsest cascade's height back rather than trusting the counters: a rebuild that left a
+                // stale binding behind would still report the new shape while producing nothing.
+                float[] disp = ReadLayer(dev, producer.Map, 0, resolution);
+                Assert.True(RootMeanSquare(disp, 1) > 1e-4,
+                    $"cascades={cascades} res={resolution}: the rebuilt producer wrote a flat height map");
+            }
+        }
+
         // ---- Capability gate -------------------------------------------------------------------------------
 
         [GpuFact]

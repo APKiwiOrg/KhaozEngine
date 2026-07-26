@@ -65,16 +65,18 @@ GPU golden moves. Closes #309; the FFT ocean program that consumes it is #310.
   report true; an OpenGL/GLES device below the compute-capable version does not, so a caller can degrade rather
   than crash.
 - **Proof tests** (`[GpuFact]`, so they run on all three `cross-platform-gpu.yml` legs): an exact two-pass
-  parallel reduction over a storage buffer; a compute-written storage texture that a graphics pass then samples,
+  parallel reduction over a storage buffer; the dynamic-offset compute binding, dispatched twice out of one
+  uniform buffer for two exactly-known sums; a compute-written storage texture that a graphics pass then samples,
   asserted per texel on both the sampled result and the storage texture itself; and a 2D radix-2 Stockham FFT
   checked three ways (a CPU reference turns an impulse into a flat spectrum, the GPU forward transform matches
   that reference elementwise, and forward-then-inverse returns the original grid). The FFT is deliberate: it
   pre-validates on every backend the exact algorithm the FFT ocean program (#310) is built on, before any ocean
   code exists.
-- **Fix:** `IGpuDevice.Capabilities` now carries the device name and the sampler-feature flags. It used to leave
-  them at their defaults while `GpuDeviceContext.Capabilities` populated them, so the two copies of the same
-  struct disagreed. Nothing read the dropped members, but `SupportsCompute` being right there while its
-  neighbours were silently false was not a state worth shipping.
+- **Fix:** `IGpuDevice.Capabilities` and `GpuDeviceContext.Capabilities` now come from one reader and therefore
+  agree. They used to be built independently and had already drifted: the device's copy left the adapter name and
+  both sampler-feature flags at their defaults while the context populated them. Nothing read the dropped members,
+  but adding `SupportsCompute` to two places is exactly how that happens again, so there is now only one place to
+  add a member, plus a `[GpuFact]` that compares the two copies field by field.
 
 ## 14.28.0
 

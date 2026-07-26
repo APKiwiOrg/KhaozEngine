@@ -249,6 +249,21 @@ namespace KhaozEngine.Gpu.Internal
             _ => 1,
         };
 
+        /// <summary>Read the whole <see cref="GpuCapabilities"/> set off a live device. ONE place, because there are
+        /// two things that surface it (<c>GpuDeviceContext.Capabilities</c> and <c>IGpuDevice.Capabilities</c>) and
+        /// they must agree member for member. They did not before 14.29.0: the device wrapper's copy silently left
+        /// the adapter name and the sampler-feature flags at their defaults. Adding a member in two places is how
+        /// that happens, so there is now only one place to add it.</summary>
+        public static GpuCapabilities ReadCapabilities(GraphicsDevice gd) => new(
+            gd.IsClipSpaceYInverted,
+            gd.IsDepthRangeZeroToOne,
+            gd.DeviceName ?? "",
+            gd.Features.SamplerAnisotropy,
+            gd.Features.SamplerLodBias,
+            MaxMsaaSampleCount(gd),
+            SupportsShadowMaps(gd),
+            gd.Features.ComputeShader);
+
         /// <summary>Whether the device can drive the shadow-map path: R32_Float usable as BOTH a render target and a
         /// sampled texture (the manual-PCF depth-compare samples the depth target). Defensive: a query failure =>
         /// false (degrade to blob), never throw.</summary>

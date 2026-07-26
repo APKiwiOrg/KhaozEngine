@@ -30,15 +30,9 @@ namespace KhaozEngine.Gpu.Internal
             GraphicsDevice = gd;
             Backend = backend;
             _ownsDevice = ownsDevice;
-            // Same capability set GpuDeviceContext builds, so IGpuDevice.Capabilities and
-            // GpuDeviceContext.Capabilities agree member for member. The device name / sampler-feature flags used
-            // to be dropped here (left at their defaults) while the context populated them, which nothing read
-            // but made this copy quietly wrong.
-            Capabilities = new GpuCapabilities(gd.IsClipSpaceYInverted, gd.IsDepthRangeZeroToOne,
-                gd.DeviceName ?? "", gd.Features.SamplerAnisotropy, gd.Features.SamplerLodBias,
-                maxMsaaSampleCount: VeldridMap.MaxMsaaSampleCount(gd),
-                supportsShadowMaps: VeldridMap.SupportsShadowMaps(gd),
-                supportsCompute: gd.Features.ComputeShader);
+            // One shared reader, so this copy and GpuDeviceContext.Capabilities cannot drift (they had: the
+            // device name and the sampler-feature flags were populated there and dropped here).
+            Capabilities = VeldridMap.ReadCapabilities(gd);
             // Wrap the device-owned swapchain framebuffer + shared samplers (no-dispose: the device owns them).
             _swapchainFb = gd.MainSwapchain != null
                 ? new VeldridGpuFramebuffer(_liveness, gd.MainSwapchain.Framebuffer, ownsFramebuffer: false)

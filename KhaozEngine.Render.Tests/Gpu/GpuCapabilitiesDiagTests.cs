@@ -36,5 +36,29 @@ namespace KhaozEngine.Tests.Gpu
             _out.WriteLine($"backend={ctx.Backend} device='{caps.DeviceName}' aniso={caps.SamplerAnisotropy} lodBias={caps.SamplerLodBias}");
             Assert.False(string.IsNullOrEmpty(caps.DeviceName));   // a real backend reports an adapter name
         }
+
+        // Two things surface the same capability set off the same device: the context and the IGpuDevice the
+        // context hands out. They used to be built independently, and the device's copy silently dropped the
+        // adapter name and both sampler-feature flags (nothing read them, so nothing caught it). Both now come
+        // from one reader; this pins that, so adding a member in one place only cannot go unnoticed again.
+        [GpuFact]
+        public void ContextAndDeviceReportTheSameCapabilities()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            GpuCapabilities fromContext = ctx.Capabilities;
+            GpuCapabilities fromDevice = ctx.GpuDevice.Capabilities;
+
+            Assert.Equal(fromContext.ClipSpaceYInverted, fromDevice.ClipSpaceYInverted);
+            Assert.Equal(fromContext.DepthRangeZeroToOne, fromDevice.DepthRangeZeroToOne);
+            Assert.Equal(fromContext.DeviceName, fromDevice.DeviceName);
+            Assert.Equal(fromContext.SamplerAnisotropy, fromDevice.SamplerAnisotropy);
+            Assert.Equal(fromContext.SamplerLodBias, fromDevice.SamplerLodBias);
+            Assert.Equal(fromContext.MaxMsaaSampleCount, fromDevice.MaxMsaaSampleCount);
+            Assert.Equal(fromContext.SupportsShadowMaps, fromDevice.SupportsShadowMaps);
+            Assert.Equal(fromContext.SupportsCompute, fromDevice.SupportsCompute);
+
+            // Metal, Direct3D11 and Vulkan all support compute; this is the only backend set CI runs.
+            Assert.True(fromDevice.SupportsCompute, $"{ctx.Backend} reports no compute support");
+        }
     }
 }

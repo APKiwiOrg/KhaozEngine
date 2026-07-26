@@ -3972,10 +3972,14 @@ overlaps a conservative center-point probe. One bake serves every agent radius: 
 and the clearance transform run once, and the per-query radius check (`NavGrid.IsPassable`) is the only
 thing that varies between a rat and a bear querying the same grid.
 
-For a multi-floor dungeon, `DungeonNav.Bake(layout, originX, originZ, baseY)` (`KhaozEngine.Dungeon`) builds
-the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid` layer per floor, joined by
-directed `NavLink` stair connections a climber crosses between floors, at the same cell size and world
-anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons" above.
+For a multi-floor dungeon, `DungeonNav.Bake(layout, originX, originZ, baseY, agentHeight)`
+(`KhaozEngine.Dungeon`) builds the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid`
+layer per floor, joined by directed `NavLink` stair connections a climber crosses between floors, at the same
+cell size and world anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons"
+above. Headroom-aware: in a `DungeonCeilingMode.Roofed` layout, a cell whose ceiling clearance
+(`CeilingHeightMeters`) is below `agentHeight` (default `DungeonNav.DefaultAgentHeight`, 1.8, the shipped
+character capsule height) bakes blocked even though its cell kind is walkable. An `Open` layout never blocks
+on headroom, matching its pre-headroom-awareness behavior exactly.
 
 ### Bake ramps, stairs, and standable props
 

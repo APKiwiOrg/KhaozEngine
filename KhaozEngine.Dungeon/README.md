@@ -187,29 +187,34 @@ fresh one.
 
 ## NPC pathfinding (`DungeonNav`)
 
-`DungeonNav.Bake(layout, originX, originZ, baseY)` (`KhaozEngine.Navigation`) turns a generated layout into
-a navigable `NavSpace` for NPC pathfinding: one `NavGrid` layer per floor, joined by directed stair `NavLink`
-connections a climber crosses between floors. Render-free and deterministic: the same layout always bakes the
-same space.
+`DungeonNav.Bake(layout, originX, originZ, baseY, agentHeight)` (`KhaozEngine.Dungeon`) turns a generated
+layout into a navigable `NavSpace` for NPC pathfinding: one `NavGrid` layer per floor, joined by directed
+stair `NavLink` connections a climber crosses between floors. Headroom-aware: in a `DungeonCeilingMode.Roofed`
+layout, a cell whose ceiling clearance is below `agentHeight` bakes blocked even though its cell kind is
+walkable. An `Open` layout never blocks on headroom. Render-free and deterministic: the same layout always
+bakes the same space.
 
 ```csharp
 using KhaozEngine.Dungeon;
 using KhaozEngine.Navigation;
 
-NavSpace space = DungeonNav.Bake(layout, originX: 120f, originZ: 0f, baseY: 0f);
+NavSpace space = DungeonNav.Bake(layout, originX: 120f, originZ: 0f, baseY: 0f, agentHeight: 1.8f);
 var planner = new GridPathPlanner(space);
 ```
 
 Each floor f becomes one `NavGrid` layer covering the world-Y band `[baseY + f * FloorHeightMeters, baseY +
 (f + 1) * FloorHeightMeters]`, with a cell walkable exactly when `DungeonLayout.IsWalkable` is true for its
-`GetCell` kind on that floor. The XZ plane is anchored at `(originX, originZ)` with cell size
-`DungeonLayout.CellSizeMeters`, matching the dungeon sinks' own tile-to-world mapping, so a baked `NavGrid`
-lines up cell-for-cell with the same layout's `MapDoc` bake and runtime stamp.
+`GetCell` kind on that floor AND, in a `Roofed` layout, its headroom to the ceiling (`CeilingHeightMeters`)
+clears `agentHeight` (default `DungeonNav.DefaultAgentHeight`, 1.8, the shipped character capsule height).
+The XZ plane is anchored at `(originX, originZ)` with cell size `DungeonLayout.CellSizeMeters`, matching the
+dungeon sinks' own tile-to-world mapping, so a baked `NavGrid` lines up cell-for-cell with the same layout's
+`MapDoc` bake and runtime stamp.
 
 Every stair run contributes a pair of directed links joining its top tread (`DungeonCellKind.StairUpper`, on
 the lower floor) to its landing (`DungeonCellKind.StairTop`, one cell past the top tread on the floor above):
 one link each way, so a path can climb or descend the stair. Landings are found by scanning every `StairTop`
-cell on each floor `f >= 1` and matching it to the single 4-adjacent `StairUpper` cell on floor `f - 1`.
+cell on each floor `f >= 1` and matching it to the single 4-adjacent `StairUpper` cell on floor `f - 1`. Stair
+links are keyed off cell kind alone, so headroom blocking never removes one.
 
 ## Determinism and completability
 

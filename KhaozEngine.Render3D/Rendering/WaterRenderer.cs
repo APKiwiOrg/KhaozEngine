@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class WaterRenderer : IDisposable
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 27 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 28 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {

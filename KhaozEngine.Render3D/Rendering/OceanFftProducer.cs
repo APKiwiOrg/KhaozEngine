@@ -62,6 +62,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuTexture? _idleMap;
         IGpuSampler? _sampler;
 
+        IGpuComputeShader? _rowShader, _colShader;
         IGpuComputePipeline? _rowPipe, _colPipe;
         IGpuResourceLayout? _rowLayout, _colLayout;
         IGpuResourceSet? _rowSet, _colSet;
@@ -263,8 +264,8 @@ namespace KhaozEngine.Render3D.Rendering
 
         void BuildPipelines(IGpuResourceFactory f, int n)
         {
-            var rowShader = Own(f.CreateComputeShaderFromSpirv(OceanComputeShaders.RowPass(n)));
-            var colShader = Own(f.CreateComputeShaderFromSpirv(OceanComputeShaders.ColumnPass(n)));
+            _rowShader = Own(f.CreateComputeShaderFromSpirv(OceanComputeShaders.RowPass(n)));
+            _colShader = Own(f.CreateComputeShaderFromSpirv(OceanComputeShaders.ColumnPass(n)));
 
             _rowLayout = Own(f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Params", GpuResourceKind.UniformBuffer, GpuShaderStages.Compute),
@@ -276,8 +277,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("FoamBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute),
                 new GpuResourceLayoutElement("OceanMap", GpuResourceKind.TextureReadWrite, GpuShaderStages.Compute))));
 
-            _rowPipe = Own(f.CreateComputePipeline(new GpuComputePipelineDescription(rowShader, _rowLayout)));
-            _colPipe = Own(f.CreateComputePipeline(new GpuComputePipelineDescription(colShader, _colLayout)));
+            _rowPipe = Own(f.CreateComputePipeline(new GpuComputePipelineDescription(_rowShader, _rowLayout)));
+            _colPipe = Own(f.CreateComputePipeline(new GpuComputePipelineDescription(_colShader, _colLayout)));
 
             _rowSet = Own(f.CreateResourceSet(new GpuResourceSetDescription(_rowLayout, _ubo!, _h0!, _work!)));
             _colSet = Own(f.CreateResourceSet(new GpuResourceSetDescription(_colLayout, _ubo!, _work!, _foam!, _map!)));
@@ -313,10 +314,10 @@ namespace KhaozEngine.Render3D.Rendering
             _gd.WaitForIdle();
             Drop(ref _colSet); Drop(ref _rowSet);
             Drop(ref _colPipe); Drop(ref _rowPipe);
+            Drop(ref _colShader); Drop(ref _rowShader);
             Drop(ref _colLayout); Drop(ref _rowLayout);
             Drop(ref _map);
             Drop(ref _foam); Drop(ref _work); Drop(ref _h0); Drop(ref _ubo);
-            // The two compiled shader modules are owned but not field-held; they die with the renderer.
             _hasBake = false;
             Active = false;
         }

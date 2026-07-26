@@ -49,6 +49,12 @@ namespace KhaozEngine.Tests.MapDoc
             return doc;
         }
 
+        /// <summary>Rewrites the formatVersion of a just-saved document, keyed off the version this build
+        /// writes so the version bump does not have to be chased through every test that fakes an old or a
+        /// malformed document.</summary>
+        internal static string WithFormatVersion(string json, object version) => json.Replace(
+            $"\"formatVersion\": {MapDocumentFile.CurrentFormatVersion}", $"\"formatVersion\": {version}");
+
         [Fact]
         public void SaveText_LoadText_RoundTripsEverySection()
         {
@@ -163,7 +169,7 @@ namespace KhaozEngine.Tests.MapDoc
         [Fact]
         public void LoadText_TooNewVersion_Throws()
         {
-            string json = MapDocumentFile.SaveText(SampleDoc()).Replace("\"formatVersion\": 2", "\"formatVersion\": 99");
+            string json = WithFormatVersion(MapDocumentFile.SaveText(SampleDoc()), 99);
             var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(json));
             Assert.Contains("99", ex.Message);
         }
@@ -172,7 +178,7 @@ namespace KhaozEngine.Tests.MapDoc
         public void LoadText_OldVersionWithoutMigration_Throws()
         {
             // formatVersion 0 has no registered migration path (the built-in steps start at 1 -> 2).
-            string json = MapDocumentFile.SaveText(SampleDoc()).Replace("\"formatVersion\": 2", "\"formatVersion\": 0");
+            string json = WithFormatVersion(MapDocumentFile.SaveText(SampleDoc()), 0);
             Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(json));
         }
 
@@ -180,9 +186,8 @@ namespace KhaozEngine.Tests.MapDoc
         public void LoadText_RegisteredMigration_Runs()
         {
             // Synthetic v0: displayName lived under "name". The custom 0 -> 1 step renames it, then the
-            // built-in 1 -> 2 step runs, so a v0 document climbs the whole chain to the current version.
-            string json = MapDocumentFile.SaveText(SampleDoc())
-                .Replace("\"formatVersion\": 2", "\"formatVersion\": 0")
+            // built-in steps run, so a v0 document climbs the whole chain to the current version.
+            string json = WithFormatVersion(MapDocumentFile.SaveText(SampleDoc()), 0)
                 .Replace("\"displayName\": \"Test Zone\"", "\"name\": \"Test Zone\"");
             var options = new MapDocumentLoadOptions();
             options.RegisterMigration(0, root =>

@@ -10,6 +10,7 @@
     "formatVersion": { "type": "integer", "minimum": 1 },
     "id": { "type": "string", "minLength": 1 },
     "displayName": { "type": "string" },
+    "tileSize": { "type": "number", "exclusiveMinimum": 0 },
     "bounds": {
       "type": "object",
       "required": ["minX", "minZ", "maxX", "maxZ"],
@@ -135,6 +136,38 @@
         }
       }
     },
+    "placements": { "$ref": "#/$defs/placements" },
+    "spawns": { "$ref": "#/$defs/spawns" },
+    "playerSpawns": { "$ref": "#/$defs/playerSpawns" },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "shape"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "shape": { "$ref": "#/$defs/shape" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "terrainOverrides": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cellSize", "tiles"],
+          "properties": {
+            "cellSize": { "type": "number", "exclusiveMinimum": 0 },
+            "tiles": { "$ref": "#/$defs/sculptTiles" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
     "placements": {
       "type": "array",
       "items": {
@@ -185,52 +218,24 @@
         }
       }
     },
-    "regions": {
+    "sculptTiles": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "shape"],
         "additionalProperties": false,
+        "required": ["tileX", "tileZ", "deltas"],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
-          "shape": { "$ref": "#/$defs/shape" },
-          "tags": { "type": "array", "items": { "type": "string" } }
+          "tileX": { "type": "integer" },
+          "tileZ": { "type": "integer" },
+          "deltas": {
+            "type": "array",
+            "minItems": 1024,
+            "maxItems": 1024,
+            "items": { "type": "number" }
+          }
         }
       }
     },
-    "terrainOverrides": {
-      "oneOf": [
-        { "type": "null" },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["cellSize", "tiles"],
-          "properties": {
-            "cellSize": { "type": "number", "exclusiveMinimum": 0 },
-            "tiles": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["tileX", "tileZ", "deltas"],
-                "properties": {
-                  "tileX": { "type": "integer" },
-                  "tileZ": { "type": "integer" },
-                  "deltas": {
-                    "type": "array",
-                    "minItems": 1024,
-                    "maxItems": 1024,
-                    "items": { "type": "number" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      ]
-    }
-  },
-  "$defs": {
     "kinds": {
       "type": "array",
       "items": {

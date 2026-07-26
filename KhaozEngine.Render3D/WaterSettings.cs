@@ -31,6 +31,42 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed class WaterSettings
     {
+        // ---- Wave source -------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Where the surface's displacement, normal and whitecap foam come from:
+        /// <see cref="WaterWaveSource.Procedural"/> (the default, the closed-form Gerstner swell + cosine ripple
+        /// spectrum, unchanged) or <see cref="WaterWaveSource.FftOcean"/> (a Tessendorf inverse-FFT ocean off the
+        /// <see cref="SeaState"/>, computed on the GPU). The SHADING is identical either way - absorption,
+        /// reflection, glint, foam colour and shore fade all read the same knobs and the same code.
+        /// <para>
+        /// <see cref="WaterWaveSource.FftOcean"/> needs
+        /// <see cref="KhaozEngine.Gpu.GpuCapabilities.SupportsCompute"/>; on a device without it the surface
+        /// silently renders as <see cref="WaterWaveSource.Procedural"/> rather than failing, so this is safe to
+        /// set unconditionally.
+        /// </para>
+        /// <para>
+        /// <b>These knobs go inert under <see cref="WaterWaveSource.FftOcean"/></b>, because the spectrum supplies
+        /// what they described: every <c>Swell*</c> knob (<see cref="SwellAmplitude"/>,
+        /// <see cref="SwellWavelength"/>, <see cref="SwellDirectionDegrees"/>, <see cref="SwellSpreadDegrees"/>,
+        /// <see cref="SwellSteepness"/>, <see cref="SwellSpeed"/>, <see cref="SwellSeed"/>,
+        /// <see cref="SwellComponents"/>), every ripple knob (<see cref="WaveScale"/>, <see cref="WaveSpeed"/>,
+        /// <see cref="NormalStrength"/>, <see cref="WaveWarpStrength"/>, <see cref="RippleComponents"/>,
+        /// <see cref="RippleLacunarity"/>, <see cref="RippleGain"/>, <see cref="RippleSeed"/>), the artistic
+        /// detail fade (<see cref="DetailFadeDistance"/>, <see cref="DistantDetailScale"/>), and
+        /// <see cref="FoamCrestCoverage"/>. Their replacements are named in <see cref="WaterSeaState"/>.
+        /// EVERYTHING ELSE stays live, including <see cref="GridFocusBias"/>, <see cref="FootprintSamples"/>,
+        /// <see cref="VarianceToRoughness"/>, <see cref="FoamStrength"/>, <see cref="FoamPatternScale"/> and
+        /// <see cref="FoamShoreWidth"/>.
+        /// </para>
+        /// </summary>
+        public WaterWaveSource WaveSource = WaterWaveSource.Procedural;
+
+        /// <summary>The sea state driving <see cref="WaterWaveSource.FftOcean"/>: wind, fetch, depth, spreading,
+        /// swell, choppiness, the cascade ladder and the foam model. Never read under
+        /// <see cref="WaterWaveSource.Procedural"/>.</summary>
+        public WaterSeaState SeaState = new();
+
         // ---- Body colour -------------------------------------------------------------------------------------
 
         /// <summary>Tint colour in deep water (view ray steep, far from shore). Default a deep teal-blue that

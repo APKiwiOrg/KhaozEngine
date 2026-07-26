@@ -256,8 +256,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   output. The mapping is mirrored headlessly by `Internal.TonemapMath` (kept in sync with the GLSL `TonemapFrag`).
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus
   `PixelPostProcessSettings.Water` (a `WaterSettings`, **default no request queued = no pass, no cost**) draws an
-  opt-in stylized ocean surface. Five layers of it, each independently reachable at zero so the previous release's
-  look stays one knob away:
+  opt-in stylized ocean surface. `WaterSettings.WaveSource` picks where the DISPLACEMENT, NORMAL and WHITECAPS come
+  from - `WaterWaveSource.Procedural` (the default, everything below) or `WaterWaveSource.FftOcean` - and the
+  shading stack is identical either way. Five layers of the procedural path, each independently reachable at zero so
+  the previous release's look stays one knob away:
   - **Gerstner swell** (`SwellAmplitude`/`SwellWavelength`/`SwellDirectionDegrees`/`SwellSpreadDegrees`/
     `SwellSteepness`/`SwellSpeed`/`SwellSeed`/`SwellComponents`): a stack of up to eight trochoidal components
     displacing the surface grid in the VERTEX stage, so crests pinch and the surface has a real silhouette. The
@@ -302,6 +304,20 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   legacy glint, roughness widening, foam), `RippleSpectrum` (the ripple spectrum, the footprint band-limit and the
   variance transfer) and `GerstnerWaves` (the swell), all internal, headless-tested and mirroring the GLSL
   `WaterVert`/`WaterFrag` exactly.
+- FFT ocean (`WaterSettings.WaveSource = WaterWaveSource.FftOcean`, `WaterSettings.SeaState`, a `WaterSeaState`):
+  a Tessendorf inverse-FFT surface computed on the GPU, replacing the Gerstner swell and the ripple spectrum as the
+  displacement/normal/foam source while reusing the whole shading stack above. A TMA (JONSWAP + Kitaigorodskii)
+  directional spectrum is baked once per sea-state change on the CPU from wind speed, fetch, depth, spreading and
+  swell; every frame it is evolved by the finite-depth dispersion relation and inverse-transformed into
+  displacement, slope and Jacobian-foam maps over two or three octave-separated cascades whose wave-number bands
+  PARTITION (never overlap), so the cascades sum additively with no double counting. Foam accumulates and
+  dissipates over time rather than being a per-fragment fold test. Wave height follows from the sea state and is
+  deliberately not a knob, so `Procedural` remains the right answer for a small body of water. Requires
+  `GpuCapabilities.SupportsCompute` and degrades to `Procedural` silently without it. Costs exactly one GPU stall
+  per frame regardless of cascade count and resolution (0.65 ms measured on Metal at the defaults). The pure math
+  is `Internal.OceanSpectrum` (headless-tested); the kernels are `Internal.OceanComputeShaders` and the per-frame
+  producer is `Rendering.OceanFftProducer`. Rationale: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`; attribution:
+  `NOTICE.md`.
 - Modern particle pass: `Scene3D.DrawParticle(in ParticleSprite)` / `DrawParticles(ReadOnlySpan<ParticleSprite>)`
   queue procedural particle sprites that render as ONE premultiplied-alpha instanced draw after the water pass and
   BEFORE the post chain, so additive sprites feed bloom and every sprite flows through the pixel post like meshes.

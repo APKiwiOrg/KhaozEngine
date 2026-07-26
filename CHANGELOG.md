@@ -5,6 +5,85 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.1.0
+
+A Tessendorf inverse-FFT ocean, computed on the GPU, as an opt-in wave source for the existing water surface.
+Three rounds of de-tiling had each removed one coherent structure from a small sum of directional components and
+the eye had found the next one every time, which is the signature of the method rather than of any component
+count. This replaces the sum with a real directional spectrum evaluated over a full grid: 16384 components per
+cascade at the default resolution, three cascades. The shading is untouched - absorption, the analytic sky
+reflection, the GGX glint, the graphic foam and the shore fade are the same code - so switching modes changes the
+surface and not the look. Closes #310. Design doc: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`. Attribution for
+the approach followed: `NOTICE.md`.
+
+### New
+
+- **`WaterSettings.WaveSource`** picks where the surface comes from: `WaterWaveSource.Procedural` (the default,
+  the Gerstner swell + cosine ripple spectrum shipped through 14.28.0, byte-identical and unchanged) or
+  `WaterWaveSource.FftOcean`. FFT mode needs `GpuCapabilities.SupportsCompute` and degrades to `Procedural`
+  silently on a device without it, so it is safe to set unconditionally.
+- **`WaterSettings.SeaState`** (`WaterSeaState`) is the new sea-state group, oceanographic rather than a wave
+  table. Wind: `WindSpeed` (11 m/s), `WindDirectionDegrees` (30), `FetchKilometres` (120), `DepthMetres` (60).
+  Directionality: `DirectionalSpread` (0.75, a flat-to-Hasselmann blend), `SwellAmount` (0.4),
+  `SwellDirectionDegrees` (30). Surface shape: `Choppiness` (1.1), `SmallWaveCutoffMetres` (0.02), `Seed` (0).
+  Cascades: `CascadeCount` (3, max 3), `CascadeTileMetres` (250), `CascadeTileRatio` (4.2),
+  `CascadeResolution` (128; a power of two in 32..256). Foam: `FoamGain` (1.6), `FoamJacobianBias` (0.55),
+  `FoamDissipationPerSecond` (0.5).
+- The spectrum is TMA (JONSWAP shaped by the Kitaigorodskii depth attenuation), so wave height FOLLOWS from wind
+  and fetch instead of being set. One consequence worth knowing before switching a small body of water over: a
+  ten-metre pond can only physically carry centimetre waves, and `Procedural` stays the right answer there. The
+  cascade tile sizes are the knob for what scale of sea is being simulated.
+- Foam accumulates and dissipates over time from the Jacobian of the horizontal displacement, so a breaking crest
+  leaves a trail rather than blinking off with the crest that made it. It then goes through the same break-up
+  pattern and the same shore-band max as the procedural whitecaps, which is what keeps the graphic foam look.
+
+### Behaviour
+
+- **These `WaterSettings` knobs are INERT under `FftOcean`**, because the spectrum supplies what they described:
+  every `Swell*` knob (`SwellAmplitude`, `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
+  `SwellSteepness`, `SwellSpeed`, `SwellSeed`, `SwellComponents`), every ripple knob (`WaveScale`, `WaveSpeed`,
+  `NormalStrength`, `WaveWarpStrength`, `RippleComponents`, `RippleLacunarity`, `RippleGain`, `RippleSeed`), the
+  artistic detail fade (`DetailFadeDistance`, `DistantDetailScale`), and `FoamCrestCoverage`. Everything else
+  stays live, including `GridFocusBias`, `FootprintSamples`, `VarianceToRoughness`, `FoamStrength`,
+  `FoamPatternScale`, `FoamShoreWidth`, the whole colour/reflection/glint set and `ShoreFadeDistance`.
+- The cascade update runs ONCE per frame inside the water pass, before the draw that consumes it, not per
+  `WaterPlane`. One ocean state serves every queued plane this release.
+- The frame costs exactly ONE GPU stall whatever the cascade count and resolution, which is what the kernel
+  design exists to achieve given the seam has no cross-dispatch barrier (#311). Measured on Metal at the
+  defaults: 0.65 ms of wall-clock stall per frame (0.9 ms at resolution 256).
+- `Procedural` renders byte-identically to 14.28.0 and the `scene3d_water` golden is unchanged, which is the A/B
+  guarantee: the two modes can be compared without anything else moving.
+
+### Fixed
+
+- **`ShaderValidation.ValidateCompute` now rejects a compute source whose Metal entry point numbers its buffer
+  arguments out of binding order.** Metal has no binding decorations, so the cross-compiler assigns slots in
+  first-reference order while the backend binds a resource set by counting the layout in binding order; a helper
+  function that reads binding 1 before anything reads binding 0 silently swaps them, on Metal only, with Vulkan
+  and Direct3D11 perfectly correct. That is not hypothetical - it is how the ocean's row kernel came to divide by
+  a tile size it had read out of the spectrum buffer, producing a NaN surface. The check runs in the GPU-free
+  lane on every push and names the fix. It catches a uniform/storage swap; two same-kind buffers swapping is not
+  visible from the emitted Metal and still needs a readback test.
+
+### Internal
+
+- `KhaozEngine.Render3D`: `Internal/OceanSpectrum.cs` (the CPU spectrum bake, pure and headless-tested),
+  `Internal/OceanComputeShaders.cs` (the two GLSL kernels plus the resolution substitution - compute
+  specialization constants are not exposed, #312, so a resolution change rebuilds the pipeline),
+  `Rendering/OceanFftProducer.cs` (GPU resources and the per-frame dispatch), `Internal/ShaderSources.WaterFft.cs`
+  (the water shaders' cascade reader).
+- Each axis of the transform is ONE dispatch that keeps its line in workgroup shared memory and runs every
+  butterfly stage with `barrier()` inside it, with the spectrum evolution fused into the row pass and the map
+  assembly fused into the column pass. In-place decimation-in-time rather than 15.2.0's Stockham, because
+  Stockham's second buffer would want the entire guaranteed shared-memory minimum at 256.
+- Four Hermitian-packed complex fields carry eight real ones, so normals and the Jacobian are analytic rather
+  than finite differences of the height map.
+- Tests: `OceanSpectrumTests` (30 headless cases over the spectrum, dispersion, spreading and cascade bands),
+  `OceanFftGpuTests` (the produced maps against a naive direct 2D DFT, Parseval between spectrum and height map,
+  bitwise determinism, foam accumulation and dissipation, one stall per frame),
+  `OceanFftShaderValidationTests` (both kernels at every supported resolution, plus the binding-order regression),
+  and the `scene3d_fftocean` cross-backend golden.
+
 ## 16.0.0
 
 Opt-in airborne horizontal momentum: a jump travels its whole arc at the speed it launched at, through the

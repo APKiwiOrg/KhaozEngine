@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D.Internal
         // one-UBO-per-set rule). UboLayoutTests asserts every member appears in both, in both directions, so a
         // rename on one side cannot silently reinterpret the other side's bytes. Packing note: every member is
         // 16-byte aligned, so std140 needs no explicit padding, and WaterRenderer.WaterUbo is the C# mirror.
-        const string WaterUboGlsl = @"layout(set=0, binding=2) uniform Water {
+        const string WaterUboGlsl = @"layout(set=0, binding=4) uniform Water {
     mat4 ViewProj;
     mat4 InvViewProj;   // RAW (not clip-corrected) inverse, for the fragment's depth reconstruction
     vec4 LightDir;      // xyz = key light travel direction
@@ -37,6 +37,9 @@ namespace KhaozEngine.Render3D.Internal
     vec4 FoamParams;    // x=strength, y=crestCoverage, z=shoreWidth, w=patternScale
     vec4 RippleSpectrum;   // x=componentCount, y=lacunarity, z=gain, w=seed
     vec4 FootprintParams;  // x=samplesPerWavelength (0 = band-limit off), y=varianceToRoughness, z/w reserved
+    vec4 FftParams;        // x=1 when the FFT ocean maps are live (0 = procedural), y=cascadeCount, z=resolution, w reserved
+    vec4 FftTiles;         // xyz = per-cascade tile size in world metres, w reserved
+    vec4 FftVariance;      // xyz = per-cascade slope variance of the baked spectrum (Toksvig input), w reserved
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -70,11 +73,12 @@ namespace KhaozEngine.Render3D.Internal
         /// </para>
         /// </summary>
         public const string WaterVert = @"#version 450
-" + WaterUboGlsl + @"
+" + WaterFftBindingsGlsl + WaterUboGlsl + WaterFftCommonGlsl + @"
 layout(location=0) in vec3 Position;
 layout(location=0) out vec3 vWorldPos;
 layout(location=1) out vec3 vSwellNormal;
 layout(location=2) out float vFold;
+layout(location=3) out vec2 vRefXz;   // the STILL-water XZ, i.e. where this vertex samples the ocean maps
 
 const float KE_GRAVITY = 9.81;
 const float KE_LAMBDA_DECAY = 0.685;
@@ -92,7 +96,12 @@ void main() {
     vec3 swellNormal = vec3(0.0, 1.0, 0.0);
     float fold = 0.0;
 
-    if (amplitude > 0.0 && wavelength > 0.0) {
+    // FFT ocean: the displacement is a texture lookup per cascade, and the normal + the fold both come out of the
+    // derivative map in the fragment, so the whole Gerstner block below is skipped rather than added to. The two
+    // sources are alternatives, never a sum - summing them would double-count the same sea twice over.
+    if (FftParams.x > 0.5) {
+" + WaterFftVertGlsl + @"        p = Position + oceanDisp;
+    } else if (amplitude > 0.0 && wavelength > 0.0) {
         int n = clamp(int(SwellShape.z + 0.5), 1, KE_MAX_COMPONENTS);
         // Closed-form geometric sum (NOT an accumulated loop), matching GerstnerWaves.BuildComponents so the two
         // round identically instead of drifting by however each happened to accumulate.
@@ -151,6 +160,7 @@ void main() {
     vWorldPos = p;
     vSwellNormal = swellNormal;
     vFold = fold;
+    vRefXz = Position.xz;
 }";
 
         /// <summary>
@@ -158,12 +168,14 @@ void main() {
         /// glint, foam, shore fade) and <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
         public const string WaterFrag = @"#version 450
-layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
-layout(set=0, binding=1) uniform sampler Samp;
-" + WaterUboGlsl + @"
+" + WaterFftBindingsGlsl + @"
+layout(set=0, binding=2) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
+layout(set=0, binding=3) uniform sampler Samp;
+" + WaterUboGlsl + WaterFftCommonGlsl + @"
 layout(location=0) in vec3 vWorldPos;
 layout(location=1) in vec3 vSwellNormal;
 layout(location=2) in float vFold;
+layout(location=3) in vec2 vRefXz;
 layout(location=0) out vec4 oColor;
 
 const float KE_WHITECAP_SOFTNESS = 0.18;   // mirrors WaterMath.WhitecapSoftness
@@ -335,6 +347,51 @@ void main() {
 
     float footprintSamples = FootprintParams.x, varianceGain = max(FootprintParams.y, 0.0);
 
+    // FFT ocean cascades, sampled FIRST. Two reasons, both Metal-only and both invisible here: the ocean map is
+    // binding 0 and the scene depth binding 2, and the cross-compiler numbers a stage's textures by first
+    // reference, so sampling the depth first would swap them. Inside the branch, so the procedural surface still
+    // pays nothing at runtime - emission order is static and a not-taken branch is still emitted.
+    vec2 oceanSlope = vec2(0.0);
+    float oceanFoam = 0.0;
+    float oceanLost = 0.0;
+    if (FftParams.x > 0.5) {
+" + WaterFftFragGlsl + @"    }
+
+    // Ground reconstruction: recover the world position of whatever the opaque pass left under this pixel, from
+    // the resolved scene depth (the ground-decal pass's gl_FragCoord + raw-inverse-view-projection convention -
+    // backend-independent, unlike an interpolated UV, because render-target texture SAMPLING has a
+    // backend-dependent Y origin while gl_FragCoord is upper-left on every backend). depthBelowSurface is this
+    // water fragment's own world Y minus the ground's world Y - and that world Y is the DISPLACED one, so a
+    // passing crest deepens the water under it and both the waterline and the shore foam run up the beach with
+    // the swell at no extra cost. The depth grading, the shore foam and the waterline alpha feather all key off
+    // it, so it is computed once, up front.
+    //
+    // It sits HERE, ahead of the surface normal, because DepthTex is binding 0 and must be the first texture this
+    // stage samples once the FFT derivative map (binding 4) is in play - the Metal SPIRV-Cross first-sample-order
+    // rule, same as ModelFrag's ShadowMap. It has no dependency on the normal, so the move is a pure reorder and
+    // the procedural surface renders exactly as before. The ocean sampling above is earlier still, for the same
+    // reason one binding further up.
+    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
+    float groundDepth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+    vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, groundDepth, 1.0);
+    vec4 wp = InvViewProj * ndc;
+    vec3 groundWorld = wp.xyz / wp.w;
+    float depthBelowSurface = vWorldPos.y - groundWorld.y;
+
+    vec3 N;
+    float lostSlopeVariance;
+    float fftFoam = 0.0;
+    if (FftParams.x > 0.5) {
+        // FFT ocean. The cascades' ANALYTIC slope is the whole surface normal: there is no separate swell to
+        // attenuate, because the swell scale is just the coarsest cascade. Foam has already been accumulated per
+        // texel by the compute pass, so it is a lookup rather than a per-fragment fold test. Both were read above
+        // at the STILL-water XZ handed down from the vertex stage, never the displaced position: the maps are
+        // indexed by the reference grid the transform is defined over, and sampling them at the displaced point
+        // would fold the horizontal displacement in a second time.
+        N = slopeToNormal(oceanSlope.x, oceanSlope.y, 1.0);
+        fftFoam = oceanFoam;
+        lostSlopeVariance = oceanLost;
+    } else {
     // Ripple spectrum, band-limited to this pixel. slope.xy is the surviving slope, slope.z the variance the
     // band-limit removed (handed to the glint lobe below rather than discarded).
     vec3 slope = waterSlope(vWorldPos.xz, time, waveScale, waveSpeed, warpStrength, detail,
@@ -367,26 +424,12 @@ void main() {
     vec3 nSwell = normalize(vSwellNormal);
     vec3 nSum = vec3(nSwell.x * swellAtten + ripple.x, nSwell.y, nSwell.z * swellAtten + ripple.z);
     float nLen = length(nSum);
-    vec3 N = nLen > 1e-8 ? nSum / nLen : vec3(0.0, 1.0, 0.0);
+    N = nLen > 1e-8 ? nSum / nLen : vec3(0.0, 1.0, 0.0);
 
     // Total slope variance the band-limit removed. The ripple half scales with NormalStrength squared (it is a
     // slope that NormalStrength multiplies); the swell half is geometry and does not.
-    float lostSlopeVariance = slope.z * normalStrength * normalStrength + swellLostVar;
-
-    // Ground reconstruction: recover the world position of whatever the opaque pass left under this pixel, from
-    // the resolved scene depth (the ground-decal pass's gl_FragCoord + raw-inverse-view-projection convention -
-    // backend-independent, unlike an interpolated UV, because render-target texture SAMPLING has a
-    // backend-dependent Y origin while gl_FragCoord is upper-left on every backend). depthBelowSurface is this
-    // water fragment's own world Y minus the ground's world Y - and that world Y is the DISPLACED one, so a
-    // passing crest deepens the water under it and both the waterline and the shore foam run up the beach with
-    // the swell at no extra cost. The depth grading, the shore foam and the waterline alpha feather all key off
-    // it, so it is computed once, up front.
-    ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
-    float groundDepth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
-    vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, groundDepth, 1.0);
-    vec4 wp = InvViewProj * ndc;
-    vec3 groundWorld = wp.xyz / wp.w;
-    float depthBelowSurface = vWorldPos.y - groundWorld.y;
+    lostSlopeVariance = slope.z * normalStrength * normalStrength + swellLostVar;
+    }
 
     // Body colour. Per-channel Beer-Lambert absorption (mirrors WaterMath.AbsorbTint/AbsorbWeight) grades shallow
     // to deep along an exponential PER CHANNEL, so the ramp bends through green-teal instead of running straight
@@ -471,7 +514,13 @@ void main() {
     float foam = 0.0;
     if (foamStrength > 0.0) {
         float threshold = 1.0 - clamp(FoamParams.y, 0.0, 1.0);
-        float crest = smoothstep(threshold, threshold + KE_WHITECAP_SOFTNESS, vFold);
+        // Whitecaps. In FFT mode the compute pass has already turned the displacement Jacobian into an
+        // accumulating, dissipating foam value per texel, so this is that value; in procedural mode it is the
+        // per-fragment threshold on the Gerstner fold factor. Both then go through the SAME break-up pattern and
+        // the same shore-band max below, which is what keeps the graphic foam look identical across the two.
+        float crest = FftParams.x > 0.5
+            ? fftFoam
+            : smoothstep(threshold, threshold + KE_WHITECAP_SOFTNESS, vFold);
         float shoreWidth = FoamParams.z;
         float band = shoreWidth <= 0.0 ? 0.0
             : 1.0 - smoothstep(0.0, 1.0, clamp(depthBelowSurface / shoreWidth, 0.0, 1.0));

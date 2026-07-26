@@ -2338,6 +2338,43 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `GlintExponent`), `GlintDistantRoughness`.
     - *Foam*: `FoamColor`, `FoamStrength` (0 = off), `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`.
     - *Shore*: `ShoreFadeDistance` (world units the alpha softens over at the waterline).
+    - *Wave source* (since 16.1.0): `WaveSource` picks where the displacement, normal and whitecaps come from -
+      `WaterWaveSource.Procedural` (the default, everything above, unchanged) or `WaterWaveSource.FftOcean` (a
+      Tessendorf inverse-FFT ocean on the GPU, see below). The SHADING is identical either way.
+  - **FFT ocean** (`WaveSource = WaterWaveSource.FftOcean`, since 16.1.0). Replaces the Gerstner swell and the
+    cosine ripple spectrum with a real directional spectrum evaluated over a full grid - 16384 components per
+    cascade at the default resolution, three cascades - inverse-transformed on the GPU every frame into
+    displacement, slope and Jacobian-foam maps. It exists because a finite sum of directional components always
+    keeps some residual regularity, and three releases of hiding one coherent structure only let the eye find the
+    next. Everything else about the surface (absorption, the reflected sky, the glint, the graphic foam, the shore
+    fade) is the same code reading the same knobs, so switching modes changes the surface and not the look.
+    - **Requires `GpuCapabilities.SupportsCompute`** and degrades to `Procedural` silently without it, so it is
+      safe to set unconditionally. There is no failure mode to handle.
+    - **The sea state is oceanographic, not a wave table** (`Post.Water.SeaState`, a `WaterSeaState`):
+      `WindSpeed`, `WindDirectionDegrees`, `FetchKilometres`, `DepthMetres` fix the TMA spectrum;
+      `DirectionalSpread` blends a flat distribution into the Hasselmann lobe and `SwellAmount` /
+      `SwellDirectionDegrees` add a long-period swell; `Choppiness` is the horizontal displacement scale;
+      `SmallWaveCutoffMetres` suppresses ripple-scale energy; `Seed` decorrelates two oceans. Cascades:
+      `CascadeCount` (1..3), `CascadeTileMetres`, `CascadeTileRatio`, `CascadeResolution` (a power of two in
+      32..256; 128 and 256 are the intended values). Foam: `FoamGain`, `FoamJacobianBias`,
+      `FoamDissipationPerSecond`.
+    - **Wave height FOLLOWS from wind and fetch** - it is not a knob, by design. The practical consequence: a
+      ten-metre pond can only physically carry centimetre waves, so the FFT ocean at doll-house scale renders as a
+      nearly flat sheet, correctly. `Procedural` is the right answer for a pond; `CascadeTileMetres` is the knob
+      for what scale of sea is being simulated.
+    - **These knobs go INERT in FFT mode**, because the spectrum supplies what they described: every `Swell*`
+      knob, every ripple knob (`WaveScale`, `WaveSpeed`, `NormalStrength`, `WaveWarpStrength`,
+      `RippleComponents`, `RippleLacunarity`, `RippleGain`, `RippleSeed`), the artistic detail fade
+      (`DetailFadeDistance`, `DistantDetailScale`), and `FoamCrestCoverage`. Everything else stays live -
+      `GridFocusBias`, `FootprintSamples`, `VarianceToRoughness`, the whole colour/reflection/glint set,
+      `FoamStrength`, `FoamPatternScale`, `FoamShoreWidth` and `ShoreFadeDistance`.
+    - **Cost.** The cascade update runs ONCE per frame inside the water pass (not per `WaterPlane` - one ocean
+      state serves every queued plane this release) and costs exactly one GPU stall whatever the cascade count and
+      resolution, measured at 0.65 ms on Metal at the defaults and 0.9 ms at resolution 256. Changing any sea-state
+      field rebuilds the initial spectrum once, on the CPU; the per-frame cost does not depend on it.
+    - **Deterministic.** The same seed at the same elapsed time produces bitwise-identical maps, so a frozen-time
+      frame is reproducible and testable.
+    - Rationale, including the three Metal-only binding landmines it walked into: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`.
   - **Swell** (the shape): a stack of Gerstner (trochoidal) components displaced in the VERTEX stage, so crests
     pinch, troughs flatten, and the surface has a real silhouette instead of shading painted on a flat sheet. You
     tune WIND, not a wave table: the whole stack is generated from amplitude + longest wavelength + direction +
@@ -4423,7 +4460,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.1.0" />
 ```
 
 ```csharp

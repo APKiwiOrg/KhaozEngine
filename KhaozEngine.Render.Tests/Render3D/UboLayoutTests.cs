@@ -409,13 +409,14 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void WaterUbo_MarshalSize_EqualsPayloadBytesConstant_And_GlslBlock()
         {
-            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 19 vec4 (LightDir, LightColor, CameraPos,
+            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 24 vec4 (LightDir, LightColor, CameraPos,
             // DeepColor, ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams, SkyHorizon, SkyZenith,
             // SkySunColor, SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
-            // RippleSpectrum, FootprintParams) = 128 + 336 = 464 bytes. If the struct or the shader block drift apart, the per-plane water UBO
-            // upload smears the colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
+            // RippleSpectrum, FootprintParams, FftParams, FftTiles, FftVariance) = 128 + 384 = 512 bytes. If the
+            // struct or the shader block drift apart, the per-plane water UBO upload smears the
+            // colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + 21 * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(2 * 64 + 24 * 16, (int)WaterRenderer.PayloadBytes);
         }
 
         [Fact]

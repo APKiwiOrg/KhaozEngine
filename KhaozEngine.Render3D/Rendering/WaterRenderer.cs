@@ -49,11 +49,14 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 FoamParams;    // x=strength, y=crestCoverage, z=shoreWidth, w=patternScale
             public Vector4 RippleSpectrum;   // x=componentCount, y=lacunarity, z=gain, w=seed
             public Vector4 FootprintParams;  // x=samplesPerWavelength, y=varianceToRoughness, z/w reserved
+            public Vector4 FftParams;        // x=1 when the FFT maps are live, y=cascadeCount, z=resolution, w reserved
+            public Vector4 FftTiles;          // xyz = per-cascade tile metres, w reserved
+            public Vector4 FftVariance;       // xyz = per-cascade baked slope variance, w reserved
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + 21*16 (vec4) = 464.</summary>
-        internal const uint PayloadBytes = 464;
+        /// 2*64 (mat4) + 24*16 (vec4) = 512.</summary>
+        internal const uint PayloadBytes = 512;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -85,6 +88,13 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuResourceSet? _set;
         RenderResources? _bound;
         int _boundGen;
+        // The FFT ocean's compute producer. Owned here (rather than by Scene3D) because the cascade update must be
+        // recorded into the SAME command list as the draw that samples its output, which is the seam's guaranteed
+        // compute-to-graphics ordering. Updated ONCE per Draw, before the per-plane loop: one ocean state serves
+        // every queued plane.
+        readonly OceanFftProducer _ocean;
+        // Which ocean map the current set was built against, so a rebaked (or first-activated) map rebinds.
+        IGpuTexture? _boundMap;
         // Fixed-size grid buffers: every WaterPlane draws through the SAME GridResolution grid (only the CPU-side
         // vertex positions differ per plane, re-uploaded per draw), so these are allocated once and never regrown.
         IGpuBuffer? _vb;
@@ -100,11 +110,22 @@ namespace KhaozEngine.Render3D.Rendering
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.WaterVert, ShaderSources.WaterFrag);
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                // ORDER IS LOAD-BEARING, and not for the usual reason. Veldrid numbers a backend's resource slots
+                // with one counter PER KIND over this whole list, binding each element to the stages in its mask,
+                // while the cross-compiler numbers each stage DENSELY over only the bindings that stage declares.
+                // Those agree only when every stage's resources are a PREFIX of this list. The vertex stage uses
+                // the ocean map and the shared UBO and nothing else, so the ocean map has to be the FIRST texture
+                // and its sampler the FIRST sampler; put the scene depth first instead and the vertex samples an
+                // unbound slot and reads zero, on Metal, silently. That is also why the ocean is ONE array texture
+                // (displacement layers then derivative layers) rather than the two it reads as.
+                new GpuResourceLayoutElement("OceanMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("OceanSamp", GpuResourceKind.Sampler, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 // Dynamic-offset UBO read by BOTH stages (the vertex shader only needs ViewProj, folded into the
                 // same buffer per the one-UBO-per-set rule).
                 new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
+            _ocean = new OceanFftProducer(gd);
             _pipe = Pipe(f, colorOutput);
         }
 
@@ -139,11 +160,15 @@ namespace KhaozEngine.Render3D.Rendering
 
         void BindTargets(RenderResources res)
         {
-            if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
+            IGpuTexture map = _ocean.Map;
+            if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen
+                && ReferenceEquals(_boundMap, map)) return;
             _set?.Dispose();
-            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex, _gd.PointSampler,
+            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
+                map, _ocean.Sampler, res.DepthColorTex, _gd.PointSampler,
                 new GpuBufferRange(_ubo!, 0, SlotBytes)));
             _bound = res; _boundGen = res.Generation;
+            _boundMap = map;
         }
 
         /// <summary>Ensure the UBO holds at least <paramref name="planeCount"/> slots, growing geometrically. A
@@ -184,6 +209,15 @@ namespace KhaozEngine.Render3D.Rendering
         /// </summary>
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
             Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds)
+            => PackUbo(clipViewProj, rawViewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds,
+                default);
+
+        /// <summary>As above, plus the FFT ocean's live map description. <paramref name="ocean"/> defaulted (i.e.
+        /// inactive) packs <c>FftParams.x = 0</c>, which is what makes every FFT branch in both shader stages a
+        /// not-taken uniform branch and the procedural surface byte-identical to 14.28.0.</summary>
+        public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
+            Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds,
+            in OceanMaps ocean)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
@@ -228,7 +262,48 @@ namespace KhaozEngine.Render3D.Rendering
                     Math.Clamp(settings.RippleComponents, 1, Internal.RippleSpectrum.MaxComponents),
                     settings.RippleLacunarity, settings.RippleGain, settings.RippleSeed),
                 FootprintParams = new Vector4(settings.FootprintSamples, settings.VarianceToRoughness, 0f, 0f),
+                FftParams = new Vector4(ocean.Active ? 1f : 0f, ocean.CascadeCount, ocean.Resolution, 0f),
+                FftTiles = new Vector4(ocean.Tiles, 0f),
+                FftVariance = new Vector4(ocean.SlopeVariance, 0f),
             };
+        }
+
+        /// <summary>
+        /// The live FFT ocean maps' shape, as the shaders need to read them: whether the maps are live at all, how
+        /// many cascade layers they carry, their resolution, each layer's world tile size, and each layer's baked
+        /// slope variance. A pure value so <see cref="PackUbo(Matrix4x4, Matrix4x4, Vector3, Color, Vector3,
+        /// WaterSettings, SkySettings, float, in OceanMaps)"/> stays testable without a device.
+        /// </summary>
+        internal readonly struct OceanMaps
+        {
+            /// <summary>True when the compute producer wrote maps this frame.</summary>
+            public bool Active { get; }
+            /// <summary>Cascade layers in the map arrays.</summary>
+            public int CascadeCount { get; }
+            /// <summary>FFT resolution per axis.</summary>
+            public int Resolution { get; }
+            /// <summary>Per-cascade world tile size, metres.</summary>
+            public Vector3 Tiles { get; }
+            /// <summary>Per-cascade expected slope variance from the baked spectrum.</summary>
+            public Vector3 SlopeVariance { get; }
+
+            public OceanMaps(int cascadeCount, int resolution, Vector3 tiles, Vector3 slopeVariance)
+            {
+                Active = true;
+                CascadeCount = cascadeCount;
+                Resolution = resolution;
+                Tiles = tiles;
+                SlopeVariance = slopeVariance;
+            }
+
+            /// <summary>Snapshot a producer's current output. Returns the inactive default when it produced
+            /// nothing this frame.</summary>
+            public static OceanMaps From(OceanFftProducer producer)
+                => producer.Active
+                    ? new OceanMaps(producer.CascadeCount, producer.Resolution,
+                        new Vector3(producer.TileMetres[0], producer.TileMetres[1], producer.TileMetres[2]),
+                        new Vector3(producer.SlopeVariance[0], producer.SlopeVariance[1], producer.SlopeVariance[2]))
+                    : default;
         }
 
         /// <summary>Draw all queued water planes into ColorDepthFB (lit colour + read-only scene depth). Caller
@@ -241,12 +316,20 @@ namespace KhaozEngine.Render3D.Rendering
             if (planes.Length == 0) return;
             EnsureUboCapacity(planes.Length);
             EnsureGridBuffers();
+
+            // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
+            // it produced). Every queued plane samples the same cascades: this release has one sea state, not one
+            // per body of water. The producer records its final dispatch into THIS command list, so the storage
+            // writes and the draws that sample them share a list - the seam's guaranteed ordering.
+            _ocean.Update(cl, settings, timeSeconds);
+            var oceanMaps = OceanMaps.From(_ocean);
             BindTargets(res);
 
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
             for (int i = 0; i < planes.Length; i++)
             {
-                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds);
+                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds,
+                    oceanMaps);
                 cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
             }
 
@@ -266,8 +349,13 @@ namespace KhaozEngine.Render3D.Rendering
             }
         }
 
+        /// <summary>The FFT producer's last-frame diagnostics: GPU stalls it cost and the wall-clock milliseconds
+        /// they took. Internal, for the perf test that pins #311's cost as a measured number.</summary>
+        internal (int Stalls, double StallMs) LastOceanCost => (_ocean.LastStallCount, _ocean.LastStallMs);
+
         public void Dispose()
         {
+            _ocean.Dispose();
             _set?.Dispose();
             _pipe.Dispose();
             _layout.Dispose();

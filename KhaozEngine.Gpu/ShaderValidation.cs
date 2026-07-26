@@ -89,16 +89,119 @@ namespace KhaozEngine.Gpu
 
             foreach (CrossCompileTarget target in Targets)
             {
+                ComputeCompilationResult result;
                 try
                 {
-                    SpirvCompilation.CompileCompute(spirv, target);
+                    result = SpirvCompilation.CompileCompute(spirv, target);
                 }
                 catch (Exception ex)
                 {
                     throw new ShaderValidationException(
                         $"{tag}: compute cross-compile to {target} failed: {ex.Message}", ex);
                 }
+                if (target == CrossCompileTarget.MSL) CheckMslBufferSlots(result, tag);
             }
+        }
+
+        /// <summary>
+        /// Reject a compute source whose cross-compiled Metal entry point puts its UNIFORM buffer at a different
+        /// slot from the one the resource layout will bind it to. This is a real, silent miscompile rather than a
+        /// style check, and it is why it exists.
+        /// <para>
+        /// Metal has no binding decorations. The cross-compiler hands each resource a <c>[[buffer(n)]]</c> index of
+        /// its own, assigned in SPIR-V id order, which follows where each resource is FIRST REFERENCED across the
+        /// emitted function bodies. The backend, meanwhile, binds a resource set by counting the
+        /// <see cref="GpuResourceLayoutDescription"/>'s elements in binding order. Those two agree only when
+        /// first-reference order happens to match binding order - so a helper function that reads binding 1 before
+        /// anything reads binding 0 silently swaps the two, on Metal ONLY, while Vulkan and Direct3D11 stay
+        /// perfectly correct because they honour the decorations. The observed shape was a kernel reading its
+        /// cascade tile size out of the spectrum buffer, getting 0, and producing a NaN surface.
+        /// </para>
+        /// <para>
+        /// What is compared is the ORDER OF KINDS: the reflected layout lists its buffers in binding order, the
+        /// entry point lists its buffer arguments in Metal-index order, and a uniform buffer that lands at a
+        /// different position between the two is the bug. That catches a uniform/storage swap, which is the case a
+        /// mixed resource set can hit. It does NOT distinguish two storage buffers from each other, since Metal
+        /// spells both <c>device T&amp;</c> - a swap between two same-kind buffers is not visible from here, and
+        /// only a readback test will catch it.
+        /// </para>
+        /// <para>
+        /// The fix in the shader is always the same shape: make the first reference to each resource happen in
+        /// binding order, hoisting a first touch into <c>main</c> when a helper function reaches a later binding
+        /// first.
+        /// </para>
+        /// </summary>
+        static void CheckMslBufferSlots(ComputeCompilationResult result, string tag)
+        {
+            string[] declared = BufferKindsFromReflection(result);
+            string[] emitted = BufferKindsFromEntryPoint(result.ComputeShader);
+            if (declared.Length == 0 || emitted.Length != declared.Length) return;   // shapes disagree: nothing to say
+
+            for (int i = 0; i < declared.Length; i++)
+            {
+                if (declared[i] == emitted[i]) continue;
+                throw new ShaderValidationException(
+                    $"{tag}: the Metal entry point binds a {emitted[i]} buffer at slot {i}, but the resource " +
+                    $"layout puts a {declared[i]} buffer there. Metal buffer indices are assigned in " +
+                    "first-reference order while the resource layout is counted in binding order, so this binds " +
+                    "the wrong resource to each slot on Metal ONLY, and silently. Make the first reference to " +
+                    "each resource happen in binding order - hoist a first touch into main when a helper function " +
+                    "reaches a later binding first.");
+            }
+        }
+
+        /// <summary>The kind of every BUFFER resource the module declares, in binding order, as
+        /// <c>uniform</c>/<c>storage</c>. Textures and samplers have their own Metal index space and are skipped.</summary>
+        static string[] BufferKindsFromReflection(ComputeCompilationResult result)
+        {
+            var kinds = new System.Collections.Generic.List<string>();
+            foreach (ResourceLayoutDescription set in result.Reflection.ResourceLayouts)
+            {
+                foreach (ResourceLayoutElementDescription element in set.Elements)
+                {
+                    if (element.Kind == ResourceKind.UniformBuffer) kinds.Add("uniform");
+                    else if (element.Kind == ResourceKind.StructuredBufferReadOnly
+                          || element.Kind == ResourceKind.StructuredBufferReadWrite) kinds.Add("storage");
+                }
+            }
+            return kinds.ToArray();
+        }
+
+        /// <summary>The kind of every buffer argument of the Metal entry point, in <c>[[buffer(n)]]</c> index
+        /// order. A <c>constant T&amp;</c> argument is a uniform buffer; <c>device</c> / <c>const device</c> is a
+        /// storage buffer.</summary>
+        static string[] BufferKindsFromEntryPoint(string msl)
+        {
+            int start = msl.IndexOf("kernel void", StringComparison.Ordinal);
+            if (start < 0) return Array.Empty<string>();
+            int open = msl.IndexOf('(', start);
+            if (open < 0) return Array.Empty<string>();
+            // Match the closing parenthesis by DEPTH, not by the first one: every argument carries an attribute
+            // like [[buffer(0)]], so a naive scan stops inside the first one and sees a single argument.
+            int close = -1, depth = 0;
+            for (int i = open; i < msl.Length; i++)
+            {
+                if (msl[i] == '(') depth++;
+                else if (msl[i] == ')' && --depth == 0) { close = i; break; }
+            }
+            if (close < 0) return Array.Empty<string>();
+
+            var byIndex = new System.Collections.Generic.SortedDictionary<int, string>();
+            foreach (string argument in msl.Substring(open + 1, close - open - 1).Split(','))
+            {
+                int marker = argument.IndexOf("[[buffer(", StringComparison.Ordinal);
+                if (marker < 0) continue;
+                int numberStart = marker + "[[buffer(".Length;
+                int numberEnd = argument.IndexOf(')', numberStart);
+                if (numberEnd < 0) continue;
+                if (!int.TryParse(argument.AsSpan(numberStart, numberEnd - numberStart), out int index)) continue;
+                string text = argument.TrimStart();
+                byIndex[index] = text.StartsWith("constant ", StringComparison.Ordinal) ? "uniform" : "storage";
+            }
+
+            var kinds = new string[byIndex.Count];
+            byIndex.Values.CopyTo(kinds, 0);
+            return kinds;
         }
 
         static byte[] CompileToSpirv(string glsl, ShaderStages stage, string tag)

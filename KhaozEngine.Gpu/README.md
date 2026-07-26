@@ -60,7 +60,12 @@ What it owns today:
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run
   on a real device of that backend. `ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a
   compute shader. A compile failure throws `ShaderValidationException` naming the label and the failing
-  stage/target. The engine's own shader-source tests use this to validate every embedded production shader; games
+  stage/target. `ValidateCompute` ALSO rejects a source whose cross-compiled Metal entry point numbers its buffer
+  arguments out of binding order (since 16.1.0): Metal has no binding decorations, so the cross-compiler assigns
+  slots in first-reference order while the backend binds a resource set by counting the layout in binding order,
+  and a helper function that reads binding 1 before anything reads binding 0 silently swaps the two on Metal with
+  Vulkan and Direct3D11 perfectly correct. It catches a uniform/storage swap; two same-kind buffers swapping is
+  not visible from the emitted Metal and still needs a readback test. The engine's own shader-source tests use this to validate every embedded production shader; games
   can validate their custom shaders the same way in their own fast test suites.
 
 This is the ONLY package meant to reference Veldrid, and the containment is complete: the resource, command and

@@ -39,7 +39,7 @@ artifacts/
 
 # ----- KhaozEngine-specific (add repo-specific rules below) -----
 # Failure-evidence PNGs written by the GPU golden compare (got/want/diff/bake); local-only, uploaded as CI artifacts
-KhaozEngine.Tests/Gpu/goldens-evidence/
+KhaozEngine.Render.Tests/Gpu/goldens-evidence/
 # CPU-vs-GPU skinning parity PNG dumps (Render3DGpuSkinningGpuTests); local-only diagnostic evidence
 gpu-skinning-evidence/
 

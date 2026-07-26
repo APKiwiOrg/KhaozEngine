@@ -54,9 +54,10 @@ The result is one row dispatch, one drain, one column dispatch - **exactly one s
 cascade count and resolution**. The column pass is recorded into the SCENE's command list, immediately before the
 draw that samples its output, which is the seam's other guaranteed pattern (compute writes a `Storage | Sampled`
 texture, a graphics pass in the same list samples it). Measured on Metal at the shipping defaults (3 cascades,
-128): **0.65 ms** of wall-clock stall per frame, against a 2 ms budget, so the defaults stand. At 256 it is about
-0.9 ms. The floor is around 0.5 ms even at 64, which says the cost is the submit-and-drain round trip rather than
-the transform work - the stall IS the cost, exactly as #311 predicted.
+128): about **0.3 ms** of wall-clock stall per frame, against a 2 ms budget, so the defaults stand. At 256 it stays
+under 1 ms. A SINGLE cascade at 128 measures the same 0.3 ms, which says the cost is the submit-and-drain round
+trip rather than the transform work - the stall IS the cost, exactly as #311 predicted, and it is why collapsing
+the stall count mattered far more than making the kernels fast.
 
 The alternative considered was load-balancing cascades across frames, as the reference does. It is unnecessary
 here: the fused shape already reaches one stall per frame at any cascade count, and staggering cascades would

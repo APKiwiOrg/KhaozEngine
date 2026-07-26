@@ -314,7 +314,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   dissipates over time rather than being a per-fragment fold test. Wave height follows from the sea state and is
   deliberately not a knob, so `Procedural` remains the right answer for a small body of water. Requires
   `GpuCapabilities.SupportsCompute` and degrades to `Procedural` silently without it. Costs exactly one GPU stall
-  per frame regardless of cascade count and resolution (0.65 ms measured on Metal at the defaults). The pure math
+  per frame regardless of cascade count and resolution (about 0.3 ms measured on Metal at the defaults). The pure math
   is `Internal.OceanSpectrum` (headless-tested); the kernels are `Internal.OceanComputeShaders` and the per-frame
   producer is `Rendering.OceanFftProducer`. Rationale: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`; attribution:
   `NOTICE.md`.

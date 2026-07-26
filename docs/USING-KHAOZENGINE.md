@@ -2370,8 +2370,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `FoamStrength`, `FoamPatternScale`, `FoamShoreWidth` and `ShoreFadeDistance`.
     - **Cost.** The cascade update runs ONCE per frame inside the water pass (not per `WaterPlane` - one ocean
       state serves every queued plane this release) and costs exactly one GPU stall whatever the cascade count and
-      resolution, measured at 0.65 ms on Metal at the defaults and 0.9 ms at resolution 256. Changing any sea-state
-      field rebuilds the initial spectrum once, on the CPU; the per-frame cost does not depend on it.
+      resolution, measured at about 0.3 ms on Metal at the defaults and under 1 ms at resolution 256. Changing any
+      sea-state field rebuilds the initial spectrum once, on the CPU; the per-frame cost does not depend on it.
     - **Deterministic.** The same seed at the same elapsed time produces bitwise-identical maps, so a frozen-time
       frame is reproducible and testable.
     - Rationale, including the three Metal-only binding landmines it walked into: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`.

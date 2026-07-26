@@ -50,7 +50,8 @@ the approach followed: `NOTICE.md`.
   `WaterPlane`. One ocean state serves every queued plane this release.
 - The frame costs exactly ONE GPU stall whatever the cascade count and resolution, which is what the kernel
   design exists to achieve given the seam has no cross-dispatch barrier (#311). Measured on Metal at the
-  defaults: 0.65 ms of wall-clock stall per frame (0.9 ms at resolution 256).
+  defaults: about 0.3 ms of wall-clock stall per frame, and under 1 ms at resolution 256. The number barely
+  moves with cascade count, which says the cost is the submit-and-drain round trip rather than the transform.
 - `Procedural` renders byte-identically to 14.28.0 and the `scene3d_water` golden is unchanged, which is the A/B
   guarantee: the two modes can be compared without anything else moving.
 

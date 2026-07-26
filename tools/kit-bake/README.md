@@ -20,6 +20,31 @@ npm install
 `@gltf-transform/functions`, `meshoptimizer`, and `sharp`, with `package-lock.json` committed for a
 reproducible install. `node_modules/` is gitignored, never committed.
 
+`package.json` also carries an `overrides` block collapsing every `sharp` in the tree onto the one this
+tool pins:
+
+```json
+"overrides": {
+  "sharp": "$sharp"
+}
+```
+
+Without it npm installs a **second, nested** `sharp` under `node_modules/ndarray-pixels/`, because
+`@gltf-transform/functions` reaches `ndarray-pixels`, which still asks for `sharp@^0.34.0`. That nested
+copy is what carried GHSA-f88m-g3jw-g9cj (four high-severity libvips CVEs fixed in `sharp` 0.35.0), and
+Dependabot could not fix it on its own: the only resolution it could find was downgrading
+`@gltf-transform/functions` to 3.4.2, so its update run failed with `security_update_not_possible` rather
+than opening a PR. The override is the documented npm escape hatch for exactly that shape. `$sharp` means
+"whatever the direct dependency above pins", so bumping `sharp` in `dependencies` carries the override
+with it and there is no second version number to keep in sync.
+
+`ndarray-pixels` only calls `sharp(buf).ensureAlpha().raw().toBuffer()` and
+`sharp(data, { raw }).toFormat(...).toBuffer()`, both unchanged across 0.34 to 0.35, and `bake.mjs`
+already hands its own top-level `sharp` to `textureCompress` as the encoder. Re-baking the seven kits in
+`foliage-map.json` after the override lands reproduces the committed glbs byte-for-byte.
+
+Drop the override once `ndarray-pixels` ships a release that asks for `sharp@^0.35`.
+
 ## What it does
 
 For each source glb, `bake.mjs`:

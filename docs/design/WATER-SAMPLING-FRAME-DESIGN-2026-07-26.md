@@ -162,11 +162,20 @@ shipped before any of this existed.
 
 ## Deferred, deliberately
 
-- **Real refraction.** Bending crests to follow depth contours needs a wave model over the bathymetry, not a
-  sampling frame. The focus is a stylized stand-in that a consumer aims by hand.
+Each of these is an issue as well, because a design doc nobody is actively working is not a ledger anyone reads.
+
+- **Real refraction**, [#330](https://github.com/APKiwiOrg/KhaozEngine/issues/330). Bending crests to follow depth
+  contours needs a wave model over the bathymetry, not a sampling frame. The focus is a stylized stand-in a
+  consumer aims by hand. The sampling side carries over unchanged: the degeneracy argument above holds for a
+  refraction field exactly as it holds for a focus field, so whatever produces the headings, the two-tap blend is
+  still how they get applied. Shoaling amplitude is the other half and this release does not touch it at all.
+- **Skipping the second tap where the cascade is band-limited out**,
+  [#329](https://github.com/APKiwiOrg/KhaozEngine/issues/329). The fragment already has `keep` per cascade and it
+  goes to zero in the far field, where most water fragments are.
 - **Per-plane focus points.** One ocean state still serves every queued `WaterPlane`
   ([#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275)), so there is one focus.
 - **Animating the domain warp.** Static is a decision, not a gap: see above.
-- **Choosing the warp amplitude automatically from the tile size.** Tempting, since the useful band is a fixed
-  fraction of `CascadeTileMetres`, but it would couple two knobs whose right values also depend on how much water
-  the camera sees, and a consumer that wanted the old look would have no way back.
+- **Choosing the warp amplitude automatically from the tile size**, declined and closed as
+  [#331](https://github.com/APKiwiOrg/KhaozEngine/issues/331). Tempting, since the useful band is a fixed fraction
+  of `CascadeTileMetres`, but the right value also depends on how much water the camera sees, which the sea state
+  cannot know, and a derived non-zero default would move every existing ocean with no way back.

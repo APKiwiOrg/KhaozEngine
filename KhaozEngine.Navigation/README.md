@@ -46,7 +46,7 @@ test cannot do once bands overlap (a bridge deck's Y sits inside the ground laye
 ground spans valleys to hills). Among the layers that carry surface heights and have a passable surface at
 the position's cell, it picks the one whose surface Y is nearest to `position.Y` (ties to the lowest
 index), so an agent standing on the deck resolves to the deck layer, not the ground below it. When no layer
-has a surface there, or none carries heights at all (the dungeon adapter's `NavGrid.FromWalkable` grids),
+has a surface there, or none carries heights at all (any space built from `NavGrid.FromWalkable`),
 it falls back to `LayerOf(position.Y)`, so every pre-layered space resolves exactly as before. With a
 single layer, always 0. `GridPathPlanner.FindPath` resolves both endpoints with `LayerAt`.
 
@@ -102,7 +102,14 @@ game-implemented provider over the game's own `IPhysicsWorld`: `KhaozEngine.Navi
 through the `INavSurfaceProvider` interface and takes no dependency on `KhaozEngine.Physics`.
 
 The rise-within-`stepHeight`-plus-headroom rule bakes into the blocked mask itself, so the planner and
-follower need no per-edge logic and no changes. One v1 conservatism: a step taller than `stepHeight`
+follower need no per-edge logic and no changes. One carve-out keeps small features linkable: a lone
+standable top, one that every standable 8-neighbor sits more than `stepHeight` below and whose whole
+8-neighborhood bakes blocked, stays passable instead of eroding, so a `Hop` link can land on it. It gains
+no walk edge from that (all its neighbors are blocked, so the planner still reaches it only across a
+link), and no other cell's clearance changes. A raised cell that still touches walkable ground erodes as
+before, since keeping that one would hand the planner a walk edge straight up the drop.
+
+One v1 conservatism: a step taller than `stepHeight`
 blocks its higher side by one cell (the standable top itself bakes standable, but the cell one step up
 from it does not), so under the step bake alone a too-tall step is impassable from either direction
 rather than merely steep. When the rise is within a jump budget, the hop bake below closes exactly this
@@ -129,7 +136,9 @@ NavGrid grid = NavGridBaker.BakeOverworldSteps(
 ## Vertical hop links (`NavHopLinks` / `NavGridBaker.BakeOverworldHops`)
 
 The step bake leaves a standable top taller than `stepHeight` as an unreachable island: the top itself
-bakes standable, but no walkable step leads onto it. `NavHopLinks.Generate(grid, stepHeight, jumpHeight,
+bakes standable, but no walkable step leads onto it. That holds down to a one-cell top, which the step
+bake keeps rather than eroding precisely so a hop can land on it.
+`NavHopLinks.Generate(grid, stepHeight, jumpHeight,
 maxHopCells = 2, layer = 0)` closes that gap with same-grid `Hop` links. For each passable cell and each
 of the 8 neighbor directions it walks outward: the adjacent cell must be blocked (a rim, not open
 ground), every further intervening cell must be blocked too, and the first passable cell reached at
@@ -289,7 +298,13 @@ goal or a jittery corridor breach does not spam the planner every tick.
 
 `PathFollowConfig` knobs (all `init`, `PathFollowConfig.Default` for the values below):
 
-- **`AcceptRadius`** (default 0.6) - distance at which a waypoint or the goal counts as reached.
+- **`AcceptRadius`** (default 0.6) - XZ distance at which a waypoint or the goal counts as reached.
+- **`VerticalAcceptTolerance`** (default 0.8) - how far above or below the goal the agent may sit and
+  still count as arrived. The goal must clear both this and `AcceptRadius`, so a goal on another floor or
+  on a ledge falls through to the planner rather than reporting arrival on XZ proximity alone. The default
+  is twice the canonical `MoveTuning.StepHeight` (0.4) and also covers the 0.6 of rise a 45-degree
+  max-slope hillside gains across `AcceptRadius`, while staying far below the 4 m default
+  `DungeonConfig.FloorHeightMeters`. `float.PositiveInfinity` gives a purely horizontal arrival check.
 - **`GoalRetargetTolerance`** (default 1.5) - how far the goal may move from where it was planned before
   a replan is due.
 - **`CorridorTolerance`** (default 2.5) - how far the agent may stray from the planned corridor before a
@@ -299,7 +314,8 @@ goal or a jittery corridor breach does not spam the planner every tick.
 
 `Tick` returns a `PathFollowOutput` (`WorldDir`, `State`, `ActiveWaypoint`, `HopStart`). `WorldDir` is a
 unit vector while `State` is `PathFollowState.Following`, and zero otherwise. `State` is `Arrived` once
-within `AcceptRadius` of the goal, or `Unreachable` when the planner cannot find a route (the follower
+within `AcceptRadius` of the goal in XZ and within `VerticalAcceptTolerance` of it in Y, or `Unreachable`
+when the planner cannot find a route (the follower
 keeps retrying, gated by the cooldown, in case the world changes). A `NavPathStatus.Partial` path that
 runs out steers straight at the raw goal for one tick while the next replan (once the cooldown allows)
 picks up a fresh route.

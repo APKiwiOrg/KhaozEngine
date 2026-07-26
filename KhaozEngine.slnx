@@ -50,6 +50,7 @@
   <Project Path="KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   <Project Path="KhaozEngine.Progression/KhaozEngine.Progression.csproj" />
   <Project Path="KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+  <Project Path="KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
   <Project Path="KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
   <Project Path="KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
   <Project Path="KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />

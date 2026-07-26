@@ -25,8 +25,9 @@ What it owns today:
 - **`GpuDeviceContext`** - `CreateForWindow(in GpuWindowHandle, width, height, syncToVerticalBlank = true)` (device
   + swapchain for a Silk.NET/GLFW window; the vsync flag feeds both the device options and the swapchain, since
   9.23.0) and `CreateHeadless()` (offscreen device) on the selected backend. Exposes `Backend`,
-  `Capabilities`, and (**transitionally**) the raw Veldrid `GraphicsDevice` so the existing renderers keep
-  working unchanged. Device creation and disposal are serialized process-wide behind a single static gate, on
+  `Capabilities`, and the engine-owned `IGpuDevice`; the raw Veldrid device is private to the context (the
+  transitional accessor that used to be here is gone, and `Capabilities` is read once so the context's copy and
+  the device's cannot drift). Device creation and disposal are serialized process-wide behind a single static gate, on
   every backend: concurrent device creation races the Vulkan loader's dispatch setup (observed as
   `vkGetDeviceQueue` aborts on Mesa lavapipe under full test-suite parallelism), and creation/disposal are rare
   enough that the serialization costs nothing measurable. Callers see no API change, it only affects the
@@ -35,7 +36,7 @@ What it owns today:
   reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
   reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device (Veldrid throws setting
   it with no main swapchain). `AppWindow.PresentMode` routes through it for runtime present-mode switching.
-- **Compute** (since 14.29.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
+- **Compute** (since 15.2.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
   compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
   `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics
   `IGpuShaderSet` / `IGpuPipeline`, so a compute pipeline bound for a draw is a compile error. `IGpuCommandList`

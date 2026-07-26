@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using KeDungeon;
+using KhaozEngine.Dungeon;
 using KhaozEngine.MapDoc;
 using Xunit;
 
@@ -13,6 +15,35 @@ public class VerbTests
         string dir = Path.Combine(Path.GetTempPath(), "ke-dungeon-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
+    }
+
+    static DungeonConfig MultiFloorNavConfig() => new()
+    {
+        MaxFloors = 3,
+        RoomCountTarget = 16,
+        LockCount = 0,
+        BossRoom = false,
+        LoopEdgeBudget = 0,
+    };
+
+    // First seed in 11..60 whose growth carves at least one stair edge, so a connectivity test exercises
+    // NavSpace.Links (the stair joins between floors), not just per-layer grid adjacency. Mirrors the same
+    // config/seed-search idiom KhaozEngine.Game.Tests/Navigation/DungeonNavTests.cs uses for the same
+    // reason, and (like that fixture) is completable by construction, so it always bakes to exactly one
+    // connected component.
+    static DungeonLayout StairLayout()
+    {
+        DungeonConfig config = MultiFloorNavConfig();
+        for (ulong seed = 11; seed <= 60; seed++)
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(config, seed);
+            if (layout.Edges.Any(e => e.Kind == DungeonEdgeKind.Stair))
+            {
+                return layout;
+            }
+        }
+
+        throw new InvalidOperationException("No stair edge was produced across seeds 11..60.");
     }
 
     [Fact]
@@ -190,6 +221,181 @@ public class VerbTests
         }
         finally
         {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Nav_ConnectedMultiFloorLayout_ReportsOneComponent_Exits0()
+    {
+        string dir = NewTempDir();
+        TextWriter originalOut = Console.Out;
+        try
+        {
+            DungeonLayout layout = StairLayout();
+            Assert.True(layout.Floors >= 2, "fixture must span multiple floors to exercise stair links");
+
+            string layoutPath = Path.Combine(dir, "layout.json");
+            File.WriteAllText(layoutPath, DungeonJson.SaveLayout(layout));
+
+            using var stdout = new StringWriter();
+            Console.SetOut(stdout);
+
+            int exit = Program.Main(new[]
+            {
+                "nav", "--layout", layoutPath, "--origin-x", "0", "--origin-z", "0", "--base-y", "0",
+            });
+
+            Assert.Equal(0, exit);
+            Assert.Contains("components: 1", stdout.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Nav_DisconnectedLayout_ReportsMultipleComponents_ExitsNonZeroOnlyWhenRequired()
+    {
+        string dir = NewTempDir();
+        TextWriter originalOut = Console.Out;
+        TextWriter originalError = Console.Error;
+        try
+        {
+            // Two 2x3 walkable islands on one floor, split by three full columns of wall: even 8-connected
+            // with diagonals allowed, the islands are three cells apart, nowhere near touching. rooms/
+            // edges/keys/markers/stats are all omitted: DungeonJson's LayoutDto defaults every one of them
+            // to a non-null empty value (see DungeonJson.cs), and nothing here references a room or lock
+            // id, so the hand-authored raster alone is already a valid layout document.
+            const string layoutJson = """
+            {
+              "cellSizeMeters": 2,
+              "floorHeightMeters": 4,
+              "width": 6,
+              "depth": 3,
+              "floors": 1,
+              "grid": [
+                ["RRWWRR", "RRWWRR", "RRWWRR"]
+              ]
+            }
+            """;
+            string layoutPath = Path.Combine(dir, "layout.json");
+            File.WriteAllText(layoutPath, layoutJson);
+
+            using var stdout = new StringWriter();
+            Console.SetOut(stdout);
+
+            int exit = Program.Main(new[]
+            {
+                "nav", "--layout", layoutPath, "--origin-x", "0", "--origin-z", "0", "--base-y", "0",
+            });
+
+            Assert.Equal(0, exit);
+            Assert.Contains("components: 2", stdout.ToString(), StringComparison.Ordinal);
+
+            using var requiredStdout = new StringWriter();
+            using var requiredStderr = new StringWriter();
+            Console.SetOut(requiredStdout);
+            Console.SetError(requiredStderr);
+
+            int requiredExit = Program.Main(new[]
+            {
+                "nav", "--layout", layoutPath, "--origin-x", "0", "--origin-z", "0", "--base-y", "0",
+                "--require-connected",
+            });
+
+            Assert.Equal(1, requiredExit);
+            Assert.Contains("components: 2", requiredStdout.ToString(), StringComparison.Ordinal);
+            Assert.Contains("not fully connected", requiredStderr.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Nav_NonZeroYaw_IsRejected_WithUnsupportedMessage()
+    {
+        TextWriter originalError = Console.Error;
+        try
+        {
+            using var stderr = new StringWriter();
+            Console.SetError(stderr);
+
+            // --layout points at a file that does not exist: RunNav validates --yaw before ever touching
+            // the file, so a missing path still proves the rejection is about yaw, not about the file.
+            int exit = Program.Main(new[]
+            {
+                "nav", "--layout", "does-not-exist.json", "--origin-x", "0", "--origin-z", "0",
+                "--base-y", "0", "--yaw", "0.5",
+            });
+
+            Assert.Equal(2, exit);
+            string message = stderr.ToString();
+            Assert.Contains("not supported", message, StringComparison.Ordinal);
+            Assert.Contains("140", message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+    }
+
+    [Fact]
+    public void Nav_AgentHeight_AcceptedAndPassedThrough_ButInertViaLayoutJson_SinceCeilingModeNeverSurvivesIt()
+    {
+        // DungeonNav.Bake's agentHeight only ever matters against a Roofed layout: headroom bakes to
+        // float.PositiveInfinity for an Open one, so no agentHeight value can block a cell there (see
+        // DungeonNav.Bake, KhaozEngine.Dungeon/DungeonNav.cs). DungeonLayout.CeilingMode is deliberately
+        // NOT part of DungeonJson's LayoutDto (see DungeonLayout.cs's own doc comment: "A layout rebuilt
+        // from JSON is always Open, the field is not serialized"), so every --layout file this verb can
+        // ever load bakes Open regardless of what produced it. That means --agent-height cannot be shown
+        // changing the report through this verb's only entry point (a --layout file): there is no
+        // reachable Roofed low-ceiling case to demonstrate here. DungeonNav.Bake's own Roofed/agentHeight
+        // interaction is already covered directly, with no CLI and no JSON round-trip, by
+        // KhaozEngine.Game.Tests/Navigation/DungeonNavTests.cs (Bake_RoofedLowCeiling_BlocksEveryCell_...).
+        // This test instead pins the CLI-observable half of that gap: --agent-height parses and passes
+        // through without error at very different heights, and (correctly, given the gap above) the report
+        // is identical every time on the only kind of layout this verb can ever bake against.
+        string dir = NewTempDir();
+        TextWriter originalOut = Console.Out;
+        try
+        {
+            DungeonLayout layout = StairLayout();
+            string layoutPath = Path.Combine(dir, "layout.json");
+            File.WriteAllText(layoutPath, DungeonJson.SaveLayout(layout));
+
+            string[] BaseArgs(params string[] extra) => new[]
+            {
+                "nav", "--layout", layoutPath, "--origin-x", "0", "--origin-z", "0", "--base-y", "0",
+            }.Concat(extra).ToArray();
+
+            using var defaultStdout = new StringWriter();
+            Console.SetOut(defaultStdout);
+            int defaultExit = Program.Main(BaseArgs());
+
+            using var shortStdout = new StringWriter();
+            Console.SetOut(shortStdout);
+            int shortExit = Program.Main(BaseArgs("--agent-height", "0.1"));
+
+            using var tallStdout = new StringWriter();
+            Console.SetOut(tallStdout);
+            int tallExit = Program.Main(BaseArgs("--agent-height", "1000"));
+
+            Assert.Equal(0, defaultExit);
+            Assert.Equal(0, shortExit);
+            Assert.Equal(0, tallExit);
+            Assert.Equal(defaultStdout.ToString(), shortStdout.ToString());
+            Assert.Equal(defaultStdout.ToString(), tallStdout.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
             Directory.Delete(dir, recursive: true);
         }
     }

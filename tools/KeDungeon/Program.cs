@@ -4,14 +4,17 @@ using System.IO;
 using KhaozEngine.Dungeon;
 using KhaozEngine.Imaging;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Navigation;
 
 namespace KeDungeon;
 
 /// <summary>
-/// ke-dungeon: a dev CLI over <c>KhaozEngine.Dungeon</c>. Four verbs: <c>generate</c> a layout from a seed
+/// ke-dungeon: a dev CLI over <c>KhaozEngine.Dungeon</c>. Five verbs: <c>generate</c> a layout from a seed
 /// (and optional config), <c>preview</c> a layout as one PNG per floor, <c>verify</c> a layout's
-/// solvability, and <c>bake</c> a layout into a greybox <c>MapDoc</c> zone document at a world placement.
-/// Dev tooling only: no localization requirements apply, output goes straight to the console.
+/// solvability, <c>bake</c> a layout into a greybox <c>MapDoc</c> zone document at a world placement, and
+/// <c>nav</c> a layout into a <see cref="NavSpace"/> and report its per-floor cell counts and
+/// connected-component count (see <see cref="NavReport"/>). Dev tooling only: no localization
+/// requirements apply, output goes straight to the console.
 /// </summary>
 public static class Program
 {
@@ -20,12 +23,15 @@ public static class Program
         "  generate --seed <ulong> [--config <config.json>] --out <layout.json>\n" +
         "  preview --layout <layout.json> --out-dir <dir>\n" +
         "  verify --layout <layout.json>\n" +
-        "  bake --layout <layout.json> --map <map.json> --origin-x <f> --origin-z <f> --base-y <f> [--yaw <rad>]";
+        "  bake --layout <layout.json> --map <map.json> --origin-x <f> --origin-z <f> --base-y <f> [--yaw <rad>]\n" +
+        "  nav --layout <layout.json> --origin-x <f> --origin-z <f> --base-y <f> [--agent-height <f>]\n" +
+        "      [--yaw <rad>] [--require-connected]";
 
     /// <summary>Dispatches to the requested verb and returns the process exit code: 0 on success, 1 for a
-    /// failed <c>verify</c>, 2 for an unknown verb or a missing/invalid required option (usage is printed
-    /// in that case), 3 for malformed input JSON (a config, layout, or map document that fails to parse or
-    /// validate, reported by message instead of a stack trace).</summary>
+    /// failed <c>verify</c> or a <c>nav --require-connected</c> check on a disconnected space, 2 for an
+    /// unknown verb, an unsupported option value (a non-zero <c>nav --yaw</c>), or a missing/invalid
+    /// required option (usage is printed in that case), 3 for malformed input JSON (a config, layout, or
+    /// map document that fails to parse or validate, reported by message instead of a stack trace).</summary>
     public static int Main(string[] args)
     {
         if (args.Length == 0)
@@ -44,6 +50,7 @@ public static class Program
                 "preview" => RunPreview(rest),
                 "verify" => RunVerify(rest),
                 "bake" => RunBake(rest),
+                "nav" => RunNav(rest),
                 _ => PrintUsageAndFail(),
             };
         }
@@ -175,6 +182,51 @@ public static class Program
         return 0;
     }
 
+    static int RunNav(string[] args)
+    {
+        string layoutPath = RequireOption(args, "--layout");
+        float originX = ParseFloat(RequireOption(args, "--origin-x"), "--origin-x");
+        float originZ = ParseFloat(RequireOption(args, "--origin-z"), "--origin-z");
+        float baseY = ParseFloat(RequireOption(args, "--base-y"), "--base-y");
+
+        string? agentHeightText = GetOption(args, "--agent-height");
+        float agentHeight = agentHeightText is null
+            ? DungeonNav.DefaultAgentHeight
+            : ParseFloat(agentHeightText, "--agent-height");
+
+        // DungeonNav.Bake has no rotation concept at all: NavGrid is strictly axis-aligned, unlike bake's
+        // --yaw, which feeds a DungeonPlotTransform the MapDoc emitter honours. Baking nav against a
+        // rotated plot would silently produce a NavSpace that does not line up with the rotated geometry,
+        // so this verb refuses a non-zero yaw outright (see issue #140, deferred on purpose) instead of
+        // pretending to support it.
+        string? yawText = GetOption(args, "--yaw");
+        float yaw = yawText is null ? 0f : ParseFloat(yawText, "--yaw");
+        if (yaw != 0f)
+        {
+            throw new CliUsageException(
+                "--yaw is not supported for nav baking: DungeonNav.Bake has no rotation concept " +
+                "(NavGrid is strictly axis-aligned), so a rotated plot would silently bake a NavSpace " +
+                "that does not match the emitted geometry. This is issue #140, deferred on purpose. " +
+                "Pass --yaw 0 or omit --yaw.");
+        }
+
+        bool requireConnected = HasFlag(args, "--require-connected");
+
+        DungeonLayout layout = DungeonJson.LoadLayout(File.ReadAllText(layoutPath));
+        NavSpace space = DungeonNav.Bake(layout, originX, originZ, baseY, agentHeight);
+
+        int componentCount = NavReport.Print(space);
+
+        if (requireConnected && componentCount > 1)
+        {
+            Console.Error.WriteLine(
+                $"nav space is not fully connected: {componentCount} components, --require-connected was passed");
+            return 1;
+        }
+
+        return 0;
+    }
+
     // Loads the target document if it already exists (a dungeon bake can accumulate alongside
     // hand-authored content per DungeonMapDocEmitter.Emit's append-only contract), otherwise creates a
     // fresh one. A fresh document needs a non-empty Id to pass MapDocumentValidator. Bounds start at the
@@ -229,6 +281,19 @@ public static class Program
         }
 
         return null;
+    }
+
+    static bool HasFlag(string[] args, string name)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], name, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     sealed class CliUsageException : Exception

@@ -207,6 +207,76 @@ public class PathFollowerTests
     }
 
     [Fact]
+    public void Tick_GoalOnTheFloorAbove_DoesNotArriveAndReachesThePlanner()
+    {
+        // The goal shares the agent's XZ (well inside AcceptRadius) but sits a dungeon floor above
+        // (DungeonConfig.FloorHeightMeters defaults to 4). An XZ-only arrival check reported Arrived here
+        // and returned before the replan decision and the planner call, so the agent never took the stairs.
+        var planner = new FakePlanner();
+        planner.Enqueue(Complete(new NavWaypoint(new Vector2(12f, 10f), 0)));
+        var follower = new PathFollower(planner);
+        Vector3 goal = new Vector3(10.2f, 4f, 10.1f);
+
+        PathFollowOutput output = follower.Tick(new Vector3(10f, 0f, 10f), goal, AgentRadius, 0.016f);
+
+        Assert.NotEqual(PathFollowState.Arrived, output.State);
+        Assert.Equal(PathFollowState.Following, output.State);
+        Assert.Equal(1, planner.CallCount);
+        Assert.Equal(new Vector2(12f, 10f), output.ActiveWaypoint);
+        // The planner is handed the full 3D goal, so it can resolve the upper floor's layer itself.
+        Assert.Equal(goal, planner.Calls[0].Goal);
+    }
+
+    [Fact]
+    public void Tick_GoalWithinAcceptRadiusAndVerticalTolerance_StillArrivesWithNoPlanCall()
+    {
+        // The companion to the floor-above case. A goal one climbable step above the agent (0.4, inside
+        // the 0.8 default vertical tolerance) is the same walkable surface, so arrival short-circuits.
+        var planner = new FakePlanner();
+        var follower = new PathFollower(planner);
+
+        PathFollowOutput output = follower.Tick(
+            new Vector3(10f, 0f, 10f), new Vector3(10.2f, 0.4f, 10.1f), AgentRadius, 0.016f);
+
+        Assert.Equal(0, planner.CallCount);
+        Assert.Equal(PathFollowState.Arrived, output.State);
+        Assert.Equal(Vector2.Zero, output.WorldDir);
+    }
+
+    [Fact]
+    public void Tick_VerticalToleranceBoundary_ArrivesAtItAndPlansBeyondIt()
+    {
+        var config = new PathFollowConfig { VerticalAcceptTolerance = 0.5f };
+
+        var atPlanner = new FakePlanner();
+        PathFollowOutput at = new PathFollower(atPlanner, config)
+            .Tick(new Vector3(10f, 0f, 10f), new Vector3(10f, 0.5f, 10f), AgentRadius, 0.016f);
+        Assert.Equal(PathFollowState.Arrived, at.State);
+        Assert.Equal(0, atPlanner.CallCount);
+
+        var beyondPlanner = new FakePlanner();
+        beyondPlanner.Enqueue(Complete(new NavWaypoint(new Vector2(20f, 20f), 0)));
+        PathFollowOutput beyond = new PathFollower(beyondPlanner, config)
+            .Tick(new Vector3(10f, 0f, 10f), new Vector3(10f, 0.51f, 10f), AgentRadius, 0.016f);
+        Assert.NotEqual(PathFollowState.Arrived, beyond.State);
+        Assert.Equal(1, beyondPlanner.CallCount);
+    }
+
+    [Fact]
+    public void Tick_InfiniteVerticalTolerance_RestoresTheHorizontalOnlyArrivalCheck()
+    {
+        var planner = new FakePlanner();
+        var config = new PathFollowConfig { VerticalAcceptTolerance = float.PositiveInfinity };
+        var follower = new PathFollower(planner, config);
+
+        PathFollowOutput output = follower.Tick(
+            new Vector3(10f, 0f, 10f), new Vector3(10.2f, 4f, 10.1f), AgentRadius, 0.016f);
+
+        Assert.Equal(0, planner.CallCount);
+        Assert.Equal(PathFollowState.Arrived, output.State);
+    }
+
+    [Fact]
     public void Reset_ClearsPathAndCooldown_NextTickPlansImmediately()
     {
         var planner = new FakePlanner();

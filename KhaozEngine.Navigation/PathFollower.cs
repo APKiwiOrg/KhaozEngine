@@ -13,8 +13,10 @@ public enum PathFollowState
     /// is a unit vector.</summary>
     Following,
 
-    /// <summary>The goal has been reached (within <see cref="PathFollowConfig.AcceptRadius"/>). The
-    /// stored path was cleared.</summary>
+    /// <summary>The goal has been reached, either by the arrival shortcut (within
+    /// <see cref="PathFollowConfig.AcceptRadius"/> of the goal in XZ AND within
+    /// <see cref="PathFollowConfig.VerticalAcceptTolerance"/> of it in Y) or by consuming a
+    /// <see cref="NavPathStatus.Complete"/> path to its end. The stored path was cleared.</summary>
     Arrived,
 
     /// <summary>The planner could not find a route to the goal. The follower keeps retrying, gated by
@@ -65,8 +67,27 @@ public readonly struct PathFollowOutput
 /// </summary>
 public sealed class PathFollowConfig
 {
-    /// <summary>Distance (world units) at which a waypoint or the goal is considered reached.</summary>
+    /// <summary>Distance (world units) at which a waypoint or the goal is considered reached. Measured in
+    /// XZ, so the goal must also pass <see cref="VerticalAcceptTolerance"/> to count as arrival.</summary>
     public float AcceptRadius { get; init; } = 0.6f;
+
+    /// <summary>
+    /// Vertical distance (world units) the agent may sit above or below the goal and still count as
+    /// arrived. Paired with <see cref="AcceptRadius"/>: the arrival shortcut in
+    /// <see cref="PathFollower.Tick"/> needs the XZ distance within <see cref="AcceptRadius"/> AND the Y
+    /// difference within this, so a goal on another floor or on a ledge falls through to the planner
+    /// instead of reporting arrival on XZ proximity alone.
+    /// <para>
+    /// The default 0.8 is twice the engine's canonical climbable step (<c>MoveTuning.StepHeight</c>, 0.4),
+    /// which also clears the 0.6 of rise a 45-degree max-slope hillside (<c>MoveTuning.MaxSlopeRadians</c>)
+    /// gains across the default <see cref="AcceptRadius"/>, so ordinary ground variation beside the goal
+    /// still reads as arrival. It sits far below both the 1.8 m shipped character capsule and the 4 m
+    /// default dungeon floor pitch (<c>DungeonConfig.FloorHeightMeters</c>), so no floor separation can
+    /// pass it, and below a typical hoppable rise, so a ledge goal still routes through the planner.
+    /// </para>
+    /// Set it to <see cref="float.PositiveInfinity"/> for a purely horizontal arrival check.
+    /// </summary>
+    public float VerticalAcceptTolerance { get; init; } = 0.8f;
 
     /// <summary>How far (world units) the goal may move from the position it was planned against before
     /// a replan is due.</summary>
@@ -83,8 +104,9 @@ public sealed class PathFollowConfig
     /// <summary>Search budget handed to <see cref="IPathPlanner.FindPath"/> on every replan.</summary>
     public PathQueryBudget Budget { get; init; } = PathQueryBudget.Default;
 
-    /// <summary>Default tuning: a 0.6 unit accept radius, 1.5 unit goal-drift and 2.5 unit corridor
-    /// tolerances, a 0.5 second replan cooldown, and <see cref="PathQueryBudget.Default"/>.</summary>
+    /// <summary>Default tuning: a 0.6 unit accept radius paired with a 0.8 unit vertical tolerance, 1.5
+    /// unit goal-drift and 2.5 unit corridor tolerances, a 0.5 second replan cooldown, and
+    /// <see cref="PathQueryBudget.Default"/>.</summary>
     public static PathFollowConfig Default { get; } = new();
 }
 
@@ -148,12 +170,15 @@ public sealed class PathFollower
     /// <summary>
     /// Advances the follower by <paramref name="dt"/> seconds toward <paramref name="goal"/> from
     /// <paramref name="position"/>, replanning through the <see cref="IPathPlanner"/> as needed. Position
-    /// and goal are world space (Y ignored for all distance and direction math, which works in XZ). In
-    /// order, each tick:
+    /// and goal are world space. Steering and every distance measure work in XZ, and the one use of Y is
+    /// the arrival check in step 2. In order, each tick:
     /// <list type="number">
     /// <item>Drains the replan cooldown by <paramref name="dt"/>.</item>
     /// <item>Returns <see cref="PathFollowState.Arrived"/> immediately if already within
-    /// <see cref="PathFollowConfig.AcceptRadius"/> of the goal, clearing any stored path.</item>
+    /// <see cref="PathFollowConfig.AcceptRadius"/> of the goal in XZ AND within
+    /// <see cref="PathFollowConfig.VerticalAcceptTolerance"/> of it in Y, clearing any stored path. A goal
+    /// that clears the XZ radius but not the vertical tolerance (another floor, a ledge) falls through to
+    /// the steps below instead, so the layer-aware planner is the one that decides how to reach it.</item>
     /// <item>Decides whether a replan is due: no stored path, the stored path is fully consumed, the goal
     /// drifted past <see cref="PathFollowConfig.GoalRetargetTolerance"/> from where it was planned, or the
     /// agent strayed past <see cref="PathFollowConfig.CorridorTolerance"/> from the corridor segment
@@ -188,8 +213,11 @@ public sealed class PathFollower
         // Step 1: drain the replan cooldown.
         _cooldown = MathF.Max(0f, _cooldown - dt);
 
-        // Step 2: already at the goal.
-        if (Vector2.Distance(posXz, goalXz) <= _config.AcceptRadius)
+        // Step 2: already at the goal. Both halves must hold. XZ proximity alone would report Arrived for
+        // a goal stacked directly above or below the agent (the floor above, a ledge) and return before
+        // the layer-aware planner ever ran, so the agent would never path to it at all.
+        if (Vector2.Distance(posXz, goalXz) <= _config.AcceptRadius
+            && MathF.Abs(position.Y - goal.Y) <= _config.VerticalAcceptTolerance)
         {
             _path = null;
             _index = 0;

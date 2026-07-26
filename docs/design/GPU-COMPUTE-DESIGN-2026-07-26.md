@@ -1,9 +1,9 @@
 # GPU compute in the KhaozEngine.Gpu seam
 
-Design rationale for the 14.29.0 compute release. Issue: [#309](https://github.com/APKiwiOrg/KhaozEngine/issues/309).
+Design rationale for the 15.2.0 compute release. Issue: [#309](https://github.com/APKiwiOrg/KhaozEngine/issues/309).
 Consumer program: [#310](https://github.com/APKiwiOrg/KhaozEngine/issues/310), the Tessendorf FFT ocean.
 
-This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 14.29.0,
+This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 15.2.0,
 `docs/USING-KHAOZENGINE.md` ("GPU compute shaders") and `KhaozEngine.Gpu/README.md`.
 
 ## The problem

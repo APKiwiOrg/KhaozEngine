@@ -78,7 +78,8 @@ public static class NavGridBaker
     /// surfaces is within <paramref name="stepHeight"/> and the headroom clears <paramref name="agentHeight"/>,
     /// so low standable props, ramps, and staircases become walkable. Still a single <see cref="NavGrid"/>
     /// layer: the higher side of every step taller than <paramref name="stepHeight"/> bakes blocked, which
-    /// keeps the grid planner from crossing it (see <see cref="StepMask"/>). Width and height are derived as
+    /// keeps the grid planner from crossing it, except for a lone standable top whose whole neighborhood
+    /// is blocked, which is kept passable for a hop to reach (see <see cref="StepMask"/>). Width and height are derived as
     /// <c>(int)MathF.Ceiling((max - min) / cellSize)</c> per axis (same as <see cref="BakeOverworld"/>).
     /// <paramref name="extraBlocked"/> is an optional gameplay exclusion applied at each cell center.
     /// <paramref name="yMin"/> and <paramref name="yMax"/> pass through to the grid.
@@ -119,7 +120,8 @@ public static class NavGridBaker
     /// generates same-grid vertical hop links over it (<see cref="NavHopLinks.Generate"/>) and returns a
     /// single-layer <see cref="NavSpace"/> carrying both. A standable top taller than <paramref name="stepHeight"/>
     /// (an unreachable island under the step bake alone) becomes reachable by a hop when its rise is within
-    /// <paramref name="jumpHeight"/>. Deterministic. Backward compatible: with no hoppable feature in range the
+    /// <paramref name="jumpHeight"/>, down to a one-cell top, which the step bake keeps rather than eroding
+    /// exactly so a hop can land on it. Deterministic. Backward compatible: with no hoppable feature in range the
     /// returned space is identical to <c>NavSpace.Single(BakeOverworldSteps(...))</c>.
     /// </summary>
     public static NavSpace BakeOverworldHops(

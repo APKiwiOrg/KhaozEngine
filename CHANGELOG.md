@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 14.29.0
+## 15.2.0
 
 New: GPU compute shaders in the `KhaozEngine.Gpu` seam. Compute shaders from GLSL 450, compute pipelines,
 read-write storage textures and storage buffers, `Dispatch`, buffer copy + map, typed buffer readback,
@@ -77,6 +77,118 @@ GPU golden moves. Closes #309; the FFT ocean program that consumes it is #310.
   both sampler-feature flags at their defaults while the context populated them. Nothing read the dropped members,
   but adding `SupportsCompute` to two places is exactly how that happens again, so there is now only one place to
   add a member, plus a `[GpuFact]` that compares the two copies field by field.
+
+## 15.1.0
+
+### Layered stat channels (`KhaozEngine.Stats`, new package)
+
+New GPU-free Foundation package that folds equipment, skill, and buff contributions into final per-channel
+values without the engine ever learning what a channel means. `StatSet` holds a `Base` value per channel plus
+any number of named `StatSourceId` contributions, and computes `Value(c) = (Base(c) + sum(Flat)) * max(1 +
+sum(Percent), MinimumScale)`, the one fold the package knows. Additive (one new package, no removals), so a
+minor bump. No GPU work. Closes #313.
+
+- **`StatSet` - the fold.** Channels are dense `int` indices into a `float[]` (`ChannelCount`, `CopyValuesTo`
+  for an allocation-free bulk read of every channel), so the consuming game casts its own enum to the channel
+  index. The engine never gets a stat identity, an enum, a balance constant, an item, an equipment slot, or
+  any derivation between channels. `SetBase`/`GetBase` set and read the per-channel base value directly.
+  `AddSource(id, ReadOnlySpan<StatModifier>)` attaches a named source's whole contribution, or replaces it in
+  one call if the id is already in use. `RemoveSource(id)` detaches it, and `ClearSources()` drops every
+  source and leaves only the base. `SourceCount` reports how many are currently attached.
+- **`StatModifier` / `StatSourceId` - the wire types.** `StatModifier(Channel, Flat, Percent)` is one
+  contribution to one channel. `StatSourceId(Value)` is the stable identity a group of modifiers is added and
+  removed under, so equipping or unequipping one item is exactly one `AddSource`/`RemoveSource` call no matter
+  how many channels the item touches.
+- **Lazy, per-channel, insertion-ordered recompute.** A channel refolds only when it is dirty, and always
+  refolds from the live source list rather than adjusting a running total, because removing a source is not
+  the exact float inverse of adding it. The fold order is source insertion order, preserved across removals,
+  and replacing a source under an id it already owns keeps that source's original position. Net effect: add a
+  source, remove it, and `Value` returns to exactly the base value, bit for bit.
+- **`MinimumScale` floors the percent multiplier.** Default `0`, so a channel cannot go negative from percent
+  contributions alone. `float.NegativeInfinity` disables the floor entirely, and a value like `0.1f` gives a
+  "mitigation caps at 90%" shape without the game clamping its own multiplier stack.
+- **`StatSet` is a `sealed class`, not a struct.** The modifier stack is inherently variable-length (any number
+  of sources, each spanning any number of channels), so the storage is on the heap whichever outer type is
+  chosen. A struct would therefore be a struct wrapping arrays, and that is strictly worse in the one place a
+  struct could have helped. `KhaozEngine.Ecs` components must be value types (`ComponentRegistry.RegisterType`
+  rejects any reference type, and every generic entry point is `where T : struct, IComponent`), but archetype
+  moves and `EntityCommandBuffer.Set<T>(Entity, T)` copy by value, so two entities would silently end up
+  sharing one modifier store. `StatSet` is therefore not an ECS component in either shape. A game holds one
+  per entity, allocated once at spawn rather than per frame, and reaches it through its own side table.
+- **Placement.** In the `Foundation` umbrella, alongside `Objectives` and `Progression`. `Foundation` is the
+  only umbrella both `Game3D` and `Server` already pull, and both a client head showing a stat sheet and a
+  headless authoritative server computing real damage need the same fold. No dependency on any other
+  KhaozEngine package. What stays game-side: stat identity (the enum), balance numbers, items and equipment,
+  and the whole "buff" half (stacking rules, durations, expiry, diminishing returns), the same split
+  `KhaozEngine.Locomotion` already draws for its per-entity speed scale.
+
+## 15.0.0
+
+Nav and physics-query correctness batch: six verified backlog fixes, one of them a breaking change to the
+ray and sweep hit records. Three separate ways an agent could silently fail to reach somewhere it should
+(a goal on another floor, a lone standable island, a roofed dungeon's low ceiling), plus a query result that
+named the wrong body and cost an O(N) scan to produce. Closes #139, #141, #143, #144, #145, #146.
+
+### Breaking
+
+- **`RayHit.Body` and `SweepHit.Body` are now `StaticHandle?`** (`KhaozEngine.Physics/Queries.cs`), not
+  `StaticHandle`. A ray or sweep that hits a DYNAMIC body now reports `null`. It previously reported
+  `default(StaticHandle)`, which is `StaticHandle(0)`, and that is not a sentinel: `_nextId` starts at 0, so
+  the first static ever added to a `BepuPhysicsWorld` legitimately owns seam id 0 and every dynamic-body hit
+  silently aliased it. Callers reading `.Body` must now handle the null case. This matches the engine's
+  existing optional-handle convention on `ConstraintAttachment.Body`. Fixing it with a magic 0 sentinel was
+  rejected: re-introducing an untyped 0 to fix an untyped-0 bug is not a fix. Closes #145.
+
+### Fixed
+
+- **`BepuPhysicsWorld` resolves a hit's seam handle in O(1) instead of scanning every static.**
+  `ResolveSeamHandle` ran a full linear scan of the forward handle map on EVERY static hit from `Raycast` and
+  `SweepCapsule`. A reverse index now backs it, kept in lockstep with the forward map through a single
+  add/remove helper pair so a removed static cannot leave a stale entry behind. Closes #143.
+- **`PathFollower.Tick` no longer reports `Arrived` for a goal on another floor.** The arrival test compared XZ
+  only, so a goal directly above or below the agent returned `Arrived` and exited before the replan decision
+  and `IPathPlanner.FindPath` ever ran. The agent therefore never pathed to it at all. Arrival now also
+  requires `|position.Y - goal.Y|` within the new `PathFollowConfig.VerticalAcceptTolerance` (default `0.8`),
+  and a goal that clears the XZ radius but fails the vertical test falls through to the planner, so stair and
+  hop links can route to it. The default clears both a `MoveTuning.StepHeight` step and a max-slope hillside
+  across the accept radius, while rejecting any real floor separation. Closes #139.
+- **`StepMask.Compute` keeps a lone standable top alive so a hop can reach it.** A standable cell that every
+  standable 8-neighbor sits more than `stepHeight` below, AND whose 8-neighborhood is fully blocked, now
+  survives instead of eroding. Such a cell was previously erased from the grid before `NavHopLinks.Generate`
+  ever saw it, so a single-cell island could be neither a hop source nor a hop landing, which is exactly the
+  feature a hop system exists to reach. The blocked-neighborhood half of the condition is load-bearing:
+  `GridPathPlanner` gates grid expansion on passability alone with no per-edge height compare, so preserving a
+  cell with any passable neighbor would hand the planner a walk edge straight up the drop that `StepMask`
+  exists to prevent. The kept cell gains no grid edge and stays reachable only across a `NavLinkKind.Hop`
+  link. Erosion is unchanged for every cell with at least one standable neighbor within the step height.
+  Closes #141.
+- **`DungeonNav.Bake` is headroom-aware.** It bakes through `NavGrid.FromSurfaces` rather than
+  `NavGrid.FromWalkable`, and gained an optional trailing `agentHeight` parameter defaulting to the new
+  `DungeonNav.DefaultAgentHeight` (`1.8`, pinned by test to `MoveTuning.Default.CapsuleHalfHeight * 2`). A
+  `DungeonCeilingMode.Roofed` layout whose `CeilingHeightMeters` is below the agent height now blocks those
+  cells, so a low ceiling is finally visible to pathfinding. An unroofed layout bakes headroom as positive
+  infinity, matching `INavSurfaceProvider`'s open-sky convention, and is unchanged no matter what agent height
+  is passed. Per-floor surface heights use each floor's own band-lower Y so `NavSpace.LayerAt` keeps
+  discriminating floors. Closes #144.
+
+### Added
+
+- **`ke-dungeon nav`**, a verb that bakes a layout's `NavSpace` and reports it: per floor the grid dimensions
+  and passable/blocked counts, then the number of connected components across the whole space. Connectivity
+  counts `NavSpace.Links` as real edges and mirrors `GridPathPlanner`'s flat node-id scheme, so a
+  one-component result means the planner really can reach every passable cell from every other one, not just
+  that cells look adjacent. `--require-connected` turns a disconnected space into a non-zero exit, making it
+  usable as a CI gate. `--agent-height` defaults to `DungeonNav.DefaultAgentHeight`. `--yaw` is accepted and
+  then REJECTED with a non-zero exit, rather than silently baking a NavSpace that does not match the rotated
+  geometry, because `DungeonNav.Bake` has no rotation concept (#140, deferred). Closes #146.
+
+### Known gaps
+
+- Rotated dungeon plots still bake a wrong `NavSpace` and are now rejected at the CLI rather than fixed.
+  `NavGrid` is strictly axis-aligned with no rotation concept, so honouring `DungeonPlotTransform.YawRadians`
+  needs a design pass, tracked in #140.
+- Step height and headroom remain baked in rather than per-query, unlike agent radius, so mixed creature sizes
+  still need separate bakes. Tracked in #142.
 
 ## 14.28.0
 

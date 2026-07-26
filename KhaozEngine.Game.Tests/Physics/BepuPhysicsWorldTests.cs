@@ -196,4 +196,82 @@ public class BepuPhysicsWorldTests
         Assert.True(sh.Distance > 0f && sh.Distance < 5.5f,
             $"expected sweep to contact hull, got distance={sh.Distance:F3}");
     }
+
+    // Issue #145 regression: RayHit.Body must be null for a hit on a dynamic body, never a fabricated static
+    // handle. The static is added FIRST (so it legitimately owns seam id 0, BepuPhysicsWorld's shared _nextId
+    // counter that AddStatic/AddDynamic both draw from) and placed well past the ray so it is never the actual
+    // hit. The dynamic is added second and placed to be hit with QueryFilter.DynamicsOnly. Before the #145 fix,
+    // Body was a non-nullable StaticHandle that defaulted to StaticHandle(0), silently aliasing this id-0 static.
+    [Fact]
+    public void Raycast_OnADynamicBody_ReportsNullBody()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 50f)));
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(0f, 0f, 5f)),
+            DynamicBodyDescription.WithMass(1f));
+        world.Step(1f / 60f);
+
+        bool hit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh, QueryFilter.DynamicsOnly);
+        Assert.True(hit, "ray should hit the dynamic box");
+        Assert.Null(rh.Body);
+    }
+
+    // Sweep-path counterpart of Raycast_OnADynamicBody_ReportsNullBody: SweepHit.Body shares the same seam type
+    // and the same ResolveSeamHandle plumbing, so the sweep path needs its own regression coverage.
+    [Fact]
+    public void SweepCapsule_OnADynamicBody_ReportsNullBody()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 50f)));
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(0f, 0f, 5f)),
+            DynamicBodyDescription.WithMass(1f));
+        world.Step(1f / 60f);
+
+        var cap = new CapsuleShape(0.3f, 0.6f);
+        bool hit = world.SweepCapsule(cap, Pose.At(Vector3.Zero), Vector3.UnitZ, 100f, out SweepHit sh, QueryFilter.DynamicsOnly);
+        Assert.True(hit, "sweep should hit the dynamic box");
+        Assert.Null(sh.Body);
+    }
+
+    // Issue #143: ResolveSeamHandle must resolve the ACTUAL static that was hit via the new O(1) reverse index,
+    // not just whichever entry happens to be found first. Three statics sit off to the sides (ids 0-2), and the one
+    // on the ray is added LAST (id 3, never id 0), so a resolver that coincidentally always returned the first
+    // seam id it saw would fail this the same way it would fail the id-0 aliasing case above.
+    [Fact]
+    public void Raycast_OnANonFirstStatic_ReportsThatStaticsOwnHandle()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(20f, 0f, 0f)));
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(-20f, 0f, 0f)));
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 20f, 0f)));
+        StaticHandle onTheRay = world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 5f)));
+        world.Step(1f / 60f);
+
+        bool hit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh);
+        Assert.True(hit);
+        Assert.Equal(onTheRay, rh.Body);
+    }
+
+    // Issue #143: RemoveStatic must evict the reverse index by the BEPU handle value, not the seam id - the two
+    // diverge as soon as a dynamic body has drawn from the shared _nextId counter (forced here by adding a
+    // dynamic first), because Bepu allocates static and body handles from separate pools starting at 0. If
+    // RemoveStaticEntry keyed the reverse-removal by the wrong number, it would evict a DIFFERENT static's entry
+    // (toKeep's) instead of the one actually being removed, breaking toKeep's resolution after the fact.
+    [Fact]
+    public void Raycast_OnARemainingStatic_StaysResolvableAfterAnotherStaticIsRemoved()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddDynamic(new BoxShape(new Vector3(0.1f, 0.1f, 0.1f)), Pose.At(new Vector3(50f, 50f, 50f)),
+            DynamicBodyDescription.WithMass(1f)); // consumes seam id 0, shifting the statics below off Bepu's own id 0
+        StaticHandle toRemove = world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(20f, 0f, 0f)));
+        StaticHandle toKeep = world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 5f)));
+        world.Step(1f / 60f);
+
+        world.RemoveStatic(toRemove);
+        world.Step(1f / 60f);
+
+        bool hit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh);
+        Assert.True(hit);
+        Assert.Equal(toKeep, rh.Body);
+    }
 }

@@ -46,6 +46,12 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
     // Statics.Remove only removes the body entry, not the shape, so without this the shape
     // pool grows unbounded across streaming load/unload cycles.
     private readonly Dictionary<int, (BepuStaticHandle Handle, TypedIndex Shape)> _handles = new();
+    // Reverse of _handles: Bepu static handle value -> seam int id. Lets ResolveSeamHandle resolve a ray/sweep
+    // hit in O(1) instead of scanning every entry in _handles (every static hit from Raycast/SweepCapsule calls
+    // it). Kept in lockstep with _handles by the two AddStaticEntry/RemoveStaticEntry helpers below. Nothing
+    // else may write to either dictionary. Bepu recycles freed handle values, so this MUST be cleared on
+    // removal or a later static could be mis-resolved to a stale, already-removed seam id.
+    private readonly Dictionary<int, int> _reverseHandles = new();
     // Seam int id -> (Bepu BodyHandle, shape TypedIndex) for dynamic bodies. Same shape-pool discipline:
     // Bodies.Remove frees the body entry but NOT the shape, so RecursivelyRemoveAndDispose on RemoveDynamic
     // keeps the shape pool from growing across body add/remove cycles.
@@ -122,7 +128,7 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         var bepuHandle = _sim.Statics.Add(desc);
 
         int id = _nextId++;
-        _handles[id] = (bepuHandle, shapeIndex);
+        AddStaticEntry(id, bepuHandle, shapeIndex);
         return new SeamHandle(id);
     }
 
@@ -135,8 +141,23 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
             // to free child shapes; simple convex shapes (Box, Sphere, Capsule, etc.) use Remove.
             // RecursivelyRemoveAndDispose handles both cases safely.
             _sim.Shapes.RecursivelyRemoveAndDispose(entry.Shape, _pool);
-            _handles.Remove(handle.Value);
+            RemoveStaticEntry(handle.Value, entry.Handle);
         }
+    }
+
+    // Single point of truth for adding to _handles/_reverseHandles together. See the field comment on
+    // _reverseHandles for why both must move in lockstep.
+    private void AddStaticEntry(int id, BepuStaticHandle handle, TypedIndex shape)
+    {
+        _handles[id] = (handle, shape);
+        _reverseHandles[handle.Value] = id;
+    }
+
+    // Single point of truth for removing from _handles/_reverseHandles together.
+    private void RemoveStaticEntry(int id, BepuStaticHandle handle)
+    {
+        _handles.Remove(id);
+        _reverseHandles.Remove(handle.Value);
     }
 
     public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null)
@@ -415,9 +436,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         }
 
         var point = origin + direction * handler.HitT;
-        // RayHit.Body is a static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics) has no
-        // static seam handle, so leave Body default rather than reverse-looking-up a non-static hit.
-        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : default;
+        // RayHit.Body is a nullable static handle. A dynamic hit (only possible with QueryMobility.All/Dynamics)
+        // has no static seam handle, so Body is null rather than reverse-looking-up a non-static hit.
+        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : null;
         hit = new RayHit(handler.HitT, point, handler.HitNormal, seamHandle);
         return true;
     }
@@ -437,9 +458,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
             return false;
         }
 
-        // SweepHit.Body is a static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics) has no
-        // static seam handle, so leave Body default rather than reverse-looking-up a non-static hit.
-        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : default;
+        // SweepHit.Body is a nullable static handle. A dynamic hit (only possible with QueryMobility.All/Dynamics)
+        // has no static seam handle, so Body is null rather than reverse-looking-up a non-static hit.
+        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : null;
         hit = new SweepHit(handler.HitT, handler.HitLocation, handler.HitNormal, seamHandle);
         return true;
     }
@@ -506,16 +527,14 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         return true;
     }
 
-    private SeamHandle ResolveSeamHandle(BepuStaticHandle bepuHandle)
+    private SeamHandle? ResolveSeamHandle(BepuStaticHandle bepuHandle)
     {
-        // Reverse-lookup seam id from Bepu handle.
-        foreach (var kv in _handles)
-        {
-            if (kv.Value.Handle.Value == bepuHandle.Value)
-                return new SeamHandle(kv.Key);
-        }
+        // O(1) reverse-lookup via _reverseHandles (see its field comment). This used to be a linear scan of
+        // _handles run on every static ray/sweep hit.
+        if (_reverseHandles.TryGetValue(bepuHandle.Value, out int id))
+            return new SeamHandle(id);
         System.Diagnostics.Debug.Assert(false, "BepuPhysicsWorld: ray/sweep hit a static that cannot be resolved by seam handle - this is a bug");
-        return new SeamHandle(-1);
+        return null;
     }
 
     public void Dispose()

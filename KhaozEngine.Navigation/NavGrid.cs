@@ -94,7 +94,10 @@ public sealed class NavGrid
     /// per-cell surface heights (see <see cref="SurfaceHeightAt"/> / <see cref="HasSurfaceHeights"/>).
     /// A cell is blocked when its sample is not standable, its headroom is below
     /// <paramref name="agentHeight"/>, or its surface drops to a standable neighbor by more than
-    /// <paramref name="stepHeight"/>. <paramref name="yMin"/> and <paramref name="yMax"/> record the
+    /// <paramref name="stepHeight"/>. The one exception is a lone standable top, every standable neighbor
+    /// more than a step below it and every neighbor blocked, which stays passable so a
+    /// <see cref="NavLinkKind.Hop"/> link can still reach it (see <see cref="StepMask"/>).
+    /// <paramref name="yMin"/> and <paramref name="yMax"/> record the
     /// vertical band, checked later via <see cref="ContainsY"/>.
     /// </summary>
     public static NavGrid FromSurfaces(

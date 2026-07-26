@@ -60,6 +60,7 @@
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
+    <ProjectReference Include="../KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <!-- ChunkDynamics/ChunkCoord/TerrainChunkMesh (Physics/ChunkDynamicsTests.cs, Physics/TerrainMeshCollisionTests.cs)
          are compiled into this seam assembly but live in the KhaozEngine.Terrain namespace (already covered by the

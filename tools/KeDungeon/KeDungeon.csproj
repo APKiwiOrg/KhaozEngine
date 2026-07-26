@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="../../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
     <ProjectReference Include="../../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
   </ItemGroup>
 </Project>

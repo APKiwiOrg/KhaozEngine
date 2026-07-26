@@ -67,6 +67,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Foundation packages (brief)](#foundation-packages-brief)
 - [Wall-clock periodic rewards (`KhaozEngine.Progression`)](#wall-clock-periodic-rewards-khaozengineprogression)
 - [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
+- [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
 - [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
 - [Save data (`GameStorage`)](#save-data-gamestorage)
@@ -75,7 +76,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Deterministic floating point (`KhaozEngine.Determinism`)](#deterministic-floating-point-khaozenginedeterminism)
 - [Testing your game headlessly](#testing-your-game-headlessly)
 - [Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)](#device-free-shader-validation-khaozenginegpushadervalidation)
-- [GPU compute shaders (`KhaozEngine.Gpu`, 14.29.0)](#gpu-compute-shaders-khaozenginegpu-14290)
+- [GPU compute shaders (`KhaozEngine.Gpu`, 15.2.0)](#gpu-compute-shaders-khaozenginegpu-1520)
 - [Drain before mid-life GPU resource disposal (`IGpuDevice.WaitForIdle`)](#drain-before-mid-life-gpu-resource-disposal-igpudevicewaitforidle)
 - [Headless snapshots / screenshots (`KhaozEngine.Snapshot`)](#headless-snapshots-screenshots-khaozenginesnapshot)
 - [Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)](#multiplayer-transport-seam-fixed-tick-host-khaozenginenetcode-khaozenginesimulation)
@@ -3931,8 +3932,9 @@ available for editor/AI tooling. The load path itself enforces its own semantic 
 ```
 
 The `ke-dungeon` dev CLI (`tools/KeDungeon`) wraps the whole flow - `generate`, `preview` (one debug PNG per
-floor), `verify` (re-runs `DungeonSolver.Verify`), and `bake` (into a `MapDoc` document, accumulating on repeat
-runs):
+floor), `verify` (re-runs `DungeonSolver.Verify`), `bake` (into a `MapDoc` document, accumulating on repeat
+runs), and `nav` (bakes a `NavSpace` via `DungeonNav.Bake` and reports its per-floor cell counts and
+connected-component count):
 
 ```bash
 dotnet run --project tools/KeDungeon -- generate --seed 2026 --config dungeon.config.json --out layout.json
@@ -3940,11 +3942,18 @@ dotnet run --project tools/KeDungeon -- preview --layout layout.json --out-dir p
 dotnet run --project tools/KeDungeon -- verify --layout layout.json
 dotnet run --project tools/KeDungeon -- bake --layout layout.json --map zone.map.json \
     --origin-x 120 --origin-z 0 --base-y 0 --yaw 0
+dotnet run --project tools/KeDungeon -- nav --layout layout.json \
+    --origin-x 120 --origin-z 0 --base-y 0 --agent-height 1.8 --require-connected
 ```
 
-Exit codes: 0 success, 1 a failed `verify`, 2 an unknown verb or a missing/invalid option, 3 malformed input
-JSON. See the `KhaozEngine.Dungeon` package README for the full kit contract and determinism/completability
-guarantees.
+`nav` refuses a non-zero `--yaw` outright (`DungeonNav.Bake` has no rotation concept, see issue #140) rather
+than silently baking a `NavSpace` that does not match a rotated plot, and `--require-connected` turns a
+report of more than one connected component into exit code 1, so it doubles as a CI gate. See the
+`KhaozEngine.Dungeon` package README's CLI section for the full option list and its connectivity model.
+
+Exit codes: 0 success, 1 a failed `verify` or a `nav --require-connected` check on a disconnected space, 2 an
+unknown verb, an unsupported option value, or a missing/invalid option, 3 malformed input JSON. See the
+`KhaozEngine.Dungeon` package README for the full kit contract and determinism/completability guarantees.
 
 ---
 
@@ -3973,10 +3982,14 @@ overlaps a conservative center-point probe. One bake serves every agent radius: 
 and the clearance transform run once, and the per-query radius check (`NavGrid.IsPassable`) is the only
 thing that varies between a rat and a bear querying the same grid.
 
-For a multi-floor dungeon, `DungeonNav.Bake(layout, originX, originZ, baseY)` (`KhaozEngine.Dungeon`) builds
-the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid` layer per floor, joined by
-directed `NavLink` stair connections a climber crosses between floors, at the same cell size and world
-anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons" above.
+For a multi-floor dungeon, `DungeonNav.Bake(layout, originX, originZ, baseY, agentHeight)`
+(`KhaozEngine.Dungeon`) builds the whole `NavSpace` directly from a generated `DungeonLayout`: one `NavGrid`
+layer per floor, joined by directed `NavLink` stair connections a climber crosses between floors, at the same
+cell size and world anchor the dungeon's own `MapDoc` bake and runtime stamp use - see "Procedural dungeons"
+above. Headroom-aware: in a `DungeonCeilingMode.Roofed` layout, a cell whose ceiling clearance
+(`CeilingHeightMeters`) is below `agentHeight` (default `DungeonNav.DefaultAgentHeight`, 1.8, the shipped
+character capsule height) bakes blocked even though its cell kind is walkable. An `Open` layout never blocks
+on headroom, matching its pre-headroom-awareness behavior exactly.
 
 ### Bake ramps, stairs, and standable props
 
@@ -4009,7 +4022,9 @@ new code to route across a ramp or a low rock.
 ### Bake vertical hops
 
 A standable top taller than `stepHeight` bakes as an unreachable island under the step bake alone: the
-top is standable, but no walkable step leads onto it. `NavGridBaker.BakeOverworldHops` closes that gap.
+top is standable, but no walkable step leads onto it. That holds down to a one-cell top, which the step
+bake keeps rather than eroding, precisely so a hop can land on it (it gains no walk edge, since every one
+of its neighbors is blocked). `NavGridBaker.BakeOverworldHops` closes that gap.
 It bakes the step grid exactly as `BakeOverworldSteps` does, then generates same-grid
 `NavLinkKind.Hop` links (`NavHopLinks.Generate`) wherever two standable cells face each other across a
 blocked rim with a rise above `stepHeight` but within `jumpHeight`, and returns a single-layer `NavSpace`
@@ -4127,7 +4142,8 @@ else if (output.State == PathFollowState.Hopping)
     float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
-// Arrived: agent.Position is within AcceptRadius of the goal, output.WorldDir is zero.
+// Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
+// of it in Y, output.WorldDir is zero.
 // Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
 ```
 
@@ -4173,7 +4189,9 @@ carries at least one waypoint and `ActiveWaypointIndex` is a valid index into it
 `PathQueryBudget` (handed to `IPathPlanner.FindPath`, and to every `PathFollower` replan via
 `PathFollowConfig.Budget`) caps search cost: `MaxExpandedNodes` (default 4096) before the search gives up
 and returns `Partial`, and `SnapRadius` (default 3 world units) for nudging an endpoint onto a passable
-cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6, arrival distance),
+cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6, arrival distance in XZ),
+`VerticalAcceptTolerance` (default 0.8, how far the agent may sit above or below the goal and still count
+as arrived, so a goal on the floor above routes through the planner instead of arriving on XZ proximity),
 `GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
 `CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
 due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the
@@ -4399,7 +4417,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.29.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="15.2.0" />
 ```
 
 ```csharp
@@ -7124,6 +7142,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `Observe` opaque metric keys, `Persistent` + `Session` scopes, `AtLeast` / `Reached` / `AtMost` conditions,
   idempotent `ObjectiveCompleted`, key-indexed re-eval, `Capture` / `Restore` snapshot. Deterministic and
   presentation-free (see "Objective / goal tracking" below).
+- **`KhaozEngine.Stats`**: game-agnostic layered stat computation (`StatSet`) for equipment, skills, and
+  buffs. A per-channel `Base` plus any number of named `StatSourceId` contributions fold to `Value(channel) =
+  (Base + sum(Flat)) * max(1 + sum(Percent), MinimumScale)`. Dense int channels backed by a `float[]`,
+  allocation-free bulk reads via `CopyValuesTo`, lazy per-channel recompute, insertion-order fold. The engine
+  owns the fold only, never a channel's meaning: no enum, no item, no stacking rule (see "Stat channels"
+  below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
   redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
   the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
@@ -7243,6 +7267,58 @@ run synchronously inside the triggering call.
 you attached), save transport (serialize the `ObjectivesSnapshot`), and display text (reference a localized
 `Name` / `Description` by `StringId`, never a raw literal). Out of scope in v1: temporal / sequential
 conditions ("X then Y within 10s") and any reward / currency / tree logic.
+
+---
+
+## Stat channels (`KhaozEngine.Stats`)
+
+`StatSet` folds equipment, skills, and buffs into final per-channel values without knowing what a channel
+means. A channel is just a dense `int` index into a `float[]`: define your own enum (`Attack`, `Defense`,
+`MoveSpeed`, ...) and cast it to `int` at the call site. The engine owns the channels, the fold, and the
+recompute only. It has no stat identity, no balance constants, no items, no equipment slots, and no
+derivation between channels.
+
+The one fold `StatSet` knows: `Value(c) = (Base(c) + sum(Flat)) * max(1 + sum(Percent), MinimumScale)`.
+
+Sources are added and removed as a whole under a `StatSourceId`. Equip a sword and add its `StatModifier`s
+under `swordId`. Unequip it with `RemoveSource(swordId)`, and every contribution it made is gone in one call.
+Recompute is lazy and per-channel: a channel only refolds when it is actually dirty, and it always refolds
+from scratch rather than adjusting a running total, because removing a source is not the exact float inverse
+of adding it. The fold order is source insertion order and survives removals, and replacing a source under an
+id it already owns keeps that source's original position. A stable summation order is what makes the round
+trip exact: add a source, remove it, and `Value` returns to the base value bit for bit.
+
+```csharp
+using KhaozEngine.Stats;
+
+enum Channel { Attack, Defense, MoveSpeed }   // your own enum, the engine never sees it
+
+var stats = new StatSet(channelCount: 3, minimumScale: 0.1f);   // mitigation floors at 90% reduction
+stats.SetBase((int)Channel.Attack, 10f);
+stats.SetBase((int)Channel.Defense, 5f);
+stats.SetBase((int)Channel.MoveSpeed, 6f);
+
+// Equip a sword: +4 flat attack, +15% attack. swordId is whatever int identity
+// your inventory already uses for this equipped instance.
+var swordId = new StatSourceId(swordInstanceId);
+stats.AddSource(swordId, stackalloc StatModifier[]
+{
+    new StatModifier((int)Channel.Attack, Flat: 4f, Percent: 0.15f),
+});
+float attack = stats.Value((int)Channel.Attack);   // (10 + 4) * 1.15 = 16.1
+
+// Unequip: remove the whole source in one call.
+stats.RemoveSource(swordId);
+attack = stats.Value((int)Channel.Attack);   // back to exactly 10, bit for bit
+```
+
+`GetBase`/`SetBase` read and write the per-channel base directly. `ClearSources` drops every source and
+leaves only the base. `CopyValuesTo(Span<float>)` reads every channel in one allocation-free call, for a
+stat-sheet screen or a per-frame HUD. **What stays game-side (the seam):** stat identity (the enum), balance
+numbers (which modifiers a sword grants), items and equipment slots, and the whole "buff" half (stacking
+rules, durations, expiry, diminishing returns), the same split `KhaozEngine.Locomotion` already draws for its
+per-entity speed scale: the engine owns the multiplier and its plumbing, the game owns duration, stacking,
+and what granted it.
 
 ---
 
@@ -7762,7 +7838,7 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 
 ---
 
-## GPU compute shaders (`KhaozEngine.Gpu`, 14.29.0)
+## GPU compute shaders (`KhaozEngine.Gpu`, 15.2.0)
 
 For work that is not one-output-per-pixel: a spectrum bake, an FFT, a prefix sum, a particle sim step, a
 histogram. Anything that has to write a buffer, or write a texture at addresses a rasterizer would not visit.

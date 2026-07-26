@@ -251,7 +251,7 @@ namespace KhaozEngine.Gpu.Internal
 
         /// <summary>Read the whole <see cref="GpuCapabilities"/> set off a live device. ONE place, because there are
         /// two things that surface it (<c>GpuDeviceContext.Capabilities</c> and <c>IGpuDevice.Capabilities</c>) and
-        /// they must agree member for member. They did not before 14.29.0: the device wrapper's copy silently left
+        /// they must agree member for member. They did not before 15.2.0: the device wrapper's copy silently left
         /// the adapter name and the sampler-feature flags at their defaults. Adding a member in two places is how
         /// that happens, so there is now only one place to add it.</summary>
         public static GpuCapabilities ReadCapabilities(GraphicsDevice gd) => new(

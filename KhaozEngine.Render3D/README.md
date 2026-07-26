@@ -318,6 +318,18 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   is `Internal.OceanSpectrum` (headless-tested); the kernels are `Internal.OceanComputeShaders` and the per-frame
   producer is `Rendering.OceanFftProducer`. Rationale: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`; attribution:
   `NOTICE.md`.
+- FFT ocean sampling frame (since 16.5.0, all opt-in, all defaulting to the exact identity): `OnshoreFocusPoint` /
+  `OnshoreFocusStrength` / `OnshoreFocusSectors` aim the local wave heading at a world point, so an island gets
+  surf running at it from every azimuth instead of a sea running past it; `CascadeRotationDegrees` turns each
+  cascade's lattice so their repeats stop stacking along the same world axes; `DomainWarpMetres` /
+  `DomainWarpWavelengthMetres` bend the sampling domain at a wavelength several times the largest tile, which is
+  the only lever that reaches the largest cascade's OWN repeat period. None of it touches the spectrum, the
+  kernels or the maps - it is all in how they are sampled - so it costs no extra dispatch and no memory. The focus
+  is a two-tap blend over a ring of fixed lattice rotations rather than a per-position rotation of the sampling
+  coordinate, because the latter is degenerate (it maps the whole plane onto one ray of the map and renders a
+  bullseye); above strength 0 the surface takes two cascade samples per stage instead of one, and the sector count
+  is free. Pure math is `Internal.OceanFocus` (headless-tested, mirrors the GLSL). Rationale:
+  `docs/design/WATER-SAMPLING-FRAME-DESIGN-2026-07-26.md`.
 - Modern particle pass: `Scene3D.DrawParticle(in ParticleSprite)` / `DrawParticles(ReadOnlySpan<ParticleSprite>)`
   queue procedural particle sprites that render as ONE premultiplied-alpha instanced draw after the water pass and
   BEFORE the post chain, so additive sprites feed bloom and every sprite flows through the pixel post like meshes.

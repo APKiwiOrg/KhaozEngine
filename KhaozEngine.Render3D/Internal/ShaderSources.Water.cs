@@ -40,6 +40,10 @@ namespace KhaozEngine.Render3D.Internal
     vec4 FftParams;        // x=1 when the FFT ocean maps are live (0 = procedural), y=cascadeCount, z=resolution, w reserved
     vec4 FftTiles;         // xyz = per-cascade tile size in world metres, w reserved
     vec4 FftVariance;      // xyz = per-cascade slope variance of the baked spectrum (Toksvig input), w reserved
+    vec4 FftFocus;         // xy = onshore focus point (world XZ), z = focus strength (0 = off), w = wind heading radians
+    vec4 FftRotCos;        // xyz = cos of each cascade's fixed rotation offset, w = domain-warp amplitude (metres, 0 = off)
+    vec4 FftRotSin;        // xyz = sin of each cascade's fixed rotation offset, w = domain-warp wavelength (metres)
+    vec4 FftSector;        // x = focus sector count, yz = (cos, sin) of one sector, w reserved
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -81,7 +85,8 @@ layout(location=0) in vec3 Position;
 layout(location=0) out vec3 vWorldPos;
 layout(location=1) out vec3 vSwellNormal;
 layout(location=2) out float vFold;
-layout(location=3) out vec2 vRefXz;   // the STILL-water XZ, i.e. where this vertex samples the ocean maps
+layout(location=3) out vec2 vRefXz;      // where this vertex samples the ocean maps: the STILL-water XZ, warped
+layout(location=4) out vec2 vFocusRot;   // the onshore-focus rotation as (cos, sin); (1, 0) when there is none
 
 const float KE_GRAVITY = 9.81;
 const float KE_LAMBDA_DECAY = 0.685;
@@ -98,6 +103,12 @@ void main() {
     vec3 p = Position;
     vec3 swellNormal = vec3(0.0, 1.0, 0.0);
     float fold = 0.0;
+
+    // The ocean sampling frame. Declared out here so both branches leave the varyings written, and so the FFT
+    // branch's values are the ones the fragment reads: the frame belongs to the still-water grid position, which
+    // only this stage has. Defaults are the exact identity, which is what the procedural branch keeps.
+    vec2 refXz = Position.xz;
+    vec2 focusRot = vec2(1.0, 0.0);
 
     // FFT ocean: the displacement is a texture lookup per cascade, and the normal + the fold both come out of the
     // derivative map in the fragment, so the whole Gerstner block below is skipped rather than added to. The two
@@ -163,7 +174,8 @@ void main() {
     vWorldPos = p;
     vSwellNormal = swellNormal;
     vFold = fold;
-    vRefXz = Position.xz;
+    vRefXz = refXz;
+    vFocusRot = focusRot;
 }";
 
         /// <summary>
@@ -179,6 +191,7 @@ layout(location=0) in vec3 vWorldPos;
 layout(location=1) in vec3 vSwellNormal;
 layout(location=2) in float vFold;
 layout(location=3) in vec2 vRefXz;
+layout(location=4) in vec2 vFocusRot;
 layout(location=0) out vec4 oColor;
 
 const float KE_WHITECAP_SOFTNESS = 0.18;   // mirrors WaterMath.WhitecapSoftness
@@ -386,9 +399,10 @@ void main() {
         // FFT ocean. The cascades' ANALYTIC slope is the whole surface normal: there is no separate swell to
         // attenuate, because the swell scale is just the coarsest cascade. Foam has already been accumulated per
         // texel by the compute pass, so it is a lookup rather than a per-fragment fold test. Both were read above
-        // at the STILL-water XZ handed down from the vertex stage, never the displaced position: the maps are
-        // indexed by the reference grid the transform is defined over, and sampling them at the displaced point
-        // would fold the horizontal displacement in a second time.
+        // in the sampling frame handed down from the vertex stage (vRefXz, vFocusRot), never from the displaced
+        // position: the maps are indexed by the reference grid the transform is defined over, so sampling them at
+        // the displaced point would fold the horizontal displacement in a second time, and re-deriving the focus
+        // rotation here would rotate the normals in a frame the displacement was never computed in.
         N = slopeToNormal(oceanSlope.x, oceanSlope.y, 1.0);
         lostSlopeVariance = oceanLost;
     } else {

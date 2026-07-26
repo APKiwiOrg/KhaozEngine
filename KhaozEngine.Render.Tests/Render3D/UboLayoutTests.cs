@@ -409,14 +409,14 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void WaterUbo_MarshalSize_EqualsPayloadBytesConstant_And_GlslBlock()
         {
-            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 24 vec4 (LightDir, LightColor, CameraPos,
+            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 28 vec4 (LightDir, LightColor, CameraPos,
             // DeepColor, ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams, SkyHorizon, SkyZenith,
             // SkySunColor, SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
-            // RippleSpectrum, FootprintParams, FftParams, FftTiles, FftVariance) = 128 + 384 = 512 bytes. If the
-            // struct or the shader block drift apart, the per-plane water UBO upload smears the
-            // colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
+            // RippleSpectrum, FootprintParams, FftParams, FftTiles, FftVariance, FftFocus, FftRotCos, FftRotSin,
+            // FftSector) = 128 + 448 = 576 bytes. If the struct or the shader block drift apart, the per-plane water UBO
+            // upload smears the colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + 24 * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(2 * 64 + 28 * 16, (int)WaterRenderer.PayloadBytes);
         }
 
         [Fact]
@@ -449,7 +449,9 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
                 "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
-                "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;" })
+                "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
+                "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
+                "vec4 FftRotSin;", "vec4 FftSector;" })
                 Assert.True(ShaderSources.WaterFrag.Contains(member),
                     $"WaterFrag lost '{member}': the Water UBO block drifted from WaterRenderer.WaterUbo. Fix ShaderSources.WaterFrag or the struct.");
         }
@@ -463,7 +465,9 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
                 "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
-                "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;" })
+                "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
+                "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
+                "vec4 FftRotSin;", "vec4 FftSector;" })
                 Assert.True(ShaderSources.WaterVert.Contains(member),
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
         }

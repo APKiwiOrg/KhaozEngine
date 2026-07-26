@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class WaterRenderer : IDisposable
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 24 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 27 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -52,11 +52,15 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 FftParams;        // x=1 when the FFT maps are live, y=cascadeCount, z=resolution, w reserved
             public Vector4 FftTiles;          // xyz = per-cascade tile metres, w reserved
             public Vector4 FftVariance;       // xyz = per-cascade baked slope variance, w reserved
+            public Vector4 FftFocus;          // xy = onshore focus point (world XZ), z = strength, w = wind radians
+            public Vector4 FftRotCos;         // xyz = cos(per-cascade rotation offset), w = domain-warp metres
+            public Vector4 FftRotSin;         // xyz = sin(per-cascade rotation offset), w = domain-warp wavelength
+            public Vector4 FftSector;         // x = focus sector count, yz = (cos, sin) of one sector, w reserved
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + 24*16 (vec4) = 512.</summary>
-        internal const uint PayloadBytes = 512;
+        /// 2*64 (mat4) + 28*16 (vec4) = 576.</summary>
+        internal const uint PayloadBytes = 576;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -77,7 +81,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 512;   // Align256(512)
+        internal const uint SlotBytes = 768;   // Align256(576)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -229,6 +233,10 @@ namespace KhaozEngine.Render3D.Rendering
             Vector4 skySun = sky.SunColor;
             Vector4 absorption = settings.AbsorptionPerMetre;
             Vector4 foam = settings.FoamColor;
+            // The sampling-frame group. Read whether or not the ocean is live: the shader gates every one of them
+            // behind FftParams.x, so a procedural surface never looks at them, and packing them unconditionally
+            // keeps this a pure function of the settings bag.
+            WaterSeaState sea = settings.SeaState;
             return new WaterUbo
             {
                 ViewProj = clipViewProj,
@@ -265,8 +273,40 @@ namespace KhaozEngine.Render3D.Rendering
                 FftParams = new Vector4(ocean.Active ? 1f : 0f, ocean.CascadeCount, ocean.Resolution, 0f),
                 FftTiles = new Vector4(ocean.Tiles, 0f),
                 FftVariance = new Vector4(ocean.SlopeVariance, 0f),
+                FftFocus = new Vector4(sea.OnshoreFocusPoint, Math.Clamp(sea.OnshoreFocusStrength, 0f, 1f),
+                    GerstnerWaves.DegreesToRadians(sea.WindDirectionDegrees)),
+                FftRotCos = new Vector4(Cos(sea.CascadeRotationDegrees), MathF.Max(sea.DomainWarpMetres, 0f)),
+                FftRotSin = new Vector4(Sin(sea.CascadeRotationDegrees), sea.DomainWarpWavelengthMetres),
+                FftSector = SectorParams(sea.OnshoreFocusSectors),
             };
         }
+
+        /// <summary>The focus blend's sector ring: how many fixed lattice rotations the wanted heading is
+        /// quantized to, and the <c>(cos, sin)</c> of ONE sector so the shader reaches the upper tap by composing
+        /// rather than by a second <c>cos</c>/<c>sin</c> pair. Only two taps are ever non-zero, so the count is
+        /// free at any value.</summary>
+        static Vector4 SectorParams(int sectors)
+        {
+            int n = Math.Clamp(sectors, OceanFocus.MinSectors, OceanFocus.MaxSectors);
+            float step = 2f * MathF.PI / n;
+            return new Vector4(n, MathF.Cos(step), MathF.Sin(step), 0f);
+        }
+
+        /// <summary>Per-cascade <c>cos</c>/<c>sin</c> of <see cref="WaterSeaState.CascadeRotationDegrees"/>, taken
+        /// here rather than in the shader so the sampling frame costs no transcendentals per vertex or per
+        /// fragment. An all-zero rotation gives exactly <c>(1, 1, 1)</c> and <c>(0, 0, 0)</c> (both are
+        /// <c>MathF.Cos(0f)</c> / <c>MathF.Sin(0f)</c>, which .NET pins), so the unrotated frame reaching the
+        /// shader is the bit-exact identity rather than something a per-backend <c>cos</c> rounded.</summary>
+        static Vector3 Cos(Vector3 degrees) => new(
+            MathF.Cos(GerstnerWaves.DegreesToRadians(degrees.X)),
+            MathF.Cos(GerstnerWaves.DegreesToRadians(degrees.Y)),
+            MathF.Cos(GerstnerWaves.DegreesToRadians(degrees.Z)));
+
+        /// <summary>Companion to <see cref="Cos"/>.</summary>
+        static Vector3 Sin(Vector3 degrees) => new(
+            MathF.Sin(GerstnerWaves.DegreesToRadians(degrees.X)),
+            MathF.Sin(GerstnerWaves.DegreesToRadians(degrees.Y)),
+            MathF.Sin(GerstnerWaves.DegreesToRadians(degrees.Z)));
 
         /// <summary>
         /// The live FFT ocean maps' shape, as the shaders need to read them: whether the maps are live at all, how

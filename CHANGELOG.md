@@ -5,6 +5,73 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.5.0
+
+Gives the FFT ocean a sampling frame: waves can be aimed at a point so they run onshore from every azimuth
+instead of all travelling one heading, and the cascade lattices can be decorrelated and their domain bent so the
+largest cascade's tile stops reading as a repeat from a high vantage. Both come off a Ruinborne playtest of
+16.3.1. Everything is opt-in and every default is the exact identity, so a scene that sets none of it renders
+byte-identically to 16.4.0 and no golden was re-baked. Closes #328.
+
+The maps, the spectrum bake and both compute kernels are untouched. All of this lives where the maps are
+SAMPLED, which is why it costs no extra dispatch and no extra memory.
+
+### Added
+
+- `WaterSeaState.OnshoreFocusPoint` (world XZ) and `WaterSeaState.OnshoreFocusStrength` (0..1, default 0): turn
+  the local wave heading toward a point, so an island gets surf running at it from all round rather than a sea
+  running past it on `WindDirectionDegrees`. At strength 1 the heading points straight at the focus.
+- `WaterSeaState.OnshoreFocusSectors` (4..64, default 12): how many fixed lattice headings the turn is quantized
+  to. A quality knob, not a cost one, for the reason under "Why the focus is a blend" below.
+- `WaterSeaState.CascadeRotationDegrees` (xyz = cascades 0/1/2, default zero): a fixed extra rotation of each
+  cascade's sampling frame. The tile ladder already avoids a shared repeat PERIOD, but the lattices were all
+  axis-aligned, so their repeats stacked along the same two world directions. `(0, 19, 37)` is a good set.
+- `WaterSeaState.DomainWarpMetres` (default 0) and `WaterSeaState.DomainWarpWavelengthMetres` (default 1250): a
+  large-scale static warp of the sampling domain, applied before the rotations. This is the only lever that
+  reaches the largest cascade's OWN period, since rotating a lattice does not change how often it repeats. Sized
+  against the tile: at the default 250 metre tile, 100 to 150 metres of amplitude is the useful band, and below a
+  third of the tile it does not do the job. Static, not scrolling, because at this wavelength a drifting warp
+  reads as the whole sea sloshing.
+- `Water` UBO block: `FftFocus`, `FftRotCos`, `FftRotSin`, `FftSector`. `WaterRenderer.PayloadBytes` 512 -> 576
+  and `SlotBytes` 512 -> 768 (the bound range stays 256-aligned, which D3D11 requires).
+
+### Why the focus is a blend and not a rotation
+
+The obvious implementation is to sample at `R(-phi(P)) P`, and it is degenerate. A rotation field that turns to
+face a point winds once around it, so in polar coordinates about that point its angle cancels the sample's own
+azimuth exactly and the entire plane maps onto ONE RAY of the map: every crest becomes a perfect circle and the
+ocean renders as a bullseye. This was built, baked and photographed before it was replaced. Backing the strength
+off does not fix it, it scales the damage - the azimuthal stretch is `1 / (1 - strength)`, a visible smear well
+before the strength is high enough for the convergence to read. Nor is it a tuning problem: no non-constant
+rotation field is a valid coordinate map at all.
+
+So the heading is carried by blending instead. The wanted rotation is quantized onto a ring of
+`OnshoreFocusSectors` fixed lattice rotations, the two either side are sampled, and they are mixed with
+L2-normalized weights (the displacement and slope maps are zero-mean Gaussian fields, so linear weights would dip
+the wave height by about 30 per cent mid-sector; foam is a bounded coverage and takes linear weights instead).
+Each tap is a plain constant-rotation sample and is therefore undistorted, and only two are ever non-zero, so the
+sector count is free and the cost is two cascade samples per stage rather than one. At 0 strength the second tap
+branches out on a uniform and the surface pays exactly what it paid before. Full rationale, with the probe bakes:
+`docs/design/WATER-SAMPLING-FRAME-DESIGN-2026-07-26.md`.
+
+### Notes
+
+- A PARTIAL focus carries one unavoidable heading seam, on the ray running from the focus point in the direction
+  the wind blows. A uniform heading field wraps zero times around the focus and a converging one wraps once, so
+  no continuous blend between them exists. It closes at both ends of the range, so strength 1 is seam-free;
+  `WindDirectionDegrees` aims it if a partial focus is wanted anyway.
+- The focus field's angular gradient is unbounded AT the focus point, which the intended use assumes is land.
+  A sample landing exactly on it is clamped to no rotation rather than left to `atan(0, 0)`.
+- Per-cascade rotation bends the wave-number partition's DIRECTIONALITY only. A rotation preserves |k|, so each
+  cascade owns exactly the band it owned and carries exactly the variance it carried.
+- `CascadeTileMetres`'s doc now states the tile-repeat-versus-view-distance trade (one 250 metre tile spans an
+  eye-height view and lays down two and a half copies across a 600 metre one). The default is deliberately NOT
+  moved: the tile size a scene wants follows from its camera, not from the sea.
+- New coverage: `OceanFocusTests` (the frame maths against its CPU mirror `Internal/OceanFocus`, including the
+  seam's location, the variance conservation and the convergence claim itself) and `OceanFocusGpuTests`
+  (on-device, with the features ENABLED - the trap #298 names is a feature whose default is "unchanged" shipping
+  with green coverage of the path nobody asked for).
+
 ## 16.4.0
 
 Fixes the boot screen showing two differently coloured bars at once during an indeterminate step, and makes the

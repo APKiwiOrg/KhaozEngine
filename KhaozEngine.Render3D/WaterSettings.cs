@@ -73,8 +73,8 @@ namespace KhaozEngine.Render3D
         public WaterWaveSource WaveSource = WaterWaveSource.Procedural;
 
         /// <summary>The sea state driving <see cref="WaterWaveSource.FftOcean"/>: wind, fetch, depth, spreading,
-        /// swell, choppiness, the cascade ladder and the foam model. Never read under
-        /// <see cref="WaterWaveSource.Procedural"/>.</summary>
+        /// swell, choppiness, the cascade ladder, the sampling frame (onshore focus and de-tiling) and the foam
+        /// model. Never read under <see cref="WaterWaveSource.Procedural"/>.</summary>
         public WaterSeaState SeaState = new();
 
         // ---- Body colour -------------------------------------------------------------------------------------

@@ -2408,7 +2408,39 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       sea-state field rebuilds the initial spectrum once, on the CPU; the per-frame cost does not depend on it.
     - **Deterministic.** The same seed at the same elapsed time produces bitwise-identical maps, so a frozen-time
       frame is reproducible and testable.
+    - **The sampling frame** (since 16.5.0) is a second group on the same `WaterSeaState`, all opt-in and all
+      defaulting to the exact identity, so a scene that sets none of it renders byte-identically to 16.4.0. It
+      changes only WHERE each world position reads the cascade maps, never the spectrum or the maps themselves, so
+      it costs no dispatch and no memory. A rotation preserves |k|, so the cascades' disjoint wave-number bands
+      and their energies are untouched; what moves is directionality.
+      - **Onshore focus.** `OnshoreFocusPoint` (world XZ) plus `OnshoreFocusStrength` (0..1, default 0) turn the
+        local wave heading toward a point, so an island gets surf running at it from all round instead of a sea
+        running past it on `WindDirectionDegrees`. **Use strength 1.** A partial focus carries one unavoidable
+        heading seam - a uniform heading field wraps zero times around the focus point and a converging one wraps
+        once, so no continuous blend between them exists - on the ray running from the focus in the direction the
+        wind blows. It closes at both ends of the range, and `WindDirectionDegrees` aims it if a partial focus is
+        wanted anyway. Aim the point at LAND: the field's angular gradient is unbounded at it.
+      - `OnshoreFocusSectors` (4..64, default 12) is the focus's quality knob and NOT a cost knob. The heading
+        cannot be carried by rotating the sampling coordinate (that maps the whole plane onto one ray of the map
+        and renders a bullseye), so it is carried by sampling the two nearest fixed lattice rotations and mixing
+        them. Only those two are ever non-zero, so 64 sectors costs what 4 costs: two cascade samples per stage
+        instead of one, and only while the strength is above 0. What the count buys is how far apart the two
+        headings are, which reads as directional spread around the wanted one - about 15 degrees either side at
+        the default, inside `DirectionalSpread`'s own lobe.
+      - **De-tiling.** `CascadeRotationDegrees` (xyz = cascades 0/1/2, default zero) turns each cascade's lattice
+        so their repeats stop stacking along the same two world axes; `(0, 19, 37)` is a good set.
+        `DomainWarpMetres` (default 0) with `DomainWarpWavelengthMetres` (default 1250) bends the sampling domain
+        before the rotations, and it is the ONLY lever that reaches the largest cascade's own period, since
+        rotating a lattice does not change how often it repeats. Size it against the tile: 100 to 150 metres at
+        the default 250 metre `CascadeTileMetres`, i.e. 40 to 60 per cent of it. Below a third of the tile it does
+        nothing useful, and `2 * pi * amplitude / wavelength` (the local stretch it puts into the domain) must
+        stay under 1 or the surface tears.
+      - `CascadeTileMetres` is still the direct fix for a visible repeat and its default is deliberately unmoved:
+        one 250 metre tile spans an eye-height view and lays two and a half copies across a 600 metre one, so the
+        right value follows from the camera rather than from the sea. Raising it drags the whole ladder with it.
     - Rationale, including the three Metal-only binding landmines it walked into: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`.
+      The sampling frame's own rationale, including why the focus is a blend rather than a rotation:
+      `docs/design/WATER-SAMPLING-FRAME-DESIGN-2026-07-26.md`.
   - **Swell** (the shape): a stack of Gerstner (trochoidal) components displaced in the VERTEX stage, so crests
     pinch, troughs flatten, and the surface has a real silhouette instead of shading painted on a flat sheet. You
     tune WIND, not a wave table: the whole stack is generated from amplitude + longest wavelength + direction +
@@ -4494,7 +4526,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.4.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.5.0" />
 ```
 
 ```csharp

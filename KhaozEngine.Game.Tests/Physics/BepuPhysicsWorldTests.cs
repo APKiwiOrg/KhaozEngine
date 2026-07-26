@@ -232,4 +232,46 @@ public class BepuPhysicsWorldTests
         Assert.True(hit, "sweep should hit the dynamic box");
         Assert.Null(sh.Body);
     }
+
+    // Issue #143: ResolveSeamHandle must resolve the ACTUAL static that was hit via the new O(1) reverse index,
+    // not just whichever entry happens to be found first. Three statics sit off to the sides (ids 0-2); the one
+    // on the ray is added LAST (id 3, never id 0), so a resolver that coincidentally always returned the first
+    // seam id it saw would fail this the same way it would fail the id-0 aliasing case above.
+    [Fact]
+    public void Raycast_OnANonFirstStatic_ReportsThatStaticsOwnHandle()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(20f, 0f, 0f)));
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(-20f, 0f, 0f)));
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 20f, 0f)));
+        StaticHandle onTheRay = world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 5f)));
+        world.Step(1f / 60f);
+
+        bool hit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh);
+        Assert.True(hit);
+        Assert.Equal(onTheRay, rh.Body);
+    }
+
+    // Issue #143: RemoveStatic must evict the reverse index by the BEPU handle value, not the seam id - the two
+    // diverge as soon as a dynamic body has drawn from the shared _nextId counter (forced here by adding a
+    // dynamic first), because Bepu allocates static and body handles from separate pools starting at 0. If
+    // RemoveStaticEntry keyed the reverse-removal by the wrong number, it would evict a DIFFERENT static's entry
+    // (toKeep's) instead of the one actually being removed, breaking toKeep's resolution after the fact.
+    [Fact]
+    public void Raycast_OnARemainingStatic_StaysResolvableAfterAnotherStaticIsRemoved()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddDynamic(new BoxShape(new Vector3(0.1f, 0.1f, 0.1f)), Pose.At(new Vector3(50f, 50f, 50f)),
+            DynamicBodyDescription.WithMass(1f)); // consumes seam id 0, shifting the statics below off Bepu's own id 0
+        StaticHandle toRemove = world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(20f, 0f, 0f)));
+        StaticHandle toKeep = world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 5f)));
+        world.Step(1f / 60f);
+
+        world.RemoveStatic(toRemove);
+        world.Step(1f / 60f);
+
+        bool hit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh);
+        Assert.True(hit);
+        Assert.Equal(toKeep, rh.Body);
+    }
 }

@@ -82,18 +82,35 @@ namespace KhaozEngine.Tests.Gpu
         public void TheRowPassIsRejectedIfItsUniformReadDropsBelowItsSpectrumRead()
         {
             const string uniformFirst = "    float depth = Timing.w;\n    vec4 h = H0[";
-            string good = OceanComputeShaders.RowPass(32);
-            Assert.Contains(uniformFirst, good);
 
-            string broken = good
-                .Replace(uniformFirst, "    vec4 h = H0[")
-                .Replace("    float dk = KE_TWO_PI / tile;", "    float depth = Timing.w;\n    float dk = KE_TWO_PI / tile;");
-            Assert.NotEqual(good, broken);
+            // NORMALIZED to LF before any multi-line match, and then run BOTH ways. The kernel is a C# verbatim
+            // string literal, so its line endings are whatever the checked-out .cs has, and `.gitattributes`
+            // normalizes only the golden grids - so on a Windows checkout (autocrlf) the source carries CRLF and a
+            // "\n" marker silently never matches. That is a test-harness assumption rather than a shader property
+            // (glslang is line-ending agnostic), and it cost one red Direct3D11 leg. Running the CRLF form too
+            // means the Windows case is now proved on every platform instead of only on Windows.
+            string lf = OceanComputeShaders.RowPass(32).Replace("\r\n", "\n");
+            Assert.Contains(uniformFirst, lf);
 
-            var ex = Assert.Throws<ShaderValidationException>(
-                () => ShaderValidation.ValidateCompute(broken, "RowPassWithTheUniformReadMovedDown"));
-            Assert.Contains("RowPassWithTheUniformReadMovedDown", ex.Message);
-            Assert.Contains("binding order", ex.Message);
+            foreach (string source in new[] { lf, lf.Replace("\n", "\r\n") })
+            {
+                string broken = source
+                    .Replace(uniformFirst.Replace("\n", NewlineOf(source)), "    vec4 h = H0[")
+                    .Replace("    float dk = KE_TWO_PI / tile;",
+                        "    float depth = Timing.w;" + NewlineOf(source) + "    float dk = KE_TWO_PI / tile;");
+                Assert.NotEqual(source, broken);
+
+                var ex = Assert.Throws<ShaderValidationException>(
+                    () => ShaderValidation.ValidateCompute(broken, "RowPassWithTheUniformReadMovedDown"));
+                Assert.Contains("RowPassWithTheUniformReadMovedDown", ex.Message);
+                Assert.Contains("binding order", ex.Message);
+
+                // The unmodified source must still PASS, or the guard is rejecting everything and the assertion
+                // above proves nothing.
+                ShaderValidation.ValidateCompute(source, "RowPassUnmodified");
+            }
         }
+
+        static string NewlineOf(string source) => source.Contains("\r\n") ? "\r\n" : "\n";
     }
 }

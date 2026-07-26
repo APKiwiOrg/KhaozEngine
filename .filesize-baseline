@@ -40,7 +40,6 @@
 1793 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
 1601 KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs
 1512 KhaozEngine.MapEdit.Tool/MutationService.cs
-1483 KhaozEngine.Locomotion/CharacterMovement.cs
 1296 KhaozEngine.Showcase/Room2DGui.cs
 1118 KhaozEngine.MapEditor/EditorTool.cs
 1033 KhaozEngine.Updates/UpdateApplier.cs
@@ -51,6 +50,7 @@
 879 KhaozEngine.NetWorld/WorldClient.cs
 865 KhaozEngine.Render2D/SpriteBatch.cs
 857 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
+844 KhaozEngine.Locomotion/CharacterMovement.cs
 837 KhaozEngine.Render3D/Rendering/ModelRenderer.cs
 826 KhaozEngine.Audio/AudioSystem.cs
 824 KhaozEngine.Platform/ClipboardInterop.cs

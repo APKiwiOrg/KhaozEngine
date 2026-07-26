@@ -106,6 +106,7 @@ public sealed class CellPersistence
     private readonly ConcurrentDictionary<CellCoord, byte[]> lastSaved = new();   // raw (unwrapped) snapshot per cell
     private readonly HashSet<CellCoord> loadRequested = new();                    // server-thread-only idempotency
     private readonly ConcurrentDictionary<CellCoord, byte> loadsInFlight = new(); // coords with an outstanding load; SaveDirtyPass skips them so a periodic save can't clobber the stored blob with pre-restore state
+    private readonly ConcurrentDictionary<CellCoord, byte> savesInFlight = new(); // coords with an outstanding store write, so IsBusy can gate an eviction on it
     private readonly object pendingLock = new();
     private readonly List<Task> pending = new();
     private long lastSavedNextNetId;   // interlocked: advanced from a save continuation (threadpool) after the meta write lands, read on the server thread
@@ -184,11 +185,80 @@ public sealed class CellPersistence
 
     private void Track(Task task) { lock (pendingLock) pending.Add(task); }
 
-    private void OnCellCreated(CellCoord coord)
+    private void OnCellCreated(CellCoord coord) => RequestLoad(coord);
+
+    /// <summary>
+    /// Starts this cell's store load if one has not been requested already, the work
+    /// <see cref="ICellPersistenceHost.CellCreated"/> normally triggers. Idempotent per coordinate for the life of
+    /// the driver, so it is safe to call spuriously. A coordinate whose cell was unloaded and whose bookkeeping was
+    /// cleared by <see cref="ForgetCell"/> loads again. Returns false when a load was already requested.
+    /// </summary>
+    public bool RequestLoad(CellCoord coord)
     {
-        if (!loadRequested.Add(coord)) return;          // load a given cell at most once
+        if (!loadRequested.Add(coord)) return false;    // load a given cell at most once
         loadsInFlight[coord] = 0;                        // guard against a dirty-save clobbering the stored blob before the restore applies
         Track(LoadCellAsync(coord));
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a store operation for this cell is outstanding: a load whose restore has not been applied yet, or a
+    /// write that has not landed. The gate a cell-eviction driver checks before snapshotting, since a cell caught
+    /// mid-restore would be persisted (and then unloaded) in its pre-restore state.
+    /// </summary>
+    public bool IsBusy(CellCoord coord) => loadsInFlight.ContainsKey(coord) || savesInFlight.ContainsKey(coord);
+
+    /// <summary>
+    /// The bytes last durably written for this cell (the dirty-tracking baseline), unwrapped. Exposed so an
+    /// eviction driver can confirm what it persisted. False when the cell has never been saved or restored.
+    /// </summary>
+    public bool TryGetLastSaved(CellCoord coord, out byte[] snapshot) => lastSaved.TryGetValue(coord, out snapshot!);
+
+    /// <summary>
+    /// Drops this driver's per-cell bookkeeping (the load-once marker and the dirty baseline) for a coordinate whose
+    /// cell has been unloaded, so the next <see cref="ICellPersistenceHost.CellCreated"/> for it loads from the
+    /// store again rather than being treated as already loaded. The stored blob itself is untouched.
+    /// </summary>
+    /// <remarks>
+    /// An eviction driver that keeps the evicted snapshot in memory and restores it synchronously on recreation
+    /// must NOT call this: leaving the marker in place is exactly what stops this driver from restoring the same
+    /// cell a second time from the store. Call it only when handing the coordinate back to the store-backed path.
+    /// </remarks>
+    public void ForgetCell(CellCoord coord)
+    {
+        loadRequested.Remove(coord);
+        lastSaved.TryRemove(coord, out _);
+    }
+
+    /// <summary>
+    /// Writes one cell's snapshot to the store immediately, outside the periodic dirty pass, and reports whether it
+    /// landed. On success the dirty baseline advances, so the cell reads clean until it changes again. The task is
+    /// tracked like any other store work (a <see cref="FlushAsync"/> awaits it, a fault surfaces through
+    /// <see cref="OnStoreError"/>), and faults rather than returning false, so a caller checks
+    /// <c>IsCompletedSuccessfully</c> before its result. This is the persist half of an eviction: the cell may only
+    /// be unloaded once it completes true.
+    /// </summary>
+    public Task<bool> SaveCellAsync(CellCoord coord, byte[] snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        savesInFlight[coord] = 0;
+        Task<bool> task = SaveOneCellAsync(coord, snapshot);
+        Track(task);
+        return task;
+    }
+
+    private async Task<bool> SaveOneCellAsync(CellCoord coord, byte[] snapshot)
+    {
+        try
+        {
+            await store.SaveAsync(CellKey(coord), Wrap(snapshot)).ConfigureAwait(false);
+        }
+        finally
+        {
+            savesInFlight.TryRemove(coord, out _);
+        }
+        lastSaved[coord] = snapshot;
+        return true;
     }
 
     private async Task LoadCellAsync(CellCoord coord)
@@ -332,7 +402,13 @@ public sealed class CellPersistence
             if (lastSaved.TryGetValue(coord, out byte[]? prev) && prev.AsSpan().SequenceEqual(snap)) continue;
             (dirty ??= new List<(CellCoord, byte[])>()).Add((coord, snap));
         }
-        if (dirty is not null) Track(SaveManyCellsAsync(dirty));
+        if (dirty is not null)
+        {
+            // Mark before dispatching, on this thread, so an eviction requested between here and the first await
+            // still sees the write as outstanding.
+            foreach ((CellCoord coord, byte[] _) in dirty) savesInFlight[coord] = 0;
+            Track(SaveManyCellsAsync(dirty));
+        }
         SaveMetaIfAdvanced();
     }
 
@@ -345,7 +421,14 @@ public sealed class CellPersistence
     {
         var items = new List<(string Key, byte[] Data)>(dirty.Count);
         foreach ((CellCoord coord, byte[] snap) in dirty) items.Add((CellKey(coord), Wrap(snap)));
-        await store.SaveManyAsync(items).ConfigureAwait(false);
+        try
+        {
+            await store.SaveManyAsync(items).ConfigureAwait(false);
+        }
+        finally
+        {
+            foreach ((CellCoord coord, byte[] _) in dirty) savesInFlight.TryRemove(coord, out _);
+        }
         foreach ((CellCoord coord, byte[] snap) in dirty) lastSaved[coord] = snap;
     }
 

@@ -84,7 +84,7 @@ public sealed class ShardedWorldServerConfig
 /// respawn. Headless, transport-injected. Persistence is the shipped <see cref="WorldPersistence"/> via
 /// <see cref="IWorldPersistenceHost"/>, player-keyed across cells.
 /// </summary>
-public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellPersistenceHost, IWorldPickupHost
+public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellEvictionHost, IWorldPickupHost
 {
     private readonly ShardedWorldServerConfig config;
     private readonly ReplicationRegistry registry;
@@ -164,6 +164,9 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             overlapMargin: config.OverlapMargin,
             positionAccessor: PositionAccessor);
         host.CellCreated += cell => CellCreated?.Invoke(cell.Coord);
+        // An unloaded coordinate comes back as a genuinely fresh cell with an empty world, so the record of having
+        // wired its movement system has to go with it or the recreated cell would never simulate.
+        host.CellRemoved += cell => wiredCells.Remove(cell.Coord);
         // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
         // is rejected cleanly rather than admitted and left to misparse the wire.
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator));

@@ -369,11 +369,10 @@ void main() {
     // the swell at no extra cost. The depth grading, the shore foam and the waterline alpha feather all key off
     // it, so it is computed once, up front.
     //
-    // It sits HERE, ahead of the surface normal, because DepthTex is binding 0 and must be the first texture this
-    // stage samples once the FFT derivative map (binding 4) is in play - the Metal SPIRV-Cross first-sample-order
-    // rule, same as ModelFrag's ShadowMap. It has no dependency on the normal, so the move is a pure reorder and
-    // the procedural surface renders exactly as before. The ocean sampling above is earlier still, for the same
-    // reason one binding further up.
+    // It sits HERE, ahead of the surface normal, so that the two texture samples in this stage happen in binding
+    // order (the ocean map at 0, then the scene depth at 2) - the Metal SPIRV-Cross first-sample-order rule, same
+    // as ModelFrag's ShadowMap. It has no dependency on the normal, so the move is a pure reorder and the
+    // procedural surface renders exactly as it did before the FFT path existed.
     ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
     float groundDepth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
     vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, groundDepth, 1.0);
@@ -383,7 +382,6 @@ void main() {
 
     vec3 N;
     float lostSlopeVariance;
-    float fftFoam = 0.0;
     if (FftParams.x > 0.5) {
         // FFT ocean. The cascades' ANALYTIC slope is the whole surface normal: there is no separate swell to
         // attenuate, because the swell scale is just the coarsest cascade. Foam has already been accumulated per
@@ -392,7 +390,6 @@ void main() {
         // indexed by the reference grid the transform is defined over, and sampling them at the displaced point
         // would fold the horizontal displacement in a second time.
         N = slopeToNormal(oceanSlope.x, oceanSlope.y, 1.0);
-        fftFoam = oceanFoam;
         lostSlopeVariance = oceanLost;
     } else {
     // Ripple spectrum, band-limited to this pixel. slope.xy is the surviving slope, slope.z the variance the
@@ -522,7 +519,7 @@ void main() {
         // per-fragment threshold on the Gerstner fold factor. Both then go through the SAME break-up pattern and
         // the same shore-band max below, which is what keeps the graphic foam look identical across the two.
         float crest = FftParams.x > 0.5
-            ? fftFoam
+            ? oceanFoam
             : smoothstep(threshold, threshold + KE_WHITECAP_SOFTNESS, vFold);
         float shoreWidth = FoamParams.z;
         float band = shoreWidth <= 0.0 ? 0.0

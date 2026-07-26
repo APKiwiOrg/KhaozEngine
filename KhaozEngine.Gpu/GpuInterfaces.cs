@@ -88,8 +88,9 @@ namespace KhaozEngine.Gpu
     /// workgroup size read out of the module itself.</summary>
     public interface IGpuComputeShader : IDisposable
     {
-        /// <summary>Workgroup size on X, read from the shader's own <c>layout(local_size_x = ...)</c>. Divide a
-        /// thread count by this to get the <see cref="IGpuCommandList.Dispatch"/> group count.</summary>
+        /// <summary>Workgroup size on X, read from the shader's own <c>layout(local_size_x = ...)</c>. Cover N
+        /// threads with <c>(N + ThreadGroupSizeX - 1) / ThreadGroupSizeX</c> groups in
+        /// <see cref="IGpuCommandList.Dispatch"/>.</summary>
         uint ThreadGroupSizeX { get; }
         /// <summary>Workgroup size on Y (1 unless the shader declares <c>local_size_y</c>).</summary>
         uint ThreadGroupSizeY { get; }

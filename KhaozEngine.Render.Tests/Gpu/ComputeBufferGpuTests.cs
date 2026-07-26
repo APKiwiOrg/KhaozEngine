@@ -83,6 +83,63 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(ExpectedSum, totalValue[0]);
         }
 
+        /// <summary>The dynamic-offset compute binding: one uniform buffer holding several per-dispatch parameter
+        /// blocks at the 256-byte alignment every backend accepts, one resource set, and a byte offset chosen per
+        /// dispatch. This is how a run of stages reads its own parameters without a set (and a buffer) each, which
+        /// is what a multi-stage compute chain wants. Same reduction shader: two dispatches over the same 16
+        /// partials with different element counts must give two different, exactly known sums.</summary>
+        [GpuFact]
+        public void ADynamicOffsetRebasesTheParameterBlockPerDispatch()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
+            IGpuResourceFactory f = dev.Factory;
+
+            using IGpuComputeShader shader = f.CreateComputeShaderFromSpirv(ComputeShaders.Reduce);
+            using IGpuResourceLayout layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Params", GpuResourceKind.UniformBuffer, GpuShaderStages.Compute, dynamic: true),
+                new GpuResourceLayoutElement("SrcBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute),
+                new GpuResourceLayoutElement("DstBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute)));
+            using IGpuComputePipeline pipeline = f.CreateComputePipeline(new GpuComputePipelineDescription(shader, layout));
+
+            // 16 values: 1, 2, ... 16. Summing the first 4 and all 16 are two distinct exact answers.
+            const uint values = 16;
+            using IGpuBuffer src = f.CreateBuffer(new GpuBufferDescription(
+                values * sizeof(uint), GpuBufferUsage.StructuredBufferReadWrite, sizeof(uint)));
+            using IGpuBuffer dst = f.CreateBuffer(new GpuBufferDescription(
+                4 * sizeof(uint), GpuBufferUsage.StructuredBufferReadWrite, sizeof(uint)));
+            var data = new uint[values];
+            for (uint i = 0; i < values; i++) data[i] = i + 1;
+            dev.UpdateBuffer(src, 0, data);
+
+            const uint alignment = 256;   // safe uniform-buffer offset alignment across Metal / Direct3D11 / Vulkan
+            using IGpuBuffer paramBlocks = f.CreateBuffer(new GpuBufferDescription(alignment * 2, GpuBufferUsage.UniformBuffer));
+            dev.UpdateBuffer(paramBlocks, 0, new ReduceParams { Count = values });
+            dev.UpdateBuffer(paramBlocks, alignment, new ReduceParams { Count = 4 });
+
+            using IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(
+                layout, new GpuBufferRange(paramBlocks, 0, 16), src, dst));
+
+            DispatchWithOffset(dev, pipeline, set, 0);
+            Assert.Equal(values * (values + 1) / 2, GpuReadback.ReadBuffer<uint>(dev, dst, 1)[0]);   // 136
+
+            DispatchWithOffset(dev, pipeline, set, alignment);
+            Assert.Equal(4u * 5u / 2u, GpuReadback.ReadBuffer<uint>(dev, dst, 1)[0]);                // 10
+        }
+
+        static void DispatchWithOffset(IGpuDevice dev, IGpuComputePipeline pipeline, IGpuResourceSet set, uint offset)
+        {
+            using IGpuCommandList cl = dev.Factory.CreateCommandList();
+            cl.Begin();
+            cl.SetComputePipeline(pipeline);
+            cl.SetComputeResourceSet(0, set, offset);
+            cl.Dispatch(1, 1, 1);
+            cl.End();
+            dev.Submit(cl);
+            dev.WaitForIdle();
+        }
+
         static IGpuBuffer UniformBuffer(IGpuDevice dev, uint count)
         {
             IGpuBuffer b = dev.Factory.CreateBuffer(new GpuBufferDescription(16, GpuBufferUsage.UniformBuffer));

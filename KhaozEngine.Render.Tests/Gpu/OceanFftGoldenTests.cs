@@ -8,8 +8,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// The cross-backend image regression for <see cref="WaterWaveSource.FftOcean"/>: the same lake scene the
-    /// <c>scene3d_water</c> golden renders, with the wave source switched over, at a frozen time and a fixed seed.
+    /// The cross-backend image regression for <see cref="WaterWaveSource.FftOcean"/>: open water at metre scale,
+    /// at a frozen time and a fixed seed, with the shading knobs left at their shipped defaults.
     /// <para>
     /// It is a separate GOLDEN rather than a behavioural <c>[GpuFact]</c> because of what the CI matrix does with
     /// the name. The hosted Direct3D11 and Vulkan legs run only <c>FullyQualifiedName~Golden</c> on a push; the
@@ -23,6 +23,13 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="Scene3D.EffectTimeSeconds"/> the same way every other golden does. The sea state is deliberately
     /// SMALL - two cascades at 64 - because this runs on two software rasterizers, and the point here is that the
     /// pipeline renders the same picture on all three backends, not that it renders a big one.
+    /// </para>
+    /// <para>
+    /// It is OPEN WATER rather than the doll-house lake <c>scene3d_water</c> renders, for two reasons. The
+    /// spectrum ties wave height to wind and fetch, so a ten-metre pond can only physically carry centimetre waves
+    /// and would bake a flat sheet no regression could move (the first bake of this test did exactly that). And
+    /// the far field is where every previous water defect actually lived, per
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/310">#310</see>, and no golden looked at it.
     /// </para>
     /// <para>
     /// On a device without compute the producer degrades to <see cref="WaterWaveSource.Procedural"/>, which would

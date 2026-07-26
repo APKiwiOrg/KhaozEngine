@@ -78,6 +78,21 @@ public interface ICellLink
     /// migrate, ack) can drain their own messages in separate passes without discarding each other's.
     /// </summary>
     IReadOnlyList<CellMessage> Drain(CellCoord target, CellMessageKind kind);
+
+    /// <summary>
+    /// Whether any message of any kind is still queued for <paramref name="target"/>. <see cref="ShardHost"/> uses
+    /// it as an eviction gate: unloading a cell with an undrained inbound migrate would strand the crossing entity.
+    /// <b>The default returns true</b>, deliberately conservative, so a link that cannot answer blocks eviction
+    /// rather than silently allowing a lossy one. Implement it to let cells unload on a custom link.
+    /// </summary>
+    bool HasPending(CellCoord target) => true;
+
+    /// <summary>
+    /// Drops any bookkeeping the link holds for <paramref name="target"/>, called once its cell has been unloaded
+    /// so a per-target queue does not outlive the cell it belonged to. The host only calls it after
+    /// <see cref="HasPending"/> reported nothing queued, so this discards no message. The default is a no-op.
+    /// </summary>
+    void Forget(CellCoord target) { }
 }
 
 /// <summary>In-process, deterministic <see cref="ICellLink"/>: per-target FIFO in-memory queues.</summary>
@@ -110,4 +125,11 @@ public sealed class InProcessCellLink : ICellLink
         inboxes[target] = remaining ?? new List<CellMessage>();
         return taken ?? Empty;
     }
+
+    /// <inheritdoc />
+    public bool HasPending(CellCoord target) =>
+        inboxes.TryGetValue(target, out List<CellMessage>? inbox) && inbox.Count > 0;
+
+    /// <inheritdoc />
+    public void Forget(CellCoord target) => inboxes.Remove(target);
 }

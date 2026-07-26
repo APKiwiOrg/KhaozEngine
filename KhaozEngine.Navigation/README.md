@@ -289,7 +289,13 @@ goal or a jittery corridor breach does not spam the planner every tick.
 
 `PathFollowConfig` knobs (all `init`, `PathFollowConfig.Default` for the values below):
 
-- **`AcceptRadius`** (default 0.6) - distance at which a waypoint or the goal counts as reached.
+- **`AcceptRadius`** (default 0.6) - XZ distance at which a waypoint or the goal counts as reached.
+- **`VerticalAcceptTolerance`** (default 0.8) - how far above or below the goal the agent may sit and
+  still count as arrived. The goal must clear both this and `AcceptRadius`, so a goal on another floor or
+  on a ledge falls through to the planner rather than reporting arrival on XZ proximity alone. The default
+  is twice the canonical `MoveTuning.StepHeight` (0.4) and also covers the 0.6 of rise a 45-degree
+  max-slope hillside gains across `AcceptRadius`, while staying far below the 4 m default
+  `DungeonConfig.FloorHeightMeters`. `float.PositiveInfinity` gives a purely horizontal arrival check.
 - **`GoalRetargetTolerance`** (default 1.5) - how far the goal may move from where it was planned before
   a replan is due.
 - **`CorridorTolerance`** (default 2.5) - how far the agent may stray from the planned corridor before a
@@ -299,7 +305,8 @@ goal or a jittery corridor breach does not spam the planner every tick.
 
 `Tick` returns a `PathFollowOutput` (`WorldDir`, `State`, `ActiveWaypoint`, `HopStart`). `WorldDir` is a
 unit vector while `State` is `PathFollowState.Following`, and zero otherwise. `State` is `Arrived` once
-within `AcceptRadius` of the goal, or `Unreachable` when the planner cannot find a route (the follower
+within `AcceptRadius` of the goal in XZ and within `VerticalAcceptTolerance` of it in Y, or `Unreachable`
+when the planner cannot find a route (the follower
 keeps retrying, gated by the cooldown, in case the world changes). A `NavPathStatus.Partial` path that
 runs out steers straight at the raw goal for one tick while the next replan (once the cooldown allows)
 picks up a fresh route.

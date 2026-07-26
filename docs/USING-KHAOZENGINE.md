@@ -4126,7 +4126,8 @@ else if (output.State == PathFollowState.Hopping)
     float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
-// Arrived: agent.Position is within AcceptRadius of the goal, output.WorldDir is zero.
+// Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
+// of it in Y, output.WorldDir is zero.
 // Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
 ```
 
@@ -4172,7 +4173,9 @@ carries at least one waypoint and `ActiveWaypointIndex` is a valid index into it
 `PathQueryBudget` (handed to `IPathPlanner.FindPath`, and to every `PathFollower` replan via
 `PathFollowConfig.Budget`) caps search cost: `MaxExpandedNodes` (default 4096) before the search gives up
 and returns `Partial`, and `SnapRadius` (default 3 world units) for nudging an endpoint onto a passable
-cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6, arrival distance),
+cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6, arrival distance in XZ),
+`VerticalAcceptTolerance` (default 0.8, how far the agent may sit above or below the goal and still count
+as arrived, so a goal on the floor above routes through the planner instead of arriving on XZ proximity),
 `GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
 `CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
 due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the

@@ -190,14 +190,17 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 7) labels
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 8) labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
     64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
-    Every generation since has added a field to the movement built-in codec, which is NOT length-prefixed, so an old
+    Generations 3 to 7 each added a field to the movement built-in codec, which is NOT length-prefixed, so an old
     client cannot skip the extra bytes: 3 added `MovementState.Swimming`, 4 `MovementState.TeleportEpoch`, 5
     `MovementState.ClimbRateQ`, 6 `MovementState.SpeedScaleQ` (the per-entity speed scale), and 7
     `MovementState.HorizontalVelocityXQ` / `HorizontalVelocityZQ` (the carried airborne arc, so a client corrected
-    mid-flight rebuilds it from the wire instead of resetting it). There is no
+    mid-flight rebuilds it from the wire instead of resetting it). 8 added a whole new built-in component,
+    `PickupState` at id 5 (world pickups, see below): unframed like every built-in, so a client whose registry has no
+    id 5 would hard-fail its decode the first time a pickup entered its area of interest, mid-session rather than at
+    connect. There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -465,6 +468,75 @@ snapshot churn (like a still remote player that need not stream). The pose writt
 pose, so the client's interpolation converges to it and then holds (the fixed-delay buffer clamps at the newest sample);
 a body woken later (a collision, `SetDynamicVelocity`) resumes sampling. Removing the entity server-side propagates to
 clients as a normal AoI despawn.
+
+## World pickups (walk-over collectibles)
+
+A server spawns a world entity, it sits there, a player gets close enough, the server decides whether that player may
+take it, and it goes away. Loot drops, resource nodes, health packs, quest objectives and capture points are all that
+one shape, and **`WorldPickups`** is it. Works identically over `WorldServer` and `ShardedWorldServer` (both implement
+**`IWorldPickupHost`**), and is driven by the consumer, never by the engine.
+
+```csharp
+var pickups = new WorldPickups(server, new WorldPickupsConfig
+{
+    DefaultRadius = 1.5f,
+    OnCollect = c => inventory.TryGrant(c.Slot, c.PayloadId),   // true = taken, false = declined
+    OnRemoved = r => log.Pickup(r.PickupNetId, r.Reason),
+});
+server.OnBeforeTick += pickups.Update;   // so a collect's despawn reaches the SAME tick's snapshot
+
+long orb = pickups.Spawn(dropPosition, payloadId: PackItem(itemIndex, quantity),
+                         ownerNetId: killerNetId, radius: 1.5f, timeToLiveSeconds: 120f);
+```
+
+- **The engine owns the plumbing, not the meaning.** Spawn, replication, the owner tag, the time-to-live, the
+  per-tick proximity test and the despawn are engine-side. Items, inventories, rarity and loot tables are not, and
+  this introduces none of them: **`PickupState.PayloadId`** is an opaque 64-bit game-defined value carried verbatim to
+  clients and handed back on collect, in the same spirit as `Teleport` moving a player without owning any notion of
+  why. Pack an item index, an index plus a quantity, or a row id into your own table.
+- **The ownership RULE is yours too.** Every collect is an `OnCollect` call that returns whether it was accepted. A
+  declined pickup stays standing. Killer-only, party loot, need-before-greed, inventory-full and free-after-a-delay
+  are all that one predicate plus **`SetOwner`**. With no handler nothing is ever granted, which is the safe default.
+- **`ownerNetId` is a hard engine-side pre-filter** (`0` = unowned): a non-owner is never offered the pickup at all,
+  so your handler is not asked about players who could not have it anyway. The engine owns the TAG, you own its value
+  over time (`Spawn`, then `SetOwner`, which also re-tags the replicated component so clients can re-tint the orb).
+- **Offer policy: once per entry, never per tick.** A player inside the radius is offered the pickup exactly once, so
+  a durable no costs one callback rather than one per tick per player per pickup. Three ways to re-offer: **leaving
+  and re-entering** the radius (always), **`Reoffer(netId)`** / `SetOwner` when the game KNOWS its decline went stale
+  (a loot timer lapsed, a bag slot freed - re-offers next `Update`, standing still, no polling), or the opt-in
+  **`WorldPickupsConfig.RetryDeclinedSeconds`** timer for a decline that goes stale without the game noticing.
+- **Proximity is a linear scan** over live pickups against joined players, in a deterministic order (pickups by
+  ascending net id, players by ascending slot), measured as a **full 3D distance** so a player on the floor above does
+  not reach through it. A cylinder, a cone, a facing test or a line of sight goes in `OnCollect` as a decline.
+- **`Despawn(netId)` / `DespawnAll()`** remove pickups explicitly, and a time-to-live expires one on its own. Every
+  route propagates to clients as a normal AoI removal and raises `OnRemoved` with a `PickupRemovalReason` of
+  `Collected` / `Expired` / `Despawned`.
+- **Client side.** `PickupState` is a **built-in** replicated component (`MoveProtocol.PickupTypeId` = 5), riding
+  alongside the pickup's `ReplicatedPosition` exactly as `DynamicBodyState` does for a physics prop. Read it with
+  `WorldClient.TryGetComponent<PickupState>(netId, out _)` to pick a model, a rarity tint, or an "it's yours"
+  highlight. Being a built-in it is unframed, which is why adding it bumped the wire generation to 8: adopt client and
+  server together.
+- **`SpawnEntity`'s missing halves shipped with it**, and are useful on their own:
+  **`TryGetEntity(netId, out World, out Entity)`** and **`DespawnEntity(netId)`** on both servers, neither of which
+  will ever touch a player entity.
+
+**Persistence hazard, worth knowing before you ship.** `CellPersistence` snapshots every owned non-player entity in a
+cell on an interval with **no per-entity opt-out**, so a live pickup can be caught in a save and resurrected on
+restart. A restored pickup is a plain entity carrying `PickupState` that the seam knows nothing about: no
+time-to-live, offered to nobody, standing forever. The component cannot opt out of the persist channel either, since
+built-in ids are pinned to `ReplicationChannels.Default`. A game that persists cells should sweep at boot, before
+spawning this run's pickups, which is what `ShardedWorldServer.DespawnEntity` is for (it resolves through the shard
+host's ownership index, so it finds restored entities the seam never saw):
+
+```csharp
+var stale = new List<long>();
+foreach (CellSim cell in server.Host.Cells)
+    foreach (Entity e in cell.World.Query().With<PickupState>().Entities())
+        if (cell.World.TryGet(e, out NetId id)) stale.Add(id.Value);
+foreach (long netId in stale) server.DespawnEntity(netId);
+```
+
+`DespawnAll()` is the same-process equivalent and clears only what the seam is currently tracking.
 
 ## Area-of-interest delta replication (since 9.18.0)
 

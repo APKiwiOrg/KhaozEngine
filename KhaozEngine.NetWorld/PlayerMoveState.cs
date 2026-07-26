@@ -101,6 +101,10 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             // window would replay at base speed while the server ran it boosted - a permanent rubber-band for the whole
             // duration of the buff.
             SpeedScale = MovementState.DecodeSpeedScale(movement.SpeedScaleQ),
+            // Carry the sharded head's sim-local commanded speed back out, so ShardedWorldServer's post-tick anomaly
+            // check measures against the speed the cell sim actually asked for. Rides no wire, so on a client (and
+            // across a shard handoff) this is 0, which reads as no denial rather than a spurious one.
+            CommandedSpeed = movement.CommandedSpeed,
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

@@ -4385,7 +4385,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.26.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.27.0" />
 ```
 
 ```csharp
@@ -6181,10 +6181,25 @@ server.OnSuspiciousActivity += a =>
 
 `MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (the slope gate,
 static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`
-consecutive ticks - a cheat hammering a wall trips it; a legitimate player brushing one does not. It is a
+consecutive ticks. A cheat hammering a wall trips it, a legitimate player brushing one does not. It is a
 server-side proxy: the authoritative model carries no client position to reconcile against, so the engine measures
-how far it had to correct the client's intent (via `CharacterMovement.IntendedHorizontalTarget`). Per-IP
+how far it had to correct the client's intent. Per-IP
 connection-attempt limiting is out of scope: the `INetTransport` seam exposes no remote address.
+
+**Calibrating `MaxCorrectionDistance`.** It is an ABSOLUTE per-tick distance, so it is implicitly calibrated to
+the fastest speed you expect. "One run tick" (`RunSpeed * TickSeconds`) is the usual starting point, and the
+consequence at the other end is that a slow-moving player cannot generate a large enough denial to trip it: a
+swimmer at `SwimSpeed` 2.5 on a 30 Hz tick can be denied at most 0.083 m in a tick, so a 0.25 m threshold never
+fires while swimming no matter how hard they push. That is the threshold's semantics, not a hole. If you want
+constraint-fighting caught at swim speed too, set a threshold scaled to swim speed and raise `CorrectionStreak`
+to keep the false-positive rate down.
+
+**Since 14.27.0 the check measures only the denial, whatever speed the step chose.** The intended target is built
+from the speed the sim itself reported (`MoveState.CommandedSpeed`) rather than rebuilt from `WalkSpeed`/`RunSpeed`.
+Before that, every server-side speed term the check did not know about read as a correction on *every* tick: a
+swimming player travels at `SwimSpeed` and was measured against `RunSpeed`, which raised the signal after a third
+of a second of ordinary swimming, and wading or a `MovementMedium.WadeSpeedScale` zone dial each ate most of a
+typical budget the same way. Nothing to configure, and a future speed term cannot desync it again.
 
 ---
 

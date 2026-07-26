@@ -380,7 +380,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
 
     private void TrackCorrection(int slot, in PlayerMoveState prev, in MoveCommand cmd, in PlayerMoveState after, float dt)
     {
-        float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt, tuning);
+        float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt);
         if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
             Raise(slot, SuspiciousReason.MovementCorrection, correction);
     }

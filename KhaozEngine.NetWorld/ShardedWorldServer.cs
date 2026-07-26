@@ -488,7 +488,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         foreach ((int slot, PlayerMoveState prev, MoveCommand cmd) in correctionScratch)
         {
             if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
-            float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt, tuning);
+            float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt);
             if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
                 Raise(slot, SuspiciousReason.MovementCorrection, correction);
         }

@@ -5,6 +5,61 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.27.0
+
+Fix: the movement anti-cheat reported a legitimately swimming player as a speed hacker. It rebuilt the client's
+intended target from `WalkSpeed`/`RunSpeed` alone, so every server-side speed term it did not know about read as a
+correction on every tick. The step now EXPORTS the speed it actually commanded and the check reads that, which
+fixes swimming, wading and zone scales at once and means a future speed term cannot desync it again. No wire
+change (the export rides no codec, so `MoveProtocol.WireProtocolVersion` stays 6). Closes #304.
+
+- **The bug, reproduced before it was fixed.** At `MoveTuning.Default` on a 30 Hz tick a swimmer travels
+  `SwimSpeed * dt` = 0.083 m while the check expected `RunSpeed * dt` = 0.4 m, so it read 0.317 m of "correction"
+  every single tick. Against the shipped-consumer calibration (`MaxCorrectionDistance = 0.25`, the default
+  `CorrectionStreak = 10`) `OnSuspiciousActivity` fired after 0.33 s of ordinary swimming. Wading did not fire at
+  that calibration but consumed ~0.22 m of the 0.25 m budget, and a `MovementMedium.WadeSpeedScale` zone dial below
+  ~0.4 pushed it over. Pre-existing and independent of 14.26.0's speed scale: it reproduced at `SpeedScale == 1`.
+- **`MoveState.CommandedSpeed`** (sim-local step OUTPUT, rides no wire) - the unconstrained horizontal speed in m/s
+  the step commanded this tick, before the slope gate, collision, and the play-area clamp denied any of it: the
+  whole speed product (walk/run or `SwimSpeed`, times air control, the wade ramp, the zone scale, `SpeedScale`, and
+  on the world-space NPC path the steering vector's speed fraction) collapsed into one number. With nothing denying
+  the move the step travels exactly `CommandedSpeed * dt`, which is now a pinned invariant across dry/wading/swimming.
+  0 on an idle tick, and `default` 0 reads as "commanded nothing" - the safe direction, since a state that never
+  stepped measures as NO denial rather than a large one.
+- **Why export rather than re-derive.** The alternative was threading the medium provider into
+  `MovementAnomaly.CorrectionDistance` so it could re-sample the world and rebuild the wade ramp and the swim
+  decision. That needs new plumbing on both server heads, samples the medium a second time per player per tick, and
+  leaves the next speed term to break it again. Exporting the fact the sim already computed is the same fix the
+  stair glide made at 10.75.0, when `ClimbRate` replaced a render-side position-delta estimator.
+- **`CharacterMovement.IntendedHorizontalTargetAtSpeed(position, cmd, dt, speed)`** - the unconstrained target at an
+  EXPLICIT speed. The existing `IntendedHorizontalTarget(..., tuning, speedScale)` now delegates to it, so both
+  share one camera basis and cannot drift. Behaviour of the existing overload is unchanged.
+- **`MovementState.CommandedSpeed`** - the sharded head's sim-local slot for the same value, DELIBERATELY absent
+  from the movement codec (it is a server-side anti-cheat input no client has any use for). It exists because the
+  per-cell `PlayerMovementSystem` reconstructs a fresh `MoveState` every tick, so a step output has nowhere else to
+  survive to the end of `ShardedWorldServer.Tick`, exactly as `ClimbRateEwma` does. `PlayerMovementSystem` now also
+  ZEROES it for an entity its cell sim skipped (a `Ghost` or a `Migrating` entity), so a skipped tick cannot leave a
+  stale speed behind for the anomaly check to measure a motionless entity against.
+- **`MovementAnomaly.CorrectionDistance` drops its `MoveTuning` parameter** (it no longer rebuilds anything).
+  `internal`, so no public break.
+- **The signal is not weakened.** The speed is entirely server-derived, and the only client-supplied inputs to it
+  are the direction and the run bit, so a client that merely claims to be fast is still measured against the speed
+  the server actually gave it. A player driving into a play-area bound still raises, and a swimmer pinned against
+  one is still measured as fully denied. Worth knowing when calibrating: `MaxCorrectionDistance` is an ABSOLUTE
+  per-tick distance, so a swimmer denied at most 0.083 m/tick cannot trip a 0.25 m threshold at all. That is the
+  threshold's own semantics, now written down in `docs/USING-KHAOZENGINE.md` rather than left to be discovered.
+- **`CharacterMovement.Collision.cs` and `CharacterMovement.Intent.cs`** - two pure moves, no behaviour change. The
+  swept collide-and-slide, step-up probe, support/tread/grade probes and their shared constants are one concern
+  (how the capsule resolves against solid geometry) and were the bulk of the file. The unconstrained-intent helpers
+  are another (where a command WOULD have reached, which nothing in the step calls and only the anti-cheat wants).
+  `CharacterMovement.cs` goes 1483 -> 821 lines and `.filesize-baseline` ratchets down with it, so the file is
+  finally near the size cap rather than double it. Same partial-file precedent as `CharacterMovement.Fluid.cs`.
+- **Tests.** `MovementAnomalyMediumTests`: a swimming, wading and zone-slowed player each not flagged over 60 ticks
+  at the shipped calibration, a hasted player still not flagged, a player driving into a bound still flagged, a
+  swimmer pinned against a bound still measured as fully denied, an idle tick commanding exactly 0, and the
+  invariant the whole fix rests on - `CommandedSpeed * dt` equals the distance actually travelled when nothing
+  denies it, across dry, wading and swimming. Four of them were verified to FAIL against the pre-fix logic.
+
 ## 14.26.0
 
 Per-entity horizontal speed scale - haste, slow, snare, root - through the authoritative step, client prediction,

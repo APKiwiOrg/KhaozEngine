@@ -14,18 +14,27 @@ namespace KhaozEngine.NetWorld;
 internal static class MovementAnomaly
 {
     /// <summary>XZ distance between the client's intended unconstrained target and where the authoritative step
-    /// actually landed. Uses the same effective speed scale the step used (1 grounded, AirControl airborne, times the
-    /// entity's server-authored <see cref="MoveState.SpeedScale"/>) so the comparison isolates only the denial, not
-    /// the scaling. The speed-scale term is load-bearing: without it a legitimately hasted player - who steps several
-    /// times further per tick than an unscaled intended target - reads as a large correction on EVERY tick of the
-    /// buff, and the streak below reports them as a speed hacker. The scale is server state (it reaches here from
-    /// <see cref="MovementState.SpeedScaleQ"/>, never from the command), so folding it in grants a client nothing:
-    /// an unhasted client claiming to be hasted still gets measured against the unhasted target.</summary>
+    /// actually landed, so the comparison isolates ONLY the denial.
+    /// <para>The intended target is built from the speed the step itself reported
+    /// (<see cref="MoveState.CommandedSpeed"/> on <paramref name="after"/>) rather than rebuilt from
+    /// <see cref="MoveTuning"/> here. That is the load-bearing part. Every server-side speed term this check does
+    /// not know about otherwise reads as a large correction on EVERY tick, and the streak below then reports a
+    /// legitimate player as a speed hacker: a swimmer travelling at <see cref="MoveTuning.SwimSpeed"/> measured
+    /// against <see cref="MoveTuning.RunSpeed"/> raised the signal after a third of a second of ordinary swimming,
+    /// and wading and a zone scale each ate most of a typical correction budget the same way. Reading the sim's own
+    /// number covers all of them at once, and covers whatever speed term is added next.</para>
+    /// It grants a client nothing: the speed is entirely server-derived (tuning, the medium the server samples, and
+    /// the server-authored <see cref="MoveState.SpeedScale"/>), and the only client-supplied inputs to it are the
+    /// direction and the run bit. A client that merely CLAIMS to be fast is still measured against the speed the
+    /// server actually gave it.
+    /// <para><paramref name="dt"/> must be the tick the step ran. A state that never went through a step reports a
+    /// commanded speed of 0, which reads as "no denial" rather than as a large one - the safe direction, and the
+    /// reason the sharded head zeroes it for an entity its cell sim skipped.</para></summary>
     public static float CorrectionDistance(in PlayerMoveState prev, in MoveCommand cmd, in PlayerMoveState after,
-        float dt, in MoveTuning tuning)
+        float dt)
     {
-        float speedScale = (prev.Grounded ? 1f : tuning.AirControl) * prev.Move.SpeedScale;
-        Vector2 intended = CharacterMovement.IntendedHorizontalTarget(prev.Position, cmd, dt, tuning, speedScale);
+        Vector2 intended = CharacterMovement.IntendedHorizontalTargetAtSpeed(
+            prev.Position, cmd, dt, after.Move.CommandedSpeed);
         var actual = new Vector2(after.Position.X, after.Position.Z);
         return Vector2.Distance(intended, actual);
     }

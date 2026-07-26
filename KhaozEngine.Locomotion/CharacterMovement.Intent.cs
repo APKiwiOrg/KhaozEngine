@@ -1,0 +1,59 @@
+using System;
+using System.Numerics;
+using KhaozEngine.Physics;   // the Step cref below names IPhysicsWorld in its signature
+
+namespace KhaozEngine.Locomotion;
+
+// The INTENT half of the movement step: where a command WOULD have reached this tick with nothing denying it.
+// Distinct from the step itself, which is about where the capsule actually lands. Nothing in the step calls
+// these - they exist for the server-side movement-anomaly check, which subtracts the two to measure exactly
+// what the slope gate, static collision, or the play-area bound denied. Same partial type, same camera basis
+// the step resolves commands with, so the comparison can never drift from the thing it is comparing against.
+public static partial class CharacterMovement
+{
+    /// <summary>The unconstrained horizontal target the camera-relative move would reach in one step, before the
+    /// slope gate, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
+    /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
+    /// actually produced is the authoritative "correction" the server applied this tick - a server-side anti-cheat
+    /// signal: a client repeatedly driving into a wall, slope, or boundary keeps this large. Pass
+    /// <paramref name="speedScale"/> = the value the step used (1 grounded, <see cref="MoveTuning.AirControl"/>
+    /// airborne, times the entity's <see cref="MoveState.SpeedScale"/>) so the comparison isolates only the denial,
+    /// not the scaling. Getting that product wrong is not a rounding error but an inverted signal: a legitimately
+    /// hasted player steps far beyond an unscaled "intended" target, so every boosted tick reads as a large
+    /// correction and the anti-cheat streak flags them as a speed hacker. Mirrors the basis + speed of
+    /// <see cref="DesiredHorizontalCore"/> (pre-gate).</summary>
+    public static Vector2 IntendedHorizontalTarget(Vector3 position, in MoveCommand cmd, float dt,
+        in MoveTuning tuning, float speedScale = 1f)
+        => IntendedHorizontalTargetAtSpeed(position, cmd, dt,
+            (cmd.Run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale);
+
+    /// <summary>The unconstrained horizontal target a command would reach in one step at an EXPLICIT speed (m/s),
+    /// rather than one rebuilt from <see cref="MoveTuning"/>. Same camera basis and same pre-gate geometry as the
+    /// overload above, which now delegates here so the two can never diverge.
+    /// <para>This is the form the movement anomaly check uses, paired with <see cref="MoveState.CommandedSpeed"/>:
+    /// the step reports the speed it actually resolved (walk/run or swim, times air control, the wade ramp, the zone
+    /// scale, the per-entity <see cref="MoveState.SpeedScale"/>, and the command's speed fraction), so the check
+    /// measures ONLY what the slope gate, collision, or bounds denied. Rebuilding that product from tuning is what
+    /// made a swimming or wading player read as a speed hacker. Note <paramref name="speed"/> is the FULL speed
+    /// including any speed fraction, so the direction here is normalised and the magnitude comes entirely from the
+    /// caller.</para></summary>
+    /// <param name="position">The pre-step capsule-centre position.</param>
+    /// <param name="cmd">The command whose camera-relative axis gives the travel direction (idle = no movement).</param>
+    /// <param name="dt">Timestep in seconds.</param>
+    /// <param name="speed">The unconstrained horizontal speed in m/s the step commanded.</param>
+    public static Vector2 IntendedHorizontalTargetAtSpeed(Vector3 position, in MoveCommand cmd, float dt, float speed)
+    {
+        float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
+        Vector3 forward = new(-sY, 0f, -cY);
+        Vector3 right = new(cY, 0f, -sY);
+        Vector3 move = right * cmd.Move.X + forward * cmd.Move.Y;
+        float x = position.X, z = position.Z;
+        if (move.LengthSquared() > 1e-6f)
+        {
+            move = Vector3.Normalize(move);
+            x += move.X * speed * dt;
+            z += move.Z * speed * dt;
+        }
+        return new Vector2(x, z);
+    }
+}

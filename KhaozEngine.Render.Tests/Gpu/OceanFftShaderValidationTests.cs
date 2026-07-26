@@ -33,6 +33,19 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidateCompute(OceanComputeShaders.ColumnPass(n), $"OceanColumnPass{n}");
 
         [Fact]
+        public void TheShadersAgreeWithOceanSpectrumOnTheCascadeCeiling()
+        {
+            // Three literals mirror OceanSpectrum.MaxCascades: KE_MAX_CASCADES in both water stages, and the
+            // Cascade[3] uniform array in both kernels. Raising the ceiling is a shader change, not a knob, and
+            // this is what says so out loud when someone tries.
+            Assert.Equal(3, OceanSpectrum.MaxCascades);
+            Assert.Contains($"const int KE_MAX_CASCADES = {OceanSpectrum.MaxCascades};", ShaderSources.WaterVert);
+            Assert.Contains($"const int KE_MAX_CASCADES = {OceanSpectrum.MaxCascades};", ShaderSources.WaterFrag);
+            Assert.Contains($"vec4 Cascade[{OceanSpectrum.MaxCascades}];", OceanComputeShaders.RowPass(32));
+            Assert.Contains($"vec4 Cascade[{OceanSpectrum.MaxCascades}];", OceanComputeShaders.ColumnPass(32));
+        }
+
+        [Fact]
         public void TheWorkgroupSizeIsHalfTheTransformLength()
         {
             Assert.Equal(64u, OceanComputeShaders.GroupSize(128));

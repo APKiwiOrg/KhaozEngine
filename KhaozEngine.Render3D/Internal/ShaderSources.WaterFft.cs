@@ -35,10 +35,6 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static partial class ShaderSources
     {
-        /// <summary>Maximum cascades the water shaders can sum, mirroring
-        /// <see cref="OceanSpectrum.MaxCascades"/> and the <c>Cascade[3]</c> array in the compute kernels.</summary>
-        internal const int WaterMaxCascades = 3;
-
         // Declared IDENTICALLY in both stages, and FIRST in the set, both deliberately (see the class note).
         // Layers [0, cascadeCount) are displacement, [cascadeCount, 2*cascadeCount) are derivatives.
         const string WaterFftBindingsGlsl = @"layout(set=0, binding=0) uniform texture2DArray OceanMap;
@@ -49,7 +45,7 @@ layout(set=0, binding=1) uniform sampler OceanSamp;   // WRAPPING bilinear: each
         // stay inside main. A switch rather than FftTiles[i], because dynamic indexing into a vector cross-compiles
         // to a scratch array on some backends and this is two selects.
         const string WaterFftCommonGlsl = @"
-const int KE_MAX_CASCADES = 3;
+const int KE_MAX_CASCADES = 3;   // mirrors OceanSpectrum.MaxCascades and the compute kernels' Cascade[3]
 
 float oceanTile(int i) { return i == 0 ? FftTiles.x : (i == 1 ? FftTiles.y : FftTiles.z); }
 float oceanVariance(int i) { return i == 0 ? FftVariance.x : (i == 1 ? FftVariance.y : FftVariance.z); }

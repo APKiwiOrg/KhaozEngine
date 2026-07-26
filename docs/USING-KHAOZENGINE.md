@@ -1202,6 +1202,32 @@ the boundary tracking the slot edge. For a one-off overlay outside a `SlotGrid`,
 draws the same sweep over any rect, and `GuiSurface.Image(rect, tex, srcUV, tint)` draws an arbitrary texture
 without going through the icon registry.
 
+**Custom count text and a fallback icon.** `SlotContent.Count` is a plain `int`, so the built-in painter draws
+a bare `5` by default. Set `CountFormatter` to render something else instead, an `x5` stack marker, a `99+`
+cap, or a localized quantity your own `LocalizationManager` already resolved, all without giving up
+`SetContent` and hand-rolling the icon and count placement yourself:
+
+```csharp
+grid.CountFormatter = (slotIndex, content) => content.Count > 0 ? $"x{content.Count}" : null;
+```
+
+The formatter receives the slot index and the whole `SlotContent`, not just the count, so one formatter can
+vary its output per slot (stacks in one row, charges in another) or by item kind via `IconId`. It is invoked
+for every slot that has content even when `Count` is zero or negative, so a formatter can suppress a count
+entirely (return null) or show a zero-charge indicator, decisions the built-in "digits only above zero" gate
+cannot make on its own. Leave `CountFormatter` null to keep today's exact behaviour.
+
+`FallbackIconId` covers the other half of a hand-rolled slot painter: an icon id a `SlotContent` names but the
+atlas cannot resolve, for example an item roster that arrives over the wire after the build shipped and names
+an id the atlas has never seen.
+
+```csharp
+grid.FallbackIconId = "item.unknown";   // drawn only when SlotContent.IconId is set but the atlas misses it
+```
+
+A null `SlotContent.IconId` still means "no icon" and never falls back to this, only a non-null id that
+misses the atlas does.
+
 ---
 
 ## Number + duration formatting (`NumberFormatter` / `TimeFormatter`)

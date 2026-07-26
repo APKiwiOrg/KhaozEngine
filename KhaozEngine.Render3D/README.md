@@ -259,7 +259,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   opt-in stylized ocean surface. Five layers of it, each independently reachable at zero so the previous release's
   look stays one knob away:
   - **Gerstner swell** (`SwellAmplitude`/`SwellWavelength`/`SwellDirectionDegrees`/`SwellSpreadDegrees`/
-    `SwellSteepness`/`SwellSpeed`/`SwellSeed`/`SwellComponents`): a stack of up to six trochoidal components
+    `SwellSteepness`/`SwellSpeed`/`SwellSeed`/`SwellComponents`): a stack of up to eight trochoidal components
     displacing the surface grid in the VERTEX stage, so crests pinch and the surface has a real silhouette. The
     whole stack is generated from those wind scalars, on the CPU (`Internal.GerstnerWaves`) and in the shader,
     rather than uploaded per component. The grid is a fixed 97x97 vertex budget concentrated toward the camera by

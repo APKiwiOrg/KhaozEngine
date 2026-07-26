@@ -528,9 +528,10 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void PackUbo_clamps_the_component_count_into_the_shader_loop_bound()
         {
-            // The GLSL loop is bounded by a compile-time 6 with an early break on this value. An out-of-range count
-            // reaching the shader would silently drop components (too high) or run none (too low), so the clamp
-            // lives here, at the one place the value crosses into the UBO.
+            // The GLSL loop is bounded by KE_MAX_COMPONENTS (8, mirroring GerstnerWaves.MaxComponents) with an
+            // early break on this value. An out-of-range count reaching the shader would silently drop
+            // components (too high) or run none (too low), so the clamp lives here, at the one place the
+            // value crosses into the UBO.
             var high = new WaterSettings { SwellComponents = 99 };
             var low = new WaterSettings { SwellComponents = -3 };
             var vp = Matrix4x4.Identity;

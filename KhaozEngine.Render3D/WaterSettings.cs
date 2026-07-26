@@ -146,7 +146,7 @@ namespace KhaozEngine.Render3D
         /// finite value works; nearby values give nearby (still correlated) surfaces. Default <c>0</c>.</summary>
         public float SwellSeed = 0f;
 
-        /// <summary>How many Gerstner components make up the swell, clamped to 1..6. More components read as a
+        /// <summary>How many Gerstner components make up the swell, clamped to 1..8. More components read as a
         /// less regular sea at a linear cost in the vertex shader (one sin/cos pair each). 1 is a single clean
         /// rolling wave train, which is a legitimate stylized look. Default <c>4</c>.</summary>
         public int SwellComponents = 4;

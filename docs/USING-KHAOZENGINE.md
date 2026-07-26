@@ -2327,7 +2327,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
-      `SwellSteepness`, `SwellSpeed`, `SwellSeed`, `SwellComponents` (1..6), and `GridFocusBias` (surface-grid
+      `SwellSteepness`, `SwellSpeed`, `SwellSeed`, `SwellComponents` (1..8), and `GridFocusBias` (surface-grid
       vertex concentration near the camera; 1 = uniform).
     - *Ripple detail*: `WaveScale`/`WaveSpeed`/`NormalStrength`, `WaveWarpStrength` (the tiling-breakup domain
       warp), the spectrum shape (`RippleComponents`/`RippleLacunarity`/`RippleGain`/`RippleSeed`), the footprint

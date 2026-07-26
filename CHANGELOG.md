@@ -84,6 +84,7 @@ the approach followed: `NOTICE.md`.
   bitwise determinism, foam accumulation and dissipation, one stall per frame),
   `OceanFftShaderValidationTests` (both kernels at every supported resolution, plus the binding-order regression),
   and the `scene3d_fftocean` cross-backend golden.
+
 ## 16.2.0
 
 Generic world pickups: a server spawns a collectible, a player walks over it, the game decides whether that

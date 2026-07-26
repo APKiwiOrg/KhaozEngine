@@ -29,6 +29,14 @@ model changes. Sections 6, 9 and 11 follow it. Sections 2, 5, 7 and 12 are amend
 (section 8), the Bepu probe (section 5) and the DIM analysis (section 5) survived review intact and are
 unchanged except where they gained detail.
 
+**A second pass then verified the revision against the cited lines rather than against its own reasoning, and
+two more sections were rewritten.** The model did not move: island-anchored frames survived intact, as did the
+re-score, the immutable per-cell frame, the stamp-not-authority framing, the `Reconcile` fix and the lemma.
+What moved is section 9, whose subtraction point was in the wrong place (at submission, where the CPU cull
+reads the same storage the GPU upload does), and section 11's release 2, which promised a flag on a head that
+cannot honour it until release 3. Section 14 items 11 to 14 record what that pass found wrong, on the same
+principle as items 8 to 10: the corrections are worth more than the appearance of having been right.
+
 ## 1. What the measurement forces
 
 Ruinborne measured it on real production code
@@ -126,9 +134,18 @@ arithmetic is exact (section 8). Anchor to the NEAREST grid point, not the conta
 coordinate lives in `[-64, 64]` per axis at anchor time. Re-anchor when a local axis exceeds 96 m.
 
 Worst case: 96 m per axis, planar magnitude 136 m. Both fall in binades at or below `[2^7, 2^8)`, so the
-predicted 20 s divergence is **3.3 mm against a 10 mm budget, a 3.0x margin** (1.6 mm and 6.1x if the
-per-axis magnitude is the right operand, which it usually is). 12x inside the airborne bound. The design
-target sits four binades below the ceiling, which is the room the model says is there.
+predicted 20 s divergence is **3.3 mm against a 10 mm budget, a 3.0x margin**. 12x inside the airborne bound.
+The design target sits four binades below the ceiling, which is the room the model says is there.
+
+**The operand of the model is the PLANAR MAGNITUDE, and pinning that down is not pedantry.** `D = 215 x
+ULP(x)` needs `x` to be one specific quantity, and the two candidates differ by `sqrt(2)`, which is more than
+half a binade, so the choice can change the predicted divergence by a factor of two. Per-axis would give
+1.6 mm and a 6.1x margin at the design target, and it is arguably the better description of where the
+arithmetic actually rounds. **This design takes the planar magnitude, conservatively**, for two reasons: it
+never under-predicts, and a ceiling that gets checked against a config value at runtime (section 12) needs its
+operand nailed to the guard rather than left to a reader's judgement. That is why `MaxLocalRadius`'s doc
+comment says a cell's HALF-DIAGONAL rather than its half-edge, and why the section 12 guard carries the
+`sqrt(2)`.
 
 ### What the 10 mm budget actually bounds, stated correctly
 
@@ -335,9 +352,11 @@ public readonly record struct WorldFrame(short X, short Z)
     /// minimum of 64 m of travel between consecutive re-anchors (design doc section 2).</summary>
     public const float ReanchorRadius = 96f;
 
-    /// <summary>The largest local magnitude the 10 mm per-window divergence budget tolerates: the top of the
-    /// last float32 binade that fits (design doc section 2). Used to VALIDATE island sizing (a shard cell's
-    /// half-diagonal plus its overlap margin plus half the grid must fit under this), never as a runtime bound.</summary>
+    /// <summary>The largest local PLANAR MAGNITUDE the 10 mm per-window divergence budget tolerates: the top
+    /// of the last float32 binade that fits (design doc section 2, which pins the planar magnitude as the
+    /// model's operand). Used to VALIDATE island sizing, never as a runtime bound: a shard cell's worst
+    /// per-axis local is <c>CellSize/2 + OverlapMargin + Grid/2</c>, and the corner case is that times
+    /// <c>sqrt(2)</c>, which is what must fit under this.</summary>
     public const float MaxLocalRadius = 512f;
 
     public static WorldFrame Origin => default;
@@ -375,15 +394,19 @@ arrives with the position it applies to and can never be reordered against it, d
 wrong tick. An event would have all three failure modes. This is the same reasoning that put `TeleportEpoch`
 on `MovementState` rather than in a message kind.
 
-**Consumer-facing API, client head:** nothing, in the common case. `Scene3D` picks its own render origin,
-`WorldClient` adopts the server's stamp, and `ReplicatedPosition.Value` still READS absolute world metres.
-A consumer that owns colliders it registered itself (outside the engine's streaming sink) hooks
-`WorldClient.FrameChanged` to fix its own bookkeeping. The engine's own physics world is rebased by the
-island, not by the consumer.
+**Consumer-facing API, client head:** no SIGNATURE changes in the common case, but "nothing changes" would be
+too strong and the first draft said it. `Scene3D` picks its own render origin, `WorldClient` adopts the
+server's stamp, and `ReplicatedPosition.Value` still READS absolute world metres. What DOES change internally
+is that `WorldClient`'s presentation surface has to convert, because two of its outputs would otherwise be in
+different spaces with no compile error to say so (section 7). A consumer that owns colliders it registered
+itself (outside the engine's streaming sink) hooks `WorldClient.FrameChanged` to fix its own bookkeeping. The
+engine's own physics world is rebased by the island, not by the consumer.
 
-**Consumer-facing API, server head:** set `ShardedWorldServerConfig.FrameAnchoring` / `WorldServerConfig.
-FrameAnchoring` (section 11 states which release defaults it on), and supply frame-local samplers if it wants
-the full fix rather than the accumulation half (section 6).
+**Consumer-facing API, server head:** set `FrameAnchoring` on the head's config, and supply frame-local
+samplers if it wants the full fix rather than the accumulation half (section 6). The flag lands on the two
+heads in DIFFERENT releases and section 11 is the authority on which: `WorldServerConfig.FrameAnchoring` in
+release 2 (the flat head, opt-in), `ShardedWorldServerConfig.FrameAnchoring` in release 3 (the sharded head,
+which has no working sim frame until per-cell physics lands with it, section 5).
 
 ## 5. Decision 3: physics
 
@@ -542,9 +565,42 @@ than 4 on implementation risk.
   one stateless instance shared by all. Section 6 details why this is also what fixes the data race.
 - **A query at a cell boundary sees only its own cell's colliders.** The overlap margin already mirrors
   entities across the border for replication (`OverlapMargin >= InterestRadius`, enforced in the ctor), and
-  the same margin is what a per-cell physics world must use for STATICS: a cell registers the border statics
-  of its neighbours as read-only duplicates within `OverlapMargin`. The streaming sink already knows a chunk's
-  extent, so this is a routing question, not a new geometric one.
+  the same margin is what a per-cell physics world must use for STATICS: a cell needs the border statics of
+  its neighbours present as read-only duplicates within `OverlapMargin`, or a character standing 1 m inside
+  the border falls through the terrain on the other side of it.
+
+**Who POPULATES a cell's physics world is the consumer, and this design has to say so, because the other
+half of the fleet says so already.** The first draft implied the engine routes statics into per-cell worlds
+("the streaming sink already knows a chunk's extent"). It does not, and it cannot as written: no engine path
+puts terrain statics into a physics world on a headless head at all. `ChunkTerrainCollision` is `internal`
+(`ChunkTerrainCollision.cs:14`) and its only caller is `Scene3DChunkSink`, a RENDER sink. The concurrent
+tiled-mapdoc spec states the opposite assignment in its own words ("The engine notifies. The consumer
+populates. Nothing here registers, owns, or frees a physics body"), and puts a server-side collider sink in
+[#269](https://github.com/APKiwiOrg/KhaozEngine/issues/269)'s territory. Two specs assigning the same work in
+opposite directions is how it ends up done twice or not at all, so this one yields:
+
+> **Per-cell static population is CONSUMER work, performed through the `Func<CellCoord, IPhysicsWorld>`
+> factory.** The engine creates the cell, calls the factory, and gives the consumer the cell's coordinate. The
+> consumer returns a world already populated for that cell, and keeps it populated as its own streaming
+> decides. The engine never adds a static to a cell world.
+
+The factory contract, written down so a consumer can satisfy it without reading this section:
+
+- **Extent.** The returned world must contain every static whose geometry comes within
+  `CellSize / 2 + OverlapMargin` of the cell centre, measured per axis. Anything nearer than that can be
+  queried by an entity this cell owns or ghosts. Anything further cannot.
+- **Space.** Poses are relative to `IPhysicsWorld.Origin`, which the consumer sets to the cell frame's anchor
+  (`WorldFrame.Nearest(cell centre).Anchor`, the same value the engine computes). A consumer that leaves
+  `Origin` at `Vector3.Zero` gets a correct but unframed cell, which is the release-2 behaviour and is
+  supported.
+- **Lifetime.** The world is disposed with the cell. A consumer that shares one world between two cells has
+  built candidate D and will get candidate D's failure.
+- **Duplication is expected and is not a bug.** A static within `OverlapMargin` of a border legitimately
+  exists in both neighbours' worlds. Each copy is read-only to the cell that does not own the region, and
+  nothing reconciles them, because a static does not move.
+
+This is a real adoption cost on the consumer and it is listed as one in release 3's adoption notes rather
+than smuggled in as a routing detail.
 - **A dynamic body crossing a cell boundary hands off between physics worlds**, which is a remove and re-add,
   which loses its contact cache. This is a genuine residual cost with no clean fix inside this program. It is
   bounded (only dynamics, only at a boundary, only once per crossing) and it is the price of the model. Filed
@@ -598,8 +654,14 @@ them public:
 3. **`Showcase/RoomNet.cs:178-184,322`** builds chunks directly and draws them through
    `scene.DrawTerrainChunk(chunk)`, bypassing the sink entirely. After the bake it stacks a 5x5 grid of
    chunks all at the origin. It moves to the placement overload.
-4. **`TerrainChunkBounds.FromPositions`** silently becomes chunk-local. Nothing reads it as world-space today,
-   which is exactly why it is the dangerous one: it is a latent break that compiles.
+4. **`TerrainChunkBounds.FromPositions`** silently becomes chunk-local, and it IS read as world-space today.
+   `ComputeMainPassVisibility` tests `mesh.Bounds.Min`/`Max` directly against the camera frustum on the
+   terrain identity fast path (`Scene3D.cs:3007-3008`), precisely because a flat chunk's bounding sphere is
+   too conservative. The first draft said nothing read it as world-space, which made this look like a latent
+   break that compiles. It is a live one: after the bake, that test culls terrain by comparing a chunk-local
+   box against a world-space frustum, and every chunk away from the origin disappears. Section 9's blocker 5
+   specifies the replacement (a pure-translation AABB test offset by the region origin) and it must land in
+   the SAME change as the bake.
 5. **`Render.Tests/Terrain/TerrainChunkBuilderTests.cs:29-38`** asserts
    `field.SampleHeight(v.X, v.Z) == v.Y` over the built vertices, which is only true while the vertices are
    absolute. It becomes `field.SampleHeight(v.X + region.OriginX, v.Z + region.OriginZ)`.
@@ -693,18 +755,96 @@ to disagree for longer than the tick that noticed.
 ### Who converts an entity into a cell's frame, and when
 
 The cell frame is `WorldFrame.Nearest(cell centre)`, fixed at `CellSim` construction. Entities enter a cell
-through exactly four doors, and every one of them already exists and is already exactly-once:
+through exactly five doors, and every one of them already exists and is already exactly-once:
 
 | Door | Code | Conversion |
 |---|---|---|
 | Spawn | `ShardHost.SpawnOwned` via `ShardedWorldServer.cs:673-674` | The spawn position is authored ABSOLUTE, so `ReplicatedPosition.FromWorld(absolute, cell.Frame)` |
-| Handoff | `ShardHost.ProcessHandoffs` (`ShardHost.cs:305-320`) | `pos = pos.ToFrame(destinationCell.Frame)`, exact |
+| Handoff | `CellSim.AdoptFromMigrate`, driven from `ShardHost.cs:329` | `pos = pos.ToFrame(destinationCell.Frame)`, exact to half a ULP (see below) |
 | Persistence restore | `CellSim` restore via `ICellPersistenceHost` | Persisted positions are absolute (section 10), so `FromWorld` |
 | Admin teleport / self-rescue | `ShardedWorldServer.SetPlayerState` (`:330`) | `FromWorld`, and it already advances `TeleportEpoch` |
+| **Ghost mirror** | `CellSim.ApplyGhostSnapshot` (`CellSim.cs:172-179`), driven from `ShardHost.cs:263` | `pos = pos.ToFrame(this.Frame)` on each mirrored entity, in the loop that already tags them `Ghost` |
+
+**The handoff conversion happens where the component LANDS, not where it is sent.** Phase 1
+(`ShardHost.cs:311-322`) captures the entity's Migrate-channel components and sends them, and the destination
+adopts them in phase 2 via `CellSim.AdoptFromMigrate` (`ShardHost.cs:329`). The destination is the side that
+knows its own frame, and it is the side that owns the entity afterwards, so the conversion belongs there. The
+first draft cited the source side (`:305-320`), which would have converted into a frame the sending cell has
+no reason to hold.
+
+**The ghost door is the one the first draft missed, and it is the only door the self-heal does not cover.**
+`SyncGhosts` mirrors a neighbour's border entities into this cell's `World` every pass, full-state per
+source, carrying the SOURCE cell's stamp. `PlayerMovementSystem` skips `Ghost`-tagged entities
+(`PlayerMovementSystem.cs:52`), by design, since the owner is the only simulator, so the self-healing
+comparison in the step loop never runs on a ghost and a wrong stamp persists for the ghost's whole life.
+Engine paths survive it, because every one of them keys on `.Value`, which is correct regardless of the
+stamp. A CONSUMER does not: `Ghost`'s own doc promises these entities are present "so this cell's systems can
+see it for collision / visibility / targeting across the border" (`Ghost.cs:6-8`), and a system doing exactly
+that against the cell's physics world reads `Local` and is 128 m out.
+
+**Decision: convert on `ApplyGhostSnapshot`**, rather than documenting ghosts as `Value`-only. Three reasons.
+It rides a loop that already exists (`CellSim.cs:177-179` iterates `view.Entities` to stamp the `Ghost`
+component, so the conversion is a second statement in that body and costs no new iteration). It restores the
+island invariant in its strong form, that EVERY entity in a cell's `World` carries that cell's frame, owned
+or mirrored, which is a property a reader can rely on without knowing whether the entity it holds is a ghost.
+And a `Value`-only rule for ghosts is a rule about a component that looks identical to every other one, which
+is the kind of rule that gets followed until the first consumer writes cross-border melee.
+
+The conversion is exact to half a ULP under the same bound as the handoff below. It re-runs on every sync
+pass, which is idempotent: it always converts the freshly applied source-stamped value, never a
+previously converted one. Section 13 test 24 asserts it.
 
 `ProcessHandoffs` derives the destination cell from `CoordFor(x, y)` on the ABSOLUTE position
 (`ShardHost.cs:305-307`), which keeps working unchanged because `ReplicatedPosition.Value` still reads
 absolute. So does `ShardedWorldServer.PositionAccessor` (`:728-733`), which feeds the interest grid.
+
+### The handoff conversion is exact to half a ULP, not bit-exact, and the difference is 3.8 micrometres
+
+Section 8's lemma needs the conversion to strictly not GROW the local's magnitude, and a re-anchor guarantees
+that by construction (round-to-nearest from a `|local| > 96` trigger). **A cell handoff does not**, and the
+first draft called it "exact" anyway.
+
+The counterexample is ordinary rather than contrived. With `CellSize = 60`, take a cell spanning `[0, 60)`
+whose frame anchor is `0`, and its neighbour spanning `[60, 120)` whose centre `90` rounds to anchor `128`. An
+entity crossing at world `60.1` has local `60.1` in the source (binade `[32, 64)`, ULP `2^-18`) and local
+`-67.9` in the destination (binade `[64, 128)`, ULP `2^-17`). The magnitude GREW, the destination binade is
+coarser, and a value that was a multiple of `2^-18` need not be a multiple of `2^-17`. Ties round.
+
+So the honest statement, and the bound:
+
+> A handoff conversion is **exact to half a ULP of the destination magnitude**, which for any local inside the
+> design target is at most `2^-18` m, about **3.8 micrometres**. A re-anchor on a single-island head remains
+> **bit-exact**, unconditionally.
+
+3.8 micrometres against a 10 mm budget is 2,600x of slack and is not a gameplay concern in any form. What it
+IS is a correction to a claim, and the tests have to follow the claim: invariant tests 1 and 2 (section 13)
+are scoped to the RE-ANCHOR path, where bit-exactness genuinely holds, and asserting them over arbitrary
+frame pairs would fail on a correct implementation. The handoff path gets its own bound instead (test 2a).
+
+### The frame must be reachable from a `World` alone, and that is ONE mechanism covering four problems
+
+Several sites need the island's frame and have no way to get it, because the seam they sit behind hands them
+a `World` and nothing else. Threading a frame parameter through each one separately is four API changes, four
+chances to miss a fifth site, and four consumer-visible signatures. So it is one mechanism:
+
+> **The island's frame is discoverable from its `World`.** A `CellSim` (and each single-island head) publishes
+> its `WorldFrame` into its own `World` at construction, as a singleton component on a reserved entity, so any
+> code holding the world can ask for it. `WorldFrame.Origin` when nothing published one, which is exactly
+> right for every unframed head and every test world.
+
+The four things it closes, all of which are otherwise separate holes:
+
+| Site | What it holds | Why it cannot reach the frame today |
+|---|---|---|
+| `WorldPickups.cs:169` | `World`, `Entity` | The `IWorldPickupHost.SpawnEntity` callback signature is `Action<World, Entity>`. The owning cell IS resolved, inside `ShardedWorldServer.SpawnEntity` (`:360-367`), and then never surfaced to the callback |
+| `OnBeforeTick` consumers | `float dt` | `ShardedWorldServer.cs:448` hands the consumer a dt and nothing else, and its own doc tells that consumer to write entities' `ReplicatedPosition` |
+| Ghost mirroring | the destination `CellSim` | Covered directly by the door above, but the ghost READER (a consumer's cross-border collision system) is the same shape as the two rows above |
+| `DynamicBodyReplication` | `World`, `IPhysicsWorld` | It already holds both, so it can read the frame off the world instead of taking a fifth constructor parameter (section 7) |
+
+A singleton component is the right carrier rather than a property on some server type, for the reason
+section 4 gives for putting the stamp on the state rather than in an event: it travels with the thing it
+describes and cannot be reordered against it. A consumer that gets a `World` gets the frame that world is in,
+in the same reach, with no new parameter anywhere.
 
 ### Who re-anchors, and who calls it
 
@@ -902,8 +1042,27 @@ public interface IPredictedState<TSelf>
     /// a re-anchor measures as zero prediction error and glides nothing. Defaults to <c>Vector2.Zero</c>, so a
     /// state with no frame concept behaves exactly as before.</summary>
     Vector2 FrameAnchor => Vector2.Zero;
+
+    /// <summary>Returns a copy of this state re-expressed against <paramref name="anchor"/>, with
+    /// <paramref name="position"/> as the already-converted planar position.
+    /// <para>The default THROWS. It is called only when <c>FrameAnchor</c> actually differs between the
+    /// predicted state and the incoming basis, which is impossible for a state that left
+    /// <see cref="FrameAnchor"/> at its default, so a state with no frame concept never reaches it.</para></summary>
+    TSelf WithFrameAnchor(Vector2 anchor, Vector2 position) => throw new NotSupportedException(
+        $"{typeof(TSelf).Name} does not implement WithFrameAnchor, so it cannot be reconciled across a frame "
+      + "change. Implement it, or leave FrameAnchor at Vector2.Zero on both the predicted state and the basis.");
 }
 ```
+
+**Why `WithFrameAnchor` is a THROWING default interface member rather than an ordinary one.** A wither has to
+construct a `TSelf`, and `IPredictedState<TSelf>` exposes getters plus `WithPosition`/`WithRenderState`
+(`IPredictedState.cs`), none of which can carry a new anchor, so there is no default body that could be
+correct. Making it abstract would break every existing implementer, which is the whole thing release 3's DIM
+pattern exists to avoid, and the engine's own `PlayerMoveState` is not the only implementer a consumer may
+have. A throwing default is the honest shape: it is unreachable unless `frameDelta != Vector2.Zero`, and a
+state that reaches it is a state whose author opted into frames on one side and not the other, which is a bug
+that should say so loudly rather than silently drop the conversion. This is the same reasoning as
+`IPhysicsWorld.Rebase`'s throwing default (section 5), and it is why `CanRebase` exists beside it.
 
 Then, at the very top of `Reconcile`:
 
@@ -976,6 +1135,40 @@ disagree.
 An epoch advance means "cut instantly, this is an intentional discontinuity". A re-anchor is the exact
 opposite: a no-op in world space that must be invisible. Overloading the epoch would hard-cut the avatar on
 every re-anchor. The frame is a separate channel because it carries the opposite meaning.
+
+### The whole `WorldClient` presentation surface is ABSOLUTE, and today two halves of it would disagree
+
+This is the one place in the design where the failure is invisible to the compiler AND to every existing test,
+so it gets its own rule rather than a note.
+
+`WorldClient` hands the consumer render positions from two sources that stop sharing a space the moment
+`Step` stamps a frame onto the predicted state (section 7):
+
+- **The local avatar.** `Snapshot()` fills `EntityRenderState.Position` from `prediction.RenderedState.Position`
+  (`WorldClient.cs:623`), which is FRAME-LOCAL once the simulator steps in a frame. `LocalRenderState`
+  (`:286`) exposes the same predicted state raw, and `LocalGrounded` / the vertical shorthands hang off it.
+- **Every remote.** The same `Snapshot()` fills `Position` from `rp.Value` (`:643`), which is ABSOLUTE by
+  definition and stays that way (section 10).
+
+Both are `Vector3`. Both land in the same `EntityRenderState` list. A consumer feeds that whole list into one
+`Scene3D`. There is no compile break, no exception, and no assertion anywhere: the local avatar simply renders
+one anchor delta away from the world every other entity is drawn in, which reads as the camera target being
+detached from the terrain rather than as a coordinate bug.
+
+> **The rule: every position `WorldClient` exposes to a consumer is absolute world metres, without
+> exception.** The frame is an internal representation of the prediction pipeline and does not cross the
+> presentation boundary.
+
+The conversion is `islandFrame.ToWorld(...)` and it lands at exactly two places, both of which are the
+boundary itself: the local branch of `Snapshot()` (`:623`) and the `LocalRenderState` getter (`:286`), plus
+anything derived from the latter that carries a position. It is exact under the section 8 lemma and it is one
+add per frame per surface, not per entity.
+
+**Netcode test 23.** Run a client whose adopted frame is deliberately non-zero, with one local avatar and one
+remote at a known absolute position, and assert that `Snapshot()` returns BOTH at their absolute world
+positions, and that `LocalRenderState.Position` equals the local entry in the snapshot. The second assertion
+is what stops the two surfaces drifting apart later, since fixing only `Snapshot()` is the natural
+half-fix.
 
 ### `WorldClient` surfaces the change for consumer-owned colliders
 
@@ -1067,14 +1260,63 @@ not a reason to hurry #197, it is a second, independent reason release 2 must no
 
 ## 9. Decision 7: rendering
 
-The first draft's rendering section was correct about where the subtraction belongs and wrong about almost
-everything downstream of it. Four blockers and three majors, all confirmed against the code. The redesign
-below keeps the one decision that was right and rebuilds the rest around it.
+The first draft's rendering section was right that `Scene3D` owns the subtraction and wrong about WHERE inside
+`Scene3D` it lands, and almost everything downstream of it followed that error. Four blockers and three
+majors, all confirmed against the code. This rewrite settles the subtraction point first, because every
+blocker below is a consequence of it rather than an independent problem.
 
-### Where the subtraction happens: `Scene3D` owns the origin, and it subtracts at the matrix
+### The subtraction point: the GPU-bound copy, and nothing else
 
-`Scene3D` already owns both the camera and every submitted world position, so it does the subtraction and the
-public API keeps taking absolute world coordinates. A consumer changes nothing.
+One decision governs the whole section.
+
+> **The subtraction happens where the instance data is built for upload. Every submission queue stays
+> ABSOLUTE, every CPU-side spatial computation stays ABSOLUTE and byte-identical to the pre-release engine,
+> and only the copy that reaches the GPU is relative.**
+
+The first draft put it at submission (`_instances.Add` and the skinned and overlay equivalents). That is wrong
+for a reason visible in one line of the culling loop. `ComputeMainPassVisibility` reads
+`_instanceData[slot].Model` (`Scene3D.cs:3006`) for BOTH the frustum test and the terrain identity test, and
+that same `_instanceData` is what `UploadInstances` sends to the GPU (`:1860`). The skinned path has the
+identical shape: `ClassifySkinnedVisibility` reads `it.World` (`:1919-1920`), and the shadow-caster
+classification at `:1886` runs against the same matrices. A matrix cannot be relative for the GPU and absolute
+for the cull while the cull and the upload read the same storage. Subtracting at submission makes them the
+same storage, which forces the cull into a space its code was never written for.
+
+Moving the subtraction to the build-and-upload point removes the conflict instead of reconciling it:
+
+- `_instances` and every other submission queue hold absolute values, exactly as today. No `Scene3D` entry
+  point changes, so the public API stays absolute and a consumer changes nothing.
+- `GroupInstances` (`:1853`) builds `_instanceData` from them ABSOLUTE, and `_instanceData` stays absolute for
+  its whole CPU life. Every CPU reader of it is therefore untouched: `ComputeMainPassVisibility`
+  (`:2986-3018`), `CaptureShadowCasters` (`:2958`), and the run and draw loops.
+- `UploadInstances` (`:1860`) is handed a **relative staging copy**: a reused `List<InstanceData>` that grows
+  and is never per-frame allocated (the same discipline as `_instanceVisible`), differing from the source only
+  in each `Model`'s translation column.
+- The skinned instance data built at `:1936-1958` is reduced the same way, and reducing it at the Add site is
+  safe precisely because `ClassifySkinnedVisibility` has already read the absolute `it.World` at `:1919-1920`.
+- The overlay draw loop (`:2199`) builds its matrix per draw out of `_overlayMeshDraws`, so it reduces at the
+  draw site, after the sort at `:2194` has already run on absolute centres.
+
+**The rejected alternative is worth naming, because it looks cheaper.** Subtracting in place immediately
+before the upload and adding the origin back immediately after is exactly reversible (`(a - O) + O == a`
+bit-for-bit: `a - O` is exact by the section 8 lemma and `a` is representable, so the round trip cannot round),
+and it avoids the staging copy. It also leaves `_instanceData` transiently relative for the width of the upload
+call, which is exactly the ordering hazard this decision exists to remove, and both `CaptureShadowCasters` and
+`ComputeMainPassVisibility` read that list AFTER the upload today. A correctness property that holds only while
+nobody inserts a read between two lines is not a property. The staging copy costs one pass over the instance
+stream and buys an invariant a later edit cannot quietly break.
+
+**What this buys, stated as the four properties the rest of the section leans on:**
+
+1. Submission queues are absolute, so no `Scene3D` signature moves and no consumer adopts anything.
+2. Frustum culling, terrain's identity fast path, shadow-cascade fitting, shadow-caster classification and the
+   four transparency sorts all run on absolute inputs and are byte-identical to the pre-release engine. That is
+   the inertness guarantee (section 11) holding by CONSTRUCTION rather than by a rule someone has to remember.
+3. Only the GPU-bound matrices are reduced, and the reduction is exact under the section 8 lemma.
+4. A site that forgets the subtraction renders visibly displaced at range, which is loud, rather than quietly
+   answering a spatial query in the wrong space, which is not.
+
+### `Scene3D` owns the origin, and it latches once per frame
 
 ```csharp
 namespace KhaozEngine.Render3D;
@@ -1085,7 +1327,11 @@ public sealed partial class Scene3D
     /// GPU. Defaults to <c>WorldFrame.Nearest(ActiveCamera.Eye).Anchor</c>, quantized so it does not jitter
     /// per frame (an unquantized eye-following origin makes goldens irreproducible). Set it explicitly to the
     /// sim frame's anchor when running a sim frame, so render and simulation share one space.
-    /// <c>Vector3.Zero</c> reproduces the pre-floating-origin output exactly.</summary>
+    /// <c>Vector3.Zero</c> reproduces the pre-floating-origin output exactly.
+    /// <para>LATCHED AT <c>Begin()</c>: the value in force for a frame is read once, at Begin, and a write
+    /// during the frame is ignored until the next Begin. A frame that submitted half its geometry against one
+    /// origin and uploaded it against another would be displaced by the difference, and the display would be
+    /// stable enough between re-anchors to look like a content bug.</para></summary>
     public Vector3 RenderOrigin { get; set; }
 
     /// <summary>Whether the origin is actually in effect this frame. False when
@@ -1096,7 +1342,7 @@ public sealed partial class Scene3D
 }
 ```
 
-### Blocker 1: identity model matrices, and the fix that makes the API break disappear
+### Blocker 1: identity model matrices, and why they need no API change
 
 Every `Scene3D` model entry point takes a caller-BUILT absolute matrix
 (`Scene3D.cs:701,706,999,1002,1006,1015,1325`), there is no `Transform3D` overload on `Scene3D` at all,
@@ -1105,20 +1351,19 @@ Every `Scene3D` model entry point takes a caller-BUILT absolute matrix
 render-relative `ViewProjection` and unchanged model matrices, terrain and HLODs render displaced by the whole
 render origin, which at 100 km means they are not on screen.
 
-**Fix: `Scene3D` subtracts `RenderOrigin` from the TRANSLATION COLUMN of every submitted matrix**, at the one
-place they all land (`_instances.Add` and the overlay/skinned equivalents):
+**Fix: the staging copy subtracts `RenderOrigin` from the TRANSLATION COLUMN of each matrix it copies:**
 
 ```csharp
 m.M41 -= RenderOrigin.X;  m.M42 -= RenderOrigin.Y;  m.M43 -= RenderOrigin.Z;
 ```
 
-Why this is the right central point, justified rather than asserted:
+Why the translation column is the right operand, justified rather than asserted:
 
 - **It is exact for every matrix the engine can be handed.** A world matrix is affine (TRS, with a fourth row
   of `(0,0,0,1)`), and for an affine matrix the translation column IS the world position of the local origin,
   so subtracting the render origin from it is exactly `T(-O) * M` with no rounding beyond the subtraction
   itself, which is exact under the section 8 lemma when `O = Nearest(eye)` and the object is near the eye.
-- **It costs three float subtractions per instance**, on a path that is already touching the matrix.
+- **It costs three float subtractions per instance**, on a pass that is already copying the matrix.
 - **It keeps the entire public API absolute.** No `Transform3D` overload on `Scene3D`, no `TerrainScene3D`
   signature change forced by rendering, no `Scene3DChunkSink` change, no consumer change. `Transform3D` still
   gains its `ToMatrix(Vector3 renderOrigin)` overload as a convenience for a consumer that wants to build the
@@ -1181,18 +1426,18 @@ subtracts `RenderOrigin` from its input, `ScreenToRay` adds it back to its outpu
 picking error equal to the render origin, which at 100 km means picking simply does not work and no golden
 catches it. Section 12 test 19 catches it.
 
-### Blocker 3: frustum culling mixes spaces
+### Blocker 3: frustum culling must stay in absolute space, and now it does
 
-`FrustumPlanes.Extract(vp)` at `Scene3D.cs:1869` becomes render-relative while the bounds it is tested
-against (`ComputeMainPassVisibility`, and `ClassifySkinnedVisibility` at `:1919-1920`) are absolute world
-bounds. Everything culls, every frame, at any non-zero origin.
+`FrustumPlanes.Extract(vp)` at `Scene3D.cs:1869` would become render-relative while the bounds it is tested
+against (`ComputeMainPassVisibility` at `:2986-3018`, and `ClassifySkinnedVisibility` at `:1919-1920`) are
+absolute world bounds. Everything culls, every frame, at any non-zero origin.
 
-**Fix: cull in ABSOLUTE space, rasterize in relative space.** That is what `AbsoluteViewProjection` is for.
-`FrustumPlanes.Extract(ActiveCamera.AbsoluteViewProjection)` against unchanged absolute bounds is
-**byte-identical to today's culling**, which is exactly the property the inertness guarantee needs. Only the
-matrices that reach the GPU are relative. The split is one word in the code and it removes an entire class of
-space-mixing bug from the CPU side, because every CPU-side spatial computation stays in the space it was
-written for.
+**Fix: cull in ABSOLUTE space, rasterize in relative space.** That is what `AbsoluteViewProjection` is for,
+and under the settled subtraction point it is now the ONLY thing needed: the matrices the cull reads never
+became relative in the first place, so `FrustumPlanes.Extract(ActiveCamera.AbsoluteViewProjection)` against
+unchanged absolute bounds and unchanged absolute `_instanceData` is **byte-identical to today's culling** on
+both operands rather than on one. That is what makes the inertness guarantee checkable: there is no
+combination of settings under which a cull input is relative.
 
 ### Blocker 4: the shadow-caster union and cascade fitting
 
@@ -1201,14 +1446,57 @@ Same disease, three sites:
 - `ComputeShadowCascades` fits cascades from `ShadowMapMath.FrustumCornersWorld(ActiveCamera.ViewProjection)`
   (`Scene3D.cs:1661`) and reads `ActiveCamera.Eye`/`Forward` at `:1666-1667`.
 - `_shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVps[i])` (`:1885-1886`) is the CPU caster-visibility
-  test, run against absolute bounds.
+  test, run against absolute bounds, and it feeds `ClassifySkinnedVisibility` at `:1919-1920` and the rigid
+  caster capture at `:2958`.
 - The same `_cascadeCpuVps` feed the GPU shadow depth pass, which must be relative.
 
-**Fix: fit in absolute, extract casters in absolute, build a second relative VP for the GPU.** Cascade fitting
-runs from `AbsoluteViewProjection` and absolute `Eye`, so the fit, the radii and the caster classification are
-byte-identical to today. Then, per cascade, `BuildLightViewProj(lightDir, focus - RenderOrigin, radius,
-resolution)` produces the render-relative matrix the depth pass uploads. The rotation is unchanged and only
-the focus moves, so the ortho extents and the texel world size are unchanged.
+**Fix: fit in absolute, classify casters in absolute, build a second relative VP for the GPU.** Cascade
+fitting runs from `AbsoluteViewProjection` and absolute `Eye`, and the caster classification runs against the
+absolute `_instanceData` and absolute `it.World` it already reads, so the fit, the radii and the
+classification are byte-identical to today. Then, per cascade, `BuildLightViewProj(lightDir, focus -
+RenderOrigin, radius, resolution)` produces the render-relative matrix the depth pass uploads. The rotation is
+unchanged and only the focus moves, so the ortho extents and the texel world size are unchanged.
+
+### Blocker 5: the terrain cull fast path, in both releases
+
+`ComputeMainPassVisibility` has a terrain-only fast path (`Scene3D.cs:3007-3008`): when a splat mesh's world
+matrix passes `IsIdentityTransform`, the cull tests the mesh's own AABB against the frustum directly, because
+a flat chunk's bounding sphere is far too conservative (the code says so at `:2995-2999`). That path is
+reading `TerrainChunkBounds` **as world-space bounds**, which refutes section 5's break-list item 4 claim that
+nothing reads it as world-space today. Item 4 is corrected there: it is not a latent break, it is a live one.
+
+The path is fragile under this program in two different ways, one per release, and both are handled:
+
+- **Release 1.** The subtraction point is what saves it. `_instanceData` stays absolute, so a terrain chunk's
+  matrix is still exactly `Matrix4x4.Identity`, `IsIdentityTransform` still returns true, and the tight AABB
+  test still runs against absolute mesh bounds. Had the subtraction happened at submission, every terrain
+  chunk in the world would have carried a `-O` translation, failed the identity test permanently, and fallen
+  to the conservative sphere test for the rest of the program's life. That is not a correctness bug, which is
+  what makes it dangerous: it is a silent, permanent, whole-scene overdraw regression that no golden detects.
+- **Release 2.** The chunk-local bake kills the identity test for a legitimate reason: the chunk's matrix now
+  carries its region origin, and its bounds are now chunk-local. So release 2 replaces the identity test with
+  a **pure-translation test**. When the matrix's upper 3x3 is identity (which the terrain path always
+  produces, since a chunk is placed, never rotated or scaled), the cull tests
+  `IntersectsAabb(Bounds.Min + T, Bounds.Max + T)` where `T` is the matrix's translation column. That is the
+  same tight test, offset by the region origin, and the offset is exact under the section 8 lemma. Anything
+  else still falls to the sphere test exactly as today.
+
+`Scene3D.cs:2986-3018` is therefore named in BOTH releases' break lists in section 11: release 1 must not
+disturb it, and release 2 must rewrite it in the same change as the bake.
+
+### The four transparency sorts, and the claim they would otherwise falsify
+
+Four back-to-front sorts pass `ActiveCamera.Eye` against submitted centres: the overlay mesh sort
+(`Scene3D.cs:2194`), the particle-sprite sort (`:2395`), the alpha-billboard sort (`:2418`) and the
+textured-billboard sort (`:2471`). Under a submission-point subtraction these would have compared an absolute
+eye against relative centres.
+
+The consequence is benign and the claim is not. `TransparencySort` keys on view depth along the camera
+forward axis, which is affine in a uniform translation of both operands, so the resulting ORDER is the same
+either way, and no artifact would ever have appeared. But "every CPU-side spatial computation stays absolute
+and byte-identical" would have been false at four sites, and a guarantee with four unlisted exceptions is a
+guarantee nobody can check. Under the settled subtraction point they read absolute against absolute, the
+sort keys are bit-identical to today, and the claim is literally true rather than true-in-effect.
 
 **The residual artifact, stated rather than hidden.** `BuildLightViewProj` snaps the focus to a texel lattice
 in light-view space (`ShadowMapMath.cs:199-206`), and the lattice step is `2*radius/resolution`, which does
@@ -1279,21 +1567,22 @@ not this program's problem, and it is filed rather than hand-waved.
 
 ### Everything else that carries a world position, and where it is handled
 
-All of these are per-frame queues cleared in `Scene3D.Begin()`, so the subtraction happens once as the value
-lands in its queue. None of them carries cross-frame state, so there is nothing to migrate on an origin
-change. (Confirmed by review: every submission queue is cleared in `Begin()`, so nothing cross-frame can
-migrate.)
+Every one of these is a per-frame queue cleared in `Scene3D.Begin()`, so none of them carries cross-frame
+state and there is nothing to migrate on an origin change. (Confirmed by review: every submission queue is
+cleared in `Begin()`.) Each queue is filled ABSOLUTE, per the subtraction-point decision, and the subtraction
+happens where the queue is turned into GPU data, which is after every CPU-side read of it.
 
-| Path | Field | Handled at |
+| Path | Field | Subtracted at |
 |---|---|---|
-| Point lights | `ModelRenderer.PointLightData.PosRadius` (xyz) | `Scene3D.AddLight` |
-| Ground decals | `GroundDecal.Center` | `Scene3D.DrawGroundDecal` |
-| Shadow blobs | `ShadowBlob.Position` | `Scene3D.AddShadowBlob` |
-| Water planes | `WaterPlane.CenterX`, `CenterZ` (`SurfaceY` is absolute Y, untouched) | `Scene3D.DrawWater` |
-| Particle sprites | `ParticleSprite.Position` | `Scene3D.DrawParticle` and its span overload |
-| Distortion sprites | `DistortionSprite.Position` | `Scene3D.DrawDistortion` and its span overload |
-| Lines, fills, billboards, beams, trails | vertex positions | their submission entry points |
-| Model / mesh / overlay / skinned draws | the matrix translation column | the shared submission path (blocker 1) |
+| Point lights | `ModelRenderer.PointLightData.PosRadius` (xyz) | the `SetFrameUniforms` light span (`Scene3D.cs:2022`) |
+| Ground decals | `GroundDecal.Center` | the decal renderer's draw |
+| Shadow blobs | `ShadowBlob.Position` | the blob renderer's draw |
+| Water planes | `WaterPlane.CenterX`, `CenterZ` (`SurfaceY` is absolute Y, untouched) | `_water.Draw` (`:2250`) |
+| Particle sprites | `ParticleSprite.Position` | the `_particleSorted` build (`:2396`), after the sort |
+| Distortion sprites | `DistortionSprite.Position` | `_distortionRenderer.Draw` (`:2305`) |
+| Lines, fills, billboards, beams, trails | vertex positions | their vertex expansion, after any sort |
+| Model / mesh / skinned draws | the matrix translation column | the upload staging copy (blocker 1) |
+| Overlay mesh draws | the matrix translation column | the draw loop (`:2199`), after the sort at `:2194` |
 
 **Particles** need nothing beyond that. `ParticleSystem` integrates `p.Position += p.Velocity * dt` in
 absolute world space and `ParticleAttractor.Target` is absolute, but a particle's lifetime is seconds and its
@@ -1375,12 +1664,18 @@ in a form that can be checked rather than asserted.
 
 ### Release 1, minor: camera-relative rendering
 
-`Scene3D.RenderOrigin` and `RenderOriginActive`, the new `IRenderOriginAware` interface implemented by the
-three engine cameras, the origin-aware `View` on each, `AbsoluteViewProjection` for every CPU-side spatial
-path, the render-relative cascade VPs beside the absolute fitted ones, the matrix translation-column
-subtraction at every model submission, the converted eye for water/particle/distortion, the `RenderOrigin`
-shader uniform for world-anchored texturing and noise, the fixed `WorldToScreen`/`ScreenToRay`, and
-`Transform3D.ToMatrix(Vector3)`.
+`Scene3D.RenderOrigin` (latched at `Begin`) and `RenderOriginActive`, the new `IRenderOriginAware` interface
+implemented by the three engine cameras, the origin-aware `View` on each, `AbsoluteViewProjection` for every
+CPU-side spatial path, the render-relative cascade VPs beside the absolute fitted ones, the
+translation-column subtraction on the upload staging copy and on each per-draw GPU matrix, the converted eye
+for water/particle/distortion, the `RenderOrigin` shader uniform for world-anchored texturing and noise, the
+fixed `WorldToScreen`/`ScreenToRay`, and `Transform3D.ToMatrix(Vector3)`.
+
+**The break list is short because the subtraction point makes it short**, and one entry on it is a
+DO-NOT-TOUCH: `Scene3D.cs:2986-3018` (`ComputeMainPassVisibility`, including the terrain identity fast path at
+`:3007-3008`) must keep reading absolute matrices and absolute bounds. Release 1 changes nothing there, and
+that is a requirement rather than an accident, because a subtraction that leaked into `_instanceData` would
+silently retire the terrain fast path scene-wide with no visual symptom (section 9, blocker 5).
 
 **What a consumer gets:** every visual artifact from matrix concatenation at range disappears. Model
 placement, decals, lights, particles, water and debug geometry are all as stable at 100 km as at the origin.
@@ -1410,14 +1705,16 @@ weaker half. The guarantee is both halves:
 > which is why half 1 is necessary but not sufficient on its own and release 1 also ships the deliberate
 > far-from-origin golden (section 13 test 18).
 
-### Release 2, minor: terrain precision, the physics rebase API, and server-side frames behind a flag
+### Release 2, minor: terrain precision, the physics rebase API, and a FLAT-head frame behind a flag
 
 `WorldFrame` in `Primitives`. `IPhysicsWorld.Origin`/`CanRebase`/`Rebase` as DIMs plus the
 `BepuPhysicsWorld` implementation and the seam conversions (`ChunkStatics`, `ChunkDynamics`,
 `ChunkTerrainCollision`, `FollowCamera3D`). `TerrainChunkBuilder` chunk-local vertices with the placement in
 the transform and the static pose, and `TerrainChunkCollision`/`ChunkTerrainCollision`/`TerrainScene3D`/
-`Scene3DChunkSink`/`RoomNet` following (the API break list in section 5). Island frames on the SERVER heads
-with `SamplerSpace`, behind `FrameAnchoring`.
+`Scene3DChunkSink`/`RoomNet` following (the API break list in section 5), **including
+`Scene3D.cs:2986-3018`**, whose terrain identity fast path becomes a pure-translation AABB test offset by the
+region origin (section 9, blocker 5) in the same change as the bake. An island frame on the FLAT
+`WorldServer` only, with `SamplerSpace`, behind `WorldServerConfig.FrameAnchoring`.
 
 **The headline is the terrain bake, and it needs no frame at all.** Chunk-local vertices plus a per-chunk
 model matrix (release 1 subtracts its translation column) give precise terrain GEOMETRY at 100 km. Chunk-local
@@ -1427,15 +1724,98 @@ magnitude while the caller keeps passing whatever coordinates the world speaks. 
 with `FrameAnchoring` off, with no wire change, and with no client change.** That is a real, unconditional,
 zero-risk improvement and it is why this release exists in this shape.
 
-**`FrameAnchoring` defaults OFF, and the reason is a regression, not caution.** A server stepping in a 136 m
-frame while its client predicts in absolute coordinates at 100 km produces two trajectories from two spaces,
-so the reconciliation error GROWS. Today both heads are equally imprecise and therefore agree. Turning the
-server's frame on without the wire field would make prediction worse at range, which is the opposite of the
-point. So:
+**One qualification on the collision half: the TRIANGLES become exact, the QUERY INPUT does not.** A query
+that arrives in absolute coordinates has already been rounded to the float32 lattice of its own magnitude
+(7.8 mm at 100 km) before anything transforms it into mesh space. The bake makes the answer exact for the
+point the query actually asked about, and that point is up to half a lattice step from the point the caller
+meant. On sloped terrain that becomes `slope * 7.8 mm` of height error, which is what test 10a is written to
+tolerate. Removing the remaining half needs the QUERY to be framed too, which is `SamplerSpace.Frame` against
+a rebased physics world. So release 2's collision improvement is unconditional for the geometry and
+conditional on framing for the query, and the difference is roughly two orders of magnitude at 100 km rather
+than a correctness line.
+
+**`FrameAnchoring` exists on `WorldServerConfig` ONLY, and there is no
+`ShardedWorldServerConfig.FrameAnchoring` until release 3.** This is a scope correction, not a schedule
+preference. Section 5 establishes that the sharded head has no working sim frame before per-cell physics:
+`ShardedWorldServer` takes ONE `IPhysicsWorld` (`ShardedWorldServer.cs:133`) and hands it to one shared
+`PlayerMovementSystem` (`:157`), so a cell stepping in its own frame would query colliders sitting in a
+different space, which is the exact failure section 3 scored candidate D to zero for. Per-cell physics worlds
+and a per-cell `PlayerMovementSystem` are release 3, so the sharded head's flag is release 3. Shipping the
+knob earlier would ship a switch whose ON position is broken, and the compile error a consumer gets for
+setting a property that does not exist yet is a better outcome than a shard server walking players through
+walls.
+
+**`WorldServerConfig.FrameAnchoring` defaults OFF, and the reason is a regression, not caution.** A server
+stepping in a 136 m frame while its client predicts in absolute coordinates at 100 km produces two
+trajectories from two spaces, so the reconciliation error GROWS. Today both heads are equally imprecise and
+therefore agree. Turning the server's frame on without the wire field would make prediction worse at range,
+which is the opposite of the point. So:
 
 > `FrameAnchoring` is opt-in in release 2 and its doc says, in the API comment and not only here: **do not
 > enable this against a client that is not on release 3.** It is for a single-player or single-region game
 > with no reconciled client, and for testing.
+
+### The release 2 `ReplicatedPosition`, written out, and the invariant that makes it safe
+
+Release 2 is a minor with no wire change, so `ReplicatedPosition.Value` stays SETTABLE and the encoding stays
+three floats of absolute world position (the flat server encodes `Frame.ToWorld(Local)` on the way out). The
+component gains the frame and the local, and `Value` becomes a computed property over them:
+
+```csharp
+public struct ReplicatedPosition : IComponent
+{
+    /// <summary>The frame <see cref="Local"/> is expressed against. A STAMP of the owning island's frame.
+    /// <c>default</c> is <see cref="WorldFrame.Origin"/>, whose anchor is <c>Vector3.Zero</c>.</summary>
+    public WorldFrame Frame;
+
+    /// <summary>Position relative to <see cref="Frame"/>. Y is absolute world height (Y is never framed).</summary>
+    public Vector3 Local;
+
+    /// <summary>The absolute world position. Reading is always correct: <c>Frame.Anchor</c> is exact, so
+    /// <c>Anchor + Local</c> is as precise as <c>Local</c>. WRITING resets the stamp to
+    /// <see cref="WorldFrame.Origin"/> and stores the value as-is, which is why the invariant below holds.
+    /// The setter is removed in release 3 (section 11), which is what turns each write into a build error a
+    /// human answers "where did this position come from?" for.</summary>
+    public Vector3 Value
+    {
+        readonly get => Frame.Anchor + Local;
+        set { Frame = WorldFrame.Origin; Local = value; }
+    }
+}
+```
+
+Going from a `Vector3` FIELD to a property is source-compatible everywhere it is used: a repo-wide search
+finds no `ref x.Value` and no `out x.Value` anywhere in the engine, and a settable property on a struct
+reached by `ref` (`PlayerMovementSystem.cs:86`) and in an object initializer (the eleven sites in release 3's
+table) both compile unchanged.
+
+**The invariant, which is the whole reason a settable `Value` is safe on a framed release 2 server:**
+
+> **Origin-framed-absolute is always a valid representation.** `{Frame = Origin, Local = p}` and
+> `{Frame = f, Local = f.ToLocal(p)}` denote the same world position, and `Value` reads identically from
+> both, because `Origin.Anchor` is exactly `Vector3.Zero`. So a legacy `Value = v` write cannot produce a
+> WRONG position. It produces a correct position with a stale stamp.
+
+That matters because release 2 turns the flat head's step into a framed one while leaving eleven construction
+sites and one `pos.Value =` write-back (`PlayerMovementSystem.cs:86`) writing through the setter. Every one
+of them silently resets `Frame` to `Origin`. Under the invariant that is recoverable rather than corrupting,
+and it is recovered EXACTLY: the island self-heal (`if (pos.Frame != islandFrame) pos = pos.ToFrame(islandFrame)`,
+section 6, running in `WorldServer.Tick`'s step pass beside `WorldServer.cs:410` on this head) converts an
+Origin-framed absolute into the island frame with no rounding. The section 8 lemma covers it in its general
+form: a float32 absolute coordinate at any magnitude below `2^30` is an integer multiple of its own ULP, the
+anchor delta is an integer multiple of 128, and the conversion strictly reduces the magnitude, so the sum is a
+multiple of a quantum no coarser than the destination binade's ULP and is exactly representable.
+
+What a stale stamp DOES cost is one tick's worth of absolute quantum, because the value was rounded to the
+7.8 mm lattice when it was written as an absolute. That is a rounding floor, not accumulation, and it is the
+same cost every position pays today on every tick. The point of release 2's framing is that the CARRIED state
+stops accumulating at world magnitude, and a per-write floor does not reintroduce accumulation.
+
+**Test 22 asserts it, because an invariant nobody tests is a comment.** On a flat server with
+`FrameAnchoring` on and a non-zero island frame: write `pos.Value = p` for a `p` at 100 km, assert `Value`
+reads back bit-identical to `p` and `Frame` is `Origin`, step one tick, then assert the self-heal has moved
+the component into the island frame AND that `Value` is still bit-identical to the same-tick unframed result.
+The second half is the load-bearing one: it is what proves the conversion is exact rather than merely close.
 
 **The client gets no frame in release 2, and is explicitly told not to derive one.** `WorldClient` keeps
 running in `WorldFrame.Origin`, the wire keeps carrying absolute positions (the server encodes
@@ -1446,24 +1826,27 @@ heads 128 m apart on the same tick, which is a NEW divergence and one that #197'
 compound.
 
 **What a consumer gets:** terrain geometry and terrain collision precise at 100 km on both heads,
-unconditionally. A physics rebase API it can drive itself. A single-player or single-region game is finished
-at this release with `FrameAnchoring` on.
+unconditionally. A physics rebase API it can drive itself. A single-player or single-region game on the FLAT
+head is finished at this release with `FrameAnchoring` on.
 
 **Adoption:** rebake any terrain golden (the vertices moved). Update any direct `DrawTerrainChunk` /
 `ChunkLoad` / `TerrainChunkBounds` use per the section 5 break list. Optionally set `SamplerSpace.Frame` if
-the game's ground follow comes from the physics world, and `FrameAnchoring` only if there is no networked
-client.
+the game's ground follow comes from the physics world, and `WorldServerConfig.FrameAnchoring` only if the game
+runs the flat head and has no networked client.
 
-**Not fixed by this release:** many players spread over 100 km on one server, the reconciliation quantum on
-the wire, client-side precision, and terrain texturing at range.
+**Not fixed by this release:** any frame on the SHARDED head (release 3, with per-cell physics), many players
+spread over 100 km on one server, the reconciliation quantum on the wire, client-side precision, and terrain
+texturing at range.
 
 ### Release 3, MAJOR: the wire, the client frame, and per-cell physics
 
 Frame-relative `ReplicatedPosition` with the stamp in the same component and `Value` read-only, the
 wire-generation bump in `MoveProtocol`, `IPredictedState.FrameAnchor`, `Step` stamping it, the
 `ClientPrediction.Reconcile` frame conversion and replay ordering, `DynamicBodyReplication` sampling in the
-island frame, per-`CellSim` physics worlds and per-cell `PlayerMovementSystem` on the sharded head,
-`WorldClient.FrameChanged`, and `FrameAnchoring` defaulting on.
+island frame, per-`CellSim` physics worlds and per-cell `PlayerMovementSystem` on the sharded head, the
+absolute `WorldClient` presentation surface, `WorldClient.FrameChanged`, the new
+`ShardedWorldServerConfig.FrameAnchoring` (release 2 shipped the flat head's flag only), and `FrameAnchoring`
+defaulting on for both heads.
 
 **Why major, and it is two reasons not one.** The `ReplicatedPosition` encoding changes, so client and server
 must ship together. And `ReplicatedPosition.Value` loses its setter, which is a source break.
@@ -1487,9 +1870,21 @@ major is for. The rule each site then applies is one question: **where did this 
 | `MoveProtocol.cs:96` codec read | off the wire, carries its own stamp | `InFrame(readFrame, readLocal)` |
 | `MoveProtocol.cs:97` codec lerp | two stamped values | rebase into `b.Frame`, then lerp (section 7) |
 
-The grep that finds every one of them, in the engine and in any consumer, is
-`grep -rn 'new ReplicatedPosition' --include='*.cs'`. It currently returns 11 production sites plus 16 in the
-engine's own tests. The rule for a consumer is the same one question, and the compiler asks it for them.
+**The grep has to match two shapes, not one.** A construction site is only the common case: a bare assignment
+to the property is the other, and the first draft's grep missed it.
+
+```
+grep -rnE 'new ReplicatedPosition|\.Value\s*=' --include='*.cs'
+```
+
+The first alternative returns 11 production sites (the table above, exactly) plus 18 in the engine's own
+tests. The second catches the twelfth production write, **`pos.Value = state.Position` at
+`PlayerMovementSystem.cs:86`**, the sharded head's per-tick write-back, which becomes
+`pos = pos.WithLocal(state.Position)` on the framed step (section 6). The second alternative is deliberately
+loose and will hit unrelated `.Value` assignments, which is the right trade for a one-time migration grep: a
+false positive costs a glance and a false negative ships a silent frame reset. The compiler catches both
+shapes once `Value` loses its setter, so this grep is for SCOPING the work, not for finding it. The rule at
+each hit is the same one question, and the compiler asks it for a consumer too.
 
 **One further migration the rule does not cover**, called out because it is the one that would compile and be
 wrong: `ShardedWorldServer.cs:673` calls `host.SpawnOwned(state.Position.X, state.Position.Z, ...)` to pick
@@ -1501,10 +1896,14 @@ future change to run `spawnClamp` in a frame does not silently break cell assign
 **What a consumer gets:** the full guarantee. A shard server simulating players spread over 100 km keeps every
 one of them locally precise, and the reconciliation quantum stops depending on distance from the origin.
 
-**Adoption:** repin client and server together. Fix every `new ReplicatedPosition` per the table (the compiler
-lists them). Supply a `Func<CellCoord, IPhysicsWorld>` factory instead of a single physics world to
-`ShardedWorldServer`. Handle `WorldClient.FrameChanged` only for colliders the consumer registered itself
-outside the engine's streaming sink. Use the sharded server head for a spread world.
+**Adoption:** repin client and server together. Fix every `new ReplicatedPosition` per the table and the
+`pos.Value =` write-back the grep above also finds (the compiler lists them all). Supply a
+`Func<CellCoord, IPhysicsWorld>` factory instead of a single physics world to `ShardedWorldServer`, **and
+populate each returned world per the section 5 factory contract**, which is the largest single item on this
+list: the engine creates cells and never adds a static to one, so a consumer whose statics come from terrain
+chunks on a headless head needs [#269](https://github.com/APKiwiOrg/KhaozEngine/issues/269) or its own sink
+(section 12). Handle `WorldClient.FrameChanged` only for colliders the consumer registered itself outside the
+engine's streaming sink. Use the sharded server head for a spread world.
 
 **Sequencing:** [#197](https://github.com/APKiwiOrg/KhaozEngine/issues/197) must land before or with release 3
 (section 8).
@@ -1516,15 +1915,35 @@ The tiled-mapdoc and residency program
 revision) and this one were drafted concurrently and are mutually silent. They collide in one package and
 touch two of the same grids, so the coordination goes here rather than in a chat.
 
-**Merge ordering: floating-origin's terrain work rebases AFTER the mapdoc extraction lands.** The mapdoc
-program's first release moves `TerrainStreamer`, `StreamerConfig`, `IChunkSink`, `IAsyncChunkSink`,
-`ChunkCoord`, `ChunkGrid`, `ChunkRing`, `ChunkBuildScheduler` and `IChunkBuildDispatcher` out of
-`KhaozEngine.Terrain.Render3D` into a new render-free `KhaozEngine.Terrain`, with type forwarders left behind.
-Floating-origin's release 2 rewrites `TerrainChunkBuilder` and `Scene3DChunkSink`, which stay in
-`Terrain.Render3D` but sit right beside the moved types and call into several of them. Same package, same
-window, and the extraction is a whole-file move while the terrain bake is a line-level rewrite, so a
-simultaneous merge is a conflict on files that moved. The extraction lands first and this program rebases onto
-it. Nothing in this design depends on which assembly those types end up in.
+**Merge ordering: floating-origin's terrain work rebases AFTER the mapdoc extraction lands.** That extraction
+has now landed on `feature/tiled-mapdoc` as commit `9b54be00`, and its inventory is bigger than the first
+draft's list: **sixteen types** move out of `KhaozEngine.Terrain.Render3D` into a new render-free
+`KhaozEngine.Terrain`, behind `KhaozEngine.Terrain.Render3D/AssemblyForwarders.cs`. Read from the forwarder
+list rather than from the file names, because several files carry more than one type: `ChunkCoord`,
+`ChunkGrid`, `ChunkRing`, `ChunkBuild<>`, `ChunkBuildException`, `ChunkBuildScheduler<>`,
+`IChunkBuildDispatcher`, `TaskChunkBuildDispatcher`, `IChunkSink`, `IAsyncChunkSink`, `StreamerConfig`,
+`TerrainStreamer`, `TerrainLod`, `TerrainLodTier`, `TerrainLodConfig` and `TerrainChunkRegion`.
+
+Two of those matter to this program directly rather than as neighbours. **`TerrainChunkRegion` is the type
+release 2's `DrawTerrainChunk(this Scene3D, MeshHandle, TerrainChunkRegion)` placement overload takes**, so
+that overload's parameter type lives in a different assembly after the extraction. And the `TerrainLod*`
+trio sits on the LOD path the chunk-local bake feeds. Floating-origin's release 2 rewrites
+`TerrainChunkBuilder` and `Scene3DChunkSink`, which stay in `Terrain.Render3D` but sit right beside the moved
+types and call into several of them. Same package, same window, and the extraction is a whole-file move while
+the terrain bake is a line-level rewrite, so a simultaneous merge is a conflict on files that moved. The
+extraction lands first and this program rebases onto it. Nothing in this design depends on which assembly
+those types end up in, only on the type names, which the forwarders preserve.
+
+**The per-cell physics factory has a hard dependency on
+[#269](https://github.com/APKiwiOrg/KhaozEngine/issues/269) for the consumer half.** Section 5 assigns per-cell
+static population to the consumer, through the `Func<CellCoord, IPhysicsWorld>` factory, and a consumer
+running a HEADLESS shard head has no engine path that builds terrain colliders for it today:
+`ChunkTerrainCollision` is `internal` and only the render sink calls it. The mapdoc program's extraction is
+what unblocks that (a server can now construct a `TerrainStreamer` without dragging in Render3D), and #269 is
+where a server-side collider sink is actually built. **Release 3 is usable without #269** for a consumer whose
+statics come from its own authored placements rather than from terrain chunks, so this is a dependency of the
+adoption rather than of the release. It is recorded here so that the sequencing is a decision rather than a
+surprise, and so nobody builds a second server-side collider sink inside this program.
 
 **Coordinate coherence, by design rather than by luck.** The mapdoc program adds a THIRD grid,
 `MapTileCoord` at a 512 m default tile, on top of the 60 m shard cell and the 60 m terrain chunk. Its
@@ -1538,19 +1957,30 @@ reason not to.
 `ShardedWorldServerConfig.CellSize` defaults to 60 (`ShardedWorldServer.cs:20`) and `ShardHost` validates only
 that it is positive (`ShardHost.cs:73-74`). Under the island model a cell's frame is fixed at its centre, so a
 consumer that sets `CellSize = 512` (a plausible value once the mapdoc program makes 512 a familiar number in
-this codebase) gets locals reaching `256 + OverlapMargin + 64`, which is 344 m: inside the 512 m binade ceiling
-but with only a 1.5x margin instead of 3.0x, and one config change away from being outside it.
+this codebase) gets per-axis locals reaching `256 + OverlapMargin + 64`, which is 344 m, and a planar magnitude
+of 486 m: inside the 512 m binade ceiling, but at a 1.5x margin instead of 3.0x and one config change away
+from being outside it.
+
+**The guard compares the PLANAR magnitude, per section 2's pinned operand, and the `sqrt(2)` is load-bearing.**
+A guard on the per-axis figure alone passes configurations the model says fail. `CellSize = 600` with the
+default `OverlapMargin = 24` gives a per-axis worst of 388 m, which clears a 512 m per-axis ceiling
+comfortably, while its planar magnitude of 549 m sits in the `[2^9, 2^10)` binade and predicts **13.1 mm per
+20 s, over the 10 mm budget**. The default 60 / 24 is unaffected either way: 118 m per axis (binade
+`[2^6, 2^7)`) and 167 m planar (binade `[2^7, 2^8)`), so it sits in section 2's `<= 256 m` row at 3.3 mm and
+the full 3.0x margin under either operand.
 
 Release 3 adds the validation, with the derivation in the message:
 
 ```csharp
 // ShardedWorldServer ctor, beside the existing InterestRadius <= OverlapMargin check.
-float worstLocal = config.CellSize * 0.5f + config.OverlapMargin + WorldFrame.Grid * 0.5f;
-if (worstLocal > WorldFrame.MaxLocalRadius)
+float worstAxis   = config.CellSize * 0.5f + config.OverlapMargin + WorldFrame.Grid * 0.5f;
+float worstPlanar = worstAxis * MathF.Sqrt(2f);   // section 2: the model's operand is the PLANAR magnitude
+if (worstPlanar > WorldFrame.MaxLocalRadius)
     throw new ArgumentException(
         $"CellSize {config.CellSize} with OverlapMargin {config.OverlapMargin} puts a cell's worst frame-local "
-      + $"coordinate at {worstLocal} m, past the {WorldFrame.MaxLocalRadius} m float32 divergence ceiling. "
-      + "Reduce CellSize.", nameof(config));
+      + $"coordinate at {worstAxis} m per axis, a planar magnitude of {worstPlanar} m, past the "
+      + $"{WorldFrame.MaxLocalRadius} m float32 divergence ceiling (the ceiling is on the planar magnitude, "
+      + "design doc section 2). Reduce CellSize.", nameof(config));
 ```
 
 ## 13. Decision 10: the test plan
@@ -1578,9 +2008,20 @@ measures the difference of two errors. The double reference removes the ambiguit
 
 1. **Re-anchor is bit-exact.** For a swept set of locals and frame deltas satisfying the section 8
    precondition, `frame.DeltaTo(target)` applied to a local reproduces the world position with a bit-identical
-   round trip. Compare raw bits, not an epsilon.
+   round trip. Compare raw bits, not an epsilon. **Scoped to the RE-ANCHOR path**: the targets are drawn from
+   `WorldFrame.Nearest(world)` on a local past `ReanchorRadius`, which is what guarantees the magnitude
+   shrinks. Sweeping arbitrary frame pairs here asserts something false (section 6) and fails a correct
+   implementation.
 2. **Round-to-nearest never grows a local's magnitude.** The precondition the lemma needs, asserted directly,
-   so a future change to floor anchoring fails a test instead of silently rounding.
+   so a future change to floor anchoring fails a test instead of silently rounding. **Also scoped to the
+   re-anchor path**, for the same reason: it is the property `Nearest` plus the `> 96` trigger produce, not a
+   property of `ToFrame` in general.
+2a. **A handoff conversion is exact to half a ULP, bounded at `2^-18` m.** The path tests 1 and 2 deliberately
+   exclude. Sweep source and destination frames drawn from adjacent shard cells (including the
+   `[0, 60)` to `[60, 120)` pair section 6 works through, where the local grows from 60.1 to -67.9 and crosses
+   a binade), and assert the round-trip world position differs by at most `2^-18` m. Asserting bit-identity
+   here is the mistake this test exists to prevent, and asserting nothing is how a real regression in
+   `ToFrame` would reach a shard server unnoticed.
 3. **Anchors are exactly representable.** `X * WorldFrame.Grid` round-trips for the whole `short` range.
 4. **Hysteresis gives at least 64 m of separation.** An entity oscillating across a boundary re-anchors at
    most once, AND a straight-line traversal re-anchors at most once per 128 m. Both bounds, since section 2
@@ -1613,8 +2054,19 @@ measures the difference of two errors. The double reference removes the ambiguit
     same hit distance.
 10a. **A non-zero-origin terrain raycast.** Every terrain physics test today uses origin 0. Build a terrain
     collision chunk at a 100 km region origin with chunk-local vertices, raycast down at a point inside it,
-    and assert the hit height matches `field.SampleHeight` at that absolute point within a millimetre. This is
-    the test that proves the release 2 headline, and its absence is why the bake could have shipped broken.
+    and assert the hit height matches `field.SampleHeight`. This is the test that proves the release 2
+    headline, and its absence is why the bake could have shipped broken.
+    **Its tolerance cannot be a bare millimetre, and writing it that way would fail a CORRECT
+    implementation.** The ray's absolute XZ is a float32 at 100 km, so it is already on the 7.8 mm lattice
+    before it enters mesh space, and over terrain of slope `s` that lateral quantization becomes up to
+    `s * 7.8 mm` of height error that no amount of chunk-local baking can remove. On a 1-in-1 slope that is
+    7.8 mm, eight times a millimetre tolerance. Two assertions instead of one:
+    (a) sample `field.SampleHeight` at the **same float32 XZ the ray actually carried**, not at the
+    mathematical point the test meant, and assert within a millimetre. That is the assertion that tests the
+    bake.
+    (b) on a deliberately sloped chunk, assert the difference from the intended point is bounded by
+    `slope * ULP(absoluteXZ)`. That is the assertion that records the residual as a known, bounded property
+    rather than letting a future reader discover it as a flake.
 11. **`CanRebase` is false and `Rebase` throws on a seam default.** The DIM contract.
 
 ### Netcode tests, `KhaozEngine.Server.Tests`
@@ -1642,6 +2094,22 @@ measures the difference of two errors. The double reference removes the ambiguit
 21. **Per-cell frames on the sharded head.** Two players in cells whose frames differ, both stepping in the
     same tick, both querying their own cell's physics world, both landing on their own cell's terrain. The
     section 3 blocker, as a test: under the first draft's model this test cannot pass.
+22. **The Origin-framed-absolute invariant, on a framed release 2 flat server.** With
+    `WorldServerConfig.FrameAnchoring` on and a non-zero island frame, write `pos.Value = p` for a `p` at
+    100 km, assert `Value` reads back bit-identical to `p` and `Frame` is `WorldFrame.Origin`, then step one
+    tick and assert the self-heal has moved the component into the island frame AND that `Value` is still
+    bit-identical to the same-tick unframed result. The second half is the load-bearing one: it proves the
+    self-heal conversion is exact rather than merely close, which is what makes a settable `Value` safe for
+    the whole of release 2 (section 11).
+23. **The `WorldClient` presentation surface is uniformly absolute.** With the client on a deliberately
+    non-zero adopted frame, one local avatar and one remote at known absolute positions, assert `Snapshot()`
+    returns BOTH at their absolute world positions and that `LocalRenderState.Position` matches the local
+    entry. Section 7's bug, whose whole danger is that it produces no compile error and no exception
+    (`WorldClient.cs:286,623,643`).
+24. **A ghost carries the mirroring cell's frame.** Mirror a border entity from a neighbour whose frame
+    differs, then assert the ghost's `Frame` equals the DESTINATION cell's frame and its `Value` is
+    bit-identical to the source's `Value`. The section 6 fifth door: without the conversion this passes on
+    `Value` and is 128 m wrong on `Local`, which is exactly the read `Ghost`'s own doc invites.
 
 ### GPU goldens, `KhaozEngine.Render.Tests/Gpu`
 
@@ -1732,6 +2200,32 @@ here because a design that was wrong once about its own head is worth recording.
     exact translation and therefore carries accumulated divergence forward unchanged. The design bounds the
     per-window growth RATE, not the total. Section 2 states it correctly, and the acceptance test now carries
     a double-precision reference because the old one compared two float32 error terms against each other.
+
+Items 11 to 14 are premises of this document's SECOND draft, found by a verification pass that read the cited
+lines rather than the reasoning around them. They are here for the same reason as 8 to 10: a design that was
+wrong twice about the same subsystem should say which parts it was wrong about.
+
+11. **The second draft: subtract at submission (`_instances.Add`).** Wrong, and wrong in a way that would have
+    survived every test. `ComputeMainPassVisibility` reads `_instanceData[slot].Model` (`Scene3D.cs:3006`) for
+    both the frustum test and the terrain identity fast path, and `UploadInstances` (`:1860`) sends that same
+    list to the GPU, so submission-point subtraction forces the CPU cull into relative space. The visible
+    consequence would not have been a wrong image: it would have been the terrain fast path failing
+    `IsIdentityTransform` permanently and every chunk falling to the conservative sphere test, scene-wide,
+    forever, with no golden change. Section 9 moves the subtraction to the GPU-bound copy.
+
+12. **The second draft: `TerrainChunkBounds.FromPositions` is a latent break because nothing reads it as
+    world-space.** It IS read as world-space, at `Scene3D.cs:3007-3008`, which is the terrain cull fast path.
+    Section 5's break-list item 4 is corrected and section 9 specifies the replacement test.
+
+13. **The second draft: entities enter a cell through exactly four doors.** Five. Ghost mirroring
+    (`CellSim.ApplyGhostSnapshot`, driven from `ShardHost.cs:263`) lands a neighbour's stamp on every sync,
+    and it is the only door the step loop's self-heal cannot cover, because `PlayerMovementSystem` skips
+    ghosts by design (`PlayerMovementSystem.cs:52`).
+
+14. **The second draft: "`pos = pos.ToFrame(destinationCell.Frame)`, exact".** Exact to half a ULP, bounded at
+    `2^-18` m. A cell handoff can GROW the local's magnitude across a binade boundary, which is the one
+    precondition the section 8 lemma needs and the one a re-anchor guarantees. Harmless at 3.8 micrometres,
+    but invariant test 2 as first written asserts a property that is false on that path.
 
 ## 15. Deferred, and filed rather than fixed
 

@@ -35,13 +35,34 @@ What it owns today:
   reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
   reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device (Veldrid throws setting
   it with no main swapchain). `AppWindow.PresentMode` routes through it for runtime present-mode switching.
+- **Compute** (since 14.29.0) - `IGpuResourceFactory.CreateComputeShaderFromSpirv(computeGlsl)` compiles a GLSL 450
+  compute source into an `IGpuComputeShader`, and `CreateComputePipeline(in GpuComputePipelineDescription)` builds an
+  `IGpuComputePipeline` over it plus its resource layouts. Both handle types are separate from the graphics
+  `IGpuShaderSet` / `IGpuPipeline`, so a compute pipeline bound for a draw is a compile error. `IGpuCommandList`
+  gains `SetComputePipeline`, `SetComputeResourceSet` (plain and dynamic-offset), `Dispatch(x, y, z)`, and
+  `CopyBuffer`. Storage resources: `GpuTextureUsage.Storage` for a read-write image (bound via
+  `GpuResourceKind.TextureReadWrite`), and the existing `GpuBufferUsage.StructuredBufferReadOnly`/`ReadWrite` for
+  storage buffers. Readback: `IGpuDevice.Map`/`Unmap` take a buffer as well as a texture, and
+  `GpuReadback.ReadBuffer<T>` wraps the staging-copy-map-unmap sequence. Gate on `GpuCapabilities.SupportsCompute`;
+  creating a compute shader or pipeline on a device without it throws.
+  - **The workgroup size comes from the shader, not from you.** `IGpuComputeShader.ThreadGroupSizeX/Y/Z` is read
+    out of the compiled SPIR-V module's `LocalSize` execution mode and is what the pipeline is built with, so there
+    is no second copy of `layout(local_size_x = ...)` to drift (which would be invisible on Vulkan/D3D11 and
+    silently wrong on Metal, the only backend that reads it). A source with no literal workgroup declaration throws.
+  - **Ordering rules, since there is no barrier call.** Compute writes a storage texture that a graphics pass then
+    samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch that reads
+    what an earlier dispatch wrote: separate them with `End` + `Submit` + `WaitForIdle`. Full reasoning per backend
+    is on `IGpuCommandList`, in `docs/USING-KHAOZENGINE.md`, and in `docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
 - **`ShaderValidation`** - `ValidatePair(vertexGlsl, fragmentGlsl, label?)` compiles a GLSL 450 vertex/fragment
   pair to SPIR-V and cross-compiles it to every backend target (HLSL, MSL, GLSL, ESSL) with NO `GraphicsDevice`,
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run
-  on a real device of that backend. A compile failure throws `ShaderValidationException` naming the label and the
-  failing stage/target. The engine's own shader-source tests use this to validate every embedded production
-  shader; games can validate their custom shaders the same way in their own fast test suites.
+  on a real device of that backend. `ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a
+  compute shader. A compile failure throws `ShaderValidationException` naming the label and the failing
+  stage/target. The engine's own shader-source tests use this to validate every embedded production shader; games
+  can validate their custom shaders the same way in their own fast test suites.
 
-This is the ONLY package meant to reference Veldrid. The renderers still use Veldrid internally via the
-transitional `GpuDeviceContext.Device` accessor; wrapping the resource/command interface behind a full
-`IGraphicsBackend` seam so the Veldrid exposure goes away is still open (engine-audit stage 3).
+This is the ONLY package meant to reference Veldrid, and the containment is complete: the resource, command and
+device surface is the engine-owned `IGpuDevice` / `IGpuResourceFactory` / `IGpuCommandList` interface set, the
+backend implementation lives in `Internal/`, and no Veldrid type reaches the public API (asserted by reflection in
+`GpuPublicApiTests` here and `VeldridLockdownTests` for the consumer packages). Swapping the backend is a new
+`IGpuDevice` implementation, not a consumer-visible change.

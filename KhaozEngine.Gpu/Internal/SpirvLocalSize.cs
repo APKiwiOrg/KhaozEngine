@@ -1,0 +1,85 @@
+using System;
+
+namespace KhaozEngine.Gpu.Internal
+{
+    /// <summary>Reads a compute module's workgroup size straight out of its SPIR-V, so the engine never asks a
+    /// caller to repeat the shader's own <c>layout(local_size_x = ...)</c> in C#.
+    ///
+    /// This exists because of a silent-failure shape in the layer below. Veldrid's
+    /// <c>ComputePipelineDescription</c> carries <c>ThreadGroupSizeX/Y/Z</c> and validates nothing against the
+    /// shader, and only ONE backend reads them: Metal, where they become the <c>threadsPerThreadgroup</c> argument
+    /// of <c>dispatchThreadGroups</c> (MSL does not carry the workgroup size the way SPIR-V does). Vulkan and
+    /// Direct3D11 ignore them entirely and take the size from the module. So a description that disagrees with the
+    /// shader is invisible on two backends and produces WRONG RESULTS on the third, with no error anywhere. And
+    /// <c>Veldrid.SPIRV</c> does not report the size back either: its <c>ComputeCompilationResult</c> carries only
+    /// the cross-compiled source and a resource-layout reflection.
+    ///
+    /// Parsing the one execution mode out of the module is a few lines and removes the whole class of bug, so the
+    /// engine's <see cref="IGpuComputeShader"/> exposes the size it read rather than trusting a caller-supplied
+    /// copy.</summary>
+    internal static class SpirvLocalSize
+    {
+        const uint Magic = 0x07230203;
+        const int HeaderWords = 5;
+        const uint OpExecutionMode = 16;
+        const uint OpExecutionModeId = 331;
+        const uint ExecutionModeLocalSize = 17;
+        const uint ExecutionModeLocalSizeId = 38;
+
+        /// <summary>Reads the <c>LocalSize</c> execution mode out of a SPIR-V module. Throws
+        /// <see cref="ShaderValidationException"/> when the bytes are not a SPIR-V module, are truncated, or
+        /// declare no literal workgroup size.</summary>
+        public static (uint X, uint Y, uint Z) Parse(byte[] spirv, string label)
+        {
+            if (spirv is null) throw new ArgumentNullException(nameof(spirv));
+            if (spirv.Length < HeaderWords * 4 || spirv.Length % 4 != 0)
+                throw new ShaderValidationException($"{label}: not a SPIR-V module (length {spirv.Length}).");
+
+            uint[] words = ToWords(spirv);
+            if (words[0] != Magic)
+                throw new ShaderValidationException(
+                    $"{label}: not a SPIR-V module (magic 0x{words[0]:X8}, expected 0x{Magic:X8}).");
+
+            bool sawLocalSizeId = false;
+            int i = HeaderWords;
+            while (i < words.Length)
+            {
+                uint opcode = words[i] & 0xFFFFu;
+                int wordCount = (int)(words[i] >> 16);
+                // A zero word count would not advance, so a malformed module cannot spin here.
+                if (wordCount <= 0 || i + wordCount > words.Length)
+                    throw new ShaderValidationException($"{label}: truncated or malformed SPIR-V instruction stream.");
+
+                // OpExecutionMode: <entryPoint id> <mode> <literals...>. LocalSize carries x/y/z literals.
+                if (opcode == OpExecutionMode && wordCount >= 6 && words[i + 2] == ExecutionModeLocalSize)
+                    return (words[i + 3], words[i + 4], words[i + 5]);
+
+                // OpExecutionModeId + LocalSizeId means the size comes from specialization constants, which are
+                // resolvable only by evaluating the constant graph. Flag it rather than silently defaulting.
+                if (opcode == OpExecutionModeId && wordCount >= 6 && words[i + 2] == ExecutionModeLocalSizeId)
+                    sawLocalSizeId = true;
+
+                i += wordCount;
+            }
+
+            throw new ShaderValidationException(sawLocalSizeId
+                ? $"{label}: workgroup size comes from specialization constants (LocalSizeId), which the engine " +
+                  "cannot resolve. Declare a literal layout(local_size_x = ...) instead."
+                : $"{label}: no layout(local_size_x = ...) workgroup-size declaration found. A compute shader must " +
+                  "declare one.");
+        }
+
+        static uint[] ToWords(byte[] spirv)
+        {
+            var words = new uint[spirv.Length / 4];
+            // SPIR-V words are little-endian in every module glslang / shaderc emits, and the magic check above
+            // rejects a byte-reversed module before this is used.
+            for (int w = 0; w < words.Length; w++)
+            {
+                int b = w * 4;
+                words[w] = (uint)(spirv[b] | (spirv[b + 1] << 8) | (spirv[b + 2] << 16) | (spirv[b + 3] << 24));
+            }
+            return words;
+        }
+    }
+}

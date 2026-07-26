@@ -102,4 +102,33 @@ namespace KhaozEngine.Gpu.Internal
         public VeldridGpuShaderSet(DeviceLiveness liveness, Shader[] shaders) { _liveness = liveness; Shaders = shaders; }
         public void Dispose() { if (_liveness.Dead) return; foreach (var s in Shaders) s.Dispose(); }
     }
+
+    /// <summary>Wraps the single Veldrid <see cref="Shader"/> a single-stage (compute) SPIR-V cross-compile
+    /// produces, carrying the workgroup size read out of the SPIR-V module (see <see cref="SpirvLocalSize"/>).</summary>
+    internal sealed class VeldridGpuComputeShader : IGpuComputeShader
+    {
+        internal Shader Shader { get; }
+        readonly DeviceLiveness _liveness;
+        public uint ThreadGroupSizeX { get; }
+        public uint ThreadGroupSizeY { get; }
+        public uint ThreadGroupSizeZ { get; }
+
+        public VeldridGpuComputeShader(DeviceLiveness liveness, Shader shader, uint groupX, uint groupY, uint groupZ)
+        {
+            _liveness = liveness; Shader = shader;
+            ThreadGroupSizeX = groupX; ThreadGroupSizeY = groupY; ThreadGroupSizeZ = groupZ;
+        }
+
+        public void Dispose() { if (!_liveness.Dead) Shader.Dispose(); }
+    }
+
+    /// <summary>Wraps a Veldrid compute <see cref="Pipeline"/> (one created from a
+    /// <see cref="ComputePipelineDescription"/>).</summary>
+    internal sealed class VeldridGpuComputePipeline : IGpuComputePipeline
+    {
+        internal Pipeline Pipeline { get; }
+        readonly DeviceLiveness _liveness;
+        public VeldridGpuComputePipeline(DeviceLiveness liveness, Pipeline pipeline) { _liveness = liveness; Pipeline = pipeline; }
+        public void Dispose() { if (!_liveness.Dead) Pipeline.Dispose(); }
+    }
 }

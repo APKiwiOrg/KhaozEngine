@@ -1,11 +1,16 @@
+using System;
+
 namespace KhaozEngine.Gpu
 {
     /// <summary>
-    /// Copies a rendered GPU texture back to a tightly-packed CPU RGBA8 buffer (<c>width * height * 4</c> bytes,
-    /// row-major, top-left origin). Allocates a staging texture, blits into it, maps it, and de-strides the
-    /// driver's <see cref="MappedData.RowPitch"/> into packed rows. Shared by the Render2D and Render3D headless
-    /// snapshot helpers (their readback used to be duplicated verbatim). The source texture must be done
-    /// rendering before this is called (the caller submits + waits on its render work first).
+    /// GPU-to-CPU readback. <see cref="ToRgba"/> / <see cref="ToRgbaMip"/> copy a rendered texture back to a
+    /// tightly-packed CPU RGBA8 buffer (<c>width * height * 4</c> bytes, row-major, top-left origin): they
+    /// allocate a staging texture, blit into it, map it, and de-stride the driver's
+    /// <see cref="MappedData.RowPitch"/> into packed rows. Shared by the Render2D and Render3D headless snapshot
+    /// helpers (their readback used to be duplicated verbatim). <see cref="ReadBuffer{T}"/> is the buffer
+    /// equivalent, for reading a compute-written storage buffer back as a typed array. The source resource must
+    /// be done being written before any of these is called (each submits its own copy and drains, but the work
+    /// that PRODUCED the data has to have been submitted first).
     /// </summary>
     public static class GpuReadback
     {
@@ -81,6 +86,50 @@ namespace KhaozEngine.Gpu
             }
             gd.Unmap(staging);
             return outBytes;
+        }
+
+        /// <summary>Read <paramref name="elementCount"/> elements of <typeparamref name="T"/> back from
+        /// <paramref name="src"/> (typically a <see cref="GpuBufferUsage.StructuredBufferReadWrite"/> buffer a
+        /// compute pass just wrote), starting at <paramref name="srcOffsetBytes"/>. Allocates a
+        /// <see cref="GpuBufferUsage.Staging"/> buffer, copies into it, drains, maps, and copies out - the buffer
+        /// counterpart of <see cref="ToRgba"/>, so a compute consumer does not re-derive the sequence.
+        /// <typeparamref name="T"/>'s layout must match the shader's, which for a std430 buffer means watching the
+        /// usual scalar/vec3 padding rules (a <c>vec3</c> member occupies 16 bytes).</summary>
+        public static T[] ReadBuffer<T>(IGpuDevice gd, IGpuBuffer src, int elementCount, uint srcOffsetBytes = 0)
+            where T : unmanaged
+        {
+            if (elementCount < 0) throw new ArgumentOutOfRangeException(nameof(elementCount));
+            var result = new T[elementCount];
+            if (elementCount == 0) return result;
+
+            uint sizeBytes;
+            unsafe { sizeBytes = (uint)(elementCount * sizeof(T)); }
+
+            var f = gd.Factory;
+            using IGpuBuffer staging = f.CreateBuffer(new GpuBufferDescription(sizeBytes, GpuBufferUsage.Staging));
+            // Drain BEFORE the copy, not only after it. The compute work that produced the data was submitted on
+            // another command list, and a copy in a later submission is not ordered against it on every backend
+            // (Veldrid's Vulkan submissions carry no semaphores, and its buffer copy emits no barrier ahead of
+            // itself). A readback is a synchronous operation anyway, so an extra drain on an already-idle device
+            // costs nothing and removes the footgun.
+            gd.WaitForIdle();
+            using (IGpuCommandList cl = f.CreateCommandList())
+            {
+                cl.Begin();
+                cl.CopyBuffer(src, srcOffsetBytes, staging, 0, sizeBytes);
+                cl.End();
+                gd.Submit(cl);
+                gd.WaitForIdle();
+            }
+
+            MappedData map = gd.Map(staging, GpuMapMode.Read);
+            unsafe
+            {
+                var span = new ReadOnlySpan<T>((void*)map.Data, elementCount);
+                span.CopyTo(result);
+            }
+            gd.Unmap(staging);
+            return result;
         }
     }
 }

@@ -48,9 +48,15 @@ namespace KhaozEngine.Gpu
         /// Veldrid's per-format usage support (see <c>VeldridMap.SupportsShadowMaps</c>).</summary>
         public bool SupportsShadowMaps { get; }
 
+        /// <summary>True if the device can run compute shaders (Veldrid <c>Features.ComputeShader</c>). Metal,
+        /// Vulkan and Direct3D11 all report true; an OpenGL / GLES device below the compute-capable version does
+        /// not. Gate any compute path on this and degrade to a non-compute fallback rather than crashing:
+        /// <c>CreateComputeShaderFromSpirv</c> / <c>CreateComputePipeline</c> throw on a device without it.</summary>
+        public bool SupportsCompute { get; }
+
         public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne,
             string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false,
-            int maxMsaaSampleCount = 1, bool supportsShadowMaps = true)
+            int maxMsaaSampleCount = 1, bool supportsShadowMaps = true, bool supportsCompute = false)
         {
             ClipSpaceYInverted = clipSpaceYInverted;
             DepthRangeZeroToOne = depthRangeZeroToOne;
@@ -59,6 +65,7 @@ namespace KhaozEngine.Gpu
             SamplerLodBias = samplerLodBias;
             MaxMsaaSampleCount = maxMsaaSampleCount < 1 ? 1 : maxMsaaSampleCount;
             SupportsShadowMaps = supportsShadowMaps;
+            SupportsCompute = supportsCompute;
         }
     }
 }

@@ -30,9 +30,15 @@ namespace KhaozEngine.Gpu.Internal
             GraphicsDevice = gd;
             Backend = backend;
             _ownsDevice = ownsDevice;
+            // Same capability set GpuDeviceContext builds, so IGpuDevice.Capabilities and
+            // GpuDeviceContext.Capabilities agree member for member. The device name / sampler-feature flags used
+            // to be dropped here (left at their defaults) while the context populated them, which nothing read
+            // but made this copy quietly wrong.
             Capabilities = new GpuCapabilities(gd.IsClipSpaceYInverted, gd.IsDepthRangeZeroToOne,
+                gd.DeviceName ?? "", gd.Features.SamplerAnisotropy, gd.Features.SamplerLodBias,
                 maxMsaaSampleCount: VeldridMap.MaxMsaaSampleCount(gd),
-                supportsShadowMaps: VeldridMap.SupportsShadowMaps(gd));
+                supportsShadowMaps: VeldridMap.SupportsShadowMaps(gd),
+                supportsCompute: gd.Features.ComputeShader);
             // Wrap the device-owned swapchain framebuffer + shared samplers (no-dispose: the device owns them).
             _swapchainFb = gd.MainSwapchain != null
                 ? new VeldridGpuFramebuffer(_liveness, gd.MainSwapchain.Framebuffer, ownsFramebuffer: false)
@@ -84,6 +90,14 @@ namespace KhaozEngine.Gpu.Internal
         }
 
         public void Unmap(IGpuTexture staging) => GraphicsDevice.Unmap(((VeldridGpuTexture)staging).Texture);
+
+        public MappedData Map(IGpuBuffer staging, GpuMapMode mode)
+        {
+            MappedResource m = GraphicsDevice.Map(((VeldridGpuBuffer)staging).Buffer, VeldridMap.ToVeldrid(mode));
+            return new MappedData(m.Data, m.RowPitch, m.SizeInBytes);
+        }
+
+        public void Unmap(IGpuBuffer staging) => GraphicsDevice.Unmap(((VeldridGpuBuffer)staging).Buffer);
 
         // Mirrors the requested vsync so the getter/setter round-trip on a headless (no-swapchain) device, where
         // Veldrid THROWS from GraphicsDevice.SyncToVerticalBlank. Seeded to Veldrid's default (true).
@@ -152,8 +166,17 @@ namespace KhaozEngine.Gpu.Internal
         // ---- IGpuResourceFactory ----
 
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
-            => new VeldridGpuBuffer(_liveness, GraphicsDevice.ResourceFactory.CreateBuffer(
-                new BufferDescription(d.SizeInBytes, VeldridMap.ToVeldrid(d.Usage), d.StructureByteStride)));
+        {
+            // Structured buffers are always created RAW on Direct3D11. The engine's only shader path is
+            // GLSL 450 -> SPIR-V -> SPIRV-Cross, and SPIRV-Cross emits every GLSL storage block (`buffer { T x[]; }`)
+            // as a ByteAddressBuffer / RWByteAddressBuffer, never a StructuredBuffer<T>. A ByteAddressBuffer needs
+            // a RAW view (R32_Typeless + the Raw view flag), which is what Veldrid's rawBuffer flag selects; the
+            // default structured view would not match the shader. Since the shader shape is fixed by the pipeline,
+            // this has exactly one correct value and is not worth a caller-visible knob. No-op on Metal and Vulkan.
+            bool structured = (d.Usage & (GpuBufferUsage.StructuredBufferReadOnly | GpuBufferUsage.StructuredBufferReadWrite)) != 0;
+            var desc = new BufferDescription(d.SizeInBytes, VeldridMap.ToVeldrid(d.Usage), d.StructureByteStride, structured);
+            return new VeldridGpuBuffer(_liveness, GraphicsDevice.ResourceFactory.CreateBuffer(desc));
+        }
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
             => new VeldridGpuTexture(_liveness, GraphicsDevice.ResourceFactory.CreateTexture(new TextureDescription(
@@ -231,6 +254,34 @@ namespace KhaozEngine.Gpu.Internal
             return new VeldridGpuShaderSet(_liveness, shaders);
         }
 
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
+        {
+            RequireCompute();
+            // Compile the GLSL to SPIR-V here rather than letting CreateFromSpirv do it, so the module can be read
+            // for its workgroup size before it is handed on (Veldrid.SPIRV never reports the size back). Passing
+            // SPIR-V bytes through is exactly what CreateFromSpirv does with GLSL anyway - it sniffs the magic and
+            // shaderc-compiles when absent.
+            byte[] spirv;
+            try
+            {
+                spirv = SpirvCompilation.CompileGlslToSpirv(
+                    computeGlsl, "compute", ShaderStages.Compute, GlslCompileOptions.Default).SpirvBytes;
+            }
+            catch (Exception ex)
+            {
+                throw new ShaderValidationException($"compute: GLSL -> SPIR-V compile failed: {ex.Message}", ex);
+            }
+
+            (uint gx, uint gy, uint gz) = SpirvLocalSize.Parse(spirv, "compute");
+
+            // The single-stage CreateFromSpirv overload cross-compiles to the backend's compute shading language.
+            // The graphics-only CrossCompileOptions (InvertVertexOutputY, FixClipSpaceZ) have no meaning for a
+            // compute stage, so the defaults are correct here.
+            Shader shader = GraphicsDevice.ResourceFactory.CreateFromSpirv(
+                new ShaderDescription(ShaderStages.Compute, spirv, "main"));
+            return new VeldridGpuComputeShader(_liveness, shader, gx, gy, gz);
+        }
+
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
         {
             var attachments = new BlendAttachmentDescription[d.BlendAttachments.Length];
@@ -266,6 +317,32 @@ namespace KhaozEngine.Gpu.Internal
                 Outputs = VeldridMap.ToVeldrid(d.Outputs),
             };
             return new VeldridGpuPipeline(_liveness, GraphicsDevice.ResourceFactory.CreateGraphicsPipeline(pd));
+        }
+
+        public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
+        {
+            RequireCompute();
+            var layouts = new ResourceLayout[d.ResourceLayouts.Length];
+            for (int i = 0; i < layouts.Length; i++)
+                layouts[i] = ((VeldridGpuResourceLayout)d.ResourceLayouts[i]).Layout;
+
+            // Metal is the only backend that reads ThreadGroupSize* (it becomes threadsPerThreadgroup at dispatch
+            // encode); Vulkan and D3D11 take the size from the shader module. Feeding it from the module's own
+            // declaration means the two can never disagree.
+            var shader = (VeldridGpuComputeShader)d.Shader;
+            var pd = new ComputePipelineDescription(shader.Shader, layouts,
+                shader.ThreadGroupSizeX, shader.ThreadGroupSizeY, shader.ThreadGroupSizeZ);
+            return new VeldridGpuComputePipeline(_liveness, GraphicsDevice.ResourceFactory.CreateComputePipeline(pd));
+        }
+
+        // Fail at creation with a readable message rather than deep inside the backend at dispatch time. Callers
+        // gate on GpuCapabilities.SupportsCompute; this is the backstop for the ones that forgot.
+        void RequireCompute()
+        {
+            if (!GraphicsDevice.Features.ComputeShader)
+                throw new NotSupportedException(
+                    $"The {Backend} device does not support compute shaders. Gate on GpuCapabilities.SupportsCompute " +
+                    "and fall back to a non-compute path.");
         }
 
         static VertexLayoutDescription ToVeldridVertexLayout(in GpuVertexLayoutDescription vl)

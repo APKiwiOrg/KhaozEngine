@@ -43,6 +43,7 @@ namespace KhaozEngine.Gpu.Internal
             if ((u & GpuTextureUsage.Staging) != 0) r |= TextureUsage.Staging;
             if ((u & GpuTextureUsage.Cubemap) != 0) r |= TextureUsage.Cubemap;
             if ((u & GpuTextureUsage.GenerateMipmaps) != 0) r |= TextureUsage.GenerateMipmaps;
+            if ((u & GpuTextureUsage.Storage) != 0) r |= TextureUsage.Storage;
             return r;
         }
 

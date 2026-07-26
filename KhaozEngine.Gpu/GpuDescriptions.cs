@@ -10,7 +10,9 @@ namespace KhaozEngine.Gpu
         public uint SizeInBytes { get; }
         /// <summary>How the buffer is used.</summary>
         public GpuBufferUsage Usage { get; }
-        /// <summary>For a structured buffer, the per-element stride in bytes (0 otherwise).</summary>
+        /// <summary>For a structured buffer, the per-element stride in bytes (0 otherwise). Advisory only on the
+        /// Direct3D11 path, which binds every structured buffer as a RAW (byte-address) view to match what
+        /// SPIRV-Cross emits for a GLSL storage block; the size must be a multiple of 4 either way.</summary>
         public uint StructureByteStride { get; }
 
         public GpuBufferDescription(uint sizeInBytes, GpuBufferUsage usage, uint structureByteStride = 0)
@@ -358,5 +360,29 @@ namespace KhaozEngine.Gpu
         public IGpuResourceLayout[] ResourceLayouts;
         /// <summary>The render-target formats this pipeline draws into.</summary>
         public GpuOutputDescription Outputs;
+    }
+
+    /// <summary>Describes a compute pipeline: the compiled compute shader plus the resource layouts (binding sets,
+    /// in set order). Engine mirror of Veldrid <c>ComputePipelineDescription</c>, minus its thread-group size -
+    /// the engine reads that off the shader module instead (see <see cref="IGpuComputeShader.ThreadGroupSizeX"/>),
+    /// so there is no second copy of the workgroup size to disagree with the GLSL.
+    ///
+    /// Deliberately separate from <see cref="GpuPipelineDescription"/>: a compute pipeline has no vertex layout, no
+    /// blend/depth/raster state, and no render-target outputs, and the two produce different handle types
+    /// (<see cref="IGpuComputePipeline"/> vs <see cref="IGpuPipeline"/>) so a compute pipeline cannot be bound for
+    /// a draw.</summary>
+    public readonly struct GpuComputePipelineDescription
+    {
+        /// <summary>The compiled compute shader (from <see cref="IGpuResourceFactory.CreateComputeShaderFromSpirv"/>).</summary>
+        public IGpuComputeShader Shader { get; }
+        /// <summary>The resource layouts (binding sets), in set order. Every element's
+        /// <see cref="GpuResourceLayoutElement.Stages"/> must include <see cref="GpuShaderStages.Compute"/>.</summary>
+        public IGpuResourceLayout[] ResourceLayouts { get; }
+
+        public GpuComputePipelineDescription(IGpuComputeShader shader, params IGpuResourceLayout[] resourceLayouts)
+        {
+            Shader = shader;
+            ResourceLayouts = resourceLayouts ?? Array.Empty<IGpuResourceLayout>();
+        }
     }
 }

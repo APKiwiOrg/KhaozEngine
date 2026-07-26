@@ -45,6 +45,11 @@ namespace KhaozEngine.Gpu
         Cubemap = 1 << 4,
         /// <summary>Allows mipmap generation.</summary>
         GenerateMipmaps = 1 << 5,
+        /// <summary>Read-write from a compute shader (a storage / UAV image, GLSL <c>image2D</c>), bound through a
+        /// <see cref="GpuResourceKind.TextureReadWrite"/> slot. Combine with <see cref="Sampled"/> for the usual
+        /// compute-writes-then-graphics-samples handoff. Mirrors Veldrid <c>TextureUsage.Storage</c>; needs
+        /// <see cref="GpuCapabilities.SupportsCompute"/>.</summary>
+        Storage = 1 << 6,
     }
 
     /// <summary>How a GPU buffer is used. Mirrors Veldrid <c>BufferUsage</c>.</summary>

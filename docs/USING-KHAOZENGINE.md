@@ -75,6 +75,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Deterministic floating point (`KhaozEngine.Determinism`)](#deterministic-floating-point-khaozenginedeterminism)
 - [Testing your game headlessly](#testing-your-game-headlessly)
 - [Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)](#device-free-shader-validation-khaozenginegpushadervalidation)
+- [GPU compute shaders (`KhaozEngine.Gpu`, 14.29.0)](#gpu-compute-shaders-khaozenginegpu-14290)
 - [Drain before mid-life GPU resource disposal (`IGpuDevice.WaitForIdle`)](#drain-before-mid-life-gpu-resource-disposal-igpudevicewaitforidle)
 - [Headless snapshots / screenshots (`KhaozEngine.Snapshot`)](#headless-snapshots-screenshots-khaozenginesnapshot)
 - [Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)](#multiplayer-transport-seam-fixed-tick-host-khaozenginenetcode-khaozenginesimulation)
@@ -4398,7 +4399,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.28.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.29.0" />
 ```
 
 ```csharp
@@ -7755,6 +7756,129 @@ public void MyShaderCompilesEverywhere()
 This is exactly what the engine's own `ShaderSourceValidationTests` do for every embedded production shader.
 Validate your game's custom shaders the same way in a plain `[Fact]` (no `[GpuFact]`, no device) and a broken
 shader fails CI instead of surfacing only when a player on that backend loads the scene.
+
+`ShaderValidation.ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a compute shader
+(see the next section).
+
+---
+
+## GPU compute shaders (`KhaozEngine.Gpu`, 14.29.0)
+
+For work that is not one-output-per-pixel: a spectrum bake, an FFT, a prefix sum, a particle sim step, a
+histogram. Anything that has to write a buffer, or write a texture at addresses a rasterizer would not visit.
+
+Gate on the capability first. Metal, Vulkan and Direct3D11 all support compute; an OpenGL/GLES device below the
+compute-capable version does not, and creating a compute shader or pipeline there throws rather than failing
+later at dispatch.
+
+```csharp
+if (!gd.Capabilities.SupportsCompute)
+    return;   // fall back to a non-compute path
+```
+
+A compute pass is a shader, a pipeline, a resource layout + set, and a dispatch:
+
+```csharp
+const string Blur = @"#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, rgba8) uniform writeonly image2D Dst;
+layout(set = 0, binding = 1) uniform Params { uint Size; uint Pad0; uint Pad1; uint Pad2; };
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (p.x >= int(Size) || p.y >= int(Size)) { return; }
+    imageStore(Dst, p, vec4(float(p.x) / 255.0, float(p.y) / 255.0, 0.0, 1.0));
+}";
+
+IGpuResourceFactory f = gd.Factory;
+using IGpuComputeShader shader = f.CreateComputeShaderFromSpirv(Blur);
+using IGpuResourceLayout layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+    new GpuResourceLayoutElement("Dst",    GpuResourceKind.TextureReadWrite, GpuShaderStages.Compute),
+    new GpuResourceLayoutElement("Params", GpuResourceKind.UniformBuffer,    GpuShaderStages.Compute)));
+using IGpuComputePipeline pipeline = f.CreateComputePipeline(
+    new GpuComputePipelineDescription(shader, layout));
+using IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(layout, storageTex, paramsBuf));
+
+uint groups = (size + shader.ThreadGroupSizeX - 1) / shader.ThreadGroupSizeX;
+cl.SetComputePipeline(pipeline);
+cl.SetComputeResourceSet(0, set);
+cl.Dispatch(groups, groups, 1);
+```
+
+`Dispatch` takes WORKGROUP counts, not thread counts, so divide by the workgroup size and bounds-check in the
+shader (the tail group runs on out-of-range indices). **You never restate the workgroup size in C#**:
+`IGpuComputeShader.ThreadGroupSizeX/Y/Z` is read out of the compiled shader's own
+`layout(local_size_x = ...)`, and that is what the pipeline is built with. A source without a literal workgroup
+declaration throws.
+
+Resources. A texture a compute shader writes needs `GpuTextureUsage.Storage`, and one a later graphics pass
+samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredBufferReadWrite` (or
+`...ReadOnly`) bound through the matching `GpuResourceKind`. Read a buffer back with
+`GpuReadback.ReadBuffer<T>(gd, buffer, elementCount)`, which wraps the whole staging-copy-map-unmap sequence.
+`T`'s layout must match the shader's, so watch the std430 padding rules (a `vec3` member occupies 16 bytes).
+
+### Ordering: two rules, because there is no barrier call
+
+There is no barrier method on this seam, because the backend layer has none. What ordering exists comes from
+each backend's implicit handling, and Metal, Vulkan and Direct3D11 do not agree, so the seam guarantees exactly
+two patterns. Both are proved by `[GpuFact]` tests on all three backends
+(`KhaozEngine.Render.Tests/Gpu/Compute*GpuTests.cs`).
+
+**1. Compute writes a storage texture, then a graphics pass samples it: same command list, `Storage | Sampled`.**
+
+```csharp
+using IGpuTexture map = f.CreateTexture(GpuTextureDescription.Texture2D(
+    size, size, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Storage | GpuTextureUsage.Sampled));
+...
+cl.Begin();
+cl.SetComputePipeline(computePipeline);
+cl.SetComputeResourceSet(0, computeSet);
+cl.Dispatch(groups, groups, 1);
+
+cl.SetFramebuffer(fb);          // same command list, no re-submit between the two
+cl.SetPipeline(graphicsPipeline);
+cl.SetGraphicsResourceSet(0, drawSet);   // binds the same texture, this time as TextureReadOnly
+cl.Draw(3);
+cl.End();
+gd.Submit(cl);
+```
+
+Vulkan queues a layout restore when the dispatch binds the texture and drains it before the next draw, but that
+queue is per-command-list state and is armed only by the `Sampled` usage flag, so a `Storage`-only texture or a
+split across two command lists silently skips the barrier. Metal ends the compute encoder as the render encoder
+begins. Direct3D11 unbinds the UAV as the SRV is bound. You do not need to unbind the compute set or switch
+pipeline first; all three cope.
+
+**2. A dispatch that reads what an earlier dispatch wrote: `End` + `Submit` + `WaitForIdle` between them.**
+
+```csharp
+foreach (var stage in stages)      // e.g. the log2(N) stages of an FFT
+{
+    using IGpuCommandList cl = f.CreateCommandList();
+    cl.Begin();
+    cl.SetComputePipeline(pipeline);
+    cl.SetComputeResourceSet(0, stage.Set);
+    cl.Dispatch(groups, 1, 1);
+    cl.End();
+    gd.Submit(cl);
+    gd.WaitForIdle();              // the only cross-dispatch ordering the seam guarantees
+}
+```
+
+Chaining dependent dispatches inside one command list is NOT safe. On Vulkan no memory barrier is emitted
+between them at all (storage buffers are not hazard-tracked, and a storage image stays in the same layout so the
+transition is a no-op), and dispatches inside a command buffer may overlap. Independent dispatches that do not
+read each other's output can share one command list freely; it is only the read-after-write chain that needs the
+boundary. This costs a GPU stall per dependent stage, which is real, and it is the current ceiling on a
+multi-pass compute chain. Rationale and the per-backend evidence:
+`docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
+
+Validate compute sources device-free in your fast test lane, the same way as a graphics pair:
+
+```csharp
+[Fact]
+public void MyComputeShaderCompilesEverywhere()
+    => ShaderValidation.ValidateCompute(MyShaders.SpectrumBake, "SpectrumBake");
+```
 
 ---
 

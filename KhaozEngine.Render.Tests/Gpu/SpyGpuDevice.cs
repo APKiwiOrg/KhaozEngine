@@ -53,6 +53,9 @@ namespace KhaozEngine.Tests.Gpu
         public MappedData Map(IGpuTexture staging, GpuMapMode mode) => _inner.Map(staging, mode);
         public void Unmap(IGpuTexture staging) => _inner.Unmap(staging);
 
+        public MappedData Map(IGpuBuffer staging, GpuMapMode mode) => _inner.Map(staging, mode);
+        public void Unmap(IGpuBuffer staging) => _inner.Unmap(staging);
+
         public void ResizeSwapchain(uint w, uint h) => _inner.ResizeSwapchain(w, h);
         public void Present() => _inner.Present();
 

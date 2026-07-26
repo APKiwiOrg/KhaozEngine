@@ -62,6 +62,10 @@ namespace KhaozEngine.Gpu.Internal
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
             => CommandList.UpdateBuffer(((VeldridGpuBuffer)b).Buffer, offsetBytes, data);
 
+        public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes)
+            => CommandList.CopyBuffer(((VeldridGpuBuffer)src).Buffer, srcOffsetBytes,
+                ((VeldridGpuBuffer)dst).Buffer, dstOffsetBytes, sizeInBytes);
+
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
             => CommandList.CopyTexture(((VeldridGpuTexture)src).Texture, ((VeldridGpuTexture)dst).Texture);
 
@@ -76,6 +80,18 @@ namespace KhaozEngine.Gpu.Internal
 
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
             => CommandList.ResolveTexture(((VeldridGpuTexture)src).Texture, ((VeldridGpuTexture)dst).Texture);
+
+        public void SetComputePipeline(IGpuComputePipeline p)
+            => CommandList.SetPipeline(((VeldridGpuComputePipeline)p).Pipeline);
+
+        public void SetComputeResourceSet(uint slot, IGpuResourceSet set)
+            => CommandList.SetComputeResourceSet(slot, ((VeldridGpuResourceSet)set).Set);
+
+        public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
+            => CommandList.SetComputeResourceSet(slot, ((VeldridGpuResourceSet)set).Set, 1u, ref dynamicOffset);
+
+        public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
+            => CommandList.Dispatch(groupCountX, groupCountY, groupCountZ);
 
         public void Dispose() { if (_owns && !_liveness.Dead) CommandList.Dispose(); }
     }

@@ -5,6 +5,77 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.29.0
+
+New: GPU compute shaders in the `KhaozEngine.Gpu` seam. Compute shaders from GLSL 450, compute pipelines,
+read-write storage textures and storage buffers, `Dispatch`, buffer copy + map, typed buffer readback,
+device-free compute-shader validation, and a `SupportsCompute` capability. Adds no rendering behaviour, so no
+GPU golden moves. Closes #309; the FFT ocean program that consumes it is #310.
+
+- **Compute shader + pipeline.** `IGpuResourceFactory.CreateComputeShaderFromSpirv(string computeGlsl)` returns
+  an `IGpuComputeShader` (the single-stage sibling of `IGpuShaderSet`), and `CreateComputePipeline(in
+  GpuComputePipelineDescription)` returns an `IGpuComputePipeline`. Both handle types are distinct from their
+  graphics counterparts on purpose: the layer below has ONE pipeline type and one `SetPipeline` for both kinds,
+  so binding a compute pipeline for a draw is a runtime error there and a compile error here. Both throw
+  `NotSupportedException` on a device without compute support rather than failing later at dispatch.
+- **The workgroup size is read off the shader, not restated by the caller.** `GpuComputePipelineDescription`
+  carries only the shader and the resource layouts. `IGpuComputeShader.ThreadGroupSizeX/Y/Z` come from the
+  compiled SPIR-V module's own `LocalSize` execution mode (new internal `SpirvLocalSize`), and that is what the
+  pipeline is built with. This closes a genuinely nasty failure shape in the layer below, where the thread-group
+  size is a description field validated against nothing, read by Metal ONLY (MSL does not carry the workgroup
+  size the way SPIR-V does, so Metal needs it again at dispatch-encode time) and ignored by Vulkan and
+  Direct3D11. A description disagreeing with the GLSL is therefore invisible on two backends and silently wrong
+  on the third. With the size derived there is no second copy to disagree. A compute source with no literal
+  `layout(local_size_x = ...)` is now a `ShaderValidationException` at creation.
+- **Storage resources.** `GpuTextureUsage.Storage` makes a read-write storage image (GLSL `image2D`), bound
+  through the existing `GpuResourceKind.TextureReadWrite`. Storage buffers need no new type: the existing
+  `GpuBufferUsage.StructuredBufferReadOnly`/`ReadWrite` and the matching `GpuResourceKind` members become
+  reachable. Structured buffers are now created as RAW (byte-address) views on Direct3D11, because the engine's
+  only shader path is GLSL -> SPIR-V -> SPIRV-Cross and that always emits a `ByteAddressBuffer` /
+  `RWByteAddressBuffer` for a GLSL storage block, which a structured view would not match. There is exactly one
+  correct value, so it is not a caller-visible knob. No-op on Metal and Vulkan, and nothing outside the seam used
+  structured buffers before this release.
+- **Command surface.** `IGpuCommandList` gains `SetComputePipeline`, `SetComputeResourceSet` (plain and
+  dynamic-offset), `Dispatch(x, y, z)`, and `CopyBuffer(src, srcOffset, dst, dstOffset, size)`. Compute and
+  graphics pipeline/resource-set bindings are tracked separately, so neither disturbs the other.
+- **Ordering contract, written down on the interface and proved on all three backends.** There is no barrier call
+  on this seam because the layer below has none: what ordering exists comes from each backend's implicit handling,
+  and Metal, Vulkan and Direct3D11 do not agree. Two rules follow, and both are now enforced by the proof tests
+  rather than assumed:
+  - *Compute writes a storage texture, then a graphics pass samples it*: record BOTH in the SAME command list and
+    create the texture `Storage | Sampled`. Vulkan queues a layout restore at dispatch time and drains it before
+    the next draw, but that queue is per-command-list state and is armed only by the `Sampled` flag, so splitting
+    the pass across two command lists silently skips the barrier. Metal ends the compute encoder when the render
+    encoder begins; Direct3D11 unbinds the UAV as the SRV is bound. The compute resource set may be left bound.
+  - *A dispatch that reads what an earlier dispatch wrote* must be separated by `End` + `Submit` + `WaitForIdle`.
+    Chaining dependent dispatches inside one command list is NOT safe: on Vulkan no memory barrier is emitted
+    between them at all (storage buffers are not tracked, and a storage image stays in the same layout so the
+    transition is a no-op), and dispatches inside a command buffer may overlap. This costs a GPU stall per
+    dependent stage and is the current ceiling on any multi-pass compute chain built here.
+- **Readback.** `IGpuDevice.Map`/`Unmap` gain the buffer overload the seam was missing (only the texture one
+  existed), and `GpuReadback.ReadBuffer<T>(device, buffer, elementCount, srcOffsetBytes = 0)` wraps the whole
+  staging-copy-map-unmap sequence for a compute-written storage buffer, the way `ToRgba` already did for a
+  texture. It drains BEFORE its copy as well as after, because the producing work was submitted on another
+  command list and a copy in a later submission is not ordered against it on every backend.
+- **Validation.** `ShaderValidation.ValidateCompute(computeGlsl, label?)` is the compute sibling of
+  `ValidatePair`: a single-stage SPIR-V compile plus cross-compile to HLSL, MSL, GLSL and ESSL, with no
+  `GraphicsDevice`, so a compute shader that miscompiles on one backend fails the fast GPU-free lane on every push
+  instead of at first dispatch on that backend.
+- **Capability.** `GpuCapabilities.SupportsCompute`, read off the live device. Metal, Vulkan and Direct3D11 all
+  report true; an OpenGL/GLES device below the compute-capable version does not, so a caller can degrade rather
+  than crash.
+- **Proof tests** (`[GpuFact]`, so they run on all three `cross-platform-gpu.yml` legs): an exact two-pass
+  parallel reduction over a storage buffer; a compute-written storage texture that a graphics pass then samples,
+  asserted per texel on both the sampled result and the storage texture itself; and a 2D radix-2 Stockham FFT
+  checked three ways (a CPU reference turns an impulse into a flat spectrum, the GPU forward transform matches
+  that reference elementwise, and forward-then-inverse returns the original grid). The FFT is deliberate: it
+  pre-validates on every backend the exact algorithm the FFT ocean program (#310) is built on, before any ocean
+  code exists.
+- **Fix:** `IGpuDevice.Capabilities` now carries the device name and the sampler-feature flags. It used to leave
+  them at their defaults while `GpuDeviceContext.Capabilities` populated them, so the two copies of the same
+  struct disagreed. Nothing read the dropped members, but `SupportsCompute` being right there while its
+  neighbours were silently false was not a state worth shipping.
+
 ## 14.28.0
 
 Fix: the ocean stops reading as a repeating texture at distance. The ripple normal field, three fixed cosines

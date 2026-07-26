@@ -4,7 +4,7 @@ using System.Numerics;
 namespace KhaozEngine.Terrain
 {
     /// <summary>Maps a <see cref="ChunkCoord"/> to and from world space for a given chunk size. One source of truth
-    /// shared by <see cref="TerrainStreamer"/>, <see cref="Scene3DChunkSink"/>, and the tests, so the grid math
+    /// shared by <see cref="TerrainStreamer"/>, <c>Scene3DChunkSink</c>, and the tests, so the grid math
     /// never drifts. <see cref="AreaOf"/> returns a half-open rect so adjacent chunks tile <see cref="PropScatter"/>
     /// exactly once (streaming-invariant).</summary>
     public static class ChunkGrid

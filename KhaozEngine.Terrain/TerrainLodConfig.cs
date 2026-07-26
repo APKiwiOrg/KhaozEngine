@@ -35,7 +35,7 @@ namespace KhaozEngine.Terrain
     /// with the coarsest tier's <see cref="TerrainLodTier.MaxDistance"/> at positive infinity. <see cref="PickLod"/>
     /// maps a camera distance to a tier index; <see cref="ResolutionFor"/> maps that tier to its grid resolution.
     /// <para>The same config must be wired to both the <see cref="TerrainStreamer"/> (via
-    /// <see cref="StreamerConfig.LodConfig"/>, which picks the tier per chunk) and the <see cref="Scene3DChunkSink"/>
+    /// <see cref="StreamerConfig.LodConfig"/>, which picks the tier per chunk) and the <c>Scene3DChunkSink</c>
     /// (which meshes at that tier's resolution), so a tier index means the same resolution on both sides. Both
     /// default to <see cref="Default"/>, so the default wiring aligns with no work. <see cref="Default"/> reproduces
     /// the legacy 64/32/16 tiers at 80 m/200 m byte-for-byte and extends them with coarser 8- and 4-segment far

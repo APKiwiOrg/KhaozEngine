@@ -299,6 +299,19 @@ public class ArchitectureTests
     }
 
     [Fact]
+    public void Terrain_NeverReferencesRender3DOrPhysics()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        HashSet<string> closure = TransitiveClosure("KhaozEngine.Terrain", graph).Select(Short).ToHashSet(StringComparer.Ordinal);
+        string[] hits = new[] { "Render3D", "Physics" }.Where(closure.Contains).ToArray();
+
+        bool clean = hits.Length == 0;
+        Assert.True(clean,
+            "KhaozEngine.Terrain carries the render/physics-free streamer core (TerrainStreamer and friends) so a " +
+            "headless server can reference it, but its ProjectReference closure pulls in: " + string.Join(", ", hits));
+    }
+
+    [Fact]
     public void Render3D_StaysSeamsOnly()
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();

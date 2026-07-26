@@ -46,7 +46,7 @@ test cannot do once bands overlap (a bridge deck's Y sits inside the ground laye
 ground spans valleys to hills). Among the layers that carry surface heights and have a passable surface at
 the position's cell, it picks the one whose surface Y is nearest to `position.Y` (ties to the lowest
 index), so an agent standing on the deck resolves to the deck layer, not the ground below it. When no layer
-has a surface there, or none carries heights at all (the dungeon adapter's `NavGrid.FromWalkable` grids),
+has a surface there, or none carries heights at all (any space built from `NavGrid.FromWalkable`),
 it falls back to `LayerOf(position.Y)`, so every pre-layered space resolves exactly as before. With a
 single layer, always 0. `GridPathPlanner.FindPath` resolves both endpoints with `LayerAt`.
 

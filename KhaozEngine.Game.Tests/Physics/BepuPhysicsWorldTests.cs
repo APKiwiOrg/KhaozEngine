@@ -200,7 +200,7 @@ public class BepuPhysicsWorldTests
     // Issue #145 regression: RayHit.Body must be null for a hit on a dynamic body, never a fabricated static
     // handle. The static is added FIRST (so it legitimately owns seam id 0, BepuPhysicsWorld's shared _nextId
     // counter that AddStatic/AddDynamic both draw from) and placed well past the ray so it is never the actual
-    // hit; the dynamic is added second and placed to be hit with QueryFilter.DynamicsOnly. Before the #145 fix,
+    // hit. The dynamic is added second and placed to be hit with QueryFilter.DynamicsOnly. Before the #145 fix,
     // Body was a non-nullable StaticHandle that defaulted to StaticHandle(0), silently aliasing this id-0 static.
     [Fact]
     public void Raycast_OnADynamicBody_ReportsNullBody()
@@ -234,7 +234,7 @@ public class BepuPhysicsWorldTests
     }
 
     // Issue #143: ResolveSeamHandle must resolve the ACTUAL static that was hit via the new O(1) reverse index,
-    // not just whichever entry happens to be found first. Three statics sit off to the sides (ids 0-2); the one
+    // not just whichever entry happens to be found first. Three statics sit off to the sides (ids 0-2), and the one
     // on the ray is added LAST (id 3, never id 0), so a resolver that coincidentally always returned the first
     // seam id it saw would fail this the same way it would fail the id-0 aliasing case above.
     [Fact]

@@ -5,6 +5,74 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 15.0.0
+
+Nav and physics-query correctness batch: six verified backlog fixes, one of them a breaking change to the
+ray and sweep hit records. Three separate ways an agent could silently fail to reach somewhere it should
+(a goal on another floor, a lone standable island, a roofed dungeon's low ceiling), plus a query result that
+named the wrong body and cost an O(N) scan to produce. Closes #139, #141, #143, #144, #145, #146.
+
+### Breaking
+
+- **`RayHit.Body` and `SweepHit.Body` are now `StaticHandle?`** (`KhaozEngine.Physics/Queries.cs`), not
+  `StaticHandle`. A ray or sweep that hits a DYNAMIC body now reports `null`. It previously reported
+  `default(StaticHandle)`, which is `StaticHandle(0)`, and that is not a sentinel: `_nextId` starts at 0, so
+  the first static ever added to a `BepuPhysicsWorld` legitimately owns seam id 0 and every dynamic-body hit
+  silently aliased it. Callers reading `.Body` must now handle the null case. This matches the engine's
+  existing optional-handle convention on `ConstraintAttachment.Body`. Fixing it with a magic 0 sentinel was
+  rejected: re-introducing an untyped 0 to fix an untyped-0 bug is not a fix. Closes #145.
+
+### Fixed
+
+- **`BepuPhysicsWorld` resolves a hit's seam handle in O(1) instead of scanning every static.**
+  `ResolveSeamHandle` ran a full linear scan of the forward handle map on EVERY static hit from `Raycast` and
+  `SweepCapsule`. A reverse index now backs it, kept in lockstep with the forward map through a single
+  add/remove helper pair so a removed static cannot leave a stale entry behind. Closes #143.
+- **`PathFollower.Tick` no longer reports `Arrived` for a goal on another floor.** The arrival test compared XZ
+  only, so a goal directly above or below the agent returned `Arrived` and exited before the replan decision
+  and `IPathPlanner.FindPath` ever ran. The agent therefore never pathed to it at all. Arrival now also
+  requires `|position.Y - goal.Y|` within the new `PathFollowConfig.VerticalAcceptTolerance` (default `0.8`),
+  and a goal that clears the XZ radius but fails the vertical test falls through to the planner, so stair and
+  hop links can route to it. The default clears both a `MoveTuning.StepHeight` step and a max-slope hillside
+  across the accept radius, while rejecting any real floor separation. Closes #139.
+- **`StepMask.Compute` keeps a lone standable top alive so a hop can reach it.** A standable cell that every
+  standable 8-neighbor sits more than `stepHeight` below, AND whose 8-neighborhood is fully blocked, now
+  survives instead of eroding. Such a cell was previously erased from the grid before `NavHopLinks.Generate`
+  ever saw it, so a single-cell island could be neither a hop source nor a hop landing, which is exactly the
+  feature a hop system exists to reach. The blocked-neighborhood half of the condition is load-bearing:
+  `GridPathPlanner` gates grid expansion on passability alone with no per-edge height compare, so preserving a
+  cell with any passable neighbor would hand the planner a walk edge straight up the drop that `StepMask`
+  exists to prevent. The kept cell gains no grid edge and stays reachable only across a `NavLinkKind.Hop`
+  link. Erosion is unchanged for every cell with at least one standable neighbor within the step height.
+  Closes #141.
+- **`DungeonNav.Bake` is headroom-aware.** It bakes through `NavGrid.FromSurfaces` rather than
+  `NavGrid.FromWalkable`, and gained an optional trailing `agentHeight` parameter defaulting to the new
+  `DungeonNav.DefaultAgentHeight` (`1.8`, pinned by test to `MoveTuning.Default.CapsuleHalfHeight * 2`). A
+  `DungeonCeilingMode.Roofed` layout whose `CeilingHeightMeters` is below the agent height now blocks those
+  cells, so a low ceiling is finally visible to pathfinding. An unroofed layout bakes headroom as positive
+  infinity, matching `INavSurfaceProvider`'s open-sky convention, and is unchanged no matter what agent height
+  is passed. Per-floor surface heights use each floor's own band-lower Y so `NavSpace.LayerAt` keeps
+  discriminating floors. Closes #144.
+
+### Added
+
+- **`ke-dungeon nav`**, a verb that bakes a layout's `NavSpace` and reports it: per floor the grid dimensions
+  and passable/blocked counts, then the number of connected components across the whole space. Connectivity
+  counts `NavSpace.Links` as real edges and mirrors `GridPathPlanner`'s flat node-id scheme, so a
+  one-component result means the planner really can reach every passable cell from every other one, not just
+  that cells look adjacent. `--require-connected` turns a disconnected space into a non-zero exit, making it
+  usable as a CI gate. `--agent-height` defaults to `DungeonNav.DefaultAgentHeight`. `--yaw` is accepted and
+  then REJECTED with a non-zero exit, rather than silently baking a NavSpace that does not match the rotated
+  geometry, because `DungeonNav.Bake` has no rotation concept (#140, deferred). Closes #146.
+
+### Known gaps
+
+- Rotated dungeon plots still bake a wrong `NavSpace` and are now rejected at the CLI rather than fixed.
+  `NavGrid` is strictly axis-aligned with no rotation concept, so honouring `DungeonPlotTransform.YawRadians`
+  needs a design pass, tracked in #140.
+- Step height and headroom remain baked in rather than per-query, unlike agent radius, so mixed creature sizes
+  still need separate bakes. Tracked in #142.
+
 ## 14.28.0
 
 Fix: the ocean stops reading as a repeating texture at distance. The ripple normal field, three fixed cosines

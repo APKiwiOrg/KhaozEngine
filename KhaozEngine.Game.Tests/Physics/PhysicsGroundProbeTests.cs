@@ -128,8 +128,9 @@ public class PhysicsGroundProbeTests
     public void Raycast_QueryMobility_SelectsStaticsVsDynamics()
     {
         using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
-        // Add the crate FIRST so the terrain's seam handle is not the zero-valued default (which would make the
-        // "static hit resolves a seam handle" assertion indistinguishable from the dynamic default).
+        // Add the crate FIRST so the terrain's seam handle is not id 0: this still exercises a dynamic sitting at
+        // the id BepuPhysicsWorld's shared _nextId counter hands out first, on top of Body's own null sentinel
+        // (see #145) that no longer depends on this ordering for correctness.
         world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 8f, 10f)),
             DynamicBodyDescription.WithMass(1f));
         StaticHandle terrain = world.AddStatic(FlatTerrain(height: 2f), Pose.Identity);
@@ -147,10 +148,10 @@ public class PhysicsGroundProbeTests
         Assert.Equal(terrain, statics.Body);
 
         // Dynamics: only the crate is eligible, terrain skipped -> hits the crate top. A dynamic hit carries no
-        // static seam handle, so Body is the default (there is no dynamic handle in RayHit).
+        // static seam handle, so Body is null (see #145).
         Assert.True(world.Raycast(origin, down, 200f, out RayHit dyn, QueryFilter.DynamicsOnly));
         Assert.Equal(8.5f, dyn.Point.Y, 2);
-        Assert.Equal(default, dyn.Body);
+        Assert.Null(dyn.Body);
     }
 
     // The sweep path shares the same handler seam and must honour the same mobility filter.
@@ -177,7 +178,7 @@ public class PhysicsGroundProbeTests
         // Dynamics: only the crate is eligible, so the impact distance matches the all sweep (crate is nearest).
         Assert.True(world.SweepCapsule(capsule, start, down, 200f, out SweepHit dyn, QueryFilter.DynamicsOnly));
         Assert.Equal(all.Distance, dyn.Distance, 3);
-        Assert.Equal(default, dyn.Body);
+        Assert.Null(dyn.Body);
     }
 
     // The horizontal-only overload also drives off the probe delegate (ground-follow via the physics world).

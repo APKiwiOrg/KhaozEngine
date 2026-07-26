@@ -415,9 +415,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
         }
 
         var point = origin + direction * handler.HitT;
-        // RayHit.Body is a static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics) has no
-        // static seam handle, so leave Body default rather than reverse-looking-up a non-static hit.
-        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : default;
+        // RayHit.Body is a nullable static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics)
+        // has no static seam handle, so Body is null rather than reverse-looking-up a non-static hit.
+        var seamHandle = handler.HitWasStatic ? (SeamHandle?)ResolveSeamHandle(handler.HitStatic) : null;
         hit = new RayHit(handler.HitT, point, handler.HitNormal, seamHandle);
         return true;
     }
@@ -437,9 +437,9 @@ public sealed class BepuPhysicsWorld : IPhysicsWorld
             return false;
         }
 
-        // SweepHit.Body is a static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics) has no
-        // static seam handle, so leave Body default rather than reverse-looking-up a non-static hit.
-        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : default;
+        // SweepHit.Body is a nullable static handle; a dynamic hit (only possible with QueryMobility.All/Dynamics)
+        // has no static seam handle, so Body is null rather than reverse-looking-up a non-static hit.
+        var seamHandle = handler.HitWasStatic ? (SeamHandle?)ResolveSeamHandle(handler.HitStatic) : null;
         hit = new SweepHit(handler.HitT, handler.HitLocation, handler.HitNormal, seamHandle);
         return true;
     }

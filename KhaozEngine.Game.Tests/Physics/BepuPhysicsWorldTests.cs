@@ -196,4 +196,40 @@ public class BepuPhysicsWorldTests
         Assert.True(sh.Distance > 0f && sh.Distance < 5.5f,
             $"expected sweep to contact hull, got distance={sh.Distance:F3}");
     }
+
+    // Issue #145 regression: RayHit.Body must be null for a hit on a dynamic body, never a fabricated static
+    // handle. The static is added FIRST (so it legitimately owns seam id 0, BepuPhysicsWorld's shared _nextId
+    // counter that AddStatic/AddDynamic both draw from) and placed well past the ray so it is never the actual
+    // hit; the dynamic is added second and placed to be hit with QueryFilter.DynamicsOnly. Before the #145 fix,
+    // Body was a non-nullable StaticHandle that defaulted to StaticHandle(0), silently aliasing this id-0 static.
+    [Fact]
+    public void Raycast_OnADynamicBody_ReportsNullBody()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 50f)));
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(0f, 0f, 5f)),
+            DynamicBodyDescription.WithMass(1f));
+        world.Step(1f / 60f);
+
+        bool hit = world.Raycast(Vector3.Zero, Vector3.UnitZ, 100f, out RayHit rh, QueryFilter.DynamicsOnly);
+        Assert.True(hit, "ray should hit the dynamic box");
+        Assert.Null(rh.Body);
+    }
+
+    // Sweep-path counterpart of Raycast_OnADynamicBody_ReportsNullBody: SweepHit.Body shares the same seam type
+    // and the same ResolveSeamHandle plumbing, so the sweep path needs its own regression coverage.
+    [Fact]
+    public void SweepCapsule_OnADynamicBody_ReportsNullBody()
+    {
+        using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(new BoxShape(new Vector3(1f, 1f, 1f)), Pose.At(new Vector3(0f, 0f, 50f)));
+        world.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(0f, 0f, 5f)),
+            DynamicBodyDescription.WithMass(1f));
+        world.Step(1f / 60f);
+
+        var cap = new CapsuleShape(0.3f, 0.6f);
+        bool hit = world.SweepCapsule(cap, Pose.At(Vector3.Zero), Vector3.UnitZ, 100f, out SweepHit sh, QueryFilter.DynamicsOnly);
+        Assert.True(hit, "sweep should hit the dynamic box");
+        Assert.Null(sh.Body);
+    }
 }

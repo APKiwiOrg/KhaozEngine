@@ -5280,7 +5280,88 @@ silently dropping it.
 **Format migrations.** `MapDocumentLoadOptions.RegisterMigration(fromVersion, step)` registers a pure
 `JsonObject -> JsonObject` transform run before deserialization when an old document's `formatVersion` is
 behind `MapDocumentFile.CurrentFormatVersion`. Migrations must form a contiguous chain up to the current
-version or the load fails.
+version or the load fails. The engine's own steps are pre-registered: v1 to v2 dropped the reserved
+`terrainOverrides` placeholder, and v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
+(512 m). A v3 monolithic file is legal and is what `Save` writes: version and layout are independent axes.
+
+### The tiled form: a directory instead of a file
+
+A document is **either a single file or a directory**, and both are first class. The tiled form is what a
+world too big to serialize as one string uses:
+
+```
+island.map/                        a directory, not a file
+  map.json                         the root manifest, and the ONLY file a save ever mutates
+  tiles/
+    s_0_0/                         shard dir, shard = tile >> 4, a filesystem nicety and never a load unit
+      t_0_0.<64 hex>.json          content-addressed: the suffix IS that tile's canonical hash
+      t_3_-2.<64 hex>.json
+```
+
+The manifest carries the globals (bounds, terrain, scatter and companion layers, exclusions, scatter
+overrides, regions, the `tileSize` and `sculptCellSize` grid headers) plus the occupied-tile index. Each
+tile file carries exactly four lists: `placements`, `spawns`, `playerSpawns` and `sculpt`. Those are the
+lists that scale with authored content. Shapes stay global because `scatterOverrides` is first-match-wins
+in document order, which is a global ordering.
+
+**Which form a path holds comes from the path, never from an extension.** `Path.GetExtension("island.map")`
+is `".map"`, not empty, so an extension heuristic sends a directory to a file write.
+
+```csharp
+MapDocumentForm form = MapDocumentFile.DetectForm(path);   // Tiled | Monolithic | None
+MapDocument doc = MapDocumentFile.Load(path);              // dispatches on the form
+
+MapDocumentFile.SaveAuto(doc, path);                       // saves back in the form it opened, None throws
+MapDocumentFile.SaveAs(doc, path, MapDocumentForm.Tiled);  // writes the named form, whatever is there
+```
+
+**Document tiles.** `MapTileCoord` is a square of world XZ with edge `MapDocument.TileSize`, a distinct type
+from `ChunkCoord` so a 60 m chunk coord cannot be passed where a 512 m tile coord is meant.
+`MapTileGrid.CoordOf` delegates to `ChunkGrid.CoordOf`, so the floor rule has one implementation, and
+`AreaOf` is half-open on both axes: a point exactly on a tile's max edge belongs to the next tile, which is
+what makes a partition of rects reproduce the whole document exactly. A sculpt tile is owned by the document
+tile containing its **origin corner** (`MapTileGrid.OwnerOfSculptTile`), single-owner for every cell size.
+
+**Region queries, both forms.** `MapSpatialIndex.Build(doc)` buckets a loaded document's point content by
+tile once, O(n) to build and O(k) per query, so a whole-document workflow still gets region queries.
+`MapRuntime.BuildPlacements` grows a rect overload and two index overloads beside the untouched
+whole-document one.
+
+**Windowed loading.** `LoadTiled(directory, window)` reads the manifest plus the tiles in a `MapTileRect`.
+Unloaded tiles keep their index entries, so a later `SaveTiled` back to the SAME directory carries them
+through untouched. **Every save entry point refuses a partial document** (`MapTileIndex.IsPartial`): a
+whole-document write of a window silently drops every unloaded tile and looks like a successful save. The
+guard is on the document rather than on one writer, so a save path added later inherits it.
+
+**Saving never materializes the document.** `SaveTo(doc, stream)` serializes straight through a
+`Utf8JsonWriter`, and `Save` is reimplemented over it, so the monolithic ceiling is disk rather than the
+.NET single-object element count. `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
+canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
+points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
+manifest does not name. Crash at any instant and the directory loads as entirely the old version or
+entirely the new one. `MapDocumentSaveOptions.Durability` opts into `PowerFail` (per-file flush plus a
+directory fsync where the platform has one). The default `Fast` defends against a process kill, which is
+what happens on a dev box.
+
+**World identity.** `MapDocumentHash.OfWorld(doc)` is SHA-256 over canonical bytes: per tile, plus the
+global half, composed under a `kemap/<SchemeVersion>` domain separator. **The two forms of the same world
+produce the same digest**, so a game can convert to the tiled form without a coordinated client and server
+release. On a tiled document it reads the stored hashes and never opens a tile file. `displayName` and
+`$schema` are excluded (renaming a zone must not desync a live server), and `tileSize` is included, so
+re-tiling changes world identity and a converter must PRESERVE `tileSize` rather than re-derive it.
+`MapDocumentFile.VerifyTiled(directory)` re-derives every tile hash and reports mismatches, orphans and
+stray temp files, and `MapDocumentLoadOptions.VerifyTileHashes` is the per-load opt-in.
+
+**On-demand tile reads.** `MapDocumentSource.OpenTiled(directory)` reads the manifest and nothing else.
+`ReadTile(coord)` parses and validates one tile and is free of shared mutable state, so a caller may run it
+on a worker thread. `MapDocumentSource.FromDocument(doc)` wraps an in-memory whole document behind the same
+API. A tile read runs a per-tile validation subset (ids non-empty and unique within the tile, delta counts,
+and that every item actually falls in the tile it was read from), because the whole-document validator needs
+globals a tile file does not carry.
+
+**Schemas.** One schema is authored (`mapdoc.schema.json`). `MapDocumentSchema.GetManifestJson()` and
+`GetTileJson()` are DERIVED from it at runtime and `WriteAllTo(directory)` materializes all three, so three
+schemas describing overlapping content cannot rot apart.
 
 **Boot fails loud.** Map documents are dev-authored content, not runtime state: a read error, invalid
 JSON, a bad or unmigratable `formatVersion`, or any `MapDocumentValidator` failure (a duplicate id, an

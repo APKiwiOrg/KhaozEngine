@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class WaterRenderer : IDisposable
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 19 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 24 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -77,7 +77,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 512;   // Align256(464)
+        internal const uint SlotBytes = 512;   // Align256(512)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;

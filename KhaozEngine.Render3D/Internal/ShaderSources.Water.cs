@@ -56,10 +56,13 @@ namespace KhaozEngine.Render3D.Internal
         //      The surface is a CPU-tessellated grid (WaterMath.GridResolution, laid out by
         //      WaterMath.BuildGridPositions with its vertices concentrated near the camera) displaced in the VERTEX
         //      stage by a Gerstner swell, with three domain-warped scrolling ripple layers perturbing the normal
-        //      per pixel on top. Two textures bound: the resolved scene depth and nothing else - no second material
-        //      texture, so the Metal up-front-sample-order landmine does not apply here (only one texture total).
-        //      Vertex inputs are Position only (no gap-free-signature hazard: everything declared is read). One UBO
-        //      (read by both stages, the vertex needing ViewProj + the swell block). ----
+        //      per pixel on top - or, under WaterWaveSource.FftOcean, by a Tessendorf FFT surface read out of the
+        //      ocean map array (see ShaderSources.WaterFft). Two textures bound: the ocean map array and the
+        //      resolved scene depth, IN THAT ORDER, and both stages sample the ocean first - the Metal
+        //      first-sample-order rule, plus the harder constraint that each stage's resources must be a prefix of
+        //      the resource layout (WaterRenderer's layout note has the full reasoning). Vertex inputs are Position
+        //      only (no gap-free-signature hazard: everything declared is read). One UBO (read by both stages, the
+        //      vertex needing ViewProj + the swell block). ----
 
         /// <summary>
         /// Water vertex stage: displaces the still-water grid by the Gerstner swell and hands the fragment the

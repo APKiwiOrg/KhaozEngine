@@ -67,6 +67,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Foundation packages (brief)](#foundation-packages-brief)
 - [Wall-clock periodic rewards (`KhaozEngine.Progression`)](#wall-clock-periodic-rewards-khaozengineprogression)
 - [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
+- [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
 - [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
 - [Save data (`GameStorage`)](#save-data-gamestorage)
@@ -4415,7 +4416,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="15.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="15.1.0" />
 ```
 
 ```csharp
@@ -7140,6 +7141,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `Observe` opaque metric keys, `Persistent` + `Session` scopes, `AtLeast` / `Reached` / `AtMost` conditions,
   idempotent `ObjectiveCompleted`, key-indexed re-eval, `Capture` / `Restore` snapshot. Deterministic and
   presentation-free (see "Objective / goal tracking" below).
+- **`KhaozEngine.Stats`**: game-agnostic layered stat computation (`StatSet`) for equipment, skills, and
+  buffs. A per-channel `Base` plus any number of named `StatSourceId` contributions fold to `Value(channel) =
+  (Base + sum(Flat)) * max(1 + sum(Percent), MinimumScale)`. Dense int channels backed by a `float[]`,
+  allocation-free bulk reads via `CopyValuesTo`, lazy per-channel recompute, insertion-order fold. The engine
+  owns the fold only, never a channel's meaning: no enum, no item, no stacking rule (see "Stat channels"
+  below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
   redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
   the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
@@ -7259,6 +7266,58 @@ run synchronously inside the triggering call.
 you attached), save transport (serialize the `ObjectivesSnapshot`), and display text (reference a localized
 `Name` / `Description` by `StringId`, never a raw literal). Out of scope in v1: temporal / sequential
 conditions ("X then Y within 10s") and any reward / currency / tree logic.
+
+---
+
+## Stat channels (`KhaozEngine.Stats`)
+
+`StatSet` folds equipment, skills, and buffs into final per-channel values without knowing what a channel
+means. A channel is just a dense `int` index into a `float[]`: define your own enum (`Attack`, `Defense`,
+`MoveSpeed`, ...) and cast it to `int` at the call site. The engine owns the channels, the fold, and the
+recompute only. It has no stat identity, no balance constants, no items, no equipment slots, and no
+derivation between channels.
+
+The one fold `StatSet` knows: `Value(c) = (Base(c) + sum(Flat)) * max(1 + sum(Percent), MinimumScale)`.
+
+Sources are added and removed as a whole under a `StatSourceId`. Equip a sword and add its `StatModifier`s
+under `swordId`. Unequip it with `RemoveSource(swordId)`, and every contribution it made is gone in one call.
+Recompute is lazy and per-channel: a channel only refolds when it is actually dirty, and it always refolds
+from scratch rather than adjusting a running total, because removing a source is not the exact float inverse
+of adding it. The fold order is source insertion order and survives removals, and replacing a source under an
+id it already owns keeps that source's original position. A stable summation order is what makes the round
+trip exact: add a source, remove it, and `Value` returns to the base value bit for bit.
+
+```csharp
+using KhaozEngine.Stats;
+
+enum Channel { Attack, Defense, MoveSpeed }   // your own enum, the engine never sees it
+
+var stats = new StatSet(channelCount: 3, minimumScale: 0.1f);   // mitigation floors at 90% reduction
+stats.SetBase((int)Channel.Attack, 10f);
+stats.SetBase((int)Channel.Defense, 5f);
+stats.SetBase((int)Channel.MoveSpeed, 6f);
+
+// Equip a sword: +4 flat attack, +15% attack. swordId is whatever int identity
+// your inventory already uses for this equipped instance.
+var swordId = new StatSourceId(swordInstanceId);
+stats.AddSource(swordId, stackalloc StatModifier[]
+{
+    new StatModifier((int)Channel.Attack, Flat: 4f, Percent: 0.15f),
+});
+float attack = stats.Value((int)Channel.Attack);   // (10 + 4) * 1.15 = 16.1
+
+// Unequip: remove the whole source in one call.
+stats.RemoveSource(swordId);
+attack = stats.Value((int)Channel.Attack);   // back to exactly 10, bit for bit
+```
+
+`GetBase`/`SetBase` read and write the per-channel base directly. `ClearSources` drops every source and
+leaves only the base. `CopyValuesTo(Span<float>)` reads every channel in one allocation-free call, for a
+stat-sheet screen or a per-frame HUD. **What stays game-side (the seam):** stat identity (the enum), balance
+numbers (which modifiers a sword grants), items and equipment slots, and the whole "buff" half (stacking
+rules, durations, expiry, diminishing returns), the same split `KhaozEngine.Locomotion` already draws for its
+per-entity speed scale: the engine owns the multiplier and its plumbing, the game owns duration, stacking,
+and what granted it.
 
 ---
 

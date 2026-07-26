@@ -5,6 +5,50 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 15.1.0
+
+### Layered stat channels (`KhaozEngine.Stats`, new package)
+
+New GPU-free Foundation package that folds equipment, skill, and buff contributions into final per-channel
+values without the engine ever learning what a channel means. `StatSet` holds a `Base` value per channel plus
+any number of named `StatSourceId` contributions, and computes `Value(c) = (Base(c) + sum(Flat)) * max(1 +
+sum(Percent), MinimumScale)`, the one fold the package knows. Additive (one new package, no removals), so a
+minor bump. No GPU work. Closes #313.
+
+- **`StatSet` - the fold.** Channels are dense `int` indices into a `float[]` (`ChannelCount`, `CopyValuesTo`
+  for an allocation-free bulk read of every channel), so the consuming game casts its own enum to the channel
+  index. The engine never gets a stat identity, an enum, a balance constant, an item, an equipment slot, or
+  any derivation between channels. `SetBase`/`GetBase` set and read the per-channel base value directly.
+  `AddSource(id, ReadOnlySpan<StatModifier>)` attaches a named source's whole contribution, or replaces it in
+  one call if the id is already in use. `RemoveSource(id)` detaches it, and `ClearSources()` drops every
+  source and leaves only the base. `SourceCount` reports how many are currently attached.
+- **`StatModifier` / `StatSourceId` - the wire types.** `StatModifier(Channel, Flat, Percent)` is one
+  contribution to one channel. `StatSourceId(Value)` is the stable identity a group of modifiers is added and
+  removed under, so equipping or unequipping one item is exactly one `AddSource`/`RemoveSource` call no matter
+  how many channels the item touches.
+- **Lazy, per-channel, insertion-ordered recompute.** A channel refolds only when it is dirty, and always
+  refolds from the live source list rather than adjusting a running total, because removing a source is not
+  the exact float inverse of adding it. The fold order is source insertion order, preserved across removals,
+  and replacing a source under an id it already owns keeps that source's original position. Net effect: add a
+  source, remove it, and `Value` returns to exactly the base value, bit for bit.
+- **`MinimumScale` floors the percent multiplier.** Default `0`, so a channel cannot go negative from percent
+  contributions alone. `float.NegativeInfinity` disables the floor entirely, and a value like `0.1f` gives a
+  "mitigation caps at 90%" shape without the game clamping its own multiplier stack.
+- **`StatSet` is a `sealed class`, not a struct.** The modifier stack is inherently variable-length (any number
+  of sources, each spanning any number of channels), so the storage is on the heap whichever outer type is
+  chosen. A struct would therefore be a struct wrapping arrays, and that is strictly worse in the one place a
+  struct could have helped. `KhaozEngine.Ecs` components must be value types (`ComponentRegistry.RegisterType`
+  rejects any reference type, and every generic entry point is `where T : struct, IComponent`), but archetype
+  moves and `EntityCommandBuffer.Set<T>(Entity, T)` copy by value, so two entities would silently end up
+  sharing one modifier store. `StatSet` is therefore not an ECS component in either shape. A game holds one
+  per entity, allocated once at spawn rather than per frame, and reaches it through its own side table.
+- **Placement.** In the `Foundation` umbrella, alongside `Objectives` and `Progression`. `Foundation` is the
+  only umbrella both `Game3D` and `Server` already pull, and both a client head showing a stat sheet and a
+  headless authoritative server computing real damage need the same fold. No dependency on any other
+  KhaozEngine package. What stays game-side: stat identity (the enum), balance numbers, items and equipment,
+  and the whole "buff" half (stacking rules, durations, expiry, diminishing returns), the same split
+  `KhaozEngine.Locomotion` already draws for its per-entity speed scale.
+
 ## 15.0.0
 
 Nav and physics-query correctness batch: six verified backlog fixes, one of them a breaking change to the

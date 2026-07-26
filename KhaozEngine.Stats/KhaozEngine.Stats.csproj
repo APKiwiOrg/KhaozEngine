@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Stats</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Game-agnostic stat kernel (in Foundation): a dense named-channel StatSet plus a modifier stack keyed by a stable StatSourceId, for buffs, equipment, and auras built entirely game-side. A game owns channel meaning (its own indices) and drives SetBase, AddSource, and RemoveSource. The kernel folds each channel as (Base + sum of Flat) * max(1 + sum of Percent, MinimumScale), recomputed lazily and always from scratch (a per-channel dirty flag, never a running total) so removing a source restores the prior value bit for bit. Sources fold in stable insertion order, not a Dictionary's, so the same sequence of adds and removes reproduces the same floats every time. No stat identities, no balance constants, no stacking, duration, or expiry rules, no equipment or inventory types: the engine owns only the channels, the fold, and the recompute. No JSON, no external deps.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.4.0
+
+Fixes the boot screen showing two differently coloured bars at once during an indeterminate step, and makes the
+marquee colour track the bar fill by default instead of being a second independent knob. The determinate fraction
+fill was drawn unconditionally and the marquee was then painted on top of it, so a static fill left over from the
+previous step sat under a bouncing block in a different colour and read as two competing progress indicators in
+one track. Reported from Ruinborne's launch screen. Closes #327.
+
+### Fixed
+
+- `BootScreenRenderer` no longer draws the fraction fill while `BootView.Indeterminate`. The track, the border and
+  the marquee are all that is drawn. An indeterminate step has no meaningful fraction, and `BootView.Fraction`
+  still holds whatever the last determinate step left there, so the fill was reporting stale progress underneath
+  an activity indicator. This is the shape `Win32UpdaterUi` already used for the updater's own bar.
+
+### Changed
+
+- `BootScreenTheme.MarqueeColor` defaults to a lightened `BarFill` instead of `GuiTheme.Default.AccentBright`. It
+  resolves on read, so a game that restyles only `BarFill`, and does it after construction as the consumers do,
+  carries the marquee with it. The two defaults previously disagreed out of the box (a `#286eb4` fill against a
+  `#64c8ff` marquee) and theming only the fill widened the gap rather than causing it. The lighten is 0.35 of the
+  way to white with alpha preserved, which keeps the fill's hue. Assigning `MarqueeColor` still overrides the
+  default, and an assigned value is no longer moved by a later `BarFill` change.
+- The member changed from a public field to a property to resolve that default lazily. This is source-compatible:
+  assignment, object initializers and reads are unchanged. Only binding it by `ref` or reflecting over it as a
+  field would need updating, and nothing in the engine or the games does.
+- The marquee draws at `MarqueeColor`'s own alpha. It was previously knocked back by a fixed 0.6 so it would not
+  swallow the fraction fill it swept over. With no fill underneath it any more, that only blended the marquee
+  toward the track and cost it both the fill's hue and its brightness. Set the alpha on `MarqueeColor` for a
+  translucent marquee.
+
+A consumer that overrides only `BarFill` becomes correct with no change on its side, which is the point of the
+default. Ruinborne is exactly that case and needs no edit.
+
 ## 16.3.1
 
 Corrects the FFT ocean's inert-knob list, which named three knobs that are not in fact inert. It is a

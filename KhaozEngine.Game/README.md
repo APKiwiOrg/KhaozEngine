@@ -155,6 +155,8 @@ texel-crisp on HiDPI) + a 1x1 white texture, so it needs zero game assets.
   cacheSlots: 4)` - still zero game assets): the screen bakes each label at its exact device-pixel size, so text
   is crisp on HiDPI. A fixed `SpriteFont` overload is kept for back-compat but is resampled by the theme scales.
   `BootScreenTheme` restyles it (colours, bar geometry, optional logo + custom-background hook) without forking.
+  An indeterminate step shows the marquee over a bare track with no fraction fill under it, and `MarqueeColor`
+  resolves to a lightened `BarFill` unless assigned, so restyling the fill carries the marquee with it.
   `BootStrings` holds the localized `boot.*` copy with an English fallback.
 
 ```csharp

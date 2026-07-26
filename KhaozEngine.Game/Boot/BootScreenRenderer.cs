@@ -9,9 +9,9 @@ namespace KhaozEngine.Game
 {
     /// <summary>
     /// Draws the <see cref="BootScreen"/>'s visuals for a given <see cref="BootView"/> snapshot: the optional
-    /// background hook or flat fill, the optional logo, the title, the progress bar (with an indeterminate-activity
-    /// marquee when a step reports no measurable fraction) and the current-step label, or - in the failure state - the
-    /// error heading, message, and retry / quit buttons. Factored out of the scene so the exact same draw path is
+    /// background hook or flat fill, the optional logo, the title, the progress bar (showing the fraction fill, or -
+    /// while indeterminate - the marquee over a bare track) and the current-step label, or - in the failure state -
+    /// the error heading, message, and retry / quit buttons. Factored out of the scene so the exact same draw path is
     /// used by the live scene and by a headless PNG capture. The caller owns <c>batch.Begin</c>/<c>End</c> and
     /// <c>gui.Begin</c>. The button hit-test uses the pointer passed to <c>gui.Begin</c>.
     /// </summary>
@@ -88,7 +88,10 @@ namespace KhaozEngine.Game
             }
 
             var barRect = new Rect(cx - theme.BarWidth * 0.5f, cy - theme.BarHeight * 0.5f, theme.BarWidth, theme.BarHeight);
-            var bar = new ProgressBar(barRect, view.Fraction)
+            // An indeterminate step has no meaningful fraction, and `view.Fraction` is stale from the last
+            // determinate step, so a static fill drawn under the bouncing marquee would read as two competing
+            // indicators in one track.
+            var bar = new ProgressBar(barRect, view.Indeterminate ? 0f : view.Fraction)
             {
                 TrackColor = theme.BarTrack,
                 FillColor = theme.BarFill,
@@ -156,9 +159,10 @@ namespace KhaozEngine.Game
             float u = phase - MathF.Floor(phase);
             float pingPong = u < 0.5f ? u * 2f : (1f - u) * 2f;
             float x = inner.X + (inner.Width - quadW) * pingPong;
-            Vector4 c = theme.MarqueeColor;
-            c.W *= 0.6f;
-            batch.Draw(white, new Vector4(x, inner.Y, quadW, inner.Height), (Color)c);
+            // Drawn at the theme's own alpha. The marquee used to be knocked back to 0.6 so it did not swallow the
+            // fraction fill it swept over, but nothing is drawn under it now, so that only blended it toward the
+            // track and cost the fill's hue and brightness. A game wanting a translucent marquee sets the alpha.
+            batch.Draw(white, new Vector4(x, inner.Y, quadW, inner.Height), (Color)theme.MarqueeColor);
         }
 
         // Resolve boot text through the fallback catalog, so an engine boot.* key shows English when no catalog is

@@ -35,8 +35,18 @@ namespace KhaozEngine.Game
         /// <summary>Progress-bar border colour.</summary>
         public Vector4 BarBorder = GuiTheme.Default.Border;
 
-        /// <summary>Colour of the indeterminate-activity marquee swept across the bar.</summary>
-        public Vector4 MarqueeColor = GuiTheme.Default.AccentBright;
+        /// <summary>
+        /// Colour of the indeterminate-activity marquee swept across the bar. Unset (the default) it is a lightened
+        /// <see cref="BarFill"/>, resolved on read, so a game that restyles only the fill carries the marquee with it.
+        /// Assign it to override when a deliberately contrasting marquee is wanted.
+        /// </summary>
+        public Vector4 MarqueeColor
+        {
+            get => _marqueeColor ?? Lighten(BarFill, MarqueeLighten);
+            set => _marqueeColor = value;
+        }
+
+        Vector4? _marqueeColor;
 
         /// <summary>Title text colour.</summary>
         public Vector4 TitleColor = GuiTheme.Default.Text;
@@ -89,5 +99,14 @@ namespace KhaozEngine.Game
 
         /// <summary>A fresh default theme (neutral palette from <see cref="GuiTheme.Default"/>).</summary>
         public static BootScreenTheme Default => new();
+
+        // How far the default marquee is lifted toward white off BarFill. Enough to read as brighter than the fill
+        // at the marquee's own 0.6 draw alpha, not so far that it loses the fill's hue.
+        const float MarqueeLighten = 0.35f;
+
+        // RGB lifted toward white with alpha preserved, so the marquee stays the same indicator at a higher
+        // brightness instead of becoming a second colour. Vector4.Lerp toward Vector4.One would drag alpha to 1.
+        static Vector4 Lighten(Vector4 c, float t) =>
+            new(c.X + (1f - c.X) * t, c.Y + (1f - c.Y) * t, c.Z + (1f - c.Z) * t, c.W);
     }
 }

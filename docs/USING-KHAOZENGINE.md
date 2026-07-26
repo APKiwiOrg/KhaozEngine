@@ -464,8 +464,11 @@ the DPI-aware `OnDrawUi` pass). A step signals failure by throwing `BootStepExce
 screen shows it with retry / quit affordances). The server-status min-version gate does this automatically for
 `ServerStatusState.UpdateRequired`. A required update applied by `UpdateBootStep` restarts the app by design
 (not a failure). Restyle without forking via `BootScreenTheme` (colours, bar geometry, optional logo + a custom
-`DrawBackground` hook). All player-facing copy lives in `BootStrings` (`boot.*` keys) with a built-in English
-fallback, so add those keys to your catalog to localize.
+`DrawBackground` hook). A step that reports no measurable fraction draws the sweeping marquee over a bare track,
+never a fraction fill underneath it, and `MarqueeColor` resolves to a lightened `BarFill` unless it is assigned, so
+restyling the fill carries the marquee with it. Assign `MarqueeColor` only for a deliberately contrasting marquee,
+and note it now draws at its own alpha rather than a fixed fraction of it. All player-facing copy lives in
+`BootStrings` (`boot.*` keys) with a built-in English fallback, so add those keys to your catalog to localize.
 
 ### In-session update recheck + post-update relaunch (`UpdateService`)
 
@@ -4491,7 +4494,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.3.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.4.0" />
 ```
 
 ```csharp

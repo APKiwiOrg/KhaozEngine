@@ -13,10 +13,11 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// Renders the boot screen through the same <see cref="BootScreenRenderer"/> the live scene uses and writes viewable
-/// PNGs (mid-pipeline with the bar partway filled + a step label, and the failure state with retry / quit buttons).
-/// Rendered through a DpiScale-2 <see cref="UiViewport"/> with the DPI-aware <see cref="DpiFont"/> overload - the real
-/// HiDPI point-space path - so the capture shows the texel-crisp boot text. Not a golden compare: it captures evidence
-/// for inspection, so it never turns another backend red. Output dir: <c>KE_BOOT_PNG_DIR</c> or a temp folder. Gated by
+/// PNGs (mid-pipeline with the bar partway filled + a step label, an indeterminate step with the marquee swept off
+/// the left edge and no fill underneath, and the failure state with retry / quit buttons). Rendered through a
+/// DpiScale-2 <see cref="UiViewport"/> with the DPI-aware <see cref="DpiFont"/> overload - the real HiDPI point-space
+/// path - so the capture shows the texel-crisp boot text. Not a golden compare: it captures evidence for inspection,
+/// so it never turns another backend red. Output dir: <c>KE_BOOT_PNG_DIR</c> or a temp folder. Gated by
 /// <see cref="GpuFactAttribute"/> (needs <c>KE_GPU_TESTS</c>).
 /// </summary>
 public class BootScreenVisualTests
@@ -29,7 +30,7 @@ public class BootScreenVisualTests
     const int FbH = LogH * Dpi;
 
     [GpuFact]
-    public void Captures_MidPipeline_And_Error_Pngs()
+    public void Captures_MidPipeline_Indeterminate_And_Error_Pngs()
     {
         string dir = Environment.GetEnvironmentVariable("KE_BOOT_PNG_DIR")
             ?? Path.Combine(Path.GetTempPath(), "boot-screen");
@@ -40,10 +41,17 @@ public class BootScreenVisualTests
         var mid = new BootView(BootState.Running, 0.42f, false, LocalizedText.Raw("Contacting server"), null);
         string midPath = Shot(dir, "boot-mid", mid, theme, allowRetry: false, allowQuit: false, elapsed: 0.3f);
 
+        // Issue #327: an indeterminate step used to draw the stale determinate fill under the marquee. elapsed
+        // 0.55f puts the marquee visibly off the left edge, so the capture shows a bare track behind it.
+        var indeterminate = new BootView(BootState.Running, 0.42f, true, LocalizedText.Raw("Contacting server"), null);
+        string indeterminatePath = Shot(dir, "boot-indeterminate", indeterminate, theme,
+            allowRetry: false, allowQuit: false, elapsed: 0.55f);
+
         var error = new BootView(BootState.Failed, 0.42f, false, default, BootStrings.ErrorUpdateRequired);
         string errPath = Shot(dir, "boot-error", error, theme, allowRetry: true, allowQuit: true, elapsed: 0f);
 
         Assert.True(File.Exists(midPath));
+        Assert.True(File.Exists(indeterminatePath));
         Assert.True(File.Exists(errPath));
     }
 

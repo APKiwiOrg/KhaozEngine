@@ -4008,7 +4008,9 @@ new code to route across a ramp or a low rock.
 ### Bake vertical hops
 
 A standable top taller than `stepHeight` bakes as an unreachable island under the step bake alone: the
-top is standable, but no walkable step leads onto it. `NavGridBaker.BakeOverworldHops` closes that gap.
+top is standable, but no walkable step leads onto it. That holds down to a one-cell top, which the step
+bake keeps rather than eroding, precisely so a hop can land on it (it gains no walk edge, since every one
+of its neighbors is blocked). `NavGridBaker.BakeOverworldHops` closes that gap.
 It bakes the step grid exactly as `BakeOverworldSteps` does, then generates same-grid
 `NavLinkKind.Hop` links (`NavHopLinks.Generate`) wherever two standable cells face each other across a
 blocked rim with a rise above `stepHeight` but within `jumpHeight`, and returns a single-layer `NavSpace`

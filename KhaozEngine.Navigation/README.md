@@ -102,7 +102,14 @@ game-implemented provider over the game's own `IPhysicsWorld`: `KhaozEngine.Navi
 through the `INavSurfaceProvider` interface and takes no dependency on `KhaozEngine.Physics`.
 
 The rise-within-`stepHeight`-plus-headroom rule bakes into the blocked mask itself, so the planner and
-follower need no per-edge logic and no changes. One v1 conservatism: a step taller than `stepHeight`
+follower need no per-edge logic and no changes. One carve-out keeps small features linkable: a lone
+standable top, one that every standable 8-neighbor sits more than `stepHeight` below and whose whole
+8-neighborhood bakes blocked, stays passable instead of eroding, so a `Hop` link can land on it. It gains
+no walk edge from that (all its neighbors are blocked, so the planner still reaches it only across a
+link), and no other cell's clearance changes. A raised cell that still touches walkable ground erodes as
+before, since keeping that one would hand the planner a walk edge straight up the drop.
+
+One v1 conservatism: a step taller than `stepHeight`
 blocks its higher side by one cell (the standable top itself bakes standable, but the cell one step up
 from it does not), so under the step bake alone a too-tall step is impassable from either direction
 rather than merely steep. When the rise is within a jump budget, the hop bake below closes exactly this
@@ -129,7 +136,9 @@ NavGrid grid = NavGridBaker.BakeOverworldSteps(
 ## Vertical hop links (`NavHopLinks` / `NavGridBaker.BakeOverworldHops`)
 
 The step bake leaves a standable top taller than `stepHeight` as an unreachable island: the top itself
-bakes standable, but no walkable step leads onto it. `NavHopLinks.Generate(grid, stepHeight, jumpHeight,
+bakes standable, but no walkable step leads onto it. That holds down to a one-cell top, which the step
+bake keeps rather than eroding precisely so a hop can land on it.
+`NavHopLinks.Generate(grid, stepHeight, jumpHeight,
 maxHopCells = 2, layer = 0)` closes that gap with same-grid `Hop` links. For each passable cell and each
 of the 8 neighbor directions it walks outward: the adjacent cell must be blocked (a rim, not open
 ground), every further intervening cell must be blocked too, and the first passable cell reached at

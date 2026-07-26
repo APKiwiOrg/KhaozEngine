@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Navigation;
 using Xunit;
 
@@ -42,6 +43,38 @@ public class NavHopLinksTests
             Assert.True(rise > StepHeight);
             Assert.True(rise <= JumpHeight);
         }
+    }
+
+    [Fact]
+    public void IsolatedOneCellTop_SurvivesTheStepBake_AndIsLinkedBothWays()
+    {
+        // A 5x5 terrace: the center cell at 2.0, its ring at 1.0, the outer ring at 0.0. The ring erodes,
+        // which leaves the center a one-cell island. The step bake keeps it (its whole neighborhood is
+        // blocked, so it gains no walk edge), and that is the only reason a hop can reach it at all.
+        NavGrid grid = NavGrid.FromSurfaces(5, 5, 1f, 0f, 0f,
+            (x, z) => new NavSurfaceSample(
+                true,
+                Math.Max(Math.Abs(x - 2), Math.Abs(z - 2)) switch { 0 => 2f, 1 => 1f, _ => 0f },
+                float.PositiveInfinity),
+            stepHeight: 0.4f, agentHeight: 0f);
+
+        float? topHeight = grid.SurfaceHeightAt(2, 2);
+        Assert.NotNull(topHeight);
+        Assert.Equal(2f, topHeight!.Value);
+        Assert.Null(grid.SurfaceHeightAt(2, 1)); // the eroded ring around it
+
+        IReadOnlyList<NavLink> links = NavHopLinks.Generate(grid, stepHeight: 0.4f, jumpHeight: 2.5f);
+
+        Assert.Contains(links, l => l.Kind == NavLinkKind.Hop && l.ToX == 2 && l.ToZ == 2);
+        Assert.Contains(links, l => l.Kind == NavLinkKind.Hop && l.FromX == 2 && l.FromZ == 2);
+
+        // End to end: the preserved island is routable precisely because a hop targets it. Its own grid
+        // neighbors are all blocked, so the link is the only way in.
+        var planner = new GridPathPlanner(new NavSpace(new[] { grid }, links));
+        NavPath path = planner.FindPath(new Vector3(0.5f, 0f, 2.5f), new Vector3(2.5f, 2f, 2.5f), 0.2f);
+
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        Assert.Contains(path.Waypoints, w => w.Kind == NavWaypointKind.Hop);
     }
 
     [Fact]

@@ -5,6 +5,36 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.1.0
+
+`SlotGrid` gains a count formatter and a fallback icon, so a game can format the stack count and cover an
+icon-atlas miss without abandoning the widget's built-in content painter. Requested by Ruinborne, whose
+inventory panel had reimplemented `SlotGrid.DrawContent` by hand just to prefix a count with `x`. Consumer
+context: https://github.com/APKiwiOrg/Ruinborne/issues/227.
+
+### Added
+
+- **`SlotGrid.CountFormatter` (`Func<int, SlotContent, string?>`)** - formats the stack / charge count text
+  drawn bottom-right in a slot, invoked as (slotIndex, content). Null (the default) reproduces the previous
+  behaviour exactly: a count only draws when `SlotContent.Count` is greater than zero, as
+  `Count.ToString(CultureInfo.InvariantCulture)`, asserted by test rather than left to a green build. When set,
+  the formatter is invoked for every slot that has content, regardless of `Count`, so a game can suppress the
+  count for a single item by returning null or render a zero-charge indicator, decisions the built-in
+  greater-than-zero gate cannot make. A null or empty return draws nothing. Both the slot index and the full
+  `SlotContent` are passed rather than just the count, so one formatter can vary its output per slot (stacks in
+  one row, charges in another) or by item kind via `SlotContent.IconId`. The returned text draws verbatim, in
+  the same place with the same `CountColor`, `CountScale`, and `CountPad`. A count is a non-localizable numeric
+  token, the same escape hatch `KeybindLabels` already documents, so the engine never resolves the returned
+  string through localization. A game needing a genuinely localized quantity resolves it through its own
+  `LocalizationManager` first and hands this the already-resolved string.
+- **`SlotGrid.FallbackIconId` (`string?`)** - an icon id drawn instead when a slot's `SlotContent.IconId` is set
+  but `SlotGrid.IconAtlas` cannot resolve it, for example an item roster that arrives over the wire after the
+  build shipped and names an id the atlas has never seen. A null `IconId` still means no icon and never falls
+  back. Null (the default), or a fallback id that itself misses the atlas, leaves the slot drawing no icon,
+  same as before.
+
+Docs: `KhaozEngine.Gui/README.md` and `docs/USING-KHAOZENGINE.md`.
+
 ## 16.0.0
 
 Opt-in airborne horizontal momentum: a jump travels its whole arc at the speed it launched at, through the

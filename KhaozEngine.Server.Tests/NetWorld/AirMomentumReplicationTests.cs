@@ -168,8 +168,10 @@ public class AirMomentumReplicationTests
     {
         // MovementState is a built-in and is NOT length-prefixed, so an older client cannot skip the four new bytes.
         // The generation is what turns that into a clean IncompatibleVersion rejection at connect instead of a
-        // misparse that reads the arc's bytes as somebody else's field.
-        Assert.Equal(7, MoveProtocol.WireProtocolVersion);
+        // misparse that reads the arc's bytes as somebody else's field. Pinned as ">= 7" rather than "== 7" (the
+        // shape PlayerMoveSwimTests and TeleportEpochTests already use): this feature's claim is that the generation
+        // MOVED for it, and a later built-in change moves it again without weakening that.
+        Assert.True(MoveProtocol.WireProtocolVersion >= 7);
     }
 
     // ---- Acceptance 2 and 4: a correction mid-flight, on real geometry, must converge ----

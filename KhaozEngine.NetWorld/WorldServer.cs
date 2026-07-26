@@ -478,6 +478,19 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     public void Broadcast(string text) =>
         admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Broadcast, Text = text ?? string.Empty });
 
+    /// <summary>Sets a player's per-entity HORIZONTAL speed multiplier: haste (&gt; 1), slow (&lt; 1), root (0),
+    /// unmodified (1). The engine owns the multiplier and its plumbing (authoritative step, client prediction,
+    /// reconcile replay, and the anti-cheat correction check all read the same value). The GAME owns duration,
+    /// stacking, and what granted it, and ends a buff by calling this again with <c>1f</c>. Queued and applied on the
+    /// host thread at the top of the next <see cref="Tick"/>, so it is safe from any thread. <paramref name="scale"/>
+    /// is clamped to <c>[0, MovementState.MaxSpeedScale]</c> and quantized to the wire's granularity before it reaches
+    /// the sim, so both heads run the identical value. No-op for an unknown player. The single-<see cref="World"/>
+    /// twin of <see cref="ShardedWorldServer.SetSpeedScale"/>, which documents the seam in full.</summary>
+    /// <param name="target">The player, by slot or account id.</param>
+    /// <param name="scale">The horizontal speed multiplier (1 = unmodified).</param>
+    public void SetSpeedScale(PlayerRef target, float scale) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.SpeedScale, Target = target, Scale = scale });
+
     private int ResolveSlot(in PlayerRef target)
     {
         if (target.IsSlot) return netIdBySlot.ContainsKey(target.SlotValue) ? target.SlotValue : -1;
@@ -504,6 +517,19 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
                     SetPlayerState(slot, st, teleport: true);   // admin + self-rescue teleports cut on the client
+                }
+                break;
+            }
+            case AdminCommandKind.SpeedScale:
+            {
+                // Store the DECODED quantized value, not the caller's raw float: this head steps from the per-slot
+                // PlayerMoveState while the client replays from the wire byte, so rounding here is what makes the two
+                // bit-identical instead of leaving a permanent sub-percent drift for the whole duration of the buff.
+                int slot = ResolveSlot(cmd.Target);
+                if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
+                {
+                    st.Move.SpeedScale = MovementState.DecodeSpeedScale(MovementState.QuantizeSpeedScale(cmd.Scale));
+                    SetPlayerState(slot, st);
                 }
                 break;
             }

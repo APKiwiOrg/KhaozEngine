@@ -14,12 +14,17 @@ namespace KhaozEngine.NetWorld;
 internal static class MovementAnomaly
 {
     /// <summary>XZ distance between the client's intended unconstrained target and where the authoritative step
-    /// actually landed. Uses the same effective speed scale the step used (1 grounded, AirControl airborne) so the
-    /// comparison isolates only the denial, not air-control scaling.</summary>
+    /// actually landed. Uses the same effective speed scale the step used (1 grounded, AirControl airborne, times the
+    /// entity's server-authored <see cref="MoveState.SpeedScale"/>) so the comparison isolates only the denial, not
+    /// the scaling. The speed-scale term is load-bearing: without it a legitimately hasted player - who steps several
+    /// times further per tick than an unscaled intended target - reads as a large correction on EVERY tick of the
+    /// buff, and the streak below reports them as a speed hacker. The scale is server state (it reaches here from
+    /// <see cref="MovementState.SpeedScaleQ"/>, never from the command), so folding it in grants a client nothing:
+    /// an unhasted client claiming to be hasted still gets measured against the unhasted target.</summary>
     public static float CorrectionDistance(in PlayerMoveState prev, in MoveCommand cmd, in PlayerMoveState after,
         float dt, in MoveTuning tuning)
     {
-        float speedScale = prev.Grounded ? 1f : tuning.AirControl;
+        float speedScale = (prev.Grounded ? 1f : tuning.AirControl) * prev.Move.SpeedScale;
         Vector2 intended = CharacterMovement.IntendedHorizontalTarget(prev.Position, cmd, dt, tuning, speedScale);
         var actual = new Vector2(after.Position.X, after.Position.Z);
         return Vector2.Distance(intended, actual);

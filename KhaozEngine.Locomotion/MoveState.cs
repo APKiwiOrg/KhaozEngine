@@ -10,7 +10,8 @@ namespace KhaozEngine.Locomotion;
 /// accounting) and <see cref="JumpBufferRemaining"/> (jump-buffer countdown) are the feel timers the step
 /// evolves. The same state is run by the local controller, the authoritative server sim, and client prediction,
 /// so it must round-trip exactly (it is replicated as <c>MovementState</c> in NetWorld). <c>default</c> is a
-/// grounded-at-origin, zero-velocity state with no buffered jump.
+/// grounded-at-origin, zero-velocity state with no buffered jump, moving at unmodified speed
+/// (<see cref="SpeedScale"/> 1).
 /// </summary>
 public struct MoveState
 {
@@ -39,6 +40,36 @@ public struct MoveState
     /// is a land character, so a pre-swim state is byte-identical. Replicated as <c>MovementState.Swimming</c> in
     /// NetWorld so the local owner reconciles it and remotes animate it.</summary>
     public bool Swimming;
+
+    /// <summary>Storage for <see cref="SpeedScale"/>, held as the OFFSET FROM 1 (<c>scale - 1</c>) rather than the scale
+    /// itself, which is the whole reason the multiplier is a property and not a plain public field like everything else
+    /// here. A struct field cannot have a non-zero default, so a raw <c>SpeedScale</c> field would make
+    /// <c>default(MoveState)</c> - and every one of the many existing <c>new MoveState { ... }</c> initializers that
+    /// predate this feature - a character frozen at 0 m/s. Storing the offset makes the zero default mean "unmodified"
+    /// (1.0, exactly, no rounding), so a pre-feature construction site stays bit-identical and a forgotten carry-through
+    /// degrades to normal speed rather than to paralysis.</summary>
+    private float speedScaleBias;
+
+    /// <summary>Per-entity HORIZONTAL speed multiplier: haste (&gt; 1), slow (&lt; 1), root (exactly 0), unmodified
+    /// (1, the default). It is a movement INPUT the step reads and carries through unchanged - the engine owns the
+    /// scale and its plumbing, never the buff: duration, stacking, what granted it, and how it is balanced are game
+    /// concerns. On a networked player it is authored solely by the server (<c>ShardedWorldServer.SetSpeedScale</c> /
+    /// <c>WorldServer.SetSpeedScale</c>) and replicated as <c>MovementState.SpeedScaleQ</c>, so a hostile client cannot
+    /// grant itself one and a mid-boost correction replays the pending command window at the boosted speed. On a
+    /// server-only NPC or a single-player controller it is set directly and rides no wire.
+    /// <para>Composes MULTIPLICATIVELY into the existing speed product rather than replacing any of it, so it stacks
+    /// with the grounded/<see cref="MoveTuning.AirControl"/> term and the medium's wade scale. Consequences worth
+    /// knowing: a hasted player who jumps travels correspondingly further horizontally (air control is scaled, jump
+    /// HEIGHT is not - this is a horizontal scale only), and the boost persists into a swim
+    /// (<see cref="MoveTuning.SwimSpeed"/> is scaled too, so diving mid-boost does not silently drop it).</para>
+    /// Clamped to <c>&gt;= 0</c> on assignment: a negative multiplier would reverse travel against the command, which
+    /// is never a movement modifier's job. There is no upper clamp here (a server-only NPC may use any speed), but the
+    /// replicated range is bounded - see <c>MovementState.MaxSpeedScale</c>.</summary>
+    public float SpeedScale
+    {
+        readonly get => 1f + speedScaleBias;
+        set => speedScaleBias = (value > 0f ? value : 0f) - 1f;
+    }
 
     /// <summary>Signed step-climb rate in m/s: the vertical speed at which the capsule is riding a paced STEP climb this
     /// tick. Positive = ascending a continuous paced stair run (the step-up co-paces the rise to

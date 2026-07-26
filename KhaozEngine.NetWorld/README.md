@@ -190,11 +190,13 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 3; 2 was
-    the 10.0.0 `NetId`-widening line, 1 the pre-10.0.0 32-bit line) labels the incompatible on-the-wire generations.
-    10.0.0 widened `NetId` to 64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`,
-    grown 8 -> 12 bytes); generation 3 (the swim feature) added the `MovementState.Swimming` byte to the movement
-    built-in codec (not length-prefixed, so an old client cannot skip it). Neither has a dual-format wire, so peers on
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 6) labels
+    the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
+    64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
+    Every generation since has added a field to the movement built-in codec, which is NOT length-prefixed, so an old
+    client cannot skip the extra bytes: 3 added `MovementState.Swimming`, 4 `MovementState.TeleportEpoch`, 5
+    `MovementState.ClimbRateQ`, and 6 `MovementState.SpeedScaleQ` (the per-entity speed scale). There is no
+    dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
     generation into its Hello (even with no `ProtocolVersion`) and `WorldServer` / `ShardedWorldServer` always install
@@ -216,7 +218,9 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
 Both `WorldServer` and `ShardedWorldServer` implement **`IAdminControllable`**: `ListOnline()` returns the
 connected players as a snapshot (published once per tick); `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`,
 and `Broadcast(text)` are queued and applied on the host thread between ticks, safe to call from another thread.
-Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
+Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`. `SetSpeedScale(PlayerRef, float)` rides the
+same queue on both heads (it is a gameplay mutation, not an admin action, so it is not on `IAdminControllable`).
+See "Per-entity speed scale" below.
 
 **`IBanStore`** is consulted at connect: a banned account is rejected before it spawns. `InMemoryBanStore` is
 the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
@@ -298,6 +302,45 @@ and never touches it). `ClientPrediction.Reconcile` force-cuts on an epoch advan
 event plus a monotonic **`LocalTeleportEpoch`** counter (poll it frame-to-frame if you prefer). A consumer uses it to
 snap the follow camera (`FollowCamera3D.Warp`) and optionally run a screen transition (see `KhaozEngine.Render3D`
 `ITransition`). Mismatched wire generations are rejected at connect by the always-on `WireGenerationAuthenticator`.
+
+## Per-entity speed scale: haste, slow, root (since 14.26.0)
+
+One player can move at a different speed from everyone else on the server, for as long as the game says, with the
+client predicting it and the server staying authoritative.
+
+```csharp
+server.SetSpeedScale(PlayerRef.Slot(slot), 5f);   // haste
+server.SetSpeedScale(PlayerRef.Slot(slot), 0.5f); // slow
+server.SetSpeedScale(PlayerRef.Slot(slot), 0f);   // root
+server.SetSpeedScale(PlayerRef.Slot(slot), 1f);   // back to normal - this is how a buff expires
+```
+
+**The engine owns the multiplier and its plumbing, not the buff.** There is no duration, no stacking, no expiry and
+no concept of what granted it: the game drives all of that and ends a boost by calling the setter again with `1f`,
+exactly as `Teleport` moves a player without owning any concept of why. Two effects at once are the caller's
+product to compute.
+
+- **Where it lives.** `MoveState.SpeedScale` is what the step reads, and it replicates as `MovementState.SpeedScaleQ`.
+  Both are needed: `PlayerMoveState.From` rebuilds the client's reconcile basis from the replicated components
+  ALONE, so a scale living only on `MoveState` would reset on every correction and the pending command window
+  would replay at base speed for the whole duration of the buff.
+- **Wire cost is one byte,** quantized as the OFFSET FROM 1 at `MovementState.SpeedScaleQuantum` (1/16), so
+  `SpeedScaleQ == 0` decodes to exactly 1.0 - which is what every unboosted player carries on every tick. The
+  quantum is a power of two, so 0, 0.5, 1, 1.5, 2, 5 and 8 all land exactly and both heads agree bit-exactly. The
+  setter clamps to `[0, MovementState.MaxSpeedScale]` (8) and quantizes BEFORE the sim sees the value, so the
+  server never runs a speed it cannot describe to its clients (a requested 1.1x becomes 1.125x on both ends).
+- **Server-authored only.** It is deliberately NOT on `MoveCommand`, which is what the client sends: a hostile
+  client would set its own multiplier. `SetSpeedScale` is the only author.
+- **The anti-cheat knows about it.** `MovementAnomaly.CorrectionDistance` folds the scale into its intended-target
+  calculation. Without that, a legitimately hasted player steps far past an unscaled target and every boosted tick
+  reads as a large correction, so the streak reports them as a speed hacker. A boosted client fighting a wall or a
+  play-area bound still raises the signal.
+- **Composes, never replaces.** It multiplies into the existing speed product alongside the grounded/`AirControl`
+  term and the medium's wade scale. So a hasted player who jumps travels correspondingly further horizontally
+  (jump HEIGHT is untouched - this is a horizontal scale), and the boost persists into a swim.
+- **NPCs get it free.** The value lives on `MoveState`, so anything stepping through `CharacterMovement` - a
+  server-only creature driven by `StepTowards`, a single-player controller - can set it directly and rides no wire.
+  Only what replicates is bound by `MaxSpeedScale`.
 
 ## Reconnect input backlog (since 8.8.0)
 

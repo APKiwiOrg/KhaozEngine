@@ -60,6 +60,10 @@ public sealed class PlayerMovementSystem : ISystem
                 JumpBufferRemaining = ms.JumpBufferRemaining,
                 Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
                 ClimbRateEwma = ms.ClimbRateEwma,   // carry the sim-local ascent EWMA IN so the exported signal converges
+                // Carry the server-authored haste/slow multiplier IN. It is a movement INPUT, so unlike the fields
+                // below it is never written back OUT: the step does not derive it, SetSpeedScale is its only author,
+                // and re-quantizing an already-quantized value every tick would only invite drift.
+                SpeedScale = MovementState.DecodeSpeedScale(ms.SpeedScaleQ),
             };
             state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
 

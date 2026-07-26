@@ -49,8 +49,14 @@ compute cases are silently skipped), which is why the shape survived upstream.
 The fix is to parse the `LocalSize` execution mode out of the SPIR-V module (`Internal/SpirvLocalSize`, about
 fifty lines), surface it on `IGpuComputeShader.ThreadGroupSizeX/Y/Z`, and build the pipeline from that. There is
 then no second copy to disagree with, and a consumer computing group counts reads the size off the shader
-instead of repeating a magic number. A source with no literal workgroup declaration is a
-`ShaderValidationException` at creation rather than a wrong result at dispatch.
+instead of repeating a magic number.
+
+What this does NOT do is enforce that a source declares a size. Omitting `layout(local_size_x = ...)` is legal
+GLSL: the default workgroup size is 1x1x1 and glslang emits an explicit `LocalSize 1 1 1` for it, so the parser
+returns (1, 1, 1) and the shader runs one invocation per group. That is a performance cliff, not a failure, and
+it is not catchable, because a deliberate 1x1x1 is legal too. The parser's throws are therefore defensive
+(a module this engine did not compile, or a toolchain that stops emitting the default) rather than a gate the
+seam's own compile path can hit. `SpirvLocalSizeTests` pins both the declared and the defaulted case.
 
 The alternative considered was keeping the fields and validating them against the parsed value. That still
 requires the caller to write the number twice and turns a silent bug into a loud one, which is better than
@@ -116,9 +122,10 @@ instead of `ComputeShader`/`ShaderWrite`, so the dependency it creates is not th
 upstream bug, unchanged on their master branch, and not something to build a guarantee on.
 
 The consequence is a GPU stall per dependent stage, which is a real ceiling: a 128-point 2D FFT is 14 stalls
-per transform. That constraint is recorded on #310 so the ocean program designs around it rather than
-discovering it, and lifting it needs either a newer backend with a barrier API or a patch to the Vulkan
-command list. It is not something this release can fix from above.
+per transform. That constraint is tracked as [#311](https://github.com/APKiwiOrg/KhaozEngine/issues/311), which
+also carries the options for lifting it (a newer backend with a barrier API, or a patched Vulkan command list),
+and is cross-referenced from the ocean program [#310](https://github.com/APKiwiOrg/KhaozEngine/issues/310) so it
+designs around the stall rather than discovering it. It is not something this release can fix from above.
 
 ### Readback drains before its copy, not only after
 
@@ -156,12 +163,15 @@ clean ping-pong between two buffers.
 ## Deferred, deliberately
 
 - **Indirect dispatch** (`DispatchIndirect`). Nothing wants it yet, and it would ship untested.
-- **Specialization constants for compute.** The layer below mis-marshals them on the compute cross-compile path
-  (the managed struct is 16 bytes with the payload at offset 8, the native one is packed to 12 with it at
-  offset 4), so they are wrong on Metal, Direct3D11 and OpenGL and only correct on Vulkan, which never
+- **Specialization constants for compute**, tracked as
+  [#312](https://github.com/APKiwiOrg/KhaozEngine/issues/312). The layer below mis-marshals them on the compute
+  cross-compile path (the managed struct is 16 bytes with the payload at offset 8, the native one is packed to 12
+  with it at offset 4), so they are wrong on Metal, Direct3D11 and OpenGL and only correct on Vulkan, which never
   cross-compiles. Not exposed rather than exposed-and-broken. A shader that needs a compile-time constant should
-  get it from a uniform or from source substitution.
-- **A cross-dispatch barrier**, per the ordering section above. Not fixable from this layer.
+  get it from a uniform or from source substitution. This is also why `SpirvLocalSize`'s `LocalSizeId` branch is
+  defensive dead code today: a spec-constant workgroup size would need the same broken path to reach a backend.
+- **A cross-dispatch barrier**, per the ordering section above, tracked as
+  [#311](https://github.com/APKiwiOrg/KhaozEngine/issues/311). Not fixable from this layer.
 - **Compute-capable OpenGL/GLES.** `SupportsCompute` reports the backend's own flag, which is a gated extension
   check there, but the OpenGL path has no verified device in CI at all (see #59), so nothing about compute on it
   is claimed.

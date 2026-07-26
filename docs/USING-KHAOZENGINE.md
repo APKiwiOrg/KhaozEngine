@@ -7883,8 +7883,10 @@ cl.Dispatch(groups, groups, 1);
 `Dispatch` takes WORKGROUP counts, not thread counts, so divide by the workgroup size and bounds-check in the
 shader (the tail group runs on out-of-range indices). **You never restate the workgroup size in C#**:
 `IGpuComputeShader.ThreadGroupSizeX/Y/Z` is read out of the compiled shader's own
-`layout(local_size_x = ...)`, and that is what the pipeline is built with. A source without a literal workgroup
-declaration throws.
+`layout(local_size_x = ...)`, and that is what the pipeline is built with. Do declare it, though: omitting the
+layout is legal GLSL, and the 1x1x1 default it compiles in dispatches one invocation per group, so the shader
+is quietly hundreds of times slower rather than broken. Nothing can flag that for you, since a deliberate 1x1x1
+is legal.
 
 Resources. A texture a compute shader writes needs `GpuTextureUsage.Storage`, and one a later graphics pass
 samples needs `Sampled` as well. A storage buffer is `GpuBufferUsage.StructuredBufferReadWrite` (or

@@ -117,14 +117,17 @@ namespace KhaozEngine.Gpu
         /// backend shader set. Wraps <c>Veldrid.SPIRV.CreateFromSpirv</c>.</summary>
         IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl);
         /// <summary>Cross-compile a GLSL 450 SPIR-V COMPUTE source (entry point <c>main</c>) into a backend compute
-        /// shader. Wraps the single-stage <c>Veldrid.SPIRV.CreateFromSpirv</c>. The source MUST declare a literal
-        /// workgroup size (<c>layout(local_size_x = N) in;</c>); it is read back off the compiled module and
-        /// surfaced on <see cref="IGpuComputeShader.ThreadGroupSizeX"/>, which is also what the compute pipeline
-        /// is built with, so there is no second copy to keep in sync. Validate the source device-free first with
-        /// <see cref="ShaderValidation.ValidateCompute"/>. Throws <see cref="NotSupportedException"/> on a device
-        /// whose <see cref="GpuCapabilities.SupportsCompute"/> is false, so a caller that forgot to gate fails
-        /// loudly instead of at dispatch, and <see cref="ShaderValidationException"/> when the source does not
-        /// compile or declares no workgroup size.</summary>
+        /// shader. Wraps the single-stage <c>Veldrid.SPIRV.CreateFromSpirv</c>. The workgroup size is read back off
+        /// the compiled module and surfaced on <see cref="IGpuComputeShader.ThreadGroupSizeX"/>, which is also what
+        /// the compute pipeline is built with, so there is no second copy to keep in sync.
+        /// <para>DECLARE <c>layout(local_size_x = N) in;</c> in the source. Omitting it is not an error: GLSL's
+        /// default workgroup size is 1x1x1 and that is what gets compiled in, so a dispatch runs ONE invocation per
+        /// group and the shader is silently a few hundred times slower than intended rather than broken. Nothing
+        /// can catch that for you, because a deliberate 1x1x1 is legal.</para>
+        /// Validate the source device-free first with <see cref="ShaderValidation.ValidateCompute"/>. Throws
+        /// <see cref="NotSupportedException"/> on a device whose <see cref="GpuCapabilities.SupportsCompute"/> is
+        /// false, so a caller that forgot to gate fails loudly instead of at dispatch, and
+        /// <see cref="ShaderValidationException"/> when the source does not compile.</summary>
         IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl);
         /// <summary>Create a graphics pipeline.</summary>
         IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d);

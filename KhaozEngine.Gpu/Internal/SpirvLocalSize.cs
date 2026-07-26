@@ -27,8 +27,14 @@ namespace KhaozEngine.Gpu.Internal
         const uint ExecutionModeLocalSizeId = 38;
 
         /// <summary>Reads the <c>LocalSize</c> execution mode out of a SPIR-V module. Throws
-        /// <see cref="ShaderValidationException"/> when the bytes are not a SPIR-V module, are truncated, or
-        /// declare no literal workgroup size.</summary>
+        /// <see cref="ShaderValidationException"/> when the bytes are not a SPIR-V module or are truncated.
+        ///
+        /// A source that declares no <c>layout(local_size_x = ...)</c> does NOT reach the final throw: GLSL's
+        /// default workgroup size is 1x1x1 and glslang emits an explicit <c>LocalSize 1 1 1</c> for it, so this
+        /// returns (1, 1, 1) and the shader runs one invocation per group. That path is pinned by
+        /// <c>SpirvLocalSizeTests.AnOmittedLayoutYieldsTheGlslDefaultOfOneByOneByOne</c>. The two remaining throws
+        /// are defensive against a module this engine did not compile, or a toolchain that stops emitting the
+        /// default - reachable in principle, not through the seam's own compile path.</summary>
         public static (uint X, uint Y, uint Z) Parse(byte[] spirv, string label)
         {
             if (spirv is null) throw new ArgumentNullException(nameof(spirv));
@@ -56,6 +62,8 @@ namespace KhaozEngine.Gpu.Internal
 
                 // OpExecutionModeId + LocalSizeId means the size comes from specialization constants, which are
                 // resolvable only by evaluating the constant graph. Flag it rather than silently defaulting.
+                // Defensive today: the seam does not expose specialization constants for compute at all (they are
+                // mis-marshalled a layer down, see issue #312), so nothing it compiles can emit LocalSizeId.
                 if (opcode == OpExecutionModeId && wordCount >= 6 && words[i + 2] == ExecutionModeLocalSizeId)
                     sawLocalSizeId = true;
 

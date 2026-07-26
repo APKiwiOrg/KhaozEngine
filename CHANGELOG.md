@@ -25,8 +25,9 @@ GPU golden moves. Closes #309; the FFT ocean program that consumes it is #310.
   size is a description field validated against nothing, read by Metal ONLY (MSL does not carry the workgroup
   size the way SPIR-V does, so Metal needs it again at dispatch-encode time) and ignored by Vulkan and
   Direct3D11. A description disagreeing with the GLSL is therefore invisible on two backends and silently wrong
-  on the third. With the size derived there is no second copy to disagree. A compute source with no literal
-  `layout(local_size_x = ...)` is now a `ShaderValidationException` at creation.
+  on the third. With the size derived there is no second copy to disagree. Note that OMITTING
+  `layout(local_size_x = ...)` remains legal GLSL and compiles in the 1x1x1 default (one invocation per group,
+  so slow rather than broken); the parser's throws are defensive, for a module the engine did not compile.
 - **Storage resources.** `GpuTextureUsage.Storage` makes a read-write storage image (GLSL `image2D`), bound
   through the existing `GpuResourceKind.TextureReadWrite`. Storage buffers need no new type: the existing
   `GpuBufferUsage.StructuredBufferReadOnly`/`ReadWrite` and the matching `GpuResourceKind` members become

@@ -28,6 +28,19 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((x, y, z), SpirvLocalSize.Parse(spirv, "t"));
         }
 
+        // Pins what actually happens when a compute source omits the layout, which is NOT an error: GLSL's default
+        // workgroup size is 1x1x1, and glslang emits an explicit LocalSize 1 1 1 execution mode for it. So the
+        // "no LocalSize found" throw below is unreachable through the seam's only compile path, and the real
+        // hazard is a silent 1x1x1 dispatch (one invocation per group) rather than a missing declaration. Declare
+        // the size explicitly for throughput; this test is here so a toolchain change that stopped emitting the
+        // default would be caught rather than turning into a hang of a throw nobody expected.
+        [Fact]
+        public void AnOmittedLayoutYieldsTheGlslDefaultOfOneByOneByOne()
+        {
+            byte[] spirv = Spirv("#version 450\nvoid main() {}\n");
+            Assert.Equal((1u, 1u, 1u), SpirvLocalSize.Parse(spirv, "t"));
+        }
+
         [Fact]
         public void NonSpirvBytesAreRejectedByTheMagicNumber()
         {

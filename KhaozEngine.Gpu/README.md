@@ -49,7 +49,8 @@ What it owns today:
   - **The workgroup size comes from the shader, not from you.** `IGpuComputeShader.ThreadGroupSizeX/Y/Z` is read
     out of the compiled SPIR-V module's `LocalSize` execution mode and is what the pipeline is built with, so there
     is no second copy of `layout(local_size_x = ...)` to drift (which would be invisible on Vulkan/D3D11 and
-    silently wrong on Metal, the only backend that reads it). A source with no literal workgroup declaration throws.
+    silently wrong on Metal, the only backend that reads it). Do declare it: omitting the layout is legal GLSL and
+    compiles in the 1x1x1 default, which dispatches one invocation per group rather than failing.
   - **Ordering rules, since there is no barrier call.** Compute writes a storage texture that a graphics pass then
     samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch that reads
     what an earlier dispatch wrote: separate them with `End` + `Submit` + `WaitForIdle`. Full reasoning per backend

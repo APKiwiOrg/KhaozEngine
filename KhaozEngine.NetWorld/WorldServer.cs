@@ -378,9 +378,9 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         selfRescueReadyAt[slot] = selfRescueClock + Math.Max(0f, config.SelfRescueCooldownSeconds);
     }
 
-    private void TrackCorrection(int slot, in PlayerMoveState prev, in MoveCommand cmd, in PlayerMoveState after, float dt)
+    private void TrackCorrection(int slot, in PlayerMoveState prev, in PlayerMoveState after, float dt)
     {
-        float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt);
+        float correction = MovementAnomaly.CorrectionDistance(prev, after, dt);
         if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
             Raise(slot, SuspiciousReason.MovementCorrection, correction);
     }
@@ -407,7 +407,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
             stateBySlot[slot] = state;
             world.Set(entityBySlot[slot], new ReplicatedPosition { Value = state.Position });
             world.Set(entityBySlot[slot], MovementState.From(state));   // replicate the vertical axis
-            if (config.AntiCheat.CorrectionEnabled) TrackCorrection(slot, prev, cmd, state, dt);
+            if (config.AntiCheat.CorrectionEnabled) TrackCorrection(slot, prev, state, dt);
         }
 
         // Rebuild AoI index from current positions.

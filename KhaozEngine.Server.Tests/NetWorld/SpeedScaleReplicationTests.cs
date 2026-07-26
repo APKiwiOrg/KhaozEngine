@@ -202,7 +202,7 @@ public class SpeedScaleReplicationTests
         for (int i = 0; i < 30; i++)
         {
             PlayerMoveState after = sim.Step(prev, run, Dt);
-            float correction = MovementAnomaly.CorrectionDistance(prev, run, after, Dt);
+            float correction = MovementAnomaly.CorrectionDistance(prev, after, Dt);
             Assert.True(correction <= cfg.MaxCorrectionDistance, $"tick {i} read as a {correction} m correction");
             Assert.False(MovementAnomaly.RegisterCorrection(streaks, 0, correction, cfg));
             prev = after;
@@ -228,7 +228,7 @@ public class SpeedScaleReplicationTests
         for (int i = 0; i < 10 && !raised; i++)
         {
             PlayerMoveState after = sim.Step(prev, run, Dt);
-            float correction = MovementAnomaly.CorrectionDistance(prev, run, after, Dt);
+            float correction = MovementAnomaly.CorrectionDistance(prev, after, Dt);
             raised = MovementAnomaly.RegisterCorrection(streaks, 0, correction, cfg);
             prev = after;
         }

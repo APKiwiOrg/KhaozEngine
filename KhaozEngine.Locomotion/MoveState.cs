@@ -71,13 +71,30 @@ public struct MoveState
         set => speedScaleBias = (value > 0f ? value : 0f) - 1f;
     }
 
-    /// <summary>SIM-LOCAL step OUTPUT (NOT replicated): the UNCONSTRAINED horizontal speed in m/s this step actually
-    /// commanded, before the slope gate, static collision, and the play-area clamp denied any of it. It is the whole
-    /// speed product the step resolved - walk/run (or <see cref="MoveTuning.SwimSpeed"/> while swimming) times the
-    /// grounded/<see cref="MoveTuning.AirControl"/> term, the medium's wade ramp and zone scale, the per-entity
-    /// <see cref="SpeedScale"/>, and (on the world-space NPC path) the steering vector's speed fraction - collapsed
-    /// into one number, so with nothing
-    /// denying the move the step travels exactly <c>CommandedSpeed * dt</c>. 0 on an idle tick.
+    /// <summary>CARRIED horizontal velocity in m/s (X = world X, Y = world Z), the airborne inertia the step flies the
+    /// capsule along while <see cref="MoveTuning.AirMomentum"/> is on. It is maintained on EVERY tick regardless of that
+    /// knob and CONSUMED only when the knob is on, which is what makes the "unchanged at the default" claim STRUCTURAL
+    /// rather than behavioural: with momentum off the field is written and never read, so a game that never opts in
+    /// cannot have its jump arc moved by the mere existence of this field. <c>default</c> (zero) is byte-identical to a
+    /// pre-feature state and reads as "carrying nothing", so a state that never went through a step degrades to the old
+    /// instant-to-target model rather than to a phantom drift.
+    /// <para>What is stored is the step's INTENDED velocity CLIPPED to what the collision resolve actually delivered:
+    /// projected along its own direction and clamped into <c>[0, |intended|]</c>. Free flight therefore leaves it
+    /// untouched, a head-on wall clips it to ~0, a glancing wall sheds magnitude and keeps direction, and neither a
+    /// depenetration nudge nor a play-area clamp can ever INJECT speed into it. That upper clamp is the whole reason
+    /// the field is safe to carry tick-to-tick: nothing downstream of the command can grow it.</para>
+    /// Replicated as <c>MovementState.HorizontalVelocityXQ</c> / <c>HorizontalVelocityZQ</c> in NetWorld, because
+    /// <c>PlayerMoveState.From</c> rebuilds the whole reconcile basis from the replicated components ALONE: a carried
+    /// field missing from that seed silently resets to the struct default on every correction and diverges mid-air the
+    /// moment one lands, which is exactly the failure <c>SpeedScaleQ</c> was added to fix.</summary>
+    public Vector2 HorizontalVelocity;
+
+    /// <summary>SIM-LOCAL step OUTPUT (NOT replicated): the UNCONSTRAINED horizontal VELOCITY in m/s this step actually
+    /// commanded, before the slope gate, static collision, and the play-area clamp denied any of it. Its magnitude is
+    /// the whole speed product the step resolved - walk/run (or <see cref="MoveTuning.SwimSpeed"/> while swimming) times
+    /// the grounded/<see cref="MoveTuning.AirControl"/> term, the medium's wade ramp and zone scale, the per-entity
+    /// <see cref="SpeedScale"/>, and (on the world-space NPC path) the steering vector's speed fraction - so with
+    /// nothing denying the move the step travels exactly <c>CommandedVelocity * dt</c>. <c>(0,0)</c> on an idle tick.
     /// <para>It exists so the server-side movement anomaly check can measure ONLY the denial. That check compares
     /// where the step landed against where the command intended to reach, and it used to REBUILD the intended
     /// target from <see cref="MoveTuning.WalkSpeed"/>/<see cref="MoveTuning.RunSpeed"/> alone: every speed term the
@@ -86,10 +103,22 @@ public struct MoveState
     /// the sim already computed, instead of reconstructing it downstream, is the same fix the stair glide made when
     /// <see cref="ClimbRate"/> replaced a render-side position-delta estimator, and it means a future speed term
     /// cannot desync the anti-cheat again.</para>
-    /// Written every tick, so it is a per-tick FACT rather than carried state. <c>default</c> is 0, which reads as
-    /// "commanded nothing", the safe direction: a state that never went through a step measures as no denial rather
-    /// than as a large one.</summary>
-    public float CommandedSpeed;
+    /// <para>It is a VECTOR and not a scalar for the same reason, one level up. The check pairs the exported number
+    /// with the command's own DIRECTION, which stops being the direction of travel the moment
+    /// <see cref="MoveTuning.AirMomentum"/> is on: a player who releases input mid-flight keeps travelling along the
+    /// conserved <see cref="HorizontalVelocity"/>, so a scalar export would place the intended target back at the
+    /// capsule and measure a legitimate arc as a full-speed denial on EVERY airborne tick. Exporting the velocity the
+    /// step resolved, direction included, is exact under both models: with momentum off it is exactly
+    /// <c>moveDir * CommandedSpeed</c>, so the check is arithmetically identical to the pre-momentum one.</para>
+    /// Written every tick, so it is a per-tick FACT rather than carried state. <c>default</c> is <c>(0,0)</c>, which
+    /// reads as "commanded nothing", the safe direction: a state that never went through a step measures as no denial
+    /// rather than as a large one.</summary>
+    public Vector2 CommandedVelocity;
+
+    /// <summary>The magnitude of <see cref="CommandedVelocity"/>: the unconstrained horizontal SPEED in m/s this step
+    /// commanded. Computed rather than stored, so there is exactly one number and the scalar view can never drift from
+    /// the vector it is derived from. 0 on an idle tick.</summary>
+    public readonly float CommandedSpeed => CommandedVelocity.Length();
 
     /// <summary>Signed step-climb rate in m/s: the vertical speed at which the capsule is riding a paced STEP climb this
     /// tick. Positive = ascending a continuous paced stair run (the step-up co-paces the rise to

@@ -111,31 +111,75 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
   in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so
   it composes with the grounded/`AirControl` term and the medium's `WadeSpeedScale`, applies while swimming, and
-  scales a jump's horizontal reach (jump HEIGHT is untouched). Assignment clamps to `>= 0`: a negative multiplier
-  would reverse travel against the command, which is never what a modifier means.
+  scales a jump's horizontal reach (jump HEIGHT is untouched). Under `MoveTuning.AirMomentum` the airborne
+  composition drops the `AirControl` term (air control becomes a steering authority there, not a speed scale) and
+  the multiplier scales the commanded speed the arc steers toward. Assignment clamps to `>= 0`: a negative
+  multiplier would reverse travel against the command, which is never what a modifier means.
   It is a **property, not a field like the rest of this struct**, deliberately: a struct field cannot have a
   non-zero default, so a raw field would make `default(MoveState)` (and every pre-existing initializer) a character
   frozen at 0 m/s. The backing store is the offset from 1, which makes the zero default mean "unmodified", exactly.
   On a networked player the server is the sole author (`WorldServer.SetSpeedScale` / `ShardedWorldServer.SetSpeedScale`,
   replicated as `MovementState.SpeedScaleQ`). A server-only NPC or a single-player controller just sets it.
-- **`MoveState.CommandedSpeed`** (14.27.0) - sim-local step OUTPUT (not replicated): the unconstrained horizontal
-  speed in m/s the step actually commanded this tick, before the slope gate, collision, or the play-area clamp
-  denied any of it. It is the whole speed product collapsed into one number (walk/run or `SwimSpeed`, times air
-  control, the wade ramp, the zone scale, and `SpeedScale`), so with nothing denying the move the step travels
-  exactly `CommandedSpeed * dt`. 0 on an idle tick. It exists so the server-side movement-anomaly check can measure
-  ONLY the denial: rebuilding that product downstream is what made a swimming or wading player read as a speed
-  hacker. Same "the sim exports what it knows" pattern as `ClimbRate`.
+- **`MoveState.CommandedVelocity`** (16.0.0, was the `float CommandedSpeed` field in 14.27.0) - sim-local step
+  OUTPUT (not replicated): the unconstrained horizontal VELOCITY in m/s the step actually commanded this tick,
+  before the slope gate, collision, or the play-area clamp denied any of it. Its magnitude is the whole speed
+  product (walk/run or `SwimSpeed`, times air control, the wade ramp, the zone scale, and `SpeedScale`), so with
+  nothing denying the move the step travels exactly `CommandedVelocity * dt`. `(0,0)` on an idle tick.
+  `CommandedSpeed` survives as a computed readonly property (`CommandedVelocity.Length()`), so reads still compile
+  and writes do not. It exists so the server-side movement-anomaly check can measure ONLY the denial: rebuilding
+  that product downstream is what made a swimming or wading player read as a speed hacker. It is a vector and not
+  a scalar because the check needs the direction of travel too, and under `MoveTuning.AirMomentum` that is the
+  conserved `HorizontalVelocity` rather than the input. Same "the sim exports what it knows" pattern as
+  `ClimbRate`.
+- **`MoveState.HorizontalVelocity`** (16.0.0) - `Vector2` (XZ, m/s), the CARRIED airborne inertia and new
+  replicated state (`MovementState.HorizontalVelocityXQ` / `HorizontalVelocityZQ`). Maintained on EVERY tick
+  regardless of `MoveTuning.AirMomentum` and consumed only when it is on, so with momentum off the field is
+  written and never read. What is stored is the step's intended velocity CLIPPED to what the collision resolve
+  delivered, projected along its own direction and clamped into `[0, |intended|]`: free flight leaves it exactly
+  untouched, a head-on wall clips it to ~0, a glancing wall sheds magnitude and keeps direction, and no
+  depenetration nudge or play-area clamp can ever inject speed into it. `SwimStep` replaces it with the swim's own
+  commanded velocity, so a flight into water drops its arc at the waterline. `default` (zero) is "carrying
+  nothing".
 - **`CharacterMovement.IntendedHorizontalTargetAtSpeed(position, cmd, dt, speed)`** (14.27.0) - the unconstrained
   target a command reaches in one step at an EXPLICIT speed. The existing `IntendedHorizontalTarget(..., tuning,
-  speedScale)` now delegates to it, so the two share one camera basis. Pair it with `CommandedSpeed`.
+  speedScale)` now delegates to it, so the two share one camera basis. Correct for any caller whose travel
+  direction is its input direction, which is every grounded step and every airborne one without momentum.
+- **`CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)`** (16.0.0) - the vector form,
+  `position.XZ + velocity * dt`. No command and no camera basis, because the direction comes from the velocity.
+  Pair it with `CommandedVelocity`. This is the form the movement-anomaly check uses.
 - **`MovementMedium`** - the fluid medium at one world sample the medium provider returns: `WaterSurfaceY`,
   `InWater`, `WadeSpeedScale` (a per-sample zone multiplier, default 1). `default` / `MovementMedium.Dry` is dry land.
 - **`MoveTuning`** - all speed and feel constants:
-  `WalkSpeed` / `RunSpeed` / `CapsuleHalfHeight` / `CapsuleRadius` (default 0.4) / `StepHeight` (default 0.4) /
+  `WalkSpeed` / `RunSpeed` / `CapsuleHalfHeight` / `MaxSlopeRadians` / `CapsuleRadius` (default 0.4) /
+  `StepHeight` (default 0.4) /
   `Gravity` / `JumpSpeed` / `MaxFallSpeed` / `CoyoteTime` / `JumpBuffer` / `AirControl` / `GroundedEpsilon` /
   `WadeStartDepthFraction` (default 0.15) / `WadeEndDepthFraction` (default 0.65) / `WadeMinSpeedScale` (default 0.45) /
   `SwimEnterDepthFraction` (default 0.65) / `SwimExitDepthFraction` (default 0.55) / `SwimSpeed` (default 2.5) /
-  `SwimSurfaceSubmersionFraction` (default 0.6) / `SwimBuoyancyStiffness` (default 8).
+  `SwimSurfaceSubmersionFraction` (default 0.6) / `SwimBuoyancyStiffness` (default 8) /
+  `MaxStepClimbSpeed` (default 3.5) / `AirMomentum` (default false) / `AirBrakeAccel` (default 0).
+
+## Airborne momentum (16.0.0, opt-in)
+
+Off by default. With `MoveTuning.AirMomentum = false` a character in free flight has no inertia: the horizontal is
+recomputed from the command every tick, so a mid-air `SpeedScale` change collapses a committed arc and releasing
+input stops horizontal travel dead. That is the pre-16.0.0 model and it is what every game gets until it opts in.
+
+With `AirMomentum = true` the AIRBORNE step flies the carried `MoveState.HorizontalVelocity` instead. A jump at
+speed S travels its whole arc at S whatever the command does afterwards, releasing input holds both speed and
+direction, and pressing into the arc can ACCELERATE it but never brake it. **Grounded motion is untouched either
+way** - it stays instant-to-target with no acceleration and no friction. `AirControl` becomes the STEERING
+authority over the direction of travel rather than a speed scale, which gives it a reading it never had: `1` is
+still full control (an instant 180 mid-flight, still at the carried speed), and `0` is now a true ballistic arc
+rather than "frozen horizontally in mid-air".
+
+`MoveTuning.AirBrakeAccel` (m/s^2, default 0) bleeds a conserved speed down toward a STRICTLY SLOWER commanded
+speed, stopping there and never going below it. `0` is pure conservation. It is there for a root or a snare
+landing mid-flight, and it is the one knob that dials back toward the old feel without turning momentum off. It
+never accelerates: braking is its job alone and steering is the blend's, and the two deliberately do not overlap.
+
+Networked play needs nothing extra - the carried velocity replicates and survives a reconcile - but it is a wire
+break, see `KhaozEngine.NetWorld/README.md`. Rationale and the full per-tick resolve are in
+`docs/design/AIRBORNE-MOMENTUM-DESIGN-2026-07-26.md`.
 
 ## Usage
 

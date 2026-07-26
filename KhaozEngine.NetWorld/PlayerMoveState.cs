@@ -101,10 +101,22 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             // window would replay at base speed while the server ran it boosted - a permanent rubber-band for the whole
             // duration of the buff.
             SpeedScale = MovementState.DecodeSpeedScale(movement.SpeedScaleQ),
-            // Carry the sharded head's sim-local commanded speed back out, so ShardedWorldServer's post-tick anomaly
-            // check measures against the speed the cell sim actually asked for. Rides no wire, so on a client (and
-            // across a shard handoff) this is 0, which reads as no denial rather than a spurious one.
-            CommandedSpeed = movement.CommandedSpeed,
+            // Restore the CARRIED airborne arc into the reconcile basis, for the same reason one line up and with a
+            // sharper failure. ClientPrediction.Reconcile does `TState replayed = authoritativeBasis`, a full
+            // UNCONDITIONAL overwrite, so a field missing from this seed does not lag behind the server: it resets to
+            // the struct default every time a correction lands. A client corrected mid-flight would drop its arc to
+            // zero, rebuild a new one from whatever the command happened to be that tick, replay the whole pending
+            // window on that, and then do it again on the next correction - a mid-air stutter for the length of every
+            // jump, and the more momentum the flight carried the further the two heads would sit apart. Reads 0 for a
+            // grounded or pre-momentum state, which is byte-identical to what the basis carried before this field
+            // existed. Note MoveState.HorizontalVelocity is an XZ Vector2, so its Y component is world Z.
+            HorizontalVelocity = new Vector2(
+                MovementState.DecodeHorizontalVelocity(movement.HorizontalVelocityXQ),
+                MovementState.DecodeHorizontalVelocity(movement.HorizontalVelocityZQ)),
+            // Carry the sharded head's sim-local commanded velocity back out, so ShardedWorldServer's post-tick anomaly
+            // check measures against the velocity the cell sim actually asked for. Rides no wire, so on a client (and
+            // across a shard handoff) this is zero, which reads as no denial rather than a spurious one.
+            CommandedVelocity = movement.CommandedVelocity,
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

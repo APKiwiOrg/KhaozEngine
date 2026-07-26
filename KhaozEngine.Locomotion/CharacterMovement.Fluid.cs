@@ -64,6 +64,7 @@ public static partial class CharacterMovement
             x += moveDir.X * commandedSpeed * dt;
             z += moveDir.Y * commandedSpeed * dt;
         }
+        Vector2 commandedVel = moveDir * commandedSpeed;   // (0,0) when idle: moveDir is zero and so is the speed
         if (clampXz is not null) { Vector2 c = clampXz(x, z); x = c.X; z = c.Y; }
 
         // Buoyancy target: the capsule Y at which the body sits at its resting waterline, i.e. feet submerged by
@@ -123,7 +124,11 @@ public static partial class CharacterMovement
             SpeedScale = state.SpeedScale,  // carried through the swim exactly as the land path carries it
             // Exported here as well as on the land path, at the SWIM speed: an anomaly check that assumed walk/run
             // for a swimmer is exactly the bug this export exists to make impossible.
-            CommandedSpeed = commandedSpeed,
+            CommandedVelocity = commandedVel,
+            // Water KILLS an airborne arc. The carried inertia is REPLACED by the swim's own commanded velocity
+            // rather than clipped from it, so a character who flies into a lake drops the arc at the waterline
+            // instead of skating across the surface at its takeoff speed for the next second.
+            HorizontalVelocity = commandedVel,
         };
         // Defense-in-depth (as the land path): a finite input must never yield a non-finite result; hold the last
         // good state if a misbehaving provider/ground/tuning injected a NaN/Inf.

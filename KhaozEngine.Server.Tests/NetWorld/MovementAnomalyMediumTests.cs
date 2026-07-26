@@ -14,8 +14,10 @@ namespace KhaozEngine.Tests.NetWorld;
 /// server-side speed term the step applied and the check did not know about read as a correction on every tick:
 /// a swimming player travels at <see cref="MoveTuning.SwimSpeed"/> and was measured against
 /// <see cref="MoveTuning.RunSpeed"/>, which fired <c>OnSuspiciousActivity</c> after a third of a second of
-/// ordinary swimming. The step now exports the speed it actually commanded
-/// (<see cref="MoveState.CommandedSpeed"/>) and the check reads that, so the two can never disagree again.
+/// ordinary swimming. The step now exports the velocity it actually commanded
+/// (<see cref="MoveState.CommandedVelocity"/>) and the check reads that, so the two can never disagree again. The
+/// export is a vector rather than the scalar speed it started as because the check needs the direction of travel
+/// too, which stops being the input direction under <see cref="MoveTuning.AirMomentum"/>.
 /// </summary>
 public class MovementAnomalyMediumTests
 {
@@ -39,7 +41,7 @@ public class MovementAnomalyMediumTests
         for (int i = 0; i < ticks; i++)
         {
             PlayerMoveState after = sim.Step(prev, cmd, Dt);
-            float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, Dt);
+            float correction = MovementAnomaly.CorrectionDistance(prev, after, Dt);
             if (correction > worst) worst = correction;
             if (MovementAnomaly.RegisterCorrection(streaks, 0, correction, Cfg)) return (worst, true);
             prev = after;
@@ -145,7 +147,7 @@ public class MovementAnomalyMediumTests
         var into = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: 0f);   // straight at the +Z edge
 
         PlayerMoveState after = sim.Step(start, into, Dt);
-        float correction = MovementAnomaly.CorrectionDistance(start, into, after, Dt);
+        float correction = MovementAnomaly.CorrectionDistance(start, after, Dt);
         float fullStride = after.Move.CommandedSpeed * Dt;
 
         Assert.True(after.Move.Swimming, "the fixture should be swimming");

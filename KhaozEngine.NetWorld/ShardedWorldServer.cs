@@ -119,7 +119,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     private readonly HashSet<CellCoord> wiredCells = new();
     // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
     // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
-    private readonly List<(int slot, PlayerMoveState prev, MoveCommand cmd)> correctionScratch = new();
+    private readonly List<(int slot, PlayerMoveState prev)> correctionScratch = new();
     private readonly DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
@@ -469,7 +469,7 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
                 if (trackCorrection && cell.World.TryGet(e, out ReplicatedPosition rp))
                 {
                     cell.World.TryGet(e, out MovementState ms);
-                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms), cmd));
+                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms)));
                 }
             }
         }
@@ -485,10 +485,10 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
         host.SyncGhosts();
 
         // 4b. Movement-correction anomaly: compare each routed player's post-step position to its intended move.
-        foreach ((int slot, PlayerMoveState prev, MoveCommand cmd) in correctionScratch)
+        foreach ((int slot, PlayerMoveState prev) in correctionScratch)
         {
             if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
-            float correction = MovementAnomaly.CorrectionDistance(prev, cmd, after, dt);
+            float correction = MovementAnomaly.CorrectionDistance(prev, after, dt);
             if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
                 Raise(slot, SuspiciousReason.MovementCorrection, correction);
         }

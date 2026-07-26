@@ -30,13 +30,16 @@ public static partial class CharacterMovement
     /// <summary>The unconstrained horizontal target a command would reach in one step at an EXPLICIT speed (m/s),
     /// rather than one rebuilt from <see cref="MoveTuning"/>. Same camera basis and same pre-gate geometry as the
     /// overload above, which now delegates here so the two can never diverge.
-    /// <para>This is the form the movement anomaly check uses, paired with <see cref="MoveState.CommandedSpeed"/>:
-    /// the step reports the speed it actually resolved (walk/run or swim, times air control, the wade ramp, the zone
-    /// scale, the per-entity <see cref="MoveState.SpeedScale"/>, and the command's speed fraction), so the check
-    /// measures ONLY what the slope gate, collision, or bounds denied. Rebuilding that product from tuning is what
-    /// made a swimming or wading player read as a speed hacker. Note <paramref name="speed"/> is the FULL speed
-    /// including any speed fraction, so the direction here is normalised and the magnitude comes entirely from the
-    /// caller.</para></summary>
+    /// <para>The direction comes from the COMMAND and only the magnitude from the caller, which is what makes this
+    /// the scalar form. It is correct for any caller whose travel direction is its input direction, which is every
+    /// grounded step and every airborne one without <see cref="MoveTuning.AirMomentum"/>. It is NOT what the movement
+    /// anomaly check uses any more: under momentum the direction of travel is the conserved velocity rather than the
+    /// input, so that check moved to <see cref="IntendedHorizontalTargetAtVelocity"/>. See its summary for why.</para>
+    /// <para>Pass <paramref name="speed"/> as the speed the step actually resolved (walk/run or swim, times air
+    /// control, the wade ramp, the zone scale, the per-entity <see cref="MoveState.SpeedScale"/>, and the command's
+    /// speed fraction) rather than rebuilding the product from tuning, which is what made a swimming or wading player
+    /// read as a speed hacker. It is the FULL speed including any speed fraction, so the direction here is normalised
+    /// and the magnitude comes entirely from the caller.</para></summary>
     /// <param name="position">The pre-step capsule-centre position.</param>
     /// <param name="cmd">The command whose camera-relative axis gives the travel direction (idle = no movement).</param>
     /// <param name="dt">Timestep in seconds.</param>
@@ -56,4 +59,25 @@ public static partial class CharacterMovement
         }
         return new Vector2(x, z);
     }
+
+    /// <summary>The unconstrained horizontal target the step's own commanded VELOCITY would reach in one step:
+    /// <c>position.XZ + velocity * dt</c>. The direction comes from the velocity, so no command is needed and no
+    /// camera basis is rebuilt.
+    /// <para>This is the form the movement anomaly check uses, paired with <see cref="MoveState.CommandedVelocity"/>.
+    /// It replaced the scalar <see cref="IntendedHorizontalTargetAtSpeed"/> there because under
+    /// <see cref="MoveTuning.AirMomentum"/> the direction of travel is the conserved
+    /// <see cref="MoveState.HorizontalVelocity"/>, not the input direction. A player who releases input mid-flight at
+    /// 30 m/s keeps travelling at 30 m/s, while the command direction collapses to zero and puts the scalar form's
+    /// intended target back at the capsule: the whole legitimate arc then measures as a full-speed denial on EVERY
+    /// airborne tick, and the streak reports an ordinary jump as speed hacking. Reading the vector the step exported
+    /// is exact under both models, because with momentum off <see cref="MoveState.CommandedVelocity"/> is exactly
+    /// <c>moveDir * CommandedSpeed</c> and this builds the same target the scalar form does.</para>
+    /// It grants a client nothing: the velocity is entirely server-derived (tuning, the medium the server samples, the
+    /// server-authored <see cref="MoveState.SpeedScale"/>, and an arc the server itself flew), and the only
+    /// client-supplied inputs to it are the direction and the run bit.</summary>
+    /// <param name="position">The pre-step capsule-centre position.</param>
+    /// <param name="velocity">The unconstrained horizontal velocity in m/s the step commanded (XZ, so Y is world Z).</param>
+    /// <param name="dt">Timestep in seconds.</param>
+    public static Vector2 IntendedHorizontalTargetAtVelocity(Vector3 position, Vector2 velocity, float dt)
+        => new(position.X + velocity.X * dt, position.Z + velocity.Y * dt);
 }

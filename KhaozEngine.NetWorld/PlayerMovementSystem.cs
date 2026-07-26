@@ -51,10 +51,10 @@ public sealed class PlayerMovementSystem : ISystem
         {
             if (world.Has<Ghost>(e) || world.Has<Migrating>(e))
             {
-                // Owner is the only simulator. Zero the commanded speed on the way out: this entity did not step, so
-                // leaving last tick's speed behind would have the post-tick anomaly check measure a motionless entity
+                // Owner is the only simulator. Zero the commanded velocity on the way out: this entity did not step, so
+                // leaving last tick's velocity behind would have the post-tick anomaly check measure a motionless entity
                 // against a full stride of intended travel and read it as a denial.
-                ms.CommandedSpeed = 0f;
+                ms.CommandedVelocity = Vector2.Zero;
                 return;
             }
 
@@ -71,6 +71,15 @@ public sealed class PlayerMovementSystem : ISystem
                 // below it is never written back OUT: the step does not derive it, SetSpeedScale is its only author,
                 // and re-quantizing an already-quantized value every tick would only invite drift.
                 SpeedScale = MovementState.DecodeSpeedScale(ms.SpeedScaleQ),
+                // Carry the airborne arc IN. Unlike SpeedScale this one is a step OUTPUT as well, so it round-trips
+                // through the wire quantum every tick on this head where the single-World WorldServer keeps it at full
+                // float precision in its own PlayerMoveState. That costs at most half a quantum (0.002 m/s) of rounding
+                // per tick, which is the same resolution the client already reconciles against, and it buys the arc
+                // surviving a cell handoff: the component is what migrates, so a full-precision copy parked beside it
+                // would be a second source of truth that silently loses to this one at the border.
+                HorizontalVelocity = new Vector2(
+                    MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityXQ),
+                    MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityZQ)),
             };
             state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
 
@@ -85,9 +94,16 @@ public sealed class PlayerMovementSystem : ISystem
             // WorldServer does this via MovementState.From per tick; the sharded per-cell step must do it here or a remote
             // on a sharded server never sees a climb (ClimbRateQ stays at its spawn value of 0).
             ms.ClimbRateQ = MovementState.QuantizeClimbRate(state.ClimbRate);
-            // Persist the step's commanded speed so ShardedWorldServer's post-tick anomaly check can read it back
+            // Persist the step's commanded velocity so ShardedWorldServer's post-tick anomaly check can read it back
             // (rides no wire, and the single-World head reads the step output directly, never this).
-            ms.CommandedSpeed = state.CommandedSpeed;
+            ms.CommandedVelocity = state.CommandedVelocity;
+            // Write the carried arc back OUT so it both survives to the next tick and replicates. Both halves matter
+            // here: without the write-back the sharded head re-reads its spawn value every tick and no player on a
+            // sharded server ever carries momentum at all, and without it reaching the wire the client's reconcile
+            // basis resets the arc on every correction. The single-World WorldServer covers both through
+            // MovementState.From per tick, so the per-cell step has to do it here.
+            ms.HorizontalVelocityXQ = MovementState.QuantizeHorizontalVelocity(state.HorizontalVelocity.X);
+            ms.HorizontalVelocityZQ = MovementState.QuantizeHorizontalVelocity(state.HorizontalVelocity.Y);
         });
     }
 }

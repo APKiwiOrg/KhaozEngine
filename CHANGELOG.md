@@ -5,6 +5,96 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.0.0
+
+Opt-in airborne horizontal momentum: a jump travels its whole arc at the speed it launched at, through the
+authoritative step, client prediction, reconcile replay, and the anti-cheat (BREAKING API + wire gen 6 -> 7). A
+character in free flight had no inertia, so a mid-air `SpeedScale` change collapsed a committed arc and releasing
+input stopped horizontal travel dead. Requested by Ruinborne, where a Quicken buff expiring at 30 m/s dropped the
+flight to 6 m/s on that tick. Grounded motion is untouched and the feature is off by default, so every existing
+game is unchanged until it opts in. Closes #320. Design doc:
+`docs/design/AIRBORNE-MOMENTUM-DESIGN-2026-07-26.md`. Consumer scope:
+`Ruinborne/docs/design/2026-07-26-airborne-momentum-engine-scope.md`.
+
+### Breaking
+
+- **`MoveState.CommandedSpeed` (`KhaozEngine.Locomotion`) is no longer a field.** The step now exports
+  `Vector2 CommandedVelocity`, the unconstrained horizontal VELOCITY it commanded this tick, and `CommandedSpeed`
+  survives as a computed readonly property (`CommandedVelocity.Length()`). **Reads still compile unchanged.
+  Writes do not.** A consumer that assigned `CommandedSpeed` (a test fixture, a hand-built `MoveState`) assigns
+  `CommandedVelocity = direction * speed` instead. Nothing else about the value moved: it is still written every
+  tick, still reports what the command asked for rather than what survived, and is still `default` on a state
+  that never went through a step.
+- **`MovementState.CommandedSpeed` (`KhaozEngine.NetWorld`) is renamed to `CommandedVelocity`** and its type
+  changes from `float` to `Vector2`. This is the sharded head's sim-local persistence slot for the value above.
+  It rides no codec, so the rename is compile-time only and costs no wire bytes.
+- **Wire generation 6 -> 7.** `MovementState` gains `short HorizontalVelocityXQ` and `short
+  HorizontalVelocityZQ`, the carried airborne velocity quantized at the fixed
+  `MovementState.HorizontalVelocityQuantum` (1/256). `MovementState` is a built-in (not length-prefixed), so
+  `MoveProtocol.WireProtocolVersion` bumps to 7 and the always-on `WireGenerationAuthenticator` rejects a
+  mismatched peer cleanly at connect (`IncompatibleVersion`). **Server and client must ship together.**
+
+### Added
+
+- **`MoveTuning.AirMomentum` (default `false`)** - the master opt-in. Off is the pre-momentum model exactly:
+  `MoveTuning.Default` and every game that does not set it are bit-identical to 15.2.0, asserted against the old
+  closed form `moveDir * speed * AirControl * dt` rather than left to a green build. On, the airborne step flies
+  the carried velocity instead of recomputing the horizontal from the command every tick. Grounded motion is
+  untouched either way: momentum on the ground would change the feel of every game on the stack, so it is a
+  separate and later decision.
+- **`MoveTuning.AirBrakeAccel` (default `0`)** - m/s^2 at which a conserved airborne speed bleeds toward a
+  STRICTLY SLOWER commanded speed, stopping there and never going below it. `0` is pure conservation. It exists
+  for a root or a snare landing mid-flight, and it is the one knob that dials back toward the old feel without
+  turning momentum off. The strictly-slower gate is load-bearing rather than cosmetic: ungated, the same
+  expression RAISES the conserved speed whenever the command is faster than the arc, so a game that set a brake
+  alongside a low `AirControl` would find a snare accelerating a ballistic arc it is not even steering.
+  Accelerating is the steer blend's job alone.
+- **`AirControl` gains a meaning it never had, strictly behind the opt-in.** Under momentum it is the STEERING
+  authority over the direction of travel rather than a speed scale. `1` is still full control (an instant 180
+  mid-flight, still at the carried speed), and `0` is now a true ballistic arc rather than "frozen horizontally
+  in mid-air". The commanded speed under momentum deliberately omits the `AirControl` term the non-momentum path
+  multiplies in, or a half-control character's reachable airborne speed would silently cap at half its ground
+  speed.
+- **`MoveState.HorizontalVelocity` (`Vector2`, XZ, m/s)** - new replicated simulation state, the carried inertia.
+  Maintained on EVERY tick regardless of the knob and CONSUMED only when the knob is on, which makes the
+  "unchanged at the default" claim structural rather than behavioural: with momentum off the field is written and
+  never read. What is stored is the step's intended velocity CLIPPED to what the collision resolve delivered,
+  projected along its own direction and clamped into `[0, |intended|]`. Free flight leaves it exactly untouched,
+  a head-on wall clips it to ~0, a glancing wall sheds magnitude and keeps direction, and neither a depenetration
+  nudge nor a play-area clamp can ever INJECT speed into it. Water kills the arc: `SwimStep` replaces it with the
+  swim's own commanded velocity, so flying into a lake drops the flight at the waterline. Takeoff and landing
+  need no special case, because the tick that leaves the ground computed its horizontal as grounded and momentum
+  is not consumed while grounded.
+- **`MovementState.HorizontalVelocityXQ` / `HorizontalVelocityZQ`, plus `HorizontalVelocityQuantum` (1/256),
+  `MaxHorizontalSpeed` (127), `QuantizeHorizontalVelocity` and `DecodeHorizontalVelocity`.** Two bytes per axis
+  per entity per movement update, +/-127.996 m/s range at 0.0039 m/s resolution, which over a four-tick reconcile
+  window at 60 Hz is 0.00026 m of position drift. The quantum is a power of two for `SpeedScaleQuantum`'s reason,
+  and the reason bites harder here: a climb rate is a presentation signal, while a carried velocity is simulation
+  state on BOTH heads and feeds the next tick, so its error compounds for the length of the flight instead of
+  washing out on the following frame. At 1/256 the decode is exact and both heads hold the same float. It must
+  ride the wire because `PlayerMoveState.From` rebuilds the client's reconcile basis from the replicated
+  components ALONE, and `ClientPrediction.Reconcile` overwrites unconditionally: a carried field missing from
+  that seed does not lag, it resets to zero on every correction and stutters mid-air for the length of every
+  jump. That is the failure `SpeedScaleQ` was added to fix, one field along.
+- **`CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)`** - the vector form of the
+  intended-target helper, `position.XZ + velocity * dt`. No command and no camera basis, because the direction
+  comes from the velocity. The scalar `IntendedHorizontalTargetAtSpeed` is unchanged and still correct for any
+  caller whose travel direction is its input direction.
+
+### Changed
+
+- **The movement anomaly check reads the exported velocity, direction included.** It used to pair the exported
+  scalar speed with the tick's COMMAND direction, which stops being the direction of travel under momentum: a
+  player who releases input mid-flight at 30 m/s keeps flying at 30 m/s while the command direction collapses to
+  zero, so the intended target sat back at the capsule and the entire legitimate arc measured as a full-speed
+  denial on EVERY airborne tick. The streak then reported an ordinary jump as speed hacking. This is why
+  `CommandedSpeed` had to become a vector, and it is the same lesson the scalar export already recorded one level
+  up: export the fact the sim computed, do not reconstruct it downstream. With momentum off the exported velocity
+  is exactly `moveDir * CommandedSpeed`, so the check is arithmetically identical to the pre-momentum one. The
+  regression is pinned by a fixture that measures both forms on the same ticks and fails if the old one does not
+  reproduce the bug. The internal `MovementAnomaly.CorrectionDistance` dropped the `MoveCommand` parameter that
+  went dead with the direction it used to supply.
+
 ## 15.2.0
 
 New: GPU compute shaders in the `KhaozEngine.Gpu` seam. Compute shaders from GLSL 450, compute pipelines,

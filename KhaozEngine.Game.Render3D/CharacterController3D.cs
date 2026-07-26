@@ -86,6 +86,15 @@ namespace KhaozEngine.Game
         /// walking pace instead of snapping up a whole riser per tick (see <see cref="MoveTuning.MaxStepClimbSpeed"/>).
         /// Default 3.5. A single low curb still mounts in one tick; a value &lt;= 0 disables the limit.</summary>
         public float MaxStepClimbSpeed = 3.5f;
+        /// <summary>Opt in to AIRBORNE horizontal momentum: a jump travels its whole arc at the speed it launched at,
+        /// and <see cref="AirControl"/> steers that arc rather than scaling it (see
+        /// <see cref="MoveTuning.AirMomentum"/>). Default false, which is the pre-momentum jump exactly. Grounded
+        /// motion is untouched either way.</summary>
+        public bool AirMomentum = false;
+        /// <summary>Rate (m/s^2) at which a conserved airborne speed bleeds toward a slower commanded speed while
+        /// <see cref="AirMomentum"/> is on, stopping there and never going below it (see
+        /// <see cref="MoveTuning.AirBrakeAccel"/>). Default 0 (pure conservation).</summary>
+        public float AirBrakeAccel = 0f;
 
         /// <summary>
         /// Advance the character for one frame. <paramref name="cameraYaw"/> is the follow camera's yaw (radians);
@@ -119,6 +128,7 @@ namespace KhaozEngine.Game
                 CoyoteTime = CoyoteTime, JumpBuffer = JumpBuffer, AirControl = AirControl,
                 GroundedEpsilon = GroundedEpsilon, StepHeight = StepHeight,
                 MaxStepClimbSpeed = MaxStepClimbSpeed,
+                AirMomentum = AirMomentum, AirBrakeAccel = AirBrakeAccel,
             };
             _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
         }

@@ -236,10 +236,16 @@ public static partial class CharacterMovement
 
         // 1. Horizontal desired (UNCHANGED when dry): resolved unit move direction + speed fraction + terrain slope
         //    gate. The grounded/air scale composes with the wade scale (1 when no provider or out of water) and with
-        //    the per-entity haste/slow multiplier (1 by default), so an unmodified dry path is untouched.
+        //    the per-entity haste/slow multiplier (1 by default), so an unmodified dry path is untouched. An AIRBORNE
+        //    tick under MoveTuning.AirMomentum takes the momentum resolve instead (CharacterMovement.Momentum.cs),
+        //    which flies the carried velocity rather than recomputing the horizontal from scratch. Grounded ticks and
+        //    the default (knob off) never reach it, so they are arithmetically identical to the pre-momentum step.
         float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
         float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
         (float dx, float dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, speedScale);
+        Vector2 commandedVel = moveDir * commandedSpeed;
+        if (t.AirMomentum && !s.Grounded)
+            (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, wade);
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
 
         // 2. Vertical integrate (UNCHANGED math): jump-buffer countdown, gravity, terminal clamp.
@@ -759,14 +765,17 @@ public static partial class CharacterMovement
             ClimbRateEwma = climbEwma,
             StepDeltaY = stepDeltaY,
             SpeedScale = state.SpeedScale,   // a movement INPUT: carried through unchanged, never derived by the step
-            CommandedSpeed = commandedSpeed, // a per-tick OUTPUT: what the step asked for, before anything denied it
+            CommandedVelocity = commandedVel, // a per-tick OUTPUT: what the step asked for, before anything denied it
+            // Carried inertia, stamped on EVERY tick (grounded included) and consumed only when AirMomentum is on:
+            // the intended velocity clipped to what survived, so collision can shed it but never inject into it.
+            HorizontalVelocity = ClipToAchieved(commandedVel, start, pos, dt),
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
         // past every clamp and replicate; hold the last good state instead of propagating a poisoned position.
         return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
                float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma) &&
-               float.IsFinite(result.StepDeltaY)
+               float.IsFinite(result.StepDeltaY) && IsFinite(result.HorizontalVelocity)
             ? result : state;
     }
 
@@ -793,29 +802,18 @@ public static partial class CharacterMovement
     // slope gate, WITHOUT collision. The direction + speed fraction are resolved upstream from either a
     // camera-relative MoveCommand (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so
     // player and AI share this exact input/slope section; prop collision is resolved separately by the swept
-    // collide-and-slide block in StepCore. moveDir is a unit vector when speedFraction > 0.
-    // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedSpeed: the
+    // collide-and-slide block in StepCore. moveDir is a unit vector when speedFraction > 0. The advance + gate itself
+    // is AdvanceSlopeGated (CharacterMovement.Momentum.cs), shared with the airborne momentum path.
+    // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedVelocity: the
     // speed is reported UNCONDITIONALLY, including on a slope-gate block, because the anomaly check downstream needs
     // what the command asked for, not what survived. 0 on an idle tick.
     private static (float x, float z, float speed) DesiredHorizontalCore(float x, float z, Vector2 moveDir,
         float speedFraction, bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal,
         float speedScale)
     {
-        float speed = 0f;
-        if (speedFraction > 0f)
-        {
-            speed = (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction;
-            float nx = x + moveDir.X * speed * dt;
-            float nz = z + moveDir.Y * speed * dt;
-
-            bool blocked = false;
-            if (groundNormal is not null)
-            {
-                float ny = Math.Clamp(groundNormal(nx, nz).Y, 0f, 1f);
-                if (MathF.Acos(ny) > tuning.MaxSlopeRadians) blocked = true;
-            }
-            if (!blocked) { x = nx; z = nz; }
-        }
+        bool moving = speedFraction > 0f;
+        float speed = moving ? (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction : 0f;
+        (x, z) = AdvanceSlopeGated(x, z, moveDir * speed, moving, dt, tuning, groundNormal);
         return (x, z, speed);
     }
 }

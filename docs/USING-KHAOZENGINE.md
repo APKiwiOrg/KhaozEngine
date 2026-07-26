@@ -3657,6 +3657,12 @@ fields - `Gravity` (25), `JumpSpeed` (9.79796, apex ~1.92 m), `MaxFallSpeed` (50
 run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
 you fall.
 
+Since 16.0.0 there are two more, both mirroring `MoveTuning` and both OFF by default: `AirMomentum` (false) opts
+the character into airborne horizontal momentum, so a jump travels its whole arc at the speed it launched at and
+`AirControl` steers that arc instead of scaling it, and `AirBrakeAccel` (0) bleeds a conserved arc toward a slower
+command. At the defaults the jump is exactly what it was before. See "Airborne momentum" in the netcode chapter
+below for the full model - it applies identically to a local controller, minus the wire.
+
 **Smooth stair climbing.** A step-up (curb or stair riser under `StepHeight`) is mounted without a jump, but it no
 longer snaps a whole riser up in one tick - the per-tick vertical rise onto step/prop support is paced to
 `MaxStepClimbSpeed` (m/s, default 3.5 on both `CharacterController3D` and `MoveTuning`), so a dungeon stair run
@@ -4417,7 +4423,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="15.2.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.0.0" />
 ```
 
 ```csharp
@@ -6227,11 +6233,23 @@ constraint-fighting caught at swim speed too, set a threshold scaled to swim spe
 to keep the false-positive rate down.
 
 **Since 14.27.0 the check measures only the denial, whatever speed the step chose.** The intended target is built
-from the speed the sim itself reported (`MoveState.CommandedSpeed`) rather than rebuilt from `WalkSpeed`/`RunSpeed`.
+from what the sim itself reported rather than rebuilt from `WalkSpeed`/`RunSpeed`.
 Before that, every server-side speed term the check did not know about read as a correction on *every* tick: a
 swimming player travels at `SwimSpeed` and was measured against `RunSpeed`, which raised the signal after a third
 of a second of ordinary swimming, and wading or a `MovementMedium.WadeSpeedScale` zone dial each ate most of a
 typical budget the same way. Nothing to configure, and a future speed term cannot desync it again.
+
+**Since 16.0.0 the export is a VELOCITY, so the direction comes from the sim too.** `MoveState.CommandedSpeed` was
+a stored `float` field until 16.0.0 and is now a computed property over `MoveState.CommandedVelocity`, a `Vector2`.
+The check pairs no part of its intended target with the client's command any more, which it had to stop doing for
+`MoveTuning.AirMomentum` (below): under momentum the direction of travel is the conserved velocity, so a player who
+releases input mid-flight at 30 m/s keeps flying at 30 m/s while the command direction collapses to zero. The
+intended target would sit back at the capsule and the whole legitimate arc would read as a full-speed denial on
+every airborne tick. With momentum off the exported velocity is exactly `moveDir * CommandedSpeed`, so the
+measurement is arithmetically identical to the pre-16.0.0 one. Again nothing to configure. If you built your own
+check on the public helper, `CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)` is the
+vector form (`IntendedHorizontalTargetAtSpeed` is unchanged and still correct wherever travel direction is input
+direction).
 
 ---
 
@@ -8903,7 +8921,7 @@ A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 2, the pre-10.0.0 line was 1) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 7 as of 16.0.0, up from 1 for the pre-10.0.0 32-bit line, with every generation since 2 adding a field to the movement built-in codec) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -9161,6 +9179,62 @@ ship together.**
 NPCs and single-player get this for free and without any wire involvement: the value lives on
 `MoveState.SpeedScale`, so anything stepping through `CharacterMovement` (a server-only creature driven by
 `StepTowards`, a local `CharacterController3D`) can just set it. Only what replicates is bound by `MaxSpeedScale`.
+
+### Airborne momentum: a jump that keeps its speed (since 16.0.0, opt-in)
+
+A character in free flight had no inertia. The horizontal was recomputed from the command every tick, so a buff
+expiring mid-air collapsed a committed arc to the base speed on that tick, and letting go of the stick stopped
+horizontal travel dead. `MoveTuning.AirMomentum` is the opt-in that fixes it, and it is **off by default**, so a
+game that does not set it is bit-identical to 15.2.0:
+
+```csharp
+var tuning = MoveTuning.Default with { AirMomentum = true };
+// optional: bleed a committed arc toward a slower command at 12 m/s^2 (0, the default, conserves it entirely)
+var braked = MoveTuning.Default with { AirMomentum = true, AirBrakeAccel = 12f };
+```
+
+`CharacterController3D` mirrors both fields (`AirMomentum`, `AirBrakeAccel`) for a local, non-networked character,
+with the same defaults.
+
+**What it changes.** Airborne only. A jump at speed S travels its whole arc at S whatever the command does
+afterwards, releasing input holds both speed and direction, and pressing into the arc can ACCELERATE it but never
+brake it. **Grounded motion is untouched** - it stays instant-to-target with no acceleration and no friction, which
+is a separate and later decision because it would change the feel of every game on the stack. Takeoff and landing
+need no special case: the tick that leaves the ground computed its horizontal as grounded, and momentum is not
+consumed while grounded.
+
+**`AirControl` gains a second meaning, strictly behind the opt-in.** Under momentum it is the STEERING authority
+over the direction of travel rather than a speed scale. `1` is still full control (an instant 180 mid-flight, still
+at the carried speed), and `0` is now a true ballistic arc rather than "frozen horizontally in mid-air". If your
+game runs a partial `AirControl` and opts in, re-check the feel: the value now bends the arc over several ticks
+instead of scaling it.
+
+**`AirBrakeAccel`** (m/s^2, default `0`) bleeds a conserved speed down toward a STRICTLY SLOWER commanded speed and
+stops there, never below it. `0` is pure conservation. It is for a root or a snare landing mid-flight, and it is
+the one knob that dials back toward the pre-16.0.0 feel without turning momentum off. It never accelerates: a game
+that set a brake alongside a low `AirControl` would otherwise find a snare speeding up a ballistic arc it is not
+even steering.
+
+**The carried state is `MoveState.HorizontalVelocity`** (`Vector2`, XZ, m/s), written on EVERY tick regardless of
+the knob and read only when it is on. What is stored is the intended velocity clipped to what the collision resolve
+delivered, projected along its own direction and clamped into `[0, |intended|]`, so free flight leaves it exactly
+untouched, a head-on wall clips it to ~0, a glancing wall sheds magnitude and keeps direction, and nothing in the
+resolve can inject speed into it. Water kills the arc: a flight into a lake drops its momentum at the waterline
+rather than skating across the surface.
+
+**Networked play needs nothing extra from you, but it is a wire break.** The velocity replicates as
+`MovementState.HorizontalVelocityXQ` / `HorizontalVelocityZQ` (two `short`s at `HorizontalVelocityQuantum` 1/256,
+so 0.0039 m/s resolution over a +/-127.996 m/s reach, clamped at `MovementState.MaxHorizontalSpeed` of 127 per
+axis). It has to ride the wire because the client rebuilds its reconcile basis from the replicated components
+alone: a carried field missing from that seed does not lag behind the server, it resets to zero on every
+correction. `MoveProtocol.WireProtocolVersion` therefore bumps to **7** and the always-on
+`WireGenerationAuthenticator` rejects a skewed peer at connect. **Client and server must ship together.**
+
+The anti-cheat consequence is above under "Server-side anti-cheat": `MoveState.CommandedSpeed` became a computed property over
+the new `CommandedVelocity` so the check reads the sim's direction of travel, or every airborne tick of a
+legitimate momentum flight with released input would have been reported as speed hacking.
+
+Full rationale and the per-tick resolve: `docs/design/AIRBORNE-MOMENTUM-DESIGN-2026-07-26.md`.
 
 ### Game messages (attack / interact / chat / inventory)
 

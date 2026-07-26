@@ -7,7 +7,7 @@ namespace KhaozEngine.Locomotion;
 /// controller, the server sim, and client prediction. <see cref="Default"/> matches the walkable-slice
 /// CharacterController3D defaults (walk 6, run 12, half-height 0.9 for a 1.8 m capsule, 45 deg max slope,
 /// footprint radius 0.4 for static-world collision) plus the vertical-physics feel (gravity 25, jump 9.79796,
-/// terminal 50, 0.1 s coyote + buffer, full air control, 0.3 m grounded skin).
+/// terminal 50, 0.1 s coyote + buffer, full air control, 0.3 m grounded skin, airborne momentum OFF).
 /// </summary>
 public readonly record struct MoveTuning(
     float WalkSpeed,
@@ -31,7 +31,9 @@ public readonly record struct MoveTuning(
     float SwimSpeed = 2.5f,
     float SwimSurfaceSubmersionFraction = 0.6f,
     float SwimBuoyancyStiffness = 8f,
-    float MaxStepClimbSpeed = 3.5f)
+    float MaxStepClimbSpeed = 3.5f,
+    bool AirMomentum = false,
+    float AirBrakeAccel = 0f)
 {
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is rejected, so the slope gate
@@ -39,7 +41,9 @@ public readonly record struct MoveTuning(
     /// 0.4 m used by static-world collision, plus vertical physics: gravity 25 m/s^2, jump launch 9.79796 m/s
     /// (= 8 * sqrt(1.5), +50% apex vs the old 8f: apex ~1.92 m, matching Ruinborne's deliberate jump-height
     /// value), terminal fall 50 m/s, 0.1 s coyote-time + jump-buffer, full (1.0) air control, and a 0.3 m
-    /// grounded skin so a downhill run does not jitter between grounded and airborne. This matches
+    /// grounded skin so a downhill run does not jitter between grounded and airborne, and airborne momentum OFF
+    /// (<see cref="AirMomentum"/> false, <see cref="AirBrakeAccel"/> 0), so a jump arc behaves exactly as it did
+    /// before momentum existed. This matches
     /// CharacterController3D's own field defaults exactly (same literal + comment in both places), so a caller
     /// building either way gets identical feel.</summary>
     public static MoveTuning Default => new(
@@ -136,4 +140,32 @@ public readonly record struct MoveTuning(
     /// regardless of dt (no oscillation, at most a single bounded settle dip under adverse entry velocity); larger =
     /// a snappier settle, smaller = a lazier bob.</summary>
     public float SwimBuoyancyStiffness { get; init; } = SwimBuoyancyStiffness;
+
+    /// <summary>Master opt-in for AIRBORNE horizontal momentum. Default false, which is today's model exactly: a
+    /// character in free flight has no inertia and its horizontal is recomputed from the command every tick, so a
+    /// mid-air <see cref="MoveState.SpeedScale"/> change collapses a committed arc and releasing input stops horizontal
+    /// travel dead. With it on, the airborne step instead flies the carried <see cref="MoveState.HorizontalVelocity"/>,
+    /// steering it toward the commanded velocity with <see cref="AirControl"/> as the steering authority: a jump at
+    /// speed S travels its whole arc at S whatever the command does afterwards, and input can only ever ACCELERATE the
+    /// arc, never brake it below the conserved speed (that is what <see cref="AirBrakeAccel"/> is for).
+    /// <para>GROUNDED motion is untouched either way. Momentum on the ground would change the feel of every game on the
+    /// stack, so it is a separate and later decision. The off default is the load-bearing part of this knob rather than
+    /// a formality: the fleet has been burned once by an engine bump silently retuning inherited tuning defaults with a
+    /// green build, so a game that does not set this must be bit-identical to the release before it.</para>
+    /// It also gives <see cref="AirControl"/> a meaning it never had. At 0 the airborne step is a true BALLISTIC arc
+    /// (input ignored, the arc flies out) rather than "frozen horizontally in mid-air", and at 1 it is full authority
+    /// over the direction of travel at the conserved speed (an instant 180 mid-flight, still at speed). Both readings
+    /// are strictly behind this opt-in.</summary>
+    public bool AirMomentum { get; init; } = AirMomentum;
+
+    /// <summary>Rate (m/s^2) at which a conserved airborne speed BLEEDS DOWN toward a slower commanded speed while
+    /// <see cref="AirMomentum"/> is on. Default 0, which is pure conservation: an arc launched at 30 m/s stays at
+    /// 30 m/s until it lands, however slow the command underneath it becomes. A positive value decays the conserved
+    /// speed by <c>AirBrakeAccel * dt</c> per tick and STOPS at the commanded speed, never below it, so the arc settles
+    /// onto what the character can actually move at instead of overshooting into a reverse.
+    /// <para>It exists for two reasons. A root, a snare, or a slow landing mid-flight is a real case a game may want to
+    /// bleed a committed arc for rather than honour to its end, and it is the one knob that lets a game dial back
+    /// toward the pre-momentum feel without turning momentum off entirely (a large value collapses the arc to the
+    /// command within a tick or two). Ignored entirely while <see cref="AirMomentum"/> is off.</para></summary>
+    public float AirBrakeAccel { get; init; } = AirBrakeAccel;
 }

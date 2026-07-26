@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Ecs;
 
 namespace KhaozEngine.NetWorld;
@@ -66,6 +67,32 @@ public struct MovementState : IComponent
     /// rejected at connect by the always-on <see cref="WireGenerationAuthenticator"/>.</summary>
     public sbyte SpeedScaleQ;
 
+    /// <summary>The world-X component of the CARRIED airborne horizontal velocity
+    /// (<see cref="KhaozEngine.Locomotion.MoveState.HorizontalVelocity"/>, m/s) quantized to a <see cref="short"/> at
+    /// the fixed wire scale <see cref="HorizontalVelocityQuantum"/>. Decoded velocity =
+    /// <c>q * HorizontalVelocityQuantum</c>, so <b>0 - the <c>default</c> a pre-momentum state and every grounded
+    /// player carries - is exactly 0 m/s</b>. A plain scaled encoding is right here where
+    /// <see cref="SpeedScaleQ"/> needed an offset-from-1 one, and for the same underlying reason: the zero default has
+    /// to mean the harmless thing. For a multiplier that is 1 (unmodified), and for a carried velocity it is 0
+    /// (carrying nothing), which degrades a state that never went through a step to the old instant-to-target model
+    /// rather than to a phantom drift.
+    /// <para>It must ride the wire because <see cref="PlayerMoveState.From"/> rebuilds the client's reconcile basis
+    /// from the replicated components ALONE. A carried velocity absent from there does not merely lag: it resets to
+    /// the struct default on EVERY correction, so a client corrected mid-flight drops its arc to zero, rebuilds a new
+    /// one from whatever the command happens to be, and replays the whole pending window on that. This is exactly the
+    /// failure <see cref="SpeedScaleQ"/> was added to fix, one field along.</para>
+    /// Added on the wire in generation 7 (<see cref="MoveProtocol.WireProtocolVersion"/>). A mismatched peer is
+    /// rejected at connect by the always-on <see cref="WireGenerationAuthenticator"/>.</summary>
+    public short HorizontalVelocityXQ;
+
+    /// <summary>The world-Z component of the carried airborne horizontal velocity (m/s), encoded exactly as
+    /// <see cref="HorizontalVelocityXQ"/> is and added on the wire in the same generation 7. The two axes are
+    /// quantized INDEPENDENTLY rather than as a packed direction plus magnitude, so the decoded SPEED can sit up to
+    /// about 0.003 m/s off the encoded one (each axis rounds on its own). That is well inside the drift budget the
+    /// quantum was chosen for, and it keeps the codec a pair of plain scalars with nothing to get wrong at the
+    /// boundaries: no normalisation to renormalise, and no direction to lose when the magnitude is zero.</summary>
+    public short HorizontalVelocityZQ;
+
     /// <summary>SIM-LOCAL ascent-EWMA storage (NOT replicated, NOT migrated): the sharded head's per-entity, tick-to-tick
     /// slot for <see cref="KhaozEngine.Locomotion.MoveState.ClimbRateEwma"/> (the exponentially-weighted moving average of
     /// the actually-applied per-tick rise over a paced stair run). It exists ONLY because the sharded per-cell step
@@ -83,9 +110,9 @@ public struct MovementState : IComponent
     /// (byte-identical to a pre-feature state). The single-<see cref="World"/> head never reads this field.</summary>
     public float ClimbRateEwma;
 
-    /// <summary>SIM-LOCAL commanded-speed storage (NOT replicated, NOT migrated): the sharded head's per-entity slot
-    /// for <see cref="KhaozEngine.Locomotion.MoveState.CommandedSpeed"/>, the unconstrained horizontal speed the step
-    /// asked for this tick. It exists for the same reason <see cref="ClimbRateEwma"/> does - the sharded per-cell step
+    /// <summary>SIM-LOCAL commanded-velocity storage (NOT replicated, NOT migrated): the sharded head's per-entity slot
+    /// for <see cref="KhaozEngine.Locomotion.MoveState.CommandedVelocity"/>, the unconstrained horizontal velocity the
+    /// step asked for this tick. It exists for the same reason <see cref="ClimbRateEwma"/> does - the sharded per-cell step
     /// (<see cref="PlayerMovementSystem"/>) reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from
     /// this component every tick, so a step OUTPUT has nowhere else to survive to the end of
     /// <see cref="ShardedWorldServer.Tick"/>, where the movement-anomaly check reads it back through
@@ -93,13 +120,13 @@ public struct MovementState : IComponent
     /// field: it holds the whole <see cref="PlayerMoveState"/> per slot and reads the step's own output directly.
     /// <para>DELIBERATELY absent from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it is a
     /// server-side anti-cheat input that no client has any use for, so replicating it would widen the built-in wire
-    /// for nothing. It is therefore always 0 on a client, and 0 across a shard handoff - which is the SAFE direction,
-    /// since 0 reads as "commanded nothing" and so as no denial, never as a spurious one.</para>
+    /// for nothing. It is therefore always <c>(0,0)</c> on a client, and <c>(0,0)</c> across a shard handoff - which is
+    /// the SAFE direction, since zero reads as "commanded nothing" and so as no denial, never as a spurious one.</para>
     /// <see cref="PlayerMovementSystem"/> writes it every tick, and explicitly zeroes it for an entity its cell sim
     /// skipped (a <see cref="KhaozEngine.Sharding.Ghost"/> or a <see cref="KhaozEngine.Sharding.Migrating"/> entity),
     /// so a skipped tick cannot leave a stale
-    /// speed behind for the anomaly check to measure a motionless entity against.</summary>
-    public float CommandedSpeed;
+    /// velocity behind for the anomaly check to measure a motionless entity against.</summary>
+    public Vector2 CommandedVelocity;
 
     /// <summary>Fixed wire scale for <see cref="ClimbRateQ"/> (m/s per quantum unit): 0.05, giving +/-6.35 m/s over an
     /// <see cref="sbyte"/> at 0.05 m/s resolution. Consumer-agnostic (independent of any consumer's
@@ -146,6 +173,56 @@ public struct MovementState : IComponent
     /// command. There is no matching ceiling - an out-of-range high value is merely fast, not inverted.</summary>
     public static float DecodeSpeedScale(sbyte q) => MathF.Max(0f, 1f + q * SpeedScaleQuantum);
 
+    /// <summary>Fixed wire scale for <see cref="HorizontalVelocityXQ"/> / <see cref="HorizontalVelocityZQ"/> (m/s per
+    /// quantum unit): 1/256, giving 0.0039 m/s resolution and a <see cref="short"/> reach of +/-127.996 m/s, of which
+    /// <see cref="MaxHorizontalSpeed"/> is the clamp actually applied. Deliberately an exact NEGATIVE POWER OF TWO for
+    /// <see cref="SpeedScaleQuantum"/>'s reason rather than the 0.05-style decimal <see cref="ClimbRateQuantum"/>
+    /// uses, and the reason bites harder here than it does there. A climb rate is a PRESENTATION signal: it drives a
+    /// render glide, nothing reads it back into the simulation, so a decimal quantum landing a hair off the round
+    /// number is invisible. A carried velocity is SIMULATION state on both heads. The client decodes it into its
+    /// reconcile basis and flies the pending command window on it while the server flies its own copy, so both must
+    /// multiply by bit-identical values or the two arcs separate. At 1/256 the decode <c>q * quantum</c> is EXACT (a
+    /// power-of-two multiply only shifts the exponent), so a 30 m/s takeoff comes back as exactly 30 and both heads
+    /// hold the same float. A decimal quantum rounds inside the multiply itself, putting the decoded velocity a hair
+    /// off the grid the encoder aimed at.
+    /// <para>That hair is the difference between this field and every other quantized one on this component: a
+    /// carried velocity FEEDS THE NEXT TICK, so unlike a per-tick input its error does not wash out on the following
+    /// frame. It compounds for the length of the flight.</para></summary>
+    public const float HorizontalVelocityQuantum = 1f / 256f;
+
+    /// <summary>The largest replicable horizontal speed PER AXIS (127 m/s), the clamp
+    /// <see cref="QuantizeHorizontalVelocity"/> applies. The <see cref="short"/> reaches +/-127.996 m/s at
+    /// <see cref="HorizontalVelocityQuantum"/> and the clamp sits at the round 127 below it, so the encoding keeps
+    /// headroom rather than running to its edge, exactly as <see cref="MaxSpeedScale"/> does. It covers a default
+    /// <see cref="KhaozEngine.Locomotion.MoveTuning.RunSpeed"/> at the full <see cref="MaxSpeedScale"/> (96 m/s) with
+    /// room to spare. Being a per-axis bound it lets a diagonal arc carry up to about 179 m/s of total speed, which is
+    /// the safe direction: the clamp exists to keep the encoding honest, not to cap what a game may fly at. A
+    /// server-only NPC is not bound by this at all (it rides no wire), only what replicates is.</summary>
+    public const float MaxHorizontalSpeed = 127f;
+
+    /// <summary>Quantizes one axis of a carried horizontal velocity (m/s) to the wire <see cref="short"/>: NaN reads
+    /// as 0, the value is CLAMPED to <c>[-MaxHorizontalSpeed, MaxHorizontalSpeed]</c> rather than wrapped, and the
+    /// result is rounded to the nearest <see cref="HorizontalVelocityQuantum"/>. Both guards matter more here than on
+    /// a per-tick field. A NaN that reached the carry would not corrupt one frame but strand the character
+    /// permanently, since this value feeds the next tick's resolve. And an unclamped cast that overflowed the
+    /// <see cref="short"/> would REVERSE a hurtling arc rather than cap it, turning an out-of-range speed into a
+    /// character flung backwards. The final clamp to the symmetric +/-32767 range leaves -32768 unused, as
+    /// <see cref="QuantizeClimbRate"/> leaves -128.</summary>
+    public static short QuantizeHorizontalVelocity(float v)
+    {
+        float clamped = Math.Clamp(float.IsNaN(v) ? 0f : v, -MaxHorizontalSpeed, MaxHorizontalSpeed);
+        return (short)Math.Clamp((int)MathF.Round(clamped / HorizontalVelocityQuantum), -32767, 32767);
+    }
+
+    /// <summary>Decodes one axis of a wire carried velocity back to m/s: <c>q * HorizontalVelocityQuantum</c>, exact
+    /// at the power-of-two quantum. 0 decodes to exactly 0 (carrying nothing). There is deliberately no floor or
+    /// ceiling on the way out, unlike <see cref="DecodeSpeedScale"/>: there a corrupt low value decodes NEGATIVE and
+    /// drives the character backwards against its own command, so the read side has to defend against it, while here
+    /// every representable value IS a legitimate velocity and a negative one simply means travelling the other way.
+    /// The worst a corrupt frame can produce is a fast arc in an odd direction, which the server's own step and the
+    /// anomaly check both already measure.</summary>
+    public static float DecodeHorizontalVelocity(short q) => q * HorizontalVelocityQuantum;
+
     /// <summary>The vertical part of a full <see cref="PlayerMoveState"/> (the position is in
     /// <see cref="ReplicatedPosition"/>).</summary>
     public static MovementState From(in PlayerMoveState state) => new()
@@ -158,5 +235,8 @@ public struct MovementState : IComponent
         TeleportEpoch = state.TeleportEpoch,
         ClimbRateQ = QuantizeClimbRate(state.Move.ClimbRate),
         SpeedScaleQ = QuantizeSpeedScale(state.Move.SpeedScale),
+        // The carried airborne arc, one axis each (MoveState.HorizontalVelocity is an XZ Vector2, so its Y is world Z).
+        HorizontalVelocityXQ = QuantizeHorizontalVelocity(state.Move.HorizontalVelocity.X),
+        HorizontalVelocityZQ = QuantizeHorizontalVelocity(state.Move.HorizontalVelocity.Y),
     };
 }

@@ -11,9 +11,13 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>6</c> as of the per-entity speed-scale
+    /// frame-header layout, so it labels the incompatible generations. It is <c>7</c> as of the airborne-momentum
+    /// feature, which added the carried horizontal velocity (<see cref="MovementState.HorizontalVelocityXQ"/> /
+    /// <see cref="MovementState.HorizontalVelocityZQ"/>, 2 bytes each) to the movement built-in's codec (id
+    /// <see cref="MovementTypeId"/>), so a client corrected mid-flight rebuilds the arc it was flying instead of
+    /// resetting it to zero. <c>6</c> was the per-entity speed-scale
     /// feature, which added the quantized haste/slow multiplier (<see cref="MovementState.SpeedScaleQ"/>, 1 byte) to
-    /// the movement built-in's codec (id <see cref="MovementTypeId"/>). <c>5</c> was the signal-driven
+    /// the same codec. <c>5</c> was the signal-driven
     /// stair-glide feature, which added the quantized signed step-climb rate (<see cref="MovementState.ClimbRateQ"/>,
     /// 1 byte) to the same codec. <c>4</c> was the teleport-epoch
     /// feature, which added the authoritative teleport epoch (<see cref="MovementState.TeleportEpoch"/>, 4 bytes) to the
@@ -34,7 +38,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 6;
+    public const int WireProtocolVersion = 7;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -98,6 +102,8 @@ public static class MoveProtocol
                 bw.Write(m.TeleportEpoch);  // wire generation 4: the authoritative teleport epoch (hard-cut marker)
                 bw.Write(m.ClimbRateQ);     // wire generation 5: the quantized signed step-climb rate (0 = not climbing)
                 bw.Write(m.SpeedScaleQ);    // wire generation 6: the quantized haste/slow multiplier (0 = unmodified, 1.0)
+                bw.Write(m.HorizontalVelocityXQ);   // wire generation 7: carried airborne velocity, world X (0 = none)
+                bw.Write(m.HorizontalVelocityZQ);   // wire generation 7: carried airborne velocity, world Z (0 = none)
             },
             read: br => new MovementState
             {
@@ -109,6 +115,8 @@ public static class MoveProtocol
                 TeleportEpoch = br.ReadUInt32(),
                 ClimbRateQ = br.ReadSByte(),
                 SpeedScaleQ = br.ReadSByte(),
+                HorizontalVelocityXQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world X
+                HorizontalVelocityZQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world Z
             });
         // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
         // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the

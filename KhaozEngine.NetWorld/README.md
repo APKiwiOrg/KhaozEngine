@@ -190,12 +190,14 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `DisconnectReasonDetail`, and never proceeds to snapshots. A legacy/version-less client decodes as version
   `""`, so the rule can reject it; a compatible version delegates the inner token to `inner` unchanged
   (subject + display-name resolution identical).
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 6) labels
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 7) labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
     64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
     Every generation since has added a field to the movement built-in codec, which is NOT length-prefixed, so an old
     client cannot skip the extra bytes: 3 added `MovementState.Swimming`, 4 `MovementState.TeleportEpoch`, 5
-    `MovementState.ClimbRateQ`, and 6 `MovementState.SpeedScaleQ` (the per-entity speed scale). There is no
+    `MovementState.ClimbRateQ`, 6 `MovementState.SpeedScaleQ` (the per-entity speed scale), and 7
+    `MovementState.HorizontalVelocityXQ` / `HorizontalVelocityZQ` (the carried airborne arc, so a client corrected
+    mid-flight rebuilds it from the wire instead of resetting it). There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -331,17 +333,52 @@ product to compute.
   server never runs a speed it cannot describe to its clients (a requested 1.1x becomes 1.125x on both ends).
 - **Server-authored only.** It is deliberately NOT on `MoveCommand`, which is what the client sends: a hostile
   client would set its own multiplier. `SetSpeedScale` is the only author.
-- **The anti-cheat knows about it** (since 14.27.0 by reading `MoveState.CommandedSpeed`, the speed the step
-  reports, rather than any per-term reconstruction). `MovementAnomaly.CorrectionDistance` folds the scale into its intended-target
+- **The anti-cheat knows about it** (since 14.27.0 by reading the velocity the step reports, rather than any
+  per-term reconstruction: `MoveState.CommandedVelocity`, which was the scalar `CommandedSpeed` field until
+  16.0.0). `MovementAnomaly.CorrectionDistance` folds the scale into its intended-target
   calculation. Without that, a legitimately hasted player steps far past an unscaled target and every boosted tick
   reads as a large correction, so the streak reports them as a speed hacker. A boosted client fighting a wall or a
   play-area bound still raises the signal.
 - **Composes, never replaces.** It multiplies into the existing speed product alongside the grounded/`AirControl`
   term and the medium's wade scale. So a hasted player who jumps travels correspondingly further horizontally
-  (jump HEIGHT is untouched - this is a horizontal scale), and the boost persists into a swim.
+  (jump HEIGHT is untouched - this is a horizontal scale), and the boost persists into a swim. Under
+  `MoveTuning.AirMomentum` the airborne composition drops the `AirControl` term (see the next section), and a
+  scale change mid-flight no longer retunes the committed arc.
 - **NPCs get it free.** The value lives on `MoveState`, so anything stepping through `CharacterMovement` - a
   server-only creature driven by `StepTowards`, a single-player controller - can set it directly and rides no wire.
   Only what replicates is bound by `MaxSpeedScale`.
+
+## Airborne momentum (since 16.0.0, opt-in)
+
+`MoveTuning.AirMomentum` (default `false`) makes a jump travel its whole arc at the speed it launched at. The
+locomotion model itself is in `KhaozEngine.Locomotion/README.md`. What NetWorld adds is the replication that makes
+it survive a correction, plus one anti-cheat change that had to land with it.
+
+- **`MoveState.HorizontalVelocity` replicates** as `MovementState.HorizontalVelocityXQ` / `HorizontalVelocityZQ`,
+  two `short`s quantized at the fixed `MovementState.HorizontalVelocityQuantum` (1/256, so 0.0039 m/s resolution
+  and a +/-127.996 m/s reach, clamped to `MovementState.MaxHorizontalSpeed` of 127 per axis). Same reason
+  `SpeedScaleQ` rides the wire, with a sharper failure: `PlayerMoveState.From` rebuilds the reconcile basis from
+  the replicated components ALONE and `ClientPrediction.Reconcile` overwrites unconditionally, so a carried
+  velocity missing from the seed does not lag, it RESETS to zero on every correction. A client corrected
+  mid-flight would drop its arc, rebuild one from whatever the command happened to be, and replay the pending
+  window on that, every time a correction lands.
+- **The quantum is a power of two on purpose.** A carried velocity is simulation state on BOTH heads and feeds
+  the next tick, so unlike a per-tick signal its error does not wash out on the following frame, it compounds for
+  the length of the flight. At 1/256 the decode is exact and both heads hold the same float. The two axes are
+  quantized independently, so a decoded SPEED can sit up to about 0.003 m/s off the encoded one.
+- **The anti-cheat had to move off the scalar.** `MoveState.CommandedSpeed` (a `float` field) became
+  `MoveState.CommandedVelocity` (a `Vector2`), with `CommandedSpeed` surviving as a computed property.
+  `MovementAnomaly.CorrectionDistance` used to pair the exported speed with the COMMAND direction, and under
+  momentum the direction of travel is the conserved velocity: a player who releases input mid-flight at 30 m/s
+  keeps flying at 30 m/s while the command collapses to zero, so the intended target sat back at the capsule and
+  the whole legitimate arc measured as a full-speed denial on every airborne tick. A momentum flight would have
+  been reported as speed hacking within a few frames. Reading the exported velocity is exact under both models: with
+  momentum off it is exactly `moveDir * CommandedSpeed`. A momentum flight driven into a wall is still measured
+  and still raises the signal.
+- **`MovementState.CommandedSpeed` is renamed to `CommandedVelocity`** and retyped to `Vector2`. It is the sharded
+  head's sim-local persistence slot for the same value, rides no codec, and so costs no wire bytes.
+- **This is a wire break: generation 6 -> 7.** Client and server must ship together, gated at the handshake by
+  the always-on `WireGenerationAuthenticator`.
 
 ## Reconnect input backlog (since 8.8.0)
 

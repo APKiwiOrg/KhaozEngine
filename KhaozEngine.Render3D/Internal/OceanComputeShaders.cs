@@ -36,6 +36,20 @@ namespace KhaozEngine.Render3D.Internal
     /// documented escape hatch, and the numbers a caller would otherwise have to repeat are read back off
     /// <c>IGpuComputeShader.ThreadGroupSizeX</c> anyway.
     /// </para>
+    /// <para>
+    /// <b>Resources are FIRST REFERENCED in binding order, and that is load-bearing.</b> Metal has no binding
+    /// decorations, so the cross-compiler assigns each resource a <c>[[buffer(n)]]</c> index of its own, in
+    /// SPIR-V id order - which follows where each resource is first referenced across the emitted function
+    /// bodies, and a helper function is emitted before <c>main</c>. The backend, meanwhile, binds a resource set
+    /// by counting the resource layout in binding order. Get the two out of step and the kernel reads the wrong
+    /// resource, on Metal only, with Vulkan and Direct3D11 perfectly correct because they honour the decorations.
+    /// It happened here: the row pass read <c>H0</c> inside a helper before anything read <c>Params</c>, so the
+    /// kernel took its cascade tile size out of the spectrum buffer, got 0, divided by it, and produced a NaN
+    /// surface. Hence <c>packedFields</c> reads <c>Timing</c> before <c>H0</c>, and the column pass touches its
+    /// three buffers only from <c>main</c>. <c>ShaderValidation.ValidateCompute</c> now rejects the mismatch in
+    /// the GPU-free lane, and <c>OceanFftShaderValidationTests</c> keeps the real broken source as its negative
+    /// case.
+    /// </para>
     /// </summary>
     internal static class OceanComputeShaders
     {
@@ -163,7 +177,7 @@ void packedFields(uint c, uint m, uint n, float tile, float t,
     f0 = vec2(0.0); f1 = vec2(0.0); f2 = vec2(0.0); f3 = vec2(0.0);
 
     // Params is touched BEFORE H0, and that order is load-bearing rather than stylistic: see the binding-order
-    // note on this class, and OceanFftBindingOrderTests, which fails the fast lane if it is ever reversed.
+    // note on this class, and OceanFftShaderValidationTests, which fails the fast lane if it is ever reversed.
     float depth = Timing.w;
     vec4 h = H0[c * @NN@u + n * @N@u + m];
     float dk = KE_TWO_PI / tile;
@@ -238,7 +252,7 @@ layout(set = 0, binding = 3, rgba16f) uniform writeonly image2DArray OceanMap;
 // One texel of both output maps, from the transformed column left in `Line`. Called twice per thread (the two
 // halves of the column). Returns this texel's new foam value rather than writing it: the foam BUFFER is touched
 // only by main, so that every buffer this kernel binds is first referenced in binding order (see the
-// binding-order note on this class, and OceanFftBindingOrderTests, which fails the fast lane if that is broken).
+// binding-order note on this class, and OceanFftShaderValidationTests, which fails the fast lane if that is broken).
 float emit(uint c, uint cascades, uint px, uint pz, float lambda, float dt, float foamPrev,
            float foamGain, float foamBias, float foamDecay) {
     vec2 f0 = Line[pz];

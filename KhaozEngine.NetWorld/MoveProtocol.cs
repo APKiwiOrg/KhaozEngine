@@ -11,7 +11,12 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>7</c> as of the airborne-momentum
+    /// frame-header layout, so it labels the incompatible generations. It is <c>8</c> as of the world-pickup feature,
+    /// which added a whole new BUILT-IN component, <see cref="PickupState"/> at id <see cref="PickupTypeId"/>. A
+    /// built-in id is unframed, so a client whose registry has no id 5 cannot skip those bytes and hard-fails its
+    /// snapshot decode the first time a pickup enters its area of interest - mid-session, long after connect. The
+    /// bump converts exactly that late failure into a clean <see cref="DisconnectReason.IncompatibleVersion"/> at
+    /// connect, which is the whole reason this generation exists. <c>7</c> was the airborne-momentum
     /// feature, which added the carried horizontal velocity (<see cref="MovementState.HorizontalVelocityXQ"/> /
     /// <see cref="MovementState.HorizontalVelocityZQ"/>, 2 bytes each) to the movement built-in's codec (id
     /// <see cref="MovementTypeId"/>), so a client corrected mid-flight rebuilds the arc it was flying instead of
@@ -38,7 +43,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 7;
+    public const int WireProtocolVersion = 8;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -55,10 +60,16 @@ public static class MoveProtocol
     /// entity; this component adds the interpolated orientation.</summary>
     public const ushort DynamicBodyTypeId = 4;
 
+    /// <summary>Type id of <see cref="PickupState"/> (a world pickup's opaque game payload + owner tag) in the shared
+    /// registry. The pickup's position rides on <see cref="ReplicatedPosition"/> (id <see cref="PositionTypeId"/>)
+    /// alongside it, so it drives area-of-interest like any other entity. This component adds what the client needs
+    /// to draw it. Spawned and driven server-side by <see cref="WorldPickups"/>.</summary>
+    public const ushort PickupTypeId = 5;
+
     /// <summary>The lowest type id a consumer may register on top of the movement protocol (an NPC kind, HP,
     /// faction, …). Ids <c>1..15</c> are reserved for engine movement built-ins (currently
-    /// <see cref="PositionTypeId"/>/<see cref="MovementTypeId"/>/<see cref="IdentityTypeId"/>/<see cref="DynamicBodyTypeId"/>);
-    /// consumer components
+    /// <see cref="PositionTypeId"/>/<see cref="MovementTypeId"/>/<see cref="IdentityTypeId"/>/<see cref="DynamicBodyTypeId"/>/<see cref="PickupTypeId"/>).
+    /// Consumer components
     /// registered at or above this floor are length-prefixed on the wire, so a client that never registered the id
     /// SKIPS it instead of disconnecting (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>). Register the
     /// SAME extra components on both the server and its clients via
@@ -154,6 +165,15 @@ public static class MoveProtocol
                 LinearVelocity = b.LinearVelocity,
                 AngularVelocity = b.AngularVelocity,
             });
+        // World pickup: an opaque game-defined payload plus an owner tag, riding alongside the pickup's
+        // ReplicatedPosition. NOT interpolated and not discrete-sampled: a pickup does not move and neither field is
+        // a quantity that blends, so it is applied verbatim off the newest snapshot exactly as PlayerIdentity is.
+        // Built-in (unframed) rather than an extension id because the engine owns the whole lifecycle server-side
+        // (WorldPickups) - hence wire generation 8, see WireProtocolVersion.
+        r.Register<PickupState>(
+            PickupTypeId,
+            write: (p, bw) => { bw.Write(p.PayloadId); bw.Write(p.OwnerNetId); },
+            read: br => new PickupState { PayloadId = br.ReadInt64(), OwnerNetId = br.ReadInt64() });
         configure?.Invoke(r);   // consumer extension components (ids >= FirstConsumerTypeId)
         return r;
     }

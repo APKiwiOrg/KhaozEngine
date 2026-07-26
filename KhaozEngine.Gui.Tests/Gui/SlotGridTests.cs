@@ -219,5 +219,154 @@ namespace KhaozEngine.Tests.Gui
             var g = Grid();
             Assert.Throws<System.ArgumentOutOfRangeException>(() => g.SetContent(-1, new SlotContent(Icons.Coin)));
         }
+
+        // -- ResolveCountText (CountFormatter's draw-time decision) --
+        // Exercised directly (not through Draw, which only reaches it when font is non-null - needing a
+        // GPU-backed SpriteFont and SpriteBatch) since the decision itself is font- and batch-independent, the
+        // same pattern as IconWidgetTests.FormatStatChipText_* for GuiSurface.
+
+        [Fact]
+        public void ResolveCountText_NullFormatter_DrawsNothingAtZeroOrBelow()
+        {
+            var g = Grid();
+            Assert.Null(g.ResolveCountText(0, new SlotContent(Icons.Coin, Vector4.One, count: 0)));
+            Assert.Null(g.ResolveCountText(0, new SlotContent(Icons.Coin, Vector4.One, count: -3)));
+        }
+
+        [Fact]
+        public void ResolveCountText_NullFormatter_MatchesTodaysInvariantCultureToString()
+        {
+            var g = Grid();
+            var content = new SlotContent(Icons.Coin, Vector4.One, count: 42);
+            Assert.Equal(42.ToString(System.Globalization.CultureInfo.InvariantCulture), g.ResolveCountText(0, content));
+            Assert.Equal("42", g.ResolveCountText(0, content));
+        }
+
+        [Fact]
+        public void ResolveCountText_Formatter_ReceivesTheSlotIndexAndContentVerbatim()
+        {
+            var g = Grid();
+            var content = new SlotContent(Icons.Heart, Vector4.One, cooldown: 0.25f, count: 7, disabled: true);
+            int seenIndex = -1;
+            SlotContent seenContent = default;
+            g.CountFormatter = (i, c) => { seenIndex = i; seenContent = c; return "ignored"; };
+
+            g.ResolveCountText(4, content);
+
+            Assert.Equal(4, seenIndex);
+            Assert.Equal(Icons.Heart, seenContent.IconId);
+            Assert.Equal(7, seenContent.Count);
+            Assert.Equal(0.25f, seenContent.Cooldown, 3);
+            Assert.True(seenContent.Disabled);
+        }
+
+        [Fact]
+        public void ResolveCountText_Formatter_ReturnIsDrawnVerbatim()
+        {
+            var g = Grid();
+            g.CountFormatter = (_, c) => $"x{c.Count}";
+            Assert.Equal("x5", g.ResolveCountText(0, new SlotContent(Icons.Coin, Vector4.One, count: 5)));
+        }
+
+        [Fact]
+        public void ResolveCountText_Formatter_NullOrEmptyReturnDrawsNothing()
+        {
+            var g = Grid();
+            g.CountFormatter = (_, _) => null;
+            Assert.Null(g.ResolveCountText(0, new SlotContent(Icons.Coin, Vector4.One, count: 5)));
+
+            g.CountFormatter = (_, _) => "";
+            Assert.Null(g.ResolveCountText(0, new SlotContent(Icons.Coin, Vector4.One, count: 5)));
+        }
+
+        [Fact]
+        public void ResolveCountText_Formatter_InvokedEvenWhenCountIsZero()
+        {
+            var g = Grid();
+            bool invoked = false;
+            g.CountFormatter = (_, c) => { invoked = true; return c.Count > 0 ? "some" : null; };
+
+            string? result = g.ResolveCountText(0, new SlotContent(Icons.Coin, Vector4.One, count: 0));
+
+            Assert.True(invoked);
+            Assert.Null(result);   // the formatter chose null for this call, but it WAS called
+        }
+
+        // -- TryResolveIcon (FallbackIconId's draw-time decision) --
+        // Same pattern: exercised directly rather than through Draw, which needs a real batch.
+
+        [Fact]
+        public void TryResolveIcon_PrimaryIconResolves_FallbackIsNotConsulted()
+        {
+            var atlas = new IconAtlas();
+            var primaryUv = new Vector4(0f, 0f, 0.5f, 0.5f);
+            var fallbackUv = new Vector4(0.5f, 0.5f, 1f, 1f);
+            atlas.Register("game.sword", null!, primaryUv);
+            atlas.Register("game.unknown", null!, fallbackUv);
+
+            var g = Grid();
+            g.IconAtlas = atlas;
+            g.FallbackIconId = "game.unknown";
+
+            bool ok = g.TryResolveIcon(new SlotContent("game.sword"), out _, out Vector4 uv);
+            Assert.True(ok);
+            Assert.Equal(primaryUv, uv);
+        }
+
+        [Fact]
+        public void TryResolveIcon_AtlasMiss_FallsBackToFallbackIconId()
+        {
+            var atlas = new IconAtlas();
+            var fallbackUv = new Vector4(0.5f, 0.5f, 1f, 1f);
+            atlas.Register("game.unknown", null!, fallbackUv);   // "game.sword" is never registered: a miss
+
+            var g = Grid();
+            g.IconAtlas = atlas;
+            g.FallbackIconId = "game.unknown";
+
+            bool ok = g.TryResolveIcon(new SlotContent("game.sword"), out _, out Vector4 uv);
+            Assert.True(ok);
+            Assert.Equal(fallbackUv, uv);
+        }
+
+        [Fact]
+        public void TryResolveIcon_NullIconId_NeverFallsBack()
+        {
+            var atlas = new IconAtlas();
+            atlas.Register("game.unknown", null!, new Vector4(0.5f, 0.5f, 1f, 1f));
+
+            var g = Grid();
+            g.IconAtlas = atlas;
+            g.FallbackIconId = "game.unknown";
+
+            // A null IconId deliberately means "no icon": it must not resolve to the fallback either.
+            bool ok = g.TryResolveIcon(new SlotContent(null, Vector4.One), out _, out _);
+            Assert.False(ok);
+        }
+
+        [Fact]
+        public void TryResolveIcon_MissWithNoFallbackSet_StillResolvesNothing()
+        {
+            var atlas = new IconAtlas();   // "game.sword" is never registered, and FallbackIconId stays null
+
+            var g = Grid();
+            g.IconAtlas = atlas;
+
+            bool ok = g.TryResolveIcon(new SlotContent("game.sword"), out _, out _);
+            Assert.False(ok);
+        }
+
+        [Fact]
+        public void TryResolveIcon_FallbackIdItselfMisses_StillResolvesNothing()
+        {
+            var atlas = new IconAtlas();   // neither "game.sword" nor "game.unknown" is registered
+
+            var g = Grid();
+            g.IconAtlas = atlas;
+            g.FallbackIconId = "game.unknown";
+
+            bool ok = g.TryResolveIcon(new SlotContent("game.sword"), out _, out _);
+            Assert.False(ok);
+        }
     }
 }

@@ -84,7 +84,7 @@ public sealed class ShardedWorldServerConfig
 /// respawn. Headless, transport-injected. Persistence is the shipped <see cref="WorldPersistence"/> via
 /// <see cref="IWorldPersistenceHost"/>, player-keyed across cells.
 /// </summary>
-public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellPersistenceHost
+public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellPersistenceHost, IWorldPickupHost
 {
     private readonly ShardedWorldServerConfig config;
     private readonly ReplicationRegistry registry;
@@ -354,7 +354,8 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     /// <see cref="MoveProtocol.FirstConsumerTypeId"/>, which clients read back via
     /// <see cref="WorldClient.TryGetComponent{T}"/>. The entity replicates through the normal AoI + ghost + handoff
     /// pipeline; being non-player it is persisted with its cell. Move it each tick from <see cref="OnBeforeTick"/>.
-    /// Returns the new entity's NetId.
+    /// Returns the new entity's NetId. Remove it again with <see cref="DespawnEntity"/> (or drive a walk-over
+    /// collectible's whole lifecycle with <see cref="WorldPickups"/>).
     /// </summary>
     public long SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
     {

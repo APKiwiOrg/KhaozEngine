@@ -83,7 +83,7 @@ public sealed class WorldServerConfig
 /// The multi-cell variant is <see cref="ShardedWorldServer"/> (the same movement stack run across a cell grid);
 /// this is the single-world slice. Both share <see cref="WorldPersistence"/> via <see cref="IWorldPersistenceHost"/>.
 /// </summary>
-public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
+public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControllable, IWorldPickupHost
 {
     private readonly WorldServerConfig config;
     private readonly ReplicationRegistry registry;
@@ -291,7 +291,8 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
     /// components, e.g. an NPC-kind / HP / faction component registered on <see cref="Registry"/> at an id >=
     /// <see cref="MoveProtocol.FirstConsumerTypeId"/>, which clients read via
     /// <see cref="WorldClient.TryGetComponent{T}"/>. Drive its behaviour each tick from <see cref="OnBeforeTick"/>.
-    /// Returns the new entity's NetId. (The multi-cell equivalent is
+    /// Returns the new entity's NetId. Remove it again with <see cref="DespawnEntity"/> (or drive a walk-over
+    /// collectible's whole lifecycle with <see cref="WorldPickups"/>). (The multi-cell equivalent is
     /// <see cref="ShardedWorldServer.SpawnEntity"/>.)
     /// </summary>
     public long SpawnEntity(float x, float z, Action<World, Entity>? configure = null)
@@ -300,6 +301,7 @@ public sealed class WorldServer : IWorldPersistenceHost, IAdminControllable
         Entity e = world.Spawn();
         world.Set(e, new NetId(netId));
         world.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
+        spawnedEntities[netId] = e;   // the netId -> entity index TryGetEntity / DespawnEntity resolve through
         configure?.Invoke(world, e);
         return netId;
     }

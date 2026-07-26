@@ -16,13 +16,17 @@ namespace KhaozEngine.Gui
     /// </summary>
     public readonly struct SlotContent
     {
-        /// <summary>The icon id resolved through <see cref="SlotGrid.IconAtlas"/> (null or an unknown id draws no icon).</summary>
+        /// <summary>The icon id resolved through <see cref="SlotGrid.IconAtlas"/>. Null draws no icon, deliberately,
+        /// and never falls back. An id the atlas cannot resolve falls back to <see cref="SlotGrid.FallbackIconId"/>
+        /// when set, else it also draws no icon.</summary>
         public string? IconId { get; }
         /// <summary>The icon tint, multiplied over the icon before the disabled dim is applied.</summary>
         public Vector4 Tint { get; }
         /// <summary>Remaining-cooldown fraction in [0,1]: 0 = no sweep, 1 = fully covered. Clamped on construction.</summary>
         public float Cooldown { get; }
-        /// <summary>Stack / charge count drawn bottom-right (0 or less draws no number). The count only renders when a font is passed to <see cref="SlotGrid.Draw"/>.</summary>
+        /// <summary>Stack / charge count drawn bottom-right (0 or less draws no number, unless
+        /// <see cref="SlotGrid.CountFormatter"/> overrides the rendered text). The count only renders when a font
+        /// is passed to <see cref="SlotGrid.Draw"/>.</summary>
         public int Count { get; }
         /// <summary>When true the icon draws greyed (RGB dimmed) so the slot reads as unavailable.</summary>
         public bool Disabled { get; }
@@ -100,6 +104,13 @@ namespace KhaozEngine.Gui
         /// same instance mechanism <see cref="GuiSurface.Icon"/> uses). Null = built-in slot icons draw nothing.</summary>
         public IconAtlas? IconAtlas { get; set; }
 
+        /// <summary>Icon id drawn instead when a slot's <see cref="SlotContent.IconId"/> is set but
+        /// <see cref="IconAtlas"/> cannot resolve it, for example an item roster that arrives over the wire after
+        /// the build shipped and names an id the atlas has never seen. A null <see cref="SlotContent.IconId"/>
+        /// still means "no icon" and never falls back to this. Null (the default), or an id that itself misses
+        /// <see cref="IconAtlas"/>, leaves the slot drawing no icon, same as before this field existed.</summary>
+        public string? FallbackIconId;
+
         /// <summary>Tint of the radial cooldown sweep drawn over a slot's icon (translucent black by default).</summary>
         public Vector4 CooldownTint = GuiSurface.DefaultCooldownTint;
         /// <summary>Colour of the stack-count number drawn bottom-right in a slot.</summary>
@@ -108,6 +119,25 @@ namespace KhaozEngine.Gui
         public float CountScale = 1f;
         /// <summary>Inset of the stack-count number from the slot's bottom-right corner, in draw units.</summary>
         public float CountPad = 3f;
+
+        /// <summary>
+        /// Formats the stack / charge count text drawn bottom-right in a slot: invoked as (slotIndex, content) and
+        /// returning the text to draw, or null / empty to draw nothing. Null (the default) reproduces today's
+        /// built-in behaviour exactly: a count only draws when <see cref="SlotContent.Count"/> is greater than
+        /// zero, as <c>Count.ToString(CultureInfo.InvariantCulture)</c>. When set, the formatter is invoked for
+        /// every slot that has content, regardless of <see cref="SlotContent.Count"/>. That is deliberate: it is
+        /// what lets a game suppress the count for a single item by returning null, or render a zero-charge
+        /// indicator, decisions the built-in greater-than-zero gate cannot make. Both the slot index and the full
+        /// <see cref="SlotContent"/> are passed, not just the count, so one formatter can vary its output per slot
+        /// (stacks in one row, charges in another) or by item kind via <see cref="SlotContent.IconId"/>. The
+        /// returned text draws verbatim, in the same place with the same <see cref="CountColor"/>,
+        /// <see cref="CountScale"/>, and <see cref="CountPad"/>. A count is a non-localizable numeric token, the
+        /// same escape hatch <see cref="KeybindLabels"/> already documents, so this engine never resolves the
+        /// returned string through localization. A game that needs a genuinely localized quantity resolves it
+        /// through its own <c>LocalizationManager</c> first and hands this the already-resolved string.
+        /// </summary>
+        public Func<int, SlotContent, string?>? CountFormatter;
+
         /// <summary>Inset of a slot's built-in icon (and its cooldown sweep) from the slot edges, in draw units.</summary>
         public float IconInset = 4f;
 
@@ -243,7 +273,7 @@ namespace KhaozEngine.Gui
                     GuiDraw.WithOpacity(fill, Opacity), GuiDraw.WithOpacity(border, Opacity));
 
                 if (_content.TryGetValue(i, out SlotContent content))
-                    DrawContent(batch, white, font, r, content);
+                    DrawContent(batch, white, font, i, r, content);
 
                 DrawSlotContent?.Invoke(i, r, batch);
 
@@ -260,16 +290,46 @@ namespace KhaozEngine.Gui
             batch.DrawString(font, label, pos, (Color)GuiDraw.WithOpacity(KeybindLabelColor, Opacity), KeybindLabelScale);
         }
 
+        /// <summary>Test seam: the (texture, source UV) <see cref="DrawContent"/> would draw for slot content
+        /// <paramref name="content"/>, resolved without a batch or GPU. Tries <see cref="SlotContent.IconId"/>
+        /// first, then <see cref="FallbackIconId"/> only when <see cref="SlotContent.IconId"/> is set but misses
+        /// <see cref="IconAtlas"/>. A null <see cref="SlotContent.IconId"/> deliberately means "no icon" and never
+        /// falls back.</summary>
+        internal bool TryResolveIcon(in SlotContent content, out Texture2D tex, out Vector4 uv)
+        {
+            tex = null!;
+            uv = default;
+            IconAtlas? atlas = IconAtlas;
+            string? iconId = content.IconId;
+            if (iconId == null || atlas == null) return false;
+            if (atlas.TryGet(iconId, out tex, out uv)) return true;
+            return FallbackIconId != null && atlas.TryGet(FallbackIconId, out tex, out uv);
+        }
+
+        /// <summary>Test seam: the count text <see cref="DrawContent"/> would draw for slot
+        /// <paramref name="index"/>'s <paramref name="content"/>, normalized to null when nothing should draw (a
+        /// formatter's empty-string return included). Font and batch independent, mirroring
+        /// <see cref="GuiSurface.FormatStatChipText"/>. A null <see cref="CountFormatter"/> reproduces the built-in
+        /// greater-than-zero gate exactly. A non-null <see cref="CountFormatter"/> is invoked unconditionally,
+        /// count included, which is what <see cref="CountFormatter"/>'s own doc relies on.</summary>
+        internal string? ResolveCountText(int index, in SlotContent content)
+        {
+            string? txt = CountFormatter != null
+                ? CountFormatter(index, content)
+                : content.Count > 0 ? content.Count.ToString(CultureInfo.InvariantCulture) : null;
+            return string.IsNullOrEmpty(txt) ? null : txt;
+        }
+
         // Built-in slot content, drawn between the frame and the DrawSlotContent hook: the icon (greyed when
-        // disabled), then the radial cooldown sweep over the icon rect, then the stack count bottom-right. The
-        // DrawSlotContent hook still draws after this, so caller-painted content composes on top.
-        void DrawContent(SpriteBatch batch, Texture2D white, SpriteFont? font, Rect slot, in SlotContent content)
+        // disabled, resolved through TryResolveIcon), then the radial cooldown sweep over the icon rect, then the
+        // stack count bottom-right (resolved through ResolveCountText). The DrawSlotContent hook still draws after
+        // this, so caller-painted content composes on top.
+        void DrawContent(SpriteBatch batch, Texture2D white, SpriteFont? font, int index, Rect slot, in SlotContent content)
         {
             var iconRect = new Rect(slot.X + IconInset, slot.Y + IconInset,
                 slot.Width - IconInset * 2f, slot.Height - IconInset * 2f);
 
-            if (content.IconId != null && IconAtlas != null &&
-                IconAtlas.TryGet(content.IconId, out Texture2D tex, out Vector4 uv))
+            if (TryResolveIcon(content, out Texture2D tex, out Vector4 uv))
             {
                 Vector4 tint = content.Disabled ? DimRgb(content.Tint, DisabledIconDim) : content.Tint;
                 batch.Draw(tex, new Vector4(iconRect.X, iconRect.Y, iconRect.Width, iconRect.Height), uv,
@@ -279,14 +339,19 @@ namespace KhaozEngine.Gui
             if (content.Cooldown > 0f)
                 GuiDraw.CooldownSweep(batch, white, iconRect, content.Cooldown, GuiDraw.WithOpacity(CooldownTint, Opacity));
 
-            // The stack count is a non-localizable number (the same escape hatch as the keybind glyphs), so it is a
-            // raw ToString. It needs the font Draw already receives.
-            if (font != null && content.Count > 0)
+            // The stack count text comes from ResolveCountText, already normalized to null for "draw nothing": the
+            // built-in greater-than-zero gate when CountFormatter is null, or the game's own formatter otherwise.
+            // Either way it is a non-localizable escape hatch, the same rationale as the keybind glyphs. See
+            // CountFormatter's XML doc for the full contract. It needs the font Draw already receives.
+            if (font != null)
             {
-                string txt = content.Count.ToString(CultureInfo.InvariantCulture);
-                Vector2 m = font.Measure(txt) * CountScale;
-                var pos = new Vector2(slot.Right - m.X - CountPad, slot.Bottom - font.LineHeight * CountScale - CountPad);
-                batch.DrawString(font, txt, pos, (Color)GuiDraw.WithOpacity(CountColor, Opacity), CountScale);
+                string? txt = ResolveCountText(index, content);
+                if (txt != null)
+                {
+                    Vector2 m = font.Measure(txt) * CountScale;
+                    var pos = new Vector2(slot.Right - m.X - CountPad, slot.Bottom - font.LineHeight * CountScale - CountPad);
+                    batch.DrawString(font, txt, pos, (Color)GuiDraw.WithOpacity(CountColor, Opacity), CountScale);
+                }
             }
         }
 

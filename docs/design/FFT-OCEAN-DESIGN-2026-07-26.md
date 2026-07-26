@@ -1,10 +1,10 @@
 # The Tessendorf FFT ocean
 
-Design rationale for the 16.1.0 water release. Issue: [#310](https://github.com/APKiwiOrg/KhaozEngine/issues/310).
+Design rationale for the 16.3.0 water release. Issue: [#310](https://github.com/APKiwiOrg/KhaozEngine/issues/310).
 Program 2 of two; program 1 is the compute seam, `docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`
 ([#309](https://github.com/APKiwiOrg/KhaozEngine/issues/309), shipped 15.2.0).
 
-This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 16.1.0,
+This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 16.3.0,
 `docs/USING-KHAOZENGINE.md` ("FFT ocean") and `KhaozEngine.Render3D/README.md`. Attribution is in `NOTICE.md`.
 
 ## The problem, and why FFT after it was declined once

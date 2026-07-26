@@ -15,7 +15,7 @@ adapted, not just the project.
 
 - **Project:** https://github.com/2Retr0/GodotOceanWaves
 - **Licence:** MIT
-- **Used by:** `KhaozEngine.Render3D` FFT ocean (16.1.0): `Internal/OceanSpectrum.cs`,
+- **Used by:** `KhaozEngine.Render3D` FFT ocean (16.3.0): `Internal/OceanSpectrum.cs`,
   `Internal/OceanComputeShaders.cs`, `Rendering/OceanFftProducer.cs`. Design rationale:
   `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`.
 - **What was adapted:** the structure and parameterization of a compute-shader Tessendorf ocean, specifically

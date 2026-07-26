@@ -1202,6 +1202,32 @@ the boundary tracking the slot edge. For a one-off overlay outside a `SlotGrid`,
 draws the same sweep over any rect, and `GuiSurface.Image(rect, tex, srcUV, tint)` draws an arbitrary texture
 without going through the icon registry.
 
+**Custom count text and a fallback icon.** `SlotContent.Count` is a plain `int`, so the built-in painter draws
+a bare `5` by default. Set `CountFormatter` to render something else instead, an `x5` stack marker, a `99+`
+cap, or a localized quantity your own `LocalizationManager` already resolved, all without giving up
+`SetContent` and hand-rolling the icon and count placement yourself:
+
+```csharp
+grid.CountFormatter = (slotIndex, content) => content.Count > 0 ? $"x{content.Count}" : null;
+```
+
+The formatter receives the slot index and the whole `SlotContent`, not just the count, so one formatter can
+vary its output per slot (stacks in one row, charges in another) or by item kind via `IconId`. It is invoked
+for every slot that has content even when `Count` is zero or negative, so a formatter can suppress a count
+entirely (return null) or show a zero-charge indicator, decisions the built-in "digits only above zero" gate
+cannot make on its own. Leave `CountFormatter` null to keep today's exact behaviour.
+
+`FallbackIconId` covers the other half of a hand-rolled slot painter: an icon id a `SlotContent` names but the
+atlas cannot resolve, for example an item roster that arrives over the wire after the build shipped and names
+an id the atlas has never seen.
+
+```csharp
+grid.FallbackIconId = "item.unknown";   // drawn only when SlotContent.IconId is set but the atlas misses it
+```
+
+A null `SlotContent.IconId` still means "no icon" and never falls back to this, only a non-null id that
+misses the atlas does.
+
 ---
 
 ## Number + duration formatting (`NumberFormatter` / `TimeFormatter`)
@@ -2338,10 +2364,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `GlintExponent`), `GlintDistantRoughness`.
     - *Foam*: `FoamColor`, `FoamStrength` (0 = off), `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`.
     - *Shore*: `ShoreFadeDistance` (world units the alpha softens over at the waterline).
-    - *Wave source* (since 16.1.0): `WaveSource` picks where the displacement, normal and whitecaps come from -
+    - *Wave source* (since 16.3.0): `WaveSource` picks where the displacement, normal and whitecaps come from -
       `WaterWaveSource.Procedural` (the default, everything above, unchanged) or `WaterWaveSource.FftOcean` (a
       Tessendorf inverse-FFT ocean on the GPU, see below). The SHADING is identical either way.
-  - **FFT ocean** (`WaveSource = WaterWaveSource.FftOcean`, since 16.1.0). Replaces the Gerstner swell and the
+  - **FFT ocean** (`WaveSource = WaterWaveSource.FftOcean`, since 16.3.0). Replaces the Gerstner swell and the
     cosine ripple spectrum with a real directional spectrum evaluated over a full grid - 16384 components per
     cascade at the default resolution, three cascades - inverse-transformed on the GPU every frame into
     displacement, slope and Jacobian-foam maps. It exists because a finite sum of directional components always
@@ -4460,7 +4486,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.3.0" />
 ```
 
 ```csharp
@@ -8958,7 +8984,7 @@ A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 7 as of 16.0.0, up from 1 for the pre-10.0.0 32-bit line, with every generation since 2 adding a field to the movement built-in codec) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 8 as of the world-pickup feature, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec and 8 adding the whole new `PickupState` built-in) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -9272,6 +9298,110 @@ the new `CommandedVelocity` so the check reads the sim's direction of travel, or
 legitimate momentum flight with released input would have been reported as speed hacking.
 
 Full rationale and the per-tick resolve: `docs/design/AIRBORNE-MOMENTUM-DESIGN-2026-07-26.md`.
+
+### World pickups (walk-over collectibles)
+
+A killed enemy scatters orbs a player walks over. A resource node sits in a clearing until somebody harvests it. A
+health pack respawns on a timer. Underneath all of them: a server spawns a world entity, it sits there, a player gets
+close enough, the server decides whether that player may take it, and it goes away. **`WorldPickups`** is that seam,
+over `WorldServer` or `ShardedWorldServer` (both implement `IWorldPickupHost`).
+
+```csharp
+// Server side. Construct it once, drive it from your own tick, exactly like CellPersistence or DynamicBodyReplication.
+var pickups = new WorldPickups(server, new WorldPickupsConfig
+{
+    DefaultRadius = 1.5f,
+    OnCollect = c =>
+    {
+        // c.Slot is the collecting player, c.PayloadId is whatever you packed at spawn. Return whether it was taken.
+        if (!inventory.TryGrant(c.Slot, ItemIndexOf(c.PayloadId), QuantityOf(c.PayloadId))) return false;  // bag full
+        ledger.Record(c.Slot, c.PayloadId);
+        server.SendGameMessageTo(c.Slot, InventoryChangedKind, inventory.Encode(c.Slot), NetChannelReliability.ReliableOrdered);
+        return true;
+    },
+    OnRemoved = r => log.Info($"pickup {r.PickupNetId} left: {r.Reason}"),
+});
+server.OnBeforeTick += pickups.Update;   // start of Tick, so a collect's despawn rides the SAME tick's snapshot
+
+// On a killing blow: one orb per rolled item, owned by the killer, gone in two minutes if nobody takes it.
+foreach (long payload in loot.Roll(enemy))
+    pickups.Spawn(enemy.Position + Jitter(), payload, ownerNetId: killerNetId, radius: 1.5f, timeToLiveSeconds: 120f);
+```
+
+```csharp
+// Client side. The pickup is an ordinary replicated entity, so it is already in your EntityRenderState list.
+// The component tells you what to draw.
+foreach (EntityRenderState e in client.Snapshot())
+    if (client.TryGetComponent(e.Id.Value, out PickupState pickup))
+        DrawOrb(e.Position, RarityTint(pickup.PayloadId), mine: pickup.OwnerNetId == client.LocalNetId);
+```
+
+**What the engine owns and what stays yours.** The engine owns the entity, its replication, the owner tag, the
+time-to-live, the per-tick proximity test and the despawn. It owns no notion of items, inventories, rarity or loot
+tables, and this introduces none: `PickupState.PayloadId` is an opaque 64-bit value carried verbatim to clients and
+handed back on collect, the same way `Teleport` moves a player without owning any notion of why. It does not own the
+ownership RULE either, only the tag. `OnCollect` decides every collect and may decline, so killer-only, party loot,
+need-before-greed, inventory-full and free-after-a-delay are all one predicate plus `SetOwner`. With no `OnCollect`
+handler nothing is ever granted, which is the safe default rather than a silent free-for-all.
+
+**`ownerNetId` is a hard engine-side pre-filter** (`0` = unowned): a non-owner is never offered the pickup at all, so
+your handler is never asked about a player who could not have it anyway. You still own the tag's value over time.
+`SetOwner(netId, 0)` is how free-after-a-delay works: spawn owned, and when your own loot timer lapses, hand it to
+everybody. The new tag is written to the replicated component, so clients can re-tint the orb, and everyone standing
+on it is re-offered on the next `Update` without stepping off and back on.
+
+**Offer policy: once per entry, never per tick.** A player inside the radius is offered the pickup exactly once. A
+decline leaves it standing but does not re-ask on the next tick, because a decline is usually a durable no and
+re-asking would spin your callback tens of times a second per player per pickup for an answer that cannot change on
+its own. Three ways to re-offer, matching WHY your decline went stale:
+
+| Route | Use it when |
+|---|---|
+| Leave and re-enter the radius | Always available, no configuration. The offer record is dropped the first tick a player is measured outside. |
+| `Reoffer(netId)` or `SetOwner(netId, …)` | The game KNOWS the decline is stale: a loot timer lapsed, a bag slot freed, a roll finished. Re-offers on the next `Update`, standing still, no polling. |
+| `WorldPickupsConfig.RetryDeclinedSeconds` (off by default) | The decline can go stale WITHOUT the game noticing. A timer, so keep it coarse. |
+
+**Proximity is a linear scan** over live pickups against joined players, in a deterministic order (pickups by
+ascending net id, players by ascending slot, so two players standing on the same orb resolve identically on every
+run). It is O(pickups x players) per tick, which matches the tens-of-entities-per-cell scale the sharding model
+assumes. Distance is a **full 3D** measure from the pickup to the player's authoritative position, so a player on the
+floor above does not reach through it. A cylinder, a cone, a facing requirement or a line-of-sight test goes in
+`OnCollect` as a decline: that is what the callback is for.
+
+**Removal.** `Despawn(netId)` removes one, `DespawnAll()` removes every tracked pickup, and a `timeToLiveSeconds`
+expires one on its own. All three propagate to clients as a normal area-of-interest removal and raise `OnRemoved`
+with a `PickupRemovalReason` of `Collected` / `Expired` / `Despawned`, so a ledger row or a poof VFX has one place to
+hang off.
+
+**It is a wire break.** `PickupState` is a **built-in** replicated component (`MoveProtocol.PickupTypeId` = 5), not a
+consumer extension, so it is unframed: a client whose registry has no id 5 cannot skip those bytes and would hard-fail
+its snapshot decode the first time a pickup entered its area of interest, mid-session and far from the cause.
+`MoveProtocol.WireProtocolVersion` therefore bumps to **8**, which converts exactly that late failure into a clean
+`IncompatibleVersion` rejection at connect. **Client and server must ship together.**
+
+**Persistence hazard, read this before you ship a persistent server.** `CellPersistence` snapshots every owned
+non-player entity in a cell on an interval and has **no per-entity opt-out**, so a live pickup can be caught in a save
+and resurrected on restart. A restored pickup is a plain entity carrying `PickupState` that the seam knows nothing
+about: no time-to-live, offered to nobody, standing in the world forever. The component cannot opt out of the persist
+channel either, because built-in ids below `ReplicationRegistry.FirstExtensionTypeId` are pinned to
+`ReplicationChannels.Default` and the registry throws otherwise. Sweep at boot, before spawning this run's pickups:
+
+```csharp
+var stale = new List<long>();
+foreach (CellSim cell in server.Host.Cells)
+    foreach (Entity e in cell.World.Query().With<PickupState>().Entities())
+        if (cell.World.TryGet(e, out NetId id)) stale.Add(id.Value);
+foreach (long netId in stale) server.DespawnEntity(netId);
+```
+
+`ShardedWorldServer.DespawnEntity` resolves through the shard host's ownership index, so it finds entities the seam
+never saw. It refuses a player net id, so a sweep can never eat somebody's avatar. `DespawnAll()` is the same-process
+equivalent and clears only what the seam is currently tracking.
+
+**`SpawnEntity` gained its missing halves** along the way, useful on their own for any server-owned entity:
+`TryGetEntity(netId, out World, out Entity)` and `DespawnEntity(netId)` on both servers. On the sharded server they
+resolve any owned non-player entity (including a restored one). On the single-world server they resolve what
+`SpawnEntity` handed out, which is the whole population there because it has no cell persistence.
 
 ### Game messages (attack / interact / chat / inventory)
 

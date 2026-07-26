@@ -3,6 +3,7 @@ using System.IO;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Replication;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -19,21 +20,41 @@ public class WorldClientDecodeFailureTests
 {
     private static readonly Func<float, float, float> Flat = (x, z) => 0f;
 
-    // A snapshot with one entity carrying a single component of an unregistered built-in type id (5 - reserved
-    // below the extension floor; the shared registry only knows 1/2/3/4), wrapped as a server->client snapshot frame.
-    // Below the floor it is unframed, so an unknown id there is a hard "client out of date" mismatch, not a skip.
+    // The lowest reserved built-in id the shared registry does NOT claim, so this fixture keeps meaning "an id from a
+    // newer core protocol" as the engine grows into the 1..15 band (it was 5 until PickupState took that). Assert-
+    // pinned below rather than hand-tracked, so the next built-in fails loudly here instead of silently testing a
+    // registered id.
+    private const ushort UnregisteredBuiltInTypeId = 6;
+
+    // A snapshot with one entity carrying a single component of an unregistered built-in type id (reserved below the
+    // extension floor), wrapped as a server->client snapshot frame. Below the floor it is unframed, so an unknown id
+    // there is a hard "client out of date" mismatch, not a skip.
     private static byte[] BadSnapshotFrame()
     {
         using var ms = new MemoryStream();
         using (var bw = new BinaryWriter(ms))
         {
-            bw.Write(1);              // entity count
-            bw.Write(1L);             // netId (64-bit)
-            bw.Write((ushort)5);      // unregistered built-in (below-floor) type id -> decode fails here
+            bw.Write(1);                              // entity count
+            bw.Write(1L);                             // netId (64-bit)
+            bw.Write(UnregisteredBuiltInTypeId);      // unregistered built-in (below-floor) id -> decode fails here
         }
         byte[] snapshot = ms.ToArray();
         return MoveProtocol.EncodeServerFrame(MoveProtocol.ServerFrameKind.Snapshot,
             MoveProtocol.EncodeSnapshotFrame(localNetId: 1, ackSeq: 0, snapshot));
+    }
+
+    [Fact]
+    public void The_fixture_id_is_still_an_unclaimed_built_in()
+    {
+        // Guards the fixture itself: the id must stay below the extension floor (so it is unframed and hard-fails)
+        // AND unregistered by the shared registry (so the failure is the one under test). Registering it would make
+        // the test above decode happily and assert nothing.
+        Assert.True(UnregisteredBuiltInTypeId < ReplicationRegistry.FirstExtensionTypeId);
+        Assert.NotEqual(MoveProtocol.PositionTypeId, UnregisteredBuiltInTypeId);
+        Assert.NotEqual(MoveProtocol.MovementTypeId, UnregisteredBuiltInTypeId);
+        Assert.NotEqual(MoveProtocol.IdentityTypeId, UnregisteredBuiltInTypeId);
+        Assert.NotEqual(MoveProtocol.DynamicBodyTypeId, UnregisteredBuiltInTypeId);
+        Assert.NotEqual(MoveProtocol.PickupTypeId, UnregisteredBuiltInTypeId);
     }
 
     [Fact]
@@ -71,6 +92,6 @@ public class WorldClientDecodeFailureTests
         Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
         Assert.Equal(DisconnectReason.IncompatibleVersion, client.DisconnectReason);
         Assert.NotNull(decodeError);
-        Assert.Contains("unregistered type id 5", client.DisconnectReasonDetail);
+        Assert.Contains($"unregistered type id {UnregisteredBuiltInTypeId}", client.DisconnectReasonDetail);
     }
 }

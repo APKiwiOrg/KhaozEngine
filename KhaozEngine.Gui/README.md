@@ -96,8 +96,14 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     `SetContent`/`ClearContent`/`ClearAllContent`. `Draw` then paints, per slot, the icon (greyed when disabled),
     a radial cooldown sweep (12 o'clock clockwise, boundary along the slot edge), and the stack count
     bottom-right, between the slot frame and the `DrawSlotContent` hook (so custom painting still composes on
-    top). Content is stored sparsely, so it survives `Count` changes. The immediate-mode `GuiSurface` exposes
-    the same primitives standalone: `Image` (an arbitrary texture, bypassing the icon atlas) and
+    top). Content is stored sparsely, so it survives `Count` changes. Two knobs let a game override what the
+    built-in painter draws without giving it up: `CountFormatter` (a `Func<int, SlotContent, string?>` invoked as
+    slot index + content, its return drawn verbatim in place of the raw `Count`, invoked for every slot with
+    content regardless of `Count` so a formatter can suppress or show a zero count on purpose, null keeps today's
+    "digits only when `Count` is greater than zero" behaviour) and `FallbackIconId` (an icon id drawn when a
+    slot's `IconId` is set but the atlas cannot resolve it, for a roster that names icons the atlas has not
+    registered yet. A null `IconId` never falls back, it still means no icon). The immediate-mode `GuiSurface`
+    exposes the same primitives standalone: `Image` (an arbitrary texture, bypassing the icon atlas) and
     `CooldownOverlay` (the radial sweep).
   - `ProgressBar` - a thin fill bar (health / XP / cast / load / charge pips). `Fraction` is clamped 0..1; the accent
     fill (`FillColor`) sits inside the border frame, the track is `TrackColor`, and corners/border/skin come from

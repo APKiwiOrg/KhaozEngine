@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 16.1.0
+## 16.3.0
 
 A Tessendorf inverse-FFT ocean, computed on the GPU, as an opt-in wave source for the existing water surface.
 Three rounds of de-tiling had each removed one coherent structure from a small sum of directional components and
@@ -84,6 +84,118 @@ the approach followed: `NOTICE.md`.
   bitwise determinism, foam accumulation and dissipation, one stall per frame),
   `OceanFftShaderValidationTests` (both kernels at every supported resolution, plus the binding-order regression),
   and the `scene3d_fftocean` cross-backend golden.
+## 16.2.0
+
+Generic world pickups: a server spawns a collectible, a player walks over it, the game decides whether that
+player may take it, and it goes away (wire gen 7 -> 8). There was no seam for this at all, so every game
+rebuilt the same thing: spawn an entity, hand-roll a distance loop in `OnBeforeTick`, hand-roll a TTL,
+hand-roll an ownership check, register its own replicated component. Loot drops, resource nodes, health packs,
+quest objectives and capture points are all one shape. Requested by Ruinborne, where a killed enemy scatters
+walk-over loot orbs. Closes #303. Consumer scope:
+`Ruinborne/docs/design/2026-07-26-world-pickups-engine-scope.md`.
+
+### Breaking
+
+- **Wire generation 7 -> 8.** `PickupState` is a new BUILT-IN replicated component at
+  `MoveProtocol.PickupTypeId` (5), not a consumer extension, so it is unframed: a client whose registry has no
+  id 5 cannot skip those bytes and hard-fails its snapshot decode the first time a pickup enters its area of
+  interest, mid-session and far from the cause. `MoveProtocol.WireProtocolVersion` bumps to 8 and the always-on
+  `WireGenerationAuthenticator` rejects a mismatched peer cleanly at connect (`IncompatibleVersion`). **Server
+  and client must ship together.** No .NET API breaks: everything below is additive, and consumer extension ids
+  at or above `ReplicationRegistry.FirstExtensionTypeId` (16) are untouched.
+
+### Added
+
+- **`WorldPickups` (`KhaozEngine.NetWorld`)** - the seam. Constructed over `IWorldPickupHost` plus an optional
+  `WorldPickupsConfig`, driven by an explicit `Update(dt)` the consumer calls from its own `OnBeforeTick`,
+  exactly like `CellPersistence` and `DynamicBodyReplication`. The engine never calls it.
+  `Spawn(position, payloadId, ownerNetId, radius, timeToLiveSeconds)` returns the pickup's NetId, and
+  `Despawn` / `DespawnAll` / `SetOwner` / `Reoffer` / `TryGet` / `IsLive` / `Count` / `LiveNetIds` round it out.
+- **The engine owns the plumbing, not the meaning.** Spawn, replication, the owner tag, the time-to-live, the
+  per-tick proximity test and the despawn are engine-side. Items, inventories, rarity and loot tables are not,
+  and this introduces none of them: `PickupState.PayloadId` is an opaque 64-bit game-defined value carried to
+  clients verbatim and handed back on collect, in the same spirit as `Teleport` moving a player without owning
+  any notion of why.
+- **The ownership RULE stays in the game too, only the tag is the engine's.** Every collect is a
+  `WorldPickupsConfig.OnCollect` call returning whether it was accepted, and a decline leaves the pickup
+  standing to be offered again. Killer-only, party loot, need-before-greed, inventory-full and
+  free-after-a-delay are all that one predicate plus `SetOwner`. A null handler declines everything, so the
+  engine never grants anything on its own. `ownerNetId` (0 = unowned) is a hard engine-side pre-filter, so a
+  non-owner is never offered the pickup at all.
+- **Offer policy: once per entry, never per tick.** A player inside the radius is offered exactly once, because
+  a decline is usually a durable no (not my loot, bag full) and re-asking every tick would spin a game callback
+  tens of times a second per player per pickup for an answer that cannot change on its own. Three re-offer
+  routes: leaving and re-entering the radius (always available), `Reoffer` / `SetOwner` for when the game KNOWS
+  the decline went stale (re-offers on the next `Update`, standing still, no polling), and the opt-in
+  `WorldPickupsConfig.RetryDeclinedSeconds` timer (off by default) for a decline that goes stale without the
+  game noticing.
+- **`PickupState`** (built-in type id 5) carries the payload plus the owner tag, riding alongside the pickup's
+  `ReplicatedPosition` exactly as `DynamicBodyState` does for a physics prop. Neither interpolated nor
+  discrete-sampled: a pickup does not move and neither field blends, so it applies verbatim off the newest
+  snapshot as `PlayerIdentity` does. Read it client-side with `WorldClient.TryGetComponent<PickupState>` to
+  pick a model, a rarity tint, or an "it is yours" highlight.
+- **`IWorldPickupHost`**, implemented by BOTH `WorldServer` and `ShardedWorldServer`, so one seam serves both
+  server types. Four of its six members are the servers' pre-existing public API verbatim (`JoinedSlots`,
+  `TryGetPlayerNetId`, `TryGetPlayerState`, `SpawnEntity`).
+- **`TryGetEntity(netId, out World, out Entity)` and `DespawnEntity(netId)` on both servers** - the
+  resolve-and-remove halves `SpawnEntity` had been missing, useful for any server-owned entity. Neither ever
+  touches a player entity. On `ShardedWorldServer` they resolve through the shard host's ownership index, so
+  they also find an entity `CellPersistence` restored from a save, which is the boot sweep's only handle on it.
+- **`PickupCollect` / `PickupRemoval` / `PickupRemovalReason` / `PickupInfo`** value types. Every exit route
+  (collect, TTL expiry, explicit despawn) propagates as a normal area-of-interest removal and raises
+  `OnRemoved` in one place, so a ledger row or a poof VFX has a single hook.
+
+### Notes
+
+- **Proximity is a linear scan** over live pickups against joined players, in a deterministic order (pickups by
+  ascending net id, players by ascending slot) so which of two co-located players gets the last orb is not a
+  `Dictionary` implementation detail. O(pickups x players) per tick, matching the tens-of-entities-per-cell
+  scale the sharding model assumes. Distance is a full 3D measure, so a player on the floor above does not
+  reach through it, and a cylinder, cone, facing test or line of sight belongs in `OnCollect` as a decline. The
+  whole seam ages on `Update`'s `dt` alone with no wall clock, so it is deterministic and headless-testable.
+- **Persistence hazard, documented rather than solved.** `CellPersistence` snapshots every owned non-player
+  entity in a cell with no per-entity opt-out, so a live pickup can be caught in a save and resurrected on
+  restart as an entity the seam knows nothing about (no TTL, offered to nobody). The component cannot opt out
+  of the persist channel either, since built-in ids are pinned to `ReplicationChannels.Default`. The docs name
+  it and carry the boot-sweep snippet, and `ShardedWorldServer.DespawnEntity` is the primitive it needs. A real
+  per-entity opt-out is tracked as #326.
+- Tests: `KhaozEngine.Server.Tests/NetWorld/WorldPickupTests.cs`, real servers and a real `WorldClient` over
+  `LoopbackTransport`, with every behavioural case a theory over BOTH server types.
+  `AirMomentumReplicationTests` relaxed its exact `WireProtocolVersion == 7` pin to `>= 7` (the shape the swim
+  and teleport-epoch tests already use), and `WorldClientDecodeFailureTests` moved its unregistered-built-in
+  fixture from id 5 to 6, with a new guard test so the next built-in fails loudly there rather than silently
+  testing a registered id.
+- Docs: `KhaozEngine.NetWorld/README.md`, `docs/USING-KHAOZENGINE.md`, `docs/DEPENDENCY-SEAMS.md`.
+
+## 16.1.0
+
+`SlotGrid` gains a count formatter and a fallback icon, so a game can format the stack count and cover an
+icon-atlas miss without abandoning the widget's built-in content painter. Requested by Ruinborne, whose
+inventory panel had reimplemented `SlotGrid.DrawContent` by hand just to prefix a count with `x`. Consumer
+context: https://github.com/APKiwiOrg/Ruinborne/issues/227.
+
+### Added
+
+- **`SlotGrid.CountFormatter` (`Func<int, SlotContent, string?>`)** - formats the stack / charge count text
+  drawn bottom-right in a slot, invoked as (slotIndex, content). Null (the default) reproduces the previous
+  behaviour exactly: a count only draws when `SlotContent.Count` is greater than zero, as
+  `Count.ToString(CultureInfo.InvariantCulture)`, asserted by test rather than left to a green build. When set,
+  the formatter is invoked for every slot that has content, regardless of `Count`, so a game can suppress the
+  count for a single item by returning null or render a zero-charge indicator, decisions the built-in
+  greater-than-zero gate cannot make. A null or empty return draws nothing. Both the slot index and the full
+  `SlotContent` are passed rather than just the count, so one formatter can vary its output per slot (stacks in
+  one row, charges in another) or by item kind via `SlotContent.IconId`. The returned text draws verbatim, in
+  the same place with the same `CountColor`, `CountScale`, and `CountPad`. A count is a non-localizable numeric
+  token, the same escape hatch `KeybindLabels` already documents, so the engine never resolves the returned
+  string through localization. A game needing a genuinely localized quantity resolves it through its own
+  `LocalizationManager` first and hands this the already-resolved string.
+- **`SlotGrid.FallbackIconId` (`string?`)** - an icon id drawn instead when a slot's `SlotContent.IconId` is set
+  but `SlotGrid.IconAtlas` cannot resolve it, for example an item roster that arrives over the wire after the
+  build shipped and names an id the atlas has never seen. A null `IconId` still means no icon and never falls
+  back. Null (the default), or a fallback id that itself misses the atlas, leaves the slot drawing no icon,
+  same as before.
+
+Docs: `KhaozEngine.Gui/README.md` and `docs/USING-KHAOZENGINE.md`.
 
 ## 16.0.0
 

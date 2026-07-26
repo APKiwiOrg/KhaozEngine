@@ -3930,8 +3930,9 @@ available for editor/AI tooling. The load path itself enforces its own semantic 
 ```
 
 The `ke-dungeon` dev CLI (`tools/KeDungeon`) wraps the whole flow - `generate`, `preview` (one debug PNG per
-floor), `verify` (re-runs `DungeonSolver.Verify`), and `bake` (into a `MapDoc` document, accumulating on repeat
-runs):
+floor), `verify` (re-runs `DungeonSolver.Verify`), `bake` (into a `MapDoc` document, accumulating on repeat
+runs), and `nav` (bakes a `NavSpace` via `DungeonNav.Bake` and reports its per-floor cell counts and
+connected-component count):
 
 ```bash
 dotnet run --project tools/KeDungeon -- generate --seed 2026 --config dungeon.config.json --out layout.json
@@ -3939,11 +3940,18 @@ dotnet run --project tools/KeDungeon -- preview --layout layout.json --out-dir p
 dotnet run --project tools/KeDungeon -- verify --layout layout.json
 dotnet run --project tools/KeDungeon -- bake --layout layout.json --map zone.map.json \
     --origin-x 120 --origin-z 0 --base-y 0 --yaw 0
+dotnet run --project tools/KeDungeon -- nav --layout layout.json \
+    --origin-x 120 --origin-z 0 --base-y 0 --agent-height 1.8 --require-connected
 ```
 
-Exit codes: 0 success, 1 a failed `verify`, 2 an unknown verb or a missing/invalid option, 3 malformed input
-JSON. See the `KhaozEngine.Dungeon` package README for the full kit contract and determinism/completability
-guarantees.
+`nav` refuses a non-zero `--yaw` outright (`DungeonNav.Bake` has no rotation concept, see issue #140) rather
+than silently baking a `NavSpace` that does not match a rotated plot, and `--require-connected` turns a
+report of more than one connected component into exit code 1, so it doubles as a CI gate. See the
+`KhaozEngine.Dungeon` package README's CLI section for the full option list and its connectivity model.
+
+Exit codes: 0 success, 1 a failed `verify` or a `nav --require-connected` check on a disconnected space, 2 an
+unknown verb, an unsupported option value, or a missing/invalid option, 3 malformed input JSON. See the
+`KhaozEngine.Dungeon` package README for the full kit contract and determinism/completability guarantees.
 
 ---
 

@@ -167,8 +167,9 @@ generated layout structure, so `Open` and `Roofed` layouts from the same seed sh
 
 ## CLI (`ke-dungeon`, `tools/KeDungeon`)
 
-A dev CLI over this package. Four verbs, exit codes 0 (success), 1 (a failed `verify`), 2 (unknown verb or a
-missing/invalid option), 3 (malformed input JSON):
+A dev CLI over this package. Five verbs, exit codes 0 (success), 1 (a failed `verify`, or a `nav
+--require-connected` check on a disconnected space), 2 (unknown verb, an unsupported option value such as a
+non-zero `nav --yaw`, or a missing/invalid option), 3 (malformed input JSON):
 
 ```bash
 dotnet run --project tools/KeDungeon -- generate --seed 2026 --out layout.json
@@ -177,6 +178,8 @@ dotnet run --project tools/KeDungeon -- preview --layout layout.json --out-dir p
 dotnet run --project tools/KeDungeon -- verify --layout layout.json
 dotnet run --project tools/KeDungeon -- bake --layout layout.json --map zone.map.json \
     --origin-x 120 --origin-z 0 --base-y 0 --yaw 0
+dotnet run --project tools/KeDungeon -- nav --layout layout.json \
+    --origin-x 120 --origin-z 0 --base-y 0 --agent-height 1.8 --require-connected
 ```
 
 `generate` prints the `LayoutStats` summary and writes the layout JSON. `preview` renders one 8px-per-cell PNG
@@ -184,6 +187,21 @@ per floor for quick visual inspection (a fixed debug palette, not game content).
 `DungeonSolver.Verify` and prints every error to stderr on failure. `bake` always uses `DungeonKitMap.Greybox()`
 and loads the target map document if it already exists (so repeated bakes accumulate), otherwise creates a
 fresh one.
+
+`nav` calls `DungeonNav.Bake` (see below) and reports the result: per floor, its grid dimensions and
+passable/blocked cell counts, then the whole space's connected-component count (`NavReport`,
+`tools/KeDungeon/NavReport.cs`). `--agent-height` defaults to `DungeonNav.DefaultAgentHeight`.
+`--require-connected` turns a report of more than one component into exit code 1, so the verb doubles as a
+CI gate ("does this layout produce a fully navigable space"). Connectivity counts both same-layer 8-neighbor
+grid adjacency (corner-cut prevented, matching `GridPathPlanner`'s own A* neighbor expansion) and every
+`NavSpace.Links` stair connection, so it agrees with what `GridPathPlanner` can actually traverse rather than
+just what looks adjacent on the grid. `nav` accepts `--yaw` for symmetry with `bake` but rejects any non-zero
+value: `DungeonNav.Bake` has no rotation concept (`NavGrid` is strictly axis-aligned), so a rotated plot would
+silently bake a `NavSpace` that does not match the rotated geometry (issue #140, deferred on purpose) rather
+than failing loudly, which is why this verb refuses the combination outright instead of pretending to support
+it. Note: `DungeonLayout.CeilingMode` is not part of the layout JSON (see `DungeonJson`), so every `--layout`
+file `nav` can load bakes `Open`, and `--agent-height` cannot demonstrate blocking a `Roofed` low-ceiling cell
+through this verb, only through `DungeonNav.Bake` called directly.
 
 ## NPC pathfinding (`DungeonNav`)
 

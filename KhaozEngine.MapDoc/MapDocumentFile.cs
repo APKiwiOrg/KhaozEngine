@@ -76,7 +76,7 @@ public sealed class MapDocumentLoadOptions
 public static class MapDocumentFile
 {
     /// <summary>The format version this engine build reads and writes. v2 added the
-    /// <see cref="MapDocument.TerrainOverrides"/> sculpt/delta layer; v3 added the root
+    /// <see cref="MapDocument.TerrainOverrides"/> sculpt/delta layer, and v3 added the root
     /// <see cref="MapDocument.TileSize"/>, which per-tile hashing needs even for a monolithic document or a
     /// monolithic and a tiled copy of the same world would hash differently. Version and layout are
     /// independent axes: a v3 monolithic file is legal and is what <see cref="Save"/> writes.</summary>
@@ -86,7 +86,7 @@ public static class MapDocumentFile
     /// what the v2 to v3 migration stamps). At a heavily authored density a fully authored 512 m tile is
     /// about the size of a whole hand-authored zone document today, which parses in tens of milliseconds on
     /// a worker thread. Smaller tiles multiply file count without making any single load meaningfully
-    /// cheaper; larger tiles push a single load past a frame budget.</summary>
+    /// cheaper, and larger tiles push a single load past a frame budget.</summary>
     public const float DefaultTileSize = 512f;
 
     /// <summary><see cref="MapDocumentForm.Tiled"/> for an existing directory,

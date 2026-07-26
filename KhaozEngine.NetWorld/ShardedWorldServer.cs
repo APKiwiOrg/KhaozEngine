@@ -545,6 +545,27 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
     public void Broadcast(string text) =>
         admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Broadcast, Text = text ?? string.Empty });
 
+    /// <summary>Sets a player's per-entity HORIZONTAL speed multiplier: haste (&gt; 1), slow (&lt; 1), root (0),
+    /// unmodified (1). The authoritative step, the client's prediction, the reconcile replay, and the anti-cheat
+    /// correction check all read the same value, so a boosted player predicts smoothly and is never flagged as a
+    /// speed hacker for it.
+    /// <para>The engine owns the multiplier and nothing else. There is no duration, no stacking, no expiry and no
+    /// notion of what granted it: the game drives all of that and ends a buff by calling this again with
+    /// <c>1f</c>, exactly as <see cref="Teleport"/> moves a player without owning any concept of why. Two buffs at
+    /// once are the caller's product to compute.</para>
+    /// Queued like every other authoritative mutation and applied on the host thread at the top of the next
+    /// <see cref="Tick"/>, so it is safe to call from any thread (a game-message handler, an ability system, an
+    /// expiry timer) and lands at one deterministic point in the tick. No-op for an unknown player.
+    /// <para><paramref name="scale"/> is clamped to <c>[0, MovementState.MaxSpeedScale]</c> and quantized to the
+    /// wire's 1/16 granularity BEFORE it reaches the sim, so the server never runs a speed its clients cannot be
+    /// told about: a requested 1.1x becomes 1.125x on both heads rather than 1.1x on one and 1.125x on the other.
+    /// Read the applied value back via <see cref="TryGetPlayerState"/>.</para>
+    /// The same seam as <see cref="WorldServer.SetSpeedScale"/>.</summary>
+    /// <param name="target">The player, by slot or account id.</param>
+    /// <param name="scale">The horizontal speed multiplier (1 = unmodified).</param>
+    public void SetSpeedScale(PlayerRef target, float scale) =>
+        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.SpeedScale, Target = target, Scale = scale });
+
     private int ResolveSlot(in PlayerRef target)
     {
         if (target.IsSlot) return netIdBySlot.ContainsKey(target.SlotValue) ? target.SlotValue : -1;
@@ -571,6 +592,23 @@ public sealed class ShardedWorldServer : IWorldPersistenceHost, IAdminControllab
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
                     SetPlayerState(slot, st, teleport: true);   // admin + self-rescue teleports cut on the client
+                }
+                break;
+            }
+            case AdminCommandKind.SpeedScale:
+            {
+                // Write the quantized multiplier straight onto the owning cell's component rather than going through
+                // SetPlayerState: that path also rewrites ReplicatedPosition from a read taken before this drain, and
+                // a speed change has no business touching position. The per-cell PlayerMovementSystem decodes this
+                // field back into MoveState.SpeedScale every tick, so quantizing here is what keeps the authoritative
+                // sim running the exact value the client is told.
+                int slot = ResolveSlot(cmd.Target);
+                if (slot >= 0 && netIdBySlot.TryGetValue(slot, out long netId)
+                    && host.TryGetOwner(netId, out CellSim cell, out Entity e)
+                    && cell.World.TryGet(e, out MovementState ms))
+                {
+                    ms.SpeedScaleQ = MovementState.QuantizeSpeedScale(cmd.Scale);
+                    cell.World.Set(e, ms);
                 }
                 break;
             }

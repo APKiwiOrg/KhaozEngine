@@ -5,7 +5,10 @@ using System.Numerics;
 
 namespace KhaozEngine.NetWorld;
 
-internal enum AdminCommandKind : byte { Teleport, Kick, Broadcast }
+// Not all of these are ADMIN actions in the operator sense - SpeedScale is a gameplay mutation and self-rescue
+// already rides Teleport - but they all share the one property this queue exists for: a mutation of authoritative
+// state, submitted from an arbitrary thread, that must land at one deterministic point in the tick.
+internal enum AdminCommandKind : byte { Teleport, Kick, Broadcast, SpeedScale }
 
 /// <summary>A queued admin mutation, applied on the host thread during the next tick.</summary>
 internal readonly struct AdminCommand
@@ -14,6 +17,9 @@ internal readonly struct AdminCommand
     public PlayerRef Target { get; init; }
     public Vector3 Position { get; init; }
     public string Text { get; init; }
+
+    /// <summary>The horizontal speed multiplier for <see cref="AdminCommandKind.SpeedScale"/>, unused otherwise.</summary>
+    public float Scale { get; init; }
 }
 
 /// <summary>

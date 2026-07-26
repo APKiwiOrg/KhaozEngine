@@ -38,9 +38,9 @@
 2710 KhaozEngine.MapEditor/EditorCommands.cs
 2329 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
 1793 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
-1644 KhaozEngine.Locomotion/CharacterMovement.cs
 1601 KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs
 1512 KhaozEngine.MapEdit.Tool/MutationService.cs
+1483 KhaozEngine.Locomotion/CharacterMovement.cs
 1296 KhaozEngine.Showcase/Room2DGui.cs
 1118 KhaozEngine.MapEditor/EditorTool.cs
 1033 KhaozEngine.Updates/UpdateApplier.cs

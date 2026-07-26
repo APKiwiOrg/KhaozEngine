@@ -5,6 +5,84 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 14.26.0
+
+Per-entity horizontal speed scale - haste, slow, snare, root - through the authoritative step, client prediction,
+reconcile replay, and the anti-cheat, so one player can move at a different speed from everyone else on the server
+(BREAKING wire gen 5 -> 6). Requested by Ruinborne for a speed-boost ability, and every KE game that wants a slow, a
+snare or a sprint meter hit the same wall, so it is engine plumbing rather than four game workarounds. The engine
+owns the multiplier and NOT the buff: duration, stacking, what granted it and how it is balanced stay in the game,
+exactly as `Teleport` moves a player without owning any concept of why. Closes #302. Scoping doc:
+`Ruinborne/docs/design/2026-07-26-per-entity-speed-scale-engine-scope.md`.
+
+- **BREAKING - wire generation 5 -> 6.** `MovementState` gains `sbyte SpeedScaleQ`, the speed multiplier quantized
+  as the OFFSET FROM 1 at the fixed `MovementState.SpeedScaleQuantum` (1/16). `MovementState` is a built-in (not
+  length-prefixed), so `MoveProtocol.WireProtocolVersion` bumps to 6 and the always-on `WireGenerationAuthenticator`
+  rejects a mismatched peer cleanly at connect (`IncompatibleVersion`). **Server and client must ship together.**
+- **`MoveState.SpeedScale` (`KhaozEngine.Locomotion`)** - the per-entity horizontal multiplier the step reads:
+  haste (`> 1`), slow (`< 1`), root (`0`), unmodified (`1`). It is a movement INPUT carried through the step
+  unchanged, and nothing in the sim derives or decays it. It is a PROPERTY, not a field like the rest of the struct,
+  and that is load-bearing rather than stylistic: a struct field cannot have a non-zero default, so a raw
+  `SpeedScale` field would make `default(MoveState)` - and every one of the many existing initializers that predate
+  this - a character frozen at 0 m/s. The backing store is the offset from 1, so the zero default means
+  "unmodified", exactly, and a forgotten carry-through degrades to normal speed rather than to paralysis.
+  Assignment clamps to `>= 0` (a negative multiplier would reverse travel against the command).
+- **Composes into the existing speed product, never replaces it.** `CharacterMovement`'s land path multiplies it
+  alongside the grounded/`AirControl` term and the medium's wade scale, and `SwimStep` applies it too. Two
+  deliberate feel decisions, not implementation accidents: a hasted player who jumps travels correspondingly
+  further horizontally (jump HEIGHT is untouched - this is a horizontal scale only), and the boost persists into a
+  swim, so diving mid-boost does not silently drop it. At exactly 1 the composition is the IEEE-754 identity, so an
+  unmodified character walks the pre-feature path bit-for-bit.
+- **`WorldServer.SetSpeedScale(PlayerRef, float)` / `ShardedWorldServer.SetSpeedScale(PlayerRef, float)`** - the
+  whole game-facing surface, mirroring `Teleport`'s shape. Queued and applied on the host thread at the top of the
+  next tick, so it is safe from any thread (an ability system, a game-message handler, an expiry timer). A game
+  ends a buff by calling it again with `1f`. Deliberately NOT on `IAdminControllable`: it is a gameplay mutation,
+  not an admin action, and `ServerAdmin.RegisterAction` is already the seam if an operator surface is ever wanted.
+  The value is clamped to `[0, MovementState.MaxSpeedScale]` (8) and quantized BEFORE it reaches the sim, so the
+  server never runs a speed it cannot describe to its clients: a requested 1.1x becomes 1.125x on BOTH heads
+  rather than 1.1x authoritative against 1.125x predicted, which would drift for the whole duration of the buff.
+- **Why it rides the wire at all.** `MoveState` alone is not sufficient. `WorldClient` rebuilds the local reconcile
+  basis from the REPLICATED components only, via `PlayerMoveState.From(position, movementState)`, so any `MoveState`
+  field not represented in `MovementState` resets to its default on every correction - the replay would run the
+  pending command window at base speed while the server ran it boosted, a permanent rubber-band for the buff's whole
+  duration (the same class of bug the `ClimbRateEwma` seeding exists to prevent). It is equally deliberately NOT on
+  `MoveCommand`, which is what the client sends: a hostile client would set its own multiplier.
+- **Quantization: an offset encoding at a power-of-two quantum.** Decoded scale is `1 + q * (1/16)`, so
+  `SpeedScaleQ == 0` - what every unboosted player carries on every tick - is exactly 1.0 with no rounding, where a
+  plain `q * quantum` like `ClimbRateQ` would have decoded an absent or default component to a speed of 0. The
+  quantum is deliberately a power of two rather than a 0.05-style decimal: this value multiplies the position delta
+  on both heads every tick, and an inexact quantum lands a hair off the round number (`1 - 20*0.05f` is `-1.5e-8`,
+  a slow reverse crawl, not a stop). At 1/16, `0`, `0.5`, `0.75`, `1`, `1.5`, `2`, `5` and `8` are all exact and the
+  two heads agree bit-exactly by construction. The cost is 6.25% granularity. Wire cost is 1 byte per entity per
+  snapshot. `DecodeSpeedScale` floors at 0 as defence-in-depth, so a corrupt frame can never invert travel.
+- **`MovementAnomaly.CorrectionDistance` folds the scale into `IntendedHorizontalTarget`.** Without this the
+  feature is unusable in practice rather than merely imperfect: at Ruinborne's `MaxCorrectionDistance = 0.25`
+  (calibrated for ~0.2 m of run travel per 30 Hz tick) a 5x boost steps ~1 m/tick against an unscaled ~0.2 m
+  intended target, so every boosted tick reads as a ~0.8 m correction and the streak fires `OnSuspiciousActivity`
+  on a legitimate player within a few frames. The scale is server state and never comes from the command, so
+  folding it in grants a client nothing, and a boosted client fighting a wall or a play-area bound still raises the
+  signal (both pinned by tests).
+- **NPCs and single-player get it free.** The value lives on `MoveState` rather than a player-specific structure, so
+  anything stepping through `CharacterMovement` - a server-only creature driven by `StepTowards`, a local
+  `CharacterController3D` - can set it directly and rides no wire. Only what replicates is bound by `MaxSpeedScale`.
+- **`CharacterMovement.Fluid.cs`** - `ResolveSwimming`, `SwimStep` and `WadeSpeedScale` move into a partial file
+  (one concern: what water does to a character), following the `CharacterMovement.CameraRelativeDir.cs` precedent.
+  No behaviour change. `CharacterMovement.cs` drops 1644 -> 1483 lines and `.filesize-baseline` ratchets down with
+  it, so the KESIZE pressure this feature would otherwise have hit is resolved by a real cohesion boundary rather
+  than by raising a frozen size.
+- **Tests.** `SpeedScaleTests` (Locomotion): the exact-1 default, the bit-identical unmodified path, proportional
+  haste, an exact-0 root, the negative clamp, survival across a step and across a jump+landing, composition with
+  air control and with the wade scale, swim scaling, and a 5x run (60 m/s, ~2 m/tick against a 0.4 m radius) not
+  tunnelling a zero-thickness wall - nothing in the engine had been exercised at boosted speed before.
+  `SpeedScaleReplicationTests` (NetWorld): exact round-trips at every round scale, out-of-range clamping, a full
+  `WorldServer` + `WorldClient` loopback proving the setter reaches the client's replicated component AND its
+  prediction, expiry back to exactly 1, quantize-before-sim agreement across both heads, the sharded head's
+  per-cell path, a correction mid-boost replaying the pending window at the boosted speed, and the two anti-cheat
+  cases. Both load-bearing tests were verified to FAIL against a reverted fix, not merely to pass.
+- **Docs.** `docs/USING-KHAOZENGINE.md` (a "Per-entity speed scale" section), `KhaozEngine.NetWorld/README.md` (the
+  same section plus the admin-surface note, and its stale `WireProtocolVersion (= 3)` line is corrected to 6 with the
+  full generation list), and `KhaozEngine.Locomotion/README.md` (`MoveState.SpeedScale`).
+
 ## 14.25.0
 
 Fix: five input-model correctness bugs, filed together by the 2026-07-18 full-engine review and fixed together

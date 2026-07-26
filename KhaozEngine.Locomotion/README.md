@@ -97,7 +97,8 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit.
 - **`MoveState`** - carried kinematic state: position, `VerticalVelocity`, `Grounded`, coyote/buffer timers,
-  `Swimming` (surface-swim flag, carried tick-to-tick for the enter/exit hysteresis). Also the stair-glide
+  `Swimming` (surface-swim flag, carried tick-to-tick for the enter/exit hysteresis), and `SpeedScale` (see below).
+  Also the stair-glide
   step-climb signals: `ClimbRate` (signed step-climb rate in m/s, replicated quantized as
   `MovementState.ClimbRateQ`, positive on a paced stair-climb run and negative on a stepped-down descent, 0
   when not on a step climb) and `StepDeltaY` (sim-local, not replicated: the signed vertical delta a single
@@ -106,6 +107,17 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   of `docs/USING-KHAOZENGINE.md` for the full `CharacterController3D.ClimbRate` / `.StepDeltaY` consumer
   contract. `ClimbRateEwma` is a sim-local (not replicated) smoothing average `ClimbRate` is stamped from on
   a run tick, with no consumer of its own.
+- **`MoveState.SpeedScale`** (14.26.0) - per-entity HORIZONTAL speed multiplier: haste (`> 1`), slow (`< 1`),
+  root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
+  in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so
+  it composes with the grounded/`AirControl` term and the medium's `WadeSpeedScale`, applies while swimming, and
+  scales a jump's horizontal reach (jump HEIGHT is untouched). Assignment clamps to `>= 0`: a negative multiplier
+  would reverse travel against the command, which is never what a modifier means.
+  It is a **property, not a field like the rest of this struct**, deliberately: a struct field cannot have a
+  non-zero default, so a raw field would make `default(MoveState)` (and every pre-existing initializer) a character
+  frozen at 0 m/s. The backing store is the offset from 1, which makes the zero default mean "unmodified", exactly.
+  On a networked player the server is the sole author (`WorldServer.SetSpeedScale` / `ShardedWorldServer.SetSpeedScale`,
+  replicated as `MovementState.SpeedScaleQ`). A server-only NPC or a single-player controller just sets it.
 - **`MovementMedium`** - the fluid medium at one world sample the medium provider returns: `WaterSurfaceY`,
   `InWater`, `WadeSpeedScale` (a per-sample zone multiplier, default 1). `default` / `MovementMedium.Dry` is dry land.
 - **`MoveTuning`** - all speed and feel constants:

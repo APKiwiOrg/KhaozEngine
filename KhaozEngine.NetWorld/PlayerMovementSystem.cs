@@ -49,7 +49,14 @@ public sealed class PlayerMovementSystem : ISystem
         world.ForEach<NetId, ReplicatedPosition, PendingMove, MovementState>(
             (Entity e, ref NetId _, ref ReplicatedPosition pos, ref PendingMove move, ref MovementState ms) =>
         {
-            if (world.Has<Ghost>(e) || world.Has<Migrating>(e)) return;   // owner is the only simulator
+            if (world.Has<Ghost>(e) || world.Has<Migrating>(e))
+            {
+                // Owner is the only simulator. Zero the commanded speed on the way out: this entity did not step, so
+                // leaving last tick's speed behind would have the post-tick anomaly check measure a motionless entity
+                // against a full stride of intended travel and read it as a denial.
+                ms.CommandedSpeed = 0f;
+                return;
+            }
 
             var state = new MoveState
             {
@@ -60,6 +67,10 @@ public sealed class PlayerMovementSystem : ISystem
                 JumpBufferRemaining = ms.JumpBufferRemaining,
                 Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
                 ClimbRateEwma = ms.ClimbRateEwma,   // carry the sim-local ascent EWMA IN so the exported signal converges
+                // Carry the server-authored haste/slow multiplier IN. It is a movement INPUT, so unlike the fields
+                // below it is never written back OUT: the step does not derive it, SetSpeedScale is its only author,
+                // and re-quantizing an already-quantized value every tick would only invite drift.
+                SpeedScale = MovementState.DecodeSpeedScale(ms.SpeedScaleQ),
             };
             state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
 
@@ -74,6 +85,9 @@ public sealed class PlayerMovementSystem : ISystem
             // WorldServer does this via MovementState.From per tick; the sharded per-cell step must do it here or a remote
             // on a sharded server never sees a climb (ClimbRateQ stays at its spawn value of 0).
             ms.ClimbRateQ = MovementState.QuantizeClimbRate(state.ClimbRate);
+            // Persist the step's commanded speed so ShardedWorldServer's post-tick anomaly check can read it back
+            // (rides no wire, and the single-World head reads the step output directly, never this).
+            ms.CommandedSpeed = state.CommandedSpeed;
         });
     }
 }

@@ -95,6 +95,16 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             // At a genuine run START the decoded rate is 0 (sub-quantum), so the seed still lands at 0 and the first-tick
             // seed fraction applies exactly as in a lag-free run.
             ClimbRateEwma = MathF.Max(0f, MovementState.DecodeClimbRate(movement.ClimbRateQ)),
+            // Restore the server-authored haste/slow multiplier into the reconcile basis. This is the reason the scale
+            // rides the wire at all: this method rebuilds the basis from the replicated components ALONE, so a scale
+            // living only on the sim-local MoveState would reset here on every correction and the pending command
+            // window would replay at base speed while the server ran it boosted - a permanent rubber-band for the whole
+            // duration of the buff.
+            SpeedScale = MovementState.DecodeSpeedScale(movement.SpeedScaleQ),
+            // Carry the sharded head's sim-local commanded speed back out, so ShardedWorldServer's post-tick anomaly
+            // check measures against the speed the cell sim actually asked for. Rides no wire, so on a client (and
+            // across a shard handoff) this is 0, which reads as no denial rather than a spurious one.
+            CommandedSpeed = movement.CommandedSpeed,
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

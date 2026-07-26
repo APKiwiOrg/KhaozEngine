@@ -2355,7 +2355,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     wave numbers laddering by `RippleLacunarity` over about five octaves, and amplitudes renormalized to a fixed
     total slope variance so `NormalStrength` keeps its meaning whatever the other three are set to. Scroll rate
     follows `omega ~ sqrt(k)`, so short ripples travel across long ones. This replaced three fixed cosines in
-    14.26.0: three coherent cosines have a slope that is constant along families of parallel lines, so they draw
+    14.28.0: three coherent cosines have a slope that is constant along families of parallel lines, so they draw
     ribbons rather than a surface, the domain warp (`WaveWarpStrength`) only bends those ribbons, and at distance
     they beat into moire. They ride ON TOP of the swell, which supplies the shape.
   - **Footprint band-limiting** (`FootprintSamples`, `VarianceToRoughness`): a component fades out of the NORMAL
@@ -4398,7 +4398,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.26.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="14.28.0" />
 ```
 
 ```csharp
@@ -6194,10 +6194,25 @@ server.OnSuspiciousActivity += a =>
 
 `MovementCorrection` fires when the authoritative sim has to deny a player's *intended* move (the slope gate,
 static collision, or play-area bound pulls them back) by more than `MaxCorrectionDistance` for `CorrectionStreak`
-consecutive ticks - a cheat hammering a wall trips it; a legitimate player brushing one does not. It is a
+consecutive ticks. A cheat hammering a wall trips it, a legitimate player brushing one does not. It is a
 server-side proxy: the authoritative model carries no client position to reconcile against, so the engine measures
-how far it had to correct the client's intent (via `CharacterMovement.IntendedHorizontalTarget`). Per-IP
+how far it had to correct the client's intent. Per-IP
 connection-attempt limiting is out of scope: the `INetTransport` seam exposes no remote address.
+
+**Calibrating `MaxCorrectionDistance`.** It is an ABSOLUTE per-tick distance, so it is implicitly calibrated to
+the fastest speed you expect. "One run tick" (`RunSpeed * TickSeconds`) is the usual starting point, and the
+consequence at the other end is that a slow-moving player cannot generate a large enough denial to trip it: a
+swimmer at `SwimSpeed` 2.5 on a 30 Hz tick can be denied at most 0.083 m in a tick, so a 0.25 m threshold never
+fires while swimming no matter how hard they push. That is the threshold's semantics, not a hole. If you want
+constraint-fighting caught at swim speed too, set a threshold scaled to swim speed and raise `CorrectionStreak`
+to keep the false-positive rate down.
+
+**Since 14.27.0 the check measures only the denial, whatever speed the step chose.** The intended target is built
+from the speed the sim itself reported (`MoveState.CommandedSpeed`) rather than rebuilt from `WalkSpeed`/`RunSpeed`.
+Before that, every server-side speed term the check did not know about read as a correction on *every* tick: a
+swimming player travels at `SwimSpeed` and was measured against `RunSpeed`, which raised the signal after a third
+of a second of ordinary swimming, and wading or a `MovementMedium.WadeSpeedScale` zone dial each ate most of a
+typical budget the same way. Nothing to configure, and a future speed term cannot desync it again.
 
 ---
 
@@ -8892,6 +8907,58 @@ the origin, warp the camera onto the post-teleport state BEFORE rendering the fr
 `LocalTeleported` handler). **Remote** players that teleport cut for observers automatically (the client flushes their
 interpolation on the replicated teleport-epoch advance - no consumer code). All of it is byte-identical when no
 transition is active, and a consumer can author its own `ITransition`.
+
+### Per-entity speed scale: haste / slow / root (since 14.26.0)
+
+A speed-boost ability, a snare, a root, a sprint meter: all of them need ONE player to move at a different speed
+from every other player on the same server, for a bounded window, with the client predicting it and the server
+staying authoritative. That is what `SetSpeedScale` is, on both server heads:
+
+```csharp
+// Server, on cast. The engine has no notion of duration - the game keeps the timer and calls again to end it.
+server.SetSpeedScale(PlayerRef.Slot(slot), 5f);
+// ...later, on expiry:
+server.SetSpeedScale(PlayerRef.Slot(slot), 1f);
+```
+
+**The engine owns the multiplier and its plumbing, nothing else.** Duration, stacking rules, what granted the
+boost, what it costs, what shows in the HUD and how it is balanced are all game content, exactly as
+`Teleport(PlayerRef, Vector3)` moves a player without owning any concept of why. If two effects are active at
+once, the product is yours to compute before you call.
+
+The call is queued and applied on the host thread at the top of the next tick, so it is safe from any thread (an
+ability system, a game-message handler, an expiry timer). Read the applied value back with `TryGetPlayerState`.
+
+What the engine guarantees once you set it:
+
+- **The whole loop agrees.** The authoritative step, the client's prediction, the reconcile replay, and the
+  anti-cheat correction check all read the same value. A correction landing mid-boost replays the pending command
+  window at the BOOSTED speed, so a hasted player does not rubber-band on every correction.
+- **The anti-cheat does not flag it.** `MovementAnomaly` folds the scale into its intended-target calculation.
+  This matters more than it sounds: at a typical `MaxCorrectionDistance` of 0.25 m calibrated for ~0.2 m of run
+  travel per tick, a 5x boost steps ~1 m/tick, so an anti-cheat blind to the scale would report every legitimately
+  hasted player as a speed hacker within a few frames. A boosted client fighting a wall still raises the signal.
+- **It composes, it does not replace.** The multiplier stacks with the grounded/`AirControl` term and the medium's
+  wade scale. Two consequences worth knowing before you tune a value: a hasted player who jumps travels
+  correspondingly further horizontally (jump HEIGHT is unchanged - this is a horizontal scale only), and the boost
+  persists into a swim, so diving mid-boost does not silently drop it.
+- **A client cannot grant itself one.** It is deliberately not on `MoveCommand`, which is what the client sends.
+  It rides the server-authored `MovementState` instead, which is also what makes it survive a reconcile: the
+  client rebuilds its basis from the replicated components alone.
+
+Range and precision: the value is clamped to `[0, MovementState.MaxSpeedScale]` (8) and quantized to 1/16 BEFORE
+it reaches the sim, so the server never runs a speed it cannot describe to its clients. `0`, `0.5`, `1`, `1.5`,
+`2`, `5` and `8` are all exact, and a requested `1.1` resolves to `1.125` on both ends. Wire cost is one byte per
+entity per snapshot, and an unmodified player encodes as `0` decoding to exactly `1.0`.
+
+**Compatibility:** this added `MovementState.SpeedScaleQ` to the movement built-in codec, bumping
+`MoveProtocol.WireProtocolVersion` to 6. The movement built-in is not length-prefixed, so an old client cannot
+skip the byte and is rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must
+ship together.**
+
+NPCs and single-player get this for free and without any wire involvement: the value lives on
+`MoveState.SpeedScale`, so anything stepping through `CharacterMovement` (a server-only creature driven by
+`StepTowards`, a local `CharacterController3D`) can just set it. Only what replicates is bound by `MaxSpeedScale`.
 
 ### Game messages (attack / interact / chat / inventory)
 

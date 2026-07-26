@@ -50,6 +50,22 @@ public struct MovementState : IComponent
     /// <see cref="WireGenerationAuthenticator"/>.</summary>
     public sbyte ClimbRateQ;
 
+    /// <summary>The per-entity horizontal speed multiplier (<see cref="KhaozEngine.Locomotion.MoveState.SpeedScale"/>:
+    /// haste, slow, root) quantized to a single byte as the OFFSET FROM 1 at the fixed wire scale
+    /// <see cref="SpeedScaleQuantum"/>. Decoded scale = <c>1 + SpeedScaleQ * SpeedScaleQuantum</c>, so <b>0 - the
+    /// <c>default</c> every unboosted player carries every tick - is exactly 1.0</b>, with no rounding. That offset
+    /// encoding is the point: a plain <c>q * quantum</c> like <see cref="ClimbRateQ"/> would make an absent or
+    /// default-constructed component decode to a speed of 0, freezing the player.
+    /// <para>Server-authored ONLY: it is set through <c>ShardedWorldServer.SetSpeedScale</c> /
+    /// <c>WorldServer.SetSpeedScale</c> and never derived from anything a client sends, so a hostile client cannot
+    /// grant itself a multiplier. It must ride the wire (rather than living only on the sim-local
+    /// <see cref="KhaozEngine.Locomotion.MoveState"/>) because <see cref="PlayerMoveState.From"/> rebuilds the client's
+    /// reconcile basis from the replicated components alone: a scale absent from here would reset on every correction
+    /// and the pending command window would replay at the wrong speed.</para>
+    /// Added on the wire in generation 6 (<see cref="MoveProtocol.WireProtocolVersion"/>). A mismatched peer is
+    /// rejected at connect by the always-on <see cref="WireGenerationAuthenticator"/>.</summary>
+    public sbyte SpeedScaleQ;
+
     /// <summary>SIM-LOCAL ascent-EWMA storage (NOT replicated, NOT migrated): the sharded head's per-entity, tick-to-tick
     /// slot for <see cref="KhaozEngine.Locomotion.MoveState.ClimbRateEwma"/> (the exponentially-weighted moving average of
     /// the actually-applied per-tick rise over a paced stair run). It exists ONLY because the sharded per-cell step
@@ -67,6 +83,24 @@ public struct MovementState : IComponent
     /// (byte-identical to a pre-feature state). The single-<see cref="World"/> head never reads this field.</summary>
     public float ClimbRateEwma;
 
+    /// <summary>SIM-LOCAL commanded-speed storage (NOT replicated, NOT migrated): the sharded head's per-entity slot
+    /// for <see cref="KhaozEngine.Locomotion.MoveState.CommandedSpeed"/>, the unconstrained horizontal speed the step
+    /// asked for this tick. It exists for the same reason <see cref="ClimbRateEwma"/> does - the sharded per-cell step
+    /// (<see cref="PlayerMovementSystem"/>) reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from
+    /// this component every tick, so a step OUTPUT has nowhere else to survive to the end of
+    /// <see cref="ShardedWorldServer.Tick"/>, where the movement-anomaly check reads it back through
+    /// <see cref="PlayerMoveState.From"/>. The single-<see cref="World"/> <see cref="WorldServer"/> never reads this
+    /// field: it holds the whole <see cref="PlayerMoveState"/> per slot and reads the step's own output directly.
+    /// <para>DELIBERATELY absent from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it is a
+    /// server-side anti-cheat input that no client has any use for, so replicating it would widen the built-in wire
+    /// for nothing. It is therefore always 0 on a client, and 0 across a shard handoff - which is the SAFE direction,
+    /// since 0 reads as "commanded nothing" and so as no denial, never as a spurious one.</para>
+    /// <see cref="PlayerMovementSystem"/> writes it every tick, and explicitly zeroes it for an entity its cell sim
+    /// skipped (a <see cref="KhaozEngine.Sharding.Ghost"/> or a <see cref="KhaozEngine.Sharding.Migrating"/> entity),
+    /// so a skipped tick cannot leave a stale
+    /// speed behind for the anomaly check to measure a motionless entity against.</summary>
+    public float CommandedSpeed;
+
     /// <summary>Fixed wire scale for <see cref="ClimbRateQ"/> (m/s per quantum unit): 0.05, giving +/-6.35 m/s over an
     /// <see cref="sbyte"/> at 0.05 m/s resolution. Consumer-agnostic (independent of any consumer's
     /// <see cref="KhaozEngine.Locomotion.MoveTuning.MaxStepClimbSpeed"/>), so the codec round-trips the same for every game.</summary>
@@ -82,6 +116,36 @@ public struct MovementState : IComponent
     /// 0 decodes to exactly 0 (not climbing).</summary>
     public static float DecodeClimbRate(sbyte q) => q * ClimbRateQuantum;
 
+    /// <summary>Fixed wire scale for <see cref="SpeedScaleQ"/> (multiplier per quantum unit): 1/16. Deliberately an
+    /// exact NEGATIVE POWER OF TWO, not the 0.05-style decimal <see cref="ClimbRateQuantum"/> uses, because unlike a
+    /// climb rate this value multiplies the position delta on BOTH heads every tick: an inexact quantum makes
+    /// <c>1 + q*quantum</c> land a hair off the round number for the sim and for a root
+    /// (<c>1 - 20*0.05f</c> is <c>-1.5e-8</c>, a slow reverse crawl, not a stop). At 1/16 every representable scale is
+    /// an exact float, so 1.0, 0.0, 0.5, 0.75, 1.5, 2, 5 all land dead on and the server and client agree bit-exactly
+    /// by construction. The cost is 6.25% granularity: a requested 1.1x resolves to 1.125x.</summary>
+    public const float SpeedScaleQuantum = 1f / 16f;
+
+    /// <summary>The largest replicable speed multiplier (8x), the clamp <see cref="QuantizeSpeedScale"/> applies. Far
+    /// beyond any sane movement buff and comfortably inside the <see cref="sbyte"/> range, so the encoding keeps
+    /// headroom rather than running to its edge. A server-only NPC is not bound by this (it rides no wire), only what
+    /// replicates is.</summary>
+    public const float MaxSpeedScale = 8f;
+
+    /// <summary>Quantizes a speed multiplier to the wire <see cref="sbyte"/>: clamped to <c>[0, MaxSpeedScale]</c>,
+    /// expressed as the offset from 1, and rounded to the nearest <see cref="SpeedScaleQuantum"/>. A scale of exactly
+    /// 1 yields exactly 0 (the unmodified default).</summary>
+    public static sbyte QuantizeSpeedScale(float scale)
+    {
+        float clamped = Math.Clamp(float.IsNaN(scale) ? 1f : scale, 0f, MaxSpeedScale);
+        return (sbyte)Math.Clamp((int)MathF.Round((clamped - 1f) / SpeedScaleQuantum), -127, 127);
+    }
+
+    /// <summary>Decodes a wire <see cref="SpeedScaleQ"/> back to a speed multiplier: <c>1 + q * SpeedScaleQuantum</c>,
+    /// floored at 0. 0 decodes to exactly 1 (unmodified). The floor is defence-in-depth against a corrupt or hostile
+    /// frame: a <c>q</c> below -16 would otherwise decode NEGATIVE and drive the character backwards against its own
+    /// command. There is no matching ceiling - an out-of-range high value is merely fast, not inverted.</summary>
+    public static float DecodeSpeedScale(sbyte q) => MathF.Max(0f, 1f + q * SpeedScaleQuantum);
+
     /// <summary>The vertical part of a full <see cref="PlayerMoveState"/> (the position is in
     /// <see cref="ReplicatedPosition"/>).</summary>
     public static MovementState From(in PlayerMoveState state) => new()
@@ -93,5 +157,6 @@ public struct MovementState : IComponent
         Swimming = state.Move.Swimming,
         TeleportEpoch = state.TeleportEpoch,
         ClimbRateQ = QuantizeClimbRate(state.Move.ClimbRate),
+        SpeedScaleQ = QuantizeSpeedScale(state.Move.SpeedScale),
     };
 }

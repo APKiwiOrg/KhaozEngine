@@ -71,6 +71,26 @@ public struct MoveState
         set => speedScaleBias = (value > 0f ? value : 0f) - 1f;
     }
 
+    /// <summary>SIM-LOCAL step OUTPUT (NOT replicated): the UNCONSTRAINED horizontal speed in m/s this step actually
+    /// commanded, before the slope gate, static collision, and the play-area clamp denied any of it. It is the whole
+    /// speed product the step resolved - walk/run (or <see cref="MoveTuning.SwimSpeed"/> while swimming) times the
+    /// grounded/<see cref="MoveTuning.AirControl"/> term, the medium's wade ramp and zone scale, the per-entity
+    /// <see cref="SpeedScale"/>, and (on the world-space NPC path) the steering vector's speed fraction - collapsed
+    /// into one number, so with nothing
+    /// denying the move the step travels exactly <c>CommandedSpeed * dt</c>. 0 on an idle tick.
+    /// <para>It exists so the server-side movement anomaly check can measure ONLY the denial. That check compares
+    /// where the step landed against where the command intended to reach, and it used to REBUILD the intended
+    /// target from <see cref="MoveTuning.WalkSpeed"/>/<see cref="MoveTuning.RunSpeed"/> alone: every speed term the
+    /// step applied and the check did not know about read as a large correction on every tick, so a legitimately
+    /// swimming, wading or zone-slowed player was reported as a speed hacker. Exporting the fact
+    /// the sim already computed, instead of reconstructing it downstream, is the same fix the stair glide made when
+    /// <see cref="ClimbRate"/> replaced a render-side position-delta estimator, and it means a future speed term
+    /// cannot desync the anti-cheat again.</para>
+    /// Written every tick, so it is a per-tick FACT rather than carried state. <c>default</c> is 0, which reads as
+    /// "commanded nothing", the safe direction: a state that never went through a step measures as no denial rather
+    /// than as a large one.</summary>
+    public float CommandedSpeed;
+
     /// <summary>Signed step-climb rate in m/s: the vertical speed at which the capsule is riding a paced STEP climb this
     /// tick. Positive = ascending a continuous paced stair run (the step-up co-paces the rise to
     /// <see cref="MoveTuning.MaxStepClimbSpeed"/>); negative = descending a stepped-down riser (the step-down

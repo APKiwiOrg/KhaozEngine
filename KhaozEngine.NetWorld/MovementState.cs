@@ -83,6 +83,24 @@ public struct MovementState : IComponent
     /// (byte-identical to a pre-feature state). The single-<see cref="World"/> head never reads this field.</summary>
     public float ClimbRateEwma;
 
+    /// <summary>SIM-LOCAL commanded-speed storage (NOT replicated, NOT migrated): the sharded head's per-entity slot
+    /// for <see cref="KhaozEngine.Locomotion.MoveState.CommandedSpeed"/>, the unconstrained horizontal speed the step
+    /// asked for this tick. It exists for the same reason <see cref="ClimbRateEwma"/> does - the sharded per-cell step
+    /// (<see cref="PlayerMovementSystem"/>) reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from
+    /// this component every tick, so a step OUTPUT has nowhere else to survive to the end of
+    /// <see cref="ShardedWorldServer.Tick"/>, where the movement-anomaly check reads it back through
+    /// <see cref="PlayerMoveState.From"/>. The single-<see cref="World"/> <see cref="WorldServer"/> never reads this
+    /// field: it holds the whole <see cref="PlayerMoveState"/> per slot and reads the step's own output directly.
+    /// <para>DELIBERATELY absent from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it is a
+    /// server-side anti-cheat input that no client has any use for, so replicating it would widen the built-in wire
+    /// for nothing. It is therefore always 0 on a client, and 0 across a shard handoff - which is the SAFE direction,
+    /// since 0 reads as "commanded nothing" and so as no denial, never as a spurious one.</para>
+    /// <see cref="PlayerMovementSystem"/> writes it every tick, and explicitly zeroes it for an entity its cell sim
+    /// skipped (a <see cref="KhaozEngine.Sharding.Ghost"/> or a <see cref="KhaozEngine.Sharding.Migrating"/> entity),
+    /// so a skipped tick cannot leave a stale
+    /// speed behind for the anomaly check to measure a motionless entity against.</summary>
+    public float CommandedSpeed;
+
     /// <summary>Fixed wire scale for <see cref="ClimbRateQ"/> (m/s per quantum unit): 0.05, giving +/-6.35 m/s over an
     /// <see cref="sbyte"/> at 0.05 m/s resolution. Consumer-agnostic (independent of any consumer's
     /// <see cref="KhaozEngine.Locomotion.MoveTuning.MaxStepClimbSpeed"/>), so the codec round-trips the same for every game.</summary>

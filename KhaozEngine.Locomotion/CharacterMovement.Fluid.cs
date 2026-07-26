@@ -55,13 +55,14 @@ public static partial class CharacterMovement
         // the world-space AI swim identically), at SwimSpeed.
         float zoneScale = medium.WadeSpeedScale < 0f ? 0f : medium.WadeSpeedScale;
         float x = state.Position.X, z = state.Position.Z;
+        float commandedSpeed = 0f;
         if (speedFraction > 0f)
         {
             // The per-entity haste/slow multiplier applies here too (deliberate): a player who dives mid-boost keeps
             // it rather than silently losing the buff at the waterline.
-            float speed = t.SwimSpeed * zoneScale * speedFraction * state.SpeedScale;
-            x += moveDir.X * speed * dt;
-            z += moveDir.Y * speed * dt;
+            commandedSpeed = t.SwimSpeed * zoneScale * speedFraction * state.SpeedScale;
+            x += moveDir.X * commandedSpeed * dt;
+            z += moveDir.Y * commandedSpeed * dt;
         }
         if (clampXz is not null) { Vector2 c = clampXz(x, z); x = c.X; z = c.Y; }
 
@@ -120,6 +121,9 @@ public static partial class CharacterMovement
             JumpBufferRemaining = 0f,       // no jump-buffer while swimming (a hop-out is instant or ignored)
             Swimming = swimmingNext,
             SpeedScale = state.SpeedScale,  // carried through the swim exactly as the land path carries it
+            // Exported here as well as on the land path, at the SWIM speed: an anomaly check that assumed walk/run
+            // for a swimmer is exactly the bug this export exists to make impossible.
+            CommandedSpeed = commandedSpeed,
         };
         // Defense-in-depth (as the land path): a finite input must never yield a non-finite result; hold the last
         // good state if a misbehaving provider/ground/tuning injected a NaN/Inf.

@@ -48,7 +48,7 @@ public static partial class CharacterMovement
 
         (Vector2 moveDir, float speedFraction) = ResolveCameraRelative(cmd);
         float wade = WadeSpeedScale(position.X, position.Z, position.Y - tuning.CapsuleHalfHeight, tuning, medium);
-        (float x, float z) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, cmd.Run, dt,
+        (float x, float z, _) = DesiredHorizontalCore(position.X, position.Z, moveDir, speedFraction, cmd.Run, dt,
             tuning, groundNormal, speedScale: wade);
         var result = new Vector3(x, groundHeight(x, z) + tuning.CapsuleHalfHeight, z);
         // Defense-in-depth: never return a non-finite position from a finite input. A pathological command is
@@ -239,7 +239,7 @@ public static partial class CharacterMovement
         //    the per-entity haste/slow multiplier (1 by default), so an unmodified dry path is untouched.
         float wade = WadeSpeedScale(s.Position.X, s.Position.Z, s.Position.Y - halfH, t, medium);
         float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
-        (float dx, float dz) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, speedScale);
+        (float dx, float dz, float commandedSpeed) = DesiredHorizontalCore(s.Position.X, s.Position.Z, moveDir, speedFraction, run, dt, t, groundNormal, speedScale);
         if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
 
         // 2. Vertical integrate (UNCHANGED math): jump-buffer countdown, gravity, terminal clamp.
@@ -759,6 +759,7 @@ public static partial class CharacterMovement
             ClimbRateEwma = climbEwma,
             StepDeltaY = stepDeltaY,
             SpeedScale = state.SpeedScale,   // a movement INPUT: carried through unchanged, never derived by the step
+            CommandedSpeed = commandedSpeed, // a per-tick OUTPUT: what the step asked for, before anything denied it
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
@@ -784,35 +785,6 @@ public static partial class CharacterMovement
         return dx * dx + dz * dz <= lim * lim;
     }
 
-    /// <summary>The unconstrained horizontal target the camera-relative move would reach in one step, before the
-    /// slope gate, static collision, or play-area clamp deny any of it. The XZ distance from this to the position a
-    /// constrained <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
-    /// actually produced is the authoritative "correction" the server applied this tick - a server-side anti-cheat
-    /// signal: a client repeatedly driving into a wall, slope, or boundary keeps this large. Pass
-    /// <paramref name="speedScale"/> = the value the step used (1 grounded, <see cref="MoveTuning.AirControl"/>
-    /// airborne, times the entity's <see cref="MoveState.SpeedScale"/>) so the comparison isolates only the denial,
-    /// not the scaling. Getting that product wrong is not a rounding error but an inverted signal: a legitimately
-    /// hasted player steps far beyond an unscaled "intended" target, so every boosted tick reads as a large
-    /// correction and the anti-cheat streak flags them as a speed hacker. Mirrors the basis + speed of
-    /// <see cref="DesiredHorizontalCore"/> (pre-gate).</summary>
-    public static Vector2 IntendedHorizontalTarget(Vector3 position, in MoveCommand cmd, float dt,
-        in MoveTuning tuning, float speedScale = 1f)
-    {
-        float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
-        Vector3 forward = new(-sY, 0f, -cY);
-        Vector3 right = new(cY, 0f, -sY);
-        Vector3 move = right * cmd.Move.X + forward * cmd.Move.Y;
-        float x = position.X, z = position.Z;
-        if (move.LengthSquared() > 1e-6f)
-        {
-            move = Vector3.Normalize(move);
-            float speed = (cmd.Run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale;
-            x += move.X * speed * dt;
-            z += move.Z * speed * dt;
-        }
-        return new Vector2(x, z);
-    }
-
     /// <summary>The upright capsule for a tuning: radius + cylindrical length so total height = 2*halfHeight.</summary>
     public static CapsuleShape CapsuleFor(in MoveTuning tuning)
         => new(tuning.CapsuleRadius, MathF.Max(0.01f, 2f * tuning.CapsuleHalfHeight - 2f * tuning.CapsuleRadius));
@@ -822,12 +794,17 @@ public static partial class CharacterMovement
     // camera-relative MoveCommand (ResolveCameraRelative) or a world-space steering direction (ResolveWorldDir), so
     // player and AI share this exact input/slope section; prop collision is resolved separately by the swept
     // collide-and-slide block in StepCore. moveDir is a unit vector when speedFraction > 0.
-    private static (float x, float z) DesiredHorizontalCore(float x, float z, Vector2 moveDir, float speedFraction,
-        bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal, float speedScale)
+    // Returns the resolved speed alongside the position so StepCore can export it as MoveState.CommandedSpeed: the
+    // speed is reported UNCONDITIONALLY, including on a slope-gate block, because the anomaly check downstream needs
+    // what the command asked for, not what survived. 0 on an idle tick.
+    private static (float x, float z, float speed) DesiredHorizontalCore(float x, float z, Vector2 moveDir,
+        float speedFraction, bool run, float dt, in MoveTuning tuning, Func<float, float, Vector3>? groundNormal,
+        float speedScale)
     {
+        float speed = 0f;
         if (speedFraction > 0f)
         {
-            float speed = (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction;
+            speed = (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * speedFraction;
             float nx = x + moveDir.X * speed * dt;
             float nz = z + moveDir.Y * speed * dt;
 
@@ -839,6 +816,6 @@ public static partial class CharacterMovement
             }
             if (!blocked) { x = nx; z = nz; }
         }
-        return (x, z);
+        return (x, z, speed);
     }
 }

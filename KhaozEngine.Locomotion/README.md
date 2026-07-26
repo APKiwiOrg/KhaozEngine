@@ -118,6 +118,16 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   frozen at 0 m/s. The backing store is the offset from 1, which makes the zero default mean "unmodified", exactly.
   On a networked player the server is the sole author (`WorldServer.SetSpeedScale` / `ShardedWorldServer.SetSpeedScale`,
   replicated as `MovementState.SpeedScaleQ`). A server-only NPC or a single-player controller just sets it.
+- **`MoveState.CommandedSpeed`** (14.27.0) - sim-local step OUTPUT (not replicated): the unconstrained horizontal
+  speed in m/s the step actually commanded this tick, before the slope gate, collision, or the play-area clamp
+  denied any of it. It is the whole speed product collapsed into one number (walk/run or `SwimSpeed`, times air
+  control, the wade ramp, the zone scale, and `SpeedScale`), so with nothing denying the move the step travels
+  exactly `CommandedSpeed * dt`. 0 on an idle tick. It exists so the server-side movement-anomaly check can measure
+  ONLY the denial: rebuilding that product downstream is what made a swimming or wading player read as a speed
+  hacker. Same "the sim exports what it knows" pattern as `ClimbRate`.
+- **`CharacterMovement.IntendedHorizontalTargetAtSpeed(position, cmd, dt, speed)`** (14.27.0) - the unconstrained
+  target a command reaches in one step at an EXPLICIT speed. The existing `IntendedHorizontalTarget(..., tuning,
+  speedScale)` now delegates to it, so the two share one camera basis. Pair it with `CommandedSpeed`.
 - **`MovementMedium`** - the fluid medium at one world sample the medium provider returns: `WaterSurfaceY`,
   `InWater`, `WadeSpeedScale` (a per-sample zone multiplier, default 1). `default` / `MovementMedium.Dry` is dry land.
 - **`MoveTuning`** - all speed and feel constants:

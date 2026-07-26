@@ -331,7 +331,8 @@ product to compute.
   server never runs a speed it cannot describe to its clients (a requested 1.1x becomes 1.125x on both ends).
 - **Server-authored only.** It is deliberately NOT on `MoveCommand`, which is what the client sends: a hostile
   client would set its own multiplier. `SetSpeedScale` is the only author.
-- **The anti-cheat knows about it.** `MovementAnomaly.CorrectionDistance` folds the scale into its intended-target
+- **The anti-cheat knows about it** (since 14.27.0 by reading `MoveState.CommandedSpeed`, the speed the step
+  reports, rather than any per-term reconstruction). `MovementAnomaly.CorrectionDistance` folds the scale into its intended-target
   calculation. Without that, a legitimately hasted player steps far past an unscaled target and every boosted tick
   reads as a large correction, so the streak reports them as a speed hacker. A boosted client fighting a wall or a
   play-area bound still raises the signal.

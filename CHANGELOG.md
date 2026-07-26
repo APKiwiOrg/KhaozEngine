@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.3.1
+
+Corrects the FFT ocean's inert-knob list, which named three knobs that are not in fact inert. It is a
+documentation fix with no behaviour change, and it ships as its own version because the list is shipped: it is
+XML doc on `WaterSettings.WaveSource` and a section of `docs/USING-KHAOZENGINE.md`, and it is precisely what a
+game reads to decide which of its existing water tuning to delete when adopting
+`WaterWaveSource.FftOcean`.
+
+### Fixed
+
+- `WaveScale`, `WaveSpeed` and `DetailFadeDistance` were listed as inert under `WaterWaveSource.FftOcean`. Their
+  PRIMARY job does go away with the procedural ripple spectrum, but each keeps a second one outside the
+  wave-source branch, so deleting them on adoption silently retunes the surface:
+  - `WaveScale` supplies the reference wavelength the sun glint's footprint-alias ramp measures against
+    (`glintRoughnessAt`), so dropping it moves where the lobe starts widening.
+  - `DetailFadeDistance` sets the distance over which the lobe widens toward `GlintDistantRoughness`, so dropping
+    it reverts a tuned far-field sun path to the 60-unit default.
+  - `WaveSpeed` drives the drift of the foam break-up pattern, so at 0 the foam texture freezes over a sea that
+    is still moving.
+- The genuinely inert set is unchanged otherwise: every `Swell*` knob, the ripple spectrum (`NormalStrength`,
+  `WaveWarpStrength`, `RippleComponents`, `RippleLacunarity`, `RippleGain`, `RippleSeed`), `DistantDetailScale`,
+  and `FoamCrestCoverage`.
+
 ## 16.3.0
 
 A Tessendorf inverse-FFT ocean, computed on the GPU, as an opt-in wave source for the existing water surface.

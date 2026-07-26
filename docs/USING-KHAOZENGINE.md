@@ -2388,12 +2388,17 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       ten-metre pond can only physically carry centimetre waves, so the FFT ocean at doll-house scale renders as a
       nearly flat sheet, correctly. `Procedural` is the right answer for a pond; `CascadeTileMetres` is the knob
       for what scale of sea is being simulated.
-    - **These knobs go INERT in FFT mode**, because the spectrum supplies what they described: every `Swell*`
-      knob, every ripple knob (`WaveScale`, `WaveSpeed`, `NormalStrength`, `WaveWarpStrength`,
-      `RippleComponents`, `RippleLacunarity`, `RippleGain`, `RippleSeed`), the artistic detail fade
-      (`DetailFadeDistance`, `DistantDetailScale`), and `FoamCrestCoverage`. Everything else stays live -
-      `GridFocusBias`, `FootprintSamples`, `VarianceToRoughness`, the whole colour/reflection/glint set,
-      `FoamStrength`, `FoamPatternScale`, `FoamShoreWidth` and `ShoreFadeDistance`.
+    - **These knobs go FULLY INERT in FFT mode**, because the spectrum supplies what they described: every
+      `Swell*` knob, the ripple spectrum (`NormalStrength`, `WaveWarpStrength`, `RippleComponents`,
+      `RippleLacunarity`, `RippleGain`, `RippleSeed`), `DistantDetailScale`, and `FoamCrestCoverage`.
+    - **Three keep a SECOND job and must not be deleted on adoption**, which is easy to miss because their primary
+      job does go away. `WaveScale` still supplies the reference wavelength the glint's footprint-alias ramp
+      measures against, and `DetailFadeDistance` still sets the distance over which the lobe widens toward
+      `GlintDistantRoughness` - so dropping either retunes the sun glint even though neither shapes the surface
+      any more. `WaveSpeed` still drives the drift of the foam break-up pattern, so at 0 the foam texture freezes
+      while the sea under it keeps moving.
+    - Everything else stays live - `GridFocusBias`, `FootprintSamples`, `VarianceToRoughness`, the whole
+      colour/reflection/glint set, `FoamStrength`, `FoamPatternScale`, `FoamShoreWidth` and `ShoreFadeDistance`.
     - **Cost.** The cascade update runs ONCE per frame inside the water pass (not per `WaterPlane` - one ocean
       state serves every queued plane this release) and costs exactly one GPU stall whatever the cascade count and
       resolution, measured at about 0.3 ms on Metal at the defaults and under 1 ms at resolution 256. Changing any
@@ -4486,7 +4491,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.3.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.3.1" />
 ```
 
 ```csharp

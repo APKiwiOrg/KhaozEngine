@@ -46,15 +46,25 @@ namespace KhaozEngine.Render3D
         /// set unconditionally.
         /// </para>
         /// <para>
-        /// <b>These knobs go inert under <see cref="WaterWaveSource.FftOcean"/></b>, because the spectrum supplies
-        /// what they described: every <c>Swell*</c> knob (<see cref="SwellAmplitude"/>,
+        /// <b>These knobs go FULLY inert under <see cref="WaterWaveSource.FftOcean"/></b>, because the spectrum
+        /// supplies what they described: every <c>Swell*</c> knob (<see cref="SwellAmplitude"/>,
         /// <see cref="SwellWavelength"/>, <see cref="SwellDirectionDegrees"/>, <see cref="SwellSpreadDegrees"/>,
         /// <see cref="SwellSteepness"/>, <see cref="SwellSpeed"/>, <see cref="SwellSeed"/>,
-        /// <see cref="SwellComponents"/>), every ripple knob (<see cref="WaveScale"/>, <see cref="WaveSpeed"/>,
-        /// <see cref="NormalStrength"/>, <see cref="WaveWarpStrength"/>, <see cref="RippleComponents"/>,
-        /// <see cref="RippleLacunarity"/>, <see cref="RippleGain"/>, <see cref="RippleSeed"/>), the artistic
-        /// detail fade (<see cref="DetailFadeDistance"/>, <see cref="DistantDetailScale"/>), and
+        /// <see cref="SwellComponents"/>), the ripple spectrum (<see cref="NormalStrength"/>,
+        /// <see cref="WaveWarpStrength"/>, <see cref="RippleComponents"/>, <see cref="RippleLacunarity"/>,
+        /// <see cref="RippleGain"/>, <see cref="RippleSeed"/>), <see cref="DistantDetailScale"/>, and
         /// <see cref="FoamCrestCoverage"/>. Their replacements are named in <see cref="WaterSeaState"/>.
+        /// </para>
+        /// <para>
+        /// <b>Three keep a SECOND job and must NOT be deleted on adoption</b>, which is easy to miss because their
+        /// primary job does go away. <see cref="WaveScale"/> still supplies the reference wavelength the sun
+        /// glint's footprint-alias ramp measures against, and <see cref="DetailFadeDistance"/> still sets the
+        /// distance over which the lobe widens toward <see cref="GlintDistantRoughness"/>, so dropping either
+        /// retunes the glint even though neither shapes the surface any more. <see cref="WaveSpeed"/> still drives
+        /// the drift of the foam break-up pattern, so at 0 the foam texture stops moving while the sea underneath
+        /// it does not.
+        /// </para>
+        /// <para>
         /// EVERYTHING ELSE stays live, including <see cref="GridFocusBias"/>, <see cref="FootprintSamples"/>,
         /// <see cref="VarianceToRoughness"/>, <see cref="FoamStrength"/>, <see cref="FoamPatternScale"/> and
         /// <see cref="FoamShoreWidth"/>.

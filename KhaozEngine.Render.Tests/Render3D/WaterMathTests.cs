@@ -155,6 +155,113 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1f, WaterMath.ShoreFade(depthBelowSurface: 0f, fadeDistance: -1f));
         }
 
+        // ---- Domain warp ----------------------------------------------------------------------------------------
+
+        [Fact]
+        public void DomainWarp_zero_or_negative_strength_is_the_identity()
+        {
+            Assert.Equal(new Vector2(3f, -4f), WaterMath.DomainWarp(3f, -4f, 2f, 2.5f, 0f));
+            Assert.Equal(new Vector2(3f, -4f), WaterMath.DomainWarp(3f, -4f, 2f, 2.5f, -0.5f));
+        }
+
+        [Fact]
+        public void DomainWarp_displaces_and_scales_with_strength_and_wave_scale()
+        {
+            var p = new Vector2(6f, 1.5f);
+            var weak = WaterMath.DomainWarp(p.X, p.Y, 1f, 2.5f, 0.25f);
+            var strong = WaterMath.DomainWarp(p.X, p.Y, 1f, 2.5f, 1f);
+            float weakOffset = Vector2.Distance(p, weak), strongOffset = Vector2.Distance(p, strong);
+            Assert.True(weakOffset > 0f, "a positive warp strength must actually displace the sample position.");
+            Assert.True(strongOffset > weakOffset, $"warp offset should grow with strength: {weakOffset} vs {strongOffset}");
+            // Amplitude is in multiples of waveScale, so a bigger wave scale warps proportionally further.
+            var bigScale = WaterMath.DomainWarp(p.X, p.Y, 1f, 10f, 1f);
+            Assert.True(Vector2.Distance(p, bigScale) > strongOffset);
+        }
+
+        [Fact]
+        public void DomainWarp_is_deterministic_and_finite_at_a_degenerate_scale()
+        {
+            Assert.Equal(WaterMath.DomainWarp(1f, 2f, 3f, 2.5f, 0.75f), WaterMath.DomainWarp(1f, 2f, 3f, 2.5f, 0.75f));
+            var d = WaterMath.DomainWarp(1f, 2f, 3f, 0f, 0.75f);
+            Assert.False(float.IsNaN(d.X) || float.IsNaN(d.Y) || float.IsInfinity(d.X) || float.IsInfinity(d.Y));
+        }
+
+        // ---- Distance detail fade -------------------------------------------------------------------------------
+
+        [Fact]
+        public void DetailScale_zero_or_negative_fade_distance_disables_the_fade()
+        {
+            Assert.Equal(1f, WaterMath.DetailScale(cameraDistance: 500f, fadeDistance: 0f, distantScale: 0.18f));
+            Assert.Equal(1f, WaterMath.DetailScale(cameraDistance: 500f, fadeDistance: -3f, distantScale: 0.18f));
+        }
+
+        [Fact]
+        public void DetailScale_is_full_at_the_camera_and_the_floor_past_the_fade_distance()
+        {
+            Assert.Equal(1f, WaterMath.DetailScale(0f, 60f, 0.18f), 4);
+            Assert.Equal(0.18f, WaterMath.DetailScale(60f, 60f, 0.18f), 4);
+            Assert.Equal(0.18f, WaterMath.DetailScale(4000f, 60f, 0.18f), 4);
+        }
+
+        [Fact]
+        public void DetailScale_is_monotonic_decreasing_with_distance()
+        {
+            float prev = float.MaxValue;
+            for (float d = 0f; d <= 80f; d += 4f)
+            {
+                float s = WaterMath.DetailScale(d, 60f, 0.18f);
+                Assert.True(s <= prev + 1e-6f, $"detail scale rose at distance {d}: {s} after {prev}");
+                prev = s;
+            }
+        }
+
+        [Fact]
+        public void DetailScale_clamps_the_distant_floor_into_range()
+        {
+            Assert.Equal(0f, WaterMath.DetailScale(100f, 60f, -2f), 4);
+            Assert.Equal(1f, WaterMath.DetailScale(100f, 60f, 5f), 4);
+        }
+
+        // ---- Shallow-water blend --------------------------------------------------------------------------------
+
+        [Fact]
+        public void ShallowWeight_is_one_at_the_waterline_and_zero_in_deep_water()
+        {
+            Assert.Equal(1f, WaterMath.ShallowWeight(0f, 2.5f), 4);
+            Assert.Equal(0f, WaterMath.ShallowWeight(2.5f, 2.5f), 4);
+            Assert.Equal(0f, WaterMath.ShallowWeight(40f, 2.5f), 4);
+        }
+
+        [Fact]
+        public void ShallowWeight_zero_depth_disables_the_blend()
+        {
+            Assert.Equal(0f, WaterMath.ShallowWeight(0f, 0f));
+            Assert.Equal(0f, WaterMath.ShallowWeight(0.1f, -1f));
+        }
+
+        [Fact]
+        public void ShallowWeight_is_monotonic_decreasing_with_depth()
+        {
+            float prev = float.MaxValue;
+            for (float d = 0f; d <= 3f; d += 0.2f)
+            {
+                float w = WaterMath.ShallowWeight(d, 2.5f);
+                Assert.True(w <= prev + 1e-6f, $"shallow weight rose at depth {d}: {w} after {prev}");
+                prev = w;
+            }
+        }
+
+        [Fact]
+        public void ShallowTint_reaches_the_shallow_colour_at_the_waterline_and_deep_beyond()
+        {
+            var deep = new Vector3(0.05f, 0.18f, 0.28f);
+            var shallow = new Vector3(0.14f, 0.34f, 0.38f);
+            Assert.Equal(shallow, WaterMath.ShallowTint(deep, shallow, depthBelowSurface: 0f, shallowDepth: 2.5f));
+            Assert.Equal(deep, WaterMath.ShallowTint(deep, shallow, depthBelowSurface: 9f, shallowDepth: 2.5f));
+            // Disabled blend keeps the body colour exactly as deep, whatever the depth.
+            Assert.Equal(deep, WaterMath.ShallowTint(deep, shallow, depthBelowSurface: 0f, shallowDepth: 0f));
+        }
+
         // ---- Grid tessellation -----------------------------------------------------------------------------------
 
         [Fact]

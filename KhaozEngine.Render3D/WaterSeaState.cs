@@ -202,6 +202,21 @@ namespace KhaozEngine.Render3D
         /// <see cref="DirectionalSpread"/>'s own lobe and disappears into it. Coarse settings make the sea read as
         /// a few distinct wave trains meeting, which is a legitimate stylized look and is what the low end is for.
         /// </para>
+        /// <para>
+        /// <b>The blend's "conserves variance exactly" claim (see <see cref="Internal.OceanFocus.Sectors"/>) assumes the
+        /// two taps are decorrelated, and that assumption fails close to <see cref="OnshoreFocusPoint"/>.</b> The
+        /// two taps are two different ROTATIONS of the same world position, and near the focus point both
+        /// rotations agree (in the limit, at the point itself, exactly), so the taps land on the same texel of
+        /// each cascade and read the same value rather than two independent draws. Mixing one value with itself
+        /// at L2 weights <c>(a, b)</c> with <c>a^2 + b^2 = 1</c> scales it by <c>a + b</c> rather than holding it,
+        /// which peaks at <c>sqrt(2)</c> mid-sector (<c>T = 0.5</c>) instead of 1. By continuity the bias fades in
+        /// rather than cutting off, over a radius on the order of
+        /// <c>dominantWavelength / (2 * sin(halfSectorStep))</c> - roughly 80 metres at the default 12 sectors (a
+        /// 15 degree half-step) and a 40 metre dominant wavelength. MORE sectors WIDEN that radius (a finer ring
+        /// narrows the half-step, and the radius grows as its sine shrinks); fewer sectors shrink it. This is
+        /// another reason <see cref="OnshoreFocusPoint"/> belongs on land: the intended island use puts the
+        /// biased radius under the terrain, same as the unbounded angular gradient at the point itself.
+        /// </para>
         /// </summary>
         public int OnshoreFocusSectors = 12;
 

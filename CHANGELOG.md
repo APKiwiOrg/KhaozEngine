@@ -71,6 +71,13 @@ branches out on a uniform and the surface pays exactly what it paid before. Full
   seam's location, the variance conservation and the convergence claim itself) and `OceanFocusGpuTests`
   (on-device, with the features ENABLED - the trap #298 names is a feature whose default is "unchanged" shipping
   with green coverage of the path nobody asked for).
+- The blend's variance conservation is exact only between DECORRELATED taps, and close to the focus point the
+  two taps sample the same texel rather than two independent draws, so the blended amplitude runs up to
+  `sqrt(2)` over the true value within roughly `dominantWavelength / (2 * sin(halfSectorStep))` of the point
+  (about 80 metres at the default 12 sectors). `WaterSeaState.OnshoreFocusSectors`, `OceanFocus.Sectors` and
+  the design doc now say so; the intended island use, focus point on land, keeps the biased radius under the
+  terrain for free. Not re-verified on a device: a targeted GPU test would cost another full FFT-ocean dispatch
+  on the same slow software CI legs #332 flags.
 
 ## 16.4.0
 

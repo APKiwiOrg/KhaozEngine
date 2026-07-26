@@ -77,6 +77,22 @@ through every sector, which would draw a ring of calm water around the focus poi
 is NOT a Gaussian field - it is a bounded coverage - so it takes the plain linear pair, which preserves its mean.
 `OceanFocusTests` pins both.
 
+**That "conserves variance" claim assumes the two taps are decorrelated, and close to the focus point they are
+not.** The two taps are two different rotations of the same world position. Near the point both rotations agree
+(at the point itself, exactly), so the taps land on the same texel of each cascade and read the same value
+rather than two independent realizations. Mixing one value with itself at weights `(a, b)` with `a^2 + b^2 = 1`
+scales it by `a + b`, not by 1, which peaks at `sqrt(2)` at the sector midpoint (`t = 0.5`) instead of holding
+steady. By continuity the bias does not cut off, it fades in, over a radius on the order of
+`dominantWavelength / (2 * sin(halfSectorStep))`: roughly 80 metres at the default 12 sectors (a 15 degree
+half-step) and a 40 metre dominant wavelength. More sectors WIDEN that radius (a finer ring narrows the
+half-step, which shrinks its sine faster than the radius it divides into), fewer sectors shrink it. This is why
+`OnshoreFocusPoint`'s own doc says to aim it at land: the intended island use puts the biased radius under the
+terrain for free, same as the unbounded angular gradient at the point itself. Nothing here was re-baked to
+confirm the amplitude numerically on a device: the effect is a property of the weight formula plus texel
+correlation at small radius, not of anything the produced maps carry, and a targeted GPU readback to pin it
+would cost another `Capture()`-shaped dispatch on the exact software CI legs
+[#332](https://github.com/APKiwiOrg/KhaozEngine/issues/332) already flags as the slow part of this suite.
+
 ### The seam, which is real and cannot be removed
 
 A partial focus has one heading discontinuity, on the ray running from the focus point in the direction the wind

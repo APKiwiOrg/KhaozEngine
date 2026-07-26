@@ -173,6 +173,19 @@ namespace KhaozEngine.Render3D.Internal
         /// spectrum's variance exactly, where plain linear weights would dip the wave height by up to 30 per cent
         /// mid-sector. Foam is NOT a Gaussian field - it is a bounded coverage - so it takes the plain linear
         /// <c>(1-T, T)</c> instead, which preserves its mean.
+        /// <para>
+        /// <b>"Keeps the variance exactly" assumes the two taps are decorrelated, and that assumption fails close
+        /// to the focus point.</b> The two taps are two different rotations of the SAME world position; near the
+        /// point both rotations agree (at the point itself, exactly), so the taps land on the same texel of each
+        /// cascade and read the same value instead of two independent draws. Mixing one value with itself at
+        /// weights <c>(a, b)</c> with <c>a^2 + b^2 = 1</c> scales it by <c>a + b</c>, not by 1, which peaks at
+        /// <c>sqrt(2)</c> at <c>T = 0.5</c>. By continuity the bias fades in over a radius on the order of
+        /// <c>dominantWavelength / (2 * sin(halfSectorStep))</c> - roughly 80 metres at the default 12 sectors and
+        /// a 40 metre dominant wavelength. More sectors widen that radius, fewer shrink it. See
+        /// <see cref="WaterSeaState.OnshoreFocusSectors"/> for the full account; the short version is that
+        /// <see cref="WaterSeaState.OnshoreFocusPoint"/> belongs on land, which the intended island use gives for
+        /// free.
+        /// </para>
         /// </returns>
         public static (Vector2 Lower, float T, float Norm) Sectors(Vector2 focusRotation, int sectors)
         {

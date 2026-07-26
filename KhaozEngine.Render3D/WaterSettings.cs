@@ -54,20 +54,22 @@ namespace KhaozEngine.Render3D
         /// <see cref="WaveWarpStrength"/>, <see cref="RippleComponents"/>, <see cref="RippleLacunarity"/>,
         /// <see cref="RippleGain"/>, <see cref="RippleSeed"/>), <see cref="DistantDetailScale"/>, and
         /// <see cref="FoamCrestCoverage"/>. Their replacements are named in <see cref="WaterSeaState"/>.
+        /// As of the fix for <c>KhaozEngine#343</c>, <see cref="FoamPatternScale"/> joins this list too: FFT-mode
+        /// foam break-up is shaped by the wave field's own foam/Jacobian channel instead of the procedural
+        /// world-space pattern <see cref="FoamPatternScale"/> sizes, because that fixed-period pattern re-tiled
+        /// the FFT surface's own de-tiled cascades. <see cref="WaveSpeed"/> loses its former second job (below)
+        /// for the same reason: nothing in FFT mode scrolls the procedural pattern any more.
         /// </para>
         /// <para>
-        /// <b>Three keep a SECOND job and must NOT be deleted on adoption</b>, which is easy to miss because their
+        /// <b>Two keep a SECOND job and must NOT be deleted on adoption</b>, which is easy to miss because their
         /// primary job does go away. <see cref="WaveScale"/> still supplies the reference wavelength the sun
         /// glint's footprint-alias ramp measures against, and <see cref="DetailFadeDistance"/> still sets the
         /// distance over which the lobe widens toward <see cref="GlintDistantRoughness"/>, so dropping either
-        /// retunes the glint even though neither shapes the surface any more. <see cref="WaveSpeed"/> still drives
-        /// the drift of the foam break-up pattern, so at 0 the foam texture stops moving while the sea underneath
-        /// it does not.
+        /// retunes the glint even though neither shapes the surface any more.
         /// </para>
         /// <para>
         /// EVERYTHING ELSE stays live, including <see cref="GridFocusBias"/>, <see cref="FootprintSamples"/>,
-        /// <see cref="VarianceToRoughness"/>, <see cref="FoamStrength"/>, <see cref="FoamPatternScale"/> and
-        /// <see cref="FoamShoreWidth"/>.
+        /// <see cref="VarianceToRoughness"/>, <see cref="FoamStrength"/> and <see cref="FoamShoreWidth"/>.
         /// </para>
         /// </summary>
         public WaterWaveSource WaveSource = WaterWaveSource.Procedural;
@@ -230,8 +232,11 @@ namespace KhaozEngine.Render3D
         public float WaveScale = 2.5f;
 
         /// <summary>How fast the scrolling ripple layers animate (world units / second-ish; drives the
-        /// <see cref="Scene3D.EffectTimeSeconds"/>-scaled scroll). Also sets the drift rate of the foam break-up
-        /// pattern, so foam moves with the water rather than on its own clock. Default <c>0.35</c>.</summary>
+        /// <see cref="Scene3D.EffectTimeSeconds"/>-scaled scroll). Also sets the drift rate of the procedural
+        /// foam break-up pattern, so foam moves with the water rather than on its own clock. Ignored under
+        /// <see cref="WaterWaveSource.FftOcean"/> (<c>KhaozEngine#343</c>): FFT-mode foam break-up is sourced
+        /// from the wave field's own foam channel, which already moves with the real waves and needs no drift
+        /// clock of its own. Default <c>0.35</c>.</summary>
         public float WaveSpeed = 0.35f;
 
         /// <summary>Strength of the procedural ripple normal perturbation (0 = the swell's own smooth normal with
@@ -373,7 +378,10 @@ namespace KhaozEngine.Render3D
         /// <summary>World-space scale of the procedural pattern that breaks the foam into shapes: three
         /// non-axis-aligned scrolling layers at mutually irrational frequencies, thresholded hard so the result is
         /// clean graphic lobes rather than a soft photoreal scum. Smaller = finer, busier foam. The pattern drifts
-        /// at <see cref="WaveSpeed"/>. Default <c>2.2</c>.</summary>
+        /// at <see cref="WaveSpeed"/>. Ignored under <see cref="WaterWaveSource.FftOcean"/> (<c>KhaozEngine#343</c>):
+        /// a fixed world-space pattern re-tiles the FFT surface's own de-tiled cascades, so FFT-mode break-up is
+        /// shaped by the wave field's own foam/Jacobian channel instead (see <c>WaveSource</c>'s doc). Default
+        /// <c>2.2</c>.</summary>
         public float FoamPatternScale = 2.2f;
 
         // ---- Shore -------------------------------------------------------------------------------------------

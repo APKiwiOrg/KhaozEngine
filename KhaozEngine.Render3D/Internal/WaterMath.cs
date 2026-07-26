@@ -403,6 +403,32 @@ namespace KhaozEngine.Render3D.Internal
         public static float FoamAmount(float whitecap, float shoreFoam, float pattern, float strength) =>
             Math.Clamp(MathF.Max(whitecap, shoreFoam) * pattern * MathF.Max(strength, 0f), 0f, 1f);
 
+        /// <summary>Span of <see cref="FftFoamBreakup"/>'s ramp: <c>oceanFoam</c> values above this are fully
+        /// broken up, below it partially or not at all. Wider than <see cref="WhitecapSoftness"/> on purpose -
+        /// <c>oceanFoam</c> is a compute-pass accumulator (<c>KhaozEngine#343</c>) whose typical peaks sit well
+        /// under 1, so a narrow ramp would leave most of the sea with no break-up structure at all.</summary>
+        const float FftBreakupSpan = 0.5f;
+
+        /// <summary>
+        /// FFT-mode foam break-up mask in 0..1, replacing <see cref="FoamPattern"/> for both the crest and the
+        /// shoreline band whenever <c>WaterWaveSource.FftOcean</c> is active (<c>KhaozEngine#343</c>). Sourced
+        /// from the ocean compute pass's own foam/Jacobian accumulator (<paramref name="oceanFoam"/>, the same
+        /// value <c>crest</c> already reads) rather than a fixed world-space lattice: <c>oceanFoam</c> has
+        /// already been through the vertex stage's focus/warp/de-tile sampling frame, so it carries genuine
+        /// wave-scale structure and can never re-tile, unlike <see cref="FoamPattern"/>'s fixed period, which
+        /// just stacks a second, unrelated repeat on top of the FFT cascades' own. Warping <c>FoamPattern</c>'s
+        /// input coordinates instead was tried and does not work: the domain warp's wavelength is on the order
+        /// of a kilometre, far too coarse to break an 8-ish metre lattice period.
+        /// <para>
+        /// A self-modulated contrast curve rather than a plain pass-through: thresholding <c>oceanFoam</c>
+        /// against itself sharpens it into the same clean graphic lobes <c>FoamPattern</c> gave the procedural
+        /// surface, but sourced from the real wave field, so the break-up moves with the actual waves instead of
+        /// scrolling on <see cref="WaterSettings.WaveSpeed"/>'s own clock.
+        /// </para>
+        /// </summary>
+        public static float FftFoamBreakup(float oceanFoam) =>
+            Smoothstep(0f, FftBreakupSpan, Math.Clamp(oceanFoam, 0f, 1f));
+
         /// <summary>GLSL-identical smoothstep (Hermite), matching <see cref="SkyMath"/>'s copy so every mirrored
         /// pass agrees on the same curve.</summary>
         public static float Smoothstep(float edge0, float edge1, float x)

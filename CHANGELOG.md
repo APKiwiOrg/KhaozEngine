@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.5.1
+
+Two FFT ocean bugs, landed together as one bug-fix release. The FFT sea has been travelling 180 degrees
+opposite its wind direction since 16.3.0 - shipped wrong from day one, invisible until 16.5.0's onshore
+focus made heading position-dependent enough to actually notice. And the foam break-up mask was a fixed
+world-space lattice that re-tiled the FFT surface's own de-tiled foam, reported from a shoreline
+screenshot.
+
+### Fixed
+
+- FFT wave motion ran backward. The spectrum's time evolution combined with the positive-twiddle inverse
+  transform in the column pass to produce a field whose crests travel along MINUS the wave vector, i.e.
+  wind+180, contradicting both `WaterSeaState.WindDirectionDegrees`'s own doc contract ("matching
+  `WaterSettings.SwellDirectionDegrees`'s convention so switching wave source keeps the sea running the
+  same way") and the Procedural/Gerstner path's own `phase = k.d.x - omega*t` convention, which travels
+  along +d. `OceanComputeShaders`'s row-pass evolution now negates the time argument
+  (`h~(k,t) = h0(k) e^{-i omega t} + conj(h0(-k)) e^{+i omega t}`), which keeps Hermitian symmetry (the
+  field stays real) and flips the travel direction to match the wind. A new headless test
+  (`OceanFftGpuTests.FftHeightFieldTravelsAlongTheWindNotAgainstIt`) measures the CPU-mirrored field's
+  bulk translation via optical flow at two different wind headings, closing the gap that let this ship
+  without anything checking WHICH way the surface moves. Closes #342.
+- FFT-mode foam break-up (both the crest and the shoreline band) now sources its structure from the ocean
+  compute pass's own foam/Jacobian accumulator (`oceanFoam`) instead of `FoamPattern`'s fixed world-space
+  lattice. That lattice was the only periodic pattern left once the cascades themselves went through the
+  16.5.0 sampling frame's de-tiling: it dominated the shoreline band (a featureless depth smoothstep with
+  no structure of its own) and re-tiled the open-water whitecaps. `FoamPatternScale` and `WaveSpeed`'s
+  foam-drift job (restored in 16.3.1) go inert again under `WaterWaveSource.FftOcean` as a result - this
+  time because the break-up moves with the real wave field and needs neither a pattern scale nor a drift
+  clock of its own. Procedural mode is untouched (`FoamPattern` stays its mask, byte-identical). Closes
+  #343.
+
 ## 16.5.0
 
 Gives the FFT ocean a sampling frame: waves can be aimed at a point so they run onshore from every azimuth

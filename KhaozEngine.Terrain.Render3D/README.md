@@ -12,9 +12,20 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   stay crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a height/slope vertex-colour
   ramp, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device. The `lodConfig` overload
   resolves the tier's resolution through a custom table; the plain overload uses `TerrainLodConfig.Default`.
-- **`TerrainScene3D`** extensions - `Scene3D.LoadTerrainChunk` / `DrawTerrainChunk` (world-space
-  vertices, identity transform) and `LoadTerrainMaterial` (realize a layered material once, share the
-  handle across every chunk).
+  **Vertices are CHUNK-LOCAL in X/Z (absolute in Y), and so is `TerrainChunkBounds`.** The field is still sampled
+  at the ABSOLUTE coordinate (it is authored in world space and stays that way), but what is stored is
+  `x - region.OriginX`, so a chunk 100 km out has vertices of magnitude at most its own size instead of being
+  quantized to that magnitude's 7.8 mm float32 lattice at bake time. The placement travels in the draw transform
+  and in the collision static's pose. Offset the bounds by the region origin for a world-space box.
+- **`TerrainScene3D`** extensions - `Scene3D.LoadTerrainChunk` / `DrawTerrainChunk(handle, region)` (chunk-local
+  vertices placed by the region origin, a pure translation) and `LoadTerrainMaterial` (realize a layered material
+  once, share the handle across every chunk). The old parameterless `DrawTerrainChunk(handle)` is obsolete: it
+  stays correct only for a chunk whose region origin is (0, 0), and draws every other chunk at the world origin.
+- **Terrain collision placement.** A chunk's collision mesh is built from those same chunk-local vertices
+  (`TerrainChunkCollision.Build`), so it is registered at the chunk's REGION ORIGIN rather than `Pose.Identity`.
+  Bepu transforms a query into a mesh's local space using the static's pose, so every triangle test runs at chunk
+  magnitude however far out the chunk sits. Both halves of the placement are reduced by `IPhysicsWorld.Origin`, so
+  streaming into a rebased physics world lands in that world's space.
 - **The streaming core lives in `KhaozEngine.Terrain` now.** `TerrainStreamer`, `StreamerConfig`,
   `IChunkSink`/`IAsyncChunkSink`, `ChunkCoord`/`ChunkGrid`/`ChunkRing`, `ChunkBuildScheduler<T>`/
   `ChunkBuild<T>`/`ChunkBuildException`/`IChunkBuildDispatcher`/`TaskChunkBuildDispatcher`, and

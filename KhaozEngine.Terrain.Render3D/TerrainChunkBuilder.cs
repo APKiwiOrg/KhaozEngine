@@ -7,7 +7,17 @@ namespace KhaozEngine.Terrain
     /// <summary>Meshes one finite chunk off the analytic field at a chosen LOD: a (res+1)^2 grid of
     /// field-sampled vertices (position/normal/ramp-colour/splat), CCW-from-above indices, plus ~0.3 m edge
     /// skirts that hide cracks where a dense chunk meets a coarse neighbour. CPU only - no GPU device. Output is
-    /// standard Render3D mesh data plus a parallel splat array and an AABB.</summary>
+    /// standard Render3D mesh data plus a parallel splat array and an AABB.
+    /// <para>Vertices are CHUNK-LOCAL in X and Z: the field is sampled at the absolute world coordinate (it is
+    /// authored in world space and stays that way), but what is STORED is <c>x - region.OriginX</c>, so a vertex
+    /// magnitude is at most <see cref="TerrainChunkRegion.Size"/> however far out the chunk sits. Y is absolute
+    /// world height, always. The region origin travels in the draw transform
+    /// (<c>DrawTerrainChunk(scene, handle, region)</c>) and in the collision static's pose
+    /// (<see cref="ChunkTerrainCollision"/>), so a chunk 100 km out is bit-for-bit as precise as one at the origin
+    /// instead of quantized to that magnitude's 7.8 mm float32 lattice at BAKE time. Before this, the placement
+    /// was baked into the vertex and no camera-relative render or physics rebase could recover it: the error was
+    /// already in the buffer. <see cref="TerrainChunkMesh.Bounds"/> follows the vertices and is therefore
+    /// chunk-local too.</para></summary>
     public static class TerrainChunkBuilder
     {
         /// <summary>Mesh a chunk at <paramref name="lod"/> using the default LOD tier table
@@ -31,13 +41,16 @@ namespace KhaozEngine.Terrain
             for (int iz = 0; iz <= res; iz++)
             for (int ix = 0; ix <= res; ix++)
             {
-                float x = region.OriginX + (float)ix / res * region.Size;
-                float z = region.OriginZ + (float)iz / res * region.Size;
+                // Sample ABSOLUTE (the field is authored in world space), store CHUNK-LOCAL (see the class doc).
+                float lx = (float)ix / res * region.Size;
+                float lz = (float)iz / res * region.Size;
+                float x = region.OriginX + lx;
+                float z = region.OriginZ + lz;
                 float h = field.SampleHeight(x, z);
                 var n = field.SampleNormal(x, z);
                 float slope01 = 1f - n.Y;
                 var w = TerrainSplatWeights.From(h, slope01, field.SampleBiome(x, z), field.WaterLevel, snowLine);
-                verts.Add(new ModelVertex(new Vector3(x, h, z), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res)));
+                verts.Add(new ModelVertex(new Vector3(lx, h, lz), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res)));
                 splat.Add(w);
             }
             for (int iz = 0; iz < res; iz++)

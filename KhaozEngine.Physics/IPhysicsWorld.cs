@@ -81,4 +81,31 @@ public interface IPhysicsWorld : IDisposable
     /// <summary>If the capsule at <paramref name="pose"/> overlaps any static body, output the minimum
     /// translation (direction * depth) that separates it; returns false when clear.</summary>
     bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv);
+
+    /// <summary>The world-space point this world's coordinates are expressed against. EVERY pose passed to
+    /// <see cref="AddStatic"/>/<see cref="AddDynamic"/>, every query coordinate, and every pose read back out of
+    /// <see cref="GetDynamicPose"/> is relative to it. <see cref="Vector3.Zero"/> (the default) means the world
+    /// speaks absolute world coordinates, which is what every backend does until something rebases it.
+    /// <para>This is deliberately a plain <see cref="Vector3"/> rather than a quantized frame type: the physics
+    /// seam has no project references and keeps none. The caller quantizes. A caller that speaks absolute converts
+    /// at the call site (<c>AddStatic(shape, new Pose(absolute - world.Origin, rot))</c>) - a site that forgets is
+    /// a site that never read <c>Origin</c>, which is greppable.</para></summary>
+    Vector3 Origin => Vector3.Zero;
+
+    /// <summary>Whether this backend implements <see cref="Rebase"/>. False (the default, including on any consumer
+    /// test double) means the world cannot be re-expressed and therefore cannot serve a world large enough to need
+    /// it. Check this before calling <see cref="Rebase"/>.</summary>
+    bool CanRebase => false;
+
+    /// <summary>Re-express this world against <paramref name="newOrigin"/>: translate EVERY static, every dynamic
+    /// body (awake and sleeping alike) and every world-space constraint anchor by <c>Origin - newOrigin</c>, then
+    /// set <see cref="Origin"/> to it. Velocities, sleep state, contacts and constraints are all preserved - this is
+    /// a change of coordinate space, not a physical event, and nothing inside the world can observe it.
+    /// <para>It takes the TARGET origin rather than a delta on purpose. The contents and <see cref="Origin"/> then
+    /// move as one atomic operation and can never be left describing different spaces, which a delta-taking API
+    /// makes possible with one dropped call.</para>
+    /// <para>Must be called BETWEEN steps, never during one. Anything the caller holds in the old space (its own
+    /// collider bookkeeping, cached poses, spatial indices) moves by the same delta or it is left behind.</para></summary>
+    void Rebase(Vector3 newOrigin) => throw new NotSupportedException(
+        "This IPhysicsWorld backend does not support Rebase. Check CanRebase first.");
 }

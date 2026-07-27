@@ -16,6 +16,11 @@ namespace KhaozEngine.Physics;
 /// <see cref="QueryMobility.All"/> to let dynamic bodies act as standable ground.</para>
 /// <para>Additive, not breaking: a game that has not adopted the unified path keeps handing the analytic
 /// <c>TerrainCollision</c> delegates to the controller and nothing here runs. Both paths coexist.</para>
+/// <para>This probe queries the world in the WORLD'S OWN space: <see cref="Height"/>/<see cref="Normal"/> pass
+/// (x, z) straight into <see cref="IPhysicsWorld.Raycast"/> with no conversion of their own. When the world has
+/// been rebased (<see cref="IPhysicsWorld.Origin"/> is non-zero), pass coordinates already reduced by
+/// <c>Origin</c>. On a framed <c>WorldServer</c> that means <c>SamplerSpace.Frame</c>, not the default
+/// <c>SamplerSpace.World</c>, which wraps the call back out to absolute coordinates and makes every ray miss.</para>
 /// <para>The probe casts from <see cref="ProbeHeight"/> down over <see cref="ProbeRange"/>. When the ray misses
 /// (no terrain registered under that XZ, or a hole), the height delegate returns <see cref="FallbackHeight"/> and
 /// the normal delegate returns +Y, so the controller degrades to flat-at-fallback rather than throwing. Choose

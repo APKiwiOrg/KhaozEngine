@@ -288,24 +288,33 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// True when <paramref name="m"/> is (within a small epsilon) the identity transform, so a mesh's local-space
-        /// AABB doubles as its world AABB (terrain chunks draw at identity with world-space verts).
+        /// True when <paramref name="m"/>'s upper 3x3 is (within a small epsilon) the identity, so the transform is a
+        /// pure translation and a mesh's local-space AABB offset by <paramref name="translation"/> IS its world AABB.
+        /// That is what the terrain path always produces: a chunk is PLACED at its region origin, never rotated or
+        /// scaled, and its vertices are chunk-local. <paramref name="translation"/> is zero-initialised on the false
+        /// branch, so a caller that ignores the result cannot read a stale offset.
         /// <para>
         /// It lives in this file because it is the clearest thing the subtraction point protects. Had the reduction
-        /// happened at SUBMISSION rather than on the GPU-bound copy, every terrain chunk in the world would carry a
-        /// <c>-origin</c> translation, fail this test permanently, and fall to the far more conservative bounding-
-        /// sphere cull for the rest of the program's life: a silent, whole-scene overdraw regression that no golden
-        /// would ever show. <c>_instanceData</c> staying absolute is what keeps this returning true.
+        /// happened at SUBMISSION rather than on the GPU-bound copy, every terrain chunk in the world would carry an
+        /// extra <c>-origin</c> in this translation, so the cull would test a render-relative box against an absolute
+        /// frustum and every chunk would vanish. <c>_instanceData</c> staying absolute is what keeps the offset here
+        /// absolute. (Before the chunk-local terrain bake this was an IDENTITY test, and the same protection applied
+        /// to it: a submission-point subtraction would have failed it permanently and dropped the whole scene to the
+        /// conservative bounding-sphere cull, silently, with no golden change.)
         /// </para>
         /// </summary>
-        static bool IsIdentityTransform(in Matrix4x4 m)
+        static bool IsPureTranslation(in Matrix4x4 m, out Vector3 translation)
         {
             const float e = 1e-5f;
-            return MathF.Abs(m.M11 - 1f) < e && MathF.Abs(m.M22 - 1f) < e && MathF.Abs(m.M33 - 1f) < e && MathF.Abs(m.M44 - 1f) < e
+            translation = default;
+            bool linearIsIdentity =
+                MathF.Abs(m.M11 - 1f) < e && MathF.Abs(m.M22 - 1f) < e && MathF.Abs(m.M33 - 1f) < e && MathF.Abs(m.M44 - 1f) < e
                 && MathF.Abs(m.M12) < e && MathF.Abs(m.M13) < e && MathF.Abs(m.M14) < e
                 && MathF.Abs(m.M21) < e && MathF.Abs(m.M23) < e && MathF.Abs(m.M24) < e
-                && MathF.Abs(m.M31) < e && MathF.Abs(m.M32) < e && MathF.Abs(m.M34) < e
-                && MathF.Abs(m.M41) < e && MathF.Abs(m.M42) < e && MathF.Abs(m.M43) < e;
+                && MathF.Abs(m.M31) < e && MathF.Abs(m.M32) < e && MathF.Abs(m.M34) < e;
+            if (!linearIsIdentity) return false;
+            translation = new Vector3(m.M41, m.M42, m.M43);
+            return true;
         }
 
         /// <summary>

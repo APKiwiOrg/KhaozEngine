@@ -15,16 +15,22 @@ namespace KhaozEngine.Terrain
     /// collision faces at chunk seams. <see cref="TerrainChunkMesh.SurfaceVertexCount"/> is the count of leading
     /// grid vertices before the appended skirt vertices, so a triangle is a surface triangle exactly when all
     /// three of its indices are below that count.</para>
-    /// <para>A Bepu <c>Mesh</c> is NOT recentered (unlike a convex hull or cylinder), so the world-space chunk
-    /// vertices are used directly with an identity pose: the collision surface lines up with the visual surface
-    /// with no offset. Verify by raycasting down against the surface in tests, per the gotcha.</para></summary>
+    /// <para>A Bepu <c>Mesh</c> is NOT recentered (unlike a convex hull or cylinder), so the chunk's vertices are
+    /// used exactly as built and the STATIC'S POSE carries the placement. Since the chunk-local bake those vertices
+    /// are chunk-local in X/Z (absolute in Y), so the pose is the chunk's region origin, not
+    /// <see cref="Pose.Identity"/>: see <see cref="ChunkTerrainCollision"/>, which is the registration path that
+    /// applies it. That is what makes terrain collision precise at range - Bepu transforms a query into the mesh's
+    /// local space using the static's pose, so every triangle test runs at chunk magnitude (60 m by default) however
+    /// far out the chunk sits, instead of on the 7.8 mm float32 lattice a 100 km vertex was baked onto. Verify by
+    /// raycasting down against the surface in tests, per the gotcha.</para></summary>
     public static class TerrainChunkCollision
     {
         /// <summary>Build a static-collision triangle mesh for a meshed chunk. The vertices are the chunk's
-        /// world-space surface positions and the indices are its surface triangles (skirts excluded). The mesh is
-        /// placed at the world origin with identity orientation, so pass <see cref="Pose.Identity"/> (or the
-        /// default) when registering it: the vertices already carry their world position. Returns <c>null</c> when
-        /// the chunk has no surface triangles (an empty chunk), so the caller can skip registration.</summary>
+        /// CHUNK-LOCAL surface positions (absolute Y) and the indices are its surface triangles (skirts excluded).
+        /// Register it at the chunk's region origin (<c>Pose.At(new Vector3(region.OriginX, 0, region.OriginZ))</c>,
+        /// which is what <see cref="ChunkTerrainCollision.Add"/> does), NOT at <see cref="Pose.Identity"/>: the
+        /// vertices no longer carry their world position. Returns <c>null</c> when the chunk has no surface
+        /// triangles (an empty chunk), so the caller can skip registration.</summary>
         public static TriangleMeshShape? Build(TerrainChunkMesh chunk)
         {
             if (chunk is null) throw new ArgumentNullException(nameof(chunk));
@@ -32,10 +38,11 @@ namespace KhaozEngine.Terrain
         }
 
         /// <summary>Build a static-collision triangle mesh from a raw chunk <see cref="GltfMesh"/> and the count of
-        /// leading surface vertices (skirts are the appended vertices at or beyond
-        /// <paramref name="surfaceVertexCount"/>). A triangle whose three indices are all below the surface count
-        /// is kept; any triangle touching a skirt vertex is dropped. Returns <c>null</c> when no surface triangle
-        /// survives.</summary>
+        /// leading surface vertices. The vertices are taken verbatim, so they are in whatever space the mesh is in
+        /// (chunk-local for a <see cref="TerrainChunkBuilder"/> chunk) and the caller's pose supplies the placement.
+        /// <para>Skirts are the appended vertices at or beyond <paramref name="surfaceVertexCount"/>. A triangle
+        /// whose three indices are all below the surface count is kept, and any triangle touching a skirt vertex
+        /// is dropped. Returns <c>null</c> when no surface triangle survives.</para></summary>
         public static TriangleMeshShape? Build(GltfMesh mesh, int surfaceVertexCount)
         {
             if (mesh is null) throw new ArgumentNullException(nameof(mesh));

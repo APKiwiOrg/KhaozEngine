@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Terrain
@@ -14,10 +15,11 @@ namespace KhaozEngine.Terrain
     internal static class ChunkTerrainCollision
     {
         /// <summary>Build the chunk's surface collision mesh and, if it has any surface triangles, add it as a
-        /// static body at <see cref="Pose.Identity"/> (the mesh vertices already carry their world position - a
-        /// Bepu mesh is not recentered). The handle is returned so the caller can record it for removal.
-        /// <paramref name="handle"/> is set and the method returns true when a body was added; it returns false
-        /// (and does not set a handle) for an empty chunk with no surface triangles.</summary>
+        /// static body at the chunk's REGION ORIGIN. The mesh vertices are chunk-local (a Bepu mesh is not
+        /// recentered, so they are used verbatim) and the pose supplies the placement, which is what keeps every
+        /// triangle test at chunk magnitude however far out the chunk sits. The handle is returned so the caller can
+        /// record it for removal. <paramref name="handle"/> is set and the method returns true when a body was
+        /// added, and it returns false (and sets no handle) for an empty chunk with no surface triangles.</summary>
         internal static bool Add(IPhysicsWorld physics, TerrainChunkMesh chunk, out StaticHandle handle)
         {
             if (physics is null) throw new ArgumentNullException(nameof(physics));
@@ -26,7 +28,10 @@ namespace KhaozEngine.Terrain
             TriangleMeshShape? mesh = TerrainChunkCollision.Build(chunk);
             if (mesh is null) { handle = default; return false; }
 
-            handle = physics.AddStatic(mesh, Pose.Identity);
+            // The region origin is ABSOLUTE, so it is reduced by the world's own origin: a rebased world speaks a
+            // frame-local space, and a chunk streamed in after the rebase must land in it like everything else.
+            TerrainChunkRegion region = chunk.Region;
+            handle = physics.AddStatic(mesh, Pose.At(new Vector3(region.OriginX, 0f, region.OriginZ) - physics.Origin));
             return true;
         }
 

@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Terrain;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -217,6 +218,90 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(WorldFrame.Nearest(latched).Anchor, latched);   // quantized, so it cannot jitter per frame
             Assert.NotEqual(Vector3.Zero, latched);                      // the camera really is far from the origin
             Assert.Equal(latched, duringFrame);
+        }
+
+        /// <summary>
+        /// The terrain half, which camera-relative rendering alone could not fix: the vertices were baked absolute,
+        /// so at 100 km the grid positions were already quantized to that magnitude's 7.8 mm float32 lattice before
+        /// anything rendered them. Chunk-local vertices plus a per-chunk placement matrix put the same geometry on
+        /// the same lattice wherever the chunk sits, and this renders both and compares.
+        /// <para>Deliberately close-up and grazing, for the same reason as the box close-up above: at a broad
+        /// top-down zoom a 7.8 mm vertex displacement is a fraction of a pixel and both paths would pass.</para>
+        /// </summary>
+        // A height field whose shape depends only on the offset from a reference point, so the SAME terrain can be
+        // meshed at the origin and at 100 km and the two are comparable at all. A world-space preset is not
+        // translation-invariant (its noise is keyed on the absolute coordinate), so it would produce two different
+        // hills and the comparison would mean nothing.
+        sealed class LocalBumps : ITerrainFeature
+        {
+            readonly float _refX, _refZ;
+            public LocalBumps(float refX, float refZ) { _refX = refX; _refZ = refZ; }
+            public float Apply(float x, float z, float h) =>
+                1.5f * MathF.Sin((x - _refX) * 0.35f) * MathF.Cos((z - _refZ) * 0.27f);
+        }
+
+        static byte[] RenderTerrain(Vector3 at)
+        {
+            var field = new TerrainField(new TerrainConfig
+            {
+                GentleAmplitude = 0f,
+                Biomes = new[] { new BiomeBand { Start = float.NegativeInfinity, End = float.PositiveInfinity, BaseHeight = 0f, HillAmplitude = 0f } },
+                Features = new ITerrainFeature[] { new LocalBumps(at.X, at.Z) },
+            });
+            var region = new TerrainChunkRegion { OriginX = at.X, OriginZ = at.Z, Size = 32f };
+            TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod: 0);
+
+            MeshHandle h = default;
+            return Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    // The untextured (vertex-colour ramp) path deliberately: the splat shader's triplanar UV is
+                    // anchored to the ABSOLUTE world position, which this release explicitly does not fix, so a
+                    // textured comparison would measure that known residual instead of the geometry.
+                    h = scene.LoadTerrainChunk(chunk);
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = false;
+                    scene.Post.BackgroundColor = new Color(0.04f, 0.05f, 0.07f, 1f);
+                    scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
+                    scene.Camera.Azimuth = 0.37f;
+                    scene.Camera.Elevation = 0.30f;                       // grazing, so vertex displacement shows
+                    scene.Camera.Target = at + new Vector3(16f, 0f, 16f);
+                    scene.Camera.OrthoSize = 3.0f;
+                    scene.Camera.Distance = 40f;
+                    scene.Camera.NearPlane = 0.05f;
+                    scene.Camera.FarPlane = 200f;
+                    scene.Camera.AspectRatio = (float)W / H;
+                },
+                drawFrame: scene => scene.DrawTerrainChunk(h, region),
+                frames: 2);
+        }
+
+        [GpuFact]
+        public void Golden3D_FarFromOrigin_TerrainGeometryIsPreciseAtRange()
+        {
+            // The chunk-local bake, rendered end to end: the same chunk shape meshed at the origin and at 100 km
+            // draws the same image, through the placement matrix rather than through baked-in vertex coordinates.
+            // It commits no reference grid (it compares two grids it rendered itself, like its siblings above), so
+            // it needs no cross-backend bake.
+            //
+            // What it binds is the PLACEMENT PATH: chunk-local vertices reaching the screen at the right place, at
+            // range, with the cull's pure-translation fast path in force. It is not a discriminator against the old
+            // absolute bake, and saying so is worth more than implying otherwise: at this zoom one 7.8 mm vertex
+            // quantum is a fraction of a pixel, and the old bake rendered at range too (release 1's reduction rides
+            // the model matrix, so an identity-drawn absolute chunk was reduced by the origin just the same). The
+            // assertion that DOES pin the bake numerically is headless and bit-exact - see
+            // TerrainChunkBuilderTests.Vertices_are_chunk_local_however_far_out_the_chunk_sits, where the far
+            // chunk's planar lattice is compared against the origin chunk's exactly rather than through a camera.
+            float[] origin = GoldenCompare.Downsample(RenderTerrain(Vector3.Zero), W, H);
+            float[] far = GoldenCompare.Downsample(RenderTerrain(Far), W, H);
+
+            Assert.True(WorstCellDelta(origin, new float[origin.Length]) > 0.3f,
+                "the terrain rendered nothing bright enough to be meaningful: the comparison below is vacuous");
+
+            float worst = WorstCellDelta(origin, far);
+            Assert.True(worst <= GoldenCompare.Tolerance,
+                $"the terrain chunk at {Far} differs from the same chunk at the origin by {worst} " +
+                $"(tolerance {GoldenCompare.Tolerance}): the chunk-local bake is not holding at range.");
         }
 
         [GpuFact]

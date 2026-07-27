@@ -24,7 +24,7 @@ namespace KhaozEngine.Physics.Bepu;
 /// (null dispatcher, fixed SolveDescription, per-step gravity applied uniformly). The only assembly in the
 /// engine that references BepuPhysics; consumers depend on the dependency-free <c>KhaozEngine.Physics</c> seam
 /// and add this backend explicitly, matching the Netcode.LiteNetLib / WorldStore.Sqlite pattern.</summary>
-public sealed class BepuPhysicsWorld : IPhysicsWorld
+public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 {
     /// <summary>Standard Earth gravity (m/s^2, -Y) used when no gravity is supplied to the constructor.</summary>
     public static readonly Vector3 DefaultGravity = new(0f, -9.81f, 0f);

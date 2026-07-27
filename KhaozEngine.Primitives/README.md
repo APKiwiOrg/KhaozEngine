@@ -49,7 +49,9 @@ automatically, so this is transparent to every other package.
   different world positions from the same bytes. `MaxLocalRadius` is the sizing ceiling the measured divergence
   budget gives (`Divergence20sUlps` ULPs of the coordinate per 20 s window against `DivergenceBudgetMetres`).
   `default` is the world origin, so a game that never leaves it is byte-identical to the pre-frame engine. Y is
-  NEVER framed. `Scene3D.RenderOrigin` uses `Nearest(...).Anchor` for camera-relative rendering.
+  NEVER framed. `Scene3D.RenderOrigin` uses `Nearest(...).Anchor` for camera-relative rendering, and on the
+  simulation side it is the stamp `ReplicatedPosition.Frame` carries and the frame a `WorldServer` island
+  anchors to (`WorldServerConfig.FrameAnchoring`).
 - `IDesignViewport` - the fakeable design-viewport seam (design size, scale + letterbox offset,
   screen to design mapping, and the `DesignBounds`/`ContentBounds`/`WindowBounds` rects) that rendering,
   layout, and headless tests target. Moved here from Windowing in 9.0.0, which carries the concrete

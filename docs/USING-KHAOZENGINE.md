@@ -2052,10 +2052,10 @@ scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // sti
 - **Warning:** `camera.View` and `camera.ViewProjection` return RELATIVE matrices once a render origin has
   latched. For your own CPU spatial math (frustum culling, picking against your own bounds, and similar), use
   the camera's `AbsoluteViewProjection` instead.
-- What it does NOT fix: terrain chunk vertices are baked in absolute world space, so terrain geometry and terrain
-  collision at range are a later release. Triplanar terrain texturing at range is preserved rather than improved
-  (the shader reconstructs the absolute position for it). Depth precision at range is governed by the near-to-far
-  ratio and is unrelated. Nothing about simulation changes.
+- What it does NOT fix: triplanar terrain texturing at range is preserved rather than improved (the shader
+  reconstructs the absolute position for it). Depth precision at range is governed by the near-to-far ratio and is
+  unrelated. Nothing about simulation changes here - the simulation side is the island frame below. Terrain chunk
+  VERTICES were the other half and are fixed separately, by the chunk-local bake (also below).
 
 If you write your own renderer against `Transform3D`, `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix
 directly. You do not need it for `Scene3D`, which reduces the absolute matrix you hand it. Calling both
@@ -2519,7 +2519,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       10 units at 90 out to 22 at the far edge. The trade is that the mesh is camera-relative, so vertices slide
       through the wave field as the camera moves. On a small water body the camera can see all of, turn the bias
       down or leave it at 1.
-    - `WaterGridMode.Clipmap` (since 16.11.0): concentric square rings, each at twice the previous ring's
+    - `WaterGridMode.Clipmap` (since 16.12.0): concentric square rings, each at twice the previous ring's
       world-space cell size, every vertex SNAPPED to its own ring's lattice in world space. For a sub-cell camera
       step nothing moves at all, and a larger step moves a ring by a whole even number of its own cells, which
       maps its lattice onto itself - so the surface is not resampled as the camera travels. **That slide is not a
@@ -3709,6 +3709,11 @@ flag on `Scene3DChunkSink` (requires a `physics` world), then swap the ground de
 face is collidable) if you want the shape directly. A Bepu mesh is one-sided and not recentered, so terrain
 must present its top face up (the helper handles this) and is registered at `Pose.Identity`.
 
+**Running this behind a framed `WorldServer` (`FrameAnchoring` on)?** Set `WorldServerConfig.SamplerSpace =
+SamplerSpace.Frame`, not the default: `probe` reads the island's own rebased `IPhysicsWorld` in its own rebased
+space, and the default `SamplerSpace.World` silently misses every ray and flattens the ground (see the
+`FrameAnchoring` section above).
+
 **Server-authoritative AI agents move with the player's collision (`CharacterMovement.StepTowards`, 10.64.0).**
 A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
 collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the slope gate,
@@ -3757,7 +3762,14 @@ On the client, `KhaozEngine.Terrain.Render3D` (in the `Game3D` umbrella) meshes 
     var region = new TerrainChunkRegion { OriginX = cx, OriginZ = cz, Size = TerrainChunkRegion.DefaultSize };
     TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod);
     var handle = scene.LoadTerrainChunk(chunk);            // cache this; rebuild cadence is streaming's job
-    scene.DrawTerrainChunk(handle);                        // each frame
+    scene.DrawTerrainChunk(handle, region);                // each frame: the region PLACES the chunk
+
+Chunk vertices are **chunk-local** in X/Z (absolute in Y), so the region has to travel with the handle: the draw
+turns it into a pure translation, and the same origin is the pose of the chunk's collision static. That is what
+keeps terrain geometry and terrain collision as precise 100 km out as at the origin, where baking the placement
+into the vertex would have quantized it to that magnitude's 7.8 mm float32 lattice before anything rendered or
+collided with it. The parameterless `DrawTerrainChunk(handle)` is obsolete: it is correct only for a region at
+(0, 0). `TerrainChunkBounds` is chunk-local for the same reason - offset it by the region origin for a world box.
 
 Each chunk is a Render3D `GltfMesh` with ~0.3 m edge skirts to hide cracks where a dense chunk meets a coarse
 neighbour, a `TerrainChunkBounds` AABB for frustum culling, and per-vertex splat weights (grass/dirt/rock/sand/snow
@@ -4547,6 +4559,21 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 - `DynamicBodyDescription(float mass)` / `DynamicBodyDescription.WithMass(mass)`, with optional
   `LinearVelocity`, `AngularVelocity`, `SleepThreshold` (negative = backend default, 0 = never sleep). Mass &lt;= 0
   is an infinite-mass (kinematic) body: gravity and impacts do not move it, but its velocity does.
+- `IPhysicsWorld` floating origin (default interface members, so an existing backend or test double keeps
+  compiling and reports `CanRebase == false`): `Origin -> Vector3` is the world-space point this world's
+  coordinates are expressed against (`Vector3.Zero` = absolute world coordinates, the state of every world until
+  something rebases it), `CanRebase -> bool`, and `Rebase(Vector3 newOrigin)` re-expresses the whole world -
+  every static, every body awake or asleep, every world-space constraint anchor - and adopts the new origin
+  atomically. Velocities, sleep state, contacts and constraints all survive, and nothing inside the world can observe
+  it. Call it BETWEEN steps, and check `CanRebase` first (the default throws). **If you pass absolute coordinates
+  to a world that may have been rebased, convert at the call site:**
+
+      StaticHandle h = world.AddStatic(shape, new Pose(absolute - world.Origin, rotation));
+      if (world.Raycast(from - world.Origin, dir, 50f, out RayHit hit)) { /* hit.Distance is frame-invariant */ }
+
+  The engine's own streaming sinks (`ChunkStatics`, `ChunkDynamics`, terrain chunk collision) and
+  `FollowCamera3D`'s occlusion sweep already do this, and `WorldServer` rebases its own island's world for you
+  when `FrameAnchoring` is on.
 - `Pose(Vector3 position, Quaternion orientation)` / `Pose.At(Vector3 position)` (identity orientation).
 - `PhysicsMaterial(float Friction, float Restitution)`. `PhysicsMaterial.Default` = full friction, no bounce.
   A dynamic body's `Restitution` (0..1) drives an approximate, deterministic game-feel bounce that decays
@@ -4610,7 +4637,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.11.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.12.0" />
 ```
 
 ```csharp
@@ -5160,7 +5187,7 @@ int lod = TerrainLod.PickLod(distanceToCamera);
 var region = new TerrainChunkRegion { OriginX = cx, OriginZ = cz, Size = TerrainChunkRegion.DefaultSize };
 TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod);
 var handle = scene.LoadTerrainChunk(chunk, splatHandle);   // textured overload
-scene.DrawTerrainChunk(handle);
+scene.DrawTerrainChunk(handle, region);                   // the region places the chunk-local vertices
 ```
 
 **3. Unload when done.** Call `scene.UnloadSplatMaterial(splatHandle)` to free the GPU texture arrays (the
@@ -6552,6 +6579,55 @@ foreach (EntityRenderState e in client.Snapshot())
     }
 batch.End();
 ```
+
+### Simulating far from the world origin (`WorldServerConfig.FrameAnchoring`, opt-in)
+
+Camera-relative rendering fixes how a distant world LOOKS. This fixes how it SIMULATES. At 100 km one float32
+step is 7.8 mm, and the movement step's carried position accumulates that quantum every tick: measured on
+production code, a 20 s run diverges about 1.7 m at 100 km against 0 mm at the origin. The fix is to keep the
+magnitude small rather than to widen the type.
+
+A simulation **island** is one `World` plus one `IPhysicsWorld`, and a frame is a property of that SPACE, never
+of an entity in it (two entities in one physics world cannot disagree about where its colliders are). The flat
+`WorldServer` is exactly one island, so it has exactly one frame and it follows one player.
+
+```csharp
+var config = new WorldServerConfig
+{
+    FrameAnchoring = true,                    // off by default
+    SamplerSpace = SamplerSpace.World,        // the default: your samplers keep taking absolute coordinates
+};
+var server = new WorldServer(transport, config, groundHeight, tuning, physics: bepuWorld);
+
+server.FrameChanged += (from, to, delta) => myOwnColliderIndex.Translate(delta);   // usually nothing to do
+```
+
+- **Adoption is a flag.** Positions in and out stay ABSOLUTE: `TryGetPlayerState`, `PlayerLeaving`, `ListOnline`,
+  `ReplicatedPosition.Value`, the interest grid and the wire are all world metres, whatever frame the island is
+  in. Persisted records are unchanged. Read `WorldServer.IslandFrame` if you want the frame itself.
+- **`SamplerSpace.World`** (the default) means your `groundHeight` / `groundNormal` / medium delegates keep taking
+  absolute coordinates and the step converts for them. That is zero work and still fixes the accumulating half,
+  because the carried state is what compounds. **`SamplerSpace.Frame`** passes frame-local coordinates straight
+  through, the full fix, for a game whose ground follow already comes from the island's own physics world.
+  `WorldBounds` is the exception neither mode governs: a play area is authored content, so the step always
+  converts for it. **`SamplerSpace.World` is wrong, not merely imprecise, once your `groundHeight`/`groundNormal`
+  come from `PhysicsGroundProbe` over the island's own `IPhysicsWorld` (the unified-terrain path)**: that world is
+  rebased with the frame, so it raycasts in rebased space, and `SamplerSpace.World` wraps every call back out to
+  absolute coordinates first. Every ray misses, the probe silently falls back to `FallbackHeight` and a +Y normal,
+  and the ground normal (and its slope gate) goes flat without an error. Set `SamplerSpace.Frame` whenever the
+  sampler is physics-backed.
+- **The physics world is rebased with the frame**, so a query never crosses spaces. It therefore has to be able
+  to rebase: constructing with `FrameAnchoring` and an `IPhysicsWorld` whose `CanRebase` is false throws, because
+  a framed step querying an unframed world is a wrong answer rather than an imprecise one. Anything you register
+  in that world through the engine's own streaming sinks moves with it for free.
+- **Do NOT enable it against a networked client.** The wire carries absolute positions in this release and the
+  client predicts in absolute coordinates, so a server stepping in a 136 m frame while its client steps at 100 km
+  produces two trajectories from two spaces and the reconciliation error GROWS. It is for a single-player or
+  single-region game with no reconciled client, and for testing. There is no `ShardedWorldServerConfig.FrameAnchoring`
+  yet either: the sharded head hands ONE physics world to every cell, so a cell stepping in its own frame would
+  query colliders sitting in another.
+- **What it does not need:** any change to your terrain bake or your collision meshes. Chunk-local terrain
+  vertices (see the Terrain section) are unconditional and work on both heads with this flag off.
 
 ### Sharded authoritative server (many players / a large world)
 

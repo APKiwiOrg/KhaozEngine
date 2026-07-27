@@ -34,8 +34,8 @@ namespace KhaozEngine.Tests.Gpu
         static byte[] CaptureNearSplat()
         {
             var field = new TerrainField(TerrainPresets.Clearing());
-            var chunk = TerrainChunkBuilder.Build(
-                field, new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f }, lod: 0);
+            var region = new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f };
+            var chunk = TerrainChunkBuilder.Build(field, region, lod: 0);
 
             MeshHandle h = default;
             return Render3DSnapshot.Capture(W, H,
@@ -47,7 +47,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Outline = true;
                     scene.Camera.Frame(new Vector3(16f, 1f, 16f), new Vector3(16f, 26f, 16.4f));
                 },
-                drawFrame: scene => scene.DrawTerrainChunk(h));
+                drawFrame: scene => scene.DrawTerrainChunk(h, region));
         }
 
         // Distance/mip view: the grazing perspective camera over a receding strip of chunks textured with the
@@ -90,7 +90,8 @@ namespace KhaozEngine.Tests.Gpu
                     cam.Pitch = cam.MinPitch;   // ~6 deg above horizontal: a grazing look across the ground
                     scene.CameraOverride = cam;
                 },
-                drawFrame: scene => { foreach (var h in handles) scene.DrawTerrainChunk(h); });
+                // Handles are appended in region order, so index i places chunk i (vertices are chunk-local).
+                drawFrame: scene => { for (int i = 0; i < handles.Count; i++) scene.DrawTerrainChunk(handles[i], regions[i]); });
         }
 
         [GpuFact]

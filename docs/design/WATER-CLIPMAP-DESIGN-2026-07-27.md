@@ -1,6 +1,6 @@
 # World-locked water grid and mipped cascade maps
 
-Design rationale for the 16.11.0 fix to the FFT ocean's camera-motion boiling
+Design rationale for the 16.12.0 fix to the FFT ocean's camera-motion boiling
 ([#296](https://github.com/APKiwiOrg/KhaozEngine/issues/296), with the mipped-maps prerequisite
 [#344](https://github.com/APKiwiOrg/KhaozEngine/issues/344)). Shipped API lives in `CHANGELOG.md`,
 `docs/USING-KHAOZENGINE.md` and `KhaozEngine.Render3D/README.md`; this file is the why.

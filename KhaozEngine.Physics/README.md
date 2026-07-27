@@ -13,6 +13,24 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   `SweepCapsule` (nearest time of impact, what the swept collide-and-slide in `Locomotion` uses),
   `ComputePenetration` (minimum translation to separate an overlapping capsule). Dynamic-body stepping is
   deterministic under a fixed dt.
+- **Floating origin: `Origin` / `CanRebase` / `Rebase(newOrigin)`** - default interface members, so an existing
+  backend or test double keeps compiling and correctly reports that it cannot rebase. `Origin` is the world-space
+  point this world's coordinates are expressed against: every pose passed in, every query coordinate, and every
+  pose read back is relative to it. `Vector3.Zero` (the default) means the world speaks absolute world coordinates,
+  which is what a backend does until something rebases it. `Rebase(newOrigin)` re-expresses the whole world against
+  a new origin, translating every static, every body (awake AND sleeping) and every world-space constraint anchor,
+  then adopting the origin. Velocities, sleep state, contacts and constraints all survive: it is a change of
+  coordinate space, not a physical event, and nothing inside the world can observe it. It takes the TARGET origin
+  rather than a delta so the contents and `Origin` move as one atomic operation, and it must be called BETWEEN
+  steps. Check `CanRebase` first (the default `Rebase` throws).
+  **A caller that speaks absolute converts at the call site**: `world.AddStatic(shape, new Pose(absolute - world.Origin, rot))`,
+  `world.Raycast(from - world.Origin, ...)` (a direction and a hit distance are frame-invariant, so only the
+  position converts). A site that forgets is a site that never read `Origin`, which is greppable. The engine's own
+  streaming sinks and the follow camera's occlusion sweep already do this. **`PhysicsGroundProbe`/`PhysicsColumnProbe`
+  are the same contract, not an exception**: their `Height`/`Normal`/`Sample` take `(x, z)` straight into `Raycast`
+  with no conversion of their own, so on a rebased world the caller must already have reduced by `Origin` before
+  calling in (on a framed `WorldServer` that means `SamplerSpace.Frame`, so the stepper hands them frame-local
+  coordinates rather than wrapping them back out to absolute).
 - **`ConstraintDescription`** - a discriminated joint description for `AddConstraint`: a `ConstraintKind`
   (`BallSocket`, `Hinge`, `Slider`, `Distance`, `Weld`) plus body-local anchors/axes and the fields that kind
   uses. Prefer the factories `BallSocketJoint`/`HingeJoint`/`SliderJoint`/`DistanceJoint`/`WeldJoint`, then

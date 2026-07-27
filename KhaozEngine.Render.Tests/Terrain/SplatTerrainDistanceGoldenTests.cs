@@ -75,7 +75,8 @@ namespace KhaozEngine.Tests.Terrain
                     cam.Pitch = cam.MinPitch;   // ~6 deg above horizontal: a grazing look across the ground
                     scene.CameraOverride = cam;
                 },
-                drawFrame: scene => { foreach (var h in handles) scene.DrawTerrainChunk(h); });
+                // Handles are appended in region order, so index i places chunk i (vertices are chunk-local).
+                drawFrame: scene => { for (int i = 0; i < handles.Count; i++) scene.DrawTerrainChunk(handles[i], regions[i]); });
 
             // ---- Analyse the frame in two horizontal bands: a NEAR band (magnified foreground, big smooth checker
             //      cells -> low local energy) and a FAR band (minified distant ground just below the horizon). A

@@ -131,7 +131,9 @@ namespace KhaozEngine.Showcase
 
         TerrainField _field = null!;
         TerrainCollision _terrain = null!;
-        readonly List<MeshHandle> _chunks = new();
+        // The uploaded chunk plus the square it meshes: chunk vertices are chunk-local, so the region is what places
+        // the draw. This room builds its grid directly instead of through Scene3DChunkSink, so it carries its own.
+        readonly List<(MeshHandle Mesh, TerrainChunkRegion Region)> _chunks = new();
         MeshHandle _capsule;
 
         // Per-player animated avatars driven by the position stream the netcode surfaces (ReplicatedCharacterAnimators):
@@ -181,7 +183,7 @@ namespace KhaozEngine.Showcase
                 {
                     var region = new TerrainChunkRegion { OriginX = gx * size, OriginZ = gz * size, Size = size };
                     var chunk = TerrainChunkBuilder.Build(_field, region, lod: 0);
-                    _chunks.Add(_scene.LoadTerrainChunk(chunk));
+                    _chunks.Add((_scene.LoadTerrainChunk(chunk), region));
                 }
 
             _capsule = _scene.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
@@ -318,8 +320,8 @@ namespace KhaozEngine.Showcase
         {
             if (!_built) return;
 
-            foreach (var chunk in _chunks)
-                scene.DrawTerrainChunk(chunk);
+            foreach ((MeshHandle mesh, TerrainChunkRegion region) in _chunks)
+                scene.DrawTerrainChunk(mesh, region);
 
             if (_animated && _animators is not null)
             {
@@ -359,7 +361,7 @@ namespace KhaozEngine.Showcase
 
             _scene.UnloadMesh(_capsule);
             if (_animated) _scene.UnloadSkinnedMesh(_characterMesh);
-            foreach (MeshHandle h in _chunks) _scene.UnloadMesh(h);
+            foreach ((MeshHandle mesh, TerrainChunkRegion _) in _chunks) _scene.UnloadMesh(mesh);
             _chunks.Clear();
 
             _scene.CameraOverride = null;

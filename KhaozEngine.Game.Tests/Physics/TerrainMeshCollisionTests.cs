@@ -245,6 +245,106 @@ public class TerrainMeshCollisionTests
     // Determinism: identical worlds with the terrain mesh + dropped body stay bit-identical.
     // ---------------------------------------------------------------------
 
+    // ---------------------------------------------------------------------
+    // A terrain chunk 100 km from the origin. Every terrain physics test above sits at origin 0, which is exactly
+    // why the chunk-local bake could have shipped broken: the vertices and the static's pose have to agree about
+    // which space they are in, and nothing else in the suite says so.
+    //
+    // What these two bind, stated so nobody over-reads them: the vertex space against the pose. Registering
+    // chunk-local vertices at Pose.Identity (or absolute vertices at the region pose) puts the terrain 100 km from
+    // where it belongs and both fail loudly - checked by making exactly that mismatch. What they do NOT show is the
+    // pre-bake pipeline failing: an absolute chunk registered at Pose.Identity is self-consistent, and Bepu's
+    // downward ray against a near-horizontal triangle stays sub-millimetre even on 100 km operands, so both
+    // representations answer this particular query. The bake's collision win is the geometry (an exact 60 m vertex
+    // lattice instead of one jittered onto the 7.8 mm float32 lattice) and the magnitude every triangle test runs
+    // at, which is a grazing-sweep and contact-generation property this axis-aligned probe cannot see.
+    // ---------------------------------------------------------------------
+
+    // A planar ramp field: height depends only on X, with a slope we know exactly, so the meshed surface
+    // reproduces the field EXACTLY (a triangulated plane is a plane) and any residual is measurement, not
+    // tessellation. The ramp is measured from refX so the heights stay small however far out the chunk is. It is
+    // still a pure function of (x, z), which is what ITerrainFeature requires.
+    sealed class RampFeature : ITerrainFeature
+    {
+        readonly float _refX, _slope;
+        public RampFeature(float refX, float slope) { _refX = refX; _slope = slope; }
+        public float Apply(float x, float z, float h) => _slope * (x - _refX);
+    }
+
+    static TerrainField RampField(float refX, float slope) => new(new TerrainConfig
+    {
+        GentleAmplitude = 0f,
+        Biomes = new[] { new BiomeBand { Start = float.NegativeInfinity, End = float.PositiveInfinity, BaseHeight = 0f, HillAmplitude = 0f } },
+        Features = new ITerrainFeature[] { new RampFeature(refX, slope) },
+    });
+
+    [Fact]
+    public void TerrainRaycast_At100Km_HitsTheFieldHeight_WithOnlyTheQueryQuantumLeft()
+    {
+        const float far = 100_000f;          // binade [65536, 131072): one float32 ULP is 7.8 mm
+        const float ulp = 7.8125e-3f;
+        const float slope = 0.05f;           // 1-in-20: gentle enough that the residual below is sub-millimetre
+
+        var region = new TerrainChunkRegion { OriginX = far, OriginZ = far, Size = 60f };
+        TerrainField field = RampField(far, slope);
+        TerrainChunkMesh chunk = TerrainChunkBuilder.Build(field, region, lod: 0);
+
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        Assert.True(ChunkTerrainCollision.Add(world, chunk, out _));
+
+        // The point the test MEANS, in double, and the float32 coordinates the ray can actually carry.
+        const double intendedX = far + 30.123456789, intendedZ = far + 21.987654321;
+        float rayX = (float)intendedX, rayZ = (float)intendedZ;
+
+        Assert.True(world.Raycast(new Vector3(rayX, 500f, rayZ), -Vector3.UnitY, 1000f, out RayHit hit,
+            QueryFilter.StaticsOnly), "the ray must hit the terrain chunk 100 km out at all");
+        float hitY = 500f - hit.Distance;
+
+        // (a) The assertion that tests the BAKE: against the field at the XZ the ray really carried, not at the
+        //     mathematical point. Two roundings are in play and both are the price of sampling an absolute field:
+        //     the ray's own coordinate, and the builder's sample at OriginX + local. Neither is the triangle test,
+        //     which is what the chunk-local bake moved down to 60 m magnitude.
+        float expected = field.SampleHeight(rayX, rayZ);
+        Assert.True(MathF.Abs(hitY - expected) < 1e-3f,
+            $"hit {hitY:F6} m against the field's {expected:F6} m at the ray's own XZ: {MathF.Abs(hitY - expected) * 1000f:F4} mm out");
+
+        // (b) The residual, recorded as a known bounded property rather than left for a future reader to find as a
+        //     flake: the ray asked about a point up to half a lattice step from the one the test meant, and over a
+        //     slope that is a height difference no amount of chunk-local baking can remove. The bound carries both
+        //     rounding sources from (a).
+        float intended = field.SampleHeight((float)(intendedX - far) + far, (float)(intendedZ - far) + far);
+        float residual = MathF.Abs(hitY - intended);
+        Assert.True(residual <= slope * ulp * 2f,
+            $"the residual against the intended point is {residual * 1000f:F4} mm, past the " +
+            $"{slope * ulp * 2f * 1000f:F4} mm this slope's lateral quantization can explain");
+    }
+
+    [Fact]
+    public void TerrainChunk_At100Km_IsAsPreciseAsTheSameChunkAtTheOrigin()
+    {
+        // The release headline as a comparison rather than a tolerance: the same chunk shape, meshed and collided
+        // at the origin and at 100 km, answers the same downward ray to the same height. Under the pre-bake
+        // absolute vertices this could not hold, because both the vertex buffer and Bepu's triangle test ran on
+        // 100 km operands.
+        const float far = 100_000f, slope = 0.05f;
+
+        static float HitHeight(float originXz, float slopeRef, float localX, float localZ)
+        {
+            var region = new TerrainChunkRegion { OriginX = originXz, OriginZ = originXz, Size = 60f };
+            TerrainField field = RampField(slopeRef, slope);
+            using IPhysicsWorld world = new BepuPhysicsWorld();
+            Assert.True(ChunkTerrainCollision.Add(world, TerrainChunkBuilder.Build(field, region, lod: 0), out _));
+            Assert.True(world.Raycast(new Vector3(originXz + localX, 500f, originXz + localZ), -Vector3.UnitY, 1000f,
+                out RayHit hit, QueryFilter.StaticsOnly));
+            return 500f - hit.Distance;
+        }
+
+        float atOrigin = HitHeight(0f, 0f, 30.125f, 21.5f);
+        float atRange = HitHeight(far, far, 30.125f, 21.5f);
+        Assert.True(MathF.Abs(atOrigin - atRange) < 1e-3f,
+            $"the chunk at 100 km answers {atRange:F6} m where the same chunk at the origin answers {atOrigin:F6} m");
+    }
+
     [Fact]
     public void TwoIdenticalWorlds_DroppedOnTerrain_StepBitIdentically()
     {

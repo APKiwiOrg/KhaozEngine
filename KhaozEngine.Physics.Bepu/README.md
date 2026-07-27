@@ -45,6 +45,19 @@ either value shifts the bit-exact result legitimately.
   pressure. Throws on a stale handle or a motorless joint.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
+- **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
+  direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
+  `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose
+  without waking anything. It enumerates `Bodies.Sets` (every allocated set, so SLEEPING bodies are covered
+  alongside awake ones, as are the shapeless kinematic anchor bodies a world-space constraint end creates) and
+  `Statics.IndexToHandle`. Sleep state, contacts, velocities and constraints all survive: a sleeping crate resting
+  on a translated static stays asleep and moves 0.000000 m over the following steps, and a settled contact stack
+  keeps its contacts. Constraints need nothing special because `ConstraintFactory` converts world poses into
+  body-local offsets at build time, so a uniform translate of both ends preserves every joint exactly.
+  `Statics.ApplyDescription` is deliberately NOT used: its own doc says it forces every sleeping body whose bounds
+  overlap the old or new collidable active, which would wake the world's whole sleeping population on every shift.
+  Cost is O(statics + bodies) pose writes plus refits on the calling thread, budgeted at less than one physics step
+  on the same world.
 
 ## Joints
 

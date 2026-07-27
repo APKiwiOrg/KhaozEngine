@@ -183,8 +183,12 @@ namespace KhaozEngine.Render3D
                     float dist = toEye.Length();
                     if (dist > 1e-6f)
                     {
+                        // The sweep START is a query coordinate, so it is expressed in the physics world's own space
+                        // (IPhysicsWorld.Origin): the camera speaks absolute, and against a rebased world an
+                        // unreduced start silently stops finding anything. The DIRECTION and the returned distance
+                        // are frame-invariant, so only this one operand converts.
                         Vector3 dir = toEye / dist;
-                        if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target), dir, dist,
+                        if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target - world.Origin), dir, dist,
                                 out SweepHit hit, QueryFilter.StaticsOnly))
                             eye = target + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
                     }

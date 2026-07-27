@@ -153,8 +153,11 @@ error is proportional to the distance travelled and so gets worse the faster you
 
 That residual is the ring boundary itself: when a ring snaps, an annulus one coarse cell wide changes which
 level draws it, and therefore which mip it band-limits to. Smoothing it would mean morphing the LOD across a
-transition band (the geoclipmap geomorph), which is a second mechanism with its own tuning and is deliberately
-not in this release. Filed as [#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348).
+transition band (the geoclipmap geomorph), which is a second mechanism with its own tuning and was deliberately
+not in this release. Filed as [#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348), and SHIPPED in
+17.1.0 as `WaterSettings.ClipmapGeomorphBand`, which takes the 0.00086 m residual above to 0.00047 m at its
+default and reproduces this release's grid exactly at 0. Rationale, the measured sweep across the band, and why
+its optimum is structural rather than a taste call: `WATER-SHORE-DESIGN-2026-07-27.md`.
 
 ## Camera-relative rendering
 
@@ -184,8 +187,8 @@ once outside it), since a stitched vertex samples at two positions.
 
 ## Deferred
 
-- **LOD morph across ring boundaries** to remove the remaining 12 per cent
-  ([#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348)).
+- ~~**LOD morph across ring boundaries** to remove the remaining 12 per cent
+  ([#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348)).~~ Shipped in 17.1.0; see above.
 - **A committed golden for the clipmap.** Judged against [#332](https://github.com/APKiwiOrg/KhaozEngine/issues/332):
   a golden would need a per-backend CI bake and would then re-render on both hosted legs on every push, and what
   it buys over the statistical render test is sensitivity to a small LOOK shift on a mode no consumer has adopted

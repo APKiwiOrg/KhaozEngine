@@ -35,6 +35,11 @@ namespace KhaozEngine.Tests.Gpu
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/332">#332</see>), so it runs at 64 texels over
     /// three cascades - small, but the same 0.22 m of finest content the diagnosis measured against.
     /// </para>
+    /// <para>
+    /// <see cref="TheGeomorphBandFadesOutTheRingBoundaryLodSwap"/> is the second acceptance metric on the same
+    /// rig, for <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/348">#348</see>: what is left once a
+    /// world-locked grid has removed the sliding, and how much of THAT the LOD geomorph removes.
+    /// </para>
     /// </summary>
     public sealed class WaterClipmapAcceptanceTests
     {

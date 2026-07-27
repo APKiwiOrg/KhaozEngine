@@ -306,6 +306,9 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.Contains($"const float KE_SHOAL_TANH_LIMIT = {WaterShoaling.TanhArgumentLimit:0.0};", source);
                 Assert.Contains($"const float KE_SURF_BACK_GAIN = {WaterShoaling.BackFaceGain:0.0};", source);
                 Assert.Contains($"const float KE_SURF_MAX_BIAS = {WaterShoaling.MaxCrestBias:0.00};", source);
+                Assert.Contains($"const float KE_SURF_WASH_START = {WaterShoaling.WashStart:0.0};", source);
+                Assert.Contains($"const float KE_SURF_AMP_FLOOR = {WaterShoaling.AmplitudeFloor:0.0};", source);
+                Assert.Contains($"const float KE_SURF_BAND_GATE = {WaterShoaling.BandGate:0.00};", source);
                 Assert.Contains("float oceanShoal(float depth, float band, int cascade)", source);
                 Assert.Contains("float oceanSurfBand(float depth)", source);
                 Assert.Contains("uniform texture2D BathyTex;", source);
@@ -313,7 +316,8 @@ namespace KhaozEngine.Tests.Render3D
             // The surge and its two extra depth taps are FRAGMENT-only: the vertex stage collapses amplitude, it
             // does not paint foam.
             Assert.Contains("float oceanSurge(float riseN, float backFace)", ShaderSources.WaterFrag);
-            Assert.Contains("surf = clamp(surfBand * oceanSurge(riseN, back) * SurfParams.x, 0.0, 1.0);",
+            Assert.Contains("float oceanSurfFoam(float band, float surge)", ShaderSources.WaterFrag);
+            Assert.Contains("surf = clamp(oceanSurfFoam(surfBand, oceanSurge(riseN, back)) * SurfParams.x, 0.0, 1.0);",
                 ShaderSources.WaterFrag);
         }
 

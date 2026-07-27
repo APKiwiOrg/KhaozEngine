@@ -5,6 +5,51 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.11.0
+
+### Terrain and physics hold precision at 100 km, and the flat head can simulate in an island frame
+
+Release 2 of the floating-origin program (#337). Release 1 fixed what the camera sees. This one
+fixes what the world is made of and what the simulation runs on: terrain vertices no longer bake
+absolute coordinates, the physics world can rebase in place, and a flat-head server can opt into
+simulating near a local anchor so movement at 100 km tracks movement at the origin. Measured on the
+real step: over 300 ticks at 100 km an unframed server drifts about 0.47 m from the identical walk
+at the origin, and the framed one tracks it.
+
+- **Chunk-local terrain bake** (`KhaozEngine.Terrain.Render3D`): `TerrainChunkBuilder` emits
+  chunk-local vertices, the region translation moves to the draw
+  (`TerrainScene3D.DrawTerrainChunk(scene, handle, TerrainChunkRegion)`, the handle-only overload is
+  obsolete) and to the collision pose (`TerrainChunkCollision` adds at the region origin), so at
+  100 km the geometry the player sees and walks on is as exact as a chunk at the origin.
+  `Scene3DChunkSink.ChunkLoad` carries the region, `TerrainChunkBounds` is chunk-local and says so,
+  and the terrain cull fast path handles the translated AABB. No golden rebaked, none moved.
+- **`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`**: `IPhysicsWorld.Origin`, `CanRebase`, and
+  `Rebase(Vector3)` as default interface methods (existing implementations unaffected), with the
+  Bepu implementation doing bulk in-place pose writes plus bounds updates across active sets,
+  sleeping islands, and statics. Sleeping bodies stay asleep and keep their contacts, and one rebase
+  costs less than one step.
+- **Flat-head island frames** (`KhaozEngine.NetWorld`): `WorldServerConfig.FrameAnchoring`, default
+  off. On, the server simulates in a `WorldFrame` anchored near its players, re-anchors with the
+  frame's hysteresis, rebases its physics world with it, and converts the play-area clamp in the
+  step. `ReplicatedPosition` gains `Frame` and `Local` with `Value` computed, and the invariant that
+  makes the change safe: an origin-framed absolute is always a valid representation, so a legacy
+  `Value` write yields a correct position with a stale stamp that the next step heals exactly. The
+  wire still carries the absolute position and clients need no change and must not derive a frame.
+  The sharded head is untouched by design, its frames arrive with the wire release.
+- The constructor refuses `FrameAnchoring` over a physics world that cannot rebase, and
+  `WorldServer.FrameChanged` fires after a re-anchor for consumer-held state.
+
+Two adoption notes. A sampler backed by the island's own rebased physics world (the
+`PhysicsGroundProbe` path the docs recommend) requires `SamplerSpace.Frame` when `FrameAnchoring`
+is on, `SamplerSpace.World` is correct only for samplers that genuinely read absolute space such as
+the analytic terrain delegates, and the docs on both probe types now say so. And the handle-only
+`DrawTerrainChunk` overload is `[Obsolete]`, which is a compile error under the fleet's
+warnings-as-errors, move to the region overload when repinning.
+
+Design in `docs/design/FLOATING-ORIGIN-DESIGN-2026-07-27.md`. #337 stays open for the wire release
+(frame-stamped replication, per-cell physics, the reconciliation frame conversion), the program's
+one major.
+
 ## 16.10.0
 
 ### Document residency: tile documents stream around the player on both heads

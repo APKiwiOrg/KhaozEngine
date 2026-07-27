@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Terrain
@@ -27,7 +28,9 @@ namespace KhaozEngine.Terrain
     internal static class ChunkDynamics
     {
         /// <summary>Add every spawn in <paramref name="spawns"/> to <paramref name="physics"/> and append the
-        /// resulting handle to <paramref name="handles"/>.</summary>
+        /// resulting handle to <paramref name="handles"/>. A spawn pose is ABSOLUTE world coordinates (the game
+        /// authors it), so it is reduced by <see cref="IPhysicsWorld.Origin"/> on the way in - streaming continues
+        /// after a rebase, and an unreduced spawn would land one anchor delta from everything else.</summary>
         internal static void AddAll(
             IPhysicsWorld physics,
             IReadOnlyList<DynamicSpawn> spawns,
@@ -37,10 +40,12 @@ namespace KhaozEngine.Terrain
             if (spawns is null) throw new ArgumentNullException(nameof(spawns));
             if (handles is null) throw new ArgumentNullException(nameof(handles));
 
+            Vector3 origin = physics.Origin;
             for (int i = 0; i < spawns.Count; i++)
             {
                 DynamicSpawn s = spawns[i];
-                handles.Add(physics.AddDynamic(s.Shape, s.Pose, s.Body, s.Material));
+                var pose = new Pose(s.Pose.Position - origin, s.Pose.Orientation);
+                handles.Add(physics.AddDynamic(s.Shape, pose, s.Body, s.Material));
             }
         }
 

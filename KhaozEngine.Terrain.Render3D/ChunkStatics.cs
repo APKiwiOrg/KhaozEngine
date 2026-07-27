@@ -16,7 +16,10 @@ namespace KhaozEngine.Terrain
         /// <summary>For each placement in <paramref name="placements"/> that has an entry in
         /// <paramref name="collisionShapes"/>, add a static body to <paramref name="physics"/> at the
         /// world pose and append the handle to <paramref name="handles"/>. The Y position of each static
-        /// is the placement's baked <c>Y</c> field (terrain height at scatter time).</summary>
+        /// is the placement's baked <c>Y</c> field (terrain height at scatter time).
+        /// <para>Placements are ABSOLUTE world coordinates, so the pose is reduced by
+        /// <see cref="IPhysicsWorld.Origin"/>: streaming continues after a rebase, and without this every newly
+        /// streamed prop would land one anchor delta away from the props already in the world.</para></summary>
         internal static void AddAll(
             IPhysicsWorld physics,
             IReadOnlyDictionary<string, PhysicsShape> collisionShapes,
@@ -28,6 +31,7 @@ namespace KhaozEngine.Terrain
             if (placements is null) throw new ArgumentNullException(nameof(placements));
             if (handles is null) throw new ArgumentNullException(nameof(handles));
 
+            Vector3 origin = physics.Origin;
             for (int i = 0; i < placements.Count; i++)
             {
                 PropPlacement p = placements[i];
@@ -35,7 +39,7 @@ namespace KhaozEngine.Terrain
 
                 PhysicsShape scaled = ScaleShape(shape, p.Scale);
                 var pose = new Pose(
-                    new Vector3(p.X, p.Y, p.Z),
+                    new Vector3(p.X, p.Y, p.Z) - origin,
                     Quaternion.CreateFromAxisAngle(Vector3.UnitY, p.Yaw));
 
                 handles.Add(physics.AddStatic(scaled, pose));

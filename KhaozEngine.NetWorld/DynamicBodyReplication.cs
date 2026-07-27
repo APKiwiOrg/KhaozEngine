@@ -102,7 +102,12 @@ public sealed class DynamicBodyReplication
 
             Pose pose = physics.GetDynamicPose(t.Handle);
             physics.GetDynamicVelocity(t.Handle, out Vector3 linear, out Vector3 angular);
-            world.Set(t.Entity, new ReplicatedPosition { Value = pose.Position });
+            // A pose comes back in the PHYSICS WORLD'S space, which is not world space once something has rebased
+            // that world (an island frame, section 5 of the floating-origin design). ReplicatedPosition.Value is
+            // absolute by definition, so the world's own origin is added back. Zero, and therefore free, on an
+            // unrebased world. Without it every replicated crate teleports by the anchor delta the first time the
+            // island re-anchors.
+            world.Set(t.Entity, new ReplicatedPosition { Value = pose.Position + physics.Origin });
             world.Set(t.Entity, DynamicBodyState.From(pose, linear, angular));
 
             if (!t.WrittenOnce) (firstWrites ??= new List<long>()).Add(kv.Key);

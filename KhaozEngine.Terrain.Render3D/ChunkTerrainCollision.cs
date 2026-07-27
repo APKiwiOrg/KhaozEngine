@@ -28,8 +28,10 @@ namespace KhaozEngine.Terrain
             TriangleMeshShape? mesh = TerrainChunkCollision.Build(chunk);
             if (mesh is null) { handle = default; return false; }
 
+            // The region origin is ABSOLUTE, so it is reduced by the world's own origin: a rebased world speaks a
+            // frame-local space, and a chunk streamed in after the rebase must land in it like everything else.
             TerrainChunkRegion region = chunk.Region;
-            handle = physics.AddStatic(mesh, Pose.At(new Vector3(region.OriginX, 0f, region.OriginZ)));
+            handle = physics.AddStatic(mesh, Pose.At(new Vector3(region.OriginX, 0f, region.OriginZ) - physics.Origin));
             return true;
         }
 

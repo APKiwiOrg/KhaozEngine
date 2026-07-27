@@ -295,10 +295,10 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {
-            ScatterLayerVisible = _visibility.GetLayer,
+            ScatterLayerVisible = _visibility.GetLayer, RenderDistance = _options.RenderDistance,
             TexturedPropsEnabled = () => _options.TexturedProps,
         };
-        _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f };
+        _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f, FarPlane = _options.RenderDistance.FarClip };
         _camController = new FlyCameraController(_camera);
 
         BuildChrome();

@@ -27,6 +27,10 @@
     <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
+    <!-- Terrain/RenderDistanceProfileTests.cs covers the GPU-free RenderDistanceProfile (tier table, StreamerConfig
+         projection, coherence invariants). The rest of the terrain suite is GPU-adjacent and lives in
+         KhaozEngine.Render.Tests/Terrain. -->
+    <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj" />

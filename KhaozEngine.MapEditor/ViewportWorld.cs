@@ -27,15 +27,13 @@ namespace KhaozEngine.MapEditor;
 /// </summary>
 public sealed class ViewportWorld : IDisposable
 {
-    /// <summary>Horizontal cull radius (m) for streamed scatter props, matching the Room3D showcase.</summary>
-    const float PropDrawRadius = 90f;
-
-    /// <summary>Horizontal cull radius (m) for streamed companion foliage (a short radius keeps a dense layer
-    /// affordable, per the multi-layer sink design).</summary>
+    /// <summary>Horizontal cull radius (m) for streamed companion foliage. Deliberately NOT part of
+    /// <see cref="RenderDistance"/>: dense understory is a near-field layer whose cost is per-instance, so a short
+    /// radius keeps it affordable however far the horizon reaches (per the multi-layer sink design).</summary>
     const float CompanionDrawRadius = 60f;
 
     /// <summary>Authored placements are the content being edited, so they are effectively never distance-culled
-    /// (a very wide draw ring). Streamed scatter still uses <see cref="PropDrawRadius"/>.</summary>
+    /// (a very wide draw ring). Streamed scatter still uses <see cref="RenderDistanceProfile.PropDrawRadius"/>.</summary>
     const float AuthoredDrawRadius = 100_000f;
 
     /// <summary>Spawn-marker billboard half-size (the disc spans twice this) and its lift above the ground so it
@@ -59,6 +57,7 @@ public sealed class ViewportWorld : IDisposable
 
     Func<string, bool> _scatterLayerVisible = static _ => true;
     Func<bool> _texturedPropsEnabled = static () => true;
+    RenderDistanceProfile _renderDistance = RenderDistanceProfile.Default;
 
     bool _built;
     bool _disposed;
@@ -124,6 +123,25 @@ public sealed class ViewportWorld : IDisposable
     {
         get => _texturedPropsEnabled;
         set => _texturedPropsEnabled = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>The viewport's render distance as one coherent set: the next <see cref="Build"/> /
+    /// <see cref="Rebuild"/> builds its streamer ring from <see cref="RenderDistanceProfile.ToStreamerConfig()"/> and
+    /// culls streamed scatter at <see cref="RenderDistanceProfile.PropDrawRadius"/>, and <see cref="Draw"/> sizes the
+    /// water plane from <see cref="RenderDistanceProfile.OceanHalfExtent"/>. The editor scene points this at its
+    /// <see cref="MapEditorOptions.RenderDistance"/> option and applies the same profile's
+    /// <see cref="RenderDistanceProfile.FarClip"/> to the viewport camera, so terrain residency, prop cull, ocean rim
+    /// and frustum agree. The setter runs <see cref="RenderDistanceProfile.Validate"/>, so an incoherent hand-rolled
+    /// set throws here (at editor start) instead of quietly rendering a void horizon. Defaults to
+    /// <see cref="RenderDistanceProfile.Default"/>.</summary>
+    public RenderDistanceProfile RenderDistance
+    {
+        get => _renderDistance;
+        set
+        {
+            value.Validate(nameof(RenderDistance));
+            _renderDistance = value;
+        }
     }
 
     /// <summary>The built terrain field, or null before <see cref="Build"/> (and after <see cref="Dispose"/>).</summary>
@@ -240,14 +258,15 @@ public sealed class ViewportWorld : IDisposable
         ThrowIfNotBuilt();
         ArgumentNullException.ThrowIfNull(visibility);
 
-        // One water plane per frame, covering the whole document at the live water level. Always submitted while
-        // the Water group is on, with no "skip when dry" guard: the water pass is depth-tested against the terrain
-        // and its shore-fade drives the alpha to zero at the waterline, so a level below all terrain renders
-        // nothing at negligible cost (a fixed-budget grid, one draw). Deriving the plane live from the document
-        // means a water-level edit shows up without a rebuild. The wholesale rebuild an EditTerrainCommand triggers
-        // is for scatter (which skips underwater candidates), not for the surface.
+        // One water plane per frame, camera-centred at the live water level so its rim stays outside the frustum
+        // (see BuildWaterPlane). Always submitted while the Water group is on, with no "skip when dry" guard: the
+        // water pass is depth-tested against the terrain and its shore-fade drives the alpha to zero at the
+        // waterline, so a level below all terrain renders nothing at negligible cost (a fixed-budget grid, one
+        // draw). Deriving the plane live from the document means a water-level edit shows up without a rebuild. The
+        // wholesale rebuild an EditTerrainCommand triggers is for scatter (which skips underwater candidates), not
+        // for the surface.
         if (visibility.GetGroup(VisibilityGroup.Water))
-            _scene.DrawWater(BuildWaterPlane(_doc!.Bounds, _doc.Terrain.WaterLevel));
+            _scene.DrawWater(BuildWaterPlane(viewPos, _doc!.Terrain.WaterLevel, _renderDistance.OceanHalfExtent));
 
         _sink!.Draw(viewPos);
 
@@ -325,7 +344,10 @@ public sealed class ViewportWorld : IDisposable
             material: _splatMaterial, ownsMaterial: false);
         // Synchronous streaming in the editor: the viewport wants blocking, deterministic loads (a mesh edit rebuilds
         // the ring and the result must be on screen immediately), not the game's background-build/apply-budget path.
-        _streamer = new TerrainStreamer(StreamerConfig.Default.Synchronous(), _sink);
+        // The ring radii come from RenderDistance so the streamed far field reaches past the camera's far clip: the
+        // decor chunks between the gameplay ring and DecorRadiusChunks mesh coarse and carry no scatter or physics,
+        // so the far horizon costs a few hundred triangles a chunk rather than a gameplay chunk's full build.
+        _streamer = new TerrainStreamer(_renderDistance.ToStreamerConfig().Synchronous(), _sink);
 
         PrimeRing(FocusFor(doc));
         _placements.Invalidate();
@@ -378,7 +400,7 @@ public sealed class ViewportWorld : IDisposable
         foreach (string name in VisibleScatterLayerNames(doc, _scatterLayerVisible))
         {
             scatterIndex[name] = layers.Count;
-            layers.Add(PropLayer.ScatterLayer(scatters[name], _propMeshes, PropDrawRadius));
+            layers.Add(PropLayer.ScatterLayer(scatters[name], _propMeshes, _renderDistance.PropDrawRadius));
         }
 
         foreach (MapCompanionLayer cl in doc.CompanionLayers)
@@ -397,7 +419,7 @@ public sealed class ViewportWorld : IDisposable
         }
 
         if (layers.Count == 0)
-            layers.Add(PropLayer.ScatterLayer(EmptyScatter(), _propMeshes, PropDrawRadius));
+            layers.Add(PropLayer.ScatterLayer(EmptyScatter(), _propMeshes, _renderDistance.PropDrawRadius));
         return layers;
     }
 
@@ -523,18 +545,19 @@ public sealed class ViewportWorld : IDisposable
 
     // ---- headless surface -------------------------------------------------------------------------------
 
-    /// <summary>Derives the editor's single water plane from the document <paramref name="bounds"/> and
-    /// <paramref name="level"/>: centred on the bounds midpoint at the water level, spanning the full XZ
-    /// footprint. Pure (no GPU, no state) so the derivation is headless-testable; <see cref="Draw"/> submits the
-    /// result via <see cref="Scene3D.DrawWater(in WaterPlane)"/> every frame.</summary>
-    internal static WaterPlane BuildWaterPlane(MapBounds bounds, float level)
-    {
-        float centerX = (bounds.MinX + bounds.MaxX) * 0.5f;
-        float centerZ = (bounds.MinZ + bounds.MaxZ) * 0.5f;
-        float halfExtentX = (bounds.MaxX - bounds.MinX) * 0.5f;
-        float halfExtentZ = (bounds.MaxZ - bounds.MinZ) * 0.5f;
-        return new WaterPlane(centerX, level, centerZ, halfExtentX, halfExtentZ);
-    }
+    /// <summary>Derives the editor's single water plane: a square footprint of <paramref name="halfExtent"/> either
+    /// side, centred on <paramref name="viewPos"/> in XZ at surface height <paramref name="level"/>. Pure (no GPU,
+    /// no state) so the derivation is headless-testable. <see cref="Draw"/> submits the result via
+    /// <see cref="Scene3D.DrawWater(in WaterPlane)"/> every frame, which is what re-centres it as the camera moves.
+    /// <para>It follows the CAMERA rather than spanning the document, which is what keeps the rim out of shot. A
+    /// document-sized plane on a map smaller than the far clip puts its own edge inside the frustum, so the sea
+    /// reads as a rectangular slab with a visible lip. Sized from
+    /// <see cref="RenderDistanceProfile.OceanHalfExtent"/> instead, the rim always sits past the far clip (and still
+    /// inside the streamed terrain far field), so the water runs to the horizon at any camera position and on any
+    /// document size. The plane is a fixed vertex budget however large it is (see <see cref="WaterPlane"/>), so the
+    /// wider footprint costs nothing per frame.</para></summary>
+    internal static WaterPlane BuildWaterPlane(Vector3 viewPos, float level, float halfExtent) =>
+        new(viewPos.X, level, viewPos.Z, halfExtent, halfExtent);
 
     // The fallback category label for an entry with no declared AssetEntry.Category: the manifest's own file
     // name minus its extension, minus a trailing ".manifest" suffix if present, so "props.manifest.json" and

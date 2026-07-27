@@ -289,20 +289,54 @@ namespace KhaozEngine.Tests.MapEditor
         // ---- water plane derivation --------------------------------------------------------------------
 
         [Fact]
-        public void WaterPlane_DerivesFromDocumentBoundsAndLevel()
+        public void WaterPlane_CentresOnTheCameraAtTheProfileExtent()
         {
-            // Asymmetric bounds so the centre and each half-extent are independently checkable (a square footprint
-            // would hide an X/Z swap). The plane centres on the bounds midpoint at the water level and spans the
-            // full XZ footprint, so the editor draws one plane covering the whole document.
-            var bounds = new MapBounds { MinX = -64f, MinZ = -32f, MaxX = 64f, MaxZ = 96f };
+            // Asymmetric view position so an X/Z swap cannot hide. The plane follows the CAMERA (not the document
+            // bounds) at the profile's ocean half-extent, which is what keeps its rim outside the frustum on a
+            // document smaller than the far clip.
+            var viewPos = new Vector3(37f, 12f, -215f);
 
-            WaterPlane plane = ViewportWorld.BuildWaterPlane(bounds, -1.2f);
+            WaterPlane plane = ViewportWorld.BuildWaterPlane(viewPos, -1.2f, RenderDistanceProfile.Default.OceanHalfExtent);
 
-            Assert.Equal(0f, plane.CenterX);       // (-64 + 64) / 2
-            Assert.Equal(32f, plane.CenterZ);      // (-32 + 96) / 2
-            Assert.Equal(-1.2f, plane.SurfaceY);   // the water level maps straight to the surface height
-            Assert.Equal(64f, plane.HalfExtentX);  // (64 - -64) / 2
-            Assert.Equal(64f, plane.HalfExtentZ);  // (96 - -32) / 2
+            Assert.Equal(37f, plane.CenterX);       // camera X, ignoring the document footprint
+            Assert.Equal(-215f, plane.CenterZ);     // camera Z
+            Assert.Equal(-1.2f, plane.SurfaceY);    // the water level maps straight to the surface height
+            Assert.Equal(600f, plane.HalfExtentX);  // the Far tier's OceanHalfExtent, square footprint
+            Assert.Equal(600f, plane.HalfExtentZ);
+        }
+
+        [Fact]
+        public void WaterPlane_RimSitsPastTheFarClipButInsideTheStreamedTerrain()
+        {
+            // The coherence the profile exists to guarantee, checked through the editor's own plane rather than on
+            // the profile alone: the nearest point of the rim is past the camera's far clip (so it never reads as a
+            // wall of water) and still inside the streamed far field (so the sea is never drawn over a void).
+            RenderDistanceProfile p = RenderDistanceProfile.Default;
+
+            WaterPlane plane = ViewportWorld.BuildWaterPlane(Vector3.Zero, 0f, p.OceanHalfExtent);
+
+            Assert.True(plane.HalfExtentX > p.FarClip, "the ocean rim must clip out rather than be visible");
+            Assert.True(plane.HalfExtentX <= p.DecorRadiusMeters, "the ocean must sit over resident terrain");
+        }
+
+        [Fact]
+        public void RenderDistance_RejectsAnIncoherentProfile()
+        {
+            // A hand-rolled profile whose ocean rim falls inside the frustum must fail at assignment (editor start),
+            // not by rendering a slab of water with a visible lip. ViewportWorld touches no GPU before Build, so the
+            // guard is reachable with a null scene.
+            var vw = new ViewportWorld(null!, Array.Empty<string>());
+            var incoherent = RenderDistanceProfile.Default with { OceanHalfExtent = 100f };
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => vw.RenderDistance = incoherent);
+            Assert.Equal(RenderDistanceProfile.Default, vw.RenderDistance);   // the bad set never took effect
+        }
+
+        [Fact]
+        public void RenderDistance_DefaultsToTheFarTier()
+        {
+            var vw = new ViewportWorld(null!, Array.Empty<string>());
+            Assert.Equal(RenderDistanceProfile.For(RenderDistanceTier.Far), vw.RenderDistance);
         }
 
         // ---- placement cache ---------------------------------------------------------------------------

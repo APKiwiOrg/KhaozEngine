@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KhaozEngine.Game;
 using KhaozEngine.MapDoc;
 using KhaozEngine.Render3D;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
 
@@ -61,6 +62,16 @@ public sealed class MapEditorOptions
     /// construction and always runs immediately, and once the gesture ends the very next check performs the
     /// final full rebuild regardless of this interval.</summary>
     public float GestureRebuildInterval = 0.25f;
+
+    /// <summary>The viewport's render distance, as one coherent set: the streamed terrain far field, the streamed
+    /// prop cull radius, the camera far clip and the ocean plane extent all come from this profile, so the horizon
+    /// reads as one piece instead of terrain ending in a void inside the frustum. Default
+    /// <see cref="RenderDistanceProfile.Default"/> (the Far tier). A head on a weak machine can dial it down with
+    /// <see cref="RenderDistanceProfile.For"/>, e.g. <c>RenderDistanceProfile.For(RenderDistanceTier.Near)</c>, which
+    /// trims the streamed ring as well as the visible distance. A hand-rolled profile is checked with
+    /// <see cref="RenderDistanceProfile.Validate"/> when the scene builds its world, so an incoherent set throws at
+    /// editor start rather than rendering wrong.</summary>
+    public RenderDistanceProfile RenderDistance = RenderDistanceProfile.Default;
 
     /// <summary>Occupied-tile ceiling below which opening a tiled document loads it whole, exactly like a
     /// monolithic one. Above it, the editor opens a window instead (see <see cref="EditorWindowRadius"/>) rather

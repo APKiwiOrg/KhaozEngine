@@ -350,6 +350,9 @@ namespace KhaozEngine.Tests.Render3D
         {
             // maxMip 0 is the pre-mip path and must answer 0 for everything, whatever it is asked.
             Assert.Equal(0f, WaterClipmap.MipLevel(64f, 0.1f, 2f, 0f));
+            // And so does samples 0, which is FootprintSamples' band-limit-off switch: the mip filter and the
+            // rippleResolve attenuation must never disagree about whether the surface is being low-passed.
+            Assert.Equal(0f, WaterClipmap.MipLevel(64f, 0.1f, 0f, 8f));
             // At samples 2 the wanted level is just log2(spacing / texel).
             Assert.Equal(0f, WaterClipmap.MipLevel(0.1f, 0.2f, 2f, 8f));   // finer than a texel: no mip
             Assert.Equal(0f, WaterClipmap.MipLevel(0.2f, 0.2f, 2f, 8f));

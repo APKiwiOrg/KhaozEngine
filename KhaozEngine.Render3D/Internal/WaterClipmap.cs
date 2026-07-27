@@ -162,12 +162,14 @@ namespace KhaozEngine.Render3D.Internal
         /// <para>
         /// <paramref name="samplesPerWavelength"/> 2 is plain Nyquist (the mip's texel size matches the sample
         /// spacing) and is the shipped default; higher oversamples and is softer. <paramref name="maxMip"/> 0
-        /// returns 0 for everything, which is the pre-mip behaviour exactly.
+        /// returns 0 for everything, which is the pre-mip behaviour exactly, and so does a
+        /// <paramref name="samplesPerWavelength"/> of 0, which is
+        /// <see cref="WaterSettings.FootprintSamples"/>' documented band-limit-off switch on the fragment side.
         /// </para>
         /// </summary>
         public static float MipLevel(float sampleSpacing, float texelMetres, float samplesPerWavelength, float maxMip)
         {
-            if (maxMip <= 0f || texelMetres <= 1e-9f || sampleSpacing <= 0f) return 0f;
+            if (maxMip <= 0f || texelMetres <= 1e-9f || sampleSpacing <= 0f || samplesPerWavelength <= 0f) return 0f;
             float want = sampleSpacing * MathF.Max(samplesPerWavelength, 1f) / (2f * texelMetres);
             if (want <= 1f) return 0f;
             return MathF.Min(MathF.Log2(want), maxMip);

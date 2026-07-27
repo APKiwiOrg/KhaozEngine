@@ -77,10 +77,12 @@ float oceanTexel(float tile) { return tile / max(FftParams.z, 1.0); }
 // FftParams.w is the TOP MIP INDEX of the live maps and is 0 unless the clipmap grid asked for a chain, so the
 // whole thing early-returns 0 on the camera-focused path - deliberately by an early return rather than by
 // arithmetic that happens to land on 0, so the pre-mip surface samples a literal 0.0 exactly as it always did.
+// A `samples` of 0 is FootprintSamples' documented band-limit-off switch and turns this off with it, so the two
+// mechanisms cannot disagree about whether the surface is being low-passed.
 // Touches no resource, so it is safe in a function: only the SAMPLING has to stay inside main.
 float oceanMip(float spacing, float texel, float samples) {
     float maxMip = FftParams.w;
-    if (maxMip <= 0.0 || spacing <= 0.0 || texel <= 1e-9) return 0.0;
+    if (maxMip <= 0.0 || spacing <= 0.0 || texel <= 1e-9 || samples <= 0.0) return 0.0;
     float want = spacing * max(samples, 1.0) / (2.0 * texel);
     if (want <= 1.0) return 0.0;
     return min(log2(want), maxMip);

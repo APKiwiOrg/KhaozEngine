@@ -71,6 +71,61 @@ public class ShardedFrameAnchoringTests
     }
 
     [Fact]
+    public void PhysicsWorldFactory_MismatchedOrigin_WithFrameAnchoringOn_ThrowsNamingTheFactoryContract()
+    {
+        // A factory that always leaves the world at Vector3.Zero is the catastrophic misconfiguration this guard
+        // exists for: with FrameAnchoring on, every character CharacterMovement steps in this cell would query
+        // colliders from the wrong space and silently no-clip (fall through terrain, walk through walls) with no
+        // exception anywhere near the mistake. It has to be caught here, at cell creation, naming the contract.
+        var farCoord = new CellCoord((int)MathF.Floor(Far.X / Cell), (int)MathF.Floor(Far.Z / Cell));
+        Assert.NotEqual(Vector3.Zero, FrameOf(farCoord).Anchor);   // or this test proves nothing
+
+        using var host = new ShardHost(Cell, Dt, MoveProtocol.CreateRegistry(), Cell, overlapMargin: 24f,
+            physicsFactory: _ => new BepuPhysicsWorld(),   // left at Vector3.Zero: never rebased to the cell's frame
+            frameAnchoring: true);
+
+        ArgumentException ex = Assert.Throws<ArgumentException>(() => host.EnsureCell(farCoord));
+        Assert.Contains("PhysicsWorldFactory", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(farCoord.ToString(), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PhysicsWorldFactory_MismatchedOrigin_WithFrameAnchoringOff_IsNotValidated()
+    {
+        // Off FrameAnchoring, a cell has no frame-local coordinate at all (FrameFor always returns Origin), so a
+        // physics world left at Vector3.Zero is not a mismatch, it is the only correct answer, and the guard must
+        // not fire. This is the "a world left at Vector3.Zero is supported" case, scoped to FrameAnchoring = false.
+        var farCoord = new CellCoord((int)MathF.Floor(Far.X / Cell), (int)MathF.Floor(Far.Z / Cell));
+        using var host = new ShardHost(Cell, Dt, MoveProtocol.CreateRegistry(), Cell, overlapMargin: 24f,
+            physicsFactory: _ => new BepuPhysicsWorld(),
+            frameAnchoring: false);
+
+        CellSim cell = host.EnsureCell(farCoord);
+        Assert.Equal(WorldFrame.Origin, cell.Frame);
+        Assert.Equal(Vector3.Zero, cell.Physics!.Origin);
+    }
+
+    [Fact]
+    public void PhysicsWorldFactory_MatchingOrigin_WithFrameAnchoringOn_Succeeds()
+    {
+        // The correct implementation of the factory contract: read the anchor off the cell's own frame rather than
+        // re-deriving it. Constructing the cell must not throw.
+        var farCoord = new CellCoord((int)MathF.Floor(Far.X / Cell), (int)MathF.Floor(Far.Z / Cell));
+        using var host = new ShardHost(Cell, Dt, MoveProtocol.CreateRegistry(), Cell, overlapMargin: 24f,
+            physicsFactory: coord =>
+            {
+                var world = new BepuPhysicsWorld();
+                WorldFrame frame = FrameOf(coord);
+                if (frame != WorldFrame.Origin) world.Rebase(frame.Anchor);
+                return world;
+            },
+            frameAnchoring: true);
+
+        CellSim cell = host.EnsureCell(farCoord);
+        Assert.Equal(cell.Frame.Anchor, cell.Physics!.Origin);
+    }
+
+    [Fact]
     public void Test21_Two_players_in_cells_with_different_frames_each_hit_their_OWN_cells_collider()
     {
         // The section-3 blocker as a test. Both players step in the same tick, each in its own cell's frame, each
@@ -100,7 +155,7 @@ public class ShardedFrameAnchoringTests
             return world;
         });
 
-        var server = new ShardedWorldServer(st, config, Flat, Unit);
+        using var server = new ShardedWorldServer(st, config, Flat, Unit);
         var client = new WorldClient(ct, Flat, Unit, new WorldClientConfig { TickSeconds = Dt });
         using (client)
         {

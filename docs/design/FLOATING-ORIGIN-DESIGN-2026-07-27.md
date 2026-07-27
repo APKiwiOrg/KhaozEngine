@@ -590,9 +590,12 @@ The factory contract, written down so a consumer can satisfy it without reading 
   `CellSize / 2 + OverlapMargin` of the cell centre, measured per axis. Anything nearer than that can be
   queried by an entity this cell owns or ghosts. Anything further cannot.
 - **Space.** Poses are relative to `IPhysicsWorld.Origin`, which the consumer sets to the cell frame's anchor
-  (`WorldFrame.Nearest(cell centre).Anchor`, the same value the engine computes). A consumer that leaves
-  `Origin` at `Vector3.Zero` gets a correct but unframed cell, which is the release-2 behaviour and is
-  supported.
+  (`WorldFrame.Nearest(cell centre).Anchor`, the same value the engine computes). With `FrameAnchoring` off, a
+  consumer that leaves `Origin` at `Vector3.Zero` gets a correct but unframed cell, which is the release-2
+  behaviour and is supported. With `FrameAnchoring` on, `ShardHost` validates `Origin` against the cell's own
+  anchor at creation and throws on a mismatch (added in the release-3 review, `KhaozEngine.Sharding/ShardHost.cs`):
+  the failure mode a mismatch produces otherwise is not a throw, it is every character in the cell silently
+  no-clipping, since `CharacterMovement` queries frame-local coordinates with no compensation.
 - **Lifetime.** The world is disposed with the cell. A consumer that shares one world between two cells has
   built candidate D and will get candidate D's failure.
 - **Duplication is expected and is not a bug.** A static within `OverlapMargin` of a border legitimately
@@ -1858,7 +1861,7 @@ major is for. The rule each site then applies is one question: **where did this 
 
 | Site | Provenance | Becomes |
 |---|---|---|
-| `WorldServer.cs:270` `SetPlayerState` | admin/teleport/load, absolute | `FromWorld(next.Position, islandFrame)` |
+| `WorldServer.cs:270` `SetPlayerState` | admin/teleport/load, absolute | `ToIsland(state)` first (converts to island space), then `InFrame(islandFrame, next.Position)` |
 | `WorldServer.cs:303` `SpawnEntity` | authored absolute | `FromWorld(new Vector3(x, 0, z), islandFrame)` |
 | `WorldServer.cs:410` per-tick step | out of the simulator, already framed | `WithLocal(state.Position)` on the existing component |
 | `WorldServer.cs:598` join spawn clamp | out of `spawnClamp` in `Origin` | `FromWorld(state.Position, islandFrame)` |

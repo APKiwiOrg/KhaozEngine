@@ -84,7 +84,8 @@ public sealed partial class ShardedWorldServerConfig
 /// respawn. Headless, transport-injected. Persistence is the shipped <see cref="WorldPersistence"/> via
 /// <see cref="IWorldPersistenceHost"/>, player-keyed across cells.
 /// </summary>
-public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellEvictionHost, IWorldPickupHost
+public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminControllable, ICellEvictionHost, IWorldPickupHost,
+    IDisposable
 {
     private readonly ShardedWorldServerConfig config;
     private readonly ReplicationRegistry registry;
@@ -185,6 +186,15 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// <summary>The replicated-component registry (the injected one, or the movement-only default), shared by every
     /// cell. Build the <see cref="WorldClient"/> with the SAME registry so both ends agree on the component ids.</summary>
     public ReplicationRegistry Registry => registry;
+
+    /// <summary>
+    /// Disposes every live cell's physics world (via <see cref="ShardHost.Dispose"/>). Each cell built through
+    /// <see cref="ShardedWorldServerConfig.PhysicsWorldFactory"/> owns its own <c>IPhysicsWorld</c>, disposed only
+    /// by <see cref="ShardHost.RemoveCell"/> before this existed - so a server torn down while any cell was still
+    /// live (the ordinary shutdown case, since eviction is opt-in and cold) leaked that cell's physics world. Call this
+    /// when the server itself is done, not per-cell: individual cells still come and go through eviction as before.
+    /// </summary>
+    public void Dispose() => host.Dispose();
 
     // --- ICellPersistenceHost: per-cell world-state persistence (non-player entities). ---
 

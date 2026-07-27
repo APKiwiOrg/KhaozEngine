@@ -29,8 +29,8 @@ public sealed partial class ShardedWorldServerConfig
     /// </summary>
     public bool FrameAnchoring { get; init; } = true;
 
-    /// <summary>The coordinate space this server's sampler delegates (ground height, ground normal, medium) read;
-    /// mirrors <see cref="WorldServerConfig.SamplerSpace"/> and is only meaningful with
+    /// <summary>The coordinate space this server's sampler delegates (ground height, ground normal, medium) read.
+    /// Mirrors <see cref="WorldServerConfig.SamplerSpace"/> and is only meaningful with
     /// <see cref="FrameAnchoring"/> on. <see cref="NetWorld.SamplerSpace.World"/> (the default) keeps them on
     /// absolute coordinates and each per-cell step converts for them. <see cref="NetWorld.SamplerSpace.Frame"/>
     /// hands them frame-local coordinates instead, which is REQUIRED for a sampler backed by the cell's own physics
@@ -52,8 +52,12 @@ public sealed partial class ShardedWorldServerConfig
     /// <c>CellSize / 2 + OverlapMargin</c> of the cell centre, per axis. Anything nearer than that can be queried by
     /// an entity this cell owns or ghosts. Anything further cannot.</item>
     /// <item><b>Space.</b> Poses are relative to <c>IPhysicsWorld.Origin</c>, which the consumer sets to the cell
-    /// frame's anchor - read it from <c>ShardHost.FrameFor(coord).Anchor</c> rather than re-deriving it. A world
-    /// left at <c>Vector3.Zero</c> is a correct but unframed cell, which is supported.</item>
+    /// frame's anchor - read it from <c>ShardHost.FrameFor(coord).Anchor</c> rather than re-deriving it. With
+    /// <see cref="FrameAnchoring"/> OFF, a world left at <c>Vector3.Zero</c> is a correct but unframed cell, which is
+    /// supported (every cell's anchor is <see cref="WorldFrame.Origin"/> then, so <c>Vector3.Zero</c> IS the frame
+    /// anchor). With <see cref="FrameAnchoring"/> ON, the anchor is per-cell and a world whose <c>Origin</c> does not
+    /// equal it is a misconfiguration <see cref="ShardHost"/> validates at cell creation and throws on, naming this
+    /// contract - it is never silently supported.</item>
     /// <item><b>Lifetime.</b> The world is disposed with the cell. Sharing one between two cells rebuilds the
     /// failure above.</item>
     /// <item><b>Duplication is expected.</b> A static within <c>OverlapMargin</c> of a border legitimately exists in

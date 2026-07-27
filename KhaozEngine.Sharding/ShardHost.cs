@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Determinism;
 using KhaozEngine.Ecs;
 using KhaozEngine.Physics;
@@ -34,7 +35,7 @@ public delegate bool CellPositionAccessor(World world, Entity entity, out float 
 /// <see cref="Tick"/> fans them across an opt-in <see cref="Scheduler"/> (default single-threaded) for
 /// near-linear-in-cores throughput; the cross-cell passes stay single-threaded.
 /// </remarks>
-public sealed partial class ShardHost
+public sealed partial class ShardHost : IDisposable
 {
     private readonly float tickSeconds;
     private readonly ReplicationRegistry registry;
@@ -146,6 +147,28 @@ public sealed partial class ShardHost
     public IReadOnlyCollection<CellSim> Cells => ordered;
 
     /// <summary>
+    /// Disposes every live cell's physics world via <see cref="CellSim.Retire"/> - the only path that owns those
+    /// worlds' lifetime (a world built by the host's <c>physicsFactory</c> is disposed with its cell, never by the
+    /// consumer). Before this existed, a live cell's <see cref="IPhysicsWorld"/> leaked at shutdown:
+    /// <see cref="RemoveCell"/> was the only caller of <see cref="CellSim.Retire"/>, and eviction is the only thing
+    /// that reaches it, so a cell still live when the host itself goes away (the ordinary case for process
+    /// shutdown, and for a test that never evicts) never freed its physics world.
+    /// <para>
+    /// Deliberately NOT a call to <see cref="RemoveCell"/> per cell: this skips the ownership index, ghost, and
+    /// <see cref="ICellLink"/> bookkeeping entirely (the whole host is going away, so nothing needs to observe a
+    /// graceful per-cell removal) and does not raise <see cref="CellRemoved"/>, unlike a live eviction. Idempotent:
+    /// calling it more than once, or after every cell was already removed, disposes nothing further.
+    /// </para>
+    /// </summary>
+    public void Dispose()
+    {
+        foreach (CellSim cell in ordered) cell.Retire();
+        cells.Clear();
+        ordered.Clear();
+        cellsVersion++;   // invalidates Tick's reused fan-out buffer
+    }
+
+    /// <summary>
     /// Raised each time a coordinate is instantiated (via <see cref="CellFor"/>, <see cref="SpawnAt"/>, a handoff
     /// destination, or <see cref="EnsureCell"/>). The load hook for per-cell persistence: a subscriber restores
     /// that cell's saved state. Fired synchronously on the creating thread, before the new cell can tick or
@@ -180,7 +203,30 @@ public sealed partial class ShardHost
         {
             // The cell's frame and its own physics world are fixed here, before CellCreated fires, so a persistence
             // restore (or anything else the hook drives) already lands in the right space.
-            cell = new CellSim(coord, tickSeconds, registry, interestCellSize, FrameFor(coord), physicsFactory?.Invoke(coord));
+            WorldFrame frame = FrameFor(coord);
+            IPhysicsWorld? physics = physicsFactory?.Invoke(coord);
+            // A cell never rebases (its frame is fixed for the cell's life - see FrameFor), so the factory's world
+            // has to already be expressed in that frame at the moment it hands the world back: there is no later
+            // point where a mismatch would get corrected. A wrong Origin does not throw downstream either. Every
+            // per-cell query (CharacterMovement, PlayerMoveSimulator) reads frame-local coordinates with no
+            // compensation, so a world sitting at the wrong Origin returns colliders shifted by exactly the frame's
+            // anchor: every character in the cell silently no-clips (falls through terrain, walks through walls),
+            // discovered only by playing it, not by any exception. WorldServer and WorldClient throw on the
+            // analogous single-island mistake (an IPhysicsWorld that cannot rebase). This is the sharded head's
+            // equivalent guard for a per-cell world that is never rebased at all.
+            if (frameAnchoring && physics is not null && physics.Origin != frame.Anchor)
+            {
+                Vector3 badOrigin = physics.Origin;   // captured before Dispose, defensive against a backend that
+                                                       // stops answering queries once disposed
+                physics.Dispose();   // no CellSim will ever own it now: this world would otherwise leak silently
+                throw new ArgumentException(
+                    $"ShardedWorldServerConfig.PhysicsWorldFactory returned a world at Origin {badOrigin} for " +
+                    $"cell {coord}, but FrameAnchoring is on and that cell's frame anchor is {frame.Anchor}. The " +
+                    "factory contract requires the returned world's Origin to equal ShardHost.FrameFor(coord).Anchor " +
+                    "(or CellSim.Frame.Anchor, the same value) - read it from there rather than re-deriving it.",
+                    nameof(physicsFactory));
+            }
+            cell = new CellSim(coord, tickSeconds, registry, interestCellSize, frame, physics);
             // Project this cell's owned index into the host netId -> cell map. The register hook always wins (a cell
             // adopting an entity overwrites the prior owner); the unregister hook only clears the entry if it still
             // points here, so a stale release after a handoff can't wipe the new owner's entry.

@@ -55,7 +55,7 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   reconcile-error) for characterising a movement-smoothness bug; off by default, zero overhead.
   Optional `WorldBounds`/`IPhysicsWorld?` ctor params (mirroring `WorldServer`, since 8.0.0) make the client predict
   against the same play-area bound + static physics bodies the server is authoritative over, so a
-  solid-prop world predicts straight instead of rubber-banding (null = terrain only); the physics world must be able
+  solid-prop world predicts straight instead of rubber-banding (null = terrain only). The physics world must be able
   to rebase, since the client adopts the server's island frame and moves that world with it.
   **`IslandFrame`** is the frame the client's prediction currently steps in, adopted from the wire, never derived,
   and **`FrameChanged`** fires (from, to, delta) when it moves - see the island-frame section below. Everything the
@@ -471,7 +471,12 @@ anchor is exactly `Vector3.Zero`, so the default path there is byte-identical to
   the engine never adds a static to a cell world. Four points: it must hold every static within
   `CellSize / 2 + OverlapMargin` of the cell centre, its poses are relative to an `Origin` of
   `FrameFor(coord).Anchor`, it is disposed with the cell, and a static near a border legitimately exists in both
-  neighbours' worlds (nothing reconciles the copies, because a static does not move).
+  neighbours' worlds (nothing reconciles the copies, because a static does not move). **With `FrameAnchoring` on,
+  `ShardHost` validates the returned world's `Origin` against the cell's own anchor at creation and throws (naming
+  the factory) on a mismatch** - left unchecked, every character the cell owns would silently no-clip, since
+  `CharacterMovement` reads frame-local coordinates with no compensation for a wrong origin. With `FrameAnchoring`
+  off a world left at `Vector3.Zero` is correct (every cell's anchor is `WorldFrame.Origin` then) and the guard
+  never fires.
 - **`SamplerSpace`** (on both server configs and on `WorldClientConfig`, and it must MATCH across them) says which
   space the game's sampler delegates read. `SamplerSpace.World` (the default) keeps them on absolute coordinates
   and the step converts for them: zero adoption work, and it still fixes the accumulating half, because the
@@ -481,7 +486,7 @@ anchor is exactly `Vector3.Zero`, so the default path there is byte-identical to
   `WorldBounds` is the exception neither mode governs: a play area is authored content and stays absolute, so the
   step converts for it either way.
 - **`CellSize` is validated against the divergence ceiling** when frame anchoring is on. A cell's frame sits at its
-  centre, so its worst frame-local coordinate is bounded by its own size; `CellSize = 600` puts the planar
+  centre, so its worst frame-local coordinate is bounded by its own size. `CellSize = 600` puts the planar
   magnitude past `WorldFrame.MaxLocalRadius` and is refused with the derivation in the message.
 
 ### Everything a consumer sees stays ABSOLUTE

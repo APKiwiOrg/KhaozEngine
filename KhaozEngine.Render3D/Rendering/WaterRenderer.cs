@@ -112,6 +112,10 @@ namespace KhaozEngine.Render3D.Rendering
         // The consumer's depth field on the GPU. Owned here for the same reason the ocean is: it is bound into
         // this pass's resource set, and nothing else in the engine reads it.
         readonly WaterBathymetryMap _bathymetry;
+        // ONE reusable scratch the per-plane looks resolve into, never handed out and never read after the plane's
+        // slot is packed. A plane with NO look does not touch it at all: it packs from the caller's own settings
+        // object, which is what makes the no-look path byte-identical by construction rather than by luck.
+        readonly WaterSettings _effective = new();
         // Which ocean map the current set was built against, so a rebaked (or first-activated) map rebinds.
         IGpuTexture? _boundMap;
         // Same, for the depth field: a resolution change replaces the texture and the set has to follow it.
@@ -486,9 +490,34 @@ namespace KhaozEngine.Render3D.Rendering
                     : default;
         }
 
+        /// <summary>The wave source one plane actually draws with: its own <see cref="WaterLook.WaveSource"/> when
+        /// it carries a look that sets one, the scene's otherwise. Pure, so the demand rule below is testable with
+        /// no device.</summary>
+        internal static WaterWaveSource EffectiveWaveSource(in WaterPlane plane, WaterSettings settings)
+            => plane.Look?.WaveSource ?? settings.WaveSource;
+
+        /// <summary>Whether the shared FFT ocean is wanted this frame, i.e. whether ANY queued plane's effective
+        /// wave source is <see cref="WaterWaveSource.FftOcean"/>. This is what gates the producer, in place of the
+        /// scene default it used to read: a scene defaulting to <see cref="WaterWaveSource.Procedural"/> with one
+        /// plane overridden to the ocean needs a real bake, and a scene defaulting to the ocean with every plane
+        /// overridden away from it should pay for none.</summary>
+        internal static bool AnyPlaneWantsOcean(ReadOnlySpan<WaterPlane> planes, WaterSettings settings)
+        {
+            for (int i = 0; i < planes.Length; i++)
+                if (EffectiveWaveSource(planes[i], settings) == WaterWaveSource.FftOcean) return true;
+            return false;
+        }
+
         /// <summary>Draw all queued water planes into ColorDepthFB (lit colour + read-only scene depth). Caller
         /// guarantees the model + sky + decal passes are complete and the framebuffer is free to rebind. No-op when
-        /// <paramref name="planes"/> is empty.</summary>
+        /// <paramref name="planes"/> is empty.
+        /// <para>
+        /// <paramref name="settings"/> is the SCENE-wide look, and a plane carrying a <see cref="WaterLook"/>
+        /// resolves its own copy of it for the UBO slot only. Everything outside that slot keeps reading the scene
+        /// object on purpose: the grid mode and the <c>Clipmap*</c> group select this pass's pipeline, index buffer
+        /// and vertex layout before the loop starts (so they are a geometry choice, not a look), the sea state
+        /// drives one bake and the bathymetry one texture.
+        /// </para></summary>
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos, WaterSettings settings,
             SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
@@ -508,10 +537,13 @@ namespace KhaozEngine.Render3D.Rendering
             }
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
-            // it produced). Every queued plane samples the same cascades: this release has one sea state, not one
-            // per body of water. The producer records its final dispatch into THIS command list, so the storage
-            // writes and the draws that sample them share a list - the seam's guaranteed ordering.
-            _ocean.Update(cl, settings, timeSeconds, wantMips: clipmap);
+            // it produced). Every plane ON the ocean samples the same cascades: there is one sea state, not one per
+            // body of water (WaterLook cannot override it, and the design doc says why). What IS per plane is
+            // whether a plane reads them at all, so the producer runs on DEMAND rather than on the scene default -
+            // otherwise a Procedural scene with one FftOcean plane would render that plane procedurally, silently.
+            // The producer records its final dispatch into THIS command list, so the storage writes and the draws
+            // that sample them share a list - the seam's guaranteed ordering.
+            _ocean.Update(cl, settings, timeSeconds, AnyPlaneWantsOcean(planes, settings), wantMips: clipmap);
             var oceanMaps = OceanMaps.From(_ocean);
             // The depth field, likewise once per frame and ahead of BindTargets. Uploads only on a revision
             // change, so the steady state is a compare and nothing else.
@@ -523,9 +555,17 @@ namespace KhaozEngine.Render3D.Rendering
             for (int i = 0; i < planes.Length; i++)
             {
                 // Per plane now, not once: the surf band measures the crest's height above THIS plane's still
-                // water, and a scene may queue several planes at different levels.
-                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds,
-                    oceanMaps, renderOrigin, shore, planes[i].SurfaceY);
+                // water, a scene may queue several planes at different levels, and each may carry its own look.
+                WaterLook? look = planes[i].Look;
+                WaterSettings effective = look is null ? settings : look.ResolveInto(_effective, settings);
+                // A plane whose effective source is not the ocean gets the INACTIVE maps, which packs FftParams.x
+                // to 0 and makes every FFT branch in both shader stages a not-taken uniform branch. That is the
+                // whole cost of an inland body sharing a frame with a sea: no second pipeline, no second bake.
+                // Shoaling and breaking surf ride the same gate (shoreLive = shore.Active && ocean.Active), so the
+                // lake loses them without needing a flag of its own.
+                OceanMaps planeMaps = effective.WaveSource == WaterWaveSource.FftOcean ? oceanMaps : default;
+                var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, effective, sky, timeSeconds,
+                    planeMaps, renderOrigin, shore, planes[i].SurfaceY);
                 cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
             }
 

@@ -5,6 +5,83 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.7.0
+
+### A water plane can now carry its own look, so a calm lake and a rough sea can share a frame
+
+`WaterPlane` has always been the per-frame WHERE-to-draw request and several planes could already queue in one
+frame, but the look was scene-wide: `WaterRenderer.Draw` took one `WaterSettings`, so every queued plane shared
+one wave source, one sea state, one bathymetry binding and one foam configuration. Queue a calm lake next to an
+FftOcean sea and the lake got the ocean's swell, whitecaps and breaking surf too. Closes
+[#370](https://github.com/APKiwiOrg/KhaozEngine/issues/370). Consumer origin is
+[Ruinborne#293](https://github.com/APKiwiOrg/Ruinborne/issues/293).
+
+Off by default and off is byte-identical: a plane with no look packs from the caller's own `WaterSettings`
+object exactly as before, so the `scene3d_water` golden passes unbaked.
+
+**New: `WaterLook`.** A sealed class in `KhaozEngine.Render3D`, 33 nullable fields, `null` meaning inherit the
+scene. `WaterPlane` gained a `Look` property, supplied through a trailing optional constructor parameter
+(`WaterLook? look = null`), so every existing call site compiles unchanged.
+
+```csharp
+scene.DrawWater(new WaterPlane(0f, 9.7f, 0f, 104f, 104f, new WaterLook
+{
+    WaveSource = WaterWaveSource.Procedural,
+    SwellAmplitude = 0.04f,
+    FoamStrength = 0f,
+    SurfStrength = 0f,
+}));
+```
+
+- **Overridable per plane**: `WaveSource`, the swell group (`SwellAmplitude`, `SwellWavelength`,
+  `SwellDirectionDegrees`, `SwellSpreadDegrees`, `SwellSteepness`, `SwellSpeed`, `SwellSeed`,
+  `SwellComponents`), the ripple/detail group (`WaveScale`, `WaveSpeed`, `NormalStrength`, `WaveWarpStrength`,
+  `RippleComponents`, `RippleLacunarity`, `RippleGain`, `RippleSeed`, `DetailFadeDistance`,
+  `DistantDetailScale`, `VarianceToRoughness`), body colour (`DeepColor`, `ShallowColor`, `AbsorptionPerMetre`,
+  `ShallowDepth`, `Opacity`), foam (`FoamColor`, `FoamStrength`, `FoamCrestCoverage`, `FoamShoreWidth`,
+  `FoamPatternScale`), `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength` /
+  `SurfStrength`.
+- **Stays scene-wide, and cannot be put on a look at all**: `SeaState` (one FFT bake key - a second sea state
+  a frame does not produce a second ocean, it makes the one producer rebake on every call for both states and
+  corrupts the persistent foam accumulator, whose contract is one invocation per texel), `Bathymetry` (one
+  depth texture), the grid group (`GridMode`, `ClipmapCellSize`, `ClipmapRingCells`, `ClipmapLevels`,
+  `ClipmapGeomorphBand`, `GridFocusBias` - these select the pass's pipeline, index buffer and vertex layout
+  before the draw loop starts, so a per-plane value would be a geometry change, not a look change), reflection
+  and glint (`HorizonColor`, `SkyReflectionStrength`, `SkyReflectionSunStrength`, `GlintStrength`,
+  `GlintRoughness`, `GlintDistantRoughness`, `GlintExponent` - they read the one sky and the one sun, out of
+  #370's scope, cheap enough to move later without a structural change), the `Surf*` shape knobs
+  (`SurfBreakerIndex`, `SurfBandWidth`, `SurfCrestBias`, `SurfTrailWidth`, `SurfAmplitudeCollapse`,
+  `ShoalingDepthScale` - a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need),
+  and the sample-count quality knobs (`FootprintSamples`, `ClipmapBandLimitSamples`). Per-body sea states,
+  bathymetry and grid modes stay deferred to [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275)
+  (authored water volumes).
+
+**Fixed: the shared ocean now bakes on demand, not off the scene default.** `OceanFftProducer.Update` used to
+gate its own activity on `settings.WaveSource != WaterWaveSource.FftOcean`, which is wrong once the wave
+source can be per plane: a scene defaulting to `Procedural` with one plane overriding to `FftOcean` would have
+found the producer inactive and rendered that plane procedurally, silently. `WaterRenderer.Draw` now computes
+whether ANY queued plane's effective wave source is `FftOcean` before calling `Update`, and packs each plane's
+slot with the live `OceanMaps` or `default` according to that plane's own effective source. One ocean state
+either way, driven by demand rather than by the scene default.
+
+**Zero cost for consumers that do not opt in.** The per-plane water UBO is unchanged: payload stays 672 bytes,
+slot stays 768. No new GPU resources, no new pipelines - each plane already owned its own dynamic-offset slot
+in the water pass's uniform buffer, so an override is a different set of numbers written into a slot that was
+being written anyway.
+
+**Behaviour and API notes.**
+
+- `WaterSettings` is now `partial` and gained `CopyFrom(WaterSettings source)`, in a new `WaterSettings.Copy.cs`
+  partial (keeps the field-wise copy out of the documented-knob-list main file). `SeaState` and `Bathymetry`
+  copy BY REFERENCE, on purpose: a look has no way to fork the scene's shared FFT bake or depth texture.
+- `WaterRenderer` gained one reusable `WaterSettings` scratch that per-plane looks resolve into. A plane with no
+  look never touches it.
+- `OceanFftProducer.Update` gained a required `bool wantOcean` parameter ahead of the existing optional
+  `wantMips`. `OceanFftProducer` and `WaterRenderer` are both internal, so this is not a public break.
+
+Design rationale, including why a per-plane sea state is refused rather than deferred:
+`docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+
 ## 17.5.0
 
 ### Render distance becomes one coherent set, and the map editor stops ending in a void

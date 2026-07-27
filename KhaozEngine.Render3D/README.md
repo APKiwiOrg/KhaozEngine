@@ -369,9 +369,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   pairs with velocity stretch), `Wisp` (noise-eroded smoke that dissolves at its edges with life instead of fading
   uniformly), `Ring` (soft annulus for shockwaves and impact rings), `Star` (four-point glint for sparkles). A sprite can
   instead play an authored flipbook: set `ParticleSprite.Flipbook` (a `ParticleFlipbook` naming an atlas
-  `TextureHandle`, its `Columns` x `Rows` grid, an optional motion-vector sheet + `MotionStrength`, and `Loop`)
-  and a continuous `FlipbookFrame` (integer part = cell, fractional part = blend to the next, motion-vector warped
-  when a motion sheet is bound, else a plain cross-fade). Flipbooks are additive over the procedural shapes,
+  `TextureHandle`, its `Columns` x `Rows` grid, an optional motion-vector sheet + `MotionStrength`, `Loop`, and the
+  `FlipU`/`FlipV` UV mirrors) and a continuous `FlipbookFrame` (integer part = cell, fractional part = blend to the
+  next, motion-vector warped when a motion sheet is bound, else a plain cross-fade). A flipbook cell samples with
+  its origin at the BOTTOM-LEFT (the same convention as `BillboardGeometry.Triangles`, whose `(u0,v0)` is the
+  bottom-left corner), while the 2D `SpriteBatch` path samples the same file top-left, so a sheet packed by a
+  top-left tool (PIL, most packers) renders with every cell VERTICALLY INVERTED until you set `FlipV: true`. The
+  flips apply within a cell only, so the cell the frame index selects never moves. `Columns`/`Rows` cap at 127,
+  since the grid, the quantized motion strength, and the two flip bits share one 24-bit packed float (8192px at a
+  64px cell is already past most GPUs' max texture size). Flipbooks are additive over the procedural shapes,
   selected per-sprite, and a sprite that leaves `Flipbook` default renders byte-identically to the procedural path
   (a 1x1 dummy atlas + neutral motion sheet keep procedural runs in the same one pipeline).
   `ParticleOrientation` is `CameraFacing` (default) or `FlatGround` (the quad lies in the XZ plane, for shockwave

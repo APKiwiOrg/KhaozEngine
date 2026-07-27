@@ -3498,6 +3498,22 @@ At the engine level, `ParticleSprite` carries the same `Flipbook` spec plus a co
 part = current cell, fractional part = blend toward the next), so a raw `DrawParticle`/`DrawParticles` caller drives
 frame timing itself. The adapter's `FlipbookMode` is just the policy that resolves `FlipbookFrame` for you.
 
+**Atlas UV origin (read this if your sheet plays upside down).** A flipbook cell samples with its origin at the
+BOTTOM-LEFT, the same convention as the rest of the 3D sprite path (`BillboardGeometry.Triangles` maps `(u0,v0)`
+to the bottom-left corner). The 2D `SpriteBatch` path samples the SAME image file top-left. So an atlas packed by
+a top-left tool (PIL, and most sprite packers) renders here with EVERY CELL VERTICALLY INVERTED. The fix is one
+knob, per spec:
+
+```csharp
+Flipbook = new ParticleFlipbook(atlas, Columns: 8, Rows: 8, Loop: true, FlipV: true),
+```
+
+`FlipV` mirrors each cell vertically, `FlipU` mirrors it horizontally, and both together are a 180 degree rotation.
+They flip only the coordinate WITHIN a cell, never which cell the frame index selects, so playback order is
+untouched. Both default to false, so a bottom-left-authored sheet needs neither. `Columns` and `Rows` cap at 127
+(the grid, the motion strength, and the two flip bits share one packed float): a 128-column sheet at even a 64px
+cell is 8192px wide, at or past the max texture size on most GPUs, so the cap is unreachable in practice.
+
 **Quality and soft fade** are host knobs, not cleared by `Begin`. Set the quality tier once when picking a graphics
 tier, the soft fade per frame:
 
@@ -4637,7 +4653,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.2.0" />
 ```
 
 ```csharp

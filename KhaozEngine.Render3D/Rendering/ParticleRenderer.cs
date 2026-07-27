@@ -235,7 +235,8 @@ namespace KhaozEngine.Render3D.Rendering
                 (float frameA, float frameB, float blend) =
                     ResolveFrames(s.FlipbookFrame, s.Flipbook.Columns * s.Flipbook.Rows, s.Flipbook.Loop);
                 flip = new Vector4(frameA, frameB, blend,
-                    PackFlipGrid(s.Flipbook.Columns, s.Flipbook.Rows, s.Flipbook.MotionStrength));
+                    PackFlipGrid(s.Flipbook.Columns, s.Flipbook.Rows, s.Flipbook.MotionStrength,
+                        s.Flipbook.FlipU, s.Flipbook.FlipV));
             }
             return new ParticleInstance
             {
@@ -249,17 +250,22 @@ namespace KhaozEngine.Render3D.Rendering
             };
         }
 
-        /// <summary>Pack the flipbook grid and quantized motion strength into one float for the shader's
-        /// <c>IFlip.w</c> lane: <c>cols + rows * 256 + qstr * 65536</c> where <c>qstr = round(clamp(strength,0,4) * 64)</c>
-        /// capped at 255. The cap keeps the whole packed value at or below 2^24-1 so every field stays exact in
-        /// float32 (256 would push the sum past 2^24 and lose the low bits). A value above 0.5 tells the shader the
-        /// sprite is a flipbook, procedural sprites pack 0. The shader decodes with the mirror mod/floor math.</summary>
-        internal static float PackFlipGrid(int cols, int rows, float motionStrength)
+        /// <summary>Pack the flipbook grid, quantized motion strength, and the two UV flip bits into one float for
+        /// the shader's <c>IFlip.w</c> lane:
+        /// <c>cols + rows * 128 + qstr * 16384 + flipU * 4194304 + flipV * 8388608</c>, where
+        /// <c>qstr = round(clamp(strength,0,4) * 64)</c> capped at 255. That is 7 + 7 + 8 + 1 + 1 = 24 bits, and the
+        /// per-field caps put the maximum at exactly 2^24-1 (16777215) so every field stays exact in float32. There
+        /// is no spare bit: adding a field means narrowing another. A value above 0.5 tells the shader the sprite is
+        /// a flipbook, procedural sprites pack 0. The shader decodes with the mirror mod/floor math.
+        /// <para>Columns and rows cap at 127 (not 255) to buy the two flip bits. A 128-column atlas at even a 64px
+        /// cell is 8192px wide, at or past the max texture size on most GPUs, so the narrower cap is unreachable in
+        /// practice.</para></summary>
+        internal static float PackFlipGrid(int cols, int rows, float motionStrength, bool flipU = false, bool flipV = false)
         {
-            int c = Math.Clamp(cols, 1, 255);
-            int r = Math.Clamp(rows, 1, 255);
+            int c = Math.Clamp(cols, 1, 127);
+            int r = Math.Clamp(rows, 1, 127);
             int qstr = Math.Clamp((int)MathF.Round(Math.Clamp(motionStrength, 0f, 4f) * 64f), 0, 255);
-            return c + r * 256 + qstr * 65536;
+            return c + r * 128 + qstr * 16384 + (flipU ? 4194304 : 0) + (flipV ? 8388608 : 0);
         }
 
         /// <summary>Pure: resolve a continuous frame position into the two integer frame indices the shader samples

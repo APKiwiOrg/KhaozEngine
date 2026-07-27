@@ -31,6 +31,16 @@ public struct IslandFrame : IComponent
 /// <summary>Reads and publishes the <see cref="IslandFrame"/> singleton on a <see cref="World"/>.</summary>
 public static class IslandFrames
 {
+    // Zero-allocation scratch for GetIslandFrame's ForEach callback below. The callback is a STATIC lambda (captures
+    // nothing - it only touches this field, which is not capture), so the compiler caches ONE delegate instance for
+    // the call site instead of allocating a fresh closure every call. That matters because GetIslandFrame sits on a
+    // per-tick hot path (DynamicBodyReplication.Sample calls it once per cell per tick), and a sharded host can tick
+    // cells concurrently across a scheduler's thread pool (ShardHost.Tick), so a plain static field would be a data
+    // race between two threads sampling two different cells' worlds in the same tick. ThreadStatic gives each thread
+    // its own slot, closing that race while still needing no allocation.
+    [ThreadStatic]
+    private static WorldFrame capturedFrame;
+
     /// <summary>
     /// The frame <paramref name="world"/> is expressed in, or <see cref="WorldFrame.Origin"/> when nothing published
     /// one - which is exactly right for every unframed head and every plain test world, since Origin's anchor is
@@ -39,9 +49,9 @@ public static class IslandFrames
     public static WorldFrame GetIslandFrame(this World world)
     {
         ArgumentNullException.ThrowIfNull(world);
-        WorldFrame frame = WorldFrame.Origin;
-        world.ForEach<IslandFrame>((Entity _, ref IslandFrame f) => frame = f.Frame);
-        return frame;
+        capturedFrame = WorldFrame.Origin;
+        world.ForEach<IslandFrame>(static (Entity _, ref IslandFrame f) => capturedFrame = f.Frame);
+        return capturedFrame;
     }
 
     /// <summary>

@@ -294,7 +294,7 @@ public class DynamicBodyReplicationTests
     {
         // A pose comes back in the PHYSICS WORLD'S space, which stops being world space the moment an island rebases
         // that world. Writing it as an absolute position would teleport every replicated crate by the anchor delta
-        // on the first re-anchor; writing it as an absolute would ALSO re-quantize it at world magnitude, undoing
+        // on the first re-anchor. Converting it to absolute would ALSO re-quantize it at world magnitude, undoing
         // exactly what the frame bought. So it is stamped, not converted.
         var frame = new WorldFrame(781, -781);
         using var physics = new BepuPhysicsWorld();

@@ -123,10 +123,18 @@ public sealed class PlayerMovementSystem : ISystem
                 return;
             }
 
-            // Self-healing invariant: everything this cell OWNS is stamped with this cell's frame. Every door an
-            // entity enters by already converts (spawn, handoff, restore, teleport, ghost mirror), so this normally
-            // never fires. What it buys is that a miss at any of them is corrected EXACTLY here, on the next tick,
-            // instead of becoming a 128 m step. One comparison per entity per tick.
+            // Self-healing invariant, scoped to what this query actually reaches: every entity this cell owns that
+            // ALSO carries PendingMove + MovementState (i.e. every entity this system steps) is stamped with this
+            // cell's frame by the time it steps. Every door an entity enters by already converts (spawn, handoff,
+            // restore, teleport, ghost mirror), so this normally never fires. What it buys is that a miss at any of
+            // them is corrected EXACTLY here, on the next tick, instead of becoming a 128 m step.
+            // A consumer-written entity that never gains PendingMove/MovementState (a static prop, an NPC driven by
+            // its own movement logic) is NOT covered by this loop at all - it never runs through here. That is
+            // harmless on its own: Value = Frame.Anchor + Local stays the exact absolute position whatever Frame it
+            // carries (a consumer setting Local to an absolute value with Frame left at its Origin default is simply
+            // a valid, non-canonical stamp), and it IS healed the moment it crosses a door this system does not own
+            // (a border ghost mirror or a cell handoff both convert through CellSim.AdaptFrame). One comparison per
+            // covered entity per tick.
             if (pos.Frame != cellFrame) pos = pos.ToFrame(cellFrame);
 
             var state = new MoveState

@@ -53,18 +53,16 @@ public class FramedWireTests
         Assert.Equal(sent.Local, got.Local);       // the three floats ride verbatim
         Assert.Equal(sent.Value, got.Value);       // and the absolute position is bit-identical
 
-        // The bound is ReanchorRadius plus how far a replay under loss can legitimately carry the local past the
-        // trigger before the next re-anchor - NOT ReanchorRadius alone, which would fail a correct implementation.
-        const float MaxSpeed = 8f;                 // a generous sprint
-        float bound = WorldFrame.ReanchorRadius
-            + PredictionSettingsMaxPending * (1f / 60f) * MaxSpeed;
+        // sent's local was built via FromWorld(far, frame) with frame = WorldFrame.Nearest(far), so by
+        // WorldFrame.Nearest's own contract (rounds to the anchor NEAREST far) the local is structurally bounded by
+        // half a grid cell on each planar axis - Grid/2, not any replay-window-derived figure. There is no
+        // prediction replay anywhere in this test (Encode/Decode is a pure wire round trip), so a bound built out of
+        // PredictionSettings.MaxPendingCommands and a sprint speed was never the real constraint here. It just
+        // happened to be loose enough to pass.
+        const float bound = WorldFrame.Grid / 2f;
         Assert.True(MathF.Abs(got.Local.X) <= bound, $"local X was {got.Local.X}, bound {bound}");
         Assert.True(MathF.Abs(got.Local.Z) <= bound, $"local Z was {got.Local.Z}, bound {bound}");
     }
-
-    // PredictionSettings.MaxPendingCommands' default, mirrored here rather than referenced: this test is about the
-    // wire, and the point of the bound is that it is the replay window, not that it is any particular number.
-    private const float PredictionSettingsMaxPending = 256f;
 
     [Fact]
     public void Test16_A_game_at_the_origin_is_byte_identical_to_the_pre_frame_encoding_for_the_local_triple()
@@ -121,11 +119,12 @@ public class FramedWireTests
             view.InterpolateAt(client, t);
             Assert.True(client.TryGet(ce, out ReplicatedPosition p));
             Vector3 expected = Vector3.Lerp(worldA, worldB, (float)t);
+            // A raw two-space lerp (blending the two locals without rebasing one into the other's frame first) would
+            // land a whole grid step off even at t=0 (frameB.ToWorld(aLocal) differs from worldA by frameB.Anchor -
+            // frameA.Anchor, one grid step here), so this 0.01 m bound alone already fails a broken implementation
+            // by two orders of magnitude - a separate looser bound added nothing a reader could not already see.
             Assert.True(Vector3.Distance(p.Value, expected) < 0.01f,
                 $"at t={t:F1} the interpolated world position was {p.Value}, expected {expected}");
-            // And the excursion a raw two-space lerp would produce is a whole frame width, so this is the assertion
-            // that actually discriminates the two implementations.
-            Assert.True(Vector3.Distance(p.Value, expected) < WorldFrame.Grid / 2f);
         }
     }
 

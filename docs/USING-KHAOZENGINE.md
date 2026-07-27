@@ -6663,7 +6663,7 @@ almost all of it.
    `PositionFrameBlobMigration.FrameV2ToV3` is folded into `CellPersistence`'s default chain, so an existing save
    boots into a framed server with no consumer wiring. A config with `IncludeEngineMigrations = false` has to
    register it explicitly.
-6. **A custom `IPredictedState<T>`** that opts into `FrameAnchor` must also implement `WithFrameAnchor`; leaving
+6. **A custom `IPredictedState<T>`** that opts into `FrameAnchor` must also implement `WithFrameAnchor`. Leaving
    both at their defaults keeps a frameless state working exactly as before.
 7. **Optional:** handle `WorldClient.FrameChanged` for colliders you registered yourself outside the engine's
    streaming sink. A consumer that only reads the positions the engine hands it needs no handler.

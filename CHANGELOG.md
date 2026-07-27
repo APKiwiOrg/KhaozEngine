@@ -5,6 +5,39 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.2.0
+
+### Flipbook atlases get a documented UV origin and a `FlipU`/`FlipV` knob
+
+A flipbook cell samples with its origin at the BOTTOM-LEFT, while the 2D `SpriteBatch` path samples the
+same image file top-left. That was never written down anywhere, so an atlas packed by a top-left tool
+(PIL, and most sprite packers) played with every cell vertically inverted and nothing in the API said
+why. The origin is now documented on the type, in the using guide, and in both particle READMEs, and
+there is a knob to correct a sheet without re-exporting it.
+
+- **`KhaozEngine.Render3D`**: `ParticleFlipbook` gains trailing optional `FlipU` and `FlipV`
+  (both default false, so every existing construction site is source-compatible and renders
+  identically). `FlipV: true` is what a top-left-authored atlas needs to play upright, `FlipU` is the
+  horizontal mirror, and both together are a 180 degree rotation. The mirrors apply to the coordinate
+  WITHIN a cell only, before the cross-fade taps and the motion-vector warp are built, so both taps
+  flip together and the cell the frame index selects never moves: playback order is untouched.
+  `ParticleLook.Flipbook` is a `ParticleFlipbook`, so the adapter picks the knobs up for free.
+- **Atlas grid cap narrows from 255 to 127 columns and rows.** The grid, the quantized motion
+  strength, and the two new flip bits share one packed float on the instance stream, and that lane is
+  capped at 2^24-1 so every field stays exact in float32. Buying two bits cost one bit each from
+  columns and rows (the layout is now 7 + 7 + 8 + 1 + 1 = 24 bits). Nothing real is lost: a
+  128-column atlas at even a 64px cell is 8192px wide, at or past the max texture size on most GPUs,
+  so the old ceiling was unreachable in practice. A larger value clamps rather than wrapping.
+- **Tests**: the flipbook suite could not have caught this. Its test sheet paints each cell a centred
+  radially symmetric disc, which is byte-identical under any mirror, and the sampler read only the dead
+  centre of the frame. Both are addressed: a new asymmetric test sheet whose cell hue fills a single
+  quadrant, an off-centre sampler plus a lit-centroid probe that reads where the marker landed, GPU
+  proofs for each axis and the composed 180 rotation, a guard that no flip changes cell selection, and
+  a headless round-trip pinning the new bit layout field by field. The three flipbook goldens still
+  pass unchanged, which is the encode/decode agreement check.
+
+Closes #338.
+
 ## 17.0.0
 
 ### The wire goes frame-relative and the sharded head simulates in island frames. BREAKING

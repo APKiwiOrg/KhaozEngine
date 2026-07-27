@@ -67,18 +67,26 @@ public sealed partial class WorldServer
     private static PlayerMoveState ToAbsolute(PlayerMoveState state) => Reframe(state, Vector2.Zero);
 
     // The absolute world position of a joined slot, for the area-of-interest query (the interest grid is keyed on
-    // absolute positions, because a key built from a local would collide across frames).
-    private Vector3 AbsolutePositionOf(int slot) =>
-        stateBySlot.TryGetValue(slot, out PlayerMoveState s) ? ToAbsolute(s).Position : Vector3.Zero;
+    // absolute positions, because a key built from a local would collide across frames). The indexer throws
+    // KeyNotFoundException for a missing slot, matching the pre-frame code this replaced: every caller iterates a
+    // snapshot of joined slots, so a miss here means the bookkeeping is broken and swallowing it would hide that.
+    private Vector3 AbsolutePositionOf(int slot) => ToAbsolute(stateBySlot[slot]).Position;
 
     /// <summary>
     /// Re-anchor the island if the followed player has drifted past <see cref="WorldFrame.ReanchorRadius"/>. Runs
     /// once per tick, AFTER every entity has stepped and BEFORE the area-of-interest pass, so the anchor is a
     /// function of a settled position and no step ever observes a half-rebased island.
-    /// <para>The order inside is the whole safety argument: the physics world and every entity move in the same gap
-    /// between two steps. The physics rebase is exact and unobservable (velocities, sleep state, contacts and
-    /// constraints all survive), and each entity's conversion is exact because a re-anchor rounds to the NEAREST
-    /// grid point from a trigger past 96 m, so the local's magnitude strictly shrinks.</para>
+    /// <para>The order inside keeps the physics world and every entity moving in the same gap between two steps: the
+    /// physics rebase is exact and unobservable (velocities, sleep state, contacts and constraints all survive).
+    /// The re-anchor trigger (<see cref="WorldFrame.ShouldReanchor(Vector3)"/>) is evaluated on the followed player only, so
+    /// it is NOT true in general that every entity's local shrinks: another entity's local can already be larger,
+    /// or grow across a later re-anchor it did not trigger. The real safety argument is bit-stability, not a
+    /// shrinking magnitude: a position that entered through <see cref="ReplicatedPosition.Value"/> or
+    /// <see cref="ReplicatedPosition.FromWorld(Vector3, WorldFrame)"/> at world magnitude is already a multiple of
+    /// its own absolute ULP, and any local under 128 km represents that same quantum exactly, so the conversion is
+    /// bit-stable (0 of 200 re-anchors changed a distant NPC's <c>Value</c> in the probe). The one case that CAN
+    /// round is a local built directly via <see cref="ReplicatedPosition.InFrame(WorldFrame, Vector3)"/> carrying
+    /// sub-absolute-ULP bits.</para>
     /// <para>The flat head is ONE island, so it follows ONE player: the lowest joined slot, deterministically. A
     /// world with players spread across it needs an island per region, which is the sharded head.</para>
     /// </summary>

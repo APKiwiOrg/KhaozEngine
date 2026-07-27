@@ -3687,6 +3687,11 @@ flag on `Scene3DChunkSink` (requires a `physics` world), then swap the ground de
 face is collidable) if you want the shape directly. A Bepu mesh is one-sided and not recentered, so terrain
 must present its top face up (the helper handles this) and is registered at `Pose.Identity`.
 
+**Running this behind a framed `WorldServer` (`FrameAnchoring` on)?** Set `WorldServerConfig.SamplerSpace =
+SamplerSpace.Frame`, not the default: `probe` reads the island's own rebased `IPhysicsWorld` in its own rebased
+space, and the default `SamplerSpace.World` silently misses every ray and flattens the ground (see the
+`FrameAnchoring` section above).
+
 **Server-authoritative AI agents move with the player's collision (`CharacterMovement.StepTowards`, 10.64.0).**
 A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
 collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the slope gate,
@@ -6583,7 +6588,12 @@ server.FrameChanged += (from, to, delta) => myOwnColliderIndex.Translate(delta);
   because the carried state is what compounds. **`SamplerSpace.Frame`** passes frame-local coordinates straight
   through, the full fix, for a game whose ground follow already comes from the island's own physics world.
   `WorldBounds` is the exception neither mode governs: a play area is authored content, so the step always
-  converts for it.
+  converts for it. **`SamplerSpace.World` is wrong, not merely imprecise, once your `groundHeight`/`groundNormal`
+  come from `PhysicsGroundProbe` over the island's own `IPhysicsWorld` (the unified-terrain path)**: that world is
+  rebased with the frame, so it raycasts in rebased space, and `SamplerSpace.World` wraps every call back out to
+  absolute coordinates first. Every ray misses, the probe silently falls back to `FallbackHeight` and a +Y normal,
+  and the ground normal (and its slope gate) goes flat without an error. Set `SamplerSpace.Frame` whenever the
+  sampler is physics-backed.
 - **The physics world is rebased with the frame**, so a query never crosses spaces. It therefore has to be able
   to rebase: constructing with `FrameAnchoring` and an `IPhysicsWorld` whose `CanRebase` is false throws, because
   a framed step querying an unframed world is a wrong answer rather than an imprecise one. Anything you register

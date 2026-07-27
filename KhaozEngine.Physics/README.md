@@ -26,7 +26,11 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   **A caller that speaks absolute converts at the call site**: `world.AddStatic(shape, new Pose(absolute - world.Origin, rot))`,
   `world.Raycast(from - world.Origin, ...)` (a direction and a hit distance are frame-invariant, so only the
   position converts). A site that forgets is a site that never read `Origin`, which is greppable. The engine's own
-  streaming sinks and the follow camera's occlusion sweep already do this.
+  streaming sinks and the follow camera's occlusion sweep already do this. **`PhysicsGroundProbe`/`PhysicsColumnProbe`
+  are the same contract, not an exception**: their `Height`/`Normal`/`Sample` take `(x, z)` straight into `Raycast`
+  with no conversion of their own, so on a rebased world the caller must already have reduced by `Origin` before
+  calling in (on a framed `WorldServer` that means `SamplerSpace.Frame`, so the stepper hands them frame-local
+  coordinates rather than wrapping them back out to absolute).
 - **`ConstraintDescription`** - a discriminated joint description for `AddConstraint`: a `ConstraintKind`
   (`BallSocket`, `Hinge`, `Slider`, `Distance`, `Weld`) plus body-local anchors/axes and the fields that kind
   uses. Prefer the factories `BallSocketJoint`/`HingeJoint`/`SliderJoint`/`DistanceJoint`/`WeldJoint`, then

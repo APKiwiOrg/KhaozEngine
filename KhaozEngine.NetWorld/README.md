@@ -5,7 +5,22 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
 [Replication](../KhaozEngine.Replication)).
 
 - **`PlayerMoveSimulator`** (`ITickSimulator`) runs `CharacterMovement.Step` both server-authoritatively
-  and inside client prediction, so the two stay in lockstep.
+  and inside client prediction, so the two stay in lockstep. Three read surfaces past the constructor:
+  **`Frame`** (settable, `WorldFrame.Origin` by default) is the island frame this instance steps in - every
+  state `Step` returns is stamped with its anchor, and only the owning island sets it, together with its
+  physics world's rebase, never mid-step and never per entity. **`SamplerSpace`** (read-only, fixed at
+  construction by the `samplerSpace` ctor parameter, default `SamplerSpace.World`) is which space the
+  `groundHeight`/`groundNormal`/medium delegates passed to the constructor read: `World` means they take
+  absolute coordinates and the step converts for them (zero adoption work), `Frame` means they already read
+  frame-local coordinates and the step passes them straight through. See the island-frame section below and
+  `SamplerSpace`'s own doc for the full contract, including why `World` is WRONG, not merely imprecise, for a
+  sampler backed by the island's own rebased physics world (e.g. a `PhysicsGroundProbe`) - that world raycasts
+  in its own rebased space, so wrapping the call back out to absolute makes every ray miss. **`Bounds`**
+  (read-only) mirrors the `WorldBounds?` passed to the constructor: it is the one sampler `SamplerSpace` does
+  not govern (a play area is authored content, so the step always converts for it, in both modes), and the
+  property exists so a consumer can read back which bound this instance is clamping against instead of
+  keeping its own copy in sync. Nothing in the engine reads it today (`WorldServer`/`ShardedWorldServer`/
+  `WorldClient` all hold their own `bounds` locally), so it is a seam for a future or game-side caller.
 - **`WorldServer`** is a single-`World` authoritative movement server: a `NetServer` session layer spawns
   one player entity per connection, drains that client's queued `MoveCommand` each tick, runs the ground-
   clamped sim, and serves each client its area of interest prefixed with that client's net id + last-acked move

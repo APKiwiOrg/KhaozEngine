@@ -117,6 +117,24 @@ public class PhysicsRebaseTests
         StepMany(world, 60);
         Assert.False(world.IsAwake(crate));
         Assert.Equal(translated, world.GetDynamicPose(crate).Position);      // 0.000000 m over 60 further steps
+
+        // The pose assertions above prove the crate's TRANSFORM moved with the rebase, but Bepu keeps a separate
+        // broadphase AABB per body, and a rebase that writes poses without refitting that AABB would still pass
+        // every assertion so far while leaving the crate physically invisible to new collision at its new
+        // coordinate. Drop a fresh dynamic box onto the sleeping crate's REBASED (x, z) from above and let it
+        // settle: if the broadphase leaf moved with the pose, the box lands and rests on the crate's top face. If
+        // it did not, the box falls straight through the crate (undetected) onto the static ground beneath it
+        // instead, landing about a metre lower.
+        DynamicBodyHandle dropped = world.AddDynamic(UnitBox,
+            Pose.At(new Vector3(translated.X, translated.Y + 5f, translated.Z)), DynamicBodyDescription.WithMass(1f));
+        StepMany(world, 300);   // 5 s: fall onto the crate and settle
+
+        float restY = world.GetDynamicPose(dropped).Position.Y;
+        float expectedRestY = translated.Y + 1f;   // crate top (translated.Y + 0.5) + dropped box half-height (0.5)
+        Assert.True(Math.Abs(restY - expectedRestY) < 0.05f,
+            $"expected the dropped box to come to rest ON the rebased crate at y~{expectedRestY:F4} (measured " +
+            $"~1.4989 for a crate rebased to Y=0), got {restY:F4} - this is the broadphase-leaf-did-not-move " +
+            "failure mode: the box fell through the crate to the ground instead of resting on it.");
     }
 
     // ---------------------------------------------------------------------

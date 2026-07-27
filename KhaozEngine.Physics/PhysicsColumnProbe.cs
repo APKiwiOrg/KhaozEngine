@@ -27,6 +27,11 @@ public readonly record struct ColumnSurface(float Height, float Headroom);
 /// exposed top face, never a stack: the sweep recognises the inside-solid self-hits BepuPhysics reports
 /// while the ray descends through the body's interior and skips them, so only real faces become
 /// surfaces. The body's underside bounds the headroom of the first real surface beneath it.</para>
+/// <para>This probe queries the world in the WORLD'S OWN space: <see cref="Sample"/> passes (x, z) straight into
+/// <see cref="IPhysicsWorld.Raycast"/> with no conversion of its own. When the world has been rebased (<see
+/// cref="IPhysicsWorld.Origin"/> is non-zero), pass coordinates already reduced by <c>Origin</c>. On a framed
+/// <c>WorldServer</c> that means <c>SamplerSpace.Frame</c>, not the default <c>SamplerSpace.World</c>, which wraps
+/// the call back out to absolute coordinates and makes every ray miss.</para>
 /// </summary>
 public sealed class PhysicsColumnProbe
 {

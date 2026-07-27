@@ -272,5 +272,109 @@ namespace KhaozEngine.Tests.Terrain
                 Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate("RenderDistance"));
             Assert.Equal("RenderDistance", ex.ParamName);
         }
+
+        // ---- the Scaled projection -------------------------------------------------------------------------
+
+        [Theory]
+        [MemberData(nameof(AllTiers))]
+        public void Scaled_ByOne_ReturnsAnEqualProfile(RenderDistanceTier tier)
+        {
+            RenderDistanceProfile p = RenderDistanceProfile.For(tier);
+
+            Assert.Equal(p, p.Scaled(1f));
+        }
+
+        [Theory]
+        [MemberData(nameof(AllTiers))]
+        public void Scaled_LeavesTheGameplayRadiusUnchanged(RenderDistanceTier tier)
+        {
+            RenderDistanceProfile p = RenderDistanceProfile.For(tier);
+
+            Assert.Equal(p.GameplayLoadRadiusChunks, p.Scaled(2f).GameplayLoadRadiusChunks);
+            Assert.Equal(p.GameplayLoadRadiusChunks, p.Scaled(4f).GameplayLoadRadiusChunks);
+        }
+
+        [Theory]
+        [InlineData(2f)]
+        [InlineData(4f)]
+        public void Scaled_ScalesTheLinearFieldsExactly(float multiplier)
+        {
+            RenderDistanceProfile p = RenderDistanceProfile.Default;
+
+            RenderDistanceProfile scaled = p.Scaled(multiplier);
+
+            Assert.Equal(p.FarClip * multiplier, scaled.FarClip);
+            Assert.Equal(p.OceanHalfExtent * multiplier, scaled.OceanHalfExtent);
+            Assert.Equal(p.PropDrawRadius * multiplier, scaled.PropDrawRadius);
+        }
+
+        [Theory]
+        [InlineData(RenderDistanceTier.Near, 2f, 14, 18)]
+        [InlineData(RenderDistanceTier.Near, 4f, 28, 36)]
+        [InlineData(RenderDistanceTier.Medium, 2f, 18, 22)]
+        [InlineData(RenderDistanceTier.Medium, 4f, 36, 44)]
+        [InlineData(RenderDistanceTier.Far, 2f, 22, 26)]
+        [InlineData(RenderDistanceTier.Far, 4f, 44, 52)]
+        [InlineData(RenderDistanceTier.Ultra, 2f, 30, 34)]
+        [InlineData(RenderDistanceTier.Ultra, 4f, 60, 68)]
+        public void Scaled_ScalesTheChunkRadiiToTheExactWholeChunkCount(RenderDistanceTier tier, float multiplier,
+            int expectedDecor, int expectedUnload)
+        {
+            RenderDistanceProfile p = RenderDistanceProfile.For(tier);
+
+            RenderDistanceProfile scaled = p.Scaled(multiplier);
+
+            Assert.Equal(expectedDecor, scaled.DecorRadiusChunks);
+            Assert.Equal(expectedUnload, scaled.UnloadRadiusChunks);
+        }
+
+        [Fact]
+        public void Scaled_RoundsAFractionalChunkCountUp()
+        {
+            // 2x and 4x land on whole chunks already (every tier's radii are even), so a fractional multiplier is
+            // what actually exercises the ceiling rather than a coincidentally-exact multiply.
+            RenderDistanceProfile p = RenderDistanceProfile.For(RenderDistanceTier.Near); // Decor 7, Unload 9
+
+            RenderDistanceProfile scaled = p.Scaled(1.5f);
+
+            Assert.Equal(11, scaled.DecorRadiusChunks);  // ceil(7 * 1.5) = ceil(10.5) = 11
+            Assert.Equal(14, scaled.UnloadRadiusChunks); // ceil(9 * 1.5) = ceil(13.5) = 14
+        }
+
+        [Theory]
+        [MemberData(nameof(AllTiers))]
+        public void Scaled_PassesValidate_AtTwoAndFourX(RenderDistanceTier tier)
+        {
+            RenderDistanceProfile p = RenderDistanceProfile.For(tier);
+
+            p.Scaled(2f).Validate();
+            p.Scaled(4f).Validate();
+        }
+
+        [Theory]
+        [MemberData(nameof(AllTiers))]
+        public void Scaled_KeepsTheUnloadHysteresis_AtTwoAndFourX(RenderDistanceTier tier)
+        {
+            RenderDistanceProfile p = RenderDistanceProfile.For(tier);
+
+            foreach (float multiplier in new[] { 2f, 4f })
+            {
+                RenderDistanceProfile scaled = p.Scaled(multiplier);
+                int outer = Math.Max(scaled.GameplayLoadRadiusChunks, scaled.DecorRadiusChunks);
+                Assert.True(scaled.UnloadRadiusChunks > outer,
+                    $"{tier} at {multiplier}x: unload {scaled.UnloadRadiusChunks} must exceed the outer radius {outer}");
+            }
+        }
+
+        [Theory]
+        [InlineData(0.5f)]
+        [InlineData(0f)]
+        [InlineData(-1f)]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        public void Scaled_RejectsAMultiplierBelowOneOrNonFinite(float multiplier)
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => RenderDistanceProfile.Default.Scaled(multiplier));
+        }
     }
 }

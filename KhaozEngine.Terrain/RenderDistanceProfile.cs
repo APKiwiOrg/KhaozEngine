@@ -98,6 +98,45 @@ namespace KhaozEngine.Terrain
         /// camera far clip every engine camera already ships with.</summary>
         public static RenderDistanceProfile Default => For(RenderDistanceTier.Far);
 
+        /// <summary>This profile scaled up by <paramref name="multiplier"/> as one coherent set, for a settings UI
+        /// that offers Base/2x/4x rather than the fixed <see cref="RenderDistanceTier"/> steps. <see cref="FarClip"/>,
+        /// <see cref="OceanHalfExtent"/> and <see cref="PropDrawRadius"/> scale linearly. <see cref="DecorRadiusChunks"/>
+        /// and <see cref="UnloadRadiusChunks"/> scale in whole chunks, rounded UP: a linear scale of a chunk count is
+        /// usually fractional, and rounding up rather than down only ever grows residency, so it cannot break the
+        /// rim rules in <see cref="Validate"/> (a larger <see cref="DecorRadiusMeters"/> still covers the scaled
+        /// <see cref="OceanHalfExtent"/>). The unload radius is then clamped above the scaled decor radius and the
+        /// unchanged <see cref="GameplayLoadRadiusChunks"/> in case rounding alone ever lands exactly on the boundary,
+        /// so the hysteresis invariant holds regardless. <see cref="GameplayLoadRadiusChunks"/> itself is unchanged:
+        /// the gameplay ring is a simulation footprint, not a view distance (see the type summary). <c>Scaled(1f)</c>
+        /// is the identity, and every built-in <see cref="For"/> tier passes <see cref="Validate"/> after scaling by
+        /// any factor at or above 1.</summary>
+        /// <param name="multiplier">Scale factor, 1 or greater. Use a smaller <see cref="RenderDistanceTier"/> via
+        /// <see cref="For"/> to scale down instead.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="multiplier"/> is less than 1, NaN, or
+        /// positive infinity.</exception>
+        public RenderDistanceProfile Scaled(float multiplier)
+        {
+            // NaN fails every comparison, so `!(multiplier >= 1f)` catches NaN as well as anything below 1.
+            if (!(multiplier >= 1f) || float.IsPositiveInfinity(multiplier))
+                throw new ArgumentOutOfRangeException(nameof(multiplier), multiplier,
+                    "multiplier must be finite and at least 1 (use a smaller For(...) tier to scale down).");
+
+            int decorRadiusChunks = (int)MathF.Ceiling(DecorRadiusChunks * multiplier);
+            int unloadRadiusChunks = (int)MathF.Ceiling(UnloadRadiusChunks * multiplier);
+            int outer = GameplayLoadRadiusChunks > decorRadiusChunks ? GameplayLoadRadiusChunks : decorRadiusChunks;
+            if (unloadRadiusChunks <= outer)
+                unloadRadiusChunks = outer + 1;
+
+            return this with
+            {
+                DecorRadiusChunks = decorRadiusChunks,
+                UnloadRadiusChunks = unloadRadiusChunks,
+                PropDrawRadius = PropDrawRadius * multiplier,
+                FarClip = FarClip * multiplier,
+                OceanHalfExtent = OceanHalfExtent * multiplier,
+            };
+        }
+
         /// <summary>This profile's radii layered onto <see cref="StreamerConfig.Default"/>. Use the
         /// <see cref="ToStreamerConfig(StreamerConfig)"/> overload when the caller has its own tuned config (a
         /// non-default chunk size, LOD table or per-frame apply budget) to keep.</summary>

@@ -39,6 +39,17 @@ automatically, so this is transparent to every other package.
   A degenerate zero-length ray (zero direction) hits, at `tNear` 0, only when the origin already lies inside
   the box on every axis. A NaN component in either the origin or the direction always misses (without the
   explicit check, the all-false NaN comparisons would fall through the slab test as an always-pass hit).
+- `WorldFrame` - a quantized planar frame for large worlds, the floating-origin primitive: a `(short X, short Z)`
+  index onto a 128 m grid whose `Anchor` is `(X, 0, Z) * Grid` metres, always exactly representable in float32.
+  `Nearest(world)` rounds (never floors) so a freshly anchored local lies inside half a grid, which is what makes
+  a re-anchor an EXACT translation that introduces no error at all. `ToLocal`/`ToWorld`/`ToLocalXz`/`ToWorldXz`
+  convert, `DeltaTo(target)` is the translation that carries a local into another frame, and
+  `ShouldReanchor(local)` is the hysteresis policy (past `ReanchorRadius` = 96 m, guaranteeing at least 64 m of
+  travel between consecutive re-anchors). `Grid` is a CONSTANT, not a knob: two peers on different grids decode
+  different world positions from the same bytes. `MaxLocalRadius` is the sizing ceiling the measured divergence
+  budget gives (`Divergence20sUlps` ULPs of the coordinate per 20 s window against `DivergenceBudgetMetres`).
+  `default` is the world origin, so a game that never leaves it is byte-identical to the pre-frame engine. Y is
+  NEVER framed. `Scene3D.RenderOrigin` uses `Nearest(...).Anchor` for camera-relative rendering.
 - `IDesignViewport` - the fakeable design-viewport seam (design size, scale + letterbox offset,
   screen to design mapping, and the `DesignBounds`/`ContentBounds`/`WindowBounds` rects) that rendering,
   layout, and headless tests target. Moved here from Windowing in 9.0.0, which carries the concrete

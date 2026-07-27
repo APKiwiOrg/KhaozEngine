@@ -88,6 +88,12 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
+        GpuOutputDescription _outputs;
+        // The clipmap grid's own shader set + pipeline, built on FIRST USE and kept. It needs its own because the
+        // two grids do not share a vertex layout (12 bytes against 24); the resource LAYOUT and the fragment source
+        // are the same, so nothing else doubles. A scene that never selects WaterGridMode.Clipmap never creates it.
+        IGpuShaderSet? _clipShaders;
+        IGpuPipeline? _clipPipe;
         IGpuBuffer? _ubo;     // grown geometrically to hold _capacity slots
         int _capacity;
         IGpuResourceSet? _set;
@@ -109,9 +115,56 @@ namespace KhaozEngine.Render3D.Rendering
         readonly Vector3[] _gridScratch = new Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
         readonly float[] _axisScratch = new float[2 * WaterMath.GridResolution];
 
+        // ---- Clipmap grid state ------------------------------------------------------------------------------
+        // Its own buffers, because their SIZE depends on the ring settings rather than being the one fixed budget
+        // the camera-focused grid has. Allocated on first clipmap use and regrown only when those settings move.
+        //
+        // ONE buffer pair holding a per-plane SLICE each, rather than a shared scratch every plane overwrites.
+        // That is what makes the cache below work at all with more than one plane: a cached "nothing moved" is a
+        // claim about what the buffer still HOLDS, and a shared buffer makes that claim false the moment the next
+        // plane uploads over it. Slices are addressed by the draw's own indexStart/vertexOffset, so the bindings
+        // are set once for the whole pass.
+        IGpuBuffer? _clipVb;
+        IGpuBuffer? _clipIb;
+        WaterClipmapVertex[] _clipVerts = Array.Empty<WaterClipmapVertex>();   // scratch for ONE plane
+        uint[] _clipIndices = Array.Empty<uint>();                            // scratch for ONE plane
+        int _clipSliceVerts, _clipSliceIndices;                               // per-plane slice capacity
+        ClipSlot[] _clipSlots = Array.Empty<ClipSlot>();
+        readonly long[] _clipSnapScratchX = new long[WaterClipmap.MaxLevels];
+        readonly long[] _clipSnapScratchZ = new long[WaterClipmap.MaxLevels];
+
+        /// <summary>Clipmap grids rebuilt AND re-uploaded by the last <see cref="Draw"/>, across every queued
+        /// plane. The headline behaviour of a world-locked grid is that this is 0 on most frames: a ring only
+        /// moves when the camera crosses one of its snap boundaries. Internal, for the test that pins that as a
+        /// measured number rather than a claim (same role as <see cref="LastOceanCost"/> for #311).</summary>
+        internal int LastClipmapRebuilds { get; private set; }
+
+        /// <summary>One plane's cached grid: what its slice of the buffers currently holds. Per PLANE, not
+        /// per renderer - a single shared entry made every plane compare against the previous plane's key, so a
+        /// two-plane scene missed on every plane on every frame and quietly rebuilt both, which is the whole
+        /// saving gone. Identity is the plane's INDEX in the frame's queue, so a consumer that reorders its
+        /// DrawWater calls between frames pays one rebuild and then settles.</summary>
+        sealed class ClipSlot
+        {
+            public ClipKey Key;
+            public readonly long[] SnapX = new long[WaterClipmap.MaxLevels];
+            public readonly long[] SnapZ = new long[WaterClipmap.MaxLevels];
+            public bool Valid;
+            public int IndexCount;
+        }
+
+        /// <summary>Everything the built clipmap geometry depends on EXCEPT the per-level snap indices, which are
+        /// compared separately (they are an array). The plane fields are ABSOLUTE world coordinates and the render
+        /// origin is carried separately: the lattice is a function of the world alone, but the vertex POSITIONS are
+        /// render-relative, so a rebase leaves the lattice put and still needs a re-upload.</summary>
+        readonly record struct ClipKey(float Cell, int RingCells, int Levels,
+            float CenterX, float CenterZ, float SurfaceY, float HalfX, float HalfZ,
+            float OriginX, float OriginY, float OriginZ);
+
         public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput)
         {
             _gd = gd;
+            _outputs = colorOutput;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.WaterVert, ShaderSources.WaterFrag);
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
@@ -131,21 +184,32 @@ namespace KhaozEngine.Render3D.Rendering
                 // same buffer per the one-UBO-per-set rule).
                 new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
             _ocean = new OceanFftProducer(gd);
-            _pipe = Pipe(f, colorOutput);
+            _pipe = Pipe(f, colorOutput, _shaders, false);
         }
 
         /// <summary>Rebuild the pipeline for a new colour-target output description (e.g. the MRT became
         /// multisampled for MSAA). Layout/shaders/buffers are kept.</summary>
         public void SetOutputs(GpuOutputDescription colorOutput)
         {
+            _outputs = colorOutput;
             _pipe.Dispose();
-            _pipe = Pipe(_gd.Factory, colorOutput);
+            _pipe = Pipe(_gd.Factory, colorOutput, _shaders, false);
+            if (_clipPipe == null) return;
+            _clipPipe.Dispose();
+            _clipPipe = Pipe(_gd.Factory, colorOutput, _clipShaders!, true);
         }
 
-        IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs)
+        IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs, IGpuShaderSet shaders, bool clipmap)
         {
-            var vertexLayout = new GpuVertexLayoutDescription(
-                new GpuVertexElement("Position", GpuVertexElementFormat.Float3));
+            // Position only for the camera-focused grid; the clipmap adds the stitch offset and the ring cell size
+            // (WaterClipmapVertex), which is why it cannot share this pipeline.
+            var vertexLayout = clipmap
+                ? new GpuVertexLayoutDescription(
+                    new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
+                    new GpuVertexElement("Stitch", GpuVertexElementFormat.Float2),
+                    new GpuVertexElement("Cell", GpuVertexElementFormat.Float1))
+                : new GpuVertexLayoutDescription(
+                    new GpuVertexElement("Position", GpuVertexElementFormat.Float3));
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
@@ -157,10 +221,19 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = outputs,
             });
+        }
+
+        /// <summary>Build the clipmap shader set + pipeline on first use, so a scene that never asks for
+        /// <see cref="WaterGridMode.Clipmap"/> pays nothing for it (not even a shader compile).</summary>
+        void EnsureClipPipeline()
+        {
+            if (_clipPipe != null) return;
+            _clipShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.WaterClipmapVert, ShaderSources.WaterFrag);
+            _clipPipe = Pipe(_gd.Factory, _outputs, _clipShaders, true);
         }
 
         void BindTargets(RenderResources res)
@@ -270,8 +343,12 @@ namespace KhaozEngine.Render3D.Rendering
                 RippleSpectrum = new Vector4(
                     Math.Clamp(settings.RippleComponents, 1, Internal.RippleSpectrum.MaxComponents),
                     settings.RippleLacunarity, settings.RippleGain, settings.RippleSeed),
-                FootprintParams = new Vector4(settings.FootprintSamples, settings.VarianceToRoughness, 0f, 0f),
-                FftParams = new Vector4(ocean.Active ? 1f : 0f, ocean.CascadeCount, ocean.Resolution, 0f),
+                FootprintParams = new Vector4(settings.FootprintSamples, settings.VarianceToRoughness,
+                    MathF.Max(settings.ClipmapBandLimitSamples, 1f), 0f),
+                // FftParams.w is the top mip index of the live maps, and it is the switch that turns the whole
+                // band-limit on: 0 (which is what an ocean with no mip chain reports, i.e. every consumer that has
+                // not opted into the clipmap) makes oceanMip early-return and both stages sample a literal LOD 0.
+                FftParams = new Vector4(ocean.Active ? 1f : 0f, ocean.CascadeCount, ocean.Resolution, ocean.MaxMip),
                 FftTiles = new Vector4(ocean.Tiles, 0f),
                 FftVariance = new Vector4(ocean.SlopeVariance, 0f),
                 FftFocus = new Vector4(sea.OnshoreFocusPoint, Math.Clamp(sea.OnshoreFocusStrength, 0f, 1f),
@@ -332,13 +409,18 @@ namespace KhaozEngine.Render3D.Rendering
             /// <summary>Per-cascade expected slope variance from the baked spectrum.</summary>
             public Vector3 SlopeVariance { get; }
 
-            public OceanMaps(int cascadeCount, int resolution, Vector3 tiles, Vector3 slopeVariance)
+            /// <summary>Top mip index the maps carry; 0 when they have no chain, which makes both shader stages
+            /// sample LOD 0 exactly as they did before mips existed.</summary>
+            public float MaxMip { get; }
+
+            public OceanMaps(int cascadeCount, int resolution, Vector3 tiles, Vector3 slopeVariance, float maxMip)
             {
                 Active = true;
                 CascadeCount = cascadeCount;
                 Resolution = resolution;
                 Tiles = tiles;
                 SlopeVariance = slopeVariance;
+                MaxMip = maxMip;
             }
 
             /// <summary>Snapshot a producer's current output. Returns the inactive default when it produced
@@ -347,7 +429,8 @@ namespace KhaozEngine.Render3D.Rendering
                 => producer.Active
                     ? new OceanMaps(producer.CascadeCount, producer.Resolution,
                         new Vector3(producer.TileMetres[0], producer.TileMetres[1], producer.TileMetres[2]),
-                        new Vector3(producer.SlopeVariance[0], producer.SlopeVariance[1], producer.SlopeVariance[2]))
+                        new Vector3(producer.SlopeVariance[0], producer.SlopeVariance[1], producer.SlopeVariance[2]),
+                        producer.MaxMip)
                     : default;
         }
 
@@ -359,14 +442,24 @@ namespace KhaozEngine.Render3D.Rendering
             SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
         {
             if (planes.Length == 0) return;
+            bool clipmap = settings.GridMode == WaterGridMode.Clipmap;
+            LastClipmapRebuilds = 0;
             EnsureUboCapacity(planes.Length);
-            EnsureGridBuffers();
+            if (clipmap)
+            {
+                EnsureClipPipeline();
+                EnsureClipBuffers(planes, settings, renderOrigin);
+            }
+            else
+            {
+                EnsureGridBuffers();
+            }
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
             // it produced). Every queued plane samples the same cascades: this release has one sea state, not one
             // per body of water. The producer records its final dispatch into THIS command list, so the storage
             // writes and the draws that sample them share a list - the seam's guaranteed ordering.
-            _ocean.Update(cl, settings, timeSeconds);
+            _ocean.Update(cl, settings, timeSeconds, wantMips: clipmap);
             var oceanMaps = OceanMaps.From(_ocean);
             BindTargets(res);
 
@@ -378,21 +471,151 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
             }
 
+            // Clipmap: every upload happens HERE, before a single draw is recorded, so no plane's geometry can be
+            // written over another's mid-pass and the draw loop below touches no buffer contents at all.
+            if (clipmap)
+                for (int i = 0; i < planes.Length; i++)
+                    RefreshClipmapPlane(cl, i, planes[i], cameraPos, settings, renderOrigin);
+
             cl.SetFramebuffer(res.ColorDepthFB);
-            cl.SetPipeline(_pipe);
-            cl.SetIndexBuffer(_ib!, GpuIndexFormat.UInt32);
+            cl.SetPipeline(clipmap ? _clipPipe! : _pipe);
+            cl.SetIndexBuffer(clipmap ? _clipIb! : _ib!, GpuIndexFormat.UInt32);
+            if (clipmap) cl.SetVertexBuffer(0, _clipVb!);
             for (int i = 0; i < planes.Length; i++)
             {
+                cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
+                if (clipmap)
+                {
+                    // Each plane reads its own slice: indexStart walks the index buffer, vertexOffset rebases the
+                    // plane-local indices onto its own vertex block, so one binding serves the whole pass.
+                    cl.DrawIndexed((uint)_clipSlots[i].IndexCount, 1,
+                        (uint)(i * _clipSliceIndices), i * _clipSliceVerts, 0);
+                    continue;
+                }
                 // The grid concentrates its vertices around the camera's XZ (clamped inside the plane by
                 // BuildGridPositions), so the fixed vertex budget lands where the displaced swell actually reads.
                 int n = WaterMath.BuildGridPositions(planes[i], cameraPos.X, cameraPos.Z, settings.GridFocusBias,
                     _gridScratch, _axisScratch);
                 cl.UpdateBuffer<Vector3>(_vb!, 0, _gridScratch.AsSpan(0, n));
-                cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
                 cl.SetVertexBuffer(0, _vb!);
                 cl.DrawIndexed((uint)WaterMath.GridIndexCount, 1, 0, 0, 0);
             }
         }
+
+        /// <summary>
+        /// Bring ONE plane's slice of the clipmap buffers up to date, and only if its rings actually moved.
+        /// <para>
+        /// The early-out is not an optimisation detail, it is the mode's headline behaviour. A ring only moves when
+        /// the camera crosses one of its snap boundaries, so at walking pace most frames upload NOTHING, against
+        /// the camera-focused grid's unconditional 113 KB of vertices every single frame. It also means the
+        /// steadiness and the cost improve together rather than trading off, which is why
+        /// <see cref="LastClipmapRebuilds"/> exists to hold it to that.
+        /// </para>
+        /// <para>
+        /// <b>The lattice is decided in ABSOLUTE world space</b> - the plane and the focus are lifted back out of
+        /// the render frame before anything is snapped - so a render-origin rebase moves no ring. It does change
+        /// every vertex POSITION (those are render-relative by construction), which is why the origin is part of
+        /// the key and a rebase costs one rebuild.
+        /// </para>
+        /// </summary>
+        void RefreshClipmapPlane(IGpuCommandList cl, int index, in WaterPlane relativePlane, Vector3 cameraPos,
+            WaterSettings settings, Vector3 renderOrigin)
+        {
+            float cell = MathF.Max(settings.ClipmapCellSize, 1e-4f);
+            int ringCells = WaterClipmap.ClampRingCells(settings.ClipmapRingCells);
+
+            // Back to absolute, for every decision that defines the lattice.
+            var plane = new WaterPlane(relativePlane.CenterX + renderOrigin.X, relativePlane.SurfaceY + renderOrigin.Y,
+                relativePlane.CenterZ + renderOrigin.Z, relativePlane.HalfExtentX, relativePlane.HalfExtentZ);
+            int levels = LevelsFor(plane, settings, cell, ringCells);
+            Vector2 focus = WaterClipmap.ClampFocus(plane, cameraPos.X + renderOrigin.X, cameraPos.Z + renderOrigin.Z);
+
+            ClipSlot slot = _clipSlots[index];
+            var key = new ClipKey(cell, ringCells, levels, plane.CenterX, plane.CenterZ, plane.SurfaceY,
+                plane.HalfExtentX, plane.HalfExtentZ, renderOrigin.X, renderOrigin.Y, renderOrigin.Z);
+            WaterClipmap.SnapIndices(focus.X, focus.Y, cell, levels, _clipSnapScratchX, _clipSnapScratchZ);
+
+            bool same = slot.Valid && slot.Key == key;
+            for (int l = 0; same && l < levels; l++)
+                same = slot.SnapX[l] == _clipSnapScratchX[l] && slot.SnapZ[l] == _clipSnapScratchZ[l];
+            if (same) return;
+
+            int vcount = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ringCells, levels,
+                _clipVerts, _clipIndices, out int icount, renderOrigin);
+            cl.UpdateBuffer<WaterClipmapVertex>(_clipVb!,
+                (uint)(index * _clipSliceVerts) * ClipVertexBytes, _clipVerts.AsSpan(0, vcount));
+            cl.UpdateBuffer<uint>(_clipIb!,
+                (uint)(index * _clipSliceIndices) * sizeof(uint), _clipIndices.AsSpan(0, icount));
+
+            slot.Key = key;
+            slot.IndexCount = icount;
+            Array.Copy(_clipSnapScratchX, slot.SnapX, levels);
+            Array.Copy(_clipSnapScratchZ, slot.SnapZ, levels);
+            slot.Valid = true;
+            LastClipmapRebuilds++;
+        }
+
+        /// <summary>The ring count for one plane: the explicit setting when it is positive, otherwise derived so
+        /// the outermost ring covers the plane from any camera position on it.</summary>
+        static int LevelsFor(in WaterPlane plane, WaterSettings settings, float cell, int ringCells)
+            => settings.ClipmapLevels > 0
+                ? Math.Clamp(settings.ClipmapLevels, 1, WaterClipmap.MaxLevels)
+                : WaterClipmap.LevelsFor(plane, cell, ringCells);
+
+        /// <summary>
+        /// Size the clipmap's buffers, CPU scratch and per-plane cache slots for the frame: one SLICE per plane,
+        /// each big enough for the largest plane's grid. Growing only, and called once before any draw is recorded.
+        /// <para>
+        /// Both halves of that are load-bearing. A per-plane slice is what lets the cache mean anything with more
+        /// than one plane (a shared buffer would have each plane overwrite the last, so a cache hit would draw
+        /// someone else's geometry). And sizing up front is what stops a second, bigger plane reallocating
+        /// mid-loop and freeing the buffer an already-recorded draw still points at - with
+        /// <see cref="WaterSettings.ClipmapLevels"/> at 0 the ring count is derived per plane, so different-sized
+        /// planes genuinely want different grids.
+        /// </para>
+        /// </summary>
+        void EnsureClipBuffers(ReadOnlySpan<WaterPlane> planes, WaterSettings settings, Vector3 renderOrigin)
+        {
+            float cell = MathF.Max(settings.ClipmapCellSize, 1e-4f);
+            int ringCells = WaterClipmap.ClampRingCells(settings.ClipmapRingCells);
+            int vcount = 0, icount = 0;
+            foreach (WaterPlane relative in planes)
+            {
+                var plane = new WaterPlane(relative.CenterX + renderOrigin.X, relative.SurfaceY + renderOrigin.Y,
+                    relative.CenterZ + renderOrigin.Z, relative.HalfExtentX, relative.HalfExtentZ);
+                int levels = LevelsFor(plane, settings, cell, ringCells);
+                vcount = Math.Max(vcount, WaterClipmap.VertexCount(levels, ringCells));
+                icount = Math.Max(icount, WaterClipmap.IndexCount(levels, ringCells));
+            }
+
+            if (_clipSlots.Length < planes.Length)
+            {
+                var grown = new ClipSlot[planes.Length];
+                Array.Copy(_clipSlots, grown, _clipSlots.Length);
+                for (int i = _clipSlots.Length; i < grown.Length; i++) grown[i] = new ClipSlot();
+                _clipSlots = grown;
+            }
+
+            if (_clipVb != null && _clipSliceVerts >= vcount && _clipSliceIndices >= icount
+                && (long)_clipSliceVerts * planes.Length * ClipVertexBytes <= _clipVb.SizeInBytes) return;
+
+            _clipSliceVerts = Math.Max(_clipSliceVerts, vcount);
+            _clipSliceIndices = Math.Max(_clipSliceIndices, icount);
+            _clipVb?.Dispose();
+            _clipIb?.Dispose();
+            _clipVerts = new WaterClipmapVertex[_clipSliceVerts];
+            _clipIndices = new uint[_clipSliceIndices];
+            _clipVb = _gd.Factory.CreateBuffer(new GpuBufferDescription(
+                (uint)(_clipSliceVerts * planes.Length) * ClipVertexBytes, GpuBufferUsage.VertexBuffer));
+            _clipIb = _gd.Factory.CreateBuffer(new GpuBufferDescription(
+                (uint)(_clipSliceIndices * planes.Length) * sizeof(uint), GpuBufferUsage.IndexBuffer));
+            // Fresh buffers hold nothing, so every slot's "what my slice contains" claim is void.
+            foreach (ClipSlot slot in _clipSlots) slot.Valid = false;
+        }
+
+        /// <summary>Byte size of one <see cref="WaterClipmapVertex"/>: Float3 position + Float2 stitch + Float1
+        /// cell. Must match the clipmap pipeline's vertex layout, which <c>WaterClipmapVertexTests</c> pins.</summary>
+        internal const uint ClipVertexBytes = 24;
 
         /// <summary>The FFT producer's last-frame diagnostics: GPU stalls it cost and the wall-clock milliseconds
         /// they took. Internal, for the perf test that pins #311's cost as a measured number.</summary>
@@ -402,12 +625,16 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _ocean.Dispose();
             _set?.Dispose();
+            _clipPipe?.Dispose();
             _pipe.Dispose();
             _layout.Dispose();
+            _clipShaders?.Dispose();
             _shaders.Dispose();
             _ubo?.Dispose();
             _vb?.Dispose();
             _ib?.Dispose();
+            _clipVb?.Dispose();
+            _clipIb?.Dispose();
         }
     }
 }

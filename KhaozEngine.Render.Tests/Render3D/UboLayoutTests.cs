@@ -501,6 +501,23 @@ namespace KhaozEngine.Tests.Render3D
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
         }
 
+        [Fact]
+        public void WaterClipmapVert_DeclaresSameBlockAsWaterFrag()
+        {
+            // The clipmap grid runs its own vertex shader against the SAME resource set and the same dynamic-offset
+            // buffer, so its block declaration has to match too - a drift here would reinterpret one plane's bytes
+            // in one grid mode only, which is exactly the kind of defect that survives a review.
+            foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
+                "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
+                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
+                "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
+                "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
+                "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
+                "vec4 FftRotSin;", "vec4 FftSector;", "vec4 RenderOrigin;" })
+                Assert.True(ShaderSources.WaterClipmapVert.Contains(member),
+                    $"WaterClipmapVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's.");
+        }
+
         // ---- Distortion offset-field pass UBO (DistortionRenderer) ----
 
         [Fact]

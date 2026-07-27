@@ -196,6 +196,15 @@ namespace KhaozEngine.Gpu
         /// be at least that size.</summary>
         void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height);
 
+        /// <summary>Copy one mip level + array layer of <paramref name="src"/> into a specific mip level + array
+        /// layer of <paramref name="dst"/>. The general form of the overload above (which is this with a
+        /// destination of mip 0 / layer 0). Its use here is seeding the base level of a MIPPED texture from a
+        /// single-mip one written by compute: a storage-image binding must cover exactly one mip level, so a
+        /// compute-written map that also needs a mip chain has to be two textures with a copy between them, not one
+        /// texture bound both ways.</summary>
+        void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
+            IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height);
+
         /// <summary>Generate the full mip chain of <paramref name="texture"/> from its base level. The texture must
         /// be created with <see cref="GpuTextureUsage.GenerateMipmaps"/> and a mip count &gt; 1.</summary>
         void GenerateMipmaps(IGpuTexture texture);

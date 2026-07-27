@@ -70,9 +70,13 @@ namespace KhaozEngine.Gpu.Internal
             => CommandList.CopyTexture(((VeldridGpuTexture)src).Texture, ((VeldridGpuTexture)dst).Texture);
 
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height)
+            => CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, 0, 0, width, height);
+
+        public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
+            IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
             => CommandList.CopyTexture(
                 ((VeldridGpuTexture)src).Texture, 0, 0, 0, srcMipLevel, srcArrayLayer,
-                ((VeldridGpuTexture)dst).Texture, 0, 0, 0, 0, 0,
+                ((VeldridGpuTexture)dst).Texture, 0, 0, 0, dstMipLevel, dstArrayLayer,
                 width, height, 1, 1);
 
         public void GenerateMipmaps(IGpuTexture texture)

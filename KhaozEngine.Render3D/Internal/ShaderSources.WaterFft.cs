@@ -67,6 +67,27 @@ float oceanRotSin(int i) { return i == 0 ? FftRotSin.x : (i == 1 ? FftRotSin.y :
 // compute kernel writes texel (px, pz) for world (px, pz) * tile / resolution.
 vec2 oceanUv(vec2 xz, float tile, float halfTexel) { return xz / tile + halfTexel; }
 
+// A cascade's world-space texel size: its tile over the FFT resolution.
+float oceanTexel(float tile) { return tile / max(FftParams.z, 1.0); }
+
+// Mip level that low-passes a cascade to `spacing`'s Nyquist. Mirrors WaterClipmap.MipLevel exactly, and is the
+// per-ring band limit KhaozEngine#296 is about: mip m carries texels of texel * 2^m and so a shortest wavelength
+// of twice that, and solving 2 * texel * 2^m >= samples * spacing gives the log2 below.
+//
+// FftParams.w is the TOP MIP INDEX of the live maps and is 0 unless the clipmap grid asked for a chain, so the
+// whole thing early-returns 0 on the camera-focused path - deliberately by an early return rather than by
+// arithmetic that happens to land on 0, so the pre-mip surface samples a literal 0.0 exactly as it always did.
+// A `samples` of 0 is FootprintSamples' documented band-limit-off switch and turns this off with it, so the two
+// mechanisms cannot disagree about whether the surface is being low-passed.
+// Touches no resource, so it is safe in a function: only the SAMPLING has to stay inside main.
+float oceanMip(float spacing, float texel, float samples) {
+    float maxMip = FftParams.w;
+    if (maxMip <= 0.0 || spacing <= 0.0 || texel <= 1e-9 || samples <= 0.0) return 0.0;
+    float want = spacing * max(samples, 1.0) / (2.0 * texel);
+    if (want <= 1.0) return 0.0;
+    return min(log2(want), maxMip);
+}
+
 // ---- Sampling frame (mirrors Internal/OceanFocus.cs) ----
 
 // R(a + b) from the two (cos, sin) pairs. Composing two identities is exactly the identity again.
@@ -141,13 +162,16 @@ vec2 oceanWarp(vec2 xz) {
 ";
 
         /// <summary>
-        /// Vertex stage, spliced INTO main: sum every cascade's displacement at the still-water position into
-        /// <c>oceanDisp</c>. Sampled with <c>textureLod</c> because a vertex shader has no derivatives to pick a
-        /// mip with, and the maps are single-mip anyway.
+        /// Vertex stage, spliced INTO main (inside the caller's tap loop, so <c>sxz</c> is THIS tap's sample XZ and
+        /// <c>bandCell</c> its grid spacing): sum every cascade's displacement into <c>oceanDisp</c>. Sampled with
+        /// <c>textureLod</c> because a vertex shader has no derivatives to pick a mip with, so the level comes from
+        /// the grid instead - <c>bandCell</c> through <c>oceanMip</c>, which is 0 on the camera-focused grid and
+        /// the ring's own cell size on the clipmap.
         /// <para>
         /// <b>This stage OWNS the sampling frame, and hands it down.</b> The focus rotation is computed here, from
-        /// the UNDISPLACED grid position, and written to <c>focusRot</c> / <c>refXz</c> which the caller passes on
-        /// as varyings. The fragment never re-derives it. That is what keeps the shading attached to the geometry:
+        /// the UNDISPLACED grid position, and written to <c>tapRot</c> / <c>tapRef</c> which the caller averages
+        /// across taps and passes on as varyings. The fragment never re-derives it. That is what keeps the shading
+        /// attached to the geometry:
         /// deriving it a second time from the DISPLACED position (the only position the fragment has of its own)
         /// would rotate the normals in a frame the displacement was never computed in, and the surface's lighting
         /// would detach from its silhouette wherever the two disagreed.
@@ -160,9 +184,9 @@ vec2 oceanWarp(vec2 xz) {
         const string WaterFftVertGlsl = @"
         int nc = clamp(int(FftParams.y + 0.5), 1, KE_MAX_CASCADES);
         float halfTexel = 0.5 / max(FftParams.z, 1.0);
-        focusRot = oceanFocusRot(aXz);
-        refXz = oceanWarp(aXz);
-        vec4 sec = oceanSectors(focusRot);
+        tapRot = oceanFocusRot(aXz);
+        tapRef = oceanWarp(aXz);
+        vec4 sec = oceanSectors(tapRot);
         vec2 csHi = oceanRotAdd(sec.xy, FftSector.yz);
         float wLo = (1.0 - sec.z) * sec.w, wHi = sec.z * sec.w;
         vec3 oceanDisp = vec3(0.0);
@@ -170,16 +194,20 @@ vec2 oceanWarp(vec2 xz) {
             if (i >= nc) break;
             vec2 off = vec2(oceanRotCos(i), oceanRotSin(i));
             vec2 cs = oceanRotAdd(sec.xy, off);
-            vec2 uv = oceanUv(oceanToSample(refXz, cs), oceanTile(i), halfTexel);
-            vec4 dm = textureLod(sampler2DArray(OceanMap, OceanSamp), vec3(uv, float(i)), 0.0);
+            // The per-ring band limit. bandCell is this vertex's own grid spacing under WaterGridMode.Clipmap and
+            // a literal 0 under WaterGridMode.CameraFocused, where oceanMip returns 0 and this is the LOD-0 sample
+            // it always was. A vertex shader has no derivatives, so the level has to come from the geometry.
+            float lod = oceanMip(bandCell, oceanTexel(oceanTile(i)), FootprintParams.z);
+            vec2 uv = oceanUv(oceanToSample(tapRef, cs), oceanTile(i), halfTexel);
+            vec4 dm = textureLod(sampler2DArray(OceanMap, OceanSamp), vec3(uv, float(i)), lod);
             vec2 dxz = oceanToWorld(dm.xz, cs);
             oceanDisp += vec3(dxz.x, dm.y, dxz.y) * wLo;
             // The second tap only exists mid-sector. Skipping it is what keeps an unfocused ocean at ONE sample
             // per cascade, and the branch is uniform there because the weight comes from a uniform.
             if (wHi > 0.0) {
                 vec2 cs2 = oceanRotAdd(csHi, off);
-                vec2 uv2 = oceanUv(oceanToSample(refXz, cs2), oceanTile(i), halfTexel);
-                vec4 dm2 = textureLod(sampler2DArray(OceanMap, OceanSamp), vec3(uv2, float(i)), 0.0);
+                vec2 uv2 = oceanUv(oceanToSample(tapRef, cs2), oceanTile(i), halfTexel);
+                vec4 dm2 = textureLod(sampler2DArray(OceanMap, OceanSamp), vec3(uv2, float(i)), lod);
                 vec2 dxz2 = oceanToWorld(dm2.xz, cs2);
                 oceanDisp += vec3(dxz2.x, dm2.y, dxz2.y) * wHi;
             }
@@ -195,9 +223,16 @@ vec2 oceanWarp(vec2 xz) {
         /// The band-limit is the SAME measure the procedural spectrum uses (<c>rippleResolve</c> against the pixel
         /// footprint), applied per cascade against twice its texel size, which is the shortest wave that cascade
         /// can carry. It has to be here: a 128-texel cascade over a 14 metre tile is 11 cm of detail, and past the
-        /// distance where a pixel covers that, it is noise that crawls. Foam is deliberately NOT band-limited,
-        /// because it is the one channel whose far-field read should survive - a whitecap two kilometres out is
-        /// still white.
+        /// distance where a pixel covers that, it is noise that crawls. Where a mip chain exists
+        /// (<see cref="WaterGridMode.Clipmap"/>) the hardware filter does the removal properly and
+        /// <c>rippleResolve</c> only supplies what the chain ran out of; where it does not, this is unchanged.
+        /// </para>
+        /// <para>
+        /// Foam is still not SCALED by the band limit - it is the one channel whose far-field read should survive,
+        /// and a whitecap two kilometres out is still white. It does ride the same mip, which is not the same
+        /// thing and is the right answer for it: foam is a bounded coverage, so box-averaging it over the pixel
+        /// footprint preserves its mean while a point sample at LOD 0 just aliases whether a given whitecap
+        /// happened to land on this texel.
         /// </para>
         /// <para>
         /// The removed variance comes from the per-cascade slope variance baked with the spectrum, not from the
@@ -226,23 +261,32 @@ vec2 oceanWarp(vec2 xz) {
         for (int i = 0; i < KE_MAX_CASCADES; i++) {
             if (i >= nc) break;
             float tile = oceanTile(i);
+            float texel = tile / res;
             vec2 off = vec2(oceanRotCos(i), oceanRotSin(i));
             vec2 cs = oceanRotAdd(sec.xy, off);
+            // How much of THIS CASCADE'S finest content the pixel can resolve at all. Unchanged, and it is what
+            // the Toksvig transfer below wants: the total attenuation from full detail down to the pixel's
+            // resolving power, which is the variance that has to reappear as lobe width however it was removed.
+            float keepAll = rippleResolve(2.0 * texel, footprint, footprintSamples);
+            // With a mip chain the hardware filter does most of that removal properly instead of the shader
+            // scaling an aliased sample down, so `keep` is only the residual attenuation still owed on top of the
+            // mip. It collapses to keepAll at lod 0, which is the whole camera-focused path.
+            float lod = oceanMip(footprint, texel, footprintSamples);
+            float keep = lod > 0.0 ? rippleResolve(2.0 * texel * exp2(lod), footprint, footprintSamples) : keepAll;
             // Derivative layers follow the displacement layers, so cascade i is at nc + i.
             vec4 d = textureLod(sampler2DArray(OceanMap, OceanSamp),
-                                vec3(oceanUv(oceanToSample(vRefXz, cs), tile, halfTexel), float(nc + i)), 0.0);
-            float keep = rippleResolve(2.0 * tile / res, footprint, footprintSamples);
+                                vec3(oceanUv(oceanToSample(vRefXz, cs), tile, halfTexel), float(nc + i)), lod);
             oceanSlope += oceanToWorld(d.xy, cs) * (keep * wLo);
             float foam = d.z * (1.0 - sec.z);
             if (wHi > 0.0) {
                 vec2 cs2 = oceanRotAdd(csHi, off);
                 vec4 d2 = textureLod(sampler2DArray(OceanMap, OceanSamp),
-                                     vec3(oceanUv(oceanToSample(vRefXz, cs2), tile, halfTexel), float(nc + i)), 0.0);
+                                     vec3(oceanUv(oceanToSample(vRefXz, cs2), tile, halfTexel), float(nc + i)), lod);
                 oceanSlope += oceanToWorld(d2.xy, cs2) * (keep * wHi);
                 foam += d2.z * sec.z;
             }
             oceanFoam = max(oceanFoam, foam);
-            oceanLost += oceanVariance(i) * (1.0 - keep * keep);
+            oceanLost += oceanVariance(i) * (1.0 - keepAll * keepAll);
         }
 ";
     }

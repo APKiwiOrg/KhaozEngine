@@ -224,6 +224,55 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public float GridFocusBias = 1.8f;
 
+        /// <summary>
+        /// How the surface grid is laid out. Default <see cref="WaterGridMode.CameraFocused"/>, the warped grid
+        /// <see cref="GridFocusBias"/> shapes, which is what every consumer has been rendering and stays
+        /// byte-identical. <see cref="WaterGridMode.Clipmap"/> opts into the world-locked ring grid instead, which
+        /// is what removes the camera-motion boiling measured on
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/296">#296</see>.
+        /// <para>
+        /// <see cref="GridFocusBias"/> goes fully inert under <see cref="WaterGridMode.Clipmap"/> - the clipmap
+        /// puts its detail where the camera is by construction, and the power warp is exactly the thing that has no
+        /// snap quantum. <see cref="ClipmapCellSize"/>, <see cref="ClipmapRingCells"/> and
+        /// <see cref="ClipmapLevels"/> replace it.
+        /// </para>
+        /// </summary>
+        public WaterGridMode GridMode = WaterGridMode.CameraFocused;
+
+        /// <summary>Cell size of the clipmap's INNERMOST ring, world units; each ring out doubles it. This is the
+        /// finest geometry the surface ever carries, so it is the knob that decides whether a breaking crest at the
+        /// player's feet has a silhouette. Default <c>0.5</c>. Inert unless
+        /// <see cref="GridMode"/> is <see cref="WaterGridMode.Clipmap"/>.</summary>
+        public float ClipmapCellSize = 0.5f;
+
+        /// <summary>Cells per side per clipmap ring, rounded down to a multiple of 4 and clamped to 8..256. Drives
+        /// the whole vertex budget: a level costs <c>(n+1)^2</c> vertices, and the rings past level 0 shade
+        /// <c>n^2 - (n/2)^2</c> quads each. Default <c>32</c>, which at 7 levels is 6273 shaded vertices and 11264
+        /// triangles - fewer than the 9409 / 18432 the camera-focused grid draws. Inert unless
+        /// <see cref="GridMode"/> is <see cref="WaterGridMode.Clipmap"/>.</summary>
+        public int ClipmapRingCells = 32;
+
+        /// <summary>How many clipmap rings to build. <c>0</c> (the default, and the intended setting) sizes it from
+        /// the <see cref="WaterPlane"/> so the outermost ring covers the plane from any camera position inside it;
+        /// a positive value forces the count. Clamped to 1..10. Each extra level doubles the coverage for one more
+        /// ring's worth of triangles, so this is a cheap dial. Inert unless <see cref="GridMode"/> is
+        /// <see cref="WaterGridMode.Clipmap"/>.</summary>
+        public int ClipmapLevels = 0;
+
+        /// <summary>
+        /// Samples per wavelength the clipmap's VERTEX stage band-limits the cascade maps to, against each ring's
+        /// own cell size. <c>2</c> (the default) is plain Nyquist: a ring samples the mip whose texels match its
+        /// cells, so it carries exactly what its geometry can represent and nothing shorter. Higher oversamples
+        /// (softer, steadier); below 2 lets sub-Nyquist content back in, which is the artifact this whole mode
+        /// exists to remove.
+        /// <para>
+        /// Needs the mipped cascade maps, so it does nothing under <see cref="WaterWaveSource.Procedural"/> (whose
+        /// surface is closed-form and has no maps to low-pass) and nothing under
+        /// <see cref="WaterGridMode.CameraFocused"/> (whose rings do not exist).
+        /// </para>
+        /// </summary>
+        public float ClipmapBandLimitSamples = 2f;
+
         // ---- Ripple detail (fragment normal field) -----------------------------------------------------------
 
         /// <summary>World-space size of the LONGEST ripple component (larger = broader, slower-looking chop). The

@@ -2393,15 +2393,18 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       for what scale of sea is being simulated.
     - **These knobs go FULLY INERT in FFT mode**, because the spectrum supplies what they described: every
       `Swell*` knob, the ripple spectrum (`NormalStrength`, `WaveWarpStrength`, `RippleComponents`,
-      `RippleLacunarity`, `RippleGain`, `RippleSeed`), `DistantDetailScale`, and `FoamCrestCoverage`.
-    - **Three keep a SECOND job and must not be deleted on adoption**, which is easy to miss because their primary
+      `RippleLacunarity`, `RippleGain`, `RippleSeed`), `DistantDetailScale`, and `FoamCrestCoverage`. As of the fix
+      for `KhaozEngine#343`, `FoamPatternScale` and `WaveSpeed` join this list too: FFT-mode foam break-up is
+      shaped by the wave field's own foam/Jacobian channel (already de-tiled through the sampling frame below)
+      instead of the fixed-period world-space pattern those two knobs used to size and drift - that pattern was
+      re-tiling the FFT surface's own de-tiled cascades.
+    - **Two keep a SECOND job and must not be deleted on adoption**, which is easy to miss because their primary
       job does go away. `WaveScale` still supplies the reference wavelength the glint's footprint-alias ramp
       measures against, and `DetailFadeDistance` still sets the distance over which the lobe widens toward
       `GlintDistantRoughness` - so dropping either retunes the sun glint even though neither shapes the surface
-      any more. `WaveSpeed` still drives the drift of the foam break-up pattern, so at 0 the foam texture freezes
-      while the sea under it keeps moving.
+      any more.
     - Everything else stays live - `GridFocusBias`, `FootprintSamples`, `VarianceToRoughness`, the whole
-      colour/reflection/glint set, `FoamStrength`, `FoamPatternScale`, `FoamShoreWidth` and `ShoreFadeDistance`.
+      colour/reflection/glint set, `FoamStrength`, `FoamShoreWidth` and `ShoreFadeDistance`.
     - **Cost.** The cascade update runs ONCE per frame inside the water pass (not per `WaterPlane` - one ocean
       state serves every queued plane this release) and costs exactly one GPU stall whatever the cascade count and
       resolution, measured at about 0.3 ms on Metal at the defaults and under 1 ms at resolution 256. Changing any
@@ -4526,7 +4529,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.5.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.6.0" />
 ```
 
 ```csharp
@@ -9070,6 +9073,65 @@ to log/alert on a faulted background cell save, meta write, or quarantine write.
 each `Update` (so a store outage can't grow the pending list unbounded or make the boot sequence
 `LoadMeta -> Preload -> Flush` / the shutdown `FlushAsync` throw), leaves a faulted cell save dirty so the next pass
 retries it, and drops a faulted quarantine write (the cell already started fresh).
+
+### Unloading idle cells (`CellEvictor`)
+
+A `ShardHost` creates cells on demand and never removes one, so on a long-running world where players roam, every
+cell anyone has ever visited stays alive with its `World`, `ServerReplicator` and `InterestGrid`. `CellEvictor` is
+the other half: it persists an idle cell and then unloads it, and restores it again the moment anything routes back
+to that coordinate. It sits on top of the `CellPersistence` you already wired, so there is no second store and no
+second key space.
+
+```csharp
+var cellPersistence = new CellPersistence(server, store);
+var evictor = new CellEvictor(server, cellPersistence, new CellEvictionConfig
+{
+    ScanIntervalSeconds = 10f,      // how often the policy is asked, not how often cells go
+    MaxEvictionsPerScan = 8,        // spreads the store writes when a whole region goes quiet at once
+    Policy = new IdleCellEvictionPolicy { IdleSeconds = 300f, KeepRadius = 2 },
+});
+
+// per fixed tick, next to the persistence update:
+cellPersistence.Update(config.TickSeconds);
+evictor.Update(config.TickSeconds);
+```
+
+**Construct `CellEvictor` before any game-side `CellCreated` subscriber.** Its constructor subscribes to
+`CellCreated` to arm the synchronous cache restore, and `Action` subscribers run in registration order: one added
+earlier sees the cell before the restore runs, one added later sees it after. A game handler registered ahead of
+the evictor observes a blank cell on a recreate (the restore has not run yet), and a spawn-on-create handler
+registered ahead of it would then double-populate a cell the evictor goes on to restore right after. Construct
+`CellPersistence` and `CellEvictor` first, and let any game-side `CellCreated` handler subscribe after both, so it
+always sees the cell in its final, already-restored state.
+
+**Nothing is removed before its bytes are durable.** Each candidate is snapshotted, handed to the store, and only
+removed once that write lands. A failed write, a cell that changed while the write was in flight, or a host that
+refuses in the meantime all leave the cell exactly where it was, to be retried on a later scan. `CellEvicted` fires
+once a cell is actually gone.
+
+**A recreated coordinate restores before it can tick.** `CellEvictor` keeps the evicted snapshot in memory
+(`MaxCachedSnapshots`, default 1024 cells) and restores it synchronously from the `CellCreated` hook, which the host
+raises inside the create call itself. That is what makes a handoff into an unloaded coordinate seamless: the
+destination cell is fully populated before it adopts the crossing entity and before its first tick, never blank.
+Past the cache the coordinate falls back to `CellPersistence`'s ordinary asynchronous load, exactly as a cold cell
+does after a restart, so the bytes are never at risk either way.
+
+**What survives an unload is what survives a restart**: the `ReplicationChannels.Persist` channel of the cell
+snapshot. A component that did not declare `Persist` does not come back. A joined player's entity is excluded from
+cell snapshots entirely (it persists on its own record through `WorldPersistence`), which is why a cell holding one
+is pinned and never evictable.
+
+**The policy is yours.** `ICellEvictionPolicy.ShouldEvict(in CellEvictionSignals)` is asked once per live cell per
+scan, and gets the cell coordinate, its owned entity count, how many clients are homed in it, the Chebyshev cell
+distance to the nearest client (`int.MaxValue` when nobody is online), whether the host pins it, and how long it has
+gone unattended. The shipped `IdleCellEvictionPolicy` unloads a cell with no client homed in it, none within
+`KeepRadius` cells, after `IdleSeconds`. The radius default of 2 keeps a player's own cell and the ring of
+neighbours mirroring border ghosts into it loaded, so an unload can never pull entities out from under a client's
+area of interest. On an empty server every cell qualifies, so the world unloads itself.
+
+A custom `ShardHost`-based server implements `ICellEvictionHost` (which extends `ICellPersistenceHost`) over
+`ShardHost.CanRemoveCell` / `RemoveCell` / `CollectBoundPlayerCells`, the same way it already implements the
+persistence seam. `ShardedWorldServer` implements both, so most consumers pass it straight in.
 
 ### Reconnect + server notices (`KhaozEngine.NetWorld`)
 

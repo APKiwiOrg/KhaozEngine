@@ -5,6 +5,83 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.6.0
+
+### Cell eviction: idle shard cells now unload without losing state
+
+`ShardHost` created cells on demand and never removed one, so a long-running world where players
+roam kept every cell anyone had visited alive with its `World`, `ServerReplicator` and
+`InterestGrid`. The new `KhaozEngine.NetWorld.CellEvictor` closes that: each scan it asks an
+`ICellEvictionPolicy` which live cells are disposable, snapshots each candidate through
+`CellPersistence`, and removes it from the host only once that write has landed. A failed write, a
+cell that changed while the write was in flight, or a host that refuses all leave the cell exactly
+where it was for a later scan. Nothing is removed before its bytes are durable.
+
+An evicted coordinate that is routed to again restores synchronously, from a bounded in-memory
+snapshot cache (`CellEvictionConfig.MaxCachedSnapshots`, default 1024) on the `CellCreated` hook the
+host raises inside the create call. That is what makes a handoff into an unloaded coordinate
+seamless: `ProcessHandoffs` creates the destination and adopts into it in the same pass, so the
+destination is fully populated before it adopts the crossing entity and before its first tick, never
+blank. Past the cache bound the coordinate falls back to the driver's ordinary asynchronous load,
+exactly as a cold cell does after a restart.
+
+What survives an unload is exactly what survives a restart (the `ReplicationChannels.Persist`
+channel). A cell holding a joined player's entity is pinned and never evictable, since player state
+persists on its own record and is excluded from cell snapshots.
+
+- **`KhaozEngine.Sharding`**: `ShardHost.RemoveCell` / `CanRemoveCell` / `CellRemoved` (removal drops
+  the ownership-index entries, the neighbours' ghosts and views of the cell, the cached per-world
+  snapshot index, the link inbox and the host hooks), `ShardHost.CollectBoundPlayerCells`,
+  `CellSim.RemoveGhostView` / `OwnedCount` / `HasMigratingEntities`, and the policy seam
+  `ICellEvictionPolicy` over `CellEvictionSignals` with `IdleCellEvictionPolicy` shipped. Removal
+  refuses a cell mid-handoff, one with undrained inter-cell traffic, and one owning a bound client's
+  player, and the pin checks read the O(1) ownership index, never a world scan. `ICellLink` gained
+  `HasPending` (default `true`, so a link that cannot answer blocks a lossy unload rather than
+  permitting one) and `Forget` (default no-op), both default-implemented so an existing
+  implementation is unaffected.
+- **`KhaozEngine.NetWorld`**: `CellEvictor` + `CellEvictionConfig`, `ICellEvictionHost` (extends
+  `ICellPersistenceHost` with `CanEvictCell` / `EvictCell` / `TryReadEvictionSignals`, implemented by
+  `ShardedWorldServer` with the bound-player map computed once per scan), and the `CellPersistence`
+  support surface the driver runs on: `RequestLoad`, `IsBusy`, `SaveCellAsync`, `TryGetLastSaved`,
+  `ForgetCell`, plus per-coordinate write tracking that also stops the periodic dirty pass from
+  racing an eviction's own in-flight save on the same key.
+- `ShardHost.Tick` refreshes its reused fan-out buffer on a version counter now. The old cell-count
+  refresh was sound only while the cell list was append-only, which removal ends: evicting one cell
+  and creating another between two ticks left the count unchanged and the contents different.
+
+Rationale in `docs/design/CELL-EVICTION-DESIGN-2026-07-27.md`. Resolves #336.
+
+## 16.5.1
+
+Two FFT ocean bugs, landed together as one bug-fix release. The FFT sea has been travelling 180 degrees
+opposite its wind direction since 16.3.0 - shipped wrong from day one, invisible until 16.5.0's onshore
+focus made heading position-dependent enough to actually notice. And the foam break-up mask was a fixed
+world-space lattice that re-tiled the FFT surface's own de-tiled foam, reported from a shoreline
+screenshot.
+
+### Fixed
+
+- FFT wave motion ran backward. The spectrum's time evolution combined with the positive-twiddle inverse
+  transform in the column pass to produce a field whose crests travel along MINUS the wave vector, i.e.
+  wind+180, contradicting both `WaterSeaState.WindDirectionDegrees`'s own doc contract ("matching
+  `WaterSettings.SwellDirectionDegrees`'s convention so switching wave source keeps the sea running the
+  same way") and the Procedural/Gerstner path's own `phase = k.d.x - omega*t` convention, which travels
+  along +d. `OceanComputeShaders`'s row-pass evolution now negates the time argument
+  (`h~(k,t) = h0(k) e^{-i omega t} + conj(h0(-k)) e^{+i omega t}`), which keeps Hermitian symmetry (the
+  field stays real) and flips the travel direction to match the wind. A new headless test
+  (`OceanFftGpuTests.FftHeightFieldTravelsAlongTheWindNotAgainstIt`) measures the CPU-mirrored field's
+  bulk translation via optical flow at two different wind headings, closing the gap that let this ship
+  without anything checking WHICH way the surface moves. Closes #342.
+- FFT-mode foam break-up (both the crest and the shoreline band) now sources its structure from the ocean
+  compute pass's own foam/Jacobian accumulator (`oceanFoam`) instead of `FoamPattern`'s fixed world-space
+  lattice. That lattice was the only periodic pattern left once the cascades themselves went through the
+  16.5.0 sampling frame's de-tiling: it dominated the shoreline band (a featureless depth smoothstep with
+  no structure of its own) and re-tiled the open-water whitecaps. `FoamPatternScale` and `WaveSpeed`'s
+  foam-drift job (restored in 16.3.1) go inert again under `WaterWaveSource.FftOcean` as a result - this
+  time because the break-up moves with the real wave field and needs neither a pattern scale nor a drift
+  clock of its own. Procedural mode is untouched (`FoamPattern` stays its mask, byte-identical). Closes
+  #343.
+
 ## 16.5.0
 
 Gives the FFT ocean a sampling frame: waves can be aimed at a point so they run onshore from every azimuth

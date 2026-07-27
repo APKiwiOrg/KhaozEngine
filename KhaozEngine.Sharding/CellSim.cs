@@ -185,6 +185,21 @@ public sealed class CellSim
             view.Apply(World, EmptySnapshot);
     }
 
+    /// <summary>
+    /// Despawns every ghost this cell holds from <paramref name="source"/> AND drops the view keyed on it, so the
+    /// source stops appearing in <see cref="GhostSources"/>. Use this when the source cell is gone for good (it was
+    /// unloaded by <see cref="ShardHost.RemoveCell"/>): unlike <see cref="ClearGhostsFrom"/>, which leaves an
+    /// emptied view ready for the source's next sync, nothing will ever refresh this one. Returns false if no view
+    /// for that source existed.
+    /// </summary>
+    public bool RemoveGhostView(CellCoord source)
+    {
+        if (!ghostViews.TryGetValue(source, out ClientReplicationView? view)) return false;
+        view.Apply(World, EmptySnapshot);
+        ghostViews.Remove(source);
+        return true;
+    }
+
     private ClientReplicationView GhostViewFor(CellCoord source)
     {
         if (!ghostViews.TryGetValue(source, out ClientReplicationView? view))
@@ -224,6 +239,48 @@ public sealed class CellSim
 
     /// <summary>The maintained owned index (netId -&gt; owned entity), exposed for tests to check against a scan.</summary>
     internal IReadOnlyDictionary<long, Entity> OwnedIndexEntries => owned;
+
+    /// <summary>
+    /// How many entities this cell authoritatively owns, read off the owned index (ghosts excluded). A cheap
+    /// signal for an <see cref="ICellEvictionPolicy"/>, not an oracle: an entity despawned out of band without an
+    /// <see cref="UnregisterOwned"/> is still counted until the next lookup reaps it.
+    /// </summary>
+    public int OwnedCount => owned.Count;
+
+    /// <summary>
+    /// Whether any entity here is frozen mid-handoff (<see cref="Migrating"/>), meaning the migrate/ack handshake
+    /// is still open. The gate <see cref="ShardHost.RemoveCell"/> checks, since unloading such a cell would strand
+    /// the crossing entity between two owners.
+    /// </summary>
+    public bool HasMigratingEntities
+    {
+        get
+        {
+            bool any = false;
+            World.ForEach<Migrating>((Entity _, ref Migrating _) => any = true);
+            return any;
+        }
+    }
+
+    /// <summary>
+    /// Releases this cell's own state after it has been detached from its host by
+    /// <see cref="ShardHost.RemoveCell"/>: the ghost views, the owned index and the retained unknown-extension
+    /// frames. The cell's <see cref="World"/>, <see cref="Replicator"/> and <see cref="Interest"/> hold nothing
+    /// unmanaged and nothing disposable, so dropping the last reference is the whole release. This just breaks the
+    /// internal references eagerly rather than waiting for the graph to become garbage. Never call it on a live
+    /// cell.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does NOT touch the cell world's ECS systems. A system is routinely a single instance shared
+    /// across every cell (the sharded server adds one <c>PlayerMovementSystem</c> to all of them), so disposing one
+    /// on unload would break every other cell.
+    /// </remarks>
+    internal void Retire()
+    {
+        ghostViews.Clear();
+        owned.Clear();
+        retainedUnknown.Clear();
+    }
 
     /// <summary>
     /// Finds an entity this cell <b>owns</b> by its <see cref="NetId"/> value: present, alive, and neither a

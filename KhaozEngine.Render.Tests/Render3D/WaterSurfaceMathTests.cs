@@ -354,6 +354,39 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void FftFoamBreakup_is_zero_on_a_flat_accumulator_and_saturates_before_the_top_of_range()
+        {
+            // KhaozEngine#343: the FFT-mode replacement for FoamPattern. A calm accumulator (no fold anywhere)
+            // must give no break-up at all - unlike FoamPattern, which paints a mask onto dead-flat water too.
+            Assert.Equal(0f, WaterMath.FftFoamBreakup(0f), 5);
+            // Full accumulator saturates.
+            Assert.Equal(1f, WaterMath.FftFoamBreakup(1f), 5);
+            // Monotonic and clamped to 0..1 across the whole domain, including out-of-range input (the compute
+            // pass clamps its own accumulator to 0..1, but the mirror should not trust that blindly).
+            float prev = -1f;
+            for (int i = -10; i <= 20; i++)
+            {
+                float v = WaterMath.FftFoamBreakup(i * 0.1f);
+                Assert.InRange(v, 0f, 1f);
+                Assert.True(v >= prev - 1e-6f, $"FftFoamBreakup must be monotonic, dropped at input {i * 0.1f}");
+                prev = v;
+            }
+        }
+
+        [Fact]
+        public void FftFoamBreakup_ramps_well_before_the_accumulator_maxes_out()
+        {
+            // The accumulator's steady-state values sit well under 1 in practice (KhaozEngine.Render3D/
+            // WaterSeaState.cs's FoamGain/FoamJacobianBias/FoamDissipationPerSecond defaults put typical peaks in
+            // the 0.1-0.9 range), so the ramp has to reach full break-up before the accumulator's own ceiling or
+            // most of the sea would show no structure at all.
+            Assert.True(WaterMath.FftFoamBreakup(0.5f) >= 0.999f,
+                "the break-up ramp must have saturated by oceanFoam = 0.5, well short of the accumulator's own cap");
+            Assert.True(WaterMath.FftFoamBreakup(0.1f) > 0f && WaterMath.FftFoamBreakup(0.1f) < 1f,
+                "a modest but real foam value should read as PARTIAL break-up, not off and not saturated");
+        }
+
+        [Fact]
         public void Default_settings_put_whitecaps_on_some_of_the_sea_but_not_most_of_it()
         {
             // The tuning guard behind the "foam present but not everywhere" default. This is the assertion that

@@ -12,8 +12,29 @@ process.
 - **`ShardHost`** - owns the `CellCoord -> CellSim` map, creates cells on demand, exposes `CellFor(x, y)` /
   `CoordFor(x, y)`, routes spawns to the cell containing a position (`SpawnAt`), and `Tick(elapsedSeconds)` ticks
   every live cell at one shared fixed rate. `EnsureCell(coord)` gets or creates a cell by coordinate, and the
-  `CellCreated` event fires once per cell the first time its coordinate is instantiated (from `CellFor`,
-  `SpawnAt`, a handoff destination, or `EnsureCell`) - the load hook a per-cell persistence layer subscribes to.
+  `CellCreated` event fires each time a coordinate is instantiated (from `CellFor`, `SpawnAt`, a handoff
+  destination, or `EnsureCell`), including a recreate after `RemoveCell` - the load hook a per-cell persistence
+  layer subscribes to.
+
+**Cells unload as well as load.** `ShardHost.RemoveCell(coord)` takes a cell out of the grid: it stops ticking,
+stops being ghosted into and out of, and every entity it owned ceases to exist. `CanRemoveCell(coord)` is the same
+gate as a query, and refuses a cell that is mid-handoff (an entity is `Migrating` out of it), one with undrained
+inter-cell traffic on the `ICellLink`, and one owning the player entity of a client bound through `BindClient`.
+Removal drops every trace the cell would otherwise leave behind: its entries in the netId -> cell ownership index,
+the ghosts each neighbour mirrored from it (and the neighbour's now-unrefreshable view of it, via
+`CellSim.RemoveGhostView`), the cached per-world serve index, and its link inbox. `CellRemoved` is the mirror of
+`CellCreated` for anything a subscriber keyed per cell, and `CellCreated` fires again when the coordinate is next
+instantiated, with a genuinely fresh `CellSim`.
+
+**The host has no persistence of its own, so a cell removed here is simply gone.** Persisting first is the caller's
+job: `KhaozEngine.NetWorld.CellEvictor` is the driver that snapshots a cell, waits for the store write to land, and
+only then calls `RemoveCell` - plus restores the coordinate on recreation. The policy side lives here and is the
+game's to replace: `ICellEvictionPolicy.ShouldEvict(in CellEvictionSignals)` sees the cell's owned entity count, how
+many clients are homed in it, the Chebyshev cell distance to the nearest one (`int.MaxValue` when nobody is online),
+whether the host pins it, and how long it has gone unattended. The shipped `IdleCellEvictionPolicy` unloads a cell
+with no client homed in it, none within `KeepRadius` cells (default 2, so the ghost-neighbour ring feeding a client's
+area of interest is never pulled out from under it), after `IdleSeconds` (default 300).
+`ShardHost.CollectBoundPlayerCells(list)` is the raw "where is everyone" signal behind that.
 
 **NetId is 64-bit (since 10.0.0).** Every `netId` here is a `long` (was a 32-bit `int`): the owned index, the
 `ShardHost` netId -> cell map, the AoI interest sets, and the handoff/ghost path all carry it, and the inter-cell

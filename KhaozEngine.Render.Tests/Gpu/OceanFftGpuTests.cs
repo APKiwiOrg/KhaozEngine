@@ -334,6 +334,89 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        // ---- Motion direction (headless, CPU mirror only) --------------------------------------------------
+        //
+        // Closes the test gap that let #342 ship twice: nothing in this file (or anywhere else) checked which
+        // WAY the surface travels, only that it matched a reference computed by the same buggy convention. These
+        // two tests are deliberately headless [Theory]/[Fact] rather than [GpuFact] - the software CI legs are
+        // already slow (#332), and the CPU mirror is already pinned bit-identical to the GPU kernel by
+        // TheProducedMapsMatchADirectDftOfTheSameSpectrum above, so a GPU round trip would add cost without
+        // adding coverage.
+
+        /// <summary>
+        /// The CPU-mirrored evolved spectrum reconstructs a height field that travels ALONG
+        /// <see cref="WaterSeaState.WindDirectionDegrees"/>, not against it (KhaozEngine#342: the evolution's
+        /// time sign was flipped, so the sea ran wind+180 from 16.3.0 until this fix, invisible until 16.5.0's
+        /// onshore focus made heading position-dependent). Measures the field's bulk translation between two
+        /// close times via global Lucas-Kanade optical flow (the standard PIV technique for recovering a single
+        /// dominant motion vector from a noisy, multi-component field) and checks its heading against the wind,
+        /// at two different wind angles so the check cannot pass by an accidental axis symmetry (a sign error on
+        /// only one of kx/kz, say, would still fail one of the two).
+        /// </summary>
+        [Theory]
+        [InlineData(40f)]
+        [InlineData(197f)]
+        public void FftHeightFieldTravelsAlongTheWindNotAgainstIt(float windDegrees)
+        {
+            WaterSeaState sea = Sea();
+            sea.WindDirectionDegrees = windDegrees;
+            sea.SwellDirectionDegrees = windDegrees;   // keep swell aligned: one clean dominant heading to measure
+            sea.DirectionalSpread = 0.9f;              // narrow the lobe so the field has one heading, not a spread
+            sea.SwellAmount = 0.5f;
+            const int cascade = 0;
+            const float t0 = 10f, dt = 0.35f;          // away from t=0 so sin/cos are both nonzero either side
+
+            Reference r1 = ReferenceMaps(sea, cascade, t0);
+            Reference r2 = ReferenceMaps(sea, cascade, t0 + dt);
+            float tile = OceanSpectrum.TileMetres(cascade, sea.CascadeTileMetres, sea.CascadeTileRatio);
+            float cellMetres = tile / N;
+
+            (float dx, float dz) = OpticalFlowShift(r1.Height, r2.Height, N, cellMetres);
+            float shift = MathF.Sqrt(dx * dx + dz * dz);
+            Assert.True(shift > 0.5f,
+                $"wind {windDegrees} deg: no coherent motion measured ({shift:F3} m over {dt}s) - " +
+                "the test cannot judge a heading from this");
+
+            float measuredDeg = MathF.Atan2(dz, dx) * (180f / MathF.PI);
+            if (measuredDeg < 0f) measuredDeg += 360f;
+            float diff = MathF.Abs(((measuredDeg - windDegrees + 540f) % 360f) - 180f);
+            Assert.True(diff < 45f,
+                $"wind {windDegrees} deg but the field's crests moved toward {measuredDeg:F1} deg " +
+                $"(off by {diff:F1} deg, shift {shift:F3} m) - travelling against the wind is exactly #342");
+        }
+
+        /// <summary>
+        /// Global Lucas-Kanade optical flow: the single (dx, dz) world-space displacement that best explains
+        /// <c>h2(x) - h1(x) ~= -(dx, dz) . grad(h1(x))</c> across every texel of the (periodic) grid, via central
+        /// differences. Robust to a multi-component field because it is a least-squares fit over every texel at
+        /// once rather than a single-sample measurement - the dominant (most energetic, longest-wavelength)
+        /// component naturally has the largest gradients and controls the fit. Returns a world-space
+        /// displacement in metres, not a velocity: this test only reads its direction, never its magnitude.
+        /// </summary>
+        static (float, float) OpticalFlowShift(float[] h1, float[] h2, int n, float cellMetres)
+        {
+            double sxx = 0, sxz = 0, szz = 0, sxt = 0, szt = 0;
+            for (int pz = 0; pz < n; pz++)
+            {
+                int zp = (pz + 1) % n, zm = (pz - 1 + n) % n;
+                for (int px = 0; px < n; px++)
+                {
+                    int xp = (px + 1) % n, xm = (px - 1 + n) % n;
+                    double hx = (h1[pz * n + xp] - h1[pz * n + xm]) / (2.0 * cellMetres);
+                    double hz = (h1[zp * n + px] - h1[zm * n + px]) / (2.0 * cellMetres);
+                    double ht = h2[pz * n + px] - h1[pz * n + px];
+                    sxx += hx * hx; sxz += hx * hz; szz += hz * hz;
+                    sxt += hx * ht; szt += hz * ht;
+                }
+            }
+            // Solve [sxx sxz; sxz szz] . (dx, dz) = -[sxt, szt].
+            double det = sxx * szz - sxz * sxz;
+            if (Math.Abs(det) < 1e-12) return (0f, 0f);
+            double dx = (-sxt * szz + szt * sxz) / det;
+            double dz = (-szt * sxx + sxt * sxz) / det;
+            return ((float)dx, (float)dz);
+        }
+
         // ---- harness ---------------------------------------------------------------------------------------
 
         /// <summary>One producer frame on its own command list, exactly as the water renderer drives it: the
@@ -359,7 +442,10 @@ namespace KhaozEngine.Tests.Gpu
             public float[] Jacobian = Array.Empty<float>();
         }
 
-        /// <summary>The evolved spectrum h~(k, t) for one cascade, from the same bake the producer uploads.</summary>
+        /// <summary>The evolved spectrum h~(k, t) for one cascade, from the same bake the producer uploads.
+        /// Mirrors <c>OceanComputeShaders.RowPassTemplate</c>'s <c>packedFields</c> exactly, including the negated
+        /// time sign (KhaozEngine#342): without it the field reconstructs as a POSITIVE-twiddle transform of
+        /// <c>h0(k) e^{+i omega t}</c>, whose crests travel along MINUS k (wind+180) instead of along the wind.</summary>
         static Vector2[] EvolvedSpectrum(WaterSeaState sea, int cascade, float time)
         {
             var h0 = new Vector4[N * N];
@@ -376,7 +462,7 @@ namespace KhaozEngine.Tests.Gpu
                     float k = MathF.Sqrt(kx * kx + kz * kz);
                     if (k < 1e-6f) continue;
                     float omega = OceanSpectrum.Dispersion(k, sea.DepthMetres);
-                    float cw = MathF.Cos(omega * time), sw = MathF.Sin(omega * time);
+                    float cw = MathF.Cos(omega * time), sw = -MathF.Sin(omega * time);
                     Vector4 h = h0[row * N + col];
                     evolved[row * N + col] = Mul(new Vector2(h.X, h.Y), new Vector2(cw, sw))
                                            + Mul(new Vector2(h.Z, h.W), new Vector2(cw, -sw));

@@ -24,13 +24,14 @@ public delegate bool CellPositionAccessor(World world, Entity entity, out float 
 /// An entity is owned by the cell its position falls in. With an overlap margin &gt; 0 and a position accessor,
 /// <see cref="SyncGhosts"/> mirrors owned entities near a cell edge into the neighbor(s) on the other side as
 /// <see cref="Ghost"/> entities (read-only; the owner stays the sole simulator). Authority handoff (an entity
-/// changing owner on a crossing) is a later Phase 3 stage. Deterministic and headless. Cells are retained in
-/// creation order (<see cref="Cells"/>) so iteration is stable. Replicated entities are assumed to carry
+/// changing owner on a crossing) is a later Phase 3 stage. Deterministic and headless. Cells are held in
+/// creation order (<see cref="Cells"/>) so iteration is stable, and stay live until <see cref="RemoveCell"/>
+/// unloads one. Replicated entities are assumed to carry
 /// globally-unique <see cref="NetId"/>s across cells. Because cells are disjoint <see cref="World"/>s,
 /// <see cref="Tick"/> fans them across an opt-in <see cref="Scheduler"/> (default single-threaded) for
 /// near-linear-in-cores throughput; the cross-cell passes stay single-threaded.
 /// </remarks>
-public sealed class ShardHost
+public sealed partial class ShardHost
 {
     private readonly float tickSeconds;
     private readonly ReplicationRegistry registry;
@@ -47,6 +48,11 @@ public sealed class ShardHost
     private readonly Dictionary<int, long> clientPlayerNetId = new(); // session slot -> the client's player NetId
     private IJobScheduler scheduler;
     private CellSim[] tickBuffer = Array.Empty<CellSim>(); // reused per-tick fan-out snapshot of `ordered`
+    // Bumped on every create and every remove. Tick refreshes its reused buffer off this rather than off the cell
+    // COUNT: with eviction, one cell can be unloaded and another created between two ticks, leaving the count
+    // unchanged while the contents differ.
+    private int cellsVersion;
+    private int tickBufferVersion = -1;
 
     // Indexed-snapshot scratch, all reused across the single-threaded cross-cell passes (SyncGhosts, ProcessHandoffs)
     // and the serve pass, so the filtered SnapshotWriter calls at those sites resolve their (small) net-id sets in
@@ -124,9 +130,12 @@ public sealed class ShardHost
     public IReadOnlyCollection<CellSim> Cells => ordered;
 
     /// <summary>
-    /// Raised once for each cell the first time its coordinate is instantiated (via <see cref="CellFor"/>,
-    /// <see cref="SpawnAt"/>, a handoff destination, or <see cref="EnsureCell"/>). The load hook for per-cell
-    /// persistence: a subscriber restores that cell's saved state. Fired synchronously on the creating thread.
+    /// Raised each time a coordinate is instantiated (via <see cref="CellFor"/>, <see cref="SpawnAt"/>, a handoff
+    /// destination, or <see cref="EnsureCell"/>). The load hook for per-cell persistence: a subscriber restores
+    /// that cell's saved state. Fired synchronously on the creating thread, before the new cell can tick or
+    /// receive a migrated entity, so a synchronous restore is guaranteed to land first. A coordinate unloaded by
+    /// <see cref="RemoveCell"/> raises this again when it is next instantiated, with a genuinely fresh
+    /// <see cref="CellSim"/>, so a subscriber must tolerate more than one event per coordinate.
     /// </summary>
     public event Action<CellSim>? CellCreated;
 
@@ -154,6 +163,7 @@ public sealed class ShardHost
             };
             cells[coord] = cell;
             ordered.Add(cell);
+            cellsVersion++;
             CellCreated?.Invoke(cell);
         }
         return cell;
@@ -196,14 +206,18 @@ public sealed class ShardHost
     /// Steps owned-entity simulation only; ghost mirroring is <see cref="SyncGhosts"/>. Cells are disjoint
     /// <see cref="World"/>s touching only their own state, so the fan-out is embarrassingly parallel and the
     /// parallel result is identical to the single-threaded one. The cell list is snapshotted before fanning (a
-    /// sim step never creates cells, and <c>ordered</c> is append-only, so the reused buffer stays valid while the
-    /// count is unchanged), giving the scheduler a stable index space.
+    /// sim step never creates or removes cells, so the reused buffer stays valid until the next create or
+    /// <see cref="RemoveCell"/>), giving the scheduler a stable index space.
     /// </summary>
     public void Tick(float elapsedSeconds, int maxTicksPerFrame = 8)
     {
         int n = ordered.Count;
         if (n == 0) return;
-        if (tickBuffer.Length != n) tickBuffer = ordered.ToArray();
+        if (tickBufferVersion != cellsVersion)
+        {
+            tickBuffer = ordered.ToArray();
+            tickBufferVersion = cellsVersion;
+        }
         CellSim[] snapshot = tickBuffer;
         scheduler.For(n, i => snapshot[i].Tick(elapsedSeconds, maxTicksPerFrame));
     }

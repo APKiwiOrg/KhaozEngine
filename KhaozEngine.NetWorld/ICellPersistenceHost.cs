@@ -13,10 +13,11 @@ namespace KhaozEngine.NetWorld;
 /// </summary>
 public interface ICellPersistenceHost
 {
-    /// <summary>Raised when a cell is first instantiated: persistence loads that cell's saved state here.
-    /// Implementations MUST raise this on the server/simulation thread - the same thread that calls
-    /// <see cref="CellPersistence.Update"/> - not from a worker or IO thread. The persistence driver's
-    /// per-cell load bookkeeping is single-threaded on that assumption.</summary>
+    /// <summary>Raised each time a cell coordinate is instantiated, including a recreate after eviction (not only
+    /// the first time): persistence loads that cell's saved state here. Implementations MUST raise this on the
+    /// server/simulation thread - the same thread that calls <see cref="CellPersistence.Update"/> - not from a
+    /// worker or IO thread. The persistence driver's per-cell load bookkeeping is single-threaded on that
+    /// assumption.</summary>
     event Action<CellCoord>? CellCreated;
 
     /// <summary>The coordinates of all currently instantiated cells (for the periodic dirty pass + flush).</summary>

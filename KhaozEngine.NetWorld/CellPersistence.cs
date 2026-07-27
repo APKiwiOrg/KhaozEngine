@@ -397,6 +397,7 @@ public sealed class CellPersistence
         foreach (CellCoord coord in new List<CellCoord>(host.LiveCellCoords))
         {
             if (loadsInFlight.ContainsKey(coord)) continue;   // load outstanding: skip so a periodic save can't overwrite the stored blob with pre-restore state
+            if (savesInFlight.ContainsKey(coord)) continue;   // save outstanding (an eviction): skip so this pass can't race that write with an unordered one of its own
             byte[]? snap = host.SnapshotCell(coord);
             if (snap is null) continue;
             if (lastSaved.TryGetValue(coord, out byte[]? prev) && prev.AsSpan().SequenceEqual(snap)) continue;

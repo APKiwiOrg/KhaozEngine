@@ -22,6 +22,13 @@ public sealed partial class ShardHost
     /// system set, a per-coord bookkeeping entry) drops it here, because a later <see cref="CellCreated"/> for the
     /// same coordinate hands out a genuinely fresh cell.
     /// </summary>
+    /// <remarks>
+    /// <b>Do not recreate this coordinate from inside the handler</b> (an <see cref="EnsureCell"/> call, or
+    /// anything that routes to one). Any synchronous restore for the removal is armed only after this event
+    /// returns - a persist-then-evict caller like <c>KhaozEngine.NetWorld.CellEvictor</c> caches the eviction
+    /// snapshot after <see cref="RemoveCell"/> comes back, so an <see cref="EnsureCell"/> called from here always
+    /// gets a fresh, empty <see cref="CellSim"/> instead. Defer the recreation to a later call.
+    /// </remarks>
     public event Action<CellSim>? CellRemoved;
 
     /// <summary>
@@ -39,8 +46,11 @@ public sealed partial class ShardHost
         if (!cells.TryGetValue(coord, out CellSim? cell)) return false;
         if (cell.HasMigratingEntities) return false;
         if (link.HasPending(coord)) return false;
+        // Index-only membership check: a scanning CellSim.TryGetOwned per bound client would cost
+        // players x cellPopulation here, paid on every eviction candidate. ownerCell already answers "does this
+        // netId belong to this coord" in O(1).
         foreach (long playerNetId in clientPlayerNetId.Values)
-            if (cell.TryGetOwned(playerNetId, out _)) return false;
+            if (ownerCell.TryGetValue(playerNetId, out CellCoord owner) && owner == coord) return false;
         return true;
     }
 

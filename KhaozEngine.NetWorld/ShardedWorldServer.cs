@@ -486,6 +486,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
         // 4. Authority follows entities across boundaries (exactly-once), then refresh border ghosts.
         host.ProcessHandoffs();
+        boundPlayerCellsVersion++;   // a handoff can move a bound player's home cell: the eviction cache must re-read
         host.SyncGhosts();
 
         // 4b. Movement-correction anomaly: compare each routed player's post-step position to its intended move.
@@ -687,6 +688,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         if (limiter is not null) rateBySlot[slot] = limiter; else rateBySlot.Remove(slot);
         correctionStreakBySlot[slot] = 0;
         host.BindClient(slot, netId);
+        boundPlayerCellsVersion++;   // a join changes the bound-player-cells set the eviction cache serves
 
         PlayerJoined?.Invoke(slot, accountId);
     }
@@ -708,6 +710,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             }
         }
         host.UnbindClient(slot);
+        boundPlayerCellsVersion++;   // a leave changes the bound-player-cells set the eviction cache serves
         netIdBySlot.Remove(slot);
         lastAckBySlot.Remove(slot);
         accountIdBySlot.Remove(slot);

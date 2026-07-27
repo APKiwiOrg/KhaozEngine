@@ -65,6 +65,7 @@ public sealed class CellEvictor
     private readonly List<CellCoord> cacheOrder = new();
     private readonly List<PendingEviction> pending = new();
     private readonly List<CellCoord> scanScratch = new();
+    private readonly HashSet<CellCoord> scanScratchLookup = new(); // O(1) membership over scanScratch, for PruneIdleEntries
     private readonly List<CellCoord> pruneScratch = new();
     private float sinceScan;
 
@@ -172,8 +173,9 @@ public sealed class CellEvictor
     private void Complete(in PendingEviction p)
     {
         // The cell kept simulating while the write was in flight. Unloading it now would discard anything that
-        // changed since, so re-verify both the persistable bytes and the owned population (an entity carrying no
-        // Persist components changes the latter without changing the former) and back off if either moved.
+        // changed since, so re-verify both the persistable bytes and the owned population (a player entity crossing
+        // in or out changes the latter without changing the former, since SnapshotCell excludes player NetIds from
+        // the bytes) and back off if either moved.
         if (!host.TryReadEvictionSignals(p.Coord, out CellEvictionSignals signals)) return;
         if (signals.OwnedEntityCount != p.OwnedCount) return;
         byte[]? now = host.SnapshotCell(p.Coord);
@@ -211,6 +213,8 @@ public sealed class CellEvictor
     {
         scanScratch.Clear();
         scanScratch.AddRange(host.LiveCellCoords);
+        scanScratchLookup.Clear();
+        scanScratchLookup.UnionWith(scanScratch);
         int budget = config.MaxEvictionsPerScan;
 
         for (int i = 0; i < scanScratch.Count; i++)
@@ -232,13 +236,13 @@ public sealed class CellEvictor
     }
 
     // Drops idle counters for coordinates that are no longer live, so the map tracks the live grid rather than
-    // every cell the server has ever instantiated. scanScratch still holds this scan's live coordinates.
+    // every cell the server has ever instantiated. scanScratchLookup still holds this scan's live coordinates.
     private void PruneIdleEntries()
     {
         if (idleSeconds.Count == scanScratch.Count) return;
         pruneScratch.Clear();
         foreach (KeyValuePair<CellCoord, float> kv in idleSeconds)
-            if (!scanScratch.Contains(kv.Key)) pruneScratch.Add(kv.Key);
+            if (!scanScratchLookup.Contains(kv.Key)) pruneScratch.Add(kv.Key);
         for (int i = 0; i < pruneScratch.Count; i++) idleSeconds.Remove(pruneScratch[i]);
         pruneScratch.Clear();
     }

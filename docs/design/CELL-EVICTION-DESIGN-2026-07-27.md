@@ -41,8 +41,9 @@ old behaviour, rather than to data loss.
 
 The cell keeps simulating while the write is in flight, so finalize re-verifies before removing:
 
-- the owned entity count still matches, which catches an arrival or departure whose components are not on the
-  `Persist` channel and would therefore be invisible in the bytes,
+- the owned entity count still matches, which catches a joined player's entity crossing into or out of the cell:
+  `SnapshotCell` excludes player NetIds from the bytes (player state persists on its own record), so an arrival or
+  departure of one moves the owned count without moving a single byte of the snapshot,
 - the fresh snapshot is byte-identical to what was written,
 - the host still permits removal.
 

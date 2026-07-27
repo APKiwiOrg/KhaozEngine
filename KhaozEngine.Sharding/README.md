@@ -12,8 +12,9 @@ process.
 - **`ShardHost`** - owns the `CellCoord -> CellSim` map, creates cells on demand, exposes `CellFor(x, y)` /
   `CoordFor(x, y)`, routes spawns to the cell containing a position (`SpawnAt`), and `Tick(elapsedSeconds)` ticks
   every live cell at one shared fixed rate. `EnsureCell(coord)` gets or creates a cell by coordinate, and the
-  `CellCreated` event fires once per cell the first time its coordinate is instantiated (from `CellFor`,
-  `SpawnAt`, a handoff destination, or `EnsureCell`) - the load hook a per-cell persistence layer subscribes to.
+  `CellCreated` event fires each time a coordinate is instantiated (from `CellFor`, `SpawnAt`, a handoff
+  destination, or `EnsureCell`), including a recreate after `RemoveCell` - the load hook a per-cell persistence
+  layer subscribes to.
 
 **Cells unload as well as load.** `ShardHost.RemoveCell(coord)` takes a cell out of the grid: it stops ticking,
 stops being ghosted into and out of, and every entity it owned ceases to exist. `CanRemoveCell(coord)` is the same

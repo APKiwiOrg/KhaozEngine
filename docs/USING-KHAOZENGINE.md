@@ -8974,6 +8974,14 @@ cellPersistence.Update(config.TickSeconds);
 evictor.Update(config.TickSeconds);
 ```
 
+**Construct `CellEvictor` before any game-side `CellCreated` subscriber.** Its constructor subscribes to
+`CellCreated` to arm the synchronous cache restore, and `Action` subscribers run in registration order: one added
+earlier sees the cell before the restore runs, one added later sees it after. A game handler registered ahead of
+the evictor observes a blank cell on a recreate (the restore has not run yet), and a spawn-on-create handler
+registered ahead of it would then double-populate a cell the evictor goes on to restore right after. Construct
+`CellPersistence` and `CellEvictor` first, and let any game-side `CellCreated` handler subscribe after both, so it
+always sees the cell in its final, already-restored state.
+
 **Nothing is removed before its bytes are durable.** Each candidate is snapshotted, handed to the store, and only
 removed once that write lands. A failed write, a cell that changed while the write was in flight, or a host that
 refuses in the meantime all leave the cell exactly where it was, to be retried on a later scan. `CellEvicted` fires

@@ -105,8 +105,8 @@ public class WorldServerFrameAnchoringTests
             long plainId = plain.SpawnEntity(p.X, p.Z);
             Entity framedEntity = EntityOf(framed, framedId);
             Entity plainEntity = EntityOf(plain, plainId);
-            framed.World.Set(framedEntity, new ReplicatedPosition { Value = p });
-            plain.World.Set(plainEntity, new ReplicatedPosition { Value = p });
+            framed.World.Set(framedEntity, ReplicatedPosition.FromWorld(p, WorldFrame.Origin));
+            plain.World.Set(plainEntity, ReplicatedPosition.FromWorld(p, WorldFrame.Origin));
 
             // Half one: the write reads back bit-identically and carries the Origin stamp.
             Assert.True(framed.World.TryGet(framedEntity, out ReplicatedPosition written));

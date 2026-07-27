@@ -189,11 +189,19 @@ public class ArchitectureTests
     }
 
     [Fact]
-    public void Simulation_IsTheZeroDependencyLeaf()
+    public void Simulation_ReferencesOnlyDeterminism()
     {
+        // Simulation was a zero-dependency leaf until 16.12.0, when ThreadPoolJobScheduler took on pinning the
+        // canonical FP environment around each worker body. DeterministicFp pins the FP control register per THREAD,
+        // and the whole point of that scheduler is to run sim work on threads that are neither the caller's nor a
+        // dedicated sim thread, so the determinism primitive belongs at the scheduling boundary rather than at every
+        // consumer call site. The guard is kept and narrowed rather than deleted: exactly one edge is allowed, so a
+        // future reference still fails here.
         IReadOnlySet<string> refs = LoadGraph()["KhaozEngine.Simulation"].ProjectRefs;
-        bool leaf = refs.Count == 0;
-        Assert.True(leaf, "Simulation is a zero-dependency leaf (the server/netcode stack layers on top of it) but references: " + string.Join(", ", refs));
+        string[] unexpected = refs.Select(Short).Where(r => r != "Determinism").ToArray();
+        bool clean = unexpected.Length == 0;
+        Assert.True(clean, "Simulation sits at the bottom of the server/netcode stack and may reference only "
+            + "KhaozEngine.Determinism, but also references: " + string.Join(", ", unexpected));
     }
 
     [Fact]

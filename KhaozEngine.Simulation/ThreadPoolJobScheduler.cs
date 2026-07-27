@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using KhaozEngine.Determinism;
 
 namespace KhaozEngine.Simulation;
 
@@ -30,11 +31,30 @@ public sealed class ThreadPoolJobScheduler : IJobScheduler
     public int MaxDegreeOfParallelism => options.MaxDegreeOfParallelism;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Every worker body runs inside a <see cref="DeterministicFpScope"/>. <c>DeterministicFp</c> pins the
+    /// floating-point control register (rounding mode, FTZ/DAZ, trap masks) on the CALLING THREAD only, and
+    /// <see cref="Parallel.For(int, int, ParallelOptions, Action{int})"/> hands the body to arbitrary BCL thread-pool
+    /// workers whose register is whatever the pool last left it at - neither the calling thread nor a dedicated sim
+    /// thread. Without the scope a sim fanned across cores could silently diverge in the low bits between two
+    /// machines, or between two runs on one machine, which is the exact class of bug the scope exists to remove,
+    /// reintroduced one layer up at the job-scheduling boundary. Applying it here rather than at each call site means
+    /// a consumer does not have to remember to.
+    /// <para>The scope is allocation-free and its cost is one save plus one restore of that register per slice. It
+    /// nests harmlessly: an outer scope (the shard host installs one around each cell tick) is restored to exactly
+    /// the canonical state the inner one found.</para>
+    /// </remarks>
     public void For(int count, Action<int> body)
     {
         ArgumentNullException.ThrowIfNull(body);
         if (count <= 0) return;
-        if (count == 1) { body(0); return; }   // skip the Parallel.For machinery for a single job (e.g. one hot cell)
-        Parallel.For(0, count, options, body);
+        // A single job skips the Parallel.For machinery (e.g. one hot cell) and runs inline. It still gets the scope:
+        // the caller's own thread is no more canonical than a pool worker's, so exempting it would make determinism
+        // depend on the job count.
+        if (count == 1) { using (DeterministicFpScope.Enter()) body(0); return; }
+        Parallel.For(0, count, options, i =>
+        {
+            using (DeterministicFpScope.Enter()) body(i);
+        });
     }
 }

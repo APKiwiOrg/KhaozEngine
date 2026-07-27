@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Text;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 
 namespace KhaozEngine.NetWorld;
@@ -11,7 +12,14 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>8</c> as of the world-pickup feature,
+    /// frame-header layout, so it labels the incompatible generations. It is <c>9</c> as of the floating-origin wire:
+    /// <see cref="ReplicatedPosition"/> stopped encoding three absolute float32s and now encodes its island-frame
+    /// STAMP plus a frame-local offset (<c>[frameX:short][frameZ:short][localX,localY,localZ:float]</c>, 16 bytes
+    /// against the old 12). The four extra bytes buy a wire whose float payload is bounded at a couple of hundred
+    /// metres, where one ULP is micrometres, so the wire itself stops being a quantizer - the old encoding rounded
+    /// every replicated position to the 7.8 mm float32 lattice at 100 km before anything downstream saw it. Position
+    /// is a built-in id (unframed, so an older client cannot skip the extra bytes), hence a breaking wire change, and
+    /// client and server must ship together. <c>8</c> was the world-pickup feature,
     /// which added a whole new BUILT-IN component, <see cref="PickupState"/> at id <see cref="PickupTypeId"/>. A
     /// built-in id is unframed, so a client whose registry has no id 5 cannot skip those bytes and hard-fails its
     /// snapshot decode the first time a pickup enters its area of interest - mid-session, long after connect. The
@@ -43,7 +51,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 8;
+    public const int WireProtocolVersion = 9;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -90,11 +98,28 @@ public static class MoveProtocol
     public static ReplicationRegistry CreateRegistry(Action<ReplicationRegistry>? configure = null)
     {
         var r = new ReplicationRegistry();
+        // Position, frame-relative since wire generation 9: the island-frame stamp then the frame-local offset. The
+        // stamp is authored by the server and ADOPTED verbatim by the client, never derived on the receiving side -
+        // a client that computed its own anchor would sit one tick out of step with the server across a re-anchor and
+        // every downstream comparison would be a frame-width out.
         r.Register<ReplicatedPosition>(
             PositionTypeId,
-            write: (p, bw) => { bw.Write(p.Value.X); bw.Write(p.Value.Y); bw.Write(p.Value.Z); },
-            read: br => new ReplicatedPosition { Value = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()) },
-            lerp: (a, b, t) => new ReplicatedPosition { Value = Vector3.Lerp(a.Value, b.Value, t) });
+            write: (p, bw) =>
+            {
+                bw.Write(p.Frame.X); bw.Write(p.Frame.Z);
+                bw.Write(p.Local.X); bw.Write(p.Local.Y); bw.Write(p.Local.Z);
+            },
+            // Argument evaluation is left-to-right, so the two frame shorts are read before the three local floats.
+            read: br => ReplicatedPosition.InFrame(
+                new WorldFrame(br.ReadInt16(), br.ReadInt16()),
+                new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle())),
+            // Rebase INTO the newer sample's frame first, then interpolate the two locals. Lerping the raw locals
+            // would interpolate between two different spaces and place a remote a frame-width away on any snapshot
+            // pair that straddles a re-anchor; decoding both to absolute and lerping there would be correct but would
+            // throw away the precision the framed encoding just bought. This branch is both. It is exactly a no-op
+            // when the frames match, which is every snapshot pair except the one that crosses a shift.
+            lerp: (a, b, t) => ReplicatedPosition.InFrame(
+                b.Frame, Vector3.Lerp(a.ToFrame(b.Frame).Local, b.Local, t)));
         // Vertical movement state. NOT interpolated (its booleans/timers/quantized rate must never be blended into an
         // impossible in-between), but fixed-delay nearest-SAMPLED (discreteSample) so a remote's grounded/swim/climb
         // flags ride the SAME delayed render timeline as its interpolated ReplicatedPosition instead of being read live

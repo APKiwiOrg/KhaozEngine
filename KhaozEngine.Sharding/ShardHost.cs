@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Determinism;
 using KhaozEngine.Ecs;
+using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Simulation;
 
@@ -37,6 +40,8 @@ public sealed partial class ShardHost
     private readonly ReplicationRegistry registry;
     private readonly float interestCellSize;
     private readonly CellPositionAccessor? positionAccessor;
+    private readonly Func<CellCoord, IPhysicsWorld>? physicsFactory;
+    private readonly bool frameAnchoring;
     private readonly ICellLink link;
     private readonly Dictionary<CellCoord, CellSim> cells = new();
     private readonly List<CellSim> ordered = new();
@@ -72,9 +77,18 @@ public sealed partial class ShardHost
     /// <param name="positionAccessor">Reads an entity's world position (over the game's position component). Required when <paramref name="overlapMargin"/> &gt; 0.</param>
     /// <param name="cellLink">Inter-cell message transport. Defaults to a fresh in-process <see cref="InProcessCellLink"/>.</param>
     /// <param name="scheduler">Worker pool that <see cref="Tick"/> fans the independent per-cell sim steps across. Defaults to an inline <see cref="SingleThreadedJobScheduler"/> (single-threaded, byte-unchanged behaviour); pass a <see cref="ThreadPoolJobScheduler"/> to tick cells across cores. Also settable later via <see cref="Scheduler"/>.</param>
+    /// <param name="physicsFactory">Builds each cell's OWN physics world, called once per cell at creation with that
+    /// cell's coordinate, before the cell can tick or receive an entity. The returned world must already hold every
+    /// static within <c>cellSize / 2 + overlapMargin</c> of the cell centre (an entity this cell owns or ghosts can
+    /// query that far), expressed against an <c>Origin</c> of <see cref="FrameFor"/>'s anchor, and must belong to
+    /// this cell alone - it is disposed with the cell. Null (the default) leaves every cell without physics.</param>
+    /// <param name="frameAnchoring">Give each cell an island frame at <see cref="FrameFor"/> instead of the world
+    /// origin, so the positions it simulates stay small however far the world extends. Default false, which is
+    /// byte-identical to the pre-frame host.</param>
     public ShardHost(float cellSize, float tickSeconds, ReplicationRegistry registry, float interestCellSize,
         float overlapMargin, CellPositionAccessor? positionAccessor = null, ICellLink? cellLink = null,
-        IJobScheduler? scheduler = null)
+        IJobScheduler? scheduler = null, Func<CellCoord, IPhysicsWorld>? physicsFactory = null,
+        bool frameAnchoring = false)
     {
         if (cellSize <= 0f)
             throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Cell size must be positive.");
@@ -90,6 +104,8 @@ public sealed partial class ShardHost
         this.interestCellSize = interestCellSize;
         OverlapMargin = overlapMargin;
         this.positionAccessor = positionAccessor;
+        this.physicsFactory = physicsFactory;
+        this.frameAnchoring = frameAnchoring;
         link = cellLink ?? new InProcessCellLink();
         this.scheduler = scheduler ?? new SingleThreadedJobScheduler();
     }
@@ -142,6 +158,16 @@ public sealed partial class ShardHost
     /// <summary>The cell coordinate containing a world position. Pure - does not instantiate a cell.</summary>
     public CellCoord CoordFor(float worldX, float worldY) => CellCoord.FromWorld(worldX, worldY, CellSize);
 
+    /// <summary>
+    /// The island frame a cell at <paramref name="coord"/> has (or would have): the frame nearest that cell's CENTRE
+    /// when this host was built with frame anchoring, and <see cref="WorldFrame.Origin"/> otherwise. Pure - does not
+    /// instantiate a cell - so a physics factory can call it to learn the <c>Origin</c> the world it is building must
+    /// be expressed against, without having to re-derive the engine's own arithmetic.
+    /// </summary>
+    public WorldFrame FrameFor(CellCoord coord) => frameAnchoring
+        ? WorldFrame.Nearest((coord.X + 0.5f) * CellSize, (coord.Y + 0.5f) * CellSize)
+        : WorldFrame.Origin;
+
     /// <summary>The <see cref="CellSim"/> containing a world position, creating it if it does not exist yet.</summary>
     public CellSim CellFor(float worldX, float worldY) => GetOrCreateCell(CoordFor(worldX, worldY));
 
@@ -152,7 +178,9 @@ public sealed partial class ShardHost
     {
         if (!cells.TryGetValue(coord, out CellSim? cell))
         {
-            cell = new CellSim(coord, tickSeconds, registry, interestCellSize);
+            // The cell's frame and its own physics world are fixed here, before CellCreated fires, so a persistence
+            // restore (or anything else the hook drives) already lands in the right space.
+            cell = new CellSim(coord, tickSeconds, registry, interestCellSize, FrameFor(coord), physicsFactory?.Invoke(coord));
             // Project this cell's owned index into the host netId -> cell map. The register hook always wins (a cell
             // adopting an entity overwrites the prior owner); the unregister hook only clears the entry if it still
             // points here, so a stale release after a handoff can't wipe the new owner's entry.
@@ -219,7 +247,18 @@ public sealed partial class ShardHost
             tickBufferVersion = cellsVersion;
         }
         CellSim[] snapshot = tickBuffer;
-        scheduler.For(n, i => snapshot[i].Tick(elapsedSeconds, maxTicksPerFrame));
+        // Each cell's sim step runs inside the canonical FP environment, on whatever thread the scheduler hands it.
+        // DeterministicFp pins the FP control register PER THREAD, and a scheduler fanning cells across the BCL
+        // thread pool runs them on arbitrary workers whose register is whatever the pool last left it at, so two
+        // servers - or two runs on one machine - could silently diverge in the low bits over thousands of ticks.
+        // The scope is a readonly struct over a save/apply/restore of that register, so an inline single-threaded
+        // scheduler pays one save and one restore per cell and nothing else. ThreadPoolJobScheduler installs the same
+        // scope around its own worker bodies, so a consumer's own For() call site is covered too; entering twice is
+        // harmless, since the inner scope restores exactly what the outer one had already made canonical.
+        scheduler.For(n, i =>
+        {
+            using (DeterministicFpScope.Enter()) snapshot[i].Tick(elapsedSeconds, maxTicksPerFrame);
+        });
     }
 
     /// <summary>

@@ -19,19 +19,17 @@ public struct ReplicatedPosition : IComponent
     /// (Y is never framed).</summary>
     public Vector3 Local;
 
-    /// <summary>The absolute world position. Reading is always correct and always as precise as
+    /// <summary>The absolute world position, READ-ONLY. Every reader (interest grids, cell keying, persistence,
+    /// handoff, a consumer's render feed) keeps getting exactly what it got before, and always as precise as
     /// <see cref="Local"/>, since <see cref="WorldFrame.Anchor"/> is exact in float32.
-    /// <para>WRITING resets the stamp to <see cref="WorldFrame.Origin"/> and stores the value as-is, which is what
-    /// keeps the setter safe on a framed head: <c>{Origin, p}</c> and <c>{f, f.ToLocal(p)}</c> denote the same
-    /// world position, so a legacy write cannot produce a WRONG position, only a correct one with a stale stamp,
-    /// and an island converts a stale stamp back EXACTLY. What a stale stamp does cost is one tick's worth of the
-    /// absolute quantum, because the value was rounded at world magnitude when it was written - a rounding floor,
-    /// not accumulation.</para></summary>
-    public Vector3 Value
-    {
-        readonly get => Frame.Anchor + Local;
-        set { Frame = WorldFrame.Origin; Local = value; }
-    }
+    /// <para>There is deliberately NO setter, and that compile break is the point of the major. A
+    /// <c>new ReplicatedPosition { Value = p }</c> silently reset the stamp to <see cref="WorldFrame.Origin"/>,
+    /// which was recoverable while the wire was absolute and is not once the stamp rides it: a stale stamp on the
+    /// wire is a position a frame-width from where it belongs. Removing the setter turns every such site into a
+    /// build error whose fix is one question - where did this position come from? - answered by
+    /// <see cref="FromWorld"/> (from outside the simulation) or <see cref="InFrame"/> (out of the simulation, or
+    /// out of a physics world already in that frame).</para></summary>
+    public readonly Vector3 Value => Frame.Anchor + Local;
 
     /// <summary>An ABSOLUTE world position converted into <paramref name="frame"/>. For a position arriving from
     /// outside the simulation: an authored spawn, a persisted record, an admin teleport.</summary>

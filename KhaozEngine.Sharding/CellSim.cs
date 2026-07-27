@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Ecs;
+using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Simulation;
 
@@ -53,7 +55,12 @@ public sealed class CellSim
     /// <param name="tickSeconds">Fixed timestep, seconds per tick (e.g. <c>1f / 30f</c>). Must be &gt; 0.</param>
     /// <param name="registry">Shared replication registry (the same component codecs across all cells).</param>
     /// <param name="interestCellSize">Cell edge length for this cell's AoI <see cref="InterestGrid"/>. Must be &gt; 0.</param>
-    public CellSim(CellCoord coord, float tickSeconds, ReplicationRegistry registry, float interestCellSize)
+    /// <param name="frame">This cell's island frame, fixed for its whole life. <c>default</c> (the world origin) is
+    /// an unframed cell, byte-identical to the pre-frame engine.</param>
+    /// <param name="physics">This cell's own physics world, or null for a cell with no colliders. Disposed with the
+    /// cell.</param>
+    public CellSim(CellCoord coord, float tickSeconds, ReplicationRegistry registry, float interestCellSize,
+        WorldFrame frame = default, IPhysicsWorld? physics = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         Coord = coord;
@@ -62,6 +69,12 @@ public sealed class CellSim
         this.registry = registry;
         Replicator = new ServerReplicator(registry);
         Interest = new InterestGrid(interestCellSize);
+        Frame = frame;
+        Physics = physics;
+        // Reachable from the world alone, for everything handed only a World. Published only when there is something
+        // to say: an unframed cell reads back WorldFrame.Origin from the absent singleton anyway, so its world holds
+        // no reserved entity at all and is byte-identical to the pre-frame engine.
+        if (frame != WorldFrame.Origin) World.SetIslandFrame(frame);
     }
 
     /// <summary>This cell's coordinate in the world grid.</summary>
@@ -69,6 +82,43 @@ public sealed class CellSim
 
     /// <summary>The cell's authoritative ECS world (its owned entities).</summary>
     public World World { get; }
+
+    /// <summary>
+    /// This cell's ISLAND FRAME: the space every position in <see cref="World"/> is expressed against, and the space
+    /// <see cref="Physics"/> is in. Fixed at construction (a cell does not move, so its frame never has to) and
+    /// therefore immutable for the cell's life, which is why a sharded head performs no runtime rebase at all: the
+    /// frame changes for an ENTITY only at a cell handoff, which is already a discrete, exactly-once, ordered event.
+    /// <see cref="WorldFrame.Origin"/> on an unframed host. Also published into <see cref="World"/> as an
+    /// <see cref="IslandFrame"/> singleton, so code holding only the world can read it.
+    /// </summary>
+    public WorldFrame Frame { get; }
+
+    /// <summary>
+    /// This cell's own physics world, or null when the host was given no factory. A frame is a property of a SPACE
+    /// and a physics world IS a space, so a cell stepping in its own frame must query its own world: two cells
+    /// sharing one would have entities a frame-width apart querying the same colliders, which is a character
+    /// standing on nothing rather than a rounding artifact. Its <c>Origin</c> is <see cref="Frame"/>'s anchor.
+    /// <para>Populated by the CONSUMER through the host's factory, never by the engine. Disposed when the cell is
+    /// unloaded.</para>
+    /// </summary>
+    public IPhysicsWorld? Physics { get; }
+
+    /// <summary>
+    /// Converts an entity arriving in this cell into <see cref="Frame"/>. Set by the layer that owns the framed
+    /// position component (the sharded server wires it on every cell); null means no conversion, which is what a
+    /// plain unframed cell wants. See <see cref="ICellFrameAdapter"/> for why this is a seam rather than a direct
+    /// call.
+    /// </summary>
+    public ICellFrameAdapter? FrameAdapter { get; set; }
+
+    // Every door an entity can enter this cell by re-stamps it here. The step loop's self-heal covers owned entities
+    // from the next tick on, but it deliberately skips ghosts (the owner is the sole simulator), so a mirrored
+    // entity that missed this would carry its SOURCE cell's stamp for its whole life - correct on Value, a frame
+    // width out on Local, which is exactly the read a cross-border collision system does.
+    private void AdaptFrame(Entity entity)
+    {
+        if (FrameAdapter is not null && World.IsAlive(entity)) FrameAdapter.ToFrame(World, entity, Frame);
+    }
 
     /// <summary>Snapshots <see cref="World"/> for clients/neighbors. Not auto-driven by <see cref="Tick"/>.</summary>
     public ServerReplicator Replicator { get; }
@@ -175,7 +225,14 @@ public sealed class CellSim
         ClientReplicationView view = GhostViewFor(source);
         view.Apply(World, snapshot);
         foreach (KeyValuePair<long, Entity> kv in view.Entities)
-            if (World.IsAlive(kv.Value)) World.Set(kv.Value, new Ghost { Source = source });
+            if (World.IsAlive(kv.Value))
+            {
+                World.Set(kv.Value, new Ghost { Source = source });
+                // The fifth door, and the only one the step loop cannot heal. It rides the loop that already exists,
+                // and it is idempotent because it always converts the value this pass just applied (carrying the
+                // SOURCE's stamp), never a previously converted one.
+                AdaptFrame(kv.Value);
+            }
     }
 
     /// <summary>Despawns every ghost this cell holds from <paramref name="source"/> (the source stopped mirroring).</summary>
@@ -271,15 +328,17 @@ public sealed class CellSim
     /// cell.
     /// </summary>
     /// <remarks>
-    /// Deliberately does NOT touch the cell world's ECS systems. A system is routinely a single instance shared
-    /// across every cell (the sharded server adds one <c>PlayerMovementSystem</c> to all of them), so disposing one
-    /// on unload would break every other cell.
+    /// Deliberately does NOT touch the cell world's ECS systems. A system may be an instance shared across cells, so
+    /// disposing one on unload could break every other cell. <see cref="Physics"/> is the opposite case and IS
+    /// disposed here: it belongs to exactly this cell by contract (a consumer that shares one world between two cells
+    /// has built the failure the per-cell model exists to prevent), so the cell is the only thing that can free it.
     /// </remarks>
     internal void Retire()
     {
         ghostViews.Clear();
         owned.Clear();
         retainedUnknown.Clear();
+        Physics?.Dispose();
     }
 
     /// <summary>
@@ -383,6 +442,7 @@ public sealed class CellSim
         {
             netIds.Add(kv.Key);
             RegisterOwned(kv.Key, kv.Value); // restored entities are owned here -> index them
+            AdaptFrame(kv.Value);            // a blob written by another frame (or an unframed build) lands in ours
         }
         foreach (RetainedComponent rc in retained)
         {
@@ -422,6 +482,11 @@ public sealed class CellSim
         {
             netIds.Add(kv.Key);
             RegisterOwned(kv.Key, kv.Value); // the adopted entity is now owned here -> index it
+            // The handoff conversion happens where the component LANDS, not where it is sent: the destination is the
+            // side that knows its own frame and the side that owns the entity afterwards. Exact to half a ULP of the
+            // destination magnitude (about 3.8 micrometres inside the design target), not bit-exact, because a
+            // crossing can grow the local's magnitude across a binade boundary.
+            AdaptFrame(kv.Value);
         }
         foreach (long netId in netIds) DespawnGhost(netId); // drop any pre-existing ghost of the now-owned entity
         return netIds;

@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
+using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
 
@@ -45,32 +46,20 @@ public sealed partial class WorldServer
     // The island's planar anchor as the flat Vector2 a PlayerMoveState stamp carries.
     private Vector2 IslandAnchorXz => new(islandFrame.Anchor.X, islandFrame.Anchor.Z);
 
-    /// <summary>A state re-expressed against <paramref name="targetAnchor"/>, reading the state's OWN stamp to know
-    /// where it is coming from. Absolute is just the zero anchor, so this is the one conversion in both directions:
-    /// a state written from outside carries a zero stamp (see <see cref="PlayerMoveState.Position"/>) and lands in
-    /// the island, and a state handed back to a consumer lands at zero. Y is untouched, always.</summary>
-    private static PlayerMoveState Reframe(PlayerMoveState state, Vector2 targetAnchor)
-    {
-        Vector2 from = state.FrameAnchor;
-        if (from == targetAnchor) return state;
-        Vector3 p = state.Move.Position;
-        state.Move.Position = new Vector3(p.X + (from.X - targetAnchor.X), p.Y, p.Z + (from.Y - targetAnchor.Y));
-        state.FrameAnchor = targetAnchor;
-        return state;
-    }
-
     // A state coming FROM outside (spawn, teleport, persisted record, a consumer's SetPlayerState) into the island.
-    private PlayerMoveState ToIsland(PlayerMoveState state) => Reframe(state, IslandAnchorXz);
+    // PlayerMoveState.ToAnchor reads the state's OWN stamp to know where it is coming from, and absolute is just the
+    // zero anchor, so one conversion serves both directions.
+    private PlayerMoveState ToIsland(PlayerMoveState state) => state.ToAnchor(IslandAnchorXz);
 
     // A state going OUT to a consumer, or to persistence. Absolute, with a zero stamp, so the position and the
     // stamp can never disagree on the public surface.
-    private static PlayerMoveState ToAbsolute(PlayerMoveState state) => Reframe(state, Vector2.Zero);
+    private static PlayerMoveState ToAbsolute(PlayerMoveState state) => state.Absolute;
 
     // The absolute world position of a joined slot, for the area-of-interest query (the interest grid is keyed on
     // absolute positions, because a key built from a local would collide across frames). The indexer throws
     // KeyNotFoundException for a missing slot, matching the pre-frame code this replaced: every caller iterates a
     // snapshot of joined slots, so a miss here means the bookkeeping is broken and swallowing it would hide that.
-    private Vector3 AbsolutePositionOf(int slot) => ToAbsolute(stateBySlot[slot]).Position;
+    private Vector3 AbsolutePositionOf(int slot) => stateBySlot[slot].Absolute.Position;
 
     /// <summary>
     /// Re-anchor the island if the followed player has drifted past <see cref="WorldFrame.ReanchorRadius"/>. Runs
@@ -112,10 +101,13 @@ public sealed partial class WorldServer
         });
         var slots = new List<int>(stateBySlot.Keys);   // snapshot: the loop rewrites every entry
         foreach (int slot in slots)
-            stateBySlot[slot] = Reframe(stateBySlot[slot], anchor);
+            stateBySlot[slot] = stateBySlot[slot].ToAnchor(anchor);
 
         islandFrame = target;
         simulator.Frame = target;
+        // Republish on the world, so everything that can only reach a World (a pickup spawn callback, the dynamic-body
+        // sampler, a consumer's per-tick brain) sees the new frame in the same gap between two steps.
+        world.SetIslandFrame(target);
         FrameChanged?.Invoke(previous, target, previous.DeltaTo(target));
     }
 

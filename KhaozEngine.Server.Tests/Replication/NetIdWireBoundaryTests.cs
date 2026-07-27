@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using Xunit;
 
@@ -36,7 +37,7 @@ public class NetIdWireBoundaryTests
         var server = new World();
         Entity e = server.Spawn();
         server.Set(e, new NetId(value));
-        server.Set(e, new ReplicatedPosition { Value = Pos });
+        server.Set(e, ReplicatedPosition.FromWorld(Pos, WorldFrame.Origin));
 
         byte[] snap = SnapshotWriter.WriteFiltered(server, reg, new HashSet<long> { value },
             ReplicationChannels.Replicate, ownerNetId: value);
@@ -58,7 +59,7 @@ public class NetIdWireBoundaryTests
         var server = new World();
         Entity e = server.Spawn();
         server.Set(e, new NetId(value));
-        server.Set(e, new ReplicatedPosition { Value = Pos });
+        server.Set(e, ReplicatedPosition.FromWorld(Pos, WorldFrame.Origin));
 
         var repl = new AoiDeltaReplicator(reg);
         repl.BeginTick();
@@ -114,7 +115,7 @@ public class NetIdWireBoundaryTests
         var s1 = new World();
         Entity e = s1.Spawn();
         s1.Set(e, new NetId(value));
-        s1.Set(e, new ReplicatedPosition { Value = Pos });
+        s1.Set(e, ReplicatedPosition.FromWorld(Pos, WorldFrame.Origin));
         byte[] snap1 = SnapshotWriter.WriteFiltered(s1, reg, new HashSet<long> { value },
             ReplicationChannels.Replicate, ownerNetId: value);
         view.Apply(client, snap1);
@@ -149,7 +150,7 @@ public class NetIdWireBoundaryTests
         {
             Entity en = s1.Spawn();
             s1.Set(en, new NetId(id));
-            s1.Set(en, new ReplicatedPosition { Value = Pos });
+            s1.Set(en, ReplicatedPosition.FromWorld(Pos, WorldFrame.Origin));
         }
         byte[] snap1 = SnapshotWriter.WriteFiltered(s1, reg, new HashSet<long> { low, high },
             ReplicationChannels.Replicate, ownerNetId: low);
@@ -161,7 +162,7 @@ public class NetIdWireBoundaryTests
         var s2 = new World();
         Entity keep = s2.Spawn();
         s2.Set(keep, new NetId(low));
-        s2.Set(keep, new ReplicatedPosition { Value = Pos });
+        s2.Set(keep, ReplicatedPosition.FromWorld(Pos, WorldFrame.Origin));
         byte[] snap2 = SnapshotWriter.WriteFiltered(s2, reg, new HashSet<long> { low },
             ReplicationChannels.Replicate, ownerNetId: low);
         view.Apply(client, snap2);

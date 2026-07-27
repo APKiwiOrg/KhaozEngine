@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.NetWorld;
 
@@ -40,11 +41,12 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
 
     /// <summary>Capsule-centre position, in the space <see cref="FrameAnchor"/> names (Y is ground-clamped while
     /// grounded, free while airborne, and always absolute).
-    /// <para>WRITING it stores an ABSOLUTE position and resets <see cref="FrameAnchor"/>, exactly as
-    /// <see cref="ReplicatedPosition.Value"/>'s setter does and for the same reason: every site that assigns a
-    /// position assigns one that came from outside the simulation (an authored spawn, an admin teleport, a
-    /// persisted record), and a write that kept a stale anchor would claim a frame the value was never in. A
-    /// framed island converts it back exactly on the next tick.</para></summary>
+    /// <para>WRITING it stores an ABSOLUTE position and resets <see cref="FrameAnchor"/> to zero, because every site
+    /// that assigns a position assigns one that came from outside the simulation (an authored spawn, an admin
+    /// teleport, a persisted record), and a write that kept a stale anchor would claim a frame the value was never
+    /// in. Unlike <see cref="ReplicatedPosition"/>, this state never rides a wire, so the pair stays internally
+    /// consistent at every instant and the setter is safe: <see cref="ToAnchor"/> converts it into an island's frame
+    /// exactly.</para></summary>
     public Vector3 Position
     {
         readonly get => Move.Position;
@@ -88,6 +90,36 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
         m.Position = new Vector3(position.X, vertical, position.Y);
         return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch, FrameAnchor = FrameAnchor };
     }
+
+    /// <summary>Returns a copy re-stamped with <paramref name="anchor"/> and <paramref name="position"/>, where the
+    /// caller has ALREADY converted the planar position into that anchor's space. This is
+    /// <see cref="IPredictedState{TSelf}.WithFrameAnchor"/>, called by reconciliation when the predicted state and
+    /// the incoming authoritative basis sit in different frames. Y is untouched, because Y is never framed.</summary>
+    public readonly PlayerMoveState WithFrameAnchor(Vector2 anchor, Vector2 position)
+    {
+        MoveState m = Move;
+        m.Position = new Vector3(position.X, Move.Position.Y, position.Y);
+        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch, FrameAnchor = anchor };
+    }
+
+    /// <summary>This state re-expressed against <paramref name="targetAnchor"/>, reading its OWN
+    /// <see cref="FrameAnchor"/> to know where it is coming from. Absolute world space is just the zero anchor, so
+    /// this is the one conversion in both directions: a state written from outside carries a zero stamp and lands in
+    /// an island, and a state handed back to a consumer lands at zero. Y is untouched, always.
+    /// <para>Exact whenever the conversion does not grow the planar magnitude, which is what a re-anchor guarantees
+    /// by construction (see <see cref="WorldFrame"/>).</para></summary>
+    public readonly PlayerMoveState ToAnchor(Vector2 targetAnchor)
+    {
+        if (FrameAnchor == targetAnchor) return this;
+        Vector3 p = Move.Position;
+        return WithFrameAnchor(targetAnchor, new Vector2(
+            p.X + (FrameAnchor.X - targetAnchor.X),
+            p.Z + (FrameAnchor.Y - targetAnchor.Y)));
+    }
+
+    /// <summary>This state in ABSOLUTE world metres, with a zero <see cref="FrameAnchor"/>. What every public
+    /// server and client surface hands a consumer, so the position and the stamp can never disagree out there.</summary>
+    public readonly PlayerMoveState Absolute => ToAnchor(Vector2.Zero);
 
     /// <summary>Rebuilds a full state from the two replicated components: the 3D <paramref name="position"/>
     /// (<see cref="ReplicatedPosition"/>) plus the vertical <paramref name="movement"/> (<see cref="MovementState"/>,
@@ -142,4 +174,21 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
         },
         TeleportEpoch = movement.TeleportEpoch,
     };
+
+    /// <summary>
+    /// Rebuilds a full state from the two replicated components, KEEPING the position's frame: the state's
+    /// <see cref="Position"/> is the component's <see cref="ReplicatedPosition.Local"/> and its
+    /// <see cref="FrameAnchor"/> is that component's stamp. This is the reconciliation basis a client builds off the
+    /// wire, and keeping the frame is what lets prediction replay in the same space the server stepped in.
+    /// <para>Use the <see cref="From(Vector3, in MovementState)"/> overload with
+    /// <see cref="ReplicatedPosition.Value"/> for a state that is going out to a consumer, where absolute is the
+    /// contract.</para>
+    /// </summary>
+    public static PlayerMoveState From(in ReplicatedPosition position, in MovementState movement)
+    {
+        PlayerMoveState state = From(position.Local, movement);
+        Vector3 anchor = position.Frame.Anchor;
+        state.FrameAnchor = new Vector2(anchor.X, anchor.Z);
+        return state;
+    }
 }

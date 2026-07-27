@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Ecs;
+using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
 
@@ -165,8 +166,10 @@ public sealed class WorldPickups
         long netId = host.SpawnEntity(position.X, position.Z, (world, entity) =>
         {
             // SpawnEntity pre-sets ReplicatedPosition to (x, 0, z), so rewrite it with the real Y or the client draws
-            // the orb where it actually is rather than on the ground plane.
-            world.Set(entity, new ReplicatedPosition { Value = position });
+            // the orb where it actually is rather than on the ground plane. The position is AUTHORED absolute, and
+            // the island frame it has to land in is read off the world the host handed back - the callback carries a
+            // World and an Entity and nothing else, which is precisely why the frame is published on the world.
+            world.Set(entity, ReplicatedPosition.FromWorld(position, world.GetIslandFrame()));
             world.Set(entity, state);
         });
 

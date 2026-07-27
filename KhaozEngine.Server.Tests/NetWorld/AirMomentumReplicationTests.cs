@@ -5,6 +5,7 @@ using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Replication;
@@ -17,7 +18,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// has to survive, the sharded head's per-tick carry, and the anti-cheat check that momentum breaks unless it is
 /// fixed alongside. Three cases decide whether the feature works at all.
 /// <see cref="A_correction_mid_flight_replays_the_carried_arc_and_converges"/> is why
-/// <see cref="MovementState.HorizontalVelocityXQ"/> exists: <see cref="PlayerMoveState.From"/> rebuilds the client's
+/// <see cref="MovementState.HorizontalVelocityXQ"/> exists: <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's
 /// basis from the replicated components ALONE and <c>Reconcile</c> overwrites the whole predicted state with it, so a
 /// carried field missing from that seed resets to zero on every correction and the client drops an arc the server is
 /// still flying. <see cref="The_sharded_head_carries_the_arc_across_ticks_and_onto_the_wire"/> is the same failure on
@@ -300,7 +301,7 @@ public class AirMomentumReplicationTests
         Entity e = ecs.Spawn();
         var seed = new Vector3(0f, t.CapsuleHalfHeight, 0f);
         ecs.Set(e, new NetId(1));
-        ecs.Set(e, new ReplicatedPosition { Value = seed });
+        ecs.Set(e, ReplicatedPosition.FromWorld(seed, WorldFrame.Origin));
         ecs.Set(e, new MovementState { Grounded = true });
         ecs.Set(e, new PendingMove { Command = DownhillJump });
 
@@ -440,7 +441,7 @@ public class AirMomentumReplicationTests
         var serverWorld = new World();
         Entity e = serverWorld.Spawn();
         serverWorld.Set(e, new NetId(1));
-        serverWorld.Set(e, new ReplicatedPosition { Value = Vector3.Zero });
+        serverWorld.Set(e, ReplicatedPosition.FromWorld(Vector3.Zero, WorldFrame.Origin));
         serverWorld.Set(e, src);
         byte[] snapshot = SnapshotWriter.Write(serverWorld, registry);
 

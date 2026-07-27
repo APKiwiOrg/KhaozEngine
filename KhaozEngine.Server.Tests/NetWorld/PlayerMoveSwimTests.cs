@@ -4,6 +4,7 @@ using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using Xunit;
 
@@ -33,7 +34,7 @@ public class PlayerMoveSwimTests
         var serverWorld = new World();
         Entity e = serverWorld.Spawn();
         serverWorld.Set(e, new NetId(1));
-        serverWorld.Set(e, new ReplicatedPosition { Value = Vector3.Zero });
+        serverWorld.Set(e, ReplicatedPosition.FromWorld(Vector3.Zero, WorldFrame.Origin));
         serverWorld.Set(e, src);
         byte[] snapshot = SnapshotWriter.Write(serverWorld, registry);
 

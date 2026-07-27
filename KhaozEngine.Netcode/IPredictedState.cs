@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 
 namespace KhaozEngine.Netcode;
@@ -37,6 +38,33 @@ public interface IPredictedState<TSelf>
     /// mesh offset and behaves exactly as before.
     /// </summary>
     float StepDeltaY => 0f;
+
+    /// <summary>
+    /// The planar (XZ) anchor this state's <see cref="Position"/> is expressed against - the simulation island's
+    /// frame, stamped onto the state by the step that produced it. <see cref="Vector2.Zero"/> (the default) means
+    /// absolute world coordinates, so a state with no frame concept behaves exactly as it always did.
+    /// <para><see cref="ClientPrediction{TState,TCommand}.Reconcile"/> differences this against the incoming
+    /// authoritative basis's anchor and converts the pre-rebase presentation state into the basis's frame BEFORE any
+    /// error is measured, so an island re-anchor - a no-op in world space - measures as zero prediction error, does
+    /// not trip the hard-snap gate, and glides nothing.</para>
+    /// </summary>
+    Vector2 FrameAnchor => Vector2.Zero;
+
+    /// <summary>
+    /// Returns a copy of this state re-expressed against <paramref name="anchor"/>, with <paramref name="position"/>
+    /// as the ALREADY-converted planar position (the caller differences the two anchors). Y is never framed, so the
+    /// vertical axis is carried through unchanged.
+    /// <para>The default THROWS, deliberately. A wither has to construct a <typeparamref name="TSelf"/> and nothing
+    /// else on this interface can carry a new anchor, so there is no default body that could be correct; making it
+    /// abstract instead would break every existing implementer, which is the whole thing this default-member pattern
+    /// exists to avoid. It is unreachable unless the two anchors actually differ, which is impossible for a state
+    /// that left <see cref="FrameAnchor"/> at its default - so a state that reaches it is one whose author opted into
+    /// frames on one side and not the other, and that should say so loudly rather than silently drop the
+    /// conversion.</para>
+    /// </summary>
+    TSelf WithFrameAnchor(Vector2 anchor, Vector2 position) => throw new NotSupportedException(
+        $"{typeof(TSelf).Name} does not implement WithFrameAnchor, so it cannot be reconciled across a frame change. "
+      + "Implement it, or leave FrameAnchor at Vector2.Zero on both the predicted state and the authoritative basis.");
 
     /// <summary>Returns a copy of this state with the planar <paramref name="position"/> applied (vertical unchanged).</summary>
     TSelf WithPosition(Vector2 position);

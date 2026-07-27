@@ -60,7 +60,7 @@ public struct MovementState : IComponent
     /// <para>Server-authored ONLY: it is set through <c>ShardedWorldServer.SetSpeedScale</c> /
     /// <c>WorldServer.SetSpeedScale</c> and never derived from anything a client sends, so a hostile client cannot
     /// grant itself a multiplier. It must ride the wire (rather than living only on the sim-local
-    /// <see cref="KhaozEngine.Locomotion.MoveState"/>) because <see cref="PlayerMoveState.From"/> rebuilds the client's
+    /// <see cref="KhaozEngine.Locomotion.MoveState"/>) because <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's
     /// reconcile basis from the replicated components alone: a scale absent from here would reset on every correction
     /// and the pending command window would replay at the wrong speed.</para>
     /// Added on the wire in generation 6 (<see cref="MoveProtocol.WireProtocolVersion"/>). A mismatched peer is
@@ -76,7 +76,7 @@ public struct MovementState : IComponent
     /// to mean the harmless thing. For a multiplier that is 1 (unmodified), and for a carried velocity it is 0
     /// (carrying nothing), which degrades a state that never went through a step to the old instant-to-target model
     /// rather than to a phantom drift.
-    /// <para>It must ride the wire because <see cref="PlayerMoveState.From"/> rebuilds the client's reconcile basis
+    /// <para>It must ride the wire because <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's reconcile basis
     /// from the replicated components ALONE. A carried velocity absent from there does not merely lag: it resets to
     /// the struct default on EVERY correction, so a client corrected mid-flight drops its arc to zero, rebuilds a new
     /// one from whatever the command happens to be, and replays the whole pending window on that. This is exactly the
@@ -116,7 +116,7 @@ public struct MovementState : IComponent
     /// (<see cref="PlayerMovementSystem"/>) reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from
     /// this component every tick, so a step OUTPUT has nowhere else to survive to the end of
     /// <see cref="ShardedWorldServer.Tick"/>, where the movement-anomaly check reads it back through
-    /// <see cref="PlayerMoveState.From"/>. The single-<see cref="World"/> <see cref="WorldServer"/> never reads this
+    /// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/>. The single-<see cref="World"/> <see cref="WorldServer"/> never reads this
     /// field: it holds the whole <see cref="PlayerMoveState"/> per slot and reads the step's own output directly.
     /// <para>DELIBERATELY absent from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it is a
     /// server-side anti-cheat input that no client has any use for, so replicating it would widen the built-in wire

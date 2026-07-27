@@ -9,5 +9,6 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Determinism/KhaozEngine.Determinism.csproj" />
   </ItemGroup>
 </Project>

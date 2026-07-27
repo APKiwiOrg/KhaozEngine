@@ -214,6 +214,26 @@ public sealed class ClientPrediction<TState, TCommand>
     /// </summary>
     public ReconciliationResult Reconcile(int authoritativeTick, in TState authoritativeBasis, int lastAcknowledgedSeq)
     {
+        // FIRST, above every capture below: convert the carried presentation state into the INCOMING basis's frame.
+        // An island re-anchor moves the whole world by an exact multiple of the frame grid and is a no-op in world
+        // space, but the predicted state is still stamped with the old anchor while the basis carries the new one, so
+        // without this every quantity differenced further down is differencing two spaces. Two separate bugs come out
+        // of that, and both are fixed here rather than at their own sites: `planarError` below would measure the whole
+        // anchor delta and trip the HardSnapDistance gate (a hard cut on a shift that moved nothing), and the C1
+        // branch's renderOffset would re-anchor against a captured-in-the-old-frame rendered position and glide the
+        // avatar a frame-width across the screen while it decayed. Placing the conversion above the captures is what
+        // covers both: oldPlanar, renderedPlanar and previousPredictedPosition all end up in one frame.
+        //
+        // renderOffset and renderOffsetVelocity are DELTAS, so they are frame-invariant and untouched. So are the
+        // vertical axis and its offset, because Y is never framed.
+        Vector2 frameDelta = predictedState.FrameAnchor - authoritativeBasis.FrameAnchor;
+        if (frameDelta != Vector2.Zero)
+        {
+            predictedState = predictedState.WithFrameAnchor(
+                authoritativeBasis.FrameAnchor, predictedState.Position + frameDelta);
+            previousPredictedPosition += frameDelta;
+        }
+
         // Sample the actual on-screen position (inter-tick interpolated + current offset) BEFORE the rebase; it is
         // what the continuity-preserving render offset is anchored to. Capture the pre-rebase predicted position too
         // (without the smoothing offset) - that is the clean prediction-divergence metric the gate uses.

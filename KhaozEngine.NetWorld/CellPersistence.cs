@@ -41,15 +41,17 @@ public sealed class CellPersistenceConfig
 
     /// <summary>Blob schema version. Bump on a component-layout change and register a <see cref="RegisterMigration"/>
     /// from the previous version so old saves are brought forward, not skipped or misread. Defaults to the engine's
-    /// current built-in layout version (<see cref="NetIdBlobMigration.NetId64SchemaVersion"/> = 2 as of 10.0.0, which
-    /// widened <see cref="KhaozEngine.Replication.NetId"/> to 64-bit); the pre-10.0.0 32-bit layout was version 1.</summary>
-    public int SchemaVersion { get; init; } = NetIdBlobMigration.NetId64SchemaVersion;
+    /// current built-in layout version (<see cref="PositionFrameBlobMigration.FramedPositionSchemaVersion"/> = 3 as of
+    /// 16.0.0, which put the island-frame stamp on <see cref="ReplicatedPosition"/>). Version 2 was the 10.0.0
+    /// 64-bit <see cref="KhaozEngine.Replication.NetId"/> layout; the pre-10.0.0 32-bit layout was version 1.</summary>
+    public int SchemaVersion { get; init; } = PositionFrameBlobMigration.FramedPositionSchemaVersion;
 
     /// <summary>
-    /// Whether to fold the engine's own built-in cell-blob migrations into this config's chain (default true). The
-    /// only engine built-in today is the 10.0.0 <see cref="NetIdBlobMigration.WidenV1ToV2"/> netId widening (v1 -&gt;
-    /// v2); it is included automatically for any <see cref="SchemaVersion"/> &gt;= 2, so a server on the default config
-    /// migrates a pre-10.0.0 save forward without the consumer wiring anything. A consumer migration registered from
+    /// Whether to fold the engine's own built-in cell-blob migrations into this config's chain (default true). There
+    /// are two: the 10.0.0 <see cref="NetIdBlobMigration.WidenV1ToV2"/> netId widening (v1 -&gt; v2) and the 16.0.0
+    /// <see cref="PositionFrameBlobMigration.FrameV2ToV3"/> position framing (v2 -&gt; v3). Each is included
+    /// automatically for any <see cref="SchemaVersion"/> above it, so a server on the default config
+    /// migrates an old save forward without the consumer wiring anything. A consumer migration registered from
     /// the same from-version OVERRIDES the engine step. Set false to test / drive the raw migration machinery in
     /// isolation (only the explicitly <see cref="RegisterMigration"/>-ed steps run), e.g. to pin an old schema version.
     /// </summary>
@@ -138,11 +140,13 @@ public sealed class CellPersistence
     }
 
     // The engine's own built-in cell-blob migrations, keyed by from-version. Folded into a config's chain unless it
-    // opts out (CellPersistenceConfig.IncludeEngineMigrations). Currently just the 10.0.0 netId widening (v1 -> v2).
+    // opts out (CellPersistenceConfig.IncludeEngineMigrations): the 10.0.0 netId widening (v1 -> v2) and the 16.0.0
+    // position framing (v2 -> v3). The chain runs in order, so a pre-10.0.0 save boots forward through both.
     private static readonly IReadOnlyDictionary<int, CellSnapshotMigration> EngineMigrations =
         new Dictionary<int, CellSnapshotMigration>
         {
             [NetIdBlobMigration.NetId32SchemaVersion] = NetIdBlobMigration.WidenV1ToV2,
+            [PositionFrameBlobMigration.AbsolutePositionSchemaVersion] = PositionFrameBlobMigration.FrameV2ToV3,
         };
 
     // Builds the effective migration chain: the engine built-ins (those strictly below the target schema version) with

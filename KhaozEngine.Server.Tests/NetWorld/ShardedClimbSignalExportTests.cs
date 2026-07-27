@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Replication;
@@ -71,7 +72,7 @@ public class ShardedClimbSignalExportTests
         var ecs = new World();
         Entity e = ecs.Spawn();
         ecs.Set(e, new NetId(1));
-        ecs.Set(e, new ReplicatedPosition { Value = seed });
+        ecs.Set(e, ReplicatedPosition.FromWorld(seed, WorldFrame.Origin));
         ecs.Set(e, new MovementState());
         ecs.Set(e, new PendingMove { Command = cmd });
 
@@ -129,7 +130,7 @@ public class ShardedClimbSignalExportTests
 
         Entity e = host.SpawnAt(95f, 50f, out CellSim a);
         a.World.Set(e, new NetId(7));
-        a.World.Set(e, new ReplicatedPosition { Value = new Vector3(95f, 1f, 50f) });
+        a.World.Set(e, ReplicatedPosition.FromWorld(new Vector3(95f, 1f, 50f), WorldFrame.Origin));
         // A mid-run climber: a nonzero sim-local EWMA AND a nonzero wire ClimbRateQ.
         sbyte q = MovementState.QuantizeClimbRate(2.5f);
         a.World.Set(e, new MovementState { VerticalVelocity = 1.5f, Grounded = true, ClimbRateEwma = 2.5f, ClimbRateQ = q });
@@ -138,7 +139,7 @@ public class ShardedClimbSignalExportTests
 
         // Cross the east edge into cell B(1,0) and hand off.
         Assert.True(host.TryGetOwner(7, out CellSim owner, out Entity moving));
-        owner.World.Set(moving, new ReplicatedPosition { Value = new Vector3(130f, 1f, 50f) });
+        owner.World.Set(moving, ReplicatedPosition.FromWorld(new Vector3(130f, 1f, 50f), WorldFrame.Origin));
         host.ProcessHandoffs();
 
         Assert.True(host.TryGetOwner(7, out CellSim b, out Entity moved));

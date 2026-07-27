@@ -4,6 +4,7 @@ using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Replication;
@@ -315,7 +316,7 @@ public class DynamicBodyStateCodecTests
         var serverWorld = new World();
         Entity e = serverWorld.Spawn();
         serverWorld.Set(e, new NetId(1));
-        serverWorld.Set(e, new ReplicatedPosition { Value = Vector3.Zero });
+        serverWorld.Set(e, ReplicatedPosition.FromWorld(Vector3.Zero, WorldFrame.Origin));
         serverWorld.Set(e, src);
         byte[] snapshot = SnapshotWriter.Write(serverWorld, registry);
 
@@ -383,7 +384,7 @@ public class DynamicBodyStateCodecTests
         var serverWorld = new World();
         Entity e = serverWorld.Spawn();
         serverWorld.Set(e, new NetId(1));
-        serverWorld.Set(e, new ReplicatedPosition { Value = Vector3.Zero });
+        serverWorld.Set(e, ReplicatedPosition.FromWorld(Vector3.Zero, WorldFrame.Origin));
         serverWorld.Set(e, new DynamicBodyState { Orientation = q, LinearVelocity = Vector3.Zero, AngularVelocity = Vector3.Zero });
         view.Apply(world, SnapshotWriter.Write(serverWorld, registry));
     }

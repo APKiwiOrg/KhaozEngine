@@ -4,6 +4,7 @@ using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 using Xunit;
@@ -18,7 +19,7 @@ public class PlayerMovementSystemTests
     {
         Entity e = w.Spawn();
         w.Set(e, new NetId(netId));
-        w.Set(e, new ReplicatedPosition { Value = pos });
+        w.Set(e, ReplicatedPosition.FromWorld(pos, WorldFrame.Origin));
         w.Set(e, new MovementState());
         w.Set(e, new PendingMove { Command = cmd });
         return e;

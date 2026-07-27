@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using Xunit;
 
@@ -144,7 +145,7 @@ public class DiscreteSampleTests
 
         void PushMs(float z, sbyte climbQ, bool grounded, double t)
         {
-            server.Set(s, new ReplicatedPosition { Value = new Vector3(0f, 1f, z) });
+            server.Set(s, ReplicatedPosition.FromWorld(new Vector3(0f, 1f, z), WorldFrame.Origin));
             server.Set(s, new MovementState { Grounded = grounded, ClimbRateQ = climbQ });
             view.Apply(client, SnapshotWriter.Write(server, registry));
             view.RecordInterpolationSample(t);

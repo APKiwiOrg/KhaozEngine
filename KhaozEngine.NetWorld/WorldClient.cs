@@ -75,6 +75,15 @@ public sealed class WorldClientConfig
     /// local reconcile-error) plus rendered positions every <see cref="WorldClient.AdvancePresentation"/>, dumpable to
     /// CSV. Gate a game's diagnostic key on it; leave off in shipping.</summary>
     public bool PresentationTraceEnabled { get; init; }
+
+    /// <summary>The coordinate space this client's sampler delegates (ground height, ground normal, medium) read.
+    /// It must MATCH the server's <see cref="WorldServerConfig.SamplerSpace"/> /
+    /// <see cref="ShardedWorldServerConfig.SamplerSpace"/>, because prediction replays the same step the server ran
+    /// and a sampler answering in the other space produces a different trajectory from identical inputs.
+    /// <see cref="NetWorld.SamplerSpace.World"/> (the default) keeps them on absolute coordinates and the step
+    /// converts for them; <see cref="NetWorld.SamplerSpace.Frame"/> hands them frame-local coordinates, which is what
+    /// a sampler backed by the client's own physics world needs.</summary>
+    public SamplerSpace SamplerSpace { get; init; } = SamplerSpace.World;
 }
 
 /// <summary>
@@ -84,7 +93,7 @@ public sealed class WorldClientConfig
 /// player against the authoritative basis), <see cref="SendInput"/>s once per tick (predicts + transmits), and
 /// reads <see cref="Snapshot"/> to render a capsule per entity (local predicted, remotes replicated). Render-free.
 /// </summary>
-public sealed class WorldClient : IDisposable
+public sealed partial class WorldClient : IDisposable
 {
     private NetClient net;
     private World world = new();
@@ -207,7 +216,9 @@ public sealed class WorldClient : IDisposable
         view = new ClientReplicationView(this.registry);
         // Predict against the SAME physics world the server is authoritative over (mirrors WorldServer),
         // so a solid-prop consumer predicts straight rather than rubber-banding. Defaults null = terrain-only.
-        var simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium);
+        RequireRebasablePhysics(physics);
+        islandPhysics = physics;
+        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium, config.SamplerSpace);
         PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
         prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
         interpolateRemotes = config.InterpolateRemotes;
@@ -277,27 +288,6 @@ public sealed class WorldClient : IDisposable
     /// <summary>The most recent <see cref="ServerNotice"/> received, or null if none. Lets a consumer that attaches
     /// late, or polls instead of subscribing, still read the latest notice.</summary>
     public ServerNotice? LastNotice { get; private set; }
-
-    /// <summary>The local player's full predicted/reconciled render state (position + vertical velocity + grounded).
-    /// Exact movement the client already knows for its own avatar - use it to fill the local entity's
-    /// <c>KhaozEngine.Game.CharacterSample</c> exact-movement fields (so a replicated-animator bridge reads true air
-    /// state instead of finite-differencing position). Defaults (grounded false, zero velocity) until the first
-    /// snapshot seeds prediction.</summary>
-    public PlayerMoveState LocalRenderState => prediction.RenderedState;
-
-    /// <summary>The local player's predicted grounded flag (shorthand for <see cref="LocalRenderState"/>.Grounded).</summary>
-    public bool LocalGrounded => prediction.RenderedState.Grounded;
-
-    /// <summary>The local player's predicted vertical velocity, m/s positive up (shorthand for
-    /// <see cref="LocalRenderState"/>.VerticalVelocity).</summary>
-    public float LocalVerticalVelocity => prediction.RenderedState.VerticalVelocity;
-
-    /// <summary>The local player's predicted horizontal (planar ground-plane) speed in m/s, taken from the latest
-    /// prediction tick (the commanded, collision-clamped move). Use it to drive a speed HUD, footstep audio, or a
-    /// locomotion blend: it is the clean source that stays steady under lag, unlike differencing
-    /// <see cref="LocalRenderState"/>.Position, which carries the decaying reconciliation render offset and so wobbles
-    /// during a steady run. Zero until the first snapshot seeds prediction.</summary>
-    public float LocalHorizontalSpeed => prediction.PredictedHorizontalSpeed;
 
     /// <summary>
     /// Raised during <see cref="Poll"/> (on snapshot/delta ingest) when a local teleport landed this ingest: the
@@ -619,8 +609,9 @@ public sealed class WorldClient : IDisposable
             float stepCumulativeY = 0f;
             if (isLocal)
             {
-                // The local avatar's exact movement state is the predicted/reconciled state.
-                PlayerMoveState rs = prediction.RenderedState;
+                // The local avatar's exact movement state is the predicted/reconciled state, converted to ABSOLUTE
+                // world metres like every other entry in this list (see LocalRenderState for why that rule exists).
+                PlayerMoveState rs = LocalRenderState;
                 pos = rs.Position;
                 grounded = rs.Grounded;
                 verticalVelocity = rs.VerticalVelocity;
@@ -763,9 +754,12 @@ public sealed class WorldClient : IDisposable
         if (view.TryGetEntity(localNetId, out Entity local) && world.TryGet(local, out ReplicatedPosition p))
         {
             // Build the full authoritative basis from BOTH replicated components - position and the vertical axis
-            // (MovementState) - so prediction replay reproduces the jump/fall, not just the XZ plane.
+            // (MovementState) - so prediction replay reproduces the jump/fall, not just the XZ plane. The basis KEEPS
+            // the server's frame stamp, and the client adopts that frame (rebasing its own physics world with it)
+            // before the replay runs, so replayed commands step in the space the basis is expressed in.
             world.TryGet(local, out MovementState ms);           // default (grounded, 0) until first replicated
-            PlayerMoveState basis = PlayerMoveState.From(p.Value, ms);
+            PlayerMoveState basis = PlayerMoveState.From(p, ms);
+            AdoptIslandFrame(p.Frame);
             if (first)
             {
                 // First frame of the genuine initial connect: seed prediction at the authoritative spawn from seq 0

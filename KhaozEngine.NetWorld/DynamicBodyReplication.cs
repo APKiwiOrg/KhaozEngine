@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
+using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
 
@@ -89,6 +91,14 @@ public sealed class DynamicBodyReplication
     /// </summary>
     public void Sample()
     {
+        // The island frame this world is in, read once per Sample rather than once per body. A pose comes back in the
+        // PHYSICS WORLD'S space, and the island's physics world sits at the island frame's anchor, so a pose IS the
+        // frame-local position and stamping it as such is both correct and precision-preserving: writing it as an
+        // absolute would re-quantize it to the float32 lattice of its own world magnitude, which at 100 km is 7.8 mm,
+        // undoing exactly what the frame bought. The residual term is zero in the normal case and covers the one
+        // configuration where the two disagree - a consumer driving Rebase itself on an unframed head.
+        WorldFrame frame = world.GetIslandFrame();
+        Vector3 residual = physics.Origin - frame.Anchor;
         List<long>? firstWrites = null;   // keys to flip WrittenOnce for, applied after enumeration
         foreach (KeyValuePair<long, Tracked> kv in tracked)
         {
@@ -102,12 +112,10 @@ public sealed class DynamicBodyReplication
 
             Pose pose = physics.GetDynamicPose(t.Handle);
             physics.GetDynamicVelocity(t.Handle, out Vector3 linear, out Vector3 angular);
-            // A pose comes back in the PHYSICS WORLD'S space, which is not world space once something has rebased
-            // that world (an island frame, section 5 of the floating-origin design). ReplicatedPosition.Value is
-            // absolute by definition, so the world's own origin is added back. Zero, and therefore free, on an
-            // unrebased world. Without it every replicated crate teleports by the anchor delta the first time the
-            // island re-anchors.
-            world.Set(t.Entity, new ReplicatedPosition { Value = pose.Position + physics.Origin });
+            // InFrame, never FromWorld: the pose is already expressed in the island's frame. Without this the
+            // component would claim the frame-local pose was absolute, and every replicated crate would teleport by
+            // the anchor delta the first time the island re-anchored.
+            world.Set(t.Entity, ReplicatedPosition.InFrame(frame, pose.Position + residual));
             world.Set(t.Entity, DynamicBodyState.From(pose, linear, angular));
 
             if (!t.WrittenOnce) (firstWrites ??= new List<long>()).Add(kv.Key);

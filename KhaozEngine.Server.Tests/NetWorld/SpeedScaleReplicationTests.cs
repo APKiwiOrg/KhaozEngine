@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// the anti-cheat correction check. Two cases decide whether the feature works at all.
 /// <see cref="A_correction_mid_boost_replays_the_pending_window_at_the_boosted_speed"/> is why the scale rides
 /// <see cref="MovementState"/> instead of living only on the sim-local <see cref="MoveState"/>:
-/// <see cref="PlayerMoveState.From"/> rebuilds the client's basis from the replicated components ALONE, so a
+/// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's basis from the replicated components ALONE, so a
 /// sim-local scale would reset on every correction. <see cref="The_anomaly_check_does_not_flag_a_boosted_player"/>
 /// is why <see cref="MovementAnomaly"/> had to learn about it: an intended-target calculation blind to the boost
 /// reports a legitimately hasted player as a speed hacker within a few ticks.

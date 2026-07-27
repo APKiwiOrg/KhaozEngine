@@ -4,6 +4,7 @@ using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 using Xunit;
@@ -92,7 +93,7 @@ public class EntityReplicationSeamTests
         {
             calls++;
             if (jump && server.Host.TryGetOwner(npcNetId, out CellSim cell, out Entity e))
-                cell.World.Set(e, new ReplicatedPosition { Value = new Vector3(7.5f, 0f, 5f) });
+                cell.World.Set(e, ReplicatedPosition.FromWorld(new Vector3(7.5f, 0f, 5f), WorldFrame.Origin));
         };
 
         var client = new WorldClient(ct, Flat, MoveTuning.Default,

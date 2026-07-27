@@ -64,20 +64,18 @@ public sealed class WorldServerConfig
     public bool DeltaReplication { get; init; } = true;
 
     /// <summary>Run the simulation in an ISLAND FRAME that follows the anchored player, so the movement step's
-    /// carried state stays small however far the world extends. Off by default. See <see cref="WorldServer.IslandFrame"/>
-    /// for what it changes and what it deliberately does not.
-    /// <para><b>Do not enable this against a client that does not carry the frame on the wire.</b> The wire is
-    /// absolute in this release and the client predicts in absolute coordinates, so a server stepping in a 136 m
-    /// frame while its client steps at 100 km produces two trajectories from two spaces and the reconciliation
-    /// error GROWS. Today both heads are equally imprecise and therefore agree. This flag is for a single-player or
-    /// single-region game with no reconciled client, and for testing.</para>
+    /// carried state stays small however far the world extends. <b>ON by default</b> since the wire carries the
+    /// frame stamp: a framed server and its client now step in the SAME space, so framing is a straight precision
+    /// win at range and costs nothing at the origin (a game that never leaves it never re-anchors). See
+    /// <see cref="WorldServer.IslandFrame"/> for what it changes and what it deliberately does not.
     /// <para>A flat server is ONE island and follows ONE player. A world with players spread across it needs an
-    /// island per region, which is <see cref="ShardedWorldServer"/> (whose own flag lands with per-cell physics -
-    /// shipping the knob before that would ship a switch whose ON position walks players through walls).</para>
+    /// island per region, which is <see cref="ShardedWorldServer"/> and its
+    /// <see cref="ShardedWorldServerConfig.FrameAnchoring"/>.</para>
     /// <para>Requires a physics world that can rebase (<c>IPhysicsWorld.CanRebase</c>) when one is supplied at all:
     /// a framed step querying an unframed world is a wrong answer, not an imprecise one, so the constructor
-    /// refuses the combination instead of producing it.</para></summary>
-    public bool FrameAnchoring { get; init; }
+    /// refuses the combination instead of producing it. Set this false to keep a custom non-rebasable backend, at
+    /// the cost of the precision.</para></summary>
+    public bool FrameAnchoring { get; init; } = true;
 
     /// <summary>The coordinate space this server's sampler delegates (ground height, ground normal, medium) read.
     /// Only meaningful with <see cref="FrameAnchoring"/> on. <see cref="NetWorld.SamplerSpace.World"/> (the default)

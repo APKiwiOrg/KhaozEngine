@@ -99,7 +99,8 @@ public class NetIdBlobMigrationTests
         await cp.PreloadAsync();   // enumerates cell:* -> instantiates (0,0) -> load enqueued
         await cp.FlushAsync();     // migrate + restore applied on the server thread
 
-        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.Migrated && i.FromVersion == 1 && i.ToVersion == 2);
+        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.Migrated && i.FromVersion == 1
+            && i.ToVersion == PositionFrameBlobMigration.FramedPositionSchemaVersion);   // v1 -> v2 -> v3, both engine steps
         Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.QuarantinedCorrupt);
 
         Assert.True(host.Shard.TryGetCell(new CellCoord(0, 0), out CellSim cell));

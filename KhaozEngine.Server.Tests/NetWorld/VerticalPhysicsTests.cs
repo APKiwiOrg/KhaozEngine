@@ -5,6 +5,7 @@ using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 using Xunit;
@@ -79,7 +80,7 @@ public class VerticalPhysicsTests
         var server = new World();
         Entity e = server.Spawn();
         server.Set(e, new NetId(7));
-        server.Set(e, new ReplicatedPosition { Value = new Vector3(1f, 2f, 3f) });
+        server.Set(e, ReplicatedPosition.FromWorld(new Vector3(1f, 2f, 3f), WorldFrame.Origin));
         server.Set(e, new MovementState
         {
             VerticalVelocity = 5.5f, Grounded = true, TimeSinceGrounded = 0.2f, JumpBufferRemaining = 0.05f,

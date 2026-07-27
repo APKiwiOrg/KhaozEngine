@@ -112,7 +112,8 @@ public class CellPersistenceMigrationTests
     [Fact]
     public void Ctor_MigrationChainGap_Throws()
     {
-        var cfg = new CellPersistenceConfig { SchemaVersion = 3 };
+        // IncludeEngineMigrations off, or the engine's own v1 -> v2 and v2 -> v3 steps fill the gap for us.
+        var cfg = new CellPersistenceConfig { SchemaVersion = 3, IncludeEngineMigrations = false };
         cfg.RegisterMigration(1, b => b);   // 2 -> 3 missing
         Assert.Throws<ArgumentException>(() => new CellPersistence(new FakeHost(), new InMemoryWorldStore(), cfg));
     }
@@ -216,9 +217,9 @@ public class CellPersistenceMigrationTests
     {
         var store = new InMemoryWorldStore();
         byte[] body = { 0, 0, 0, 0 };
-        await SeedBlob(store, C00, NetIdBlobMigration.NetId64SchemaVersion, body);   // stored at the current version (2)
+        await SeedBlob(store, C00, PositionFrameBlobMigration.FramedPositionSchemaVersion, body);   // stored at the current version (3)
         var host = new FakeHost();
-        var cp = new CellPersistence(host, store);   // default SchemaVersion == the current version (2) == stored
+        var cp = new CellPersistence(host, store);   // default SchemaVersion == the current version (3) == stored
         var issues = new List<CellPersistenceIssue>();
         cp.Issue += issues.Add;
 

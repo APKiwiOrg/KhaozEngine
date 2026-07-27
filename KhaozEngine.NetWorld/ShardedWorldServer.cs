@@ -12,7 +12,7 @@ using KhaozEngine.Simulation;
 namespace KhaozEngine.NetWorld;
 
 /// <summary>Tunables for <see cref="ShardedWorldServer"/>.</summary>
-public sealed class ShardedWorldServerConfig
+public sealed partial class ShardedWorldServerConfig
 {
     /// <summary>Fixed server tick, seconds.</summary>
     public float TickSeconds { get; init; } = 1f / 30f;
@@ -91,8 +91,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     private readonly ShardHost host;
     private readonly NetServer net;
     private readonly RemoteCommandQueue<MoveCommand> commands;
-    private readonly PlayerMovementSystem movement;
-    private readonly PlayerMoveSimulator spawnClamp;
 
     // Per-client AoI delta encoder (null when DeltaReplication is off). NetId-keyed so a home-cell change on a
     // boundary crossing reads as a component delta. A slot is served deltas only once it advertised DeltaCapable.
@@ -116,7 +114,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     // are seeded only when a rescue is honored and cleared on leave.
     private double selfRescueClock;
     private readonly Dictionary<int, double> selfRescueReadyAt = new();
-    private readonly HashSet<CellCoord> wiredCells = new();
     // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
     // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
     private readonly List<(int slot, PlayerMoveState prev)> correctionScratch = new();
@@ -128,9 +125,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     // all draw from / bound, so ids never collide. Replaces the pre-10.0.0 raw ++int; see NetIdAllocator for the scheme.
     private readonly NetIdAllocator allocator = new();
 
+    /// <summary>Builds a sharded authoritative server. The single <c>IPhysicsWorld</c> parameter this constructor
+    /// used to take is GONE: one world cannot serve cells that step in different frames, so each cell builds its own
+    /// through <see cref="ShardedWorldServerConfig.PhysicsWorldFactory"/>.</summary>
     public ShardedWorldServer(INetTransport transport, ShardedWorldServerConfig config,
         Func<float, float, float> groundHeight, MoveTuning tuning, Func<float, float, Vector3>? groundNormal = null,
-        WorldBounds? bounds = null, IPhysicsWorld? physics = null,
+        WorldBounds? bounds = null,
         IConnectionAuthenticator? authenticator = null, IBanStore? banStore = null,
         ReplicationRegistry? registry = null, Func<float, float, float, MovementMedium>? medium = null)
     {
@@ -141,6 +141,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             throw new ArgumentException(
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
                 nameof(config));
+        ValidateCellSizeAgainstFrameGrid(config);
 
         // Consumer-injectable registry (shared with the client) so NPCs/enemies carry game components across every
         // cell's replication + handoff + ghosting; default = movement-only. Assigned before the host so cells use it.
@@ -154,19 +155,25 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
-        movement = new PlayerMovementSystem(groundHeight, tuning, groundNormal, bounds, physics, medium);
-        spawnClamp = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium);
+        // The per-cell runtime (its movement system and its spawn clamp) is built lazily against the cell's own
+        // physics world and frame; these are the pieces every cell's copy shares.
+        cellGroundHeight = groundHeight;
+        cellGroundNormal = groundNormal;
+        cellBounds = bounds;
+        cellMedium = medium;
         host = new ShardHost(
             cellSize: config.CellSize,
             tickSeconds: config.TickSeconds,
             registry: this.registry,
             interestCellSize: config.CellSize,
             overlapMargin: config.OverlapMargin,
-            positionAccessor: PositionAccessor);
-        host.CellCreated += cell => CellCreated?.Invoke(cell.Coord);
+            positionAccessor: PositionAccessor,
+            physicsFactory: config.PhysicsWorldFactory,
+            frameAnchoring: config.FrameAnchoring);
+        host.CellCreated += cell => { cell.FrameAdapter = ReplicatedPositionFrameAdapter.Instance; CellCreated?.Invoke(cell.Coord); };
         // An unloaded coordinate comes back as a genuinely fresh cell with an empty world, so the record of having
         // wired its movement system has to go with it or the recreated cell would never simulate.
-        host.CellRemoved += cell => wiredCells.Remove(cell.Coord);
+        host.CellRemoved += cell => cellRuntime.Remove(cell.Coord);
         // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
         // is rejected cleanly rather than admitted and left to misparse the wire.
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator));
@@ -330,7 +337,9 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             uint baseEpoch = cell.World.TryGet(e, out MovementState prev) ? prev.TeleportEpoch : 0u;
             PlayerMoveState next = state;
             next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
-            cell.World.Set(e, new ReplicatedPosition { Value = next.Position });
+            // The state came from OUTSIDE the simulation (an admin teleport, a load-on-join record, a self-rescue),
+            // so its position is absolute and lands in the owning cell's frame.
+            cell.World.Set(e, ReplicatedPosition.FromWorld(next.Position, cell.Frame));
             cell.World.Set(e, MovementState.From(next));
         }
     }
@@ -364,7 +373,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     {
         long netId = allocator.Next().Value;
         Entity e = host.SpawnOwned(x, z, netId, out CellSim cell); // eager: registers netId in the O(1) ownership index
-        cell.World.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
+        cell.World.Set(e, ReplicatedPosition.FromWorld(new Vector3(x, 0f, z), cell.Frame));   // authored absolute
         configure?.Invoke(cell.World, e);
         return netId;
     }
@@ -670,12 +679,15 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         deltaCapableSlots.Remove(slot);
 
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
-        // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
-        PlayerMoveState state = spawnClamp.Step(new PlayerMoveState { Position = spawn }, MoveCommand.Idle, config.TickSeconds);
+        // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height). The clamp runs in the frame
+        // of the cell that contains the spawn point, using that cell's physics world, and comes back ABSOLUTE - the
+        // cell the player actually lands in is keyed off that absolute position, exactly as before.
+        PlayerMoveState state = RuntimeFor(host.CellFor(spawn.X, spawn.Z))
+            .SpawnClamp(new PlayerMoveState { Position = spawn }, config.TickSeconds);
 
         long netId = allocator.Next().Value;
         Entity e = host.SpawnOwned(state.Position.X, state.Position.Z, netId, out CellSim cell); // eager index register
-        cell.World.Set(e, new ReplicatedPosition { Value = state.Position });
+        cell.World.Set(e, ReplicatedPosition.FromWorld(state.Position, cell.Frame));
         cell.World.Set(e, MovementState.From(state));   // vertical axis: present at spawn, carried across handoff
         // A display name on the connect token rides along the same way (a registered component, migrated on handoff).
         if (!string.IsNullOrEmpty(displayName)) cell.World.Set(e, new PlayerIdentity { DisplayName = displayName });
@@ -724,11 +736,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
         // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).
         commands.Forget(slot);
-    }
-
-    private void EnsureWired(CellSim cell)
-    {
-        if (wiredCells.Add(cell.Coord)) cell.World.AddSystem(movement);
     }
 
     private static bool PositionAccessor(World world, Entity e, out float x, out float y)

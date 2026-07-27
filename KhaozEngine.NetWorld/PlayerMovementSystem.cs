@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
 
@@ -18,8 +19,14 @@ namespace KhaozEngine.NetWorld;
 /// (the same step the single-<see cref="World"/> <see cref="WorldServer"/> and the client's prediction run, so
 /// they stay in lockstep). <see cref="MovementState"/> is required on every movable entity (added at spawn,
 /// carried across handoff because it is replicated). Read-only <see cref="Ghost"/>s and in-flight
-/// <see cref="Migrating"/> entities are skipped: the owning cell is the sole simulator. Stateless - one instance
-/// is shared across all cells (no mutable fields, so it is safe to fan across the scheduler).
+/// <see cref="Migrating"/> entities are skipped: the owning cell is the sole simulator.
+/// <para>
+/// ONE INSTANCE PER CELL, holding that cell's physics world and that cell's island <see cref="Frame"/>. All of its
+/// fields are readonly for the instance's life and it keeps no per-TICK mutable state, so the scheduler fan-out and
+/// its scheduler-independence claim are unchanged. The per-cell shape is what makes the frame safe: a single shared
+/// instance with a settable frame would be a write-then-read on state shared across parallel cell ticks, and the
+/// symptom of losing that race is a player in the wrong cell's coordinates for one tick, which is a 128 m teleport.
+/// </para>
 /// </summary>
 public sealed class PlayerMovementSystem : ISystem
 {
@@ -29,23 +36,81 @@ public sealed class PlayerMovementSystem : ISystem
     private readonly IPhysicsWorld? physics;
     private readonly Func<float, float, Vector2>? clampXz;
     private readonly Func<float, float, float, MovementMedium>? medium;
+    private readonly WorldBounds? bounds;
+    private readonly WorldFrame frame;
+    private readonly bool adaptSamplers;
 
+    /// <summary>
+    /// Builds one cell's movement step. <c>frame</c> is the island frame it steps in - the owning cell's, matching
+    /// that cell's physics world's <c>Origin</c>. <see cref="WorldFrame.Origin"/> (the default) is absolute world
+    /// coordinates and is byte-identical to the pre-frame system. <c>samplerSpace</c> says which space the ground /
+    /// normal / medium delegates read; see <see cref="NetWorld.SamplerSpace"/> for why
+    /// <see cref="SamplerSpace.World"/> is WRONG rather than merely imprecise for a sampler backed by the cell's own
+    /// physics world.
+    /// </summary>
     public PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
-        Func<float, float, float, MovementMedium>? medium = null)
+        Func<float, float, float, MovementMedium>? medium = null, WorldFrame frame = default,
+        SamplerSpace samplerSpace = SamplerSpace.World)
     {
         this.groundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
         this.groundNormal = groundNormal;
         this.physics = physics;
-        this.clampXz = bounds is null ? null : bounds.Clamp;   // play-area bound folded into the step (XZ only)
+        this.bounds = bounds;
+        this.frame = frame;
+        // A sampler that reads absolute coordinates gets the anchor added back before the call, and any coordinate it
+        // returns gets it subtracted again. Both are exact adds under the frame lemma, and both are skipped entirely
+        // at the world origin, so an unframed cell is byte-identical to the pre-frame system.
+        adaptSamplers = samplerSpace == SamplerSpace.World && frame != WorldFrame.Origin;
+        // Play-area bound folded into the step (XZ only). WorldBounds is the one sampler SamplerSpace does not
+        // govern: Clamp(x, z) carries no frame and the bounds are authored ABSOLUTE, so the step converts in both
+        // directions in both sampler spaces, or a framed cell yanks the player to the play-area boundary every tick.
+        clampXz = bounds is null ? null : (frame == WorldFrame.Origin ? bounds.Clamp : ClampXzIn);
         // Optional fluid-medium provider, mirrored from the authoritative server so every cell wades identically to
         // the client's prediction. Null = dry land everywhere = bit-identical to the pre-medium system.
         this.medium = medium;
     }
 
+    /// <summary>The island frame this system steps in - the owning cell's, fixed at construction.</summary>
+    public WorldFrame Frame => frame;
+
+    private float GroundHeightIn(float x, float z)
+    {
+        if (!adaptSamplers) return groundHeight(x, z);
+        Vector2 w = frame.ToWorldXz(x, z);
+        return groundHeight(w.X, w.Y);
+    }
+
+    private Vector3 GroundNormalIn(float x, float z)
+    {
+        if (!adaptSamplers) return groundNormal!(x, z);
+        Vector2 w = frame.ToWorldXz(x, z);
+        return groundNormal!(w.X, w.Y);   // a normal is a direction, so nothing comes back to convert
+    }
+
+    private MovementMedium MediumIn(float x, float z, float feetY)
+    {
+        if (!adaptSamplers) return medium!(x, z, feetY);
+        Vector2 w = frame.ToWorldXz(x, z);
+        return medium!(w.X, w.Y, feetY);  // feetY is absolute world height on both sides: Y is never framed
+    }
+
+    private Vector2 ClampXzIn(float x, float z)
+    {
+        Vector2 w = frame.ToWorldXz(x, z);
+        Vector2 clamped = bounds!.Clamp(w.X, w.Y);
+        return frame.ToLocalXz(clamped.X, clamped.Y);
+    }
+
     public void Update(World world, float dt)
     {
+        // Built once per Update rather than per entity, and skipped entirely on an unframed cell, so the framed path
+        // costs one delegate allocation per cell per tick and the unframed path costs nothing.
+        Func<float, float, float> ground = adaptSamplers ? GroundHeightIn : groundHeight;
+        Func<float, float, Vector3>? normal = groundNormal is null ? null : (adaptSamplers ? GroundNormalIn : groundNormal);
+        Func<float, float, float, MovementMedium>? fluid = medium is null ? null : (adaptSamplers ? MediumIn : medium);
+        WorldFrame cellFrame = frame;
         world.ForEach<NetId, ReplicatedPosition, PendingMove, MovementState>(
             (Entity e, ref NetId _, ref ReplicatedPosition pos, ref PendingMove move, ref MovementState ms) =>
         {
@@ -58,9 +123,15 @@ public sealed class PlayerMovementSystem : ISystem
                 return;
             }
 
+            // Self-healing invariant: everything this cell OWNS is stamped with this cell's frame. Every door an
+            // entity enters by already converts (spawn, handoff, restore, teleport, ghost mirror), so this normally
+            // never fires; what it buys is that a miss at any of them is corrected EXACTLY here, on the next tick,
+            // instead of becoming a 128 m step. One comparison per entity per tick.
+            if (pos.Frame != cellFrame) pos = pos.ToFrame(cellFrame);
+
             var state = new MoveState
             {
-                Position = pos.Value,
+                Position = pos.Local,
                 VerticalVelocity = ms.VerticalVelocity,
                 Grounded = ms.Grounded,
                 TimeSinceGrounded = ms.TimeSinceGrounded,
@@ -81,9 +152,9 @@ public sealed class PlayerMovementSystem : ISystem
                     MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityXQ),
                     MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityZQ)),
             };
-            state = CharacterMovement.Step(state, move.Command, dt, groundHeight, tuning, groundNormal, physics, clampXz, medium);
+            state = CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid);
 
-            pos.Value = state.Position;
+            pos = pos.WithLocal(state.Position);   // frame preserved by construction, never re-derived
             ms.VerticalVelocity = state.VerticalVelocity;
             ms.Grounded = state.Grounded;
             ms.TimeSinceGrounded = state.TimeSinceGrounded;

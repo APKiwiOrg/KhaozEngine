@@ -56,21 +56,47 @@ public sealed class UpdateManifest
     /// forward-slash relative paths sorted ordinally. Used both to build the local manifest from an
     /// install dir and (offline) to generate a published build's manifest.
     /// </summary>
-    public static UpdateManifest GenerateFromDirectory(string rootDir, string version, string platform)
+    /// <param name="rootDir">Directory to walk. Every file under it, recursively, becomes an entry.</param>
+    /// <param name="version">Version stamped on the manifest.</param>
+    /// <param name="platform">Platform / runtime id stamped on the manifest.</param>
+    /// <param name="progress">
+    /// Optional sink ticked once before the first hash and once per file after it, so a UI can show a bar
+    /// while a large install is hashed (<see cref="UpdateService.VerifyAndRepairAsync"/> drives this).
+    /// Reported synchronously on the calling thread. Null (the default) keeps the walk allocation-identical
+    /// to the untracked case.
+    /// </param>
+    public static UpdateManifest GenerateFromDirectory(string rootDir, string version, string platform,
+        IProgress<ManifestHashProgress>? progress = null)
     {
         string fullRoot = Path.GetFullPath(rootDir);
-        var files = new List<ManifestFileEntry>();
 
+        // Materialize the walk before hashing: the totals a progress bar needs are not knowable from a lazy
+        // enumeration, and a stat per file is cheap next to hashing its bytes.
+        var found = new List<(string FullPath, long Length)>();
+        long totalBytes = 0;
         foreach (string filePath in Directory.EnumerateFiles(fullRoot, "*", SearchOption.AllDirectories))
         {
-            string relativePath = Path.GetRelativePath(fullRoot, filePath).Replace('\\', '/');
-            var fileInfo = new FileInfo(filePath);
+            long length = new FileInfo(filePath).Length;
+            found.Add((filePath, length));
+            totalBytes += length;
+        }
+
+        var files = new List<ManifestFileEntry>(found.Count);
+        long hashedBytes = 0;
+        progress?.Report(new ManifestHashProgress(0, found.Count, 0, totalBytes));
+
+        for (int i = 0; i < found.Count; i++)
+        {
+            (string filePath, long length) = found[i];
             files.Add(new ManifestFileEntry
             {
-                Path = relativePath,
+                Path = Path.GetRelativePath(fullRoot, filePath).Replace('\\', '/'),
                 Sha256 = ComputeSha256(filePath),
-                Size = fileInfo.Length
+                Size = length
             });
+
+            hashedBytes += length;
+            progress?.Report(new ManifestHashProgress(i + 1, found.Count, hashedBytes, totalBytes));
         }
 
         files.Sort(static (a, b) => string.Compare(a.Path, b.Path, StringComparison.Ordinal));
@@ -129,6 +155,31 @@ public sealed class UpdateManifest
         using var stream = File.OpenRead(filePath);
         byte[] hash = SHA256.HashData(stream);
         return Convert.ToHexStringLower(hash);
+    }
+}
+
+/// <summary>
+/// A tick from <see cref="UpdateManifest.GenerateFromDirectory"/> while it hashes a directory: files and
+/// bytes done out of the totals discovered by the walk. Both pairs are useful, since file count paces a
+/// "117 of 342" caption while byte count paces a bar that a single 88 MB executable would otherwise stall.
+/// </summary>
+public readonly struct ManifestHashProgress
+{
+    /// <summary>Files hashed so far.</summary>
+    public int FilesHashed { get; }
+    /// <summary>Files the walk found in total.</summary>
+    public int TotalFiles { get; }
+    /// <summary>Bytes hashed so far.</summary>
+    public long BytesHashed { get; }
+    /// <summary>Total bytes across every file the walk found.</summary>
+    public long TotalBytes { get; }
+
+    public ManifestHashProgress(int filesHashed, int totalFiles, long bytesHashed, long totalBytes)
+    {
+        FilesHashed = filesHashed;
+        TotalFiles = totalFiles;
+        BytesHashed = bytesHashed;
+        TotalBytes = totalBytes;
     }
 }
 

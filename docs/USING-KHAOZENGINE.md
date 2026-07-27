@@ -470,6 +470,20 @@ restyling the fill carries the marquee with it. Assign `MarqueeColor` only for a
 and note it now draws at its own alpha rather than a fixed fraction of it. All player-facing copy lives in
 `BootStrings` (`boot.*` keys) with a built-in English fallback, so add those keys to your catalog to localize.
 
+### Verify and repair a damaged install (`UpdateService.VerifyAndRepairAsync`)
+
+The launch check cannot see a corrupted install: it short-circuits at the version gate when the installed
+version already matches the feed, and even past that gate its local picture is the cached manifest, which
+records the hash each file is *supposed* to have. So a file damaged after an update leaves the client
+reporting the right version forever while a content handshake rejects it.
+`await updates.VerifyAndRepairAsync()` is the explicit way out: it hashes the install for real, diffs it
+against the signed manifest, and re-downloads plus re-applies the difference through the ordinary pipeline.
+Wire it to a "Verify game files" action, never to launch (hashing an install is expensive). Branch on
+`UpdateRepairResult.Outcome` (`Verified` / `Repairing` / `RepairStaged` / `FeedUnreachable` / `Failed`) and
+show `FilesChecked` / `FilesNeedingRepair`; pass an `IProgress<UpdateRepairProgress>` for a progress screen,
+and `applyRepair: false` to stage the fix and apply it yourself later. Extraneous files are reported, never
+deleted. Full mechanics in [UPDATER.md](UPDATER.md).
+
 ### In-session update recheck + post-update relaunch (`UpdateService`)
 
 Two opt-in `UpdateService` conveniences for a long-running game, both driven from the game loop. Full
@@ -4574,7 +4588,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.8.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.9.0" />
 ```
 
 ```csharp

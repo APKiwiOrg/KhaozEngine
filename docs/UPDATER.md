@@ -210,6 +210,31 @@ re-download. This is the fail-closed, crash-safe contract the game inherits for 
 
 ---
 
+## Verify and repair a damaged install
+
+The flow above is blind to a corrupted install, in two compounding ways. Step 1 short-circuits: a client whose
+version already equals the published one never reaches step 2, so it never fetches a manifest and never hashes
+a byte. And step 3's "local install" picture is the cached `update-manifest.json`, which records the hash each
+file is *supposed* to have, so a file damaged AFTER the update that wrote it still reports the correct hash and
+the diff comes back empty. The result is a client that reports the right version, says "up to date", and is
+rejected by the server's content handshake with nothing the player can do about it.
+
+`UpdateService.VerifyAndRepairAsync` is the deliberate, explicitly invoked way out (a "Verify game files"
+button, or a targeted recovery after a handshake rejection). It hashes what is actually on disk, diffs that
+against the signed manifest for the current build, and re-downloads plus re-applies whatever does not match,
+through the same staging, signature check, download loop, and shim handoff as an ordinary update. It is never
+automatic: hashing a real install (~117 files including an 88 MB executable) is far too expensive for the
+launch path.
+
+The result is structured, so a game can tell "all 117 files verified, nothing wrong" apart from "3 files were
+damaged and have been repaired", and an unreachable feed apart from a clean bill of health. Extraneous files
+(present in the install, absent from the manifest) are reported and deliberately never deleted: a fresh scan
+cannot tell a leftover from a superseded release apart from the player's own log, screenshot, config, or mod.
+Full API, outcomes, and progress reporting: the `KhaozEngine.Updates` README, "Verify and repair a damaged
+install".
+
+---
+
 ## The in-game overlay and the shim window
 
 Two separate surfaces report update status, and the engine keeps them in one palette with localized text.

@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.9.0
+
+### Update verify-and-repair: hash the install for real, even when the version already matches
+
+A silently damaged install used to be both undetectable and unrepairable whenever its reported version
+was already current. `UpdateService.VerifyAndRepairAsync` hashes the real files on disk against the
+signature-verified remote manifest and re-downloads whatever does not match, working past both of the
+normal path's blind spots: the version-equality short-circuit that skips a byte-level check entirely once
+the installed version matches the feed, and the cached local manifest, which records the hash a file is
+supposed to have rather than the hash it actually has, so a file damaged after the update that wrote it
+still reads as correct. The motivating case: a game shipped a world-identity handshake, players were
+rejected at connect, and the updater had nothing to say beyond "you are on the latest version" because it
+had never compared a single byte to what actually shipped.
+
+- **`KhaozEngine.Updates`**: `VerifyAndRepairAsync`, fetch, signature-verify, hash, diff, re-download, and
+  re-apply through the same staging and download loop the ordinary update path uses. `UpdateRepairResult`
+  (`Outcome`, `Version`, `FilesChecked`, `MismatchedFiles`, `MissingFiles`, `ExtraneousFiles`, `Error`,
+  `FilesNeedingRepair`, `RelaunchRequired`). `UpdateRepairOutcome` (`Verified` / `Repairing` /
+  `RepairStaged` / `FeedUnreachable` / `Failed`). `UpdateRepairPhase` and `UpdateRepairProgress` for a
+  "Verifying game files" screen. `UpdateState.Verifying`, guarded the same way as `Downloading` and
+  `Applying` so a concurrent check cannot clobber the in-flight plan. `applyRepair: false` stages the fix
+  and stops at `ReadyToApply` instead of exiting straight into the applier.
+  `UpdateManifest.GenerateFromDirectory` takes an optional `IProgress<ManifestHashProgress>` so hashing a
+  large install (a real one runs ~117 files including an 88 MB executable) can drive a progress bar.
+- **Extraneous files are reported, never deleted.** `ExtraneousFiles` lists installed files the manifest
+  does not describe. A fresh scan cannot tell a leftover from a superseded release apart from the
+  player's own log, screenshot, config, or mod.
+- **Repairs forward, never backward.** The target is always the feed's newest signed build. A feed
+  behind the installed version is refused rather than silently downgrading a player.
+
+Consumers: nothing to do until you wire a "Verify game files" action or a targeted recovery after a
+handshake rejection, neither of which is automatic (hashing a real install is too expensive for the
+launch path). Full usage in `KhaozEngine.Updates/README.md` ("Verify and repair a damaged install"),
+`docs/UPDATER.md`, and `docs/USING-KHAOZENGINE.md`.
+
 ## 16.8.0
 
 ### Camera-relative rendering: visual precision no longer degrades with distance from the origin

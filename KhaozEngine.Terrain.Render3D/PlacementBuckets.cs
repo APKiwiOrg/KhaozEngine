@@ -9,9 +9,11 @@ namespace KhaozEngine.Terrain
     /// order preserves input order (deterministic per input list). Internal and pure for headless tests.</summary>
     internal static class PlacementBuckets
     {
-        /// <summary>One bucket map per layer, index-aligned to <paramref name="layers"/>: a placement layer
-        /// gets its placements split by chunk coord, every other layer gets null. Returns null when no layer
-        /// carries placements, so a placement-free sink stores nothing new.</summary>
+        /// <summary>One bucket map per layer, index-aligned to <paramref name="layers"/>: a FROZEN-LIST placement
+        /// layer gets its placements split by chunk coord, every other layer gets null. A SOURCE-BACKED placement
+        /// layer is skipped deliberately - its placements are queried live at every build, so bucketing them once
+        /// here is exactly the staleness it exists to avoid. Returns null when no layer carries a frozen list, so
+        /// a sink with only scatter and source-backed layers stores nothing new.</summary>
         internal static Dictionary<ChunkCoord, PropPlacement[]>[]? Build(IReadOnlyList<PropLayer> layers, float chunkSize)
         {
             Dictionary<ChunkCoord, PropPlacement[]>[]? buckets = null;

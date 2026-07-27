@@ -111,9 +111,9 @@ namespace KhaozEngine.Terrain
                             $"PropLayer {i}: companion host {l.HostLayerIndex} must be a scatter or placement layer.",
                             nameof(layers));
                 }
-                else if (l.Scatter == null && l.Placements == null)
+                else if (l.Scatter == null && !l.IsPlacement)
                 {
-                    throw new ArgumentException($"PropLayer {i} has no Scatter config, Companions config, or Placements.", nameof(layers));
+                    throw new ArgumentException($"PropLayer {i} has no Scatter config, Companions config, Placements, or PlacementSource.", nameof(layers));
                 }
             }
             _chunkSize = chunkSize;
@@ -194,21 +194,34 @@ namespace KhaozEngine.Terrain
 
         /// <summary>The deterministic placements for every layer of a chunk (pure, headless-testable). Scatter and
         /// placement layers first, then companion layers derived from their host layer's placements for THIS chunk.
-        /// A placement layer serves its pre-bucketed placements for the chunk at this seam instead of generating
-        /// (nothing downstream can tell the two apart), so everything past here is shared with the scatter path.</summary>
+        /// A placement layer serves its placements for the chunk at this seam instead of generating (nothing
+        /// downstream can tell the three apart), so everything past here is shared with the scatter path: a
+        /// frozen-list layer reads its pre-bucketed array, a source-backed layer queries the live source, and a
+        /// scatter layer generates.</summary>
         internal IReadOnlyList<PropPlacement>[] ScatterLayersFor(ChunkCoord coord)
         {
             RectArea area = ChunkGrid.AreaOf(coord, _chunkSize);
             var layers = new IReadOnlyList<PropPlacement>[_layers.Count];
             for (int i = 0; i < _layers.Count; i++)
                 if (!_layers[i].IsCompanion)
-                    layers[i] = _layers[i].IsPlacement
-                        ? (_placementBuckets![i].TryGetValue(coord, out PropPlacement[]? bucket) ? bucket : Array.Empty<PropPlacement>())
-                        : PropScatter.Generate(_field, _layers[i].Scatter!, area);
+                    layers[i] = _layers[i].PlacementSource is { } source
+                        ? Query(source, area)
+                        : _layers[i].IsPlacement
+                            ? (_placementBuckets![i].TryGetValue(coord, out PropPlacement[]? bucket) ? bucket : Array.Empty<PropPlacement>())
+                            : PropScatter.Generate(_field, _layers[i].Scatter!, area);
             for (int i = 0; i < _layers.Count; i++)
                 if (_layers[i].IsCompanion)
                     layers[i] = PropScatter.GenerateCompanions(_field, layers[_layers[i].HostLayerIndex], _layers[i].Companions!);
             return layers;
+        }
+
+        /// <summary>One live-source layer's placements for a chunk. The list is fresh per build rather than
+        /// pooled: it becomes the chunk's own placement list and outlives this call.</summary>
+        static IReadOnlyList<PropPlacement> Query(IPlacementSource source, RectArea area)
+        {
+            var into = new List<PropPlacement>();
+            source.PlacementsIn(area, into);
+            return into;
         }
 
         /// <summary>The first layer's placements for a chunk (back-compat for the single-layer path).</summary>
@@ -220,8 +233,9 @@ namespace KhaozEngine.Terrain
         /// This call only changes what a FUTURE build reads. In async mode the caller must flush in-flight builds
         /// (<see cref="TerrainStreamer.FlushPendingBuilds"/>) before swapping, so a build already running against
         /// the old field cannot land after the swap. The map editor runs the streamer in synchronous mode, so this
-        /// does not apply there. A placement layer ignores the field by construction: its buckets are fixed at ctor
-        /// time, so a swap never changes what it serves.</summary>
+        /// does not apply there. A FROZEN-LIST placement layer ignores the field by construction: its buckets are
+        /// fixed at ctor time, so a swap never changes what it serves. A SOURCE-BACKED placement layer is queried
+        /// live per build, so what it serves can change on its own without a field swap.</summary>
         public void UpdateField(TerrainField field) => _field = field ?? throw new ArgumentNullException(nameof(field));
 
         /// <summary>The opaque CPU payload <see cref="BuildCpu"/> hands to <see cref="Apply"/>: the pure-CPU mesh and

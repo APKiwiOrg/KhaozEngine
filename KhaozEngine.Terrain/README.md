@@ -12,13 +12,23 @@ up regardless of load order. Plain `float` math throughout.
   sculpt delta when a `TerrainSculpt` is attached. Also `SampleNormal` (central finite difference over
   the composited height, at the sculpt cell size when sculpted), `SampleBiome` (dominant band), and
   `WaterLevel`. The `TerrainField(TerrainConfig, TerrainSculpt?)` constructor takes the sculpt layer; a
-  null or empty one keeps the exact pure-analytic fast path.
+  null or empty one keeps the exact pure-analytic fast path. **`SetSculpt(TerrainSculpt?)`** swaps that
+  layer at runtime by an atomic reference exchange, for a game whose authored sculpt streams in and out
+  around the player. A sampler running concurrently on a worker thread sees the old snapshot or the new
+  one and never a torn state: the field is `volatile`, and every public sampler reads it exactly once per
+  call, including `SampleNormal`, whose four height taps and epsilon all come from that one snapshot.
+  `SetSculpt` applies the same normalization the constructor does, so a null or empty sculpt restores both
+  the analytic fast path and the 1 m normal epsilon.
 - **`TerrainSculpt`** (+ **`TerrainSculptTile`**) - runtime composition of hand-authored height deltas
   over the analytic base: a sparse map of 32x32 (`TerrainSculpt.TileSize`) delta tiles at a fixed cell
   size. `SampleDelta(x, z)` bilinearly interpolates the authored deltas between cell centers and returns
   0 outside every stored tile. Read-only and deterministic, so composited terrain stays stateless.
   Documents author the tiles as the `terrainOverrides` block (`KhaozEngine.MapDoc`), and
-  `MapRuntime.BuildField` builds and attaches this.
+  `MapRuntime.BuildField` builds and attaches this. **`With(add, remove)`** returns a new snapshot sharing
+  every unchanged tile's delta array by reference, `O(tile count)` rather than `O(cell count)`, which is
+  what makes rebuilding the layer on every streamed arrival cheap enough to do inline. It takes OWNERSHIP
+  of each added array, matching the constructor: clone first if you intend to keep editing it, exactly as
+  the editor's sculpt stroke already does. Removals apply before additions.
 - **`TerrainConfig`** / **`BiomeBand`** / **`BiomeId`** - authoring inputs. Defaults give a single
   gentle meadow band, supply `Biomes` (designed regions along world Z) and `Features` for more.
 - **`TerrainNoise`** - stateless coordinate-hash noise (`Hash2`, `ValueNoise`, `Fbm`, `Turbulence`,
@@ -52,6 +62,19 @@ up regardless of load order. Plain `float` math throughout.
   `StreamerConfig` also carries an optional `DecorRadius` (chunk units, default 0 = off) for a farther,
   coarser decor-only ring tagged with **`ChunkRing`** (`Gameplay` / `Decor`). `UnloadAll`/`Dispose` free
   the loaded ring instead of leaking it.
+- **`IChunkBuildGate`** + **`TerrainStreamer.BuildGate`** - an optional veto on which chunks the streamer
+  may build, null by default (every chunk in the ring is eligible, the pre-gate behaviour exactly). A
+  refused chunk is DEFERRED: not requested, not marked loaded, reconsidered next `Update`. It exists for a
+  streamer composed with an asynchronous data layer, where continuous motion can outrun the data and no
+  ordering rule fixes it: `MapTileResidency.GateFor` (`KhaozEngine.MapDoc`) returns the implementation
+  that holds a chunk until every document tile its footprint touches is resident or unoccupied. The gate
+  governs the ring scan only, never unloads and never `Invalidate`, which is the explicit "this data just
+  arrived, rebuild it" call the arrival itself makes.
+- **`IPlacementSource`** - a live source of a placement layer's props, queried at every chunk build
+  instead of bucketed once at sink construction, so content that arrives after the sink was built reaches
+  the renderer at all. `PlacementsIn(RectArea, List<PropPlacement>)` appends into a caller-owned list, and
+  is called on the BUILD thread, so an implementation publishes an immutable snapshot and reads it once.
+  `PropLayer.PlacementLayer` in `KhaozEngine.Terrain.Render3D` takes one, and `MapTileResidency` is one.
 - **`IChunkSink`** / **`IAsyncChunkSink`** - the load/unload seam the streamer drives, GPU-free at this
   layer: **`Load(coord, lod, ring)`** / **`ReLod(coord, handle, lod, ring)`**, and the async split
   **`BuildCpu(coord, lod, ring)`** (mesh + scatter, no GPU, safe on a worker thread) /

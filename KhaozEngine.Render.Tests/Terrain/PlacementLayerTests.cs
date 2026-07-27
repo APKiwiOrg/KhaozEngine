@@ -33,10 +33,12 @@ namespace KhaozEngine.Tests.Terrain
         [Fact]
         public void PlacementLayer_NullPlacements_Throws()
         {
+            // Cast: PlacementLayer also has an IPlacementSource overload (the live/streamed kind), so a bare null
+            // literal no longer names one factory. The null-source arm is in PlacementSourceLayerTests.
             Assert.Throws<ArgumentNullException>(() =>
-                PropLayer.PlacementLayer(null!, NoMeshes(), 90f));
+                PropLayer.PlacementLayer((IReadOnlyList<PropPlacement>)null!, NoMeshes(), 90f));
             Assert.Throws<ArgumentNullException>(() =>
-                PropLayer.PlacementLayer(null!, NoPartMeshes(), 90f));
+                PropLayer.PlacementLayer((IReadOnlyList<PropPlacement>)null!, NoPartMeshes(), 90f));
         }
 
         [Fact]

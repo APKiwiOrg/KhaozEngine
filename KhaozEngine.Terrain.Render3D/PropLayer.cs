@@ -30,6 +30,13 @@ namespace KhaozEngine.Terrain
         /// these placements by chunk coordinate once at construction and streams them exactly like any other
         /// layer kind.</summary>
         public IReadOnlyList<PropPlacement>? Placements { get; }
+        /// <summary>A LIVE placement source for a placement layer, queried at EVERY chunk build instead of
+        /// bucketed once at construction. Null for a frozen-list placement layer and for every scatter or
+        /// companion layer. This is what lets content that arrives after the sink was built (a streamed document
+        /// tile) reach the renderer at all: <see cref="Placements"/> is split into per-chunk buckets once, so a
+        /// placement added later would never draw. Exactly one of <see cref="Placements"/> and this is set on a
+        /// placement layer. See <see cref="IPlacementSource"/> for the build-thread contract.</summary>
+        public IPlacementSource? PlacementSource { get; }
         /// <summary>Whether this layer's props register physics colliders in the sink. True for every scatter and
         /// companion layer (unchanged behaviour) and true by default for a placement layer. A placement layer opts
         /// out via <c>colliders: false</c> on its factory when the placements are render-only and the consuming
@@ -91,16 +98,17 @@ namespace KhaozEngine.Terrain
         static readonly IReadOnlyDictionary<string, MeshHandle> EmptyMeshes = new Dictionary<string, MeshHandle>();
 
         // Invariant (enforced by the private ctor + ScatterLayer/CompanionLayer/PlacementLayer factories): exactly
-        // one of Scatter, Companions, or Placements is set - a scatter layer has a non-null Scatter, a companion
-        // layer a non-null Companions, and a placement layer (issue #286) a non-null Placements, with the other two
-        // null. Exactly one of Meshes (single-handle) / PartMeshes (multi-part) carries the layer's props. The other
-        // is empty/null. LOD variants (when present) match that representation: LodMeshes for a single-handle layer,
-        // LodPartMeshes for a multi-part one.
+        // one of Scatter, Companions, or (Placements | PlacementSource) is set - a scatter layer has a non-null
+        // Scatter, a companion layer a non-null Companions, and a placement layer (issue #286) either a frozen
+        // Placements list or a live PlacementSource, never both, with the other two null. Exactly one of Meshes
+        // (single-handle) / PartMeshes (multi-part) carries the layer's props. The other is empty/null. LOD
+        // variants (when present) match that representation: LodMeshes for a single-handle layer, LodPartMeshes
+        // for a multi-part one.
         public bool IsCompanion => Companions != null;
-        /// <summary>True for a placement layer (issue #286): its props come from a frozen, author-supplied
-        /// <see cref="Placements"/> list instead of runtime procedural generation. False for a scatter or companion
-        /// layer.</summary>
-        public bool IsPlacement => Placements != null;
+        /// <summary>True for a placement layer (issue #286): its props come from exact author-supplied placements
+        /// instead of runtime procedural generation, either a frozen <see cref="Placements"/> list or a live
+        /// <see cref="PlacementSource"/>. False for a scatter or companion layer.</summary>
+        public bool IsPlacement => Placements != null || PlacementSource != null;
 
         /// <summary>True when this layer bakes and draws an HLOD merged mesh: it has HLOD source meshes AND a positive
         /// <see cref="HlodDistance"/>. When false the layer always draws its individual props (unchanged behaviour).</summary>
@@ -114,7 +122,8 @@ namespace KhaozEngine.Terrain
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes, float lodDistance,
                   IReadOnlyDictionary<string, GltfMesh>? hlodSourceMeshes = null,
                   float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f,
-                  IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true)
+                  IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true,
+                  IPlacementSource? placementSource = null)
         {
             Scatter = scatter;
             Companions = companions;
@@ -132,6 +141,7 @@ namespace KhaozEngine.Terrain
             HlodCrossfadeWidth = hlodCrossfadeWidth;
             Placements = placements;
             RegisterColliders = registerColliders;
+            PlacementSource = placementSource;
         }
 
         /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
@@ -146,7 +156,7 @@ namespace KhaozEngine.Terrain
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
-                Placements, RegisterColliders);
+                Placements, RegisterColliders, PlacementSource);
         }
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
@@ -236,6 +246,40 @@ namespace KhaozEngine.Terrain
             if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
             return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
                 lodDistance, placements: placements, registerColliders: colliders);
+        }
+
+        /// <summary>A placement layer backed by a LIVE <paramref name="source"/> instead of a frozen list: the
+        /// sink asks the source for the chunk's placements at every build, so content that arrives after the sink
+        /// was constructed (a streamed document tile) renders as soon as its chunks are invalidated. A frozen-list
+        /// layer is bucketed once at construction and cannot do that. Every knob the frozen overload supports -
+        /// <paramref name="fadeBandWidth"/>, (<paramref name="lodMeshes"/>, <paramref name="lodDistance"/>), and
+        /// <see cref="WithHlod"/> - applies unchanged, and so does the collider flag.
+        /// <para>The source is queried on the BUILD thread, so it must publish an immutable snapshot and read it
+        /// once per query. <c>MapTileResidency</c> is one, which makes
+        /// <c>PropLayer.PlacementLayer(residency, meshes, drawRadius)</c> the whole of a consumer's wiring.</para></summary>
+        public static PropLayer PlacementLayer(IPlacementSource source,
+            IReadOnlyDictionary<string, MeshHandle> meshes, float drawRadius, float fadeBandWidth = 0f,
+            IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f, bool colliders = true)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            if (meshes == null) throw new ArgumentNullException(nameof(meshes));
+            return new PropLayer(null, null, -1, meshes, null, drawRadius, fadeBandWidth, lodMeshes, null, lodDistance,
+                registerColliders: colliders, placementSource: source);
+        }
+
+        /// <summary>A live-source placement layer whose kits are MULTI-PART (additive companion to the
+        /// single-handle overload): each id's parts instance as a unit at every placement the source serves for
+        /// the chunk. Same per-build query, same knob set, with LOD variants supplied as parallel part lists via
+        /// <paramref name="lodPartMeshes"/>.</summary>
+        public static PropLayer PlacementLayer(IPlacementSource source,
+            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> partMeshes, float drawRadius, float fadeBandWidth = 0f,
+            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodPartMeshes = null, float lodDistance = 0f,
+            bool colliders = true)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            if (partMeshes == null) throw new ArgumentNullException(nameof(partMeshes));
+            return new PropLayer(null, null, -1, EmptyMeshes, partMeshes, drawRadius, fadeBandWidth, null, lodPartMeshes,
+                lodDistance, registerColliders: colliders, placementSource: source);
         }
     }
 }

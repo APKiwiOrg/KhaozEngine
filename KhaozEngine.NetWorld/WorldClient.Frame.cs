@@ -29,6 +29,9 @@ public sealed partial class WorldClient
     // The island's physics world, held (not just handed to the simulator) because adopting a new frame rebases it in
     // the same gap between two steps the prediction state moves in. Null when the game supplied none.
     private readonly IPhysicsWorld? islandPhysics;
+    // Mirrors WorldClientConfig.FrameAnchoring: gates both the ctor's rebasable-physics guard and AdoptIslandFrame's
+    // runtime Rebase call. Set once at construction (WorldClientConfig is read-only after that).
+    private readonly bool frameAnchoring;
     private WorldFrame islandFrame = WorldFrame.Origin;
 
     /// <summary>The frame the client's prediction currently steps in, adopted from the authoritative server.
@@ -45,6 +48,12 @@ public sealed partial class WorldClient
     /// in the old frame itself: collider poses it registered outside the engine's own sink, its own spatial indices,
     /// debug overlays. A consumer that only reads the absolute positions this client hands it needs no handler at
     /// all.</para>
+    /// <para><b>Against a sharded server this can fire at tick rate.</b> A cell handoff has no hysteresis band (it
+    /// triggers purely on which cell the player's position falls in, unlike the flat head's re-anchor, which
+    /// requires <c>WorldFrame.ReanchorRadius</c> of further travel before it fires again): a player standing exactly
+    /// on a cell border can ping-pong across it tick after tick, each crossing re-stamping the frame and firing this
+    /// event again. Keep a handler cheap for that reason alone, independent of how rare a re-anchor is on the flat
+    /// head.</para>
     /// </summary>
     public event Action<WorldFrame, WorldFrame, Vector3>? FrameChanged;
 
@@ -84,7 +93,11 @@ public sealed partial class WorldClient
     {
         if (frame == islandFrame) return;
         WorldFrame previous = islandFrame;
-        islandPhysics?.Rebase(frame.Anchor);
+        // Gated on WorldClientConfig.FrameAnchoring: with it off the ctor never required a rebasable world, so
+        // calling Rebase here would be reaching for a capability the physics world was never guaranteed to have.
+        // In steady state this frame is unreachable anyway (a server with framing off never stamps off Origin), but
+        // the gate matches the ctor guard rather than relying on that alone.
+        if (frameAnchoring) islandPhysics?.Rebase(frame.Anchor);
         simulator.Frame = frame;
         islandFrame = frame;
         FrameChanged?.Invoke(previous, frame, previous.DeltaTo(frame));
@@ -95,6 +108,7 @@ public sealed partial class WorldClient
     // not rebase would predict against colliders a frame-width from where it is standing, which is a character
     // walking through walls, not a rounding artifact. Both server heads frame by default, so a client that cannot
     // rebase is a client that will be wrong the moment it connects to one - the mirror of WorldServer's own guard.
+    // Called only when WorldClientConfig.FrameAnchoring is on (see the ctor).
     private static void RequireRebasablePhysics(IPhysicsWorld? physics)
     {
         if (physics is not null && !physics.CanRebase)

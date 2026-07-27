@@ -195,6 +195,58 @@ public class WorldServerFrameAnchoringTests
         Assert.Equal(WorldFrame.Origin, ok.IslandFrame);
     }
 
+    [Fact]
+    public void WorldClient_FrameAnchoringOn_ByDefault_RefusesAnUnrebasablePhysicsWorld()
+    {
+        // The mirror of the server's own guard (An_unrebasable_physics_world_is_refused...), proving
+        // WorldClientConfig.FrameAnchoring's new gate did not accidentally loosen the default-on behaviour.
+        (LoopbackTransport st, _) = LoopbackTransport.CreatePair();
+        Assert.Throws<ArgumentException>(() =>
+            new WorldClient(st, Flat, Unit, new WorldClientConfig(), physics: new UnrebasableWorld()));
+    }
+
+    [Fact]
+    public void WorldClient_FrameAnchoringOff_AllowsAnUnrebasablePhysicsWorld()
+    {
+        // A consumer whose SERVER also has FrameAnchoring off never receives a frame stamp off the world origin, so
+        // its client has nothing to rebase for and should not be forced into a rebasable-only physics world just to
+        // keep physics-backed prediction.
+        (LoopbackTransport st, _) = LoopbackTransport.CreatePair();
+        using var client = new WorldClient(st, Flat, Unit,
+            new WorldClientConfig { FrameAnchoring = false }, physics: new UnrebasableWorld());
+        Assert.Equal(WorldFrame.Origin, client.IslandFrame);
+    }
+
+    [Fact]
+    public void WorldClient_FrameAnchoringOff_NeverRebasesEvenAgainstAFramedServer()
+    {
+        // Belt-and-braces: a consumer that misconfigures the two ends (server framed, client's own FrameAnchoring
+        // off) must not crash calling Rebase on a world that cannot - it degrades (the client's physics prediction
+        // queries the wrong space, exactly as WorldClientConfig.FrameAnchoring's doc warns), it does not throw.
+        (LoopbackTransport st, LoopbackTransport ct) = LoopbackTransport.CreatePair();
+        var serverConfig = new WorldServerConfig
+        {
+            TickSeconds = 1f / 30f,
+            InterestRadius = 500f,
+            MaxPlayers = 8,
+            FrameAnchoring = true,
+            SpawnPosition = _ => Far,
+        };
+        var server = new WorldServer(st, serverConfig, Flat, Unit);
+        using var client = new WorldClient(ct, Flat, Unit,
+            new WorldClientConfig { TickSeconds = serverConfig.TickSeconds, FrameAnchoring = false },
+            physics: new UnrebasableWorld());
+
+        for (int i = 0; i < 10 && !client.Joined; i++) { server.Poll(); server.Tick(serverConfig.TickSeconds); client.Poll(); }
+        Assert.True(client.Joined);
+        Assert.NotEqual(WorldFrame.Origin, server.IslandFrame);   // the far spawn really did re-anchor the server
+
+        // Drive a few more ticks so the client ingests the non-origin frame stamp. No exception is the assertion:
+        // an unguarded Rebase call on UnrebasableWorld throws NotSupportedException from IPhysicsWorld's default.
+        for (int i = 0; i < 5; i++) { server.Poll(); server.Tick(serverConfig.TickSeconds); client.Poll(); }
+        Assert.True(client.Joined);
+    }
+
     static Entity PlayerEntity(WorldServer server)
     {
         Assert.True(server.TryGetPlayerNetId(0, out long netId));

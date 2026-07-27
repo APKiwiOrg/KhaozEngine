@@ -17,6 +17,13 @@ namespace KhaozEngine.Render3D
     /// a FIXED vertex budget however large this plane is, spread non-uniformly toward the camera by
     /// <see cref="WaterSettings.GridFocusBias"/>; a very large plane therefore gets a very large plane's worth of
     /// resolution rather than a quadratic vertex count.
+    /// <para>
+    /// The LOOK comes from <see cref="PixelPostProcessSettings.Water"/>, which is the scene-wide default rather
+    /// than the only option: pass a <see cref="WaterLook"/> and this plane draws with those overrides instead,
+    /// leaving every other queued plane on the scene's look. That is what lets a still lake and an FFT sea share a
+    /// frame. Anything backing a once-per-frame GPU resource (the sea state's bake, the depth field) or selecting
+    /// the pass's geometry (the grid group) stays scene-wide, so it is not on <see cref="WaterLook"/> at all.
+    /// </para>
     /// </remarks>
     public readonly struct WaterPlane
     {
@@ -31,15 +38,24 @@ namespace KhaozEngine.Render3D
         /// <summary>Half-width along Z (world units); the plane spans [CenterZ-HalfExtentZ, CenterZ+HalfExtentZ].</summary>
         public float HalfExtentZ { get; }
 
+        /// <summary>This plane's per-plane look overrides, or <c>null</c> (the default) to draw with the scene's
+        /// <see cref="PixelPostProcessSettings.Water"/> exactly as before. Each field on the look is itself
+        /// nullable, so a look states only what differs from the scene.</summary>
+        public WaterLook? Look { get; }
+
         /// <summary>Build a water plane request. <paramref name="halfExtentZ"/> defaults to
-        /// <paramref name="halfExtentX"/> (a square footprint) when omitted/negative.</summary>
-        public WaterPlane(float centerX, float surfaceY, float centerZ, float halfExtentX, float halfExtentZ = -1f)
+        /// <paramref name="halfExtentX"/> (a square footprint) when omitted/negative. <paramref name="look"/>
+        /// defaults to <c>null</c>, i.e. the scene-wide look, so every call site written before per-plane looks
+        /// existed means exactly what it always did.</summary>
+        public WaterPlane(float centerX, float surfaceY, float centerZ, float halfExtentX, float halfExtentZ = -1f,
+            WaterLook? look = null)
         {
             CenterX = centerX;
             SurfaceY = surfaceY;
             CenterZ = centerZ;
             HalfExtentX = halfExtentX;
             HalfExtentZ = halfExtentZ >= 0f ? halfExtentZ : halfExtentX;
+            Look = look;
         }
     }
 }

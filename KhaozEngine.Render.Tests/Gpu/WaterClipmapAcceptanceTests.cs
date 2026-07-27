@@ -539,7 +539,7 @@ namespace KhaozEngine.Tests.Gpu
             using (IGpuCommandList cl = f.CreateCommandList())
             {
                 cl.Begin();
-                Assert.True(producer.Update(cl, settings, time, wantMips: true));
+                Assert.True(producer.Update(cl, settings, time, wantOcean: true, wantMips: true));
                 cl.CopyTextureSubresource(producer.Map, 1, layer, staging, (uint)size, (uint)size);
                 cl.End();
                 dev.Submit(cl);

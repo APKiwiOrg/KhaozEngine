@@ -332,6 +332,27 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   legacy glint, roughness widening, foam), `RippleSpectrum` (the ripple spectrum, the footprint band-limit and the
   variance transfer) and `GerstnerWaves` (the swell), all internal, headless-tested and mirroring the GLSL
   `WaterVert`/`WaterFrag` exactly.
+- Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
+  identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this
+  existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
+  `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
+  it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
+  lake and a rough FFT sea share a frame. 33 fields are overridable: `WaveSource`, the swell group, the ripple/
+  detail group, body colour, foam, `ShoreFadeDistance` and the two depth-response strengths `ShoalingStrength`/
+  `SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not
+  make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam
+  accumulator), `Bathymetry` (one depth texture), the grid group (`GridMode` and the `Clipmap*` knobs, which pick
+  the pass's pipeline and vertex layout before the draw loop starts), reflection/glint (read the one sky and sun),
+  the `Surf*` shape knobs, and the sample-count knobs. `WaveSource = WaterWaveSource.Procedural` on a look is the
+  inland-body case: the plane leaves the shared ocean, so it loses the sea's swell, whitecaps and (shoaling/surf
+  ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
+  plane's effective wave source is `FftOcean`, rather than off the scene's own default, so a `Procedural` scene
+  with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 672, slot 768), zero new GPU
+  resources, zero new pipelines: each plane already owned its slot in the water pass's uniform buffer, so an
+  override is a different set of numbers written into a slot that was being written anyway. Per-body sea states,
+  bathymetry and grid modes stay deferred to [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275).
+  Rationale, including why a per-plane sea state is refused rather than deferred:
+  `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
 - FFT ocean (`WaterSettings.WaveSource = WaterWaveSource.FftOcean`, `WaterSettings.SeaState`, a `WaterSeaState`):
   a Tessendorf inverse-FFT surface computed on the GPU, replacing the Gerstner swell and the ripple spectrum as the
   displacement/normal/foam source while reusing the whole shading stack above. A TMA (JONSWAP + Kitaigorodskii)

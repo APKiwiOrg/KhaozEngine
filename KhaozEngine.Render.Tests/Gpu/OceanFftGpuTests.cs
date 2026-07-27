@@ -277,7 +277,9 @@ namespace KhaozEngine.Tests.Gpu
             var settings = new WaterSettings();   // Procedural is the default
             using IGpuCommandList cl = dev.Factory.CreateCommandList();
             cl.Begin();
-            bool active = producer.Update(cl, settings, 1f);
+            // No plane wants the ocean, which is what the renderer computes for a Procedural scene with no
+            // per-plane override. The gate is the caller's demand now, not settings.WaveSource.
+            bool active = producer.Update(cl, settings, 1f, wantOcean: false);
             cl.End();
             dev.Submit(cl);
             dev.WaitForIdle();
@@ -425,7 +427,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             using IGpuCommandList cl = dev.Factory.CreateCommandList();
             cl.Begin();
-            bool active = producer.Update(cl, settings, time);
+            bool active = producer.Update(cl, settings, time, wantOcean: true);
             cl.End();
             dev.Submit(cl);
             dev.WaitForIdle();

@@ -2445,6 +2445,40 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
     No call this frame means the water pass never runs - existing scenes stay byte-stable, matching the `Sky`/`Bloom`
     opt-in convention. Cleared every `Begin()` like the decal/shadow-blob queues.
+  - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
+    identical**): a trailing optional constructor parameter, so every call site written before this existed still
+    compiles and still packs from the caller's own `Post.Water` object unchanged. Every field on `WaterLook`
+    mirrors a `WaterSettings` field and is itself nullable, `null` inherits the scene and a value overrides it for
+    this plane alone, leaving every other queued plane on the scene's look. That is what lets a calm inland lake
+    and a rough FFT sea share a frame:
+    ```csharp
+    scene.DrawWater(new WaterPlane(0f, 9.7f, 0f, 104f, 104f, new WaterLook
+    {
+        WaveSource = WaterWaveSource.Procedural,
+        SwellAmplitude = 0.04f,
+        FoamStrength = 0f,
+        SurfStrength = 0f,
+    }));
+    ```
+    **33 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
+    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, `ShoreFadeDistance`, and the
+    two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
+    a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
+    make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
+    foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
+    the grid group (`GridMode`/`ClipmapCellSize`/`ClipmapRingCells`/`ClipmapLevels`/`ClipmapGeomorphBand`/
+    `GridFocusBias` - these select the pass's pipeline, index buffer and vertex layout before the draw loop
+    starts, so they are a geometry choice rather than a look), reflection/horizon/glint (read the one sky and the
+    one sun, out of scope for now, cheap enough to move later without a structural change), the `Surf*` shape
+    knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
+    count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
+    takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
+    and breaking surf ride the same gate) its breaking surf too. Costs zero new UBO bytes (the payload stays 672,
+    the slot stays 768), zero new GPU resources and zero new pipelines - each plane already owned its own slot in
+    the water pass's uniform buffer, so an override is a different set of numbers written into a slot that was
+    being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
+    [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
+    is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
     scene-appearance bags reached off `Post`). Grouped by what they do:
     - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients;
@@ -2463,7 +2497,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - *Shore*: `ShoreFadeDistance` (world units the alpha softens over at the waterline).
     - *Wave source* (since 16.3.0): `WaveSource` picks where the displacement, normal and whitecaps come from -
       `WaterWaveSource.Procedural` (the default, everything above, unchanged) or `WaterWaveSource.FftOcean` (a
-      Tessendorf inverse-FFT ocean on the GPU, see below). The SHADING is identical either way.
+      Tessendorf inverse-FFT ocean on the GPU, see below). The SHADING is identical either way. Overridable per
+      plane since 17.7.0, see **Per-plane look** above.
   - **FFT ocean** (`WaveSource = WaterWaveSource.FftOcean`, since 16.3.0). Replaces the Gerstner swell and the
     cosine ripple spectrum with a real directional spectrum evaluated over a full grid - 16384 components per
     cascade at the default resolution, three cascades - inverse-transformed on the GPU every frame into
@@ -2499,10 +2534,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       any more.
     - Everything else stays live - `GridFocusBias`, `FootprintSamples`, `VarianceToRoughness`, the whole
       colour/reflection/glint set, `FoamStrength`, `FoamShoreWidth` and `ShoreFadeDistance`.
-    - **Cost.** The cascade update runs ONCE per frame inside the water pass (not per `WaterPlane` - one ocean
-      state serves every queued plane this release) and costs exactly one GPU stall whatever the cascade count and
-      resolution, measured at about 0.3 ms on Metal at the defaults and under 1 ms at resolution 256. Changing any
-      sea-state field rebuilds the initial spectrum once, on the CPU; the per-frame cost does not depend on it.
+    - **Cost.** The cascade update runs AT MOST once per frame inside the water pass, not per `WaterPlane`: there is
+      one ocean state and one shared set of cascade maps whatever the plane count. Since 17.7.0 it runs on DEMAND
+      rather than off the scene's own default - the producer bakes when any queued plane's effective wave source is
+      `FftOcean` (a plane may override its own source via `WaterLook`, above) and stays idle when none do, so a
+      scene defaulting to `Procedural` with one ocean plane still gets a real ocean and a scene defaulting to
+      `FftOcean` with every plane overridden away from it pays for none. When it runs it costs exactly one GPU
+      stall whatever the cascade count and resolution, measured at about 0.3 ms on Metal at the defaults and under
+      1 ms at resolution 256. Changing any sea-state field rebuilds the initial spectrum once, on the CPU; the
+      per-frame cost does not depend on it.
     - **Deterministic.** The same seed at the same elapsed time produces bitwise-identical maps, so a frozen-time
       frame is reproducible and testable.
     - **The sampling frame** (since 16.5.0) is a second group on the same `WaterSeaState`, all opt-in and all
@@ -4728,7 +4768,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.6.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.7.0" />
 ```
 
 ```csharp

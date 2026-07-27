@@ -76,8 +76,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         public OceanFftProducer(IGpuDevice gd) => _gd = gd;
 
-        /// <summary>True once <see cref="Update"/> has produced maps this frame. False in
-        /// <see cref="WaterWaveSource.Procedural"/> mode, and on any device without compute support.</summary>
+        /// <summary>True once <see cref="Update"/> has produced maps this frame. False when no plane asked for the
+        /// ocean (every effective wave source is <see cref="WaterWaveSource.Procedural"/>), and on any device
+        /// without compute support.</summary>
         public bool Active { get; private set; }
 
         /// <summary>Cascade layers actually produced (0 when inactive).</summary>
@@ -155,21 +156,29 @@ namespace KhaozEngine.Render3D.Rendering
         /// water draw is recorded into, and must still be open.
         /// </summary>
         /// <param name="sceneList">The command list the water draw is recorded into.</param>
-        /// <param name="settings">The frame's water settings.</param>
+        /// <param name="settings">The frame's water settings. Read for the sea state and the wave clock only: the
+        /// decision of whether to run at all is <paramref name="wantOcean"/>'s.</param>
         /// <param name="timeSeconds">The wave clock.</param>
+        /// <param name="wantOcean">Whether anything drawn this frame actually reads the cascades, which the CALLER
+        /// decides. It used to be read off <c>settings.WaveSource</c> here, and that is wrong once the wave source
+        /// can be overridden per plane (<see cref="WaterLook.WaveSource"/>): a scene defaulting to
+        /// <see cref="WaterWaveSource.Procedural"/> with one plane on the ocean would find the producer inactive
+        /// and render that plane procedurally, silently. One ocean either way, driven by demand rather than by the
+        /// scene default.</param>
         /// <param name="wantMips">Whether the maps need a mip chain this frame (i.e. whether anything sampling
         /// them will ask for a level above 0). Only <see cref="WaterGridMode.Clipmap"/> does. Off, the maps and the
         /// work are exactly what shipped through 16.6.0; on, a second SAMPLED texture is kept alongside the compute
         /// target and its chain regenerated per frame.</param>
         /// <returns>True when the maps are live and the water shader should read them.</returns>
-        public bool Update(IGpuCommandList sceneList, WaterSettings settings, float timeSeconds, bool wantMips = false)
+        public bool Update(IGpuCommandList sceneList, WaterSettings settings, float timeSeconds, bool wantOcean,
+            bool wantMips = false)
         {
             EnsureIdle();
             LastStallCount = 0;
             LastStallMs = 0d;
             LastMipCopies = 0;
 
-            if (settings.WaveSource != WaterWaveSource.FftOcean || !_gd.Capabilities.SupportsCompute)
+            if (!wantOcean || !_gd.Capabilities.SupportsCompute)
             {
                 Active = false;
                 CascadeCount = 0;

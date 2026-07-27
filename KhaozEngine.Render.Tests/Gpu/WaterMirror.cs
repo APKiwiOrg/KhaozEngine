@@ -222,7 +222,7 @@ namespace KhaozEngine.Tests.Gpu
             using (IGpuCommandList cl = dev.Factory.CreateCommandList())
             {
                 cl.Begin();
-                Assert.True(producer.Update(cl, settings, time, wantMips: true),
+                Assert.True(producer.Update(cl, settings, time, wantOcean: true, wantMips: true),
                     "the producer refused to run on a compute device");
                 cl.End();
                 dev.Submit(cl);

@@ -16,6 +16,13 @@ namespace KhaozEngine.Render3D
     /// <see cref="PixelPostProcessSettings.Sky"/>), and this is a stylized LDR surface, not a physically accurate
     /// one.
     /// <para>
+    /// This is the scene's DEFAULT look rather than its only one: a queued <see cref="WaterPlane"/> may carry a
+    /// <see cref="WaterLook"/> that overrides part of it for that plane alone, which is how a calm inland lake and
+    /// a rough sea coexist in one frame. A plane with no look packs from this object unchanged. What a look may
+    /// NOT override is anything backing a once-per-frame GPU resource or the pass's geometry, namely
+    /// <see cref="SeaState"/>, <see cref="Bathymetry"/> and the grid group.
+    /// </para>
+    /// <para>
     /// <b>Reaching the 14.22.0 look.</b> Every 14.24.0 addition has an off value and they are independent, so the
     /// previous release's surface is reachable knob by knob:
     /// <c>SwellAmplitude = 0</c> (flat plane, no displacement, no whitecaps),
@@ -29,7 +36,7 @@ namespace KhaozEngine.Render3D
     /// that is precisely the checkerboard tiling 14.22.0 replaced, so the three-layer field stays unconditional.
     /// </para>
     /// </summary>
-    public sealed class WaterSettings
+    public sealed partial class WaterSettings
     {
         // ---- Wave source -------------------------------------------------------------------------------------
 

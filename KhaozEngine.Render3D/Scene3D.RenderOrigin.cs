@@ -240,7 +240,12 @@ namespace KhaozEngine.Render3D
 
         /// <summary>The queued water planes with their centres in the render frame. The surface height moves with
         /// the origin's Y for consistency with every other reduction. A <c>WorldFrame</c> anchor has Y = 0, so in
-        /// practice the height is untouched (Y is never framed).</summary>
+        /// practice the height is untouched (Y is never framed).
+        /// <para>
+        /// This REBUILDS each plane, so anything the constructor takes has to be carried across by hand or it is
+        /// dropped. <see cref="WaterPlane.Look"/> is the one that would fail silently: a rebased frame would just
+        /// stop honouring the per-plane look, and only while the origin happened to be active.
+        /// </para></summary>
         ReadOnlySpan<WaterPlane> RelativeWaterPlanes()
         {
             if (!_frameOriginActive) return CollectionsMarshal.AsSpan(_waterPlanes);
@@ -249,7 +254,7 @@ namespace KhaozEngine.Render3D
             {
                 WaterPlane p = _waterPlanes[i];
                 _waterPlanesRelative.Add(new WaterPlane(p.CenterX - _frameOrigin.X, p.SurfaceY - _frameOrigin.Y,
-                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ));
+                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ, p.Look));
             }
             return CollectionsMarshal.AsSpan(_waterPlanesRelative);
         }

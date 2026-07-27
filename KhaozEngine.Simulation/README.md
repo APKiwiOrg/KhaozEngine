@@ -28,5 +28,11 @@ if (wait > 0f) Thread.Sleep(TimeSpan.FromSeconds(wait)); else Thread.Yield();
   steps, server-side) and `World.ParallelForEach`/`World.DefaultScheduler` (`KhaozEngine.Ecs`, client or
   server) both fan across this same seam - see `docs/USING-KHAOZENGINE.md` "Worker-pool seam
   (`IJobScheduler`) + parallel cell ticks" and "Parallel `ForEach` + access declarations".
+  **`ThreadPoolJobScheduler` runs every worker body inside a `DeterministicFpScope`.** `DeterministicFp` pins the
+  floating-point control register (rounding mode, FTZ/DAZ, trap masks) on the CALLING thread only, and the whole
+  point of that scheduler is to run sim work on threads that are neither the caller's nor a dedicated sim thread,
+  so without the scope a sim fanned across cores can silently diverge in the low bits between two machines or two
+  runs. Applying it at the scheduling boundary means a consumer does not have to remember to. It is
+  allocation-free (one save plus one restore of that register per slice) and nests harmlessly.
 
-Part of the MMO netcode stack (sub-project 0B).
+Part of the MMO netcode stack (sub-project 0B). Depends on `KhaozEngine.Determinism` and nothing else.

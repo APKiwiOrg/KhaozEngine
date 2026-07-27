@@ -86,6 +86,23 @@ so a consumer gets one uniform "a teleport landed this frame" signal for join, r
 (e.g. to snap a follow camera + run a transition). An ordinary smoothed correction never sets it. The host is
 expected to advance the epoch ONLY at real teleport sites; normal movement leaves it unchanged.
 
+A **frame anchor** makes a floating-origin shift invisible instead of catastrophic. `IPredictedState<T>` carries an
+optional `FrameAnchor` (a default-interface member returning `Vector2.Zero`, so a state with no frame concept is
+unchanged) naming the planar space its `Position` is expressed against, plus a `WithFrameAnchor(anchor, position)`
+wither whose default THROWS. At the very top of `Reconcile`, above every capture, the carried presentation state is
+converted into the incoming basis's frame. Without that, a simulation island re-anchoring - which moves the world
+by an exact multiple of the frame grid and is a no-op in world space - would measure as a whole anchor delta of
+prediction error, trip the `HardSnapDistance` gate, and then glide the avatar a frame-width across the screen while
+the render offset decayed. `renderOffset` and the vertical axis are untouched: an offset is a delta and is
+frame-invariant, and Y is never framed.
+
+The throwing default is the honest shape for the wither. It has to construct a `TSelf` and nothing else on the
+interface can carry a new anchor, so no default body could be correct. Making it abstract would break every
+existing implementer, which is what the default-member pattern exists to avoid. It is unreachable unless the two
+anchors actually differ, which is impossible for a state that left `FrameAnchor` at its default, so anything that
+reaches it opted into frames on one side and not the other - and should say so loudly rather than silently drop the
+conversion.
+
 ## RemoteCommandQueue&lt;TCommand&gt;
 
 Host-side per-slot, seq-ordered command queue. Dedups retransmits and negative seqs, returns a neutral

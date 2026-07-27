@@ -115,7 +115,7 @@ public static class MoveProtocol
                 new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle())),
             // Rebase INTO the newer sample's frame first, then interpolate the two locals. Lerping the raw locals
             // would interpolate between two different spaces and place a remote a frame-width away on any snapshot
-            // pair that straddles a re-anchor; decoding both to absolute and lerping there would be correct but would
+            // pair that straddles a re-anchor. Decoding both to absolute and lerping there would be correct but would
             // throw away the precision the framed encoding just bought. This branch is both. It is exactly a no-op
             // when the frames match, which is every snapshot pair except the one that crosses a shift.
             lerp: (a, b, t) => ReplicatedPosition.InFrame(

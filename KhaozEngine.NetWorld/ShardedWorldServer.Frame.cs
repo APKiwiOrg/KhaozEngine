@@ -45,12 +45,12 @@ public sealed partial class ShardedWorldServerConfig
     /// apart would query the same colliders from spaces 128 m away from each other, which is falling through
     /// terrain and walking through walls, not a rounding artifact.
     /// <para>Null (the default) leaves every cell without physics, exactly as passing no physics world did.</para>
-    /// <para><b>The consumer populates the returned world; the engine never adds a static to a cell world.</b> The
+    /// <para><b>The consumer populates the returned world, and the engine never adds a static to a cell world.</b> The
     /// contract, in four points:</para>
     /// <list type="bullet">
     /// <item><b>Extent.</b> It must contain every static whose geometry comes within
     /// <c>CellSize / 2 + OverlapMargin</c> of the cell centre, per axis. Anything nearer than that can be queried by
-    /// an entity this cell owns or ghosts; anything further cannot.</item>
+    /// an entity this cell owns or ghosts. Anything further cannot.</item>
     /// <item><b>Space.</b> Poses are relative to <c>IPhysicsWorld.Origin</c>, which the consumer sets to the cell
     /// frame's anchor - read it from <c>ShardHost.FrameFor(coord).Anchor</c> rather than re-deriving it. A world
     /// left at <c>Vector3.Zero</c> is a correct but unframed cell, which is supported.</item>

@@ -153,7 +153,7 @@ public class ShardedFrameAnchoringTests
     {
         // The fifth door, and the only one the step loop's self-heal cannot cover: PlayerMovementSystem skips ghosts
         // by design, so a wrong stamp here would persist for the ghost's whole life. Every engine path keys on Value
-        // and survives it; a consumer reading Local for cross-border collision - which is what Ghost's own doc
+        // and survives it. A consumer reading Local for cross-border collision - which is what Ghost's own doc
         // invites - would be a frame-width out.
         (LoopbackTransport st, _) = LoopbackTransport.CreatePair();
         var server = new ShardedWorldServer(st, Config(frameAnchoring: true), Flat, Unit);

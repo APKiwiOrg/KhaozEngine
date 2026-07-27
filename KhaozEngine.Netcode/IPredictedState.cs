@@ -55,7 +55,7 @@ public interface IPredictedState<TSelf>
     /// as the ALREADY-converted planar position (the caller differences the two anchors). Y is never framed, so the
     /// vertical axis is carried through unchanged.
     /// <para>The default THROWS, deliberately. A wither has to construct a <typeparamref name="TSelf"/> and nothing
-    /// else on this interface can carry a new anchor, so there is no default body that could be correct; making it
+    /// else on this interface can carry a new anchor, so there is no default body that could be correct. Making it
     /// abstract instead would break every existing implementer, which is the whole thing this default-member pattern
     /// exists to avoid. It is unreachable unless the two anchors actually differ, which is impossible for a state
     /// that left <see cref="FrameAnchor"/> at its default - so a state that reaches it is one whose author opted into

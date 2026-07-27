@@ -29,8 +29,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   snapshot for a client that hasn't opted in.
 - **`ShardedWorldServer`** (+ `ShardedWorldServerConfig`) runs that same movement stack across a
   [`KhaozEngine.Sharding`](../KhaozEngine.Sharding) `ShardHost` grid of cells, so the world scales past a single
-  `World`: each tick routes every client's `MoveCommand` to the cell that owns its player, steps each cell's
-  `PlayerMovementSystem` via `ShardHost.Tick` (scheduler-fanned, deterministic), transfers authority for boundary
+  `World`: each tick routes every client's `MoveCommand` to the cell that owns its player, steps each cell's OWN
+  `PlayerMovementSystem` - one instance per cell, holding that cell's island frame and that cell's own physics
+  world (`ShardedWorldServerConfig.PhysicsWorldFactory`) - via `ShardHost.Tick` (scheduler-fanned, deterministic), transfers authority for boundary
   crossers exactly-once (`ProcessHandoffs`, `NetId` stable), refreshes border ghosts (`SyncGhosts`), then serves
   each client its single home-cell area of interest (owned + ghosts) framed identically - as an AoI delta by
   default (keyed by `NetId`, so a boundary crossing stays a component delta, never a despawn+respawn), or a full
@@ -54,7 +55,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   reconcile-error) for characterising a movement-smoothness bug; off by default, zero overhead.
   Optional `WorldBounds`/`IPhysicsWorld?` ctor params (mirroring `WorldServer`, since 8.0.0) make the client predict
   against the same play-area bound + static physics bodies the server is authoritative over, so a
-  solid-prop world predicts straight instead of rubber-banding (null = terrain only).
+  solid-prop world predicts straight instead of rubber-banding (null = terrain only); the physics world must be able
+  to rebase, since the client adopts the server's island frame and moves that world with it.
+  **`IslandFrame`** is the frame the client's prediction currently steps in, adopted from the wire, never derived,
+  and **`FrameChanged`** fires (from, to, delta) when it moves - see the island-frame section below. Everything the
+  client exposes stays absolute world metres.
   Each `EntityRenderState` carries the EXACT movement flags for every entity (local: predicted; remote: replicated
   `MovementState`): `Grounded` + `VerticalVelocity` (jump/fall), `Swimming` (the swim feature), and `ClimbRate` (the
   signed step-climb rate driving the stair glide, decoded from `MovementState.ClimbRateQ` - written per tick by BOTH
@@ -417,55 +422,111 @@ it survive a correction, plus one anti-cheat change that had to land with it.
 - **This is a wire break: generation 6 -> 7.** Client and server must ship together, gated at the handshake by
   the always-on `WireGenerationAuthenticator`.
 
-## Island frame on the flat head (opt-in, `WorldServerConfig.FrameAnchoring`)
+## Island frames and the frame-relative wire (the floating-origin MAJOR)
 
 Simulating at 100 km from the world origin costs precision: float32's quantum out there is 7.8 mm, and the
 movement step's carried state accumulates it every tick (measured on production code at about 1.7 m of divergence
 per 20 s at 100 km, against 0 m at the origin). An ISLAND FRAME removes the magnitude rather than widening the
 type. A simulation island is one `World` plus one `IPhysicsWorld`, and a frame is a property of that SPACE, never
-of an entity in it: `WorldServer` is exactly one island, so it has exactly one frame and it follows one player.
+of an entity in it. `WorldServer` is exactly one island, so it has one frame and follows one player.
+`ShardedWorldServer` has one island per cell, which is what lets a shard server serve players spread over a whole
+100 km map.
 
-**Off by default, and the default path is byte-identical to before**: an unframed island is `WorldFrame.Origin`,
-whose anchor is exactly `Vector3.Zero`.
+**ON by default on both heads**, because the wire now carries the frame so both heads step in the same space. A
+game that never leaves the world origin never re-anchors, and its cell (0,0) frame is `WorldFrame.Origin`, whose
+anchor is exactly `Vector3.Zero`, so the default path there is byte-identical to before.
 
-- **`ReplicatedPosition` is a frame stamp plus a frame-local offset.** `Frame` (a `WorldFrame` from
-  `KhaozEngine.Primitives`) and `Local`, with `Value` a computed property. Reading `Value` is unchanged and always
-  absolute, and `default` is still an absolute position at the world origin, so every existing reader keeps
-  working. WRITING `Value` resets the stamp and stores the value as-is, which is safe rather than merely
-  tolerated: `{Origin, p}` and `{f, f.ToLocal(p)}` denote the same world position, so a legacy write can only
-  produce a correct position with a stale stamp, which the island then converts back exactly. Build one explicitly
-  with `FromWorld(absolute, frame)` (a position from outside the sim) or `InFrame(frame, local)` (one that came
-  out of it), and move one with `WithLocal` / `ToFrame`.
-- **`WorldServerConfig.FrameAnchoring`** turns it on. The step then runs on a frame-local position, the island's
-  physics world is rebased with it (`IPhysicsWorld.Rebase`, so a query never crosses spaces), and every entity in
-  the world carries the island's stamp. **Do not enable it against a client that predicts in absolute
-  coordinates**: the wire is absolute in this release, so a server stepping in a 136 m frame while its client
-  steps at 100 km produces two trajectories from two spaces and the reconciliation error GROWS. It is for a
-  single-player or single-region game with no reconciled client, and for testing. There is deliberately no
-  `ShardedWorldServerConfig.FrameAnchoring` yet: the sharded head hands ONE physics world to every cell, so a cell
-  stepping in its own frame would query colliders sitting in another, and the knob lands with per-cell physics.
-- **`WorldServerConfig.SamplerSpace`** says which space the game's sampler delegates read.
-  `SamplerSpace.World` (the default) keeps them on absolute coordinates and the step converts for them: zero
-  adoption work, and it still fixes the accumulating half, because the carried state is what compounds.
-  `SamplerSpace.Frame` passes frame-local coordinates straight through, which is the full fix for a game whose
-  ground follow already comes from the island's own physics world. `WorldBounds` is the exception neither mode
-  governs: a play area is authored content and stays absolute, so the step converts for it either way.
-- **Everything the server exposes stays ABSOLUTE.** `TryGetPlayerState`, `PlayerLeaving`, `ListOnline`,
-  `ReplicatedPosition.Value`, the interest grid and the wire all read world metres, whatever frame the island is
-  simulating in. `PlayerMoveState.FrameAnchor` (stamped by `PlayerMoveSimulator.Step`) says which space a state is
-  in, and a state handed across the public surface carries `Vector2.Zero` with an absolute position, so the two
-  can never disagree. Assigning `PlayerMoveState.Position` writes an absolute position and resets the stamp, the
-  same contract as `ReplicatedPosition.Value`.
-- **`WorldServer.IslandFrame` and `WorldServer.FrameChanged`.** The event fires after a re-anchor with
-  `(from, to, delta)`, the exact translation into the new frame. The engine's own state is already converted when
-  it fires, INCLUDING the physics world, so a consumer needs a handler only for state it holds in the old frame
-  itself (cached poses it read out of the physics world, its own spatial indices, debug overlays).
-- **Constructing with `FrameAnchoring` and a physics world that cannot rebase throws.** A framed step querying an
-  unframed world is a wrong answer, not an imprecise one, so the combination is refused rather than served.
-- **The re-anchor policy.** `WorldFrame.Grid` is 128 m and the trigger is a local axis past
-  `WorldFrame.ReanchorRadius` (96 m), which guarantees at least 64 m of travel between consecutive re-anchors. The
-  island re-anchors after the tick's movement has settled and before anything reads a position back, so no step
-  ever observes a half-rebased island.
+### Breaking, in one place each
+
+- **`ReplicatedPosition.Value` is READ-ONLY.** The component is a frame stamp (`Frame`, a `WorldFrame` from
+  `KhaozEngine.Primitives`) plus a frame-local offset (`Local`), and `Value` reads the absolute world position off
+  them. Every reader is unchanged. Every WRITER is now a build error, deliberately: a `Value = p` write reset the
+  stamp silently, which was recoverable while the wire was absolute and is not once the stamp rides it. The fix at
+  each site is one question - where did this position come from? - answered by `FromWorld(absolute, frame)` (from
+  outside the sim: an authored spawn, a persisted record, an admin teleport) or `InFrame(frame, local)` (out of
+  the sim, or out of a physics world already in that frame). Move one with `WithLocal` / `ToFrame`.
+- **Wire generation 9.** Position encodes `[frameX:short][frameZ:short][localX,localY,localZ:float]`, 16 bytes
+  against 12. The four extra bytes buy a float payload bounded at a couple of hundred metres, so the wire stops
+  being the first thing that quantizes a position. Client and server must ship together, which the always-on
+  `WireGenerationAuthenticator` enforces at connect.
+- **`ShardedWorldServer` no longer takes an `IPhysicsWorld`.** It takes
+  `ShardedWorldServerConfig.PhysicsWorldFactory`, a `Func<CellCoord, IPhysicsWorld>` called once per cell. One
+  world cannot serve cells that step in different frames.
+- **`WorldClient` refuses a physics world that cannot rebase**, the mirror of `WorldServer`'s own guard: the
+  client adopts the server's frame and its physics world's `Origin` has to move with it.
+- **Persisted cell blobs are brought forward, not lost.** `PositionFrameBlobMigration.FrameV2ToV3` is folded into
+  `CellPersistence`'s default chain, so an existing save boots straight into a framed server. It stamps
+  `WorldFrame.Origin` ahead of the untouched absolute triple, which denotes the identical world position, and the
+  owning cell converts it into its own frame on restore.
+
+### The knobs
+
+- **`WorldServerConfig.FrameAnchoring` / `ShardedWorldServerConfig.FrameAnchoring`** (both default true). On the
+  flat head the island re-anchors to follow one player. On the sharded head each cell's frame is
+  `WorldFrame.Nearest(cell centre)`, FIXED at the cell's creation, so that head performs no runtime rebase at all:
+  an entity's frame changes only at a cell handoff, which `ShardHost.ProcessHandoffs` already runs as a discrete,
+  exactly-once, ordered event. Read a cell's frame from `CellSim.Frame`, or ahead of time from
+  `ShardedWorldServer.FrameFor(coord)` / `ShardHost.FrameFor(coord)`.
+- **`ShardedWorldServerConfig.PhysicsWorldFactory`** builds each cell's own world. The consumer populates it, and
+  the engine never adds a static to a cell world. Four points: it must hold every static within
+  `CellSize / 2 + OverlapMargin` of the cell centre, its poses are relative to an `Origin` of
+  `FrameFor(coord).Anchor`, it is disposed with the cell, and a static near a border legitimately exists in both
+  neighbours' worlds (nothing reconciles the copies, because a static does not move).
+- **`SamplerSpace`** (on both server configs and on `WorldClientConfig`, and it must MATCH across them) says which
+  space the game's sampler delegates read. `SamplerSpace.World` (the default) keeps them on absolute coordinates
+  and the step converts for them: zero adoption work, and it still fixes the accumulating half, because the
+  carried state is what compounds. `SamplerSpace.Frame` passes frame-local coordinates straight through, which is
+  the full fix and is REQUIRED for a sampler backed by the island's own physics world (a `PhysicsGroundProbe`
+  raycasts in that world's own space, so wrapping the call back out to absolute makes every ray miss).
+  `WorldBounds` is the exception neither mode governs: a play area is authored content and stays absolute, so the
+  step converts for it either way.
+- **`CellSize` is validated against the divergence ceiling** when frame anchoring is on. A cell's frame sits at its
+  centre, so its worst frame-local coordinate is bounded by its own size; `CellSize = 600` puts the planar
+  magnitude past `WorldFrame.MaxLocalRadius` and is refused with the derivation in the message.
+
+### Everything a consumer sees stays ABSOLUTE
+
+`TryGetPlayerState`, `PlayerLeaving`, `ListOnline`, `ReplicatedPosition.Value`, cell keying, the interest grid,
+`WorldClient.Snapshot()` and `WorldClient.LocalRenderState` all read absolute world metres, whatever frame an
+island is simulating in. `PlayerMoveState.FrameAnchor` (stamped by `PlayerMoveSimulator.Step`) says which space a
+state is in, and `ToAnchor` / `Absolute` convert. A state crossing the public surface carries `Vector2.Zero` with
+an absolute position, so the two can never disagree.
+
+The client-side rule is worth stating on its own, because breaking it produces no compile error and no exception:
+the local avatar comes out of prediction frame-local while every remote comes out of `Value` absolute, both as a
+`Vector3` in the same `EntityRenderState` list. The avatar would simply render an anchor delta away from the world
+it is standing in.
+
+### The frame is reachable from a `World` alone
+
+A cell (and a framed flat head) publishes its frame into its own `World` as an `IslandFrame` singleton on a
+reserved entity carrying no `NetId`, so anything holding only a world can read it with `world.GetIslandFrame()`
+(from `KhaozEngine.Sharding`). That is what `WorldPickups`' spawn callback, a consumer's `OnBeforeTick` brain, a
+cross-border ghost reader and `DynamicBodyReplication` all use, instead of four separate signature changes.
+
+- **`DynamicBodyReplication.Sample` stamps rather than converts.** A pose comes back in the physics world's space,
+  which IS the island's frame, so it is written with `InFrame`. Writing it as an absolute would re-quantize it at
+  world magnitude, undoing exactly what the frame bought.
+- **Every door an entity enters a cell by converts**: spawn, handoff (`CellSim.AdoptFromMigrate`), persistence
+  restore, admin teleport, and ghost mirroring (`CellSim.ApplyGhostSnapshot`). The step loop carries a self-heal as
+  a backstop, so a miss at any door is corrected exactly on the next tick rather than becoming a 128 m step - but
+  it deliberately skips ghosts, which is why the ghost door converts on the mirror pass.
+
+### Client prediction across a shift
+
+`IPredictedState<TSelf>` gained `FrameAnchor` and a throwing `WithFrameAnchor` default member, and
+`ClientPrediction.Reconcile` converts the carried presentation state into the incoming basis's frame before it
+measures anything. Without that, an island re-anchor - a no-op in world space - would measure as a 128 m
+prediction error, trip the hard-snap gate, and then glide the avatar a frame-width across the screen while the
+render offset decayed. `WorldClient` adopts the stamp off the wire, rebases its own physics world with it, and
+raises `WorldClient.FrameChanged` (from, to, delta) BEFORE the replay, so a consumer's own collider bookkeeping is
+correct for the replayed steps. A consumer that only uses the engine's positions needs no handler.
+
+### The re-anchor policy (single-island heads)
+
+`WorldFrame.Grid` is 128 m and the trigger is a local axis past `WorldFrame.ReanchorRadius` (96 m), which
+guarantees at least 64 m of travel between consecutive re-anchors. The island re-anchors after the tick's movement
+has settled and before anything reads a position back, so no step ever observes a half-rebased island.
 
 ## Reconnect input backlog (since 8.8.0)
 

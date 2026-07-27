@@ -6558,7 +6558,7 @@ foreach (EntityRenderState e in client.Snapshot())
 batch.End();
 ```
 
-### Simulating far from the world origin (`WorldServerConfig.FrameAnchoring`, opt-in)
+### Simulating far from the world origin (island frames, ON by default)
 
 Camera-relative rendering fixes how a distant world LOOKS. This fixes how it SIMULATES. At 100 km one float32
 step is 7.8 mm, and the movement step's carried position accumulates that quantum every tick: measured on
@@ -6567,45 +6567,106 @@ magnitude small rather than to widen the type.
 
 A simulation **island** is one `World` plus one `IPhysicsWorld`, and a frame is a property of that SPACE, never
 of an entity in it (two entities in one physics world cannot disagree about where its colliders are). The flat
-`WorldServer` is exactly one island, so it has exactly one frame and it follows one player.
+`WorldServer` is exactly one island, so it has one frame and follows one player. `ShardedWorldServer` has one
+island per CELL, which is what lets a shard server serve players spread over a whole 100 km map.
 
 ```csharp
+// Flat head: one island, re-anchoring to follow the player.
 var config = new WorldServerConfig
 {
-    FrameAnchoring = true,                    // off by default
+    FrameAnchoring = true,                    // the default
     SamplerSpace = SamplerSpace.World,        // the default: your samplers keep taking absolute coordinates
 };
 var server = new WorldServer(transport, config, groundHeight, tuning, physics: bepuWorld);
-
 server.FrameChanged += (from, to, delta) => myOwnColliderIndex.Translate(delta);   // usually nothing to do
+
+// Sharded head: one island per cell, and one physics world per cell to go with it.
+var sharded = new ShardedWorldServerConfig
+{
+    CellSize = 60f,
+    FrameAnchoring = true,                    // the default
+    PhysicsWorldFactory = coord => BuildCellWorld(coord),
+};
+
+IPhysicsWorld BuildCellWorld(CellCoord coord)
+{
+    var world = new BepuPhysicsWorld();
+    world.Rebase(host.FrameFor(coord).Anchor);        // the space this cell's poses are expressed in
+    foreach (var s in MyStaticsNear(coord)) world.AddStatic(s.Shape, new Pose(s.Absolute - world.Origin, s.Rot));
+    return world;                                      // disposed with the cell
+}
 ```
 
-- **Adoption is a flag.** Positions in and out stay ABSOLUTE: `TryGetPlayerState`, `PlayerLeaving`, `ListOnline`,
-  `ReplicatedPosition.Value`, the interest grid and the wire are all world metres, whatever frame the island is
-  in. Persisted records are unchanged. Read `WorldServer.IslandFrame` if you want the frame itself.
-- **`SamplerSpace.World`** (the default) means your `groundHeight` / `groundNormal` / medium delegates keep taking
-  absolute coordinates and the step converts for them. That is zero work and still fixes the accumulating half,
-  because the carried state is what compounds. **`SamplerSpace.Frame`** passes frame-local coordinates straight
-  through, the full fix, for a game whose ground follow already comes from the island's own physics world.
-  `WorldBounds` is the exception neither mode governs: a play area is authored content, so the step always
-  converts for it. **`SamplerSpace.World` is wrong, not merely imprecise, once your `groundHeight`/`groundNormal`
-  come from `PhysicsGroundProbe` over the island's own `IPhysicsWorld` (the unified-terrain path)**: that world is
-  rebased with the frame, so it raycasts in rebased space, and `SamplerSpace.World` wraps every call back out to
-  absolute coordinates first. Every ray misses, the probe silently falls back to `FallbackHeight` and a +Y normal,
-  and the ground normal (and its slope gate) goes flat without an error. Set `SamplerSpace.Frame` whenever the
-  sampler is physics-backed.
-- **The physics world is rebased with the frame**, so a query never crosses spaces. It therefore has to be able
-  to rebase: constructing with `FrameAnchoring` and an `IPhysicsWorld` whose `CanRebase` is false throws, because
-  a framed step querying an unframed world is a wrong answer rather than an imprecise one. Anything you register
-  in that world through the engine's own streaming sinks moves with it for free.
-- **Do NOT enable it against a networked client.** The wire carries absolute positions in this release and the
-  client predicts in absolute coordinates, so a server stepping in a 136 m frame while its client steps at 100 km
-  produces two trajectories from two spaces and the reconciliation error GROWS. It is for a single-player or
-  single-region game with no reconciled client, and for testing. There is no `ShardedWorldServerConfig.FrameAnchoring`
-  yet either: the sharded head hands ONE physics world to every cell, so a cell stepping in its own frame would
-  query colliders sitting in another.
+- **Positions in and out stay ABSOLUTE.** `TryGetPlayerState`, `PlayerLeaving`, `ListOnline`,
+  `ReplicatedPosition.Value`, cell keying, the interest grid, `WorldClient.Snapshot()` and
+  `WorldClient.LocalRenderState` are all world metres, whatever frame an island is in. Persisted records are
+  unchanged. Read `WorldServer.IslandFrame`, `WorldClient.IslandFrame` or `CellSim.Frame` if you want the frame.
+- **The sharded head never re-anchors.** A cell's frame is `WorldFrame.Nearest(cell centre)`, fixed when the cell
+  is created, so there is no runtime rebase, no sleeping-body wake risk and no re-anchor ordering to reason about.
+  An entity's frame changes only at a cell handoff, which is already a discrete, exactly-once, ordered event. Ask
+  for a coordinate's frame ahead of time with `ShardedWorldServer.FrameFor(coord)` / `ShardHost.FrameFor(coord)`.
+- **You populate each cell's physics world, and the engine never adds a static to one.** The contract is four points:
+  it holds every static within `CellSize / 2 + OverlapMargin` of the cell centre, its poses are relative to an
+  `Origin` of `FrameFor(coord).Anchor`, it belongs to that one cell (it is disposed with the cell), and a static
+  near a border legitimately exists in both neighbours' worlds - nothing reconciles the copies, because a static
+  does not move. Sharing one world between two cells rebuilds the exact failure per-cell worlds exist to prevent.
+- **`SamplerSpace.World`** (the default, on both server configs and on `WorldClientConfig`, and it must MATCH
+  across them) means your `groundHeight` / `groundNormal` / medium delegates keep taking absolute coordinates and
+  the step converts for them. That is zero work and still fixes the accumulating half, because the carried state
+  is what compounds. **`SamplerSpace.Frame`** passes frame-local coordinates straight through, the full fix, for a
+  game whose ground follow already comes from the island's own physics world. `WorldBounds` is the exception
+  neither mode governs: a play area is authored content, so the step always converts for it. **`SamplerSpace.World`
+  is wrong, not merely imprecise, once your `groundHeight`/`groundNormal` come from `PhysicsGroundProbe` over the
+  island's own `IPhysicsWorld` (the unified-terrain path)**: that world sits in the frame, so it raycasts in
+  frame-local space, and `SamplerSpace.World` wraps every call back out to absolute coordinates first. Every ray
+  misses, the probe silently falls back to `FallbackHeight` and a +Y normal, and the ground normal (and its slope
+  gate) goes flat without an error. Set `SamplerSpace.Frame` whenever the sampler is physics-backed.
+- **A physics world must be able to rebase.** Constructing a `WorldServer` with `FrameAnchoring` and an
+  `IPhysicsWorld` whose `CanRebase` is false throws, and so does constructing a `WorldClient` with one, because a
+  framed step querying an unframed world is a wrong answer rather than an imprecise one. `BepuPhysicsWorld` can.
+  A hand-written backend or test double reports false through the seam's default and has to opt in.
+- **The frame is reachable from a `World` alone.** Anything the engine hands only a world - the `WorldPickups`
+  spawn callback, your `OnBeforeTick` brain, a system reading a cross-border ghost - reads
+  `world.GetIslandFrame()` (from `KhaozEngine.Sharding`) and builds positions with
+  `ReplicatedPosition.FromWorld(absolute, frame)`. An unframed world reads back `WorldFrame.Origin`, whose anchor
+  is exactly zero, so the same code is correct either way.
+- **`CellSize` is validated against the divergence ceiling** when frame anchoring is on. A cell's frame sits at its
+  centre, so its worst frame-local coordinate is bounded by the cell's own size: `CellSize = 600` puts the planar
+  magnitude past `WorldFrame.MaxLocalRadius` and the constructor refuses it with the derivation in the message.
+- **Turn it off** (`FrameAnchoring = false`) for byte-identical pre-frame behaviour, at the cost of the precision.
 - **What it does not need:** any change to your terrain bake or your collision meshes. Chunk-local terrain
   vertices (see the Terrain section) are unconditional and work on both heads with this flag off.
+
+### Adopting the floating-origin major
+
+The wire and the position component both changed, so client and server must ship together. The compiler finds
+almost all of it.
+
+1. **`ReplicatedPosition.Value` is read-only.** Every `new ReplicatedPosition { Value = p }` and every
+   `pos.Value = p` is now a build error. The fix at each site is one question - where did this position come
+   from? - answered by `ReplicatedPosition.FromWorld(absolute, frame)` for a position arriving from outside the
+   simulation (an authored spawn, a persisted record, an admin teleport) or `ReplicatedPosition.InFrame(frame,
+   local)` for one coming out of the simulation, or out of a physics world already in that frame. Inside a step,
+   `pos = pos.WithLocal(newLocal)` preserves the frame by construction. With no frame in hand,
+   `FromWorld(absolute, world.GetIslandFrame())` is right on any head.
+2. **Wire generation 9.** Position encodes `[frameX:short][frameZ:short][localX,localY,localZ:float]`. The
+   always-on `WireGenerationAuthenticator` rejects a mismatched peer cleanly at connect, so a stale client gets
+   `DisconnectReason.IncompatibleVersion` instead of a misparse. Repin both ends.
+3. **`ShardedWorldServer` no longer takes an `IPhysicsWorld`.** Supply
+   `ShardedWorldServerConfig.PhysicsWorldFactory` instead, and populate each cell's world per the contract above.
+   This is the largest item on the list: a consumer whose statics come from terrain chunks on a headless head
+   needs its own server-side collider sink.
+4. **A non-rebasable `IPhysicsWorld` is refused** by both `WorldServer` (with `FrameAnchoring`) and `WorldClient`.
+   Use `BepuPhysicsWorld`, implement `Origin`/`CanRebase`/`Rebase` on your own backend, or turn `FrameAnchoring`
+   off and pass no physics world to the client.
+5. **Persisted cell blobs come forward on their own.** The cell-blob schema is version 3, and
+   `PositionFrameBlobMigration.FrameV2ToV3` is folded into `CellPersistence`'s default chain, so an existing save
+   boots into a framed server with no consumer wiring. A config with `IncludeEngineMigrations = false` has to
+   register it explicitly.
+6. **A custom `IPredictedState<T>`** that opts into `FrameAnchor` must also implement `WithFrameAnchor`; leaving
+   both at their defaults keeps a frameless state working exactly as before.
+7. **Optional:** handle `WorldClient.FrameChanged` for colliders you registered yourself outside the engine's
+   streaming sink. A consumer that only reads the positions the engine hands it needs no handler.
 
 ### Sharded authoritative server (many players / a large world)
 

@@ -44,7 +44,7 @@ public sealed class PlayerMovementSystem : ISystem
     /// Builds one cell's movement step. <c>frame</c> is the island frame it steps in - the owning cell's, matching
     /// that cell's physics world's <c>Origin</c>. <see cref="WorldFrame.Origin"/> (the default) is absolute world
     /// coordinates and is byte-identical to the pre-frame system. <c>samplerSpace</c> says which space the ground /
-    /// normal / medium delegates read; see <see cref="NetWorld.SamplerSpace"/> for why
+    /// normal / medium delegates read. See <see cref="NetWorld.SamplerSpace"/> for why
     /// <see cref="SamplerSpace.World"/> is WRONG rather than merely imprecise for a sampler backed by the cell's own
     /// physics world.
     /// </summary>
@@ -125,7 +125,7 @@ public sealed class PlayerMovementSystem : ISystem
 
             // Self-healing invariant: everything this cell OWNS is stamped with this cell's frame. Every door an
             // entity enters by already converts (spawn, handoff, restore, teleport, ghost mirror), so this normally
-            // never fires; what it buys is that a miss at any of them is corrected EXACTLY here, on the next tick,
+            // never fires. What it buys is that a miss at any of them is corrected EXACTLY here, on the next tick,
             // instead of becoming a 128 m step. One comparison per entity per tick.
             if (pos.Frame != cellFrame) pos = pos.ToFrame(cellFrame);
 

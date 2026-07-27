@@ -156,7 +156,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
         // The per-cell runtime (its movement system and its spawn clamp) is built lazily against the cell's own
-        // physics world and frame; these are the pieces every cell's copy shares.
+        // physics world and the cell's own frame. These are the pieces every cell's copy shares.
         cellGroundHeight = groundHeight;
         cellGroundNormal = groundNormal;
         cellBounds = bounds;

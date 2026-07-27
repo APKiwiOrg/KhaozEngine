@@ -253,7 +253,7 @@ public sealed partial class ShardHost
         // servers - or two runs on one machine - could silently diverge in the low bits over thousands of ticks.
         // The scope is a readonly struct over a save/apply/restore of that register, so an inline single-threaded
         // scheduler pays one save and one restore per cell and nothing else. ThreadPoolJobScheduler installs the same
-        // scope around its own worker bodies, so a consumer's own For() call site is covered too; entering twice is
+        // scope around its own worker bodies, so a consumer's own For() call site is covered too, and entering twice is
         // harmless, since the inner scope restores exactly what the outer one had already made canonical.
         scheduler.For(n, i =>
         {

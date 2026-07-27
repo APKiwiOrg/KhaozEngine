@@ -6,7 +6,8 @@ process.
 - **`CellCoord`** - an integer cell coordinate. `CellCoord.FromWorld(x, y, cellSize)` floors a world position
   into a cell (mirrors `KhaozEngine.Replication.InterestGrid`'s cell math). Value type, usable as a dictionary
   key.
-- **`CellSim`** - one authoritative cell: its own ECS `World`, a `FixedTickHost`, a `ServerReplicator`, and an
+- **`CellSim`** - one authoritative cell, and one SIMULATION ISLAND: its own ECS `World`, its own optional
+  `IPhysicsWorld` (`Physics`), its own island `Frame`, a `FixedTickHost`, a `ServerReplicator`, and an
   `InterestGrid`. `Tick(elapsedSeconds)` advances the fixed-tick accumulator and steps the cell's ECS systems
   once per fixed tick.
 - **`ShardHost`** - owns the `CellCoord -> CellSim` map, creates cells on demand, exposes `CellFor(x, y)` /
@@ -15,6 +16,26 @@ process.
   `CellCreated` event fires each time a coordinate is instantiated (from `CellFor`, `SpawnAt`, a handoff
   destination, or `EnsureCell`), including a recreate after `RemoveCell` - the load hook a per-cell persistence
   layer subscribes to.
+
+**Island frames (since the floating-origin major).** A frame is a property of a SPACE, and a physics world IS a
+space, so a cell owns both or neither. Built with `frameAnchoring: true`, `ShardHost` gives each cell the frame
+nearest its CENTRE (`FrameFor(coord)`, pure, so a physics factory can call it), fixed for the cell's life - which
+is why a shard host performs no runtime rebase at all. Built with a `physicsFactory`, it calls that factory once
+per cell at creation, before the cell can tick or receive an entity, and disposes the returned world with the cell.
+The factory's world must hold every static within `cellSize / 2 + overlapMargin` of the cell centre, expressed
+against an `Origin` of `FrameFor(coord).Anchor`, and must belong to that one cell.
+
+- **`IslandFrame`** is the singleton component carrying a world's frame, on a reserved entity with no `NetId` (so
+  replication, persistence, interest rebuilds, ghosting and handoff all skip it). Read it with
+  `world.GetIslandFrame()`, publish it with `world.SetIslandFrame(frame)`. It is how anything handed only a
+  `World` - a pickup spawn callback, a consumer's per-tick brain, a cross-border ghost reader - reaches the frame
+  without a new parameter on four separate seams. Absent means `WorldFrame.Origin`, which is correct for every
+  unframed cell and every plain test world.
+- **`ICellFrameAdapter`** is the seam that re-expresses an entity ARRIVING in a cell into that cell's frame, at
+  every door: `AdoptFromMigrate` (a handoff), `ApplyGhostSnapshot` (a border mirror), `TryRestoreOwned` (a
+  persistence restore). This package owns the topology and knows nothing about the position component, so the
+  layer that does supplies the conversion (`KhaozEngine.NetWorld` wires one on every cell). Null means no
+  conversion, which is what a plain unframed cell wants.
 
 **Cells unload as well as load.** `ShardHost.RemoveCell(coord)` takes a cell out of the grid: it stops ticking,
 stops being ghosted into and out of, and every entity it owned ceases to exist. `CanRemoveCell(coord)` is the same
@@ -86,6 +107,13 @@ clients homed in it, keyed to the serve epoch) instead of scanning the whole cel
 one reused `SnapshotScratch` stream. The wire is byte-identical to the full-scan path. Only the per-call
 `O(worldPop)` scan and stream allocation are removed.
 
+**The per-cell fan-out runs in the canonical FP environment.** `Tick` wraps each cell's step in a
+`DeterministicFpScope`, because `DeterministicFp` pins the floating-point control register per THREAD and a
+scheduler fanning cells across the thread pool runs them on arbitrary workers whose register is whatever the pool
+last left it at. `ThreadPoolJobScheduler` installs the same scope around its own worker bodies, so a consumer's own
+`For()` call site is covered too, and entering twice is harmless.
+
 Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet
 (that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,
-`KhaozEngine.Simulation`, and `KhaozEngine.Replication`.
+`KhaozEngine.Simulation`, `KhaozEngine.Physics` (the seam a cell's own world is typed as) and
+`KhaozEngine.Replication`.

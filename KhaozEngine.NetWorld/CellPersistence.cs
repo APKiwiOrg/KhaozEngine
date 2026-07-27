@@ -43,12 +43,12 @@ public sealed class CellPersistenceConfig
     /// from the previous version so old saves are brought forward, not skipped or misread. Defaults to the engine's
     /// current built-in layout version (<see cref="PositionFrameBlobMigration.FramedPositionSchemaVersion"/> = 3 as of
     /// 16.0.0, which put the island-frame stamp on <see cref="ReplicatedPosition"/>). Version 2 was the 10.0.0
-    /// 64-bit <see cref="KhaozEngine.Replication.NetId"/> layout; the pre-10.0.0 32-bit layout was version 1.</summary>
+    /// 64-bit <see cref="KhaozEngine.Replication.NetId"/> layout, and the pre-10.0.0 32-bit layout was version 1.</summary>
     public int SchemaVersion { get; init; } = PositionFrameBlobMigration.FramedPositionSchemaVersion;
 
     /// <summary>
     /// Whether to fold the engine's own built-in cell-blob migrations into this config's chain (default true). There
-    /// are two: the 10.0.0 <see cref="NetIdBlobMigration.WidenV1ToV2"/> netId widening (v1 -&gt; v2) and the 16.0.0
+    /// are two: the 10.0.0 <see cref="NetIdBlobMigration.WidenV1ToV2"/> netId widening (v1 -&gt; v2) and the
     /// <see cref="PositionFrameBlobMigration.FrameV2ToV3"/> position framing (v2 -&gt; v3). Each is included
     /// automatically for any <see cref="SchemaVersion"/> above it, so a server on the default config
     /// migrates an old save forward without the consumer wiring anything. A consumer migration registered from

@@ -35,8 +35,8 @@ These graph rules are not just prose. Headless architecture tests in `KhaozEngin
 
 - `ArchitectureTests.cs` - third-party containment (every third-party PackageReference stays in its allowlisted
   seam/backend home, and any new one must be added to the allowlist deliberately), the layering invariants
-  (`Primitives` / `Simulation` are zero-dependency leaves, the Foundation umbrella stays GPU-free, `App` never
-  references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
+  (`Primitives` is the zero-dependency leaf, `Simulation` may reference `Determinism` and nothing else, the
+  Foundation umbrella stays GPU-free, `App` never references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
   every umbrella's transitive closure, and `Render3D` staying seams-only.
 - `GpuPublicApiTests.cs` - a reflection guard that walks the public and protected surface of `KhaozEngine.Gpu`
   and fails if any Veldrid type leaks through it, proving the GPU seam keeps Veldrid contained.
@@ -278,14 +278,55 @@ KhaozEngine.Game -> KhaozEngine.Simulation   (IJobScheduler / ThreadPoolJobSched
 
 `GameApp.JobScheduler` hands a game a shared worker-pool scheduler it wires into a world once
 (`world.DefaultScheduler = App.JobScheduler`), so the type it returns (`IJobScheduler`, built as a
-`ThreadPoolJobScheduler`) has to be visible from `KhaozEngine.Game`. `KhaozEngine.Simulation` is the
-zero-dependency leaf that owns the scheduler abstraction (the same one `ShardHost.Scheduler` uses on the server),
+`ThreadPoolJobScheduler`) has to be visible from `KhaozEngine.Game`. `KhaozEngine.Simulation` sits at the bottom
+of the server/netcode stack and owns the scheduler abstraction (the same one `ShardHost.Scheduler` uses on the
+server),
 so the new `Game -> Simulation` edge introduces no cycle: `Simulation` never references `Game`, `Windowing`, or
 any renderer. The edge was already reachable transitively (`Game` pulls `Ecs` via the umbrellas, and
 `Ecs -> Simulation`), but is made direct so `KhaozEngine.Game` alone, with no `Ecs`/`Foundation` reference, still
 exposes the property. `World.DefaultScheduler` itself is the per-world seam in `KhaozEngine.Ecs`: it defaults to a
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
+
+## Determinism at the scheduling boundary: Simulation references Determinism
+
+The floating-origin major added one edge, acyclic, and it cost `KhaozEngine.Simulation` its zero-dependency-leaf
+status:
+
+```
+KhaozEngine.Simulation -> KhaozEngine.Determinism   (DeterministicFpScope, around each ThreadPoolJobScheduler body)
+```
+
+`DeterministicFp` pins the floating-point control register (rounding mode, FTZ/DAZ, trap masks) on the CALLING
+THREAD only, by its own contract. `ThreadPoolJobScheduler.For` hands its body to arbitrary BCL thread-pool workers,
+which are neither the calling thread nor a dedicated sim thread, so their register is whatever the pool last left
+it at - which is the exact class of bug the scope exists to remove, reintroduced one layer up at the
+job-scheduling boundary (issue #197). Applying the scope there rather than at each call site means a consumer's own
+`For()` is covered too. `ShardHost.Tick` installs the same scope around each cell's step, so the guarantee holds
+whichever scheduler is in use. Entering twice is harmless, since the inner scope restores exactly what the outer
+one had already made canonical.
+
+`Determinism` references only `Diagnostics` (for one startup warning), so the transitive closure stays headless
+and GPU-free and every umbrella-purity guard is unaffected. The architecture test is narrowed rather than deleted:
+`Simulation` may reference `Determinism` and nothing else.
+
+## Cell islands: Sharding references Physics
+
+A frame is a property of a SPACE, and a physics world IS a space, so a shard cell owns both or neither:
+
+```
+KhaozEngine.Sharding -> KhaozEngine.Physics   (CellSim.Physics, the cell's own IPhysicsWorld)
+```
+
+`KhaozEngine.Physics` is itself a zero-project-reference seam package (it declares only `System.Numerics`), so the
+edge adds nothing to the closure but the seam types. `CellSim` holds the world, disposes it with the cell, and
+never touches its contents: the consumer builds and populates it through
+`ShardedWorldServerConfig.PhysicsWorldFactory`, and the engine never adds a static to a cell world.
+
+The conversion of an entity ARRIVING in a cell is the other half, and it does NOT add an edge. `Sharding` knows
+nothing about `ReplicatedPosition` (that type is one layer up, in `NetWorld`, which references `Sharding`), so the
+cell calls out through `ICellFrameAdapter` at each door an entity can arrive by and the layer that owns the
+component supplies the conversion.
 
 ## Version comparison: one shared leaf, two thin wrappers
 

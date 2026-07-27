@@ -82,7 +82,7 @@ public class FannedOutDeterminismTests
         Assert.All(probe.Observed, r => Assert.Equal(FpRounding.ToNearest, r));
     }
 
-    // fegetround/fesetround are only wired for the platforms DeterministicFp itself supports; elsewhere the scope is
+    // fegetround/fesetround are only wired for the platforms DeterministicFp itself supports. Elsewhere the scope is
     // a documented no-op and there is nothing to assert.
     private static bool IsFpObservable =>
         RuntimeInformation.ProcessArchitecture is Architecture.X64 or Architecture.Arm64;
@@ -109,7 +109,7 @@ public class FannedOutDeterminismTests
 /// <summary>
 /// Test-only native poke at the FP rounding mode, so a test can observe the environment from inside a fanned-out
 /// worker. Declares its own P/Invoke (test infrastructure, not a production seam). The sibling in
-/// <c>KhaozEngine.Foundation.Tests</c> (<c>FpPoke</c>) does the same for the scope's own unit tests; they are kept
+/// <c>KhaozEngine.Foundation.Tests</c> (<c>FpPoke</c>) does the same for the scope's own unit tests. They are kept
 /// separate rather than shared so neither test project takes a reference on the other.
 /// </summary>
 internal static class FpRounding

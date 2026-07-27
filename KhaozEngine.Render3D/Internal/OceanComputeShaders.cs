@@ -192,8 +192,15 @@ void packedFields(uint c, uint m, uint n, float tile, float t,
     // for that cascade alone while the coarse one was perfect. tanh is 1 to well under a float ULP past about 10,
     // so clamping changes no value anyone can observe. KE_TANH_LIMIT mirrors OceanSpectrum.TanhArgumentLimit.
     float omega = sqrt(KE_GRAVITY * k * (depth <= 0.0 ? 1.0 : tanh(min(k * depth, KE_TANH_LIMIT))));
-    float cw = cos(omega * t), sw = sin(omega * t);
-    // h~(k,t) = h0(k) e^{i omega t} + conj(h0(-k)) e^{-i omega t}; h.zw is already conj(h0(-k)).
+    // Sign is load-bearing (KhaozEngine#342): the spatial reconstruction below is a POSITIVE-twiddle inverse
+    // transform (Re[h~ * e^{i k.x}]), so a term evolved as h0(k) * e^{+i omega t} produces Re[h0 e^{i(k.x + omega
+    // t)}], whose crests travel along MINUS k as t grows - i.e. wind+180. Negating t here instead gives h0(k) *
+    // e^{-i omega t}, whose term is Re[h0 e^{i(k.x - omega t)}] and travels along +k, matching both
+    // WaterSeaState.WindDirectionDegrees's documented convention and the Procedural/Gerstner path's
+    // `phase = k.d.x - omega*t` (ShaderSources.Water.cs). cw is untouched (cosine is even in t).
+    float cw = cos(omega * t), sw = -sin(omega * t);
+    // h~(k,t) = h0(k) e^{-i omega t} + conj(h0(-k)) e^{+i omega t}; h.zw is already conj(h0(-k)). Hermitian
+    // symmetry survives the sign flip (h~(-k,t) = conj(h~(k,t)) either way), so the field stays real.
     vec2 ht = cmul(h.xy, vec2(cw, sw)) + cmul(h.zw, vec2(cw, -sw));
 
     float ik = 1.0 / k;

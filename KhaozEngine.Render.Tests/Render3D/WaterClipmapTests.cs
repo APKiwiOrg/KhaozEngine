@@ -364,6 +364,45 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void TheBandLimitIsActuallyLiveAtTheShippedCascadeSizes()
+        {
+            // Guards against the band limit being silently INERT. Every ring could resolve to mip 0 (if the cells
+            // were always finer than a texel) and the world lock alone would still carry the acceptance test, so
+            // "the artifact went down" is not evidence that this half of the fix is doing anything.
+            //
+            // The default sea state's three cascades at 64 texels: tiles 250 / 59.5 / 14.2 give texels of 3.9,
+            // 0.93 and 0.22 m.
+            float[] texels = { 250f / 64f, 250f / 4.2f / 64f, 250f / 4.2f / 4.2f / 64f };
+            float maxMip = WaterClipmap.MipCount(64) - 1;
+            var defaults = new WaterSettings();
+
+            // The innermost ring already band-limits the finest cascade: half-metre cells cannot carry 0.22 m
+            // content, and sampling it at LOD 0 is exactly what the diagnosis measured as boiling.
+            float inner = WaterClipmap.MipLevel(WaterClipmap.CellSize(defaults.ClipmapCellSize, 0), texels[2],
+                defaults.ClipmapBandLimitSamples, maxMip);
+            Assert.True(inner > 0.5f, $"the innermost ring selects mip {inner} on the finest cascade, i.e. barely " +
+                "any band limit at all.");
+
+            // And it climbs monotonically outward, one mip per level, since both the cell size and the mip scale
+            // double together - until the chain runs out.
+            float previous = -1f;
+            for (int l = 0; l < 6; l++)
+            {
+                float mip = WaterClipmap.MipLevel(WaterClipmap.CellSize(defaults.ClipmapCellSize, l), texels[2],
+                    defaults.ClipmapBandLimitSamples, maxMip);
+                Assert.True(mip >= previous, $"level {l} band-limits LESS than level {l - 1} ({mip} vs {previous})");
+                if (previous >= 0f && mip < maxMip) Assert.Equal(previous + 1f, mip, 3);
+                previous = mip;
+            }
+            Assert.Equal(maxMip, previous, 3);   // the outer rings bottom out on the chain, as they should
+
+            // The coarsest cascade is coarse enough that the near rings leave it alone, which is the whole point
+            // of selecting PER CASCADE rather than dropping whole ones.
+            Assert.Equal(0f, WaterClipmap.MipLevel(WaterClipmap.CellSize(defaults.ClipmapCellSize, 0), texels[0],
+                defaults.ClipmapBandLimitSamples, maxMip));
+        }
+
+        [Fact]
         public void MipCountIsTheFullChainDownToOneTexel()
         {
             Assert.Equal(1, WaterClipmap.MipCount(1));

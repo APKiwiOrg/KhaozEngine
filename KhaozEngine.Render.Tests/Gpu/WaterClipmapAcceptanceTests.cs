@@ -41,8 +41,8 @@ namespace KhaozEngine.Tests.Gpu
 
         public WaterClipmapAcceptanceTests(Xunit.Abstractions.ITestOutputHelper output) => _out = output;
 
-        const int N = 64;
-        const int Cascades = 3;
+        const int N = WaterMirror.N;
+        const int Cascades = WaterMirror.Cascades;
         const float FrozenTime = 7.5f;
         const float FrameDt = 1f / 60f;
         const float CellSize = 0.5f;
@@ -106,23 +106,23 @@ namespace KhaozEngine.Tests.Gpu
             WaterSettings settings = Settings();
             using var producer = new OceanFftProducer(dev);
 
-            Ocean now = Capture(dev, producer, settings, FrozenTime);
+            WaterMirror.Ocean now = WaterMirror.Capture(dev, producer, settings, FrozenTime);
             Assert.True(now.MaxMip > 0f, "the producer gave the clipmap no mip chain to band-limit against");
-            AssertTheGpuChainIsABoxFilter(dev, producer, now);
+            WaterMirror.AssertTheGpuChainIsABoxFilter(dev, producer, now);
 
-            Ocean next = Capture(dev, producer, settings, FrozenTime + FrameDt);
+            WaterMirror.Ocean next = WaterMirror.Capture(dev, producer, settings, FrozenTime + FrameDt);
 
             WaterPlane plane = Plane();
-            float[] baseline = Sample(plane, now, settings, camX: 0f, clipmap: true);
+            float[] baseline = Sample(now, settings, camX: 0f, clipmap: true);
 
             // The scale everything is reported against: what the sea legitimately does in one 60 fps frame, with
             // the camera held still so the grid contributes nothing.
-            float motion = Rms(baseline, Sample(plane, next, settings, camX: 0f, clipmap: true));
+            float motion = Rms(baseline, Sample(next, settings, camX: 0f, clipmap: true));
             Assert.True(motion > 1e-4f,
                 $"the sea moved {motion} m in a frame, which is too still for the comparison to mean anything");
 
-            (float Clip, float Focused) at10 = Artifacts(plane, now, settings, step: 0.1f);
-            (float Clip, float Focused) at50 = Artifacts(plane, now, settings, step: 0.5f);
+            (float Clip, float Focused) at10 = Artifacts(now, settings, step: 0.1f);
+            (float Clip, float Focused) at50 = Artifacts(now, settings, step: 0.5f);
 
             string report =
                 $"one frame of real motion = {motion:F5} m RMS; " +
@@ -157,6 +157,49 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// The acceptance measurement RE-DERIVED with 16.8.0's camera-relative reduction in place: the grid is
+        /// built against a render origin and the maps are sampled at the absolute position recovered from it,
+        /// exactly as the shader does. The camera and the probes stay at the same ABSOLUTE world positions, so both
+        /// runs look at the same sea from the same place and any difference is the round trip's own.
+        /// <para>
+        /// Worth measuring rather than inferring. The lattice's invariance under a rebase is proved separately and
+        /// headlessly, but "the lattice is right" does not by itself say the measured ARTIFACT survives being
+        /// expressed against an origin, and re-running the metric is cheap.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void TheArtifactNumbersSurviveTheCameraRelativeReduction()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
+
+            WaterSettings settings = Settings();
+            using var producer = new OceanFftProducer(dev);
+            WaterMirror.Ocean maps = WaterMirror.Capture(dev, producer, settings, FrozenTime);
+
+            // A render origin on the 128 m frame grid, which is what Scene3D quantizes to.
+            var origin = new Vector3(1024f, 0f, -768f);
+
+            foreach (float step in new[] { 0.1f, 0.5f })
+            {
+                float flat = 0f, shifted = 0f;
+                foreach (float start in StartOffsets)
+                {
+                    flat = MathF.Max(flat, Rms(Sample(maps, settings, start, true),
+                                               Sample(maps, settings, start + step, true)));
+                    shifted = MathF.Max(shifted, Rms(Sample(maps, settings, start, true, origin),
+                                                     Sample(maps, settings, start + step, true, origin)));
+                }
+                _out.WriteLine($"{step:F2} m step: origin 0 -> {flat:F6} m RMS, origin {origin} -> {shifted:F6}");
+                Assert.True(MathF.Abs(flat - shifted) <= 1e-5f,
+                    $"the {step} m artifact is {flat} without a render origin and {shifted} with one. The " +
+                    "reduction is meant to be an exact change of frame, so a difference here is the grid being " +
+                    "built differently against the origin rather than merely expressed against it.");
+            }
+        }
+
+        /// <summary>
         /// The sampling-frame features (onshore focus, per-cascade rotations, the domain warp) are transforms of
         /// the SAMPLING space, so they should be indifferent to which grid samples them. Verified rather than
         /// assumed: turn all three on and the clipmap must still render a sea, and still not resample it.
@@ -178,7 +221,7 @@ namespace KhaozEngine.Tests.Gpu
             settings.SeaState = sea;
 
             using var producer = new OceanFftProducer(dev);
-            Ocean maps = Capture(dev, producer, settings, FrozenTime);
+            WaterMirror.Ocean maps = WaterMirror.Capture(dev, producer, settings, FrozenTime);
             Assert.True(maps.MaxMip > 0f, "the sampling frame knobs cost the clipmap its mip chain");
             Assert.Equal(2 * Cascades, producer.LastMipCopies);
             // The frame is a sampling-space transform, so it changes the sea WITHOUT changing the maps' own
@@ -403,8 +446,8 @@ namespace KhaozEngine.Tests.Gpu
 
             // And the fresh chain is still the box filter of the base level that produced it, read from the same
             // single submission rather than after a drain.
-            float[] baseLevel = ReadLevel(dev, producer.Map, 0, 0, N);
-            float[] cpu = Downsample(baseLevel, N);
+            float[] baseLevel = WaterMirror.ReadLevel(dev, producer.Map, 0, 0, N);
+            float[] cpu = WaterMirror.Downsample(baseLevel, N);
             float scale = 0f;
             foreach (float v in cpu) scale = MathF.Max(scale, MathF.Abs(v));
             float tolerance = MathF.Max(5e-3f * scale, 1e-5f);
@@ -432,7 +475,7 @@ namespace KhaozEngine.Tests.Gpu
                 dev.Submit(cl);
                 dev.WaitForIdle();
             }
-            return MapStaging(dev, staging, size);
+            return WaterMirror.MapStaging(dev, staging, size);
         }
 
         // ---- Measurement -------------------------------------------------------------------------------------
@@ -447,15 +490,15 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         static readonly float[] StartOffsets = { 0f, 0.23f, 0.47f, 0.71f, 0.95f };
 
-        static (float Clip, float Focused) Artifacts(in WaterPlane plane, in Ocean maps, WaterSettings settings, float step)
+        static (float Clip, float Focused) Artifacts(in WaterMirror.Ocean maps, WaterSettings settings, float step)
         {
             float clip = 0f, focused = 0f;
             foreach (float start in StartOffsets)
             {
-                clip = MathF.Max(clip, Rms(Sample(plane, maps, settings, start, clipmap: true),
-                                           Sample(plane, maps, settings, start + step, clipmap: true)));
-                focused = MathF.Max(focused, Rms(Sample(plane, maps, settings, start, clipmap: false),
-                                                 Sample(plane, maps, settings, start + step, clipmap: false)));
+                clip = MathF.Max(clip, Rms(Sample(maps, settings, start, clipmap: true),
+                                           Sample(maps, settings, start + step, clipmap: true)));
+                focused = MathF.Max(focused, Rms(Sample(maps, settings, start, clipmap: false),
+                                                 Sample(maps, settings, start + step, clipmap: false)));
             }
             return (clip, focused);
         }
@@ -470,12 +513,14 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The rendered surface height at every probe: the piecewise-linear interpolant the triangles
         /// actually draw, evaluated over the grid's own reference parametrization so the two grids are compared
         /// on the same quantity.</summary>
-        static float[] Sample(in WaterPlane plane, in Ocean maps, WaterSettings settings, float camX, bool clipmap)
+        static float[] Sample(in WaterMirror.Ocean maps, WaterSettings settings, float camX, bool clipmap,
+            Vector3 renderOrigin = default)
         {
+            WaterPlane plane = Plane();
             var heights = new float[Probes * Probes];
-            Surface surface = clipmap
-                ? Surface.Clip(plane, maps, settings, camX)
-                : Surface.Focused(plane, maps, settings, camX);
+            WaterMirror.Surface surface = clipmap
+                ? WaterMirror.Surface.Clip(plane, maps, settings, camX, renderOrigin)
+                : WaterMirror.Surface.Focused(plane, maps, settings, camX);
             for (int j = 0; j < Probes; j++)
             {
                 for (int i = 0; i < Probes; i++)
@@ -488,296 +533,6 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
             return heights;
-        }
-
-        /// <summary>A built grid, displaced, with the point query the metric needs.</summary>
-        sealed class Surface
-        {
-            // Camera-focused: monotone warped axes plus a displaced height per node.
-            float[] _xs = Array.Empty<float>(), _zs = Array.Empty<float>();
-            float[] _h = Array.Empty<float>();
-            // Clipmap: per-level origins, cell sizes and a displaced height per node.
-            WaterClipmapVertex[] _verts = Array.Empty<WaterClipmapVertex>();
-            float[] _clipH = Array.Empty<float>();
-            float _cell;
-            int _ring, _levels;
-            float[] _ox = Array.Empty<float>(), _oz = Array.Empty<float>();
-            bool _isClip;
-
-            public static Surface Focused(in WaterPlane plane, in Ocean maps, WaterSettings settings, float camX)
-            {
-                const int n = WaterMath.GridResolution;
-                var pos = new Vector3[n * n];
-                var scratch = new float[2 * n];
-                WaterMath.BuildGridPositions(plane, camX, 0f, settings.GridFocusBias, pos, scratch);
-                var s = new Surface { _xs = new float[n], _zs = new float[n], _h = new float[n * n] };
-                for (int i = 0; i < n; i++) { s._xs[i] = pos[i].X; s._zs[i] = pos[i * n].Z; }
-                for (int i = 0; i < n * n; i++)
-                    // No mip chain is bound on this path, so every vertex samples LOD 0 - which IS the defect.
-                    s._h[i] = pos[i].Y + maps.Displace(pos[i].X, pos[i].Z, 0f, settings).Y;
-                return s;
-            }
-
-            public static Surface Clip(in WaterPlane plane, in Ocean maps, WaterSettings settings, float camX)
-            {
-                float cell = settings.ClipmapCellSize;
-                int ring = WaterClipmap.ClampRingCells(settings.ClipmapRingCells);
-                int levels = WaterClipmap.LevelsFor(plane, cell, ring);
-                var verts = new WaterClipmapVertex[WaterClipmap.VertexCount(levels, ring)];
-                var indices = new uint[WaterClipmap.IndexCount(levels, ring)];
-                Vector2 focus = WaterClipmap.ClampFocus(plane, camX, 0f);
-                int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels, verts, indices, out _);
-
-                var s = new Surface
-                {
-                    _isClip = true, _verts = verts, _clipH = new float[vc], _cell = cell,
-                    _ring = ring, _levels = levels, _ox = new float[levels], _oz = new float[levels],
-                };
-                for (int l = 0; l < levels; l++)
-                {
-                    float c = WaterClipmap.CellSize(cell, l);
-                    s._ox[l] = WaterClipmap.SnapOrigin(focus.X, c);
-                    s._oz[l] = WaterClipmap.SnapOrigin(focus.Y, c);
-                }
-                for (int i = 0; i < vc; i++)
-                {
-                    WaterClipmapVertex v = verts[i];
-                    // Mirrors the vertex stage's tap loop exactly: one tap normally, two averaged on a stitched
-                    // ring-boundary vertex, each band-limited to this vertex's own Cell.
-                    int taps = v.Stitch == Vector2.Zero ? 1 : 2;
-                    float sum = 0f;
-                    for (int t = 0; t < taps; t++)
-                    {
-                        Vector2 o = taps == 1 ? Vector2.Zero : (t == 0 ? -v.Stitch : v.Stitch);
-                        float sx = v.Position.X + o.X, sz = v.Position.Z + o.Y;
-                        sum += v.Position.Y + maps.Displace(sx, sz, v.Cell, settings).Y;
-                    }
-                    s._clipH[i] = sum / taps;
-                }
-                return s;
-            }
-
-            public float HeightAt(float x, float z) => _isClip ? ClipHeight(x, z) : FocusedHeight(x, z);
-
-            float FocusedHeight(float x, float z)
-            {
-                const int n = WaterMath.GridResolution;
-                int i = Cell(_xs, x), j = Cell(_zs, z);
-                float u = (x - _xs[i]) / (_xs[i + 1] - _xs[i]);
-                float v = (z - _zs[j]) / (_zs[j + 1] - _zs[j]);
-                return Bary(u, v, _h[j * n + i], _h[j * n + i + 1], _h[(j + 1) * n + i], _h[(j + 1) * n + i + 1]);
-            }
-
-            float ClipHeight(float x, float z)
-            {
-                int stride = _ring + 1, perLevel = stride * stride;
-                for (int l = 0; l < _levels; l++)
-                {
-                    float c = WaterClipmap.CellSize(_cell, l);
-                    float half = _ring * 0.5f * c;
-                    float lx = (x - (_ox[l] - half)) / c, lz = (z - (_oz[l] - half)) / c;
-                    if (lx < 0f || lz < 0f || lx >= _ring || lz >= _ring) continue;
-                    int i = (int)lx, j = (int)lz;
-                    int b = l * perLevel + j * stride + i;
-                    return Bary(lx - i, lz - j, _clipH[b], _clipH[b + 1], _clipH[b + stride], _clipH[b + stride + 1]);
-                }
-                return 0f;   // outside the outermost ring: no surface, and no probe reaches here
-            }
-
-            /// <summary>Interpolate over the quad's TWO triangles, matching the (i0, i2, i1) / (i1, i2, i3)
-            /// triangulation the index builders emit, so the metric reads the surface that is actually drawn
-            /// rather than a bilinear approximation of it.</summary>
-            static float Bary(float u, float v, float h00, float h10, float h01, float h11)
-                => u + v <= 1f
-                    ? h00 + (h10 - h00) * u + (h01 - h00) * v
-                    : h11 + (h01 - h11) * (1f - u) + (h10 - h11) * (1f - v);
-
-            static int Cell(float[] axis, float value)
-            {
-                int lo = 0, hi = axis.Length - 2;
-                while (lo < hi)
-                {
-                    int mid = (lo + hi + 1) / 2;
-                    if (axis[mid] <= value) lo = mid; else hi = mid - 1;
-                }
-                return Math.Clamp(lo, 0, axis.Length - 2);
-            }
-        }
-
-        // ---- The maps ----------------------------------------------------------------------------------------
-
-        /// <summary>One frame's displacement cascades, read back and pyramided, plus the sampling the vertex stage
-        /// does over them.</summary>
-        readonly struct Ocean
-        {
-            /// <summary>[cascade][mip] as tightly packed rgba, 4 floats per texel.</summary>
-            public float[][][] Mips { get; init; }
-            public float[] Tiles { get; init; }
-            public float MaxMip { get; init; }
-
-            /// <summary>Mirrors the vertex stage's cascade sum exactly, at the identity sampling frame: per
-            /// cascade, a half-texel-offset wrapping trilinear tap at the level <see cref="WaterClipmap.MipLevel"/>
-            /// picks for <paramref name="spacing"/>. <paramref name="spacing"/> 0 is the camera-focused path, where
-            /// there is no chain and the level is 0.</summary>
-            public Vector3 Displace(float x, float z, float spacing, WaterSettings settings)
-            {
-                var sum = Vector3.Zero;
-                for (int c = 0; c < Tiles.Length; c++)
-                {
-                    float texel = Tiles[c] / N;
-                    float lod = WaterClipmap.MipLevel(texel <= 0f ? 0f : spacing, texel,
-                        settings.ClipmapBandLimitSamples, MaxMip);
-                    int m0 = (int)MathF.Floor(lod), m1 = Math.Min(m0 + 1, Mips[c].Length - 1);
-                    Vector3 a = Tap(Mips[c][m0], N >> m0, x, z, Tiles[c]);
-                    if (m1 == m0) { sum += a; continue; }
-                    sum += Vector3.Lerp(a, Tap(Mips[c][m1], N >> m1, x, z, Tiles[c]), lod - m0);
-                }
-                return sum;
-            }
-
-            /// <summary>Wrapping bilinear tap, in the shader's own coordinates: normalized uv is
-            /// <c>xz / tile + 0.5 / resolution</c> at every level, and the hardware scales that by the LEVEL's
-            /// size.</summary>
-            static Vector3 Tap(float[] level, int size, float x, float z, float tile)
-            {
-                float u = (x / tile + 0.5f / N) * size - 0.5f;
-                float v = (z / tile + 0.5f / N) * size - 0.5f;
-                int x0 = (int)MathF.Floor(u), z0 = (int)MathF.Floor(v);
-                float fx = u - x0, fz = v - z0;
-                Vector3 a = Texel(level, size, x0, z0), b = Texel(level, size, x0 + 1, z0);
-                Vector3 c = Texel(level, size, x0, z0 + 1), d = Texel(level, size, x0 + 1, z0 + 1);
-                return Vector3.Lerp(Vector3.Lerp(a, b, fx), Vector3.Lerp(c, d, fx), fz);
-            }
-
-            static Vector3 Texel(float[] level, int size, int x, int z)
-            {
-                int xi = ((x % size) + size) % size, zi = ((z % size) + size) % size;
-                int o = (zi * size + xi) * 4;
-                return new Vector3(level[o], level[o + 1], level[o + 2]);
-            }
-        }
-
-        static Ocean Capture(IGpuDevice dev, OceanFftProducer producer, WaterSettings settings, float time)
-        {
-            using (IGpuCommandList cl = dev.Factory.CreateCommandList())
-            {
-                cl.Begin();
-                Assert.True(producer.Update(cl, settings, time, wantMips: true),
-                    "the producer refused to run on a compute device");
-                cl.End();
-                dev.Submit(cl);
-                dev.WaitForIdle();
-            }
-
-            var mips = new float[Cascades][][];
-            var tiles = new float[Cascades];
-            int levels = WaterClipmap.MipCount(N);
-            for (int c = 0; c < Cascades; c++)
-            {
-                tiles[c] = producer.TileMetres[c];
-                mips[c] = new float[levels][];
-                mips[c][0] = ReadLevel(dev, producer.Map, 0, (uint)c, N);
-                // The chain itself is box-downsampled here rather than read back level by level: the GPU's chain is
-                // separately asserted to BE that box filter (AssertTheGpuChainIsABoxFilter), which is the cheaper
-                // way round and pins the semantics as well as the values.
-                for (int m = 1; m < levels; m++) mips[c][m] = Downsample(mips[c][m - 1], N >> (m - 1));
-            }
-            return new Ocean { Mips = mips, Tiles = tiles, MaxMip = producer.MaxMip };
-        }
-
-        /// <summary>
-        /// The one thing about the mip chain that cannot be reasoned about from the shader side: that
-        /// <c>GenerateMipmaps</c> ran AFTER the compute pass wrote the base level and produced the box filter the
-        /// band limit assumes. Both halves are backend-specific (the copy is what forces the synchronisation, and
-        /// each backend forces it differently), so this is checked on every backend rather than argued.
-        /// <para>
-        /// This half reads after a drain, so it pins the FILTER. The ORDERING hazard the shipping path actually
-        /// runs into is a consumer of the chain sitting in the same still-open command list, which a drain hides -
-        /// <see cref="TheMipChainIsFreshToALaterCommandInTheSameList"/> covers that, and the end-to-end render test
-        /// exercises it through a real draw.
-        /// </para>
-        /// </summary>
-        static void AssertTheGpuChainIsABoxFilter(IGpuDevice dev, OceanFftProducer producer, in Ocean maps)
-        {
-            Assert.Equal(WaterClipmap.MipCount(N) - 1, (int)maps.MaxMip);
-            for (uint layer = 0; layer < 2 * Cascades; layer++)
-            {
-                float[] baseLevel = ReadLevel(dev, producer.Map, 0, layer, N);
-                float[] gpu = ReadLevel(dev, producer.Map, 1, layer, N / 2);
-                float[] cpu = Downsample(baseLevel, N);
-
-
-                float scale = 0f;
-                foreach (float v in cpu) scale = MathF.Max(scale, MathF.Abs(v));
-                float tolerance = MathF.Max(5e-3f * scale, 1e-5f);
-                float worst = 0f;
-                for (int i = 0; i < cpu.Length; i++) worst = MathF.Max(worst, MathF.Abs(cpu[i] - gpu[i]));
-                Assert.True(worst <= tolerance,
-                    $"layer {layer} mip 1 is off the box downsample of mip 0 by {worst} (tolerance {tolerance}). " +
-                    "Either GenerateMipmaps did not see the compute pass's writes, or the chain is not a box " +
-                    "filter and the per-ring band limit is selecting levels that do not mean what it thinks.");
-            }
-        }
-
-        static float[] Downsample(float[] level, int size)
-        {
-            int half = size / 2;
-            var outp = new float[half * half * 4];
-            for (int z = 0; z < half; z++)
-            {
-                for (int x = 0; x < half; x++)
-                {
-                    for (int ch = 0; ch < 4; ch++)
-                    {
-                        float a = level[((2 * z) * size + 2 * x) * 4 + ch];
-                        float b = level[((2 * z) * size + 2 * x + 1) * 4 + ch];
-                        float c = level[((2 * z + 1) * size + 2 * x) * 4 + ch];
-                        float d = level[((2 * z + 1) * size + 2 * x + 1) * 4 + ch];
-                        outp[(z * half + x) * 4 + ch] = (a + b + c + d) * 0.25f;
-                    }
-                }
-            }
-            return outp;
-        }
-
-        /// <summary>Read one mip level of one array layer of an rgba16f texture back as floats, 4 per texel. The
-        /// half-float format has no <c>GpuReadback</c> helper, so this is the same hand-rolled staging copy
-        /// <c>OceanFftGpuTests</c> uses, with the mip level opened up.</summary>
-        static float[] ReadLevel(IGpuDevice dev, IGpuTexture src, uint mip, uint layer, int size)
-        {
-            IGpuResourceFactory f = dev.Factory;
-            using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
-                (uint)size, (uint)size, GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Staging));
-            using (IGpuCommandList cl = f.CreateCommandList())
-            {
-                cl.Begin();
-                cl.CopyTextureSubresource(src, mip, layer, staging, (uint)size, (uint)size);
-                cl.End();
-                dev.Submit(cl);
-                dev.WaitForIdle();
-            }
-            return MapStaging(dev, staging, size);
-        }
-
-        /// <summary>Map a square rgba16f staging texture out as floats, 4 per texel, row-major.</summary>
-        static float[] MapStaging(IGpuDevice dev, IGpuTexture staging, int size)
-        {
-            var result = new float[size * size * 4];
-            var row = new byte[size * 4 * 2];
-            MappedData map = dev.Map(staging, GpuMapMode.Read);
-            try
-            {
-                for (int y = 0; y < size; y++)
-                {
-                    Marshal.Copy(IntPtr.Add(map.Data, (int)(y * map.RowPitch)), row, 0, row.Length);
-                    for (int i = 0; i < size * 4; i++) result[y * size * 4 + i] = (float)BitConverter.ToHalf(row, i * 2);
-                }
-            }
-            finally
-            {
-                dev.Unmap(staging);
-            }
-            return result;
         }
     }
 }

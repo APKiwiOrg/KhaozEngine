@@ -3133,8 +3133,8 @@ public partial class MapEditorScene : GameScene, IGameScene3D
 
     /// <summary>Composes the status-strip text. The active mode name and its <see cref="EditorToolController.ModeHint"/>
     /// lead the line (the operator's most useful cue), followed by the undo/redo labels, the loaded window extent
-    /// when the document opened windowed (<see cref="Window"/>), the exit chord, and any transient message (a save
-    /// result or a bookmark action). Internal so a headless test can assert the ordering.</summary>
+    /// when the document opened windowed (<see cref="Window"/>), the settings and exit chords, and any transient
+    /// message (a save result or a bookmark action). Internal so a headless test can assert the ordering.</summary>
     internal string StatusLine()
     {
         string dirty = _document.IsDirty ? "*" : "";
@@ -3144,7 +3144,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         string window = _window is { } w ? $"   window: ({w.Min.X},{w.Min.Z})-({w.Max.X},{w.Max.Z})" : "";
         string tail = string.IsNullOrEmpty(_statusText) ? "" : "  |  " + _statusText;
         return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}{window}   " +
-            $"R: snap to ground   Ctrl+Up/Down: reorder feature   Shift+Esc: exit{tail}";
+            $"R: snap to ground   Ctrl+Up/Down: reorder feature   Esc: settings   Shift+Esc: exit{tail}";
     }
 
     /// <summary>Fits <paramref name="text"/> to the status strip's available width (its full width minus

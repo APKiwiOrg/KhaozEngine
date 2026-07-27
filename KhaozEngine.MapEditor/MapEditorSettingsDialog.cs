@@ -240,7 +240,7 @@ internal sealed class MapEditorSettingsDialog
 
     static List<string> MultiplierLabels()
     {
-        var labels = new List<string>(EditorSettings.RenderDistanceMultipliers.Length);
+        var labels = new List<string>(EditorSettings.RenderDistanceMultipliers.Count);
         foreach (float m in EditorSettings.RenderDistanceMultipliers) labels.Add(MultiplierLabel(m));
         return labels;
     }

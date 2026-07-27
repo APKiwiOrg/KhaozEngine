@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.App;
 using KhaozEngine.Persistence;
 using KhaozEngine.Render3D;
@@ -22,7 +23,7 @@ public sealed class EditorSettings
     /// <summary>The render-distance multipliers the settings menu offers, applied to
     /// <see cref="MapEditorOptions.RenderDistance"/> via <see cref="Terrain.RenderDistanceProfile.Scaled"/>.
     /// <c>1</c> leaves the head's configured profile untouched.</summary>
-    public static readonly float[] RenderDistanceMultipliers = { 1f, 2f, 4f };
+    public static readonly IReadOnlyList<float> RenderDistanceMultipliers = new[] { 1f, 2f, 4f };
 
     /// <summary>Lowest sun elevation the menu allows. Not zero: a sun exactly on the horizon degenerates the key
     /// light into a grazing direction that lights nothing.</summary>

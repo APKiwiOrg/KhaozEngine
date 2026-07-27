@@ -62,6 +62,24 @@ up regardless of load order. Plain `float` math throughout.
   `StreamerConfig` also carries an optional `DecorRadius` (chunk units, default 0 = off) for a farther,
   coarser decor-only ring tagged with **`ChunkRing`** (`Gameplay` / `Decor`). `UnloadAll`/`Dispose` free
   the loaded ring instead of leaking it.
+- **`RenderDistanceProfile`** (+ **`RenderDistanceTier`**) - the view-distance radii as one coherent set
+  rather than four independent knobs: `GameplayLoadRadiusChunks`/`DecorRadiusChunks`/`UnloadRadiusChunks`
+  (chunk units, feeding `StreamerConfig` via `ToStreamerConfig()` / `ToStreamerConfig(baseConfig)`), plus
+  `PropDrawRadius`, `FarClip` and `OceanHalfExtent` (metres) for the caller's own prop cull, camera and
+  water plane, since this type names no renderer and stays GPU-free. `For(tier)` maps the built-in
+  `Near`/`Medium`/`Far`/`Ultra` tiers (`Default` is `Far`, the engine's stock 500 m far clip), each pinned
+  to the same 4-chunk gameplay ring so buying horizon scales mesh cost, not simulation footprint.
+  `ChunkMeters` reads `TerrainChunkRegion.DefaultSize` directly (never a copied literal), so the chunk-unit
+  and metre radii cannot drift apart if the chunk size ever changes. **Why one type instead of four
+  sliders:** the radii only read as a single horizon when chosen together - raise the far clip alone and
+  the frustum outruns terrain residency (a black void with props still drawn over it), raise the ocean
+  extent alone and its rim sits inside the frustum as a visible wall of water, or past residency as a sea
+  floating over nothing. **`Validate(paramName?)`** throws `ArgumentOutOfRangeException` unless the set is
+  coherent: every radius positive, the unload band beyond both load radii (hysteresis), the ocean rim past
+  `FarClip` but within `DecorRadiusMeters`, and `PropDrawRadius` at or inside `FarClip` (past it is never
+  visible). Call it once where a caller-supplied profile is consumed, because a `readonly record struct`
+  always has a zero-initialised `default` no constructor can intercept, so validating in the constructor
+  would only give the illusion of an always-valid value. Every built-in `For` tier passes.
 - **`IChunkBuildGate`** + **`TerrainStreamer.BuildGate`** - an optional veto on which chunks the streamer
   may build, null by default (every chunk in the ring is eligible, the pre-gate behaviour exactly). A
   refused chunk is DEFERRED: not requested, not marked loaded, reconsidered next `Update`. It exists for a

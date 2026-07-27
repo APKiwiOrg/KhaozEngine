@@ -4693,7 +4693,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.3.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.4.0" />
 ```
 
 ```csharp
@@ -5072,6 +5072,47 @@ registered at a FIXED tier (`collisionLod`, default 0 = the densest, matching th
 independent of the render tier, so a render re-LOD never rebuilds the physics triangle-mesh body. Prop static
 bodies are likewise kept across a pure tier re-LOD (placements are LOD-independent); both rebuild only on load,
 unload, a ring change, or an editor `Invalidate` (field swap).
+
+### Render distance as one coherent set (`RenderDistanceProfile`)
+
+The decor radius above, the streamed prop cull radius, the camera far clip, and a water plane's extent
+only read as a single horizon when chosen together: raise the far clip past terrain residency and the
+ground ends in a void with props still drawn over it. Size a water plane past the far clip (or from
+world/document bounds instead of the camera) and its rim sits inside the frustum as a visible wall of
+water. `RenderDistanceProfile` (`KhaozEngine.Terrain`, GPU-free, in the `Foundation` umbrella) is that
+coherent set as one value, and `RenderDistanceTier` (`Near` / `Medium` / `Far` / `Ultra`) is the
+player-facing knob a settings menu presents:
+
+```csharp
+using KhaozEngine.Terrain;
+
+RenderDistanceProfile profile = RenderDistanceProfile.For(RenderDistanceTier.Far);   // or .Default (= Far)
+profile.Validate();   // throws ArgumentOutOfRangeException if a hand-rolled profile is not a coherent set
+
+var streamer = new TerrainStreamer(profile.ToStreamerConfig(), sink);   // or ToStreamerConfig(yourTunedConfig)
+var layer = PropLayer.ScatterLayer(scatter, propMeshes, drawRadius: profile.PropDrawRadius);
+```
+
+`ToStreamerConfig()` covers the streamed far field and the prop layer's cull radius, but the profile names
+no renderer type, so applying its other two radii is on the caller:
+
+- **`FarClip`** onto your own camera's far plane (`FlyCamera3D.FarPlane`, `FollowCamera3D.FarPlane`, or a
+  custom projection), so the frustum stops exactly where the coherence rules say it should.
+- **`OceanHalfExtent`** onto your own water plane, SIZED to that half-extent and CENTRED on the camera
+  (never on world/document bounds), so its rim sits past the far clip while staying within the streamed
+  terrain's far field (`DecorRadiusMeters`). `KhaozEngine.MapEditor`'s `ViewportWorld.BuildWaterPlane` is a
+  worked example: a camera-centred `WaterPlane(viewPos.X, level, viewPos.Z, halfExtent, halfExtent)` rather
+  than one derived from document bounds.
+
+`Validate()` is the coherence check in code: every radius positive, the unload band past both load radii,
+the ocean rim past `FarClip` but within `DecorRadiusMeters`, and `PropDrawRadius` at or inside `FarClip`.
+Call it once wherever a caller-supplied profile is consumed (options binding, editor or game start),
+because a `readonly record struct`'s zero-initialised `default` always exists and is invalid, so no
+constructor can enforce this instead. The four built-in tiers all keep the same 4-chunk gameplay ring
+(`GameplayLoadRadiusChunks`) and scale only the view radii above it, so stepping a player's setting changes
+horizon, not simulation cost. See the `KhaozEngine.Terrain` README for the full type reference, and
+`KhaozEngine.MapEditor`'s `MapEditorOptions.RenderDistance` for a turn-key consumer that applies all four
+radii together.
 
 ### Far props: HLOD merged clusters
 

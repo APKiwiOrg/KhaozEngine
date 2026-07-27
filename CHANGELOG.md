@@ -5,6 +5,56 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 17.4.0
+
+### Render distance becomes one coherent set, and the map editor stops ending in a void
+
+The map editor viewport streamed a 4-chunk (240 m) terrain ring inside a 500 m camera frustum with no
+decor ring at all, so terrain ran out 260 m short of the far clip: the ground ended on a chunk boundary
+and authored props kept drawing over black. The document-sized water plane put its own rim in shot on
+any map smaller than the far clip, reading as a rectangular slab of sea with a visible lip. Ruinborne
+had already solved this on its own side by tying the four view radii together, and that idea is now an
+engine type every game and tool can read.
+
+- **`KhaozEngine.Terrain`**: new `RenderDistanceProfile` (a GPU-free `readonly record struct`) and
+  `RenderDistanceTier` (`Near`/`Medium`/`Far`/`Ultra`). One profile carries the streamed-terrain
+  gameplay ring, the decor (render-only) far field, the unload hysteresis boundary, the prop cull
+  radius, the camera far clip, and the camera-following ocean half-extent. `For(tier)` gives the
+  built-in tiers, `Default` is `Far`, and `ToStreamerConfig()` (plus an overload layering the radii
+  onto a caller's own tuned `StreamerConfig`) produces the streamer setup. `ChunkMeters` reads
+  `TerrainChunkRegion.DefaultSize` directly rather than copying it, so the chunk-unit and metre radii
+  cannot drift apart if the chunk size ever moves.
+- **Why one type rather than four knobs.** These radii only read as a single horizon when chosen
+  together. Raise the far clip alone and the frustum reaches past terrain residency, which is exactly
+  the void this release fixes. Raise the ocean extent alone and its rim sits inside the frustum as a
+  wall of water, or floats over unstreamed nothing. `Validate()` encodes the ordering that holds a
+  horizon together: unload radius past both load radii, ocean rim outside the frustum but inside
+  terrain residency, props culled at or before the far clip. It is called at the point of use rather
+  than in the primary constructor, because a record struct always has a `default` form no constructor
+  can intercept, so constructor validation would only give the illusion of an always-valid value.
+- **The gameplay ring does not scale with view distance.** Every built-in tier keeps the same 4-chunk
+  simulation radius and scales only the view radii above it, so buying horizon costs mesh rather than
+  scatter and physics.
+- **`KhaozEngine.MapEditor`**: `MapEditorOptions.RenderDistance` (defaulting to `Far`) now drives the
+  viewport as one set. `ViewportWorld` builds its streamer from the profile, culls streamed scatter at
+  the profile's radius instead of a hardcoded 90 m, and `MapEditorScene` applies the same profile's
+  far clip to the fly camera. A head on a weaker machine dials the whole set down one tier.
+- **The editor's water plane now follows the camera** at the profile's ocean half-extent instead of
+  spanning the document bounds, so the rim always sits past the far clip and the sea runs to the
+  horizon at any camera position and on any document size. `ViewportWorld.BuildWaterPlane` changes
+  signature accordingly and stays a pure static, so the derivation is still headless-testable.
+  Companion (understory) foliage deliberately keeps its own short 60 m radius: it is a near-field
+  dense layer whose cost is per-instance, so it should not scale with the horizon.
+
+Measured cost of the wider ring on the editor's synchronous streamer: a full rebuild goes from 21.3 ms
+to 46.3 ms on the showcase demo map and from 34.8 ms to 76.6 ms on a heavy synthetic zone, both inside
+the 250 ms `GestureRebuildInterval` throttle. Partial rebuilds, which are the path a feature drag
+actually takes, are unchanged at ~10.5 ms because they re-mesh only the dirty rect.
+
+See #362 for the one structural limit found on the way: `StreamerConfig.Async` is a single bool for the
+whole streamer, so the editor cannot yet keep gameplay loads blocking while the decor ring fills in
+behind.
+
 ## 17.3.0
 
 ### The sea knows where the shallows are: bathymetry, shoaling, breaking surf, and a geomorphed water clipmap

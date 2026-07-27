@@ -1687,6 +1687,10 @@ in a design doc is invisible to the ledger.
   own spec.
 - **Tiled nav bake** ([#269](https://github.com/APKiwiOrg/KhaozEngine/issues/269)) consumes the same tile
   granularity and the same arrival and departure events. Nothing here blocks it and nothing here does it.
-- **Editor `StreamerConfig` surface** ([#282](https://github.com/APKiwiOrg/KhaozEngine/issues/282)) is
-  unaffected. It wants a `StreamerConfig` on `ViewportWorld` (`ViewportWorld.cs:328` hardcodes
-  `StreamerConfig.Default.Synchronous()`), which stays exactly the type it is today.
+- **Editor `StreamerConfig` surface** ([#282](https://github.com/APKiwiOrg/KhaozEngine/issues/282)) is no
+  longer unaffected: 17.4.0 added `RenderDistanceProfile`/`RenderDistanceTier` (`KhaozEngine.Terrain`) and
+  `MapEditorOptions.RenderDistance`, so `ViewportWorld` now builds its `StreamerConfig` from
+  `_renderDistance.ToStreamerConfig().Synchronous()` instead of the hardcoded
+  `StreamerConfig.Default.Synchronous()` this section originally described, and `MapEditorScene` applies
+  the same profile's far clip to the fly camera. This does not retire the item on its own (no editor UI
+  settings row exists yet), but the config surface it asked for now exists at the options level.

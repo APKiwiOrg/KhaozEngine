@@ -54,6 +54,14 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   the viewport `ViewportWorld` renders. Read at prop-mesh load time, so flipping it (in code, or via the
   Layers panel's "Textured props" toggle below) triggers a viewport world rebuild rather than taking effect
   live. Session-level only, not persisted to the document.
+- `RenderDistance` (default `RenderDistanceProfile.Default`, the `Far` tier) is the viewport's render
+  distance as one coherent set: it drives the streamed terrain far field and the streamed-scatter prop cull
+  radius (`ViewportWorld`), the fly camera's far clip, and the camera-following ocean plane's half-extent
+  (`MapEditorScene`/`ViewportWorld`), so the horizon reads as one piece instead of terrain ending in a void
+  inside the frustum. Dial a weaker machine down with `RenderDistanceProfile.For(RenderDistanceTier.Near)`
+  (or `.Medium`). A hand-rolled profile is checked with `RenderDistanceProfile.Validate()` when the scene
+  builds its world, so an incoherent set throws at editor start rather than rendering wrong. See the
+  `KhaozEngine.Terrain` README for the type itself.
 - `StatusBottomOffset` (default 0) reserves that many points of clearance at the window bottom for a host
   that draws its own bottom chrome (the Showcase's F7-F10 display readout line), shifting the status strip
   and editor body up so the editor never stacks on the host's pixels.
@@ -630,12 +638,17 @@ command/dirty machinery above. See Visibility above.
 
 The water level is `AffectsWorld` because scatter honours it (underwater candidates skip), so a change must
 rebuild the streamed world. The water SURFACE itself is separate: `ViewportWorld.Draw` submits one
-`Scene3D.DrawWater` plane per frame, derived live from the document bounds and `Terrain.WaterLevel`
-(`ViewportWorld.BuildWaterPlane`), covering the whole zone. It is always submitted (no "skip when dry" guard):
-the water pass is depth-tested against the terrain and its shore-fade drives the alpha to zero at the
-waterline, so a level below all terrain renders nothing at negligible cost. Deriving the plane live means the
-surface tracks a water-level edit immediately, ahead of the scatter rebuild. The terrain root in the outline
-(a `SelectionKind.Terrain` node) selects into an inspector with all seven terrain scalars editable
+`Scene3D.DrawWater` plane per frame, centred on the CAMERA in XZ at `Terrain.WaterLevel` with a half-extent
+of `MapEditorOptions.RenderDistance.OceanHalfExtent` (`ViewportWorld.BuildWaterPlane`), not the document
+bounds. A document-sized plane on a map smaller than the far clip would put its own rim inside the frustum,
+reading as a rectangular slab of sea with a visible lip, so the plane follows the camera instead and its rim
+always sits past the far clip while staying within the streamed terrain's far field (see the
+`RenderDistanceProfile` coherence rules in the `KhaozEngine.Terrain` README). It is always submitted (no
+"skip when dry" guard): the water pass is depth-tested against the terrain and its shore-fade drives the
+alpha to zero at the waterline, so a level below all terrain renders nothing at negligible cost. Deriving the
+plane live means the surface tracks a water-level edit, or a camera move, immediately, ahead of the scatter
+rebuild. The terrain root in the outline (a `SelectionKind.Terrain` node) selects into an inspector with
+all seven terrain scalars editable
 (`BuildTerrainInspector`: WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency,
 DetailOctaves, with Seed and DetailOctaves scrubbed as whole steps and rounded to an int on write), plus a read-only Biomes
 count. Biome bands themselves are edited via the Biomes outline category, not the terrain inspector, see

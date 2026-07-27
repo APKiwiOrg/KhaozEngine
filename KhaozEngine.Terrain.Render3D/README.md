@@ -1,8 +1,9 @@
 # KhaozEngine.Terrain.Render3D
 
-The render arm of [KhaozEngine.Terrain](../KhaozEngine.Terrain): meshes chunks off the analytic field,
-streams an endless ring of them around the player, and renders the PBR splat-material layer. Kept
-separate from the render-free field so a server/sim never drags in `Render3D`. In the `Game3D` umbrella.
+The render arm of [KhaozEngine.Terrain](../KhaozEngine.Terrain): meshes chunks off the analytic field and
+renders the PBR splat-material layer, over the headless streaming core that now lives in `KhaozEngine.Terrain`
+itself (`TerrainStreamer`, `IChunkSink`, `ChunkBuildScheduler`, and friends - see that package's README).
+Kept separate from the render-free field so a server/sim never drags in `Render3D`. In the `Game3D` umbrella.
 
 ## Types
 
@@ -11,59 +12,20 @@ separate from the render-free field so a server/sim never drags in `Render3D`. I
   stay crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a height/slope vertex-colour
   ramp, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device. The `lodConfig` overload
   resolves the tier's resolution through a custom table; the plain overload uses `TerrainLodConfig.Default`.
-- **`TerrainLodConfig`** + **`TerrainLodTier`** - data-driven LOD tiers: an ordered list of
-  `(Resolution, MaxDistance)` tiers, validated (strictly descending resolutions, strictly ascending distances,
-  the coarsest at `float.PositiveInfinity`). `PickLod(distance)` -> tier index, `ResolutionFor(lod)` -> grid
-  resolution. `TerrainLodConfig.Default` reproduces the legacy 64/32/16 at 80 m/200 m byte-for-byte and adds
-  coarser 8- and 4-segment far tiers so a distant chunk costs a few hundred triangles. **`TerrainLod`** is a
-  thin facade over `Default` (`PickLod`/`ResolutionFor`). **`TerrainChunkRegion`** is the square world tile to
-  mesh (default 60 m).
 - **`TerrainScene3D`** extensions - `Scene3D.LoadTerrainChunk` / `DrawTerrainChunk` (world-space
   vertices, identity transform) and `LoadTerrainMaterial` (realize a layered material once, share the
   handle across every chunk).
-- **`TerrainStreamer`** + **`StreamerConfig`** - keeps the world loaded in a ring around the player:
-  hysteresis unload band (`UnloadRadius` greater than the outer load radius stops boundary churn), re-LOD when a
-  loaded chunk's tier OR residency ring changes, nearest-first ordering. Pure bookkeeping over
-  **`ChunkCoord`**/**`ChunkGrid`** driving an injected **`IChunkSink`**, so it is headless-testable with a fake
-  sink. `UnloadAll`/`Dispose` free the loaded ring instead of leaking it.
-  - **Decor ring / far field.** `StreamerConfig` carries a **`DecorRadius`** (chunk units, default 0 = off) and
-    a **`LodConfig`**. `LoadRadius` is the gameplay radius; chunks between it and `DecorRadius` load as
-    render-only **`ChunkRing.Decor`** chunks (coarse mesh, no scatter or physics), so a real horizon costs mesh
-    only. A decor chunk upgrades to gameplay on approach (gaining scatter + colliders) and downgrades on
-    retreat, via the same re-LOD path a tier change uses. **`RingOf(coord)`** reports a loaded chunk's ring. The
-    same `LodConfig` must be wired to the sink; both default to `TerrainLodConfig.Default`.
-  - **Async build (default).** With `StreamerConfig.Async` set (it is by default) and an `IAsyncChunkSink`
-    sink, each chunk's CPU mesh build runs on a background thread and only the GPU upload happens on the
-    frame thread, so a streamed chunk is no longer a full CPU-mesh-build hitch. `MaxLoadsPerFrame` then caps
-    how many completed builds are APPLIED (GPU upload + handle swap) per `Update`. The builds themselves are
-    unbudgeted (they run in parallel off the frame thread). `StreamerConfig.Synchronous()` opts back into the
-    old inline build+upload path (blocking, deterministic - what editors/tools want), and a sink that is not
-    an `IAsyncChunkSink` always runs synchronously regardless of the flag.
-  - **`FlushPendingBuilds()`** forces every outstanding async build to complete + apply now (deterministic
-    drain, ignores the budget). **`PrimeAround(playerPos)`** fills the whole ring around a point right away
-    (a loading moment): use it to prime the first ring before the first frame. Both work in either mode.
-  - **`Invalidate(RectArea)`** / **`Invalidate(ChunkCoord)`** rebuild every currently loaded chunk the rect
-    (or the single coord) touches, in place, at its CURRENT LOD tier (no tier change, no ring reshuffle). This
-    is the partial-invalidation seam an editor uses: a bounded edit re-meshes only the chunks it actually
-    overlaps instead of the whole streamed ring. A chunk not currently loaded is left alone and picks up the
-    change the next time it loads naturally. Both overloads flush any in-flight async builds first, so a
-    build already running against the old state cannot land after the invalidation and overwrite it. Pair
-    with `Scene3DChunkSink.UpdateField` below: swap the field, then invalidate the touched area.
-- **`IChunkSink`** / **`IAsyncChunkSink`** - the load/unload seam the streamer drives. Every build call carries
-  a **`ChunkRing`** (`Gameplay` / `Decor`) so the sink knows how much of a chunk to build:
-  **`Load(coord, lod, ring)`** / **`ReLod(coord, handle, lod, ring)`**, and the async split
-  **`BuildCpu(coord, lod, ring)`** (mesh + scatter, no GPU, safe on a worker thread) +
-  **`Apply(coord, lod, ring, cpuBuild, existing)`** (GPU buffers + physics on the frame thread).
-  `Scene3DChunkSink` implements `IAsyncChunkSink` and defaults the ring to `Gameplay` for direct callers; a
-  custom sink implementing only `IChunkSink` still streams (synchronously).
-- **`ChunkBuildScheduler<T>`** + **`ChunkBuild<T>`** - the GPU-free heart of async streaming: per-chunk
-  generation tokens dispatch each build, collect the finished ones, and drop the superseded (a newer re-LOD)
-  or cancelled (left the ring) results before they can be applied (last request wins). Pure `ChunkCoord`
-  bookkeeping with no device, so it is fully headless-testable. **`IChunkBuildDispatcher`** chooses how build
-  bodies run: **`TaskChunkBuildDispatcher`** (the default) fans them onto the thread pool, and a test dispatcher
-  queues them to control completion order. A faulted build surfaces as a **`ChunkBuildException`** on the
-  frame thread (during `Pump`/`Flush`), never a silent stuck chunk.
-- **`Scene3DChunkSink`** - the production sink: builds each chunk's mesh + scatters **`PropLayer`**s
+- **The streaming core lives in `KhaozEngine.Terrain` now.** `TerrainStreamer`, `StreamerConfig`,
+  `IChunkSink`/`IAsyncChunkSink`, `ChunkCoord`/`ChunkGrid`/`ChunkRing`, `ChunkBuildScheduler<T>`/
+  `ChunkBuild<T>`/`ChunkBuildException`/`IChunkBuildDispatcher`/`TaskChunkBuildDispatcher`, and
+  `TerrainLod`/`TerrainLodTier`/`TerrainLodConfig`/`TerrainChunkRegion` all moved to
+  [KhaozEngine.Terrain](../KhaozEngine.Terrain) (headless and server-usable, no GPU dependency) - see
+  that package's README for the full API (hysteresis unload band, decor ring, async build budget,
+  `Invalidate`/`FlushPendingBuilds`/`PrimeAround`, and the build-scheduler internals). This package keeps
+  binary-compat type forwarders (`AssemblyForwarders.cs`) so an existing `using KhaozEngine.Terrain.Render3D;`
+  reference to any of them still compiles. What stays here is the render side that actually implements and
+  drives the seam, below.
+- **`Scene3DChunkSink`** - the production `IAsyncChunkSink`: builds each chunk's mesh + scatters **`PropLayer`**s
   (each layer with its own config, mesh set, and draw radius) for a `Gameplay` chunk, re-LODs meshes AND
   re-adopts the freshly scattered props in place (byte-identical after a pure LOD change, freshly correct
   after a field swap plus invalidate), draws every loaded chunk + in-range props per frame, and optionally

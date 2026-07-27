@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc;
@@ -21,6 +22,7 @@ public static class MapDocumentValidator
             errors.Add("id must be non-empty.");
         if (!(doc.Bounds.MaxX > doc.Bounds.MinX) || !(doc.Bounds.MaxZ > doc.Bounds.MinZ))
             errors.Add("bounds must satisfy MaxX > MinX and MaxZ > MinZ.");
+        ValidateTileSize(doc, errors);
         if (doc.TerrainOverrides is { } overrides)
             ValidateOverrides(overrides, doc.Bounds, errors);
 
@@ -106,6 +108,23 @@ public static class MapDocumentValidator
         }
 
         return errors;
+    }
+
+    /// <summary>A document may declare any positive finite tile size, but never one narrower than a single
+    /// sculpt tile: the origin-corner ownership rule would then assign sculpt tiles to document tiles that do
+    /// not cover them.</summary>
+    static void ValidateTileSize(MapDocument doc, List<string> errors)
+    {
+        if (!(doc.TileSize > 0f) || float.IsInfinity(doc.TileSize))
+        {
+            errors.Add($"tileSize must be positive and finite, got {doc.TileSize.ToString(CultureInfo.InvariantCulture)}.");
+            return;
+        }
+        float cellSize = doc.TerrainOverrides?.CellSize ?? MapTerrainOverrides.DefaultCellSize;
+        float span = TerrainSculpt.TileSize * cellSize;
+        if (doc.TileSize < span)
+            errors.Add($"tileSize {doc.TileSize.ToString(CultureInfo.InvariantCulture)} is narrower than one sculpt tile " +
+                       $"({span.ToString(CultureInfo.InvariantCulture)} m at sculpt cell size {cellSize.ToString(CultureInfo.InvariantCulture)}).");
     }
 
     /// <summary>The sculpt layer's cell size must be positive, and every stored tile's world extent (its

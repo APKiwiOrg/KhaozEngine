@@ -202,6 +202,7 @@ layout(location=4) in vec2 vFocusRot;
 layout(location=0) out vec4 oColor;
 
 const float KE_WHITECAP_SOFTNESS = 0.18;   // mirrors WaterMath.WhitecapSoftness
+const float KE_FFT_BREAKUP_SPAN = 0.5;     // mirrors WaterMath.FftBreakupSpan
 const float KE_TWO_PI = 6.28318531;
 const int   KE_MAX_RIPPLES = 12;           // mirrors RippleSpectrum.MaxComponents
 const int   KE_MAX_SWELL = 8;              // mirrors GerstnerWaves.MaxComponents
@@ -350,6 +351,15 @@ float foamPattern(vec2 xz, float scrollTime, float scale) {
     float b = 0.75 * sin(dot(d2, p) * 1.41421356 + scrollTime * -1.27);
     float c = 0.55 * sin(dot(d3, p) * 2.23606798 + scrollTime * 0.61);
     return smoothstep(-0.30, 0.42, (a + b + c) * 0.43478261);
+}
+
+// Mirrors WaterMath.FftFoamBreakup exactly: the FFT-mode replacement for foamPattern (KhaozEngine#343).
+// foamPattern is a fixed world-space lattice, untouched by the cascades' own focus/warp/de-tiling, so under the
+// FFT wave source it is the only periodic pattern left and it re-tiles the FFT foam. oceanFoam has already been
+// through that de-tiled sampling frame, so thresholding it against itself gives break-up structure that moves
+// with the real waves and can never re-tile.
+float fftFoamBreakup(float oceanFoam) {
+    return smoothstep(0.0, KE_FFT_BREAKUP_SPAN, clamp(oceanFoam, 0.0, 1.0));
 }
 
 void main() {
@@ -543,15 +553,22 @@ void main() {
         float threshold = 1.0 - clamp(FoamParams.y, 0.0, 1.0);
         // Whitecaps. In FFT mode the compute pass has already turned the displacement Jacobian into an
         // accumulating, dissipating foam value per texel, so this is that value; in procedural mode it is the
-        // per-fragment threshold on the Gerstner fold factor. Both then go through the SAME break-up pattern and
-        // the same shore-band max below, which is what keeps the graphic foam look identical across the two.
+        // per-fragment threshold on the Gerstner fold factor. Both then go through a break-up mask and the same
+        // shore-band max below, which is what keeps the graphic foam LOOK identical across the two - but the
+        // mask's SOURCE differs by mode (see fftFoamBreakup), because foamPattern's fixed world-space lattice
+        // re-tiles the FFT surface's own de-tiled cascades (KhaozEngine#343).
         float crest = FftParams.x > 0.5
             ? oceanFoam
             : smoothstep(threshold, threshold + KE_WHITECAP_SOFTNESS, vFold);
         float shoreWidth = FoamParams.z;
         float band = shoreWidth <= 0.0 ? 0.0
             : 1.0 - smoothstep(0.0, 1.0, clamp(depthBelowSurface / shoreWidth, 0.0, 1.0));
-        float mask = foamPattern(wpAbsXz, time * waveSpeed, FoamParams.w);
+        // FFT mode sources the break-up from the FFT foam/Jacobian channel itself (already de-tiled through the
+        // vertex stage's sampling frame) instead of the fixed world-space lattice: FoamPatternScale and
+        // WaveSpeed's foam-drift job both go inert here as a result (see WaterSettings.WaveSource's doc).
+        float mask = FftParams.x > 0.5
+            ? fftFoamBreakup(oceanFoam)
+            : foamPattern(wpAbsXz, time * waveSpeed, FoamParams.w);
         foam = clamp(max(crest, band) * mask * foamStrength, 0.0, 1.0);
     }
 

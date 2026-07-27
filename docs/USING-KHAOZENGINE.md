@@ -2438,15 +2438,18 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       for what scale of sea is being simulated.
     - **These knobs go FULLY INERT in FFT mode**, because the spectrum supplies what they described: every
       `Swell*` knob, the ripple spectrum (`NormalStrength`, `WaveWarpStrength`, `RippleComponents`,
-      `RippleLacunarity`, `RippleGain`, `RippleSeed`), `DistantDetailScale`, and `FoamCrestCoverage`.
-    - **Three keep a SECOND job and must not be deleted on adoption**, which is easy to miss because their primary
+      `RippleLacunarity`, `RippleGain`, `RippleSeed`), `DistantDetailScale`, and `FoamCrestCoverage`. As of the fix
+      for `KhaozEngine#343`, `FoamPatternScale` and `WaveSpeed` join this list too: FFT-mode foam break-up is
+      shaped by the wave field's own foam/Jacobian channel (already de-tiled through the sampling frame below)
+      instead of the fixed-period world-space pattern those two knobs used to size and drift - that pattern was
+      re-tiling the FFT surface's own de-tiled cascades.
+    - **Two keep a SECOND job and must not be deleted on adoption**, which is easy to miss because their primary
       job does go away. `WaveScale` still supplies the reference wavelength the glint's footprint-alias ramp
       measures against, and `DetailFadeDistance` still sets the distance over which the lobe widens toward
       `GlintDistantRoughness` - so dropping either retunes the sun glint even though neither shapes the surface
-      any more. `WaveSpeed` still drives the drift of the foam break-up pattern, so at 0 the foam texture freezes
-      while the sea under it keeps moving.
+      any more.
     - Everything else stays live - `GridFocusBias`, `FootprintSamples`, `VarianceToRoughness`, the whole
-      colour/reflection/glint set, `FoamStrength`, `FoamPatternScale`, `FoamShoreWidth` and `ShoreFadeDistance`.
+      colour/reflection/glint set, `FoamStrength`, `FoamShoreWidth` and `ShoreFadeDistance`.
     - **Cost.** The cascade update runs ONCE per frame inside the water pass (not per `WaterPlane` - one ocean
       state serves every queued plane this release) and costs exactly one GPU stall whatever the cascade count and
       resolution, measured at about 0.3 ms on Metal at the defaults and under 1 ms at resolution 256. Changing any
@@ -4571,7 +4574,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.5.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.7.0" />
 ```
 
 ```csharp
@@ -5325,7 +5328,88 @@ silently dropping it.
 **Format migrations.** `MapDocumentLoadOptions.RegisterMigration(fromVersion, step)` registers a pure
 `JsonObject -> JsonObject` transform run before deserialization when an old document's `formatVersion` is
 behind `MapDocumentFile.CurrentFormatVersion`. Migrations must form a contiguous chain up to the current
-version or the load fails.
+version or the load fails. The engine's own steps are pre-registered: v1 to v2 dropped the reserved
+`terrainOverrides` placeholder, and v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
+(512 m). A v3 monolithic file is legal and is what `Save` writes: version and layout are independent axes.
+
+### The tiled form: a directory instead of a file
+
+A document is **either a single file or a directory**, and both are first class. The tiled form is what a
+world too big to serialize as one string uses:
+
+```
+island.map/                        a directory, not a file
+  map.json                         the root manifest, and the ONLY file a save ever mutates
+  tiles/
+    s_0_0/                         shard dir, shard = tile >> 4, a filesystem nicety and never a load unit
+      t_0_0.<64 hex>.json          content-addressed: the suffix IS that tile's canonical hash
+      t_3_-2.<64 hex>.json
+```
+
+The manifest carries the globals (bounds, terrain, scatter and companion layers, exclusions, scatter
+overrides, regions, the `tileSize` and `sculptCellSize` grid headers) plus the occupied-tile index. Each
+tile file carries exactly four lists: `placements`, `spawns`, `playerSpawns` and `sculpt`. Those are the
+lists that scale with authored content. Shapes stay global because `scatterOverrides` is first-match-wins
+in document order, which is a global ordering.
+
+**Which form a path holds comes from the path, never from an extension.** `Path.GetExtension("island.map")`
+is `".map"`, not empty, so an extension heuristic sends a directory to a file write.
+
+```csharp
+MapDocumentForm form = MapDocumentFile.DetectForm(path);   // Tiled | Monolithic | None
+MapDocument doc = MapDocumentFile.Load(path);              // dispatches on the form
+
+MapDocumentFile.SaveAuto(doc, path);                       // saves back in the form it opened, None throws
+MapDocumentFile.SaveAs(doc, path, MapDocumentForm.Tiled);  // writes the named form, whatever is there
+```
+
+**Document tiles.** `MapTileCoord` is a square of world XZ with edge `MapDocument.TileSize`, a distinct type
+from `ChunkCoord` so a 60 m chunk coord cannot be passed where a 512 m tile coord is meant.
+`MapTileGrid.CoordOf` delegates to `ChunkGrid.CoordOf`, so the floor rule has one implementation, and
+`AreaOf` is half-open on both axes: a point exactly on a tile's max edge belongs to the next tile, which is
+what makes a partition of rects reproduce the whole document exactly. A sculpt tile is owned by the document
+tile containing its **origin corner** (`MapTileGrid.OwnerOfSculptTile`), single-owner for every cell size.
+
+**Region queries, both forms.** `MapSpatialIndex.Build(doc)` buckets a loaded document's point content by
+tile once, O(n) to build and O(k) per query, so a whole-document workflow still gets region queries.
+`MapRuntime.BuildPlacements` grows a rect overload and two index overloads beside the untouched
+whole-document one.
+
+**Windowed loading.** `LoadTiled(directory, window)` reads the manifest plus the tiles in a `MapTileRect`.
+Unloaded tiles keep their index entries, so a later `SaveTiled` back to the SAME directory carries them
+through untouched. **Every save entry point refuses a partial document** (`MapTileIndex.IsPartial`): a
+whole-document write of a window silently drops every unloaded tile and looks like a successful save. The
+guard is on the document rather than on one writer, so a save path added later inherits it.
+
+**Saving never materializes the document.** `SaveTo(doc, stream)` serializes straight through a
+`Utf8JsonWriter`, and `Save` is reimplemented over it, so the monolithic ceiling is disk rather than the
+.NET single-object element count. `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
+canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
+points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
+manifest does not name. Crash at any instant and the directory loads as entirely the old version or
+entirely the new one. `MapDocumentSaveOptions.Durability` opts into `PowerFail` (per-file flush plus a
+directory fsync where the platform has one). The default `Fast` defends against a process kill, which is
+what happens on a dev box.
+
+**World identity.** `MapDocumentHash.OfWorld(doc)` is SHA-256 over canonical bytes: per tile, plus the
+global half, composed under a `kemap/<SchemeVersion>` domain separator. **The two forms of the same world
+produce the same digest**, so a game can convert to the tiled form without a coordinated client and server
+release. On a tiled document it reads the stored hashes and never opens a tile file. `displayName` and
+`$schema` are excluded (renaming a zone must not desync a live server), and `tileSize` is included, so
+re-tiling changes world identity and a converter must PRESERVE `tileSize` rather than re-derive it.
+`MapDocumentFile.VerifyTiled(directory)` re-derives every tile hash and reports mismatches, orphans and
+stray temp files, and `MapDocumentLoadOptions.VerifyTileHashes` is the per-load opt-in.
+
+**On-demand tile reads.** `MapDocumentSource.OpenTiled(directory)` reads the manifest and nothing else.
+`ReadTile(coord)` parses and validates one tile and is free of shared mutable state, so a caller may run it
+on a worker thread. `MapDocumentSource.FromDocument(doc)` wraps an in-memory whole document behind the same
+API. A tile read runs a per-tile validation subset (ids non-empty and unique within the tile, delta counts,
+and that every item actually falls in the tile it was read from), because the whole-document validator needs
+globals a tile file does not carry.
+
+**Schemas.** One schema is authored (`mapdoc.schema.json`). `MapDocumentSchema.GetManifestJson()` and
+`GetTileJson()` are DERIVED from it at runtime and `WriteAllTo(directory)` materializes all three, so three
+schemas describing overlapping content cannot rot apart.
 
 **Boot fails loud.** Map documents are dev-authored content, not runtime state: a read error, invalid
 JSON, a bad or unmigratable `formatVersion`, or any `MapDocumentValidator` failure (a duplicate id, an
@@ -5744,11 +5828,28 @@ interactive viewport state, so they have no MCP equivalent: `ke-mapedit`'s rende
 one-shot calls with nothing to store a camera pose between.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
-`MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A
-validation failure lands as a message in the status strip instead of throwing. A successful save also
-calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's leading `*`) and sealing
-the current gesture, so a later same-gesture edit can never merge into the just-saved command and hide
-itself from `IsDirty`.
+`MapDocumentFile.Save`/`SaveAuto` validator before writing, so an invalid document is never written to
+disk. A validation failure lands as a message in the status strip instead of throwing. A successful save
+also calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's leading `*`) and
+sealing the current gesture, so a later same-gesture edit can never merge into the just-saved command and
+hide itself from `IsDirty`.
+
+**Tiled documents.** `MapEditorOptions.DocumentPath` may name a `.map.json` file OR a tiled document
+directory: `CreateDocument` dispatches on `MapDocumentFile.DetectForm` (never `File.Exists`, which is
+false for a directory and used to fall through to a blank untitled document, silently discarding whatever
+Ctrl+S then overwrote). Below `MapEditorOptions.WholeWorldTileLimit` occupied tiles (default 512) a tiled
+document loads whole, exactly like a monolithic one. Above it the editor opens a WINDOW instead (see
+`MapDocumentWindowing`), centered on the tile containing the document bounds' midpoint,
+`MapEditorOptions.EditorWindowRadius` tiles either side (default 2), and the status strip's `window:
+(minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`, tile coordinates) shows the loaded extent. Ctrl+S
+always saves back in the form and directory the document was opened from (`MapDocumentFile.SaveAuto`),
+never converting implicitly: a plain `.map.json` load-then-save round-trips as monolithic, a tiled
+directory round-trips as tiled, touching only the tiles that actually changed. Moving content into a tile
+the loaded window never covered surfaces as an ordinary "Save failed: ..." status message
+(`MapDocumentException`, the same guard `SaveTiled` states on the document itself), not a crash. Explicit
+form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retile`) are `ke-mapedit` verbs,
+below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
+the tool, and the GUI editor just opens whatever form is already on disk.
 
 **Renaming.** The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
 row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,
@@ -5821,17 +5922,38 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 (`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
 into the thrown message on failure, so the in-session document is never left invalid.
 
+**Tiled documents, whole-load vs windowed.** `map_open` and `map_save` are form-aware, exactly like the GUI
+editor: `map_open` dispatches on `MapDocumentFile.DetectForm` (a directory loads tiled, a file loads
+monolithic), and a tiled document at or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default
+512, matching `MapEditorOptions.WholeWorldTileLimit`) loads WHOLE. Above it, `map_open` windows instead:
+the manifest plus only the tiles inside a square centered on the document bounds, radius
+`EditorWindowRadius` tiles (default 2). `map_save` always writes back in the form and directory the
+document came from (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the
+loaded window's tile and world rect plus the occupied/loaded tile counts (`Tiled` false for a monolithic
+document). `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window: it refuses with unsaved
+changes unless `discard` is passed, and on success discards whatever was loaded before (this session keeps
+no undo stack across calls, so there is nothing to replay) and reloads fresh from the manifest. Writing
+content that moved into a tile the window never loaded throws a precise `MapDocumentException` naming the
+item and the target tile rather than silently dropping it, the same guard `SaveTiled` states on the
+document itself. `convert_to_tiled(directory)` / `convert_to_single(path)` change the on-disk FORM
+explicitly (`MapDocumentFile.SaveAs`, no extension heuristics: `Path.GetExtension("island.map")` is
+`".map"`, not empty, so guessing from the path would route a directory-shaped name to the wrong writer) and
+always preserve `tileSize` and the world hash exactly. `retile(tileSize)` changes `tileSize` itself and
+re-saves: `tileSize` IS part of world identity (`MapDocumentHash.OfWorld`), so this changes the world hash
+on purpose, and the result's `Warning` states the before/after digests plainly rather than leaving a caller
+to notice a coordinated client/server release is now needed.
+
 **Features and shapes cross the wire as JSON.** Terrain features (`featureJson`) and
 exclusion/region/override shapes (`shapeJson`) are registry-open or polymorphic unions, so they cross
 the MCP boundary as raw JSON strings parsed with the open document's own serializer options rather than
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (73 tools).**
+**Verb surface (78 tools).**
 
 | Group | Verbs |
 |---|---|
-| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
+| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary`, `set_window`, `window_status`, `convert_to_tiled`, `convert_to_single`, `retile` |
 | Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info`, `sculpt_stats` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |
@@ -8996,6 +9118,65 @@ to log/alert on a faulted background cell save, meta write, or quarantine write.
 each `Update` (so a store outage can't grow the pending list unbounded or make the boot sequence
 `LoadMeta -> Preload -> Flush` / the shutdown `FlushAsync` throw), leaves a faulted cell save dirty so the next pass
 retries it, and drops a faulted quarantine write (the cell already started fresh).
+
+### Unloading idle cells (`CellEvictor`)
+
+A `ShardHost` creates cells on demand and never removes one, so on a long-running world where players roam, every
+cell anyone has ever visited stays alive with its `World`, `ServerReplicator` and `InterestGrid`. `CellEvictor` is
+the other half: it persists an idle cell and then unloads it, and restores it again the moment anything routes back
+to that coordinate. It sits on top of the `CellPersistence` you already wired, so there is no second store and no
+second key space.
+
+```csharp
+var cellPersistence = new CellPersistence(server, store);
+var evictor = new CellEvictor(server, cellPersistence, new CellEvictionConfig
+{
+    ScanIntervalSeconds = 10f,      // how often the policy is asked, not how often cells go
+    MaxEvictionsPerScan = 8,        // spreads the store writes when a whole region goes quiet at once
+    Policy = new IdleCellEvictionPolicy { IdleSeconds = 300f, KeepRadius = 2 },
+});
+
+// per fixed tick, next to the persistence update:
+cellPersistence.Update(config.TickSeconds);
+evictor.Update(config.TickSeconds);
+```
+
+**Construct `CellEvictor` before any game-side `CellCreated` subscriber.** Its constructor subscribes to
+`CellCreated` to arm the synchronous cache restore, and `Action` subscribers run in registration order: one added
+earlier sees the cell before the restore runs, one added later sees it after. A game handler registered ahead of
+the evictor observes a blank cell on a recreate (the restore has not run yet), and a spawn-on-create handler
+registered ahead of it would then double-populate a cell the evictor goes on to restore right after. Construct
+`CellPersistence` and `CellEvictor` first, and let any game-side `CellCreated` handler subscribe after both, so it
+always sees the cell in its final, already-restored state.
+
+**Nothing is removed before its bytes are durable.** Each candidate is snapshotted, handed to the store, and only
+removed once that write lands. A failed write, a cell that changed while the write was in flight, or a host that
+refuses in the meantime all leave the cell exactly where it was, to be retried on a later scan. `CellEvicted` fires
+once a cell is actually gone.
+
+**A recreated coordinate restores before it can tick.** `CellEvictor` keeps the evicted snapshot in memory
+(`MaxCachedSnapshots`, default 1024 cells) and restores it synchronously from the `CellCreated` hook, which the host
+raises inside the create call itself. That is what makes a handoff into an unloaded coordinate seamless: the
+destination cell is fully populated before it adopts the crossing entity and before its first tick, never blank.
+Past the cache the coordinate falls back to `CellPersistence`'s ordinary asynchronous load, exactly as a cold cell
+does after a restart, so the bytes are never at risk either way.
+
+**What survives an unload is what survives a restart**: the `ReplicationChannels.Persist` channel of the cell
+snapshot. A component that did not declare `Persist` does not come back. A joined player's entity is excluded from
+cell snapshots entirely (it persists on its own record through `WorldPersistence`), which is why a cell holding one
+is pinned and never evictable.
+
+**The policy is yours.** `ICellEvictionPolicy.ShouldEvict(in CellEvictionSignals)` is asked once per live cell per
+scan, and gets the cell coordinate, its owned entity count, how many clients are homed in it, the Chebyshev cell
+distance to the nearest client (`int.MaxValue` when nobody is online), whether the host pins it, and how long it has
+gone unattended. The shipped `IdleCellEvictionPolicy` unloads a cell with no client homed in it, none within
+`KeepRadius` cells, after `IdleSeconds`. The radius default of 2 keeps a player's own cell and the ring of
+neighbours mirroring border ghosts into it loaded, so an unload can never pull entities out from under a client's
+area of interest. On an empty server every cell qualifies, so the world unloads itself.
+
+A custom `ShardHost`-based server implements `ICellEvictionHost` (which extends `ICellPersistenceHost`) over
+`ShardHost.CanRemoveCell` / `RemoveCell` / `CollectBoundPlayerCells`, the same way it already implements the
+persistence seam. `ShardedWorldServer` implements both, so most consumers pass it straight in.
 
 ### Reconnect + server notices (`KhaozEngine.NetWorld`)
 

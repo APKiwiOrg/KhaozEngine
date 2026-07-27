@@ -141,6 +141,25 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     driver prunes the faulted task every `Update` so a store outage can't grow the pending list unbounded or make the
     boot sequence (`LoadMeta -> Preload -> Flush`) or the shutdown `FlushAsync` throw. A faulted cell save stays dirty
     and retries on the next pass; a faulted quarantine write is dropped (the cell already started fresh).
+  - **Eviction support surface.** `RequestLoad(coord)` starts a cell's store load explicitly (what `CellCreated`
+    triggers, idempotent per coordinate), `IsBusy(coord)` reports an outstanding load or write for a cell,
+    `SaveCellAsync(coord, snapshot)` writes one cell immediately outside the periodic pass and reports when it
+    landed, `TryGetLastSaved(coord, out snapshot)` reads the dirty-tracking baseline, and `ForgetCell(coord)` drops
+    the per-cell bookkeeping for an unloaded coordinate so it loads from the store again. These exist for
+    `CellEvictor` below and are usable directly.
+- **`CellEvictor`** (+ `CellEvictionConfig`, `ICellEvictionHost`) unloads idle cells without losing their state, the
+  other half of `ShardHost`'s create-on-demand grid: without it a long-running world keeps every cell anyone has ever
+  visited alive forever. Each scan it asks a `KhaozEngine.Sharding.ICellEvictionPolicy` which live cells are
+  disposable, snapshots each candidate through `CellPersistence`, and removes it from the host **only once that write
+  has landed**. A failed write, a cell that changed while the write was in flight, or a host that refuses all leave
+  the cell in place for a later scan. An evicted coordinate that is routed to again (a spawn, a handoff destination,
+  an explicit `EnsureCell`) restores **synchronously**, from the in-memory snapshot cache
+  (`CellEvictionConfig.MaxCachedSnapshots`, default 1024) on the `CellCreated` hook the host raises inside the create
+  call, so a cell recreated as a handoff destination is fully populated before it adopts the crossing entity and
+  before its first tick. Past the cache it falls back to the driver's normal asynchronous load. What survives an
+  unload is exactly what survives a restart (the `Persist` channel), and a cell holding a joined player's entity is
+  pinned and never evictable. `ICellEvictionHost` extends `ICellPersistenceHost` with `CanEvictCell`, `EvictCell`
+  and `TryReadEvictionSignals`, and `ShardedWorldServer` implements it.
 
 No render, window, or GPU dependency: the servers are headless and the client glue is render-free (a sample
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is

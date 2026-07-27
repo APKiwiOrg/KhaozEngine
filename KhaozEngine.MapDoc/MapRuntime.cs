@@ -164,12 +164,49 @@ public static class MapRuntime
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(field);
         var result = new List<PropPlacement>(doc.Placements.Count);
-        foreach (MapPlacement p in doc.Placements)
-        {
-            float y = p.Y ?? field.SampleHeight(p.X, p.Z);
-            result.Add(new PropPlacement(p.Kind, p.X, y, p.Z, p.Scale, p.Yaw, 0));
-        }
+        foreach (MapPlacement p in doc.Placements) Add(result, p, field);
         return result;
+    }
+
+    /// <summary>Authored placements whose (X, Z) falls in the HALF-OPEN rect. A partition of rects covering
+    /// the world reproduces the whole-document result exactly, including ground-snap, because snapping
+    /// samples the deterministic field per placement and never depends on neighbours. Half-open on both axes
+    /// matches <c>ChunkGrid.AreaOf</c>'s streaming invariant: a placement exactly on a rect's max edge
+    /// belongs to the next rect, and that is what makes the partition reproduce the whole.</summary>
+    public static IReadOnlyList<PropPlacement> BuildPlacements(MapDocument doc, TerrainField field, RectArea area)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(field);
+        var result = new List<PropPlacement>();
+        foreach (MapPlacement p in doc.Placements)
+            if (MapSpatialIndex.InArea(p.X, p.Z, area)) Add(result, p, field);
+        return result;
+    }
+
+    /// <summary>O(k) form over a prebuilt index: one document tile's authored placements.</summary>
+    public static IReadOnlyList<PropPlacement> BuildPlacements(MapSpatialIndex index, TerrainField field, MapTileCoord tile)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(field);
+        IReadOnlyList<MapPlacement> bucket = index.PlacementsIn(tile);
+        var result = new List<PropPlacement>(bucket.Count);
+        foreach (MapPlacement p in bucket) Add(result, p, field);
+        return result;
+    }
+
+    /// <summary>Allocation-free form: appends into a caller-owned list.</summary>
+    public static void BuildPlacements(MapSpatialIndex index, TerrainField field, MapTileCoord tile, List<PropPlacement> into)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentNullException.ThrowIfNull(into);
+        foreach (MapPlacement p in index.PlacementsIn(tile)) Add(into, p, field);
+    }
+
+    static void Add(List<PropPlacement> into, MapPlacement p, TerrainField field)
+    {
+        float y = p.Y ?? field.SampleHeight(p.X, p.Z);
+        into.Add(new PropPlacement(p.Kind, p.X, y, p.Z, p.Scale, p.Yaw, 0));
     }
 
     static PropKind[] ToKinds(List<MapPropKind> kinds)

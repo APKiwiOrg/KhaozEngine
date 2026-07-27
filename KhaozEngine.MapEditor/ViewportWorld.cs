@@ -580,7 +580,8 @@ public sealed class ViewportWorld : IDisposable
     }
 }
 
-/// <summary>An authored placement paired with its stable document id. <see cref="MapRuntime.BuildPlacements"/>
+/// <summary>An authored placement paired with its stable document id.
+/// <see cref="MapRuntime.BuildPlacements(MapDocument, TerrainField)"/>
 /// yields <see cref="PropPlacement"/>s keyed only by kit id (what the renderer instances), so the editor keeps the
 /// document id alongside to match the selection. <see cref="Id"/> is the <see cref="MapPlacement.Id"/> and
 /// <see cref="Prop"/> the built render placement.</summary>

@@ -59,6 +59,29 @@ the dirty flag. Every mutation validates the document before it lands (`MapDocum
 JSON schema check on save) and reverts with the validation errors folded into the thrown message on
 failure, so the in-session document is never left invalid.
 
+## Tiled documents, whole-load vs windowed
+
+`map_open` and `map_save` are form-aware, matching the GUI editor: `map_open` dispatches on
+`MapDocumentFile.DetectForm` (a directory loads tiled, a file loads monolithic), and a tiled document at
+or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default 512) loads WHOLE. Above it,
+`map_open` windows instead: the manifest plus only the tiles inside a square centered on the document
+bounds, radius `EditorWindowRadius` tiles (default 2, `MapDocumentWindowing.DefaultEditorWindowRadius`).
+`map_save` always writes back in the form and directory the document came from
+(`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the loaded window's
+tile and world rect plus the occupied/loaded tile counts, `Tiled` false for a monolithic or in-memory
+document. `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window (a world rect, the same
+convention `sculpt_flatten_region` takes): it refuses with unsaved changes unless `discard` is passed, and
+on success discards whatever this session held before (there is no undo stack across calls to replay) and
+reloads fresh from the manifest. Writing content that moved into a tile the window never loaded throws a
+precise `MapDocumentException` naming the item and the target tile instead of silently dropping it, the
+same guard `SaveTiled` states on the document itself, inherited automatically. `convert_to_tiled(directory)`
+/ `convert_to_single(path)` change the on-disk FORM explicitly (`MapDocumentFile.SaveAs`, no extension
+heuristics: `Path.GetExtension("island.map")` is `".map"`, not empty, so guessing from the path would
+route a directory-shaped name to the wrong writer) and always preserve `tileSize` and the world hash
+exactly. `retile(tileSize)` changes `tileSize` itself and re-saves: `tileSize` IS part of world identity
+(`MapDocumentHash.OfWorld`), so this deliberately changes the world hash, and the result's `Warning` states
+the before/after digests plainly so a client and server ship the change together.
+
 ## Manifest paths
 
 `map_open` and `map_create` take optional asset manifest paths (props and buildings). They enable
@@ -90,11 +113,11 @@ it into the throwaway `ViewportWorld` the render call builds (`ViewportWorld.Tex
 render call gets the same textured-vs-flat choice the GUI viewport does without a live editor session
 open. Additive parameter, no new verb.
 
-## Verb surface (73 tools)
+## Verb surface (78 tools)
 
 | Group | Verbs |
 |---|---|
-| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
+| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary`, `set_window`, `window_status`, `convert_to_tiled`, `convert_to_single`, `retile` |
 | Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info`, `sculpt_stats` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |

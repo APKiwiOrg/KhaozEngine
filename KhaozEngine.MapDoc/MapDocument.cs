@@ -17,6 +17,18 @@ public sealed class MapDocument
     public string Id { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public MapBounds Bounds { get; set; } = new();
+
+    /// <summary>Document tile edge in world meters, added at format version 3. Declared once for the whole
+    /// document because the sculpt tile has no fixed size in meters (its span is
+    /// <see cref="TerrainSculpt.TileSize"/> times a per-document cell size), so a document tile grid cannot
+    /// be derived from it. A v2 document migrates with <see cref="MapDocumentFile.DefaultTileSize"/>.
+    /// <para><b>It is part of world identity.</b> Re-tiling a world is a pure storage decision that moves no
+    /// content and still changes <see cref="MapDocumentHash.OfWorld"/>, because the alternative is a hash
+    /// that cannot certify the bucketing the tile hashes were computed under. What follows is a hard rule for
+    /// any conversion between the two forms: PRESERVE this value, never re-derive or default it, or a round
+    /// trip through the monolithic form would silently change world identity.</para></summary>
+    public float TileSize { get; set; } = MapDocumentFile.DefaultTileSize;
+
     public MapTerrain Terrain { get; set; } = new();
     public List<MapScatterLayer> ScatterLayers { get; set; } = new();
     public List<MapCompanionLayer> CompanionLayers { get; set; } = new();
@@ -32,6 +44,13 @@ public sealed class MapDocument
     /// deltas that <see cref="MapRuntime.BuildField"/> folds into the <see cref="TerrainField"/>. The
     /// validating writer refuses tiles whose extent leaves <see cref="Bounds"/>.</summary>
     public MapTerrainOverrides? TerrainOverrides { get; set; }
+
+    /// <summary>The tile index of a tiled document, null for a monolithic one. Present even when only part of
+    /// the world is loaded, so a partial save can carry unloaded tiles through untouched. Never serialized:
+    /// the index lives in the tiled manifest, and a monolithic file that carried a copy could disagree with
+    /// the directory it was converted from.</summary>
+    [JsonIgnore]
+    public MapTileIndex? Tiles { get; set; }
 }
 
 /// <summary>The zone's XZ extent.</summary>

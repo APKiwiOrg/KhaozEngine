@@ -30,8 +30,17 @@ var options = new MapEditorOptions
 sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, options));
 ```
 
-- `DocumentPath` is loaded on enter (a missing file starts a blank untitled document, see
-  `MapEditorScene.CreateDocument`) and saved back to on Ctrl+S.
+- `DocumentPath` is loaded on enter (a `.map.json` file or a tiled document DIRECTORY, dispatched by
+  `MapDocumentFile.DetectForm`. Nothing at the path starts a blank untitled document, see
+  `MapEditorScene.CreateDocument`) and saved back to on Ctrl+S, in the same form it was opened in
+  (`MapDocumentFile.SaveAuto`, never converting implicitly).
+- `WholeWorldTileLimit` (default 512 occupied tiles) and `EditorWindowRadius` (default 2 tiles) govern a
+  tiled document: at or under the limit it loads whole, above it the editor opens a WINDOW instead (see
+  `MapDocumentWindowing`), centered on the document bounds, and the status strip's `window:
+  (minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`) shows the loaded extent. Moving content into a
+  tile the window never covered surfaces Ctrl+S's failure as an ordinary status message, not a crash. There
+  is no in-editor window-move affordance: `convert_to_tiled`/`convert_to_single`/`retile`
+  (`KhaozEngine.MapEdit.Tool`) are the tools for explicit form conversion and re-tiling.
 - `ManifestPaths` are the same `AssetManifest` files the game's own prop-kit loading reads, so the
   editor's palette and picking heights match what the game actually renders.
 - `Registry` defaults to `MapDocRegistry.CreateDefault()`. Pass your own to add custom terrain feature

@@ -5,6 +5,46 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.8.0
+
+### Camera-relative rendering: visual precision no longer degrades with distance from the origin
+
+Release 1 of the floating-origin program (#337). At 100 km from the origin a float32 world
+coordinate is quantized to a 7.8 mm lattice, which reads as vertex shimmer and crawling shading
+anywhere far from world zero. The renderer now subtracts a quantized render origin from everything
+it sends to the GPU, so on-screen precision at 100 km matches the origin. Simulation, physics, the
+wire format, and every consumer-facing coordinate stay absolute world space. This release changes
+no behavior near the origin and required no golden rebake: the full existing GPU golden suite
+passes with the feature active.
+
+- **`KhaozEngine.Primitives`**: `WorldFrame`, the quantized frame the origin snaps to. Anchors sit
+  on a 128 m grid chosen from the measured divergence data (822 mm at 50 km over 20 s against a
+  10 mm budget), re-anchoring is round-to-nearest with hysteresis, and the anchor translation is
+  bit-exact in float32 by construction. The invariants ship as tests, including the binade bracket
+  that pins 512 m as the ceiling the 128 m grid clears with margin.
+- **`KhaozEngine.Render3D`**: `Scene3D.RenderOrigin` (latched at `Begin`, defaults to the active
+  camera's quantized eye, assign a value to override, assign null to restore the default, or
+  `Vector3.Zero` to opt out bit-identically). `IRenderOriginAware` on `IsoCamera3D`,
+  `FollowCamera3D`, and `FlyCamera3D` with `AbsoluteViewProjection` for CPU-side spatial math. A
+  camera that does not implement it gets the whole pipeline absolute, exactly as before. The
+  subtraction happens only on the GPU-bound copy of instance data: submission queues, culling, the
+  terrain identity fast path, shadow caster classification, cascade fitting, and the transparency
+  sorts all stay absolute and byte-identical to the previous engine. `Transform3D.ToMatrix(Vector3)`
+  builds an origin-relative matrix for custom pipelines.
+- **Shaders**: a `RenderOrigin` uniform rides the existing per-pipeline uniform blocks (no pipeline
+  gained a second buffer) and reconstructs the absolute position only where world-anchored texturing
+  and noise need it (terrain triplanar, dissolve noise, water swell phase, FFT sampling frame, foam
+  lattices). Lighting, view vectors, shadows, and derivatives run on the relative position.
+- **Caveat carried from the spec**: world-anchored texturing at extreme range keeps float32 texel
+  precision (reconstruction preserves rather than improves it), and terrain vertices still bake
+  absolute coordinates until the terrain release of this program lands.
+
+Consumers: nothing to do. Reading `camera.View` or `camera.ViewProjection` directly for CPU spatial
+math should switch to `AbsoluteViewProjection` when an origin is in force, and `WorldToScreen` and
+`ScreenToRay` remain absolute in and out. Design and the release train in
+`docs/design/FLOATING-ORIGIN-DESIGN-2026-07-27.md` (#337 stays open for the terrain and wire
+releases).
+
 ## 16.7.0
 
 ### Tiled map document format: a world now loads, saves, and hashes per tile

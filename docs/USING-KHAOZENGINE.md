@@ -5366,6 +5366,114 @@ globals a tile file does not carry.
 `GetTileJson()` are DERIVED from it at runtime and `WriteAllTo(directory)` materializes all three, so three
 schemas describing overlapping content cannot rot apart.
 
+### Document residency: streaming tiles around the player
+
+`MapTileResidency` keeps a square ring of document tiles resident around one or more foci, reading each on
+demand and notifying an `IMapTileSink` as they arrive and leave. It is GPU-free and driven from a position,
+so the client and a headless server run the same type over the same document.
+
+**It does not own chunks and `TerrainStreamer` does not own tiles.** Residency owns document tile lifetime,
+the streamer owns chunk lifetime, the chunk sink reads resident document data, and nothing is tracked twice.
+The composition contract is three rules, all of which a consumer wires once:
+
+```csharp
+// 1. Validate at wiring time, against the WIDEST render-distance profile rather than the active one: the
+//    profile is a runtime setting, and a config that only validates on Low is a hole in the world on Ultra.
+var residencyConfig = MapResidencyConfig.Default;      // LoadRadius 2, UnloadRadius 3, 2 applies per update
+IReadOnlyList<string> errors = residencyConfig.ValidateAgainst(streamerConfig, doc.TileSize, sculptCellSize);
+if (errors.Count > 0) throw new InvalidOperationException(string.Join("\n", errors));
+
+var residency = new MapTileResidency(source, residencyConfig, sink, dispatcher: null, field);
+
+// 2. Gate the streamer, so a chunk whose document data has not landed yet is deferred rather than built
+//    against bare analytic terrain. Continuous motion can outrun async residency and no ordering rule fixes
+//    that, which is why the gate is needed as well as the ordering.
+streamer.BuildGate = residency.GateFor(streamerConfig.ChunkSize, sculptCellSize);
+
+// 3. Residency updates BEFORE the streamer, in the same frame.
+void OnFrame(Vector3 playerPos, float dt)
+{
+    residency.Update(playerPos);
+    streamer.Update(playerPos, dt);
+}
+```
+
+The consumer's sink is where a game turns an arrival into world state. The engine notifies, the consumer
+populates, and nothing in the engine registers, owns, or frees a physics body:
+
+```csharp
+sealed class WorldTileSink(TerrainField field, TerrainStreamer streamer, IPhysicsWorld physics) : IMapTileSink
+{
+    TerrainSculpt _sculpt = new(sculptCellSize, Array.Empty<TerrainSculptTile>());
+    readonly Dictionary<MapTileCoord, List<StaticHandle>> _bodies = new();
+
+    public void TileLoaded(MapTileCoord coord, MapTileContent content, ChunkRing ring)
+    {
+        // Sculpt: rebuild the snapshot sharing every unchanged tile's array, publish it, then rebuild only
+        // the chunks over this tile's rect.
+        _sculpt = _sculpt.With(ToSculptTiles(content.SculptTiles), remove: null);
+        field.SetSculpt(_sculpt);
+        streamer.Invalidate(MapTileGrid.AreaOf(coord, tileSize));
+
+        if (ring == ChunkRing.Gameplay) _bodies[coord] = AddStaticBodies(physics, content.Placements);
+    }
+
+    public void TileRingChanged(MapTileCoord coord, MapTileContent content, ChunkRing ring)
+    {
+        if (ring == ChunkRing.Decor) RemoveBodies(coord);      // far tile: keep the data, shed the colliders
+        else _bodies[coord] = AddStaticBodies(physics, content.Placements);
+    }
+
+    public void TileUnloaded(MapTileCoord coord)
+    {
+        RemoveBodies(coord);
+        _sculpt = _sculpt.With(add: null, remove: SculptCoordsOf(coord));
+        field.SetSculpt(_sculpt);
+        streamer.Invalidate(MapTileGrid.AreaOf(coord, tileSize));
+    }
+}
+```
+
+Callbacks fire on the thread that called `Update`, before it returns, so a consumer adds and frees bodies
+with no lock. The file read and parse behind an arrival ran on a worker thread. The handoff did not.
+
+**Streamed placements need the live source, or they never render.** A frozen `PropLayer.Placements` list is
+bucketed by chunk once at sink construction, so a placement arriving later would never draw. Wire the layer
+to the residency instead and the sink queries it at every chunk build:
+
+```csharp
+var decor = PropLayer.PlacementLayer(residency, propMeshes, drawRadius: 220f);
+```
+
+**Every teleport, zone change and camera jump runs the teleport contract.** This is the step most likely to
+be missed, because without it the world looks right within a few frames and the failure only shows as a
+brief fall-through on arrival:
+
+```csharp
+residency.PrimeAround(newFocus);   // deterministic blocking fill: a loading moment, not a frame
+streamer.UnloadAll();              // discard the pre-teleport ring so no stale chunk lands late
+```
+
+**The server form is the same type with a span of foci.** `residency.Update(playerPositions)` makes the
+resident set the union of the per-focus rings, recomputed each update with nothing reference counted. A tile
+contested between rings takes the strongest any focus assigns it, so the answer is a pure function of the
+focus SET rather than its order, which is what stops a tile flapping between rings and a consumer shedding
+and re-adding colliders every frame. Cost is O(foci * ring area). Past a few hundred foci, drive one
+residency per shard cell rather than one global residency with a thousand foci
+([#341](https://github.com/APKiwiOrg/KhaozEngine/issues/341) tracks the two known holes in that guidance).
+
+**Why the radii are Chebyshev and the streamer's are Euclidean.** Document radii are in TILE units at
+Chebyshev distance (a square ring), because the focus can sit anywhere in its own tile and a square ring is
+the only shape that guarantees `LoadRadius * tileSize` of loaded world in every direction for every radius.
+A Euclidean ring guarantees zero at radius 1 (the diagonal neighbour is excluded and the focus can be
+arbitrarily close to it). A chunk is a render primitive where a round ring saves builds in the corners, and
+a document tile is a data-availability unit where a square ring is the thing that can be reasoned about.
+`MapResidencyConfig` is a distinct type from `StreamerConfig` precisely so the two cannot be swapped.
+`ValidateAgainst` is what turns that into a checked guarantee: its data rule measures to the streamer's
+UNLOAD radius (chunks persist that far, and `Invalidate` rebuilds any loaded chunk a rect touches), its
+collider rule keeps every gameplay chunk over Gameplay document tiles, and both subtract one sculpt span,
+because a tile's low-X and low-Z edges are covered by sculpt owned by the neighbour on that side.
+
 **Boot fails loud.** Map documents are dev-authored content, not runtime state: a read error, invalid
 JSON, a bad or unmigratable `formatVersion`, or any `MapDocumentValidator` failure (a duplicate id, an
 unknown scatter layer reference, a `terrainOverrides` tile that leaves the document bounds) throws

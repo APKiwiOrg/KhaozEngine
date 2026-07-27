@@ -200,8 +200,23 @@ namespace KhaozEngine.Render3D.Internal
         /// <param name="vertices">Receives the vertex block.</param>
         /// <param name="indices">Receives the triangle-list indices.</param>
         /// <param name="indexCount">Receives the index count actually written.</param>
+        /// <param name="renderOrigin">Camera-relative render origin. Written positions come out in the RENDER
+        /// frame, reduced by it.
+        /// <para>
+        /// <b>Everything above it is decided in absolute world space, and that ordering is the world lock.</b> The
+        /// plane, the focus, the per-level snap and the stitch neighbours are all resolved on absolute
+        /// coordinates, so the lattice a vertex lands on is a function of the world and of nothing else. Snapping
+        /// in the RENDER frame instead would re-quantize every ring the moment the render origin rebased: the same
+        /// world position would round to a different lattice node, every vertex would jump, and the surface would
+        /// be resampled - which is the exact artifact this grid exists to remove, reintroduced by the fix for a
+        /// different problem. <see cref="WaterClipmapVertex.Stitch"/> is a difference and
+        /// <see cref="WaterClipmapVertex.Cell"/> a scalar, so neither needs reducing; the shader adds the origin
+        /// back to recover the absolute position it samples the cascades at.
+        /// </para>
+        /// </param>
         public static int Build(in WaterPlane plane, float focusX, float focusZ, float baseCell, int ringCells,
-            int levels, Span<WaterClipmapVertex> vertices, Span<uint> indices, out int indexCount)
+            int levels, Span<WaterClipmapVertex> vertices, Span<uint> indices, out int indexCount,
+            Vector3 renderOrigin = default)
         {
             int n = ringCells;
             int stride = n + 1;
@@ -209,16 +224,30 @@ namespace KhaozEngine.Render3D.Internal
             float cell = MathF.Max(baseCell, 1e-4f);
             levels = Math.Clamp(levels, 1, MaxLevels);
 
-            float minX = plane.CenterX - plane.HalfExtentX, maxX = plane.CenterX + plane.HalfExtentX;
-            float minZ = plane.CenterZ - plane.HalfExtentZ, maxZ = plane.CenterZ + plane.HalfExtentZ;
+            // Everything below this point is in the RENDER frame, and the reduction happens exactly here: on the
+            // ring ORIGINS and the plane's centre, never on a per-vertex position.
+            //
+            // That ordering is a precision requirement, not a preference. A ring origin is a whole multiple of
+            // 2 * cellSize and the render origin is a whole multiple of the 128 m frame grid, so both are exact
+            // integers in float32 out to 2^24 and their difference is exact. A per-vertex ABSOLUTE position is
+            // neither: at 100 km, `origin + (i - half) * cell` has already rounded to the ~8 mm float lattice
+            // before any subtraction could recover it, so reducing at that point would re-quantize the grid with
+            // distance - the world lock would hold in metres and fail in millimetres, which is precisely the
+            // defect camera-relative rendering exists to remove.
+            float centerX = plane.CenterX - renderOrigin.X, centerZ = plane.CenterZ - renderOrigin.Z;
+            float minX = centerX - plane.HalfExtentX, maxX = centerX + plane.HalfExtentX;
+            float minZ = centerZ - plane.HalfExtentZ, maxZ = centerZ + plane.HalfExtentZ;
+            float surfaceY = plane.SurfaceY - renderOrigin.Y;
 
             Span<float> originX = stackalloc float[MaxLevels];
             Span<float> originZ = stackalloc float[MaxLevels];
             for (int l = 0; l < levels; l++)
             {
                 float c = CellSize(cell, l);
-                originX[l] = SnapOrigin(focusX, c);
-                originZ[l] = SnapOrigin(focusZ, c);
+                // Snapped on the ABSOLUTE focus, so the lattice is a function of the world and a rebase cannot
+                // move it; reduced immediately, so nothing downstream ever forms a large coordinate.
+                originX[l] = SnapOrigin(focusX, c) - renderOrigin.X;
+                originZ[l] = SnapOrigin(focusZ, c) - renderOrigin.Z;
             }
 
             int written = 0;
@@ -266,9 +295,11 @@ namespace KhaozEngine.Render3D.Internal
                             }
                         }
 
+                        // wx/wz are already render-relative (the origins were reduced above), so this is a plain
+                        // write: no large intermediate is ever formed per vertex.
                         vertices[written++] = new WaterClipmapVertex
                         {
-                            Position = new Vector3(wx, plane.SurfaceY, wz),
+                            Position = new Vector3(wx, surfaceY, wz),
                             Stitch = stitch,
                             Cell = onBoundary && hasCoarser ? coarse : c,
                         };

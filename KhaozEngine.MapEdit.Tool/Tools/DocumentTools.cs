@@ -42,4 +42,32 @@ public sealed class DocumentTools(MapEditSession session)
     [McpServerTool(Name = "map_summary"), Description("Returns a flat summary of the open document: identity, bounds, terrain seed and water level, feature types in fold order, layer and companion names, section counts, player spawn ids, region names, and the dirty flag.")]
     public MapSummary MapSummary()
         => ToolGuard.Guard(session.Summary);
+
+    [McpServerTool(Name = "set_window"), Description("Moves the loaded window of the open tiled document: reloads the manifest plus only the tiles inside the given world rect, discarding whatever this session held before. Refuses with unsaved changes unless discard is passed.")]
+    public WindowStatusResult SetWindow(
+        [Description("Minimum world X of the window rect, meters.")] float minX,
+        [Description("Minimum world Z of the window rect, meters.")] float minZ,
+        [Description("Maximum world X of the window rect, meters.")] float maxX,
+        [Description("Maximum world Z of the window rect, meters.")] float maxZ,
+        [Description("When true, moves the window even with unsaved changes, losing them. Defaults to false.")] bool discard = false)
+        => ToolGuard.Guard(() => session.SetWindow(minX, minZ, maxX, maxZ, discard));
+
+    [McpServerTool(Name = "window_status"), Description("Reports the loaded window of the open document: whether it is tiled, whether a window is loaded (vs. the whole world), the window's tile and world rect, and the occupied/loaded tile counts.")]
+    public WindowStatusResult WindowStatus()
+        => ToolGuard.Guard(session.WindowStatus);
+
+    [McpServerTool(Name = "convert_to_tiled"), Description("Converts the open document to the tiled form (a directory of map.json plus content-addressed tile files) at the given directory, explicitly, preserving tileSize and the world hash exactly.")]
+    public ConvertResult ConvertToTiled(
+        [Description("Absolute or working-directory-relative path to the tiled document DIRECTORY to write.")] string directory)
+        => ToolGuard.Guard(() => session.ConvertToTiled(directory));
+
+    [McpServerTool(Name = "convert_to_single"), Description("Converts the open document to the monolithic form (one .map.json file) at the given path, explicitly, preserving tileSize and the world hash exactly.")]
+    public ConvertResult ConvertToSingle(
+        [Description("Absolute or working-directory-relative path to the .map.json FILE to write.")] string path)
+        => ToolGuard.Guard(() => session.ConvertToSingle(path));
+
+    [McpServerTool(Name = "retile"), Description("Sets the document's tileSize and re-saves it at its own path. tileSize is part of world identity, so this changes the world hash: the result's Warning states the before/after digests, and a re-tile needs a coordinated client and server release.")]
+    public RetileResult Retile(
+        [Description("New document tile edge in meters. Must be positive and finite.")] float tileSize)
+        => ToolGuard.Guard(() => session.Retile(tileSize));
 }

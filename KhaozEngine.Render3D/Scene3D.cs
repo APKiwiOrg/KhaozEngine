@@ -23,7 +23,7 @@ namespace KhaozEngine.Render3D
     /// GPU resources (via the KhaozEngine.Gpu seam) but records into a caller-supplied command list (see
     /// <see cref="Render3DSurface"/>); the public surface stays backend-free.
     /// </summary>
-    public sealed class Scene3D : IDisposable
+    public sealed partial class Scene3D : IDisposable
     {
         readonly IGpuDevice _gd;
         readonly GpuOutputDescription _targetOutput;
@@ -967,10 +967,11 @@ namespace KhaozEngine.Render3D
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
         internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
 
-        /// <summary>Start a frame: clear the instance queue, the point-light queue, the debug-line queue, the
-        /// filled-overlay queue, and the billboard queues. Call before submitting.</summary>
+        /// <summary>Start a frame: latch <see cref="RenderOrigin"/>, then clear the instance queue, the point-light
+        /// queue, the debug-line queue, the filled-overlay queue, and the billboard queues. Call before submitting.</summary>
         public void Begin()
         {
+            LatchRenderOrigin();
             _instances.Begin();
             _skinnedInstances.Begin();
             _boneMatrices.Clear();
@@ -1051,8 +1052,9 @@ namespace KhaozEngine.Render3D
         /// <paramref name="color"/> (RGBA). Cleared in <see cref="Begin"/>; drawn over the post image.</summary>
         public void DebugLine(Vector3 a, Vector3 b, Color color)
         {
-            _lineVerts.Add(new LineRenderer.LineVertex(a, color));
-            _lineVerts.Add(new LineRenderer.LineVertex(b, color));
+            // Exception queue (class doc, Scene3D.RenderOrigin.cs): reduced here at submission since nothing reads it CPU-side.
+            _lineVerts.Add(new LineRenderer.LineVertex(ToRender(a), color));
+            _lineVerts.Add(new LineRenderer.LineVertex(ToRender(b), color));
         }
 
         /// <summary>Queue a ray from <paramref name="origin"/> along <paramref name="direction"/> for
@@ -1105,7 +1107,7 @@ namespace KhaozEngine.Render3D
         void AppendScratch(Vector4 color)
         {
             foreach (var p in _scratch)
-                _lineVerts.Add(new LineRenderer.LineVertex(p, color));
+                _lineVerts.Add(new LineRenderer.LineVertex(ToRender(p), color));   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
         }
 
         // ---- Debug wire VOLUMES (immediate-mode): closed 3D wire shapes for tuning gameplay volumes in-world
@@ -1190,7 +1192,7 @@ namespace KhaozEngine.Render3D
             Vector4 c = opacity >= 1f ? color : color.WithAlpha(color.A * opacity);
             var dst = depth == DebugDepthMode.DepthTested ? _depthLineVerts : _lineVerts;
             foreach (var p in _scratch)
-                dst.Add(new LineRenderer.LineVertex(p, c));
+                dst.Add(new LineRenderer.LineVertex(ToRender(p), c));   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
         }
 
         /// <summary>Count of queued always-on-top debug-line vertices this frame (2 per segment). Internal: lets
@@ -1259,7 +1261,7 @@ namespace KhaozEngine.Render3D
         void AppendFillScratch(Vector4 color)
         {
             foreach (var p in _fillScratch)
-                _fillVerts.Add(new FillRenderer.FillVertex(p, color));
+                _fillVerts.Add(new FillRenderer.FillVertex(ToRender(p), color));   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
         }
 
         /// <summary>Count of queued filled-overlay vertices this frame (3 per triangle). Internal: lets tests
@@ -1358,7 +1360,7 @@ namespace KhaozEngine.Render3D
             }
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
-            BillboardGeometry.Triangles(worldPos, size, _billboardRight, _billboardUp, pos, uv);
+            BillboardGeometry.Triangles(ToRender(worldPos), size, _billboardRight, _billboardUp, pos, uv);   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
             for (int i = 0; i < 6; i++)
                 _billboardAdditive.Add(new BillboardRenderer.BillboardVertex(pos[i], uv[i], color));
         }
@@ -1643,7 +1645,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> cascades (CPU-authored, NOT
-        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> and return the count. Standard frustum-slice
+        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> (render-relative) and
+        /// <see cref="_cascadeCpuVpsAbsolute"/> (the CPU caster test's, see <see cref="FitCascade"/>), and return the
+        /// count. Standard frustum-slice
         /// CSM: the active camera's frustum is split along VIEW DEPTH (near plane, <see cref="ShadowSettings.ShadowNearDistance"/>,
         /// ... , <see cref="ShadowSettings.ResolvedMaxDistance"/> via the practical split) and each cascade
         /// frames its slice's bounding sphere, texel-snapped. Texel density therefore follows what is ON
@@ -1658,7 +1662,8 @@ namespace KhaozEngine.Render3D
         int ComputeShadowCascades()
         {
             var shadows = Post.Quality.Shadows;
-            if (!Internal.ShadowMapMath.FrustumCornersWorld(ActiveCamera.ViewProjection, _frustumCornersScratch))
+            // ABSOLUTE: the fit, the radii and the caster classification stay byte-identical at any render origin.
+            if (!Internal.ShadowMapMath.FrustumCornersWorld(FrameAbsoluteViewProjection(), _frustumCornersScratch))
             {
                 _cascadeCount = 0;
                 return 0;
@@ -1684,7 +1689,7 @@ namespace KhaozEngine.Render3D
                 float d = Math.Clamp(splits[i], camNear, camFar);
                 Internal.ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
                     (prev - camNear) / range, (d - camNear) / range, out Vector3 center, out float radius);
-                _cascadeCpuVps[i] = Internal.ShadowMapMath.BuildLightViewProj(lightDir, center, radius, res);
+                FitCascade(i, lightDir, center, radius, res);
                 _cascadeRadii[i] = radius;
                 prev = MathF.Max(d, prev);
             }
@@ -1844,8 +1849,11 @@ namespace KhaozEngine.Render3D
             // unless a FrozenCrossfade transition just went active. See TransitionRenderer.BeginFrame.
             _transitions.BeginFrame(cl, _res, ScreenTransition);
 
-            Matrix4x4 vp = ActiveCamera.ViewProjection;
-            Vector3 eye = ActiveCamera.Eye;
+            // Relative for the GPU, absolute for every CPU-side spatial computation, and the eye converted with the
+            // geometry (the water/particle/distortion shaders difference it against a render-frame world position).
+            Matrix4x4 vp = FrameViewProjection();
+            Matrix4x4 absVp = FrameAbsoluteViewProjection();
+            Vector3 eye = ToRender(ActiveCamera.Eye);
 
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
@@ -1855,18 +1863,15 @@ namespace KhaozEngine.Render3D
             // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
             ApplyAlphaCutoffs(_instanceData, _runs, _meshes);
-            if (_instanceData.Count > 0)
-            {
-                _model.UploadInstances(cl, CollectionsMarshal.AsSpan(_instanceData));
-                _frameStats.BufferUpdateBytes += (long)_instanceData.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>();
-            }
+            // Reduced into a staging copy, so _instanceData stays absolute for the culling + caster reads below.
+            UploadInstancesRelative(cl);
 
             // Camera-frustum visibility for the MAIN pass only. Computed after grouping (so it is index-aligned to
             // the uploaded _instanceData / runs) and BEFORE the shadow pass runs, but the shadow pass ignores it -
             // an off-screen caster must still write depth into the light-space map so its shadow lands on-screen.
             // Reuses _instanceVisible (grown, not per-frame allocated); the main + splat draws then rasterize only
             // the visible contiguous sub-spans of each run against the same GPU buffer (no re-upload, no reorder).
-            FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(vp) : default;
+            FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(absVp) : default;
             ComputeMainPassVisibility(camFrustum);
 
             // Resolve the shadow tier + (when active) this frame's cascade fit BEFORE the CPU skin pass below, so an
@@ -1883,7 +1888,7 @@ namespace KhaozEngine.Render3D
                 shadowCascadeCount = ComputeShadowCascades();
                 if (shadowCascadeCount == 0) shadowMapActive = false;   // degenerate camera: no shadows this frame
                 for (int i = 0; i < shadowCascadeCount; i++)
-                    _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVps[i]);
+                    _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVpsAbsolute[i]);
             }
 
             // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
@@ -1935,7 +1940,7 @@ namespace KhaozEngine.Render3D
                         // _boneMatrices (submission index), packed into the combined UBO at the compacted slot below.
                         _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                             entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
-                            it.World, it.Tint, emissive, specParams, visibleMain, dissolving));
+                            ToRender(it.World), it.Tint, emissive, specParams, visibleMain, dissolving));   // reduced after the absolute classify
                     }
                     else
                     {
@@ -1945,7 +1950,7 @@ namespace KhaozEngine.Render3D
                             _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
                         _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
                         {
-                            Model = it.World,
+                            Model = ToRender(it.World),   // reduced AFTER the absolute visibility classification above
                             Tint = it.Tint,
                             Emissive = emissive,
                             SpecParams = specParams,
@@ -2019,7 +2024,7 @@ namespace KhaozEngine.Render3D
 
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _model.BeginModelPass(cl, _res, Post);
-            _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights));
+            _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin);
             _model.BindPass(cl);
 
             if (_instanceData.Count > 0)
@@ -2097,7 +2102,7 @@ namespace KhaozEngine.Render3D
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.
                     // rejectDynamicGeometry: false. This pass runs BEFORE the skinned draws and resolves only depth
                     // (not the normal target the reject reads), and a blob shadow wants no dynamic reject anyway.
-                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, false, CollectionsMarshal.AsSpan(_shadowDecals));
+                    _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, false, RelativeDecals(_shadowDecals));
                     cl.SetFramebuffer(_res.ModelFB);
                     _model.BindPass(cl);
                 }
@@ -2183,7 +2188,7 @@ namespace KhaozEngine.Render3D
                 cl.SetFramebuffer(_res.ModelFB);
                 int on = _overlayMeshDraws.Count;
                 _overlayMeshes.EnsureCapacity(on);
-                _overlayMeshes.BeginFrame(GpuClip.Correct(ActiveCamera.ViewProjection, _gd.Capabilities));
+                _overlayMeshes.BeginFrame(GpuClip.Correct(vp, _gd.Capabilities));
                 // Sort the overlay proxies back-to-front by their world-origin view depth: they alpha-blend with
                 // depth-write off, so overlapping proxies must composite far-to-near (the pre-sort submission order
                 // blended wrong when a near proxy was queued before a far one behind it). Uses each draw's own UBO
@@ -2198,7 +2203,7 @@ namespace KhaozEngine.Render3D
                     if (!_slots.IsValid(handle.Index, handle.Generation)) continue;   // stale handle: skip
                     var m = _meshes[handle.Index];
                     if (m is not { } mesh) continue;
-                    _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, k, world);
+                    _overlayMeshes.Draw(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, k, ToRender(world));
                     _frameStats.DrawCalls++;
                 }
             }
@@ -2237,7 +2242,7 @@ namespace KhaozEngine.Render3D
                 // Batched decal pass: one instanced draw per blend run (see GroundDecalRenderer), so add the run count.
                 // rejectDynamicGeometry: true. This is the main pass, after ResolveDepthNormal, so the normal target
                 // carries the model pass's dynamic tags - reject skinned-tagged pixels so decals stay off characters (#235).
-                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, true, CollectionsMarshal.AsSpan(_decals));
+                _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, true, RelativeDecals(_decals));
 
             // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
             // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so
@@ -2247,8 +2252,8 @@ namespace KhaozEngine.Render3D
             // renders byte-identical to before this pass existed.
             if (_waterPlanes.Count > 0)
             {
-                _water.Draw(cl, _res, CollectionsMarshal.AsSpan(_waterPlanes), ActiveCamera.ViewProjection,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds);
+                _water.Draw(cl, _res, RelativeWaterPlanes(), vp,
+                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin);
                 _frameStats.DrawCalls++;
             }
 
@@ -2265,7 +2270,7 @@ namespace KhaozEngine.Render3D
                 BuildSortedParticles();
                 BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 pRight, out Vector3 pUp);
                 _particleTexResolver ??= ResolveTextureByListIndex;
-                _frameStats.DrawCalls += _particleRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, eye, pRight, pUp,
+                _frameStats.DrawCalls += _particleRenderer.Draw(cl, _res, vp, eye, pRight, pUp,
                     EffectTimeSeconds, ParticleSoftFade, ParticleQuality, Post.BackgroundColor.R,
                     CollectionsMarshal.AsSpan(_particleSorted), _particleTexResolver);
                 _frameStats.Instances += _particleSorted.Count;
@@ -2280,7 +2285,7 @@ namespace KhaozEngine.Render3D
             // The always-on-top variant instead feeds the post-pass line overlay below (_lineVerts). No-op when empty.
             if (_depthLineVerts.Count > 0)
             {
-                _depthLines.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_depthLineVerts), _res.ColorDepthFB);
+                _depthLines.Draw(cl, vp, CollectionsMarshal.AsSpan(_depthLineVerts), _res.ColorDepthFB);
                 _frameStats.DrawCalls++;
             }
 
@@ -2302,9 +2307,9 @@ namespace KhaozEngine.Render3D
             {
                 BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 dRight, out Vector3 dUp);
                 float resRatio = DistortionQuality == DistortionQuality.Full ? 2f : 4f;
-                _frameStats.DrawCalls += _distortionRenderer.Draw(cl, _res, ActiveCamera.ViewProjection, eye, dRight, dUp,
+                _frameStats.DrawCalls += _distortionRenderer.Draw(cl, _res, vp, eye, dRight, dUp,
                     EffectTimeSeconds, ParticleSoftFade, DistortionQuality, Post.BackgroundColor.R, resRatio,
-                    CollectionsMarshal.AsSpan(_distortionSprites));
+                    RelativeDistortionSprites());
             }
 
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
@@ -2318,7 +2323,7 @@ namespace KhaozEngine.Render3D
             // blend; same ActiveCamera.ViewProjection as the model pass (so fills line up with geometry and picking).
             if (_fillVerts.Count > 0)
             {
-                _fills.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_fillVerts), target);
+                _fills.Draw(cl, vp, CollectionsMarshal.AsSpan(_fillVerts), target);
                 _frameStats.DrawCalls++;
             }
 
@@ -2327,7 +2332,7 @@ namespace KhaozEngine.Render3D
             // lines line up with rendered geometry and with ScreenToGround picking).
             if (_lineVerts.Count > 0)
             {
-                _lines.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_lineVerts), target);
+                _lines.Draw(cl, vp, CollectionsMarshal.AsSpan(_lineVerts), target);
                 _frameStats.DrawCalls++;
             }
 
@@ -2337,13 +2342,13 @@ namespace KhaozEngine.Render3D
             // translucent billboards composite far-to-near regardless of the order the host queued them.
             if (_billboardAdditive.Count > 0)
             {
-                _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
+                _billboards.Draw(cl, vp, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
                 _frameStats.DrawCalls++;
             }
             BuildSortedAlphaBillboards();
             if (_billboardAlpha.Count > 0)
             {
-                _billboards.Draw(cl, ActiveCamera.ViewProjection, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
+                _billboards.Draw(cl, vp, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
                 _frameStats.DrawCalls++;
             }
 
@@ -2393,7 +2398,7 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < n; i++) _sortCenters.Add(_particleSprites[i].Position);
             TransparencySort.ComputeOrder(CollectionsMarshal.AsSpan(_sortCenters), n,
                 ActiveCamera.Eye, ActiveCamera.Forward, ref _sortKeys, ref _sortOrder);
-            for (int k = 0; k < n; k++) _particleSorted.Add(_particleSprites[_sortOrder[k]]);
+            for (int k = 0; k < n; k++) _particleSorted.Add(ToRender(_particleSprites[_sortOrder[k]]));   // reduced on the copy, after the sort
         }
 
         /// <summary>Expand the queued alpha billboards into <see cref="_billboardAlpha"/> in BACK-TO-FRONT order:
@@ -2422,7 +2427,7 @@ namespace KhaozEngine.Render3D
             for (int k = 0; k < n; k++)
             {
                 var it = _billboardAlphaItems[_sortOrder[k]];
-                BillboardGeometry.Triangles(it.Center, it.Size, _billboardRight, _billboardUp, pos, uv);
+                BillboardGeometry.Triangles(ToRender(it.Center), it.Size, _billboardRight, _billboardUp, pos, uv);
                 for (int v = 0; v < 6; v++)
                     _billboardAlpha.Add(new BillboardRenderer.BillboardVertex(pos[v], uv[v], it.Color));
             }
@@ -2443,7 +2448,7 @@ namespace KhaozEngine.Render3D
 
             // Camera basis is constant across the frame; compute once and reuse for every quad.
             BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 right, out Vector3 up);
-            _texBillboards.SetViewProj(cl, ActiveCamera.ViewProjection);
+            _texBillboards.SetViewProj(cl, FrameViewProjection());
 
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
@@ -2453,7 +2458,7 @@ namespace KhaozEngine.Render3D
                 for (int i = run.Start; i < run.Start + run.Count; i++)
                 {
                     var it = _texBillboardSorted[i];
-                    BillboardGeometry.Triangles(it.Center, it.Size, right, up, it.SourceUv, pos, uv);
+                    BillboardGeometry.Triangles(ToRender(it.Center), it.Size, right, up, it.SourceUv, pos, uv);
                     for (int v = 0; v < 6; v++)
                         _texBillboardVerts.Add(new BillboardRenderer.BillboardVertex(pos[v], uv[v], it.Color));
                 }
@@ -2506,13 +2511,13 @@ namespace KhaozEngine.Render3D
             Span<Vector2> uv = stackalloc Vector2[6];
             foreach (var it in _beamItems)
             {
-                int n = BeamGeometry.Triangles(it.A, it.B, viewDir, it.Width, pos, uv);
+                int n = BeamGeometry.Triangles(ToRender(it.A), ToRender(it.B), viewDir, it.Width, pos, uv);
                 for (int v = 0; v < n; v++)
                     _beamVerts.Add(new BeamRenderer.BeamVertex(pos[v], uv[v], it.CoreColor, it.GlowColor, it.Shape, it.Anim));
             }
             if (_beamVerts.Count == 0) return;
 
-            _beams.SetFrameUniforms(cl, ActiveCamera.ViewProjection, EffectTimeSeconds);
+            _beams.SetFrameUniforms(cl, FrameViewProjection(), EffectTimeSeconds);
             _beams.Draw(cl, CollectionsMarshal.AsSpan(_beamVerts), _res.ModelFB);
             _frameStats.DrawCalls++;
         }
@@ -2535,7 +2540,7 @@ namespace KhaozEngine.Render3D
                 _trailScratchPos.Clear();
                 _trailScratchUv.Clear();
                 _trailScratchAlpha.Clear();
-                var span = allSamples.Slice(it.Start, it.Count);
+                var span = RelativeTrailSamples(allSamples.Slice(it.Start, it.Count));
                 int nv = TrailGeometry.Build(span, viewDir, _trailScratchPos, _trailScratchUv, _trailScratchAlpha);
                 if (nv == 0) continue;
 
@@ -2554,7 +2559,7 @@ namespace KhaozEngine.Render3D
 
             if (_trailVertsAdditive.Count == 0 && _trailVertsAlpha.Count == 0) return;
 
-            _trails.SetFrameUniforms(cl, ActiveCamera.ViewProjection);
+            _trails.SetFrameUniforms(cl, FrameViewProjection());
             if (_trailVertsAdditive.Count > 0)
             {
                 _trails.Draw(cl, CollectionsMarshal.AsSpan(_trailVertsAdditive), _res.ModelFB, TrailBlend.Additive);
@@ -3016,18 +3021,6 @@ namespace KhaozEngine.Render3D
                     if (visible) _drawnInstances++; else _culledInstances++;
                 }
             }
-        }
-
-        /// <summary>True when <paramref name="m"/> is (within a small epsilon) the identity transform, so a mesh's
-        /// local-space AABB doubles as its world AABB (terrain chunks draw at identity with world-space verts).</summary>
-        static bool IsIdentityTransform(in Matrix4x4 m)
-        {
-            const float e = 1e-5f;
-            return MathF.Abs(m.M11 - 1f) < e && MathF.Abs(m.M22 - 1f) < e && MathF.Abs(m.M33 - 1f) < e && MathF.Abs(m.M44 - 1f) < e
-                && MathF.Abs(m.M12) < e && MathF.Abs(m.M13) < e && MathF.Abs(m.M14) < e
-                && MathF.Abs(m.M21) < e && MathF.Abs(m.M23) < e && MathF.Abs(m.M24) < e
-                && MathF.Abs(m.M31) < e && MathF.Abs(m.M32) < e && MathF.Abs(m.M34) < e
-                && MathF.Abs(m.M41) < e && MathF.Abs(m.M42) < e && MathF.Abs(m.M43) < e;
         }
 
         /// <summary>

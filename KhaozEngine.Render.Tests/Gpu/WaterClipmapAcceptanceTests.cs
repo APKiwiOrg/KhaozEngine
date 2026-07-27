@@ -250,58 +250,91 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Two planes of very different sizes in ONE frame. With <see cref="WaterSettings.ClipmapLevels"/> at its
-        /// default of 0 the ring count is derived PER PLANE, so the second plane wants a bigger grid than the
-        /// first - and the buffers therefore have to be sized for the largest of them before any draw is recorded.
-        /// Growing them inside the per-plane loop would free the buffer the first plane's already-recorded draw
-        /// still points at, which is a use-after-free that a single-plane test cannot see.
+        /// Two planes of very different sizes in ONE frame, which is where the multi-plane bugs live.
+        /// <para>
+        /// Two separate things are under test. First, buffer LIFETIME: with
+        /// <see cref="WaterSettings.ClipmapLevels"/> at its default of 0 the ring count is derived per plane, so
+        /// the second plane wants a bigger grid, and growing the buffers inside the draw loop would free the one
+        /// the first plane's already-recorded draw points at. Second, the CACHE: the whole saving of a world-locked
+        /// grid is that a frame where nothing moved uploads nothing, and a cache shared across planes destroys that
+        /// silently - each plane compares against the other plane's key, misses, rebuilds, and the frame still
+        /// renders correctly, so only a counter catches it.
+        /// </para>
         /// </summary>
         [GpuFact]
-        public void TwoPlanesOfDifferentSizesShareOneFrame()
+        public void TwoPlanesShareAFrameWithoutDefeatingEachOthersCache()
         {
-            using (GpuDeviceContext probe = GpuDeviceContext.CreateHeadless())
-                Assert.True(probe.GpuDevice.Capabilities.SupportsCompute, "no compute support");
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
 
-            MeshHandle seabed = default;
-            byte[] rgba = Render3DSnapshot.Capture(320, 240,
-                setup: scene =>
-                {
-                    seabed = scene.LoadMesh(MeshPrimitives.Tile(160f, 1f));
-                    scene.Post.Starfield = false;
-                    scene.Post.Sky.Enabled = true;
-                    scene.Post.LightDirection = new Vector3(-0.45f, -0.75f, -0.4f);
-                    scene.Post.Water.WaveSource = WaterWaveSource.FftOcean;
-                    scene.Post.Water.GridMode = WaterGridMode.Clipmap;
-                    WaterSeaState sea = Sea();
-                    sea.CascadeCount = 2;
-                    sea.CascadeResolution = 64;
-                    scene.Post.Water.SeaState = sea;
-                    scene.Camera.Frame(Vector3.Zero, new Vector3(46f, 30f, 46f));
-                    scene.EffectTimeSeconds = 0f;
-                },
-                drawFrame: scene =>
-                {
-                    scene.Draw(seabed, Matrix4x4.CreateTranslation(0f, -12f, 0f), new Color(0.18f, 0.20f, 0.18f, 1f));
-                    // Small first, large second: the growth order that would trip the use-after-free.
-                    scene.DrawWater(new WaterPlane(centerX: -30f, surfaceY: -2f, centerZ: 0f, halfExtentX: 8f));
-                    scene.DrawWater(new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 400f));
-                },
-                frames: 2);
+            // Small plane FIRST: the growth order that would trip the use-after-free.
+            var small = new WaterPlane(centerX: -30f, surfaceY: -2f, centerZ: 0f, halfExtentX: 8f);
+            var large = new WaterPlane(centerX: 0f, surfaceY: 0f, centerZ: 0f, halfExtentX: 400f);
+            WaterPlane[] planes = { small, large };
 
-            float[] grid = GoldenCompare.Downsample(rgba, 320, 240);
-            float min = float.MaxValue, max = float.MinValue;
-            int water = 0;
-            for (int cell = 0; cell < grid.Length / 3; cell++)
+            WaterSettings settings = Settings();
+            WaterSeaState sea = settings.SeaState;
+            sea.CascadeCount = 2;
+            settings.SeaState = sea;
+
+            using var res = new WaterHarness(dev);
+
+            // Frame 1 builds both. Then a run of frames with the camera dead still: every one of them must find
+            // both slices already correct, for ZERO rebuilds. One shared cache slot scores 2 per frame here.
+            int first = res.Frame(planes, new Vector3(3f, 12f, -4f), settings, 0f);
+            Assert.Equal(2, first);
+
+            int after = 0;
+            for (int i = 0; i < 6; i++) after += res.Frame(planes, new Vector3(3f, 12f, -4f), settings, i * 0.016f);
+            Assert.Equal(0, after);
+
+            // Sub-cell motion is still nothing: level 0's quantum is 2 * 0.5 = 1 m and the camera moves 5 cm.
+            int nudged = 0;
+            for (int i = 1; i <= 6; i++)
+                nudged += res.Frame(planes, new Vector3(3f + i * 0.05f, 12f, -4f), settings, i * 0.016f);
+            Assert.Equal(0, nudged);
+
+            // And a move that DOES cross a boundary rebuilds - otherwise the counter would be measuring nothing.
+            int moved = res.Frame(planes, new Vector3(3f + 40f, 12f, -4f), settings, 0.2f);
+            Assert.True(moved > 0, "a 40 m camera jump rebuilt no plane, so the cache is stuck rather than warm");
+        }
+
+        /// <summary>A minimal Scene3D-free rig around <see cref="WaterRenderer"/>: enough render targets to record
+        /// a water pass, so a test can drive frames and read the rebuild counter without a full scene.</summary>
+        sealed class WaterHarness : IDisposable
+        {
+            readonly IGpuDevice _dev;
+            readonly RenderResources _res;
+            readonly WaterRenderer _water;
+
+            public WaterHarness(IGpuDevice dev)
             {
-                float r = grid[cell * 3], g = grid[cell * 3 + 1], b = grid[cell * 3 + 2];
-                if (b < r - 0.02f || MathF.Max(r, MathF.Max(g, b)) <= 0.05f) continue;
-                water++;
-                float brightness = (r + g + b) / 3f;
-                min = MathF.Min(min, brightness);
-                max = MathF.Max(max, brightness);
+                _dev = dev;
+                _res = new RenderResources(dev, 320, 240, false);
+                _water = new WaterRenderer(dev, _res.ColorDepthFB.Outputs);
             }
-            Assert.True(water >= 40, $"two planes rendered only {water} water-ish cells");
-            Assert.True(max - min >= 0.08f, $"the two-plane frame is a flat sheet ({min:F3}..{max:F3})");
+
+            /// <summary>Record and submit one water frame; returns the clipmap grids rebuilt in it.</summary>
+            public int Frame(ReadOnlySpan<WaterPlane> planes, Vector3 eye, WaterSettings settings, float time)
+            {
+                Matrix4x4 view = Matrix4x4.CreateLookAt(eye, eye + new Vector3(0f, -0.5f, 1f), Vector3.UnitY);
+                Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 320f / 240f, 0.5f, 4000f);
+                using IGpuCommandList cl = _dev.Factory.CreateCommandList();
+                cl.Begin();
+                _water.Draw(cl, _res, planes, view * proj, new Vector3(-0.45f, -0.75f, -0.4f),
+                    new Color(1f, 1f, 1f, 1f), eye, settings, new SkySettings(), time);
+                cl.End();
+                _dev.Submit(cl);
+                _dev.WaitForIdle();
+                return _water.LastClipmapRebuilds;
+            }
+
+            public void Dispose()
+            {
+                _water.Dispose();
+                _res.Dispose();
+            }
         }
 
         static float[] CaptureGrid(WaterGridMode mode)
@@ -333,6 +366,73 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 frames: 2);
             return GoldenCompare.Downsample(rgba, 480, 320);
+        }
+
+        /// <summary>
+        /// The ordering hazard as the shipping path actually meets it: a command recorded AFTER the mip generation
+        /// in the SAME, still-open command list must see the freshly generated chain, not the previous frame's.
+        /// <para>
+        /// The box-filter check drains between the generate and the read, and a drain makes any ordering look
+        /// correct - it is exactly the shape of test that would pass while the real path was reading stale mips.
+        /// Here the update, the chain and the read-back copy are recorded into one list and submitted once, which
+        /// is the same list-shape a water draw sits in. Two DIFFERENT wave times are run so a stale chain is
+        /// distinguishable: if the copy had seen frame 1's mips, the second read would match the first.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void TheMipChainIsFreshToALaterCommandInTheSameList()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
+
+            WaterSettings settings = Settings();
+            using var producer = new OceanFftProducer(dev);
+
+            // Frame 1, ordinary path, to leave a chain in the texture for a stale read to return.
+            float[] first = UpdateAndReadMipInOneList(dev, producer, settings, FrozenTime, layer: 0);
+            // Frame 2, a full second later, so the surface has genuinely moved.
+            float[] second = UpdateAndReadMipInOneList(dev, producer, settings, FrozenTime + 1f, layer: 0);
+
+            float worst = 0f;
+            for (int i = 0; i < first.Length; i++) worst = MathF.Max(worst, MathF.Abs(first[i] - second[i]));
+            Assert.True(worst > 1e-3f,
+                $"mip 1 is identical (worst delta {worst}) across a one-second step of wave time, so the copy " +
+                "recorded after GenerateMipmaps in the same list read a STALE chain. The band limit would be " +
+                "sampling the previous frame's sea.");
+
+            // And the fresh chain is still the box filter of the base level that produced it, read from the same
+            // single submission rather than after a drain.
+            float[] baseLevel = ReadLevel(dev, producer.Map, 0, 0, N);
+            float[] cpu = Downsample(baseLevel, N);
+            float scale = 0f;
+            foreach (float v in cpu) scale = MathF.Max(scale, MathF.Abs(v));
+            float tolerance = MathF.Max(5e-3f * scale, 1e-5f);
+            float off = 0f;
+            for (int i = 0; i < cpu.Length; i++) off = MathF.Max(off, MathF.Abs(cpu[i] - second[i]));
+            Assert.True(off <= tolerance,
+                $"the same-list mip 1 is off its own base level's box downsample by {off} (tolerance {tolerance}).");
+        }
+
+        /// <summary>Update the producer AND copy one mip level out, in a single command list submitted once - no
+        /// drain between the generate and the read.</summary>
+        static float[] UpdateAndReadMipInOneList(IGpuDevice dev, OceanFftProducer producer, WaterSettings settings,
+            float time, uint layer)
+        {
+            int size = N / 2;
+            IGpuResourceFactory f = dev.Factory;
+            using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
+                (uint)size, (uint)size, GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Staging));
+            using (IGpuCommandList cl = f.CreateCommandList())
+            {
+                cl.Begin();
+                Assert.True(producer.Update(cl, settings, time, wantMips: true));
+                cl.CopyTextureSubresource(producer.Map, 1, layer, staging, (uint)size, (uint)size);
+                cl.End();
+                dev.Submit(cl);
+                dev.WaitForIdle();
+            }
+            return MapStaging(dev, staging, size);
         }
 
         // ---- Measurement -------------------------------------------------------------------------------------
@@ -590,6 +690,12 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>GenerateMipmaps</c> ran AFTER the compute pass wrote the base level and produced the box filter the
         /// band limit assumes. Both halves are backend-specific (the copy is what forces the synchronisation, and
         /// each backend forces it differently), so this is checked on every backend rather than argued.
+        /// <para>
+        /// This half reads after a drain, so it pins the FILTER. The ORDERING hazard the shipping path actually
+        /// runs into is a consumer of the chain sitting in the same still-open command list, which a drain hides -
+        /// <see cref="TheMipChainIsFreshToALaterCommandInTheSameList"/> covers that, and the end-to-end render test
+        /// exercises it through a real draw.
+        /// </para>
         /// </summary>
         static void AssertTheGpuChainIsABoxFilter(IGpuDevice dev, OceanFftProducer producer, in Ocean maps)
         {
@@ -599,6 +705,7 @@ namespace KhaozEngine.Tests.Gpu
                 float[] baseLevel = ReadLevel(dev, producer.Map, 0, layer, N);
                 float[] gpu = ReadLevel(dev, producer.Map, 1, layer, N / 2);
                 float[] cpu = Downsample(baseLevel, N);
+
 
                 float scale = 0f;
                 foreach (float v in cpu) scale = MathF.Max(scale, MathF.Abs(v));
@@ -649,7 +756,12 @@ namespace KhaozEngine.Tests.Gpu
                 dev.Submit(cl);
                 dev.WaitForIdle();
             }
+            return MapStaging(dev, staging, size);
+        }
 
+        /// <summary>Map a square rgba16f staging texture out as floats, 4 per texel, row-major.</summary>
+        static float[] MapStaging(IGpuDevice dev, IGpuTexture staging, int size)
+        {
             var result = new float[size * size * 4];
             var row = new byte[size * 4 * 2];
             MappedData map = dev.Map(staging, GpuMapMode.Read);

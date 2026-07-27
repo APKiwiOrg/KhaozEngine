@@ -5,7 +5,7 @@ namespace KhaozEngine.Terrain
     /// tiers. <see cref="PickLod"/> chooses a tier from camera distance (near = dense, far = coarse);
     /// <see cref="ResolutionFor"/> gives that tier's grid resolution. The tiers themselves (and adding far tiers or a
     /// game-specific table) live in <see cref="TerrainLodConfig"/>; wire a custom one through
-    /// <see cref="StreamerConfig.LodConfig"/> and the <see cref="Scene3DChunkSink"/>. Which chunks exist and when they
+    /// <see cref="StreamerConfig.LodConfig"/> and the <c>Scene3DChunkSink</c>. Which chunks exist and when they
     /// rebuild is the streaming sub-project, not this one.</summary>
     public static class TerrainLod
     {

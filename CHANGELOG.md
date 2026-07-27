@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 16.7.0
+## 16.9.0
 
 ### World-locked water grid: the FFT ocean no longer boils under camera motion
 
@@ -61,11 +61,109 @@ pixel footprint, folding into the `rippleResolve` band limit that was already th
 `IGpuCommandList.CopyTextureSubresource` gains an overload taking an explicit destination mip level and
 array layer, which is what seeds a mipped texture's base level from a single-mip one.
 
+It composes with 16.8.0's camera-relative rendering, in one particular order: the snap lattice is decided in
+ABSOLUTE world space (so a render-origin rebase moves no ring, rather than re-quantizing every one of them) and
+the reduction to the render frame is applied to the ring ORIGINS, never per vertex. The second half is not
+cosmetic: a ring origin and the render origin are both exact integers in float32, so their difference is exact,
+while a per-vertex absolute position is not - at 100 km with a 0.3 m cell the two orderings diverge by 3.1 mm of
+lattice error. A rebase still re-uploads (vertex positions are render-relative by construction), which costs one
+rebuild frame per 128 m travelled.
+
 Closes [#296](https://github.com/APKiwiOrg/KhaozEngine/issues/296) and
 [#344](https://github.com/APKiwiOrg/KhaozEngine/issues/344). Design rationale, including why centre-snapping
 the existing grid cannot work and why the remaining 12 per cent
 ([#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348)) was left:
 `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
+## 16.8.0
+
+### Camera-relative rendering: visual precision no longer degrades with distance from the origin
+
+Release 1 of the floating-origin program (#337). At 100 km from the origin a float32 world
+coordinate is quantized to a 7.8 mm lattice, which reads as vertex shimmer and crawling shading
+anywhere far from world zero. The renderer now subtracts a quantized render origin from everything
+it sends to the GPU, so on-screen precision at 100 km matches the origin. Simulation, physics, the
+wire format, and every consumer-facing coordinate stay absolute world space. This release changes
+no behavior near the origin and required no golden rebake: the full existing GPU golden suite
+passes with the feature active.
+
+- **`KhaozEngine.Primitives`**: `WorldFrame`, the quantized frame the origin snaps to. Anchors sit
+  on a 128 m grid chosen from the measured divergence data (822 mm at 50 km over 20 s against a
+  10 mm budget), re-anchoring is round-to-nearest with hysteresis, and the anchor translation is
+  bit-exact in float32 by construction. The invariants ship as tests, including the binade bracket
+  that pins 512 m as the ceiling the 128 m grid clears with margin.
+- **`KhaozEngine.Render3D`**: `Scene3D.RenderOrigin` (latched at `Begin`, defaults to the active
+  camera's quantized eye, assign a value to override, assign null to restore the default, or
+  `Vector3.Zero` to opt out bit-identically). `IRenderOriginAware` on `IsoCamera3D`,
+  `FollowCamera3D`, and `FlyCamera3D` with `AbsoluteViewProjection` for CPU-side spatial math. A
+  camera that does not implement it gets the whole pipeline absolute, exactly as before. The
+  subtraction happens only on the GPU-bound copy of instance data: submission queues, culling, the
+  terrain identity fast path, shadow caster classification, cascade fitting, and the transparency
+  sorts all stay absolute and byte-identical to the previous engine. `Transform3D.ToMatrix(Vector3)`
+  builds an origin-relative matrix for custom pipelines.
+- **Shaders**: a `RenderOrigin` uniform rides the existing per-pipeline uniform blocks (no pipeline
+  gained a second buffer) and reconstructs the absolute position only where world-anchored texturing
+  and noise need it (terrain triplanar, dissolve noise, water swell phase, FFT sampling frame, foam
+  lattices). Lighting, view vectors, shadows, and derivatives run on the relative position.
+- **Caveat carried from the spec**: world-anchored texturing at extreme range keeps float32 texel
+  precision (reconstruction preserves rather than improves it), and terrain vertices still bake
+  absolute coordinates until the terrain release of this program lands.
+
+Consumers: nothing to do. Reading `camera.View` or `camera.ViewProjection` directly for CPU spatial
+math should switch to `AbsoluteViewProjection` when an origin is in force, and `WorldToScreen` and
+`ScreenToRay` remain absolute in and out. Design and the release train in
+`docs/design/FLOATING-ORIGIN-DESIGN-2026-07-27.md` (#337 stays open for the terrain and wire
+releases).
+
+## 16.7.0
+
+### Tiled map document format: a world now loads, saves, and hashes per tile
+
+The monolithic document was a measured ceiling: `SaveText` returned one `JsonSerializer.Serialize`
+string and died with `OutOfMemoryException` between 6,400 and 64,000 authored sculpt tiles (the
+single-object buffer cap), and the realistic 100 km world (24,398 tiles, 1.88 M placements) cost
+6.4 s and 2.2 GB just to parse at boot. The tiled form removes the whole class: a world on disk is
+a manifest plus one JSON file per occupied 512 m document tile, loaded whole, windowed, or one tile
+at a time, and hashed without ever serializing the document.
+
+- **`KhaozEngine.MapDoc`, the tiled form.** `MapTileCoord`/`MapTileRect`/`MapTileGrid` (origin-anchored,
+  grid-aligned with `ChunkCoord` and `CellCoord`), `MapSpatialIndex` (ordered occupied-tile list plus
+  rect and tile queries over placements, spawns, player spawns, and sculpt tiles), `MapDocumentSource`
+  (open a tiled world and read one tile at a time), `MapTileIndex`/`MapTileEntry`/`MapTileContent`,
+  `MapDocumentForm` and `DetectForm` (the path decides the form, file or directory, never the
+  extension), `LoadTiled` (whole and windowed), `SaveTiled`, `SaveAuto`, `SaveAs`, and `VerifyTiled`.
+  `MapRuntime.BuildPlacements` gained region and tile scoped overloads, so "the placements near here"
+  no longer walks the world.
+- **Crash-safe saves.** Tile files are content-addressed on their canonical SHA-256 and written
+  tmp-then-rename onto names nothing references, the manifest rename is the single atomic commit
+  point, and superseded files are swept only after it lands. A crash at any step leaves a world that
+  is entirely the old version or entirely the new one. `SaveTo(Stream)` streams over `Utf8JsonWriter`,
+  so no save path materializes the document as one string any more, the monolithic form included.
+  `MapSaveDurability.PowerFail` opts into per-file flush plus a real Unix directory fsync
+  (`open(2)`/`fsync(2)` via P/Invoke, per-file flush only on Windows).
+- **World identity hashing.** `MapDocumentHash`: per-tile canonical bytes (compact, invariant-culture,
+  id-sorted) hashed with SHA-256 and composed into a world identity. A monolithic and a tiled copy of
+  the same world hash identically, `OfWorld` on a tiled document reads only the manifest (roughly
+  2 MB of hash input instead of the measured 6.14 GB of allocations at 100 km), and the digest is
+  stable across platforms and cultures. `tileSize` is part of world identity and the converters
+  preserve it.
+- **Format v3.** Adds the root `tileSize`. v1 and v2 documents migrate on load, a v3 monolithic file
+  is legal, and the manifest and tile schemas are derived from the one authored schema.
+- **Editor and tool.** The editor opens tiled directories (under 512 tiles it loads whole, above it
+  windows), saves back in the form it opened, refuses a partial save that would drop content moved
+  into an unloaded tile, and refuses a windowed save whose `tileSize` was mutated. `ke-mapedit` gained
+  `set_window`, `window_status`, `convert_to_tiled`, `convert_to_single`, and `retile` (which warns
+  that the world hash changes). Conversions take an explicit form and refuse an existing tiled target,
+  so no verb can silently overwrite an unrelated world.
+- **The streamer core moved to `KhaozEngine.Terrain`.** `TerrainStreamer`, `StreamerConfig`,
+  `IChunkSink`/`IAsyncChunkSink`, `ChunkCoord`/`ChunkGrid`/`ChunkRing`, the build scheduler and
+  dispatcher, LOD types, and `TerrainChunkRegion` now live in the render-free `Terrain` assembly, so a
+  headless server can drive chunk residency without the GPU stack. `Terrain.Render3D` carries
+  `TypeForwardedTo` entries for all sixteen types, so existing binaries keep resolving and source
+  needs no change. An architecture test locks `Terrain` free of Render3D and Physics references.
+
+Design rationale and the two-release split (residency follows in its own release) in
+`docs/design/TILED-MAPDOC-AND-RESIDENCY-DESIGN-2026-07-27.md`. Resolves #334, for the 100 km world
+program (https://github.com/APKiwiOrg/Ruinborne/issues/242).
 
 ## 16.6.0
 

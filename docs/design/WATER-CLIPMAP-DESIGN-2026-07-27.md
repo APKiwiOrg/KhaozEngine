@@ -1,6 +1,6 @@
 # World-locked water grid and mipped cascade maps
 
-Design rationale for the 16.7.0 fix to the FFT ocean's camera-motion boiling
+Design rationale for the 16.9.0 fix to the FFT ocean's camera-motion boiling
 ([#296](https://github.com/APKiwiOrg/KhaozEngine/issues/296), with the mipped-maps prerequisite
 [#344](https://github.com/APKiwiOrg/KhaozEngine/issues/344)). Shipped API lives in `CHANGELOG.md`,
 `docs/USING-KHAOZENGINE.md` and `KhaozEngine.Render3D/README.md`; this file is the why.
@@ -156,6 +156,32 @@ level draws it, and therefore which mip it band-limits to. Smoothing it would me
 transition band (the geoclipmap geomorph), which is a second mechanism with its own tuning and is deliberately
 not in this release. Filed as [#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348).
 
+## Camera-relative rendering
+
+16.8.0 made every submission camera-relative: the plane, the grid and the eye arrive already reduced by a
+`RenderOrigin` quantized to the 128 m frame grid, and the shader adds it back as `aXz` for everything anchored
+to the world (the swell phase, the ocean sampling frame, the ripple and foam lattices). The clipmap composes
+with that, but only in one particular order.
+
+**The lattice is decided in absolute world space; the reduction happens on the ring ORIGINS, never per vertex.**
+Both halves matter and they are separate claims:
+
+1. *Snap absolute.* If the snap ran on render-frame coordinates, a rebase would re-quantize every ring: the same
+   world position would round to a different lattice node, every vertex would jump, and the surface would be
+   resampled. That is the artifact this grid exists to remove, reintroduced by the fix for a different problem.
+   `WaterClipmap.Build` therefore takes an absolute plane and an absolute focus.
+2. *Reduce on the origin.* A ring origin is a whole multiple of `2 * cellSize` and the render origin a whole
+   multiple of 128 m, so both are exact integers in float32 and their difference is exact. A per-vertex absolute
+   position is neither. Subtracting there instead measurably re-quantizes the grid: at 100 km with a 0.3 m cell
+   the two orderings diverge by 3.1 mm, which is a lattice error, not a rounding detail.
+
+The second point is easy to test wrong. At the default 0.5 m cell every offset is a whole multiple of the
+float32 spacing at 100 km, so a per-vertex subtraction is exactly harmless and a test at the defaults passes
+either way. `ClipmapCellSize` is a free float, so the test runs at 0.3 as well, where the difference is real.
+
+The stitch taps recover their own absolute per tap (`aXz = sxz + RenderOrigin.xz` inside the tap loop rather than
+once outside it), since a stitched vertex samples at two positions.
+
 ## Deferred
 
 - **LOD morph across ring boundaries** to remove the remaining 12 per cent
@@ -166,5 +192,8 @@ not in this release. Filed as [#348](https://github.com/APKiwiOrg/KhaozEngine/is
   yet. The render test compares the clipmap's picture against the camera-focused one of the same sea instead,
   which proves the new vertex layout and shader variant cross-compile and draw correctly - the actual per-backend
   risk - and says what the picture has to BE rather than what it was on the day it was baked.
+- **A geomorph for the render-origin rebase.** A rebase leaves the lattice alone but does re-upload every vertex
+  (they are render-relative), so it costs one rebuild frame. That is one frame per 128 m of travel and was not
+  worth a mechanism.
 - **`GridFocusBias` under the clipmap** is inert by design and stays that way. The two are alternatives: the
   power warp is precisely the thing with no snap quantum.

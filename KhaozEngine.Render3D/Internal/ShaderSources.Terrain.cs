@@ -25,7 +25,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
-    vec4 TintTiling[5];   // per-material params appended (offset 992): xyz = tint, w = tiles/metre
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 TintTiling[5];   // per-material params appended (offset 1008): xyz = tint, w = tiles/metre
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -92,7 +93,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
-    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 992)
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 TintTiling[5];   // xyz = tint, w = tiles/metre (offset 1008)
     vec4 Roughness;       // x..w = roughness for layers 0..3
     vec4 Misc;            // x = layer4 roughness, y = triplanarSharpness, z = projectionMode, w = baseSpecStrength
 };
@@ -160,12 +162,20 @@ void main() {
     }
 
     // Screen-space world derivatives, taken ONCE here in uniform control flow (before the per-layer loop's
-    // data-dependent `continue`). The triplanar UVs are vWorldPos.{yz,xz,xy} * tile, so each plane's texture-space
+    // data-dependent `continue`). The triplanar UVs are wpAbs.{yz,xz,xy} * tile (a render-origin shift is a constant
+    // offset, so the derivatives are the same either way), so each plane's texture-space
     // gradient is the matching world derivative scaled by that layer's tile rate. Feeding these to textureGrad keeps
     // the mip/aniso LOD well-defined regardless of the branch; an implicit texture() under the branch would take
     // undefined derivatives on a diverging quad, which minified high-frequency ground reads as distance shimmer.
     vec3 dWx = dFdx(vWorldPos);
     vec3 dWy = dFdy(vWorldPos);
+
+    // The triplanar pattern is ANCHORED TO THE WORLD, so it reads the ABSOLUTE position: with a render origin in
+    // force vWorldPos is camera-relative, and tiling off that would slide the whole ground texture every time the
+    // origin stepped. Reconstruction is not free of precision (at 100 km the sum lands back on the 7.8 mm float32
+    // lattice), so this PRESERVES world-anchored texturing at range rather than improving it. Lighting, the eye
+    // vector and the shadow lookup all stay render-relative below: those are differences and the origin cancels.
+    vec3 wpAbs = vWorldPos + RenderOrigin.xyz;
 
     vec3 albedo = vec3(0.0);
     vec3 Nsum = vec3(0.0);
@@ -174,9 +184,9 @@ void main() {
         float wl = w[L];
         if (wl <= 0.001) continue;
         float tile = TintTiling[L].w;
-        vec2 uvx = vWorldPos.yz * tile;
-        vec2 uvy = vWorldPos.xz * tile;
-        vec2 uvz = vWorldPos.xy * tile;
+        vec2 uvx = wpAbs.yz * tile;
+        vec2 uvy = wpAbs.xz * tile;
+        vec2 uvz = wpAbs.xy * tile;
         vec2 gx0 = dWx.yz * tile, gx1 = dWy.yz * tile;
         vec2 gy0 = dWx.xz * tile, gy1 = dWy.xz * tile;
         vec2 gz0 = dWx.xy * tile, gz1 = dWy.xy * tile;

@@ -14,7 +14,7 @@ namespace KhaozEngine.Render3D
     /// Convention (matches IsoCamera3D): dirToEye = normalize(cosP*sinYaw, sinP, cosP*cosYaw),
     /// Eye = Target + dirToEye*Distance + (0, HeightOffset, 0), looking at Target.
     /// </summary>
-    public sealed class FollowCamera3D : IIsoCamera3D
+    public sealed class FollowCamera3D : IIsoCamera3D, IRenderOriginAware
     {
         /// <summary>World-space point the camera follows (the character position).</summary>
         public Vector3 Target = Vector3.Zero;
@@ -200,14 +200,23 @@ namespace KhaozEngine.Render3D
 
         public Vector3 Forward => Vector3.Normalize(EffectiveTarget - Eye);
 
-        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye, EffectiveTarget, Vector3.UnitY);
+        /// <summary>The render origin eye and target are expressed against when building <see cref="View"/>. See
+        /// <see cref="IRenderOriginAware"/>. <see cref="Vector3.Zero"/> (the default) is the pre-floating-origin
+        /// camera, bit for bit.</summary>
+        public Vector3 RenderOrigin { get; set; }
+
+        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye - RenderOrigin, EffectiveTarget - RenderOrigin, Vector3.UnitY);
         public Matrix4x4 Projection => Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, AspectRatio, NearPlane, FarPlane);
         public Matrix4x4 ViewProjection => View * Projection;
+
+        /// <summary>The pre-shift view-projection. See <see cref="IRenderOriginAware.AbsoluteViewProjection"/>.</summary>
+        public Matrix4x4 AbsoluteViewProjection =>
+            Matrix4x4.CreateLookAt(Eye, EffectiveTarget, Vector3.UnitY) * Projection;
 
         /// <summary>Project a world point to a screen pixel (forward inverse of <see cref="ScreenToRay"/>); false
         /// when the point is not in front of the camera. See <see cref="IIsoCamera3D.WorldToScreen(Vector3, int, int, out Vector2)"/>.</summary>
         public bool WorldToScreen(Vector3 world, int viewportWidth, int viewportHeight, out Vector2 screenPixel) =>
-            CameraProjection.WorldToScreen(ViewProjection, world, viewportWidth, viewportHeight, out screenPixel);
+            CameraProjection.WorldToScreen(ViewProjection, world - RenderOrigin, viewportWidth, viewportHeight, out screenPixel);
 
         /// <summary>Unproject a screen pixel (top-left origin, y-down) into a world ray (mirrors IsoCamera3D).</summary>
         public Ray ScreenToRay(Vector2 screenPixel, int viewportWidth, int viewportHeight)
@@ -217,7 +226,9 @@ namespace KhaozEngine.Render3D
             Matrix4x4.Invert(ViewProjection, out var inv);
             Vector3 near = Unproject(new Vector3(ndcX, ndcY, 0f), inv);
             Vector3 far = Unproject(new Vector3(ndcX, ndcY, 1f), inv);
-            return new Ray(near, far - near);
+            // The unprojection lands in the RENDER frame, so add the origin back: the ray this returns is absolute
+            // world, as it always was. The direction is a difference and is frame-invariant.
+            return new Ray(near + RenderOrigin, far - near);
         }
 
         /// <summary>Pick the world point under a screen pixel on the horizontal plane y = <paramref name="groundY"/>.</summary>

@@ -2002,6 +2002,51 @@ for (int i = 0; i < live.Length; i++)
 scene.DrawTrail(strip, TrailStyle.Default with { Color = new Color(0.8f, 0.9f, 1f, 1f) });
 ```
 
+### Camera-relative rendering (`Scene3D.RenderOrigin`)
+
+A world hundreds of metres or kilometres from the origin used to render badly, and the reason was float32
+precision rather than anything about the content: a 100 km world translation meeting a 100 km view translation
+inside the matrix concatenation leaves a small difference carrying the rounding error of both large operands, so
+geometry swims, shadow edges crawl, and thin geometry vibrates as the camera moves. `Scene3D` now subtracts a
+quantized **render origin** from everything on its way to the GPU, so the GPU never sees the large operands.
+
+**Adoption: none.** The whole public surface still takes ABSOLUTE world coordinates and there is nothing to call.
+
+```csharp
+scene.Begin();                       // latches this frame's origin
+scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // still absolute, as always
+```
+
+- `Scene3D.RenderOrigin` defaults to `WorldFrame.Nearest(camera.Eye).Anchor`: the nearest point on a 128 m grid,
+  so it is exactly representable in float32 (the subtraction introduces literally no error) and it does not
+  jitter per frame. Set it explicitly to a simulation frame's anchor if you are running one, so render and
+  simulation share a space.
+- It is **latched at `Begin()`**. A write during a frame takes effect at the next one, and the getter reports the
+  frame's value rather than the pending one. Half a frame's geometry against one origin and the other half
+  against another would be displaced by the difference.
+- `Scene3D.RenderOriginActive` says whether an origin is in force this frame.
+- **`RenderOrigin = Vector3.Zero` is the opt-out**, reproducing the pre-16.x output exactly. Use it if you have
+  committed goldens you do not want to rebake. Assign `null` to clear an explicit override and restore the
+  automatic quantized-eye default.
+- **A camera you wrote yourself keeps working unchanged.** The engine cameras (`IsoCamera3D`, `FollowCamera3D`,
+  `FlyCamera3D`) implement `IRenderOriginAware`. A consumer `IIsoCamera3D` that does not gets the WHOLE pipeline
+  back on the absolute path (never half an origin), which is exactly as precise as it was before, and
+  `RenderOriginActive` reports `false`. Implement `IRenderOriginAware` on your camera to opt in: build `View`
+  from `Eye - RenderOrigin` and expose the unshifted matrix as `AbsoluteViewProjection`. Keep `Eye` absolute.
+- `WorldToScreen` and `ScreenToRay` still take and return ABSOLUTE world points, so nameplates and picking need
+  no change.
+- **Warning:** `camera.View` and `camera.ViewProjection` return RELATIVE matrices once a render origin has
+  latched. For your own CPU spatial math (frustum culling, picking against your own bounds, and similar), use
+  the camera's `AbsoluteViewProjection` instead.
+- What it does NOT fix: terrain chunk vertices are baked in absolute world space, so terrain geometry and terrain
+  collision at range are a later release. Triplanar terrain texturing at range is preserved rather than improved
+  (the shader reconstructs the absolute position for it). Depth precision at range is governed by the near-to-far
+  ratio and is unrelated. Nothing about simulation changes.
+
+If you write your own renderer against `Transform3D`, `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix
+directly. You do not need it for `Scene3D`, which reduces the absolute matrix you hand it. Calling both
+double-subtracts.
+
 ### Transparency ordering
 
 Overlapping alpha-blended billboards and overlay meshes composite correctly regardless of submission order:
@@ -4548,7 +4593,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.7.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.9.0" />
 ```
 
 ```csharp
@@ -5302,7 +5347,88 @@ silently dropping it.
 **Format migrations.** `MapDocumentLoadOptions.RegisterMigration(fromVersion, step)` registers a pure
 `JsonObject -> JsonObject` transform run before deserialization when an old document's `formatVersion` is
 behind `MapDocumentFile.CurrentFormatVersion`. Migrations must form a contiguous chain up to the current
-version or the load fails.
+version or the load fails. The engine's own steps are pre-registered: v1 to v2 dropped the reserved
+`terrainOverrides` placeholder, and v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
+(512 m). A v3 monolithic file is legal and is what `Save` writes: version and layout are independent axes.
+
+### The tiled form: a directory instead of a file
+
+A document is **either a single file or a directory**, and both are first class. The tiled form is what a
+world too big to serialize as one string uses:
+
+```
+island.map/                        a directory, not a file
+  map.json                         the root manifest, and the ONLY file a save ever mutates
+  tiles/
+    s_0_0/                         shard dir, shard = tile >> 4, a filesystem nicety and never a load unit
+      t_0_0.<64 hex>.json          content-addressed: the suffix IS that tile's canonical hash
+      t_3_-2.<64 hex>.json
+```
+
+The manifest carries the globals (bounds, terrain, scatter and companion layers, exclusions, scatter
+overrides, regions, the `tileSize` and `sculptCellSize` grid headers) plus the occupied-tile index. Each
+tile file carries exactly four lists: `placements`, `spawns`, `playerSpawns` and `sculpt`. Those are the
+lists that scale with authored content. Shapes stay global because `scatterOverrides` is first-match-wins
+in document order, which is a global ordering.
+
+**Which form a path holds comes from the path, never from an extension.** `Path.GetExtension("island.map")`
+is `".map"`, not empty, so an extension heuristic sends a directory to a file write.
+
+```csharp
+MapDocumentForm form = MapDocumentFile.DetectForm(path);   // Tiled | Monolithic | None
+MapDocument doc = MapDocumentFile.Load(path);              // dispatches on the form
+
+MapDocumentFile.SaveAuto(doc, path);                       // saves back in the form it opened, None throws
+MapDocumentFile.SaveAs(doc, path, MapDocumentForm.Tiled);  // writes the named form, whatever is there
+```
+
+**Document tiles.** `MapTileCoord` is a square of world XZ with edge `MapDocument.TileSize`, a distinct type
+from `ChunkCoord` so a 60 m chunk coord cannot be passed where a 512 m tile coord is meant.
+`MapTileGrid.CoordOf` delegates to `ChunkGrid.CoordOf`, so the floor rule has one implementation, and
+`AreaOf` is half-open on both axes: a point exactly on a tile's max edge belongs to the next tile, which is
+what makes a partition of rects reproduce the whole document exactly. A sculpt tile is owned by the document
+tile containing its **origin corner** (`MapTileGrid.OwnerOfSculptTile`), single-owner for every cell size.
+
+**Region queries, both forms.** `MapSpatialIndex.Build(doc)` buckets a loaded document's point content by
+tile once, O(n) to build and O(k) per query, so a whole-document workflow still gets region queries.
+`MapRuntime.BuildPlacements` grows a rect overload and two index overloads beside the untouched
+whole-document one.
+
+**Windowed loading.** `LoadTiled(directory, window)` reads the manifest plus the tiles in a `MapTileRect`.
+Unloaded tiles keep their index entries, so a later `SaveTiled` back to the SAME directory carries them
+through untouched. **Every save entry point refuses a partial document** (`MapTileIndex.IsPartial`): a
+whole-document write of a window silently drops every unloaded tile and looks like a successful save. The
+guard is on the document rather than on one writer, so a save path added later inherits it.
+
+**Saving never materializes the document.** `SaveTo(doc, stream)` serializes straight through a
+`Utf8JsonWriter`, and `Save` is reimplemented over it, so the monolithic ceiling is disk rather than the
+.NET single-object element count. `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
+canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
+points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
+manifest does not name. Crash at any instant and the directory loads as entirely the old version or
+entirely the new one. `MapDocumentSaveOptions.Durability` opts into `PowerFail` (per-file flush plus a
+directory fsync where the platform has one). The default `Fast` defends against a process kill, which is
+what happens on a dev box.
+
+**World identity.** `MapDocumentHash.OfWorld(doc)` is SHA-256 over canonical bytes: per tile, plus the
+global half, composed under a `kemap/<SchemeVersion>` domain separator. **The two forms of the same world
+produce the same digest**, so a game can convert to the tiled form without a coordinated client and server
+release. On a tiled document it reads the stored hashes and never opens a tile file. `displayName` and
+`$schema` are excluded (renaming a zone must not desync a live server), and `tileSize` is included, so
+re-tiling changes world identity and a converter must PRESERVE `tileSize` rather than re-derive it.
+`MapDocumentFile.VerifyTiled(directory)` re-derives every tile hash and reports mismatches, orphans and
+stray temp files, and `MapDocumentLoadOptions.VerifyTileHashes` is the per-load opt-in.
+
+**On-demand tile reads.** `MapDocumentSource.OpenTiled(directory)` reads the manifest and nothing else.
+`ReadTile(coord)` parses and validates one tile and is free of shared mutable state, so a caller may run it
+on a worker thread. `MapDocumentSource.FromDocument(doc)` wraps an in-memory whole document behind the same
+API. A tile read runs a per-tile validation subset (ids non-empty and unique within the tile, delta counts,
+and that every item actually falls in the tile it was read from), because the whole-document validator needs
+globals a tile file does not carry.
+
+**Schemas.** One schema is authored (`mapdoc.schema.json`). `MapDocumentSchema.GetManifestJson()` and
+`GetTileJson()` are DERIVED from it at runtime and `WriteAllTo(directory)` materializes all three, so three
+schemas describing overlapping content cannot rot apart.
 
 **Boot fails loud.** Map documents are dev-authored content, not runtime state: a read error, invalid
 JSON, a bad or unmigratable `formatVersion`, or any `MapDocumentValidator` failure (a duplicate id, an
@@ -5721,11 +5847,28 @@ interactive viewport state, so they have no MCP equivalent: `ke-mapedit`'s rende
 one-shot calls with nothing to store a camera pose between.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
-`MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A
-validation failure lands as a message in the status strip instead of throwing. A successful save also
-calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's leading `*`) and sealing
-the current gesture, so a later same-gesture edit can never merge into the just-saved command and hide
-itself from `IsDirty`.
+`MapDocumentFile.Save`/`SaveAuto` validator before writing, so an invalid document is never written to
+disk. A validation failure lands as a message in the status strip instead of throwing. A successful save
+also calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's leading `*`) and
+sealing the current gesture, so a later same-gesture edit can never merge into the just-saved command and
+hide itself from `IsDirty`.
+
+**Tiled documents.** `MapEditorOptions.DocumentPath` may name a `.map.json` file OR a tiled document
+directory: `CreateDocument` dispatches on `MapDocumentFile.DetectForm` (never `File.Exists`, which is
+false for a directory and used to fall through to a blank untitled document, silently discarding whatever
+Ctrl+S then overwrote). Below `MapEditorOptions.WholeWorldTileLimit` occupied tiles (default 512) a tiled
+document loads whole, exactly like a monolithic one. Above it the editor opens a WINDOW instead (see
+`MapDocumentWindowing`), centered on the tile containing the document bounds' midpoint,
+`MapEditorOptions.EditorWindowRadius` tiles either side (default 2), and the status strip's `window:
+(minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`, tile coordinates) shows the loaded extent. Ctrl+S
+always saves back in the form and directory the document was opened from (`MapDocumentFile.SaveAuto`),
+never converting implicitly: a plain `.map.json` load-then-save round-trips as monolithic, a tiled
+directory round-trips as tiled, touching only the tiles that actually changed. Moving content into a tile
+the loaded window never covered surfaces as an ordinary "Save failed: ..." status message
+(`MapDocumentException`, the same guard `SaveTiled` states on the document itself), not a crash. Explicit
+form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retile`) are `ke-mapedit` verbs,
+below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
+the tool, and the GUI editor just opens whatever form is already on disk.
 
 **Renaming.** The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
 row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,
@@ -5798,17 +5941,38 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 (`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
 into the thrown message on failure, so the in-session document is never left invalid.
 
+**Tiled documents, whole-load vs windowed.** `map_open` and `map_save` are form-aware, exactly like the GUI
+editor: `map_open` dispatches on `MapDocumentFile.DetectForm` (a directory loads tiled, a file loads
+monolithic), and a tiled document at or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default
+512, matching `MapEditorOptions.WholeWorldTileLimit`) loads WHOLE. Above it, `map_open` windows instead:
+the manifest plus only the tiles inside a square centered on the document bounds, radius
+`EditorWindowRadius` tiles (default 2). `map_save` always writes back in the form and directory the
+document came from (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the
+loaded window's tile and world rect plus the occupied/loaded tile counts (`Tiled` false for a monolithic
+document). `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window: it refuses with unsaved
+changes unless `discard` is passed, and on success discards whatever was loaded before (this session keeps
+no undo stack across calls, so there is nothing to replay) and reloads fresh from the manifest. Writing
+content that moved into a tile the window never loaded throws a precise `MapDocumentException` naming the
+item and the target tile rather than silently dropping it, the same guard `SaveTiled` states on the
+document itself. `convert_to_tiled(directory)` / `convert_to_single(path)` change the on-disk FORM
+explicitly (`MapDocumentFile.SaveAs`, no extension heuristics: `Path.GetExtension("island.map")` is
+`".map"`, not empty, so guessing from the path would route a directory-shaped name to the wrong writer) and
+always preserve `tileSize` and the world hash exactly. `retile(tileSize)` changes `tileSize` itself and
+re-saves: `tileSize` IS part of world identity (`MapDocumentHash.OfWorld`), so this changes the world hash
+on purpose, and the result's `Warning` states the before/after digests plainly rather than leaving a caller
+to notice a coordinated client/server release is now needed.
+
 **Features and shapes cross the wire as JSON.** Terrain features (`featureJson`) and
 exclusion/region/override shapes (`shapeJson`) are registry-open or polymorphic unions, so they cross
 the MCP boundary as raw JSON strings parsed with the open document's own serializer options rather than
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (73 tools).**
+**Verb surface (78 tools).**
 
 | Group | Verbs |
 |---|---|
-| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
+| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary`, `set_window`, `window_status`, `convert_to_tiled`, `convert_to_single`, `retile` |
 | Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info`, `sculpt_stats` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |

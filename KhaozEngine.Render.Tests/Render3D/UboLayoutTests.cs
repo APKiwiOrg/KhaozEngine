@@ -35,15 +35,20 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_EqualsHeaderPlusLightArraysPlusShadowTail()
+        public void UboBytes_EqualsHeaderPlusLightArraysPlusShadowTailPlusRenderOrigin()
         {
-            // The renderer derives UboBytes = HeaderBytes + 2 * LightArrayBytes + ShadowTailBytes and uploads the two
-            // point-light arrays then the shadow tail (see ModelRenderer.WriteFrameUniformsTo). Assert that
-            // composition as an equation of the named constants; if it drifts, the splat params tail, the light-array
-            // uploads, or the shadow-tail upload land at the wrong offsets.
+            // The renderer derives UboBytes = HeaderBytes + 2 * LightArrayBytes + ShadowTailBytes + RenderOriginBytes
+            // and uploads the two point-light arrays, then the shadow tail, then the render origin (see
+            // ModelRenderer.WriteFrameUniformsTo). Assert that composition as an equation of the named constants. If
+            // it drifts, the splat params tail, the light-array uploads, the shadow-tail upload or the render-origin
+            // upload land at the wrong offsets.
             Assert.Equal(
-                ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes,
+                ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes
+                    + ModelRenderer.RenderOriginBytes,
                 ModelRenderer.UboBytes);
+            Assert.Equal(ModelRenderer.ShadowTailOffset + ModelRenderer.ShadowTailBytes,
+                ModelRenderer.RenderOriginOffset);
+            Assert.Equal(16u, ModelRenderer.RenderOriginBytes);   // one vec4
         }
 
         [Fact]
@@ -69,11 +74,35 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is992_TheDocumentedCombinedSize()
+        public void UboBytes_Is1008_TheDocumentedCombinedSize()
         {
-            // 176 + 2*256 + 304 = 992. The value the comments/docs quote, a sanity anchor on the derived arithmetic
-            // (header + both point-light arrays + the cascaded shadow tail = mat4[4] + 3*vec4).
-            Assert.Equal(992u, ModelRenderer.UboBytes);
+            // 176 + 2*256 + 304 + 16 = 1008. The value the comments/docs quote, a sanity anchor on the derived
+            // arithmetic (header + both point-light arrays + the cascaded shadow tail = mat4[4] + 3*vec4 + the
+            // camera-relative render origin).
+            Assert.Equal(992u, ModelRenderer.RenderOriginOffset);
+            Assert.Equal(1008u, ModelRenderer.UboBytes);
+        }
+
+        [Fact]
+        public void AllFrameUboShaders_DeclareTheRenderOriginTail()
+        {
+            // Camera-relative rendering appends `vec4 RenderOrigin` to the END of the frame block, so a shader that
+            // misses it reads the splat params (or, on the skinned pipeline, the bone palette) 16 bytes early. It is
+            // declared in EVERY shader that declares the block, whether or not that stage reads it, exactly like the
+            // shadow tail above.
+            foreach (var (name, src) in new[]
+            {
+                ("ModelVert", ShaderSources.ModelVert), ("ModelFrag", ShaderSources.ModelFrag),
+                ("ModelDissolveFrag", ShaderSources.ModelDissolveFrag),
+                ("SkinnedModelVert", ShaderSources.SkinnedModelVert),
+                ("SkinnedModelFrag", ShaderSources.SkinnedModelFrag),
+                ("SkinnedModelDissolveFrag", ShaderSources.SkinnedModelDissolveFrag),
+                ("SplatVert", ShaderSources.SplatVert), ("SplatFrag", ShaderSources.SplatFrag),
+                ("WaterVert", ShaderSources.WaterVert), ("WaterFrag", ShaderSources.WaterFrag),
+            })
+                Assert.True(src.Contains("vec4 RenderOrigin;"),
+                    $"{name} lost 'vec4 RenderOrigin;': the camera-relative render origin dropped out of its uniform " +
+                    "block, so every member declared after it in that block now reads the wrong bytes.");
         }
 
         // ---- Model instance stream (InstanceData) + the dynamic-geometry decal tag (issue #235) ----
@@ -409,14 +438,14 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void WaterUbo_MarshalSize_EqualsPayloadBytesConstant_And_GlslBlock()
         {
-            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 28 vec4 (LightDir, LightColor, CameraPos,
+            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 29 vec4 (LightDir, LightColor, CameraPos,
             // DeepColor, ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams, SkyHorizon, SkyZenith,
             // SkySunColor, SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
             // RippleSpectrum, FootprintParams, FftParams, FftTiles, FftVariance, FftFocus, FftRotCos, FftRotSin,
-            // FftSector) = 128 + 448 = 576 bytes. If the struct or the shader block drift apart, the per-plane water UBO
-            // upload smears the colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
+            // FftSector, RenderOrigin) = 128 + 464 = 592 bytes. If the struct or the shader block drift apart, the
+            // per-plane water UBO upload smears the colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + 28 * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(2 * 64 + 29 * 16, (int)WaterRenderer.PayloadBytes);
         }
 
         [Fact]
@@ -451,7 +480,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
-                "vec4 FftRotSin;", "vec4 FftSector;" })
+                "vec4 FftRotSin;", "vec4 FftSector;", "vec4 RenderOrigin;" })
                 Assert.True(ShaderSources.WaterFrag.Contains(member),
                     $"WaterFrag lost '{member}': the Water UBO block drifted from WaterRenderer.WaterUbo. Fix ShaderSources.WaterFrag or the struct.");
         }
@@ -467,7 +496,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
-                "vec4 FftRotSin;", "vec4 FftSector;" })
+                "vec4 FftRotSin;", "vec4 FftSector;", "vec4 RenderOrigin;" })
                 Assert.True(ShaderSources.WaterVert.Contains(member),
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
         }

@@ -44,6 +44,39 @@ up regardless of load order. Plain `float` math throughout.
 - **`PropScatter`** (+ `PropPlacement`) - deterministic coordinate-hash prop placement, and
   **`PropColliders`** / **`PropSurfaces`** turn those placements into `Collision` collider/surface
   sets that line up exactly with the rendered props (tiled build equals whole-area build).
+- **`TerrainStreamer`** + **`StreamerConfig`** - keeps the world loaded in a ring around a viewpoint:
+  hysteresis unload band (`UnloadRadius` greater than the outer load radius stops boundary churn), re-LOD
+  when a loaded chunk's tier OR residency ring changes, nearest-first ordering. Pure bookkeeping over
+  **`ChunkCoord`**/**`ChunkGrid`** driving an injected **`IChunkSink`**, so it is headless-testable with a
+  fake sink and just as usable on a dedicated server (no chunk mesh, no GPU) as on a client.
+  `StreamerConfig` also carries an optional `DecorRadius` (chunk units, default 0 = off) for a farther,
+  coarser decor-only ring tagged with **`ChunkRing`** (`Gameplay` / `Decor`). `UnloadAll`/`Dispose` free
+  the loaded ring instead of leaking it.
+- **`IChunkSink`** / **`IAsyncChunkSink`** - the load/unload seam the streamer drives, GPU-free at this
+  layer: **`Load(coord, lod, ring)`** / **`ReLod(coord, handle, lod, ring)`**, and the async split
+  **`BuildCpu(coord, lod, ring)`** (mesh + scatter, no GPU, safe on a worker thread) /
+  **`Apply(coord, lod, ring, cpuBuild, existing)`** (GPU buffers + physics on the frame thread, implemented
+  by a render-side sink such as `Scene3DChunkSink` in `KhaozEngine.Terrain.Render3D`). A sink implementing
+  only `IChunkSink` streams synchronously, no async split needed.
+- **`ChunkBuildScheduler<T>`** + **`ChunkBuild<T>`** - the GPU-free heart of async streaming: per-chunk
+  generation tokens dispatch each build, collect the finished ones, and drop the superseded (a newer
+  re-LOD) or cancelled (left the ring) results before they can be applied (last request wins). Pure
+  `ChunkCoord` bookkeeping with no device, so it is fully headless-testable. **`IChunkBuildDispatcher`**
+  chooses how build bodies run: **`TaskChunkBuildDispatcher`** (the default) fans them onto the thread
+  pool, and a test dispatcher queues them to control completion order. A faulted build surfaces as a
+  **`ChunkBuildException`** on the frame thread (during `Pump`/`Flush`), never a silent stuck chunk.
+- **`TerrainLodConfig`** + **`TerrainLodTier`** - data-driven LOD tiers: an ordered list of
+  `(Resolution, MaxDistance)` tiers, validated (strictly descending resolutions, strictly ascending
+  distances, the coarsest at `float.PositiveInfinity`). `PickLod(distance)` -> tier index,
+  `ResolutionFor(lod)` -> grid resolution. `TerrainLodConfig.Default` gives 64/32/16 at 80 m/200 m plus
+  coarser 8- and 4-segment far tiers. **`TerrainLod`** is a thin facade over `Default`
+  (`PickLod`/`ResolutionFor`). **`TerrainChunkRegion`** is the square world tile a mesh builder chunks the
+  field into (default 60 m).
+
+All of the above are plain data and interfaces with no GPU or render dependency, so a dedicated server
+streams and re-LODs the same world a client renders, over the same `IChunkSink` seam a headless test
+fakes. `KhaozEngine.Terrain.Render3D` supplies the one GPU-bound sink (`Scene3DChunkSink`) and mesh
+builder that turns a chunk into drawable geometry. Everything above works without it.
 
 ## Usage
 
@@ -106,8 +139,9 @@ companions on every host in the layer, so re-check any existing companion config
 `HostKinds` before upgrading. A populated `HostKinds` list is unaffected: it still filters by exact
 ordinal match against `PropPlacement.Id`.
 
-Depends on `KhaozEngine.Primitives` and `KhaozEngine.Collision`. No render dependency: add
-[KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D) to mesh and stream it. In the
-`Foundation` umbrella metapackage.
+Depends on `KhaozEngine.Primitives` and `KhaozEngine.Collision`. No render dependency, and that includes
+the streamer: `TerrainStreamer`/`IChunkSink`/`ChunkBuildScheduler` are GPU-free and server-usable as they
+stand. Add [KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D) only for `Scene3DChunkSink`
+(the GPU sink) and the chunk mesh builder. In the `Foundation` umbrella metapackage.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

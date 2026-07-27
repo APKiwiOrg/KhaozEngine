@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public class McpAdapterTests
     {
-        /// <summary>All 73 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 78 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -47,11 +47,19 @@ namespace KhaozEngine.Tests.MapEditTool
         /// verbs that procedural_info does not cover (that read only reflects terrain, scatter layers, and
         /// companion layers). The terrain sculpt layer's T3 (#271) adds sculpt_apply (one brush dab),
         /// sculpt_flatten_region (an exact region flatten), sculpt_clear (drop tiles back to analytic), and
-        /// sculpt_stats (the read counterpart: tile count, cell size, touched-cell count, delta min/max).</summary>
+        /// sculpt_stats (the read counterpart: tile count, cell size, touched-cell count, delta min/max). The
+        /// tiled map document form (#334 stage 3) adds set_window and window_status (move and report the
+        /// loaded window of a large tiled document, the same whole-load-vs-windowed dispatch
+        /// <c>MapEditSession.Open</c> now uses), convert_to_tiled and convert_to_single (explicit form
+        /// conversion, no extension heuristics), and retile (changes <c>tileSize</c>, which is part of world
+        /// identity).</summary>
         static readonly string[] ExpectedVerbs =
         {
             // Document
             "map_open", "map_create", "map_save", "map_validate", "map_summary",
+            // Tiled document form (#334 stage 3): whole-load-vs-windowed dispatch, explicit form conversion,
+            // and re-tiling.
+            "set_window", "window_status", "convert_to_tiled", "convert_to_single", "retile",
             // Query
             "ground_height", "is_walkable", "placements_in_rect", "scatter_preview_in_rect", "find_flat_area",
             "procedural_info", "exclusions_info", "scatter_overrides_info", "sculpt_stats",
@@ -332,6 +340,36 @@ namespace KhaozEngine.Tests.MapEditTool
                 SculptStatsResult statsResult = Deserialize<SculptStatsResult>(stats);
                 Assert.True(statsResult.HasLayer);
                 Assert.Equal(sculpt.TouchedCellCount, statsResult.TouchedCellCount);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
+        }
+
+        [Fact]
+        public async Task Retile_ThroughMcp_ChangesWorldHashAndReportsWarning()
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            string dir = NewTempDir();
+            try
+            {
+                string path = Path.Combine(dir, "zone.map.json");
+                MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
+
+                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+
+                await harness.Client.CallToolAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+
+                CallToolResult result = await harness.Client.CallToolAsync("retile",
+                    new Dictionary<string, object?> { ["tileSize"] = 256.0 }, cancellationToken: cts.Token);
+                Assert.NotEqual(true, result.IsError);
+
+                RetileResult retiled = Deserialize<RetileResult>(result);
+                Assert.Equal(256f, retiled.TileSize);
+                Assert.NotEqual(retiled.OldWorldHash, retiled.NewWorldHash);
+                Assert.Contains("world hash changed", retiled.Warning);
+
+                MapDocument reloaded = MapDocumentFile.Load(path);
+                Assert.Equal(256f, reloaded.TileSize);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

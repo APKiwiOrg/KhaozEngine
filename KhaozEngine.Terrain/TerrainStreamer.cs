@@ -11,7 +11,7 @@ namespace KhaozEngine.Terrain
     /// Pure bookkeeping (no GPU, no field), so it is fully headless-testable, and the sink does the real work. Load/unload
     /// use Euclidean chunk-distance; the hysteresis band (UnloadRadius &gt; LoadRadius) stops churn at boundaries.
     /// <para><b>Async build (default).</b> When <see cref="StreamerConfig.Async"/> is set and the sink is an
-    /// <see cref="IAsyncChunkSink"/> (the production <see cref="Scene3DChunkSink"/> is), the streamer builds each
+    /// <see cref="IAsyncChunkSink"/> (the production <c>Scene3DChunkSink</c> is), the streamer builds each
     /// chunk's mesh on a background thread and only pays the GPU upload on the frame thread, so a streamed chunk is no
     /// longer a full CPU-mesh-build hitch. <c>Update</c> then (a) REQUESTS builds for the pending loads/re-LODs
     /// (unbudgeted, off the frame thread) and (b) APPLIES up to <c>MaxLoadsPerFrame</c> COMPLETED builds (GPU upload +

@@ -33,8 +33,8 @@
 # This file is per-repo and is NOT part of the verbatim template layer.
 
 4484 KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
-3632 KhaozEngine.MapEditor/MapEditorScene.cs
-3137 KhaozEngine.Render3D/Scene3D.cs
+3537 KhaozEngine.MapEditor/MapEditorScene.cs
+3130 KhaozEngine.Render3D/Scene3D.cs
 2710 KhaozEngine.MapEditor/EditorCommands.cs
 2329 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
 1793 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
@@ -50,8 +50,7 @@
 879 KhaozEngine.NetWorld/WorldClient.cs
 865 KhaozEngine.Render2D/SpriteBatch.cs
 857 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
-837 KhaozEngine.Render3D/Rendering/ModelRenderer.cs
 826 KhaozEngine.Audio/AudioSystem.cs
 824 KhaozEngine.Platform/ClipboardInterop.cs
-821 KhaozEngine.Locomotion/CharacterMovement.cs
+819 KhaozEngine.Locomotion/CharacterMovement.cs
 806 KhaozEngine.Game.Tests/Physics/ConstraintTests.cs

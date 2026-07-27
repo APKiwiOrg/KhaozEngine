@@ -25,11 +25,19 @@ namespace KhaozEngine.Tests.Render3D
 
         static (WaterClipmapVertex[] Verts, uint[] Indices, int VCount, int ICount) Build(
             in WaterPlane plane, float fx, float fz, int levels, float cell = Cell, int ring = Ring)
+            => BuildAt(plane, fx, fz, levels, default, cell, ring);
+
+        /// <summary>Build against a render origin. <paramref name="plane"/> and the focus are ABSOLUTE either way -
+        /// that is the contract, and it is what keeps the lattice world-anchored.</summary>
+        static (WaterClipmapVertex[] Verts, uint[] Indices, int VCount, int ICount) BuildAt(
+            in WaterPlane plane, float fx, float fz, int levels, Vector3 renderOrigin,
+            float cell = Cell, int ring = Ring)
         {
             var verts = new WaterClipmapVertex[WaterClipmap.VertexCount(levels, ring)];
             var indices = new uint[WaterClipmap.IndexCount(levels, ring)];
             Vector2 focus = WaterClipmap.ClampFocus(plane, fx, fz);
-            int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels, verts, indices, out int ic);
+            int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels, verts, indices, out int ic,
+                renderOrigin);
             return (verts, indices, vc, ic);
         }
 
@@ -180,6 +188,92 @@ namespace KhaozEngine.Tests.Render3D
             (long)MathF.Round(v.Position.Z * 1024f),
             (long)MathF.Round(v.Cell * 1024f));
 
+        // ---- Camera-relative rendering -----------------------------------------------------------------------
+
+        /// <summary>
+        /// The world lock has to survive the render origin, in both directions.
+        /// <para>
+        /// A REBASE must not move a ring: the snap is decided on absolute coordinates, so the same camera at the
+        /// same world position must produce the same lattice whatever origin the frame happens to be expressed
+        /// against. And it must hold at DISTANCE: a per-vertex absolute position at 100 km has already rounded to
+        /// the ~8 mm float lattice, so a build that reduced there instead of on the ring origins would show the
+        /// grid quietly re-quantizing the further out the world goes.
+        /// </para>
+        /// </summary>
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(1024f)]
+        [InlineData(102400f)]    // 100 km, the case camera-relative rendering exists for
+        public void TheLatticeIsUnchangedByTheRenderOriginAtAnyDistance(float distance)
+        {
+            const int levels = 5;
+            // The frame grid the render origin is quantized to, so these are the origins a scene can actually pick.
+            const float FrameGrid = 128f;
+            float originValue = MathF.Round(distance / FrameGrid) * FrameGrid;
+            var origin = new Vector3(originValue, 0f, originValue);
+
+            // The same WORLD state, expressed two ways: absolute, and against the render origin.
+            var absPlane = new WaterPlane(distance, 0f, distance, 4000f);
+            float camX = distance + 3.3f, camZ = distance - 2.1f;
+
+            var flat = Build(absPlane, camX, camZ, levels);
+            var shifted = BuildAt(absPlane, camX, camZ, levels, origin);
+
+            Assert.Equal(flat.VCount, shifted.VCount);
+            Assert.Equal(flat.Indices, shifted.Indices);
+            for (int i = 0; i < flat.VCount; i++)
+            {
+                // Same lattice: every vertex sits at the same place in the world once the origin is added back.
+                // The tolerance is a hair over the float spacing at the SMALL (reduced) magnitudes both builds
+                // work in, which is the whole point - it is NOT the 8 mm spacing at 100 km.
+                Assert.Equal(flat.Verts[i].Position.X - distance,
+                    shifted.Verts[i].Position.X - (distance - originValue), 4);
+                Assert.Equal(flat.Verts[i].Position.Z - distance,
+                    shifted.Verts[i].Position.Z - (distance - originValue), 4);
+                Assert.Equal(flat.Verts[i].Stitch, shifted.Verts[i].Stitch);
+                Assert.Equal(flat.Verts[i].Cell, shifted.Verts[i].Cell);
+            }
+        }
+
+        /// <summary>
+        /// At 100 km the reduced grid must still be EXACT: cells the size they were asked for, not the float
+        /// lattice's. This is what fails if the render origin is subtracted per VERTEX instead of per ring.
+        /// <para>
+        /// The cell size here is 0.3 and that is not incidental. A power-of-two cell (0.5, the shipped default) is
+        /// a whole multiple of the float32 spacing at 100 km, so every absolute vertex position lands exactly on
+        /// the lattice and a per-vertex subtraction is harmless - a test at the default would pass either way and
+        /// prove nothing. At 0.3 the same subtraction diverges by 3.1 mm, which is a real re-quantization of the
+        /// grid, and <see cref="WaterSettings.ClipmapCellSize"/> is a free float that a consumer may set to
+        /// anything.
+        /// </para>
+        /// </summary>
+        [Theory]
+        [InlineData(0.3f)]
+        [InlineData(0.5f)]
+        public void ReducedVertexSpacingStaysExactAHundredKilometresOut(float baseCell)
+        {
+            const int levels = 4;
+            const float distance = 102400f;
+            var origin = new Vector3(distance, 0f, distance);
+            var plane = new WaterPlane(distance, 0f, distance, 4000f);
+            var r = BuildAt(plane, distance + 1.7f, distance - 0.9f, levels, origin, baseCell);
+
+            int stride = Ring + 1, perLevel = stride * stride;
+            for (int l = 0; l < levels; l++)
+            {
+                float c = WaterClipmap.CellSize(baseCell, l);
+                // Walk a row through the middle of the level, skipping the stitched boundary (which is a
+                // half-cell by design), and require every step to be the cell size to within a micron.
+                int j = Ring / 2;
+                for (int i = 1; i < Ring - 1; i++)
+                {
+                    float a = r.Verts[l * perLevel + j * stride + i].Position.X;
+                    float b = r.Verts[l * perLevel + j * stride + i + 1].Position.X;
+                    Assert.Equal(c, b - a, 5);
+                }
+            }
+        }
+
         // ---- Ring nesting ------------------------------------------------------------------------------------
 
         [Fact]
@@ -307,6 +401,67 @@ namespace KhaozEngine.Tests.Render3D
             // Four sides, every other vertex, on every level but the outermost.
             Assert.Equal((levels - 1) * 4 * (Ring / 2), stitched);
         }
+
+        /// <summary>
+        /// The seam-freedom condition itself, stated geometrically and checked where it is most likely to break:
+        /// on a plane small enough that the outer rings overhang it and the clamp is live on both sides of a
+        /// boundary. The shader evaluates a stitched vertex at <c>Position +/- Stitch</c> and averages, so the
+        /// vertex lands on the coarse ring's edge segment exactly when both taps ARE coarse vertices and Position
+        /// is their midpoint. Clamping is applied to the taps independently, so this is the check that it still
+        /// commutes with the coarse ring's own clamped vertices.
+        /// </summary>
+        [Theory]
+        [InlineData(4000f, 4000f)]   // no clamping at all: the baseline
+        [InlineData(9f, 9f)]         // rings overhang badly; almost everything clamps
+        [InlineData(40f, 6f)]        // a long thin plane: clamped on one axis, free on the other
+        [InlineData(11.5f, 7.25f)]   // edges deliberately off the lattice
+        public void StitchedVerticesLandOnTheCoarseRingsEdgeEvenWhenThePlaneClampsThem(float halfX, float halfZ)
+        {
+            const int levels = 5;
+            var plane = new WaterPlane(centerX: 1.5f, surfaceY: 0f, centerZ: -0.75f, halfExtentX: halfX,
+                halfExtentZ: halfZ);
+            var r = Build(plane, 3.3f, -2.1f, levels);
+            int stride = Ring + 1, perLevel = stride * stride;
+
+            int checkedCount = 0;
+            for (int l = 0; l + 1 < levels; l++)
+            {
+                // Every position the NEXT ring out actually has a vertex at.
+                var coarse = new HashSet<(long, long)>();
+                for (int v = 0; v < perLevel; v++)
+                {
+                    Vector3 p = r.Verts[(l + 1) * perLevel + v].Position;
+                    coarse.Add(Q(p.X, p.Z));
+                }
+
+                for (int v = 0; v < perLevel; v++)
+                {
+                    WaterClipmapVertex vert = r.Verts[l * perLevel + v];
+                    int i = v % stride, j = v / stride;
+                    if (i != 0 && i != Ring && j != 0 && j != Ring) continue;   // boundary vertices only
+
+                    var lo = new Vector2(vert.Position.X - vert.Stitch.X, vert.Position.Z - vert.Stitch.Y);
+                    var hi = new Vector2(vert.Position.X + vert.Stitch.X, vert.Position.Z + vert.Stitch.Y);
+                    // Both taps have to be real coarse vertices. For an unstitched boundary vertex the two taps
+                    // collapse onto the vertex itself, which must then be a coarse vertex in its own right - that
+                    // is the even-index case, and it is just as load-bearing for the seam.
+                    Assert.True(coarse.Contains(Q(lo.X, lo.Y)),
+                        $"level {l} boundary vertex at {vert.Position} taps {lo}, which level {l + 1} has no " +
+                        "vertex at, so the two sides evaluate different points and the seam opens.");
+                    Assert.True(coarse.Contains(Q(hi.X, hi.Y)),
+                        $"level {l} boundary vertex at {vert.Position} taps {hi}, which level {l + 1} has no " +
+                        "vertex at.");
+                    // And it must sit at their midpoint, or it is off the segment those two taps span.
+                    Assert.Equal((lo.X + hi.X) * 0.5f, vert.Position.X, 4);
+                    Assert.Equal((lo.Y + hi.Y) * 0.5f, vert.Position.Z, 4);
+                    checkedCount++;
+                }
+            }
+            Assert.True(checkedCount > 0, "no boundary vertices were checked, so this proved nothing");
+        }
+
+        static (long, long) Q(float x, float z)
+            => ((long)MathF.Round(x * 4096f), (long)MathF.Round(z * 4096f));
 
         // ---- Plane clamping ----------------------------------------------------------------------------------
 

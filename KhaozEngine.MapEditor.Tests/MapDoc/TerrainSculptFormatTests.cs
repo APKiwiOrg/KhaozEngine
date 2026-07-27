@@ -21,17 +21,17 @@ namespace KhaozEngine.Tests.MapDoc
         public void V1_migrates_to_v2_with_no_overrides_and_identical_terrain()
         {
             MapDocument doc = MapDocumentFileTests.SampleDoc();
-            string v2json = MapDocumentFile.SaveText(doc);
-            string v1json = v2json.Replace("\"formatVersion\": 2", "\"formatVersion\": 1");
+            string current = MapDocumentFile.SaveText(doc);
+            string v1json = MapDocumentFileTests.WithFormatVersion(current, 1);
 
-            MapDocument fromV2 = MapDocumentFile.LoadText(v2json);
-            MapDocument fromV1 = MapDocumentFile.LoadText(v1json);   // runs the built-in 1 -> 2 migration
+            MapDocument fromCurrent = MapDocumentFile.LoadText(current);
+            MapDocument fromV1 = MapDocumentFile.LoadText(v1json);   // runs the whole built-in chain from 1
 
-            Assert.Equal(2, fromV1.FormatVersion);
+            Assert.Equal(MapDocumentFile.CurrentFormatVersion, fromV1.FormatVersion);
             Assert.Null(fromV1.TerrainOverrides);
 
             var registry = MapDocRegistry.CreateDefault();
-            var f2 = MapRuntime.BuildField(fromV2, registry);
+            var f2 = MapRuntime.BuildField(fromCurrent, registry);
             var f1 = MapRuntime.BuildField(fromV1, registry);
             for (float x = -60f; x <= 60f; x += 12f)
             for (float z = -60f; z <= 60f; z += 12f)

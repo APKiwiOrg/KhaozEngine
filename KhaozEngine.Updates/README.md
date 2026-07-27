@@ -54,6 +54,11 @@ configured base host), and caps both the manifest and each downloaded file at a 
   down/slow feed falls through to `FeedUnreachable` and lets the game continue on the current build rather
   than blocking startup. Reports `UpdateGateProgress` (phase + byte/file counts) for a "Downloading
   update..." screen. See "Startup gate" below.
+- **`VerifyAndRepairAsync`** - the integrity pass. Hashes the install directory for real, diffs it against the
+  signed manifest, and re-downloads plus re-applies anything that does not match. The one path that works when
+  the installed version already equals the published one, which is the case every other path skips. Returns an
+  `UpdateRepairResult` (`Verified` / `Repairing` / `RepairStaged` / `FeedUnreachable` / `Failed`, plus the
+  mismatched, missing, and extraneous paths). See "Verify and repair a damaged install" below.
 - **`UpdateApplier`** + **`IUpdaterEnvironment`** - the cross-platform staged-apply core: wait behind an
   exit barrier until the game process is gone (see "Windows self-update safety" below), back up each file
   before overwriting, atomically swap in each staged file (`ReplaceFile`: copy-to-temp + rename, retried
@@ -260,6 +265,55 @@ non-fatal by design: a startup gate must never block forever on a bad feed, so i
 continue on the current build. Pair it with the `KhaozEngine.NetWorld` connect-time version handshake as the
 backstop for the skew it could not prevent.
 
+## Verify and repair a damaged install
+
+The normal check cannot see a corrupted install, for two compounding reasons. It short-circuits at the version
+gate, so a client whose version already matches the feed never fetches the manifest and never looks at a byte.
+And past that gate its local picture is the cached `update-manifest.json`, which records the hash each file is
+*supposed* to have, so a file damaged after the update that wrote it still reports the right hash and the diff
+finds nothing. Together that is a game that runs forever reporting the correct version on a broken install,
+while a server-side content handshake rejects it and the player has no way to fix it.
+
+`VerifyAndRepairAsync` is the way out. It hashes what is actually on disk, diffs that against the signed
+manifest, and repairs the difference through the ordinary download and apply pipeline:
+
+```csharp
+UpdateRepairResult repair = await updates.VerifyAndRepairAsync(
+    progress: new Progress<UpdateRepairProgress>(p => ShowVerifyScreen(p.Phase, p.FilesDone, p.TotalFiles)));
+
+switch (repair.Outcome)
+{
+    case UpdateRepairOutcome.Verified:        // all repair.FilesChecked files match; nothing was wrong
+    case UpdateRepairOutcome.Repairing:       return;   // repaired: process is exiting into the fixed install
+    case UpdateRepairOutcome.RepairStaged:    break;    // staged only (applyRepair: false); relaunch needed
+    case UpdateRepairOutcome.FeedUnreachable: break;    // nothing was checked - NOT the same as verified
+    case UpdateRepairOutcome.Failed:          break;    // repair.Error has the detail
+}
+```
+
+- **Explicitly invoked, never automatic.** Hashing an install is expensive (a real one is ~117 files including
+  an 88 MB executable), so this is a "Verify game files" button or a targeted recovery after a handshake
+  rejection, never part of the launch check. Nothing about the normal path changes.
+- **It hashes real files.** The local side is always `UpdateManifest.GenerateFromDirectory`, never the cached
+  manifest. Using the cache here would reproduce the exact bug the method exists to fix.
+- **Signing still applies.** The manifest is fetched and signature-verified exactly as the update path does. An
+  unsigned or tampered manifest is refused, and reported as `FeedUnreachable` / `Failed` rather than a
+  reassuring `Verified`.
+- **It repairs forward, never backward.** The target is the feed's newest signed build, normally the installed
+  one. If the feed has moved on it repairs and updates in one pass. A feed *behind* the install is refused.
+- **Extraneous files are reported, never deleted.** `ExtraneousFiles` lists installed files the manifest does
+  not describe. A fresh scan cannot tell a leftover from a superseded release apart from the player's own log,
+  screenshot, config, or mod, and an extra file cannot break a content handshake, so the repair hands the
+  applier nothing to delete. (The update path's deletes are unaffected: its local picture is the previous
+  release's manifest, which by construction lists only shipped files.)
+- **`applyRepair: false`** stages the repair and stops at `ReadyToApply` with `RelaunchRequired` set, for a
+  caller that wants to finish with `ApplyUpdate()` at a safe moment instead of exiting immediately.
+
+While it runs the service sits in `UpdateState.Verifying`, which blocks a concurrent (including `Tick`-driven)
+check from clobbering the plan, then moves through the usual `Downloading` / `ReadyToApply` / `Applying`
+states. `UpdateRepairProgress` carries the phase plus file and byte counters for that phase, so one bar covers
+the long hashing pass and the download that may follow.
+
 ## In-session recheck (long-running games)
 
 A launch-time check misses a release that lands while the game is still open, which matters for a session
@@ -340,7 +394,9 @@ trim/AOT safe.
 
 The same `UpdateManifest.GenerateFromDirectory(buildDir, version, platform)` that builds the local
 manifest produces a published build's manifest, so an offline `dotnet run` tool can emit
-`manifest.json` identical to what the client expects.
+`manifest.json` identical to what the client expects. Pass an optional
+`IProgress<ManifestHashProgress>` (files and bytes done out of the totals, reported synchronously) to
+drive a bar while a large directory is hashed.
 
 ## Adopting the updater (last-mile glue)
 

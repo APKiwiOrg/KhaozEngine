@@ -513,7 +513,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
-                "vec4 FftRotSin;", "vec4 FftSector;" })
+                "vec4 FftRotSin;", "vec4 FftSector;", "vec4 RenderOrigin;" })
                 Assert.True(ShaderSources.WaterClipmapVert.Contains(member),
                     $"WaterClipmapVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's.");
         }

@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 16.9.0
+## 16.11.0
 
 ### World-locked water grid: the FFT ocean no longer boils under camera motion
 
@@ -74,6 +74,75 @@ Closes [#296](https://github.com/APKiwiOrg/KhaozEngine/issues/296) and
 the existing grid cannot work and why the remaining 12 per cent
 ([#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348)) was left:
 `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
+## 16.10.0
+
+### Document residency: tile documents stream around the player on both heads
+
+Release 2 of the tiled-mapdoc program. Splitting the format did nothing on its own if every head
+still loaded every tile at boot. `MapTileResidency` closes that: it loads and unloads tile documents
+around one focus or many, on the client and on a headless server, and the whole live set is bounded
+by the rings instead of the world.
+
+- **`KhaozEngine.MapDoc`**: `MapResidencyConfig` (Chebyshev rings, defaults LoadRadius 2,
+  UnloadRadius 3, MaxLoadsPerUpdate 2, with `ValidateAgainst(StreamerConfig, tileSize,
+  sculptCellSize)` enforcing the worked coverage rules, including the true diagonal chunk reach and
+  the sculpt-span inset, so a configuration that can build a chunk against a non-resident tile is
+  rejected up front). `IMapTileSink` (`TileLoaded`, `TileRingChanged`, `TileUnloaded`, the seam a
+  consumer hangs per-tile physics off, callbacks must not re-enter the residency and a guard throws
+  if they do). `MapTileResidency` (single and multi-focus `Update` with union-of-rings and
+  strongest-ring-wins, `PrimeAround` for teleports, async loading budgeted per update, and the
+  placement snapshot published before callbacks fire so a sink-triggered chunk rebuild always sees
+  the arriving tile). `MapDocumentSource.Refresh` re-reads the manifest so an externally re-saved
+  world can be picked up while running.
+- **`KhaozEngine.Terrain`**: `TerrainField.SetSculpt` (atomic copy-on-write snapshot swap, volatile
+  publication, every public sampler reads the snapshot once so a mid-call swap cannot tear a
+  normal), `TerrainSculpt.With` (builds a new sculpt sharing unchanged tile arrays),
+  `IChunkBuildGate` and `TerrainStreamer.BuildGate` (the streamer defers chunk requests whose tiles
+  are not yet resident, absent tiles stay buildable, the footprint honors sculpt-tile ownership).
+- **`KhaozEngine.Terrain.Render3D`**: `IPlacementSource` on `PropLayer`, queried per chunk build, so
+  streamed-in placements reach the render sink without rebuilding the layer.
+  `MapTileResidency` implements it directly. Note for adopters: the new overload makes a bare
+  untyped `null` first argument to `PropLayer.PlacementLayer` ambiguous, cast it.
+
+The per-cell server residency pattern (one residency per shard cell, pre-warming across handoffs)
+stays deferred as #341. Design in `docs/design/TILED-MAPDOC-AND-RESIDENCY-DESIGN-2026-07-27.md`.
+Resolves #335, for the 100 km world program (https://github.com/APKiwiOrg/Ruinborne/issues/242).
+
+## 16.9.0
+
+### Update verify-and-repair: hash the install for real, even when the version already matches
+
+A silently damaged install used to be both undetectable and unrepairable whenever its reported version
+was already current. `UpdateService.VerifyAndRepairAsync` hashes the real files on disk against the
+signature-verified remote manifest and re-downloads whatever does not match, working past both of the
+normal path's blind spots: the version-equality short-circuit that skips a byte-level check entirely once
+the installed version matches the feed, and the cached local manifest, which records the hash a file is
+supposed to have rather than the hash it actually has, so a file damaged after the update that wrote it
+still reads as correct. The motivating case: a game shipped a world-identity handshake, players were
+rejected at connect, and the updater had nothing to say beyond "you are on the latest version" because it
+had never compared a single byte to what actually shipped.
+
+- **`KhaozEngine.Updates`**: `VerifyAndRepairAsync`, fetch, signature-verify, hash, diff, re-download, and
+  re-apply through the same staging and download loop the ordinary update path uses. `UpdateRepairResult`
+  (`Outcome`, `Version`, `FilesChecked`, `MismatchedFiles`, `MissingFiles`, `ExtraneousFiles`, `Error`,
+  `FilesNeedingRepair`, `RelaunchRequired`). `UpdateRepairOutcome` (`Verified` / `Repairing` /
+  `RepairStaged` / `FeedUnreachable` / `Failed`). `UpdateRepairPhase` and `UpdateRepairProgress` for a
+  "Verifying game files" screen. `UpdateState.Verifying`, guarded the same way as `Downloading` and
+  `Applying` so a concurrent check cannot clobber the in-flight plan. `applyRepair: false` stages the fix
+  and stops at `ReadyToApply` instead of exiting straight into the applier.
+  `UpdateManifest.GenerateFromDirectory` takes an optional `IProgress<ManifestHashProgress>` so hashing a
+  large install (a real one runs ~117 files including an 88 MB executable) can drive a progress bar.
+- **Extraneous files are reported, never deleted.** `ExtraneousFiles` lists installed files the manifest
+  does not describe. A fresh scan cannot tell a leftover from a superseded release apart from the
+  player's own log, screenshot, config, or mod.
+- **Repairs forward, never backward.** The target is always the feed's newest signed build. A feed
+  behind the installed version is refused rather than silently downgrading a player.
+
+Consumers: nothing to do until you wire a "Verify game files" action or a targeted recovery after a
+handshake rejection, neither of which is automatic (hashing a real install is too expensive for the
+launch path). Full usage in `KhaozEngine.Updates/README.md` ("Verify and repair a damaged install"),
+`docs/UPDATER.md`, and `docs/USING-KHAOZENGINE.md`.
+
 ## 16.8.0
 
 ### Camera-relative rendering: visual precision no longer degrades with distance from the origin

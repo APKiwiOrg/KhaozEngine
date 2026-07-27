@@ -66,6 +66,17 @@ namespace KhaozEngine.Terrain
             }
         }
 
+        /// <summary>Optional build gate. Null (the default) preserves today's behaviour byte for byte: every chunk
+        /// in the ring is eligible. When set, a chunk the gate refuses is DEFERRED - not requested, not marked
+        /// loaded, and reconsidered on the next <see cref="Update"/> - which is how a streamer composed with an
+        /// asynchronous document-residency layer avoids building a chunk whose authored data has not arrived yet.
+        /// See <see cref="IChunkBuildGate"/>.
+        /// <para>The gate governs the RING SCAN only (fresh loads and re-LOD / ring changes). It deliberately does
+        /// not gate <see cref="Invalidate(RectArea)"/>, which is the explicit "this data just changed, rebuild it"
+        /// call a residency layer makes ON ARRIVAL: gating that would refuse the very rebuild the arrival exists to
+        /// trigger. Unloads are never gated either, so a deferred chunk can still leave the ring.</para></summary>
+        public IChunkBuildGate? BuildGate { get; set; }
+
         /// <summary>The residency ring for a chunk at Euclidean chunk-distance-squared <paramref name="chunkDistSq"/>
         /// from the player's chunk: <see cref="ChunkRing.Gameplay"/> within <see cref="StreamerConfig.LoadRadius"/>,
         /// else <see cref="ChunkRing.Decor"/>.</summary>
@@ -175,6 +186,7 @@ namespace KhaozEngine.Terrain
                 int chunkDistSq = dx * dx + dz * dz;
                 if (chunkDistSq > loadSq) continue;
                 var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
+                if (BuildGate is { } gate && !gate.CanBuild(c)) continue;   // deferred: reconsidered next Update
 
                 Vector2 center = ChunkGrid.CenterOf(c, cs);
                 float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
@@ -259,6 +271,7 @@ namespace KhaozEngine.Terrain
                 int chunkDistSq = dx * dx + dz * dz;
                 if (chunkDistSq > loadSq) continue;
                 var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
+                if (BuildGate is { } gate && !gate.CanBuild(c)) continue;   // deferred: reconsidered next Update
 
                 Vector2 center = ChunkGrid.CenterOf(c, cs);
                 float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;

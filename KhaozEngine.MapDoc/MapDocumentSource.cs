@@ -44,7 +44,7 @@ public sealed class MapDocumentSource : IDisposable
     readonly string? _directory;
     readonly MapSpatialIndex? _spatial;
     readonly MapDocumentLoadOptions _options;
-    readonly float _sculptCellSize;
+    float _sculptCellSize;
 
     MapDocumentSource(MapDocument manifest, MapTileIndex tiles, string? directory,
                       MapSpatialIndex? spatial, MapDocumentLoadOptions options)
@@ -70,7 +70,12 @@ public sealed class MapDocumentSource : IDisposable
 
     /// <summary>Wraps a whole in-memory document, bucketing its point content so the same tile-at-a-time API
     /// works against a monolithic world. Hashes every occupied tile up front, which is what makes
-    /// <see cref="Tiles"/> a real index rather than a coordinate list.</summary>
+    /// <see cref="Tiles"/> a real index rather than a coordinate list.
+    /// <para>The bucketing happens ONCE, right here: like a tiled directory's index frozen at
+    /// <see cref="OpenTiled"/>, this source's view of <paramref name="doc"/> is a snapshot from the moment of
+    /// this call, not a live view over it. Mutating <paramref name="doc"/>'s lists afterward is invisible to
+    /// this source, and <see cref="Refresh"/> is a no-op here (there is no <c>map.json</c> to re-read) rather
+    /// than a fix for it - build a new source over the updated document instead.</para></summary>
     public static MapDocumentSource FromDocument(MapDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -87,12 +92,14 @@ public sealed class MapDocumentSource : IDisposable
     }
 
     /// <summary>The globals: bounds, terrain, scatter and companion layers, shapes. Fully populated, with the
-    /// four point-shaped lists empty.</summary>
-    public MapDocument Manifest { get; }
+    /// four point-shaped lists empty. Swapped by <see cref="Refresh"/> for a directory-backed source.</summary>
+    public MapDocument Manifest { get; private set; }
 
     /// <summary>The occupied-tile index. Entries read from a directory are all unloaded, because a source
-    /// holds nothing until it is asked.</summary>
-    public MapTileIndex Tiles { get; }
+    /// holds nothing until it is asked. Swapped by <see cref="Refresh"/> for a directory-backed source, so a
+    /// consumer that reads THIS property fresh on every call (as <see cref="MapResidencyGate"/> does) sees an
+    /// occupancy change made after this source was opened, once <see cref="Refresh"/> has been called.</summary>
+    public MapTileIndex Tiles { get; private set; }
 
     /// <summary>Reads, parses and VALIDATES one tile. Pure and free of shared mutable state, so a caller may
     /// run it on a worker thread.</summary>
@@ -106,14 +113,68 @@ public sealed class MapDocumentSource : IDisposable
 
         if (_spatial is not null)
         {
+            // The spatial index's buckets are the CALLER's own live document objects, bucketed once and never
+            // copied since (MapSpatialIndex is itself a frozen snapshot, see Refresh's remarks). Handing those
+            // straight out would break the immutability MapTileContent promises: a placement is a mutable class
+            // and a sculpt tile's Deltas array is a mutable float[], so a consumer that later mutates the
+            // ORIGINAL document (or something like TerrainSculpt.With, which stores a delta array by reference)
+            // would silently change content this source already served as final. OpenTiled never has this
+            // problem - MapTileFile.Read parses fresh objects off disk on every call - so only this branch
+            // clones.
             MapTileLists lists = MapTileLists.Of(_spatial, coord);
-            var content = new MapTileContent(coord, lists.Placements, lists.Spawns, lists.PlayerSpawns, lists.SculptTiles);
+            var content = new MapTileContent(coord, ClonePlacements(lists.Placements), lists.Spawns,
+                                             lists.PlayerSpawns, CloneSculptTiles(lists.SculptTiles));
             MapTileValidator.Validate(content, "(in memory)", MapTileFile.FileName(coord, entry.Hash),
                                       Tiles.TileSize, _sculptCellSize);
             return content;
         }
 
         return MapTileFile.Read(_directory!, coord, entry.Hash, _options, Tiles.TileSize, _sculptCellSize);
+    }
+
+    static List<MapPlacement> ClonePlacements(IReadOnlyList<MapPlacement> source)
+    {
+        var clones = new List<MapPlacement>(source.Count);
+        foreach (MapPlacement p in source)
+            clones.Add(new MapPlacement
+            {
+                Id = p.Id, Kind = p.Kind, X = p.X, Z = p.Z, Y = p.Y, Yaw = p.Yaw, Scale = p.Scale,
+                Tags = new List<string>(p.Tags),
+            });
+        return clones;
+    }
+
+    static List<MapSculptTile> CloneSculptTiles(IReadOnlyList<MapSculptTile> source)
+    {
+        var clones = new List<MapSculptTile>(source.Count);
+        foreach (MapSculptTile t in source)
+            clones.Add(new MapSculptTile(t.TileX, t.TileZ, (float[])t.Deltas.Clone()));
+        return clones;
+    }
+
+    /// <summary>Re-reads <c>map.json</c> and atomically swaps <see cref="Manifest"/> and <see cref="Tiles"/> for
+    /// a freshly parsed pair, picking up whatever an external writer (the editor, a generation tool) did to the
+    /// directory since this source was opened or last refreshed: a tile added, removed, or re-saved.
+    /// Content-addressed tile files change name on every edit, so without this the OLD index still names the
+    /// OLD filename and <see cref="ReadTile"/> would either throw (the stale file was swept) or quietly keep
+    /// serving stale content (it was not).
+    /// <para>This is the CONSUMER's signal that the on-disk document changed outside this process - residency
+    /// does not poll for it on its own. <see cref="MapTileResidency.Invalidate"/> calls this before it re-reads
+    /// a tile, and <see cref="MapResidencyGate"/> reads <see cref="Tiles"/> fresh on every
+    /// <c>CanBuild</c> call, so a tile that became newly occupied after this source was opened is picked up too,
+    /// the moment a consumer calls this after the external save.</para>
+    /// <para>A no-op for a source built with <see cref="FromDocument"/>: there is no <c>map.json</c> backing an
+    /// in-memory document to re-read. See the caveat on <see cref="FromDocument"/> - its point-content buckets
+    /// are ALSO a frozen snapshot, just for a different reason, and this method cannot refresh them.</para></summary>
+    /// <exception cref="MapDocumentException">The manifest cannot be read or fails validation.</exception>
+    public void Refresh()
+    {
+        if (_directory is null) return;
+        MapDocument manifest = MapTiledFile.ReadManifest(_directory, _options, out MapTileIndex index);
+        manifest.Tiles = index;
+        Manifest = manifest;
+        Tiles = index;
+        _sculptCellSize = MapCanonical.SculptCellSizeOf(manifest);
     }
 
     /// <summary>Nothing is held open between reads, so disposal is a no-op today. It is on the type because a

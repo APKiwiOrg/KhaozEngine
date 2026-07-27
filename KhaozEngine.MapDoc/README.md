@@ -353,6 +353,11 @@ MapTileContent tile = source.ReadTile(new MapTileCoord(3, -2)); // parses and va
 `MapDocumentSource.FromDocument(doc)` wraps an in-memory whole document behind the same API.
 `MapTileContent` is immutable once handed out, INCLUDING the delta arrays inside `SculptTiles`, because a
 reader hands out the arrays it parsed and `TerrainSculpt` stores them by reference: clone before editing.
+For `OpenTiled`, the occupied-tile index is a snapshot taken at open time, since a re-saved tile is
+content-addressed and gets a new filename on every edit. Call `source.Refresh()` after an external save (an
+editor, a generation tool) re-reads `map.json` and atomically swaps in the fresh index, which
+`MapTileResidency.Invalidate` already does before it re-reads a tile. `Refresh` is a no-op for a
+`FromDocument` source, since there is no `map.json` to re-read. Rebuild it over the updated document instead.
 
 A tile read runs a per-tile validation subset, keeping the loud-fail stance for a read that cannot see the
 whole document: ids non-empty and unique within the tile, placement kinds non-empty, delta counts exact,
@@ -360,6 +365,65 @@ and every item actually falling inside the tile it was read from. That last one 
 whole-document load can never make and a tiled load must, since it is what catches a hand-edited or
 tool-generated file whose content does not match its name. Bounds and cross-tile checks stay with
 `MapDocumentValidator` and `VerifyTiled`.
+
+### Document residency (`MapTileResidency`)
+
+Keeps a square ring of document tiles resident around one or more foci, reading each on demand through a
+`MapDocumentSource` and handing arrivals and departures to an `IMapTileSink`. GPU-free and driven from a
+position, so a client and a headless server run the same type.
+
+```csharp
+var config = MapResidencyConfig.Default;                       // LoadRadius 2, UnloadRadius 3, 2 per update
+IReadOnlyList<string> errors = config.ValidateAgainst(streamerConfig, doc.TileSize, sculptCellSize);
+if (errors.Count > 0) throw new InvalidOperationException(string.Join("\n", errors));
+
+using var residency = new MapTileResidency(source, config, mySink, dispatcher: null, field);
+streamer.BuildGate = residency.GateFor(streamerConfig.ChunkSize, sculptCellSize);
+
+// Every frame, in this order.
+residency.Update(playerPos);
+streamer.Update(playerPos, dt);
+
+// Every teleport, zone change or camera jump, before the next streamer.Update.
+residency.PrimeAround(newFocus);
+streamer.UnloadAll();
+```
+
+Radii are in TILE units at CHEBYSHEV distance (a square ring), which is deliberately NOT `StreamerConfig`'s
+Euclidean metric. The focus can sit anywhere in its own tile, including hard against a corner, and a square
+ring guarantees exactly `LoadRadius * tileSize` of loaded world in every direction for every radius, where a
+Euclidean ring guarantees 0 at radius 1 and an awkward 2.83 tiles at radius 4. `MapResidencyConfig` is a
+distinct type from `StreamerConfig` so the two cannot be confused.
+
+`ValidateAgainst` is the wiring-time check that a chunk can never build or REBUILD against a non-resident
+tile: the data rule measures to the streamer's UNLOAD radius (chunks persist that far and `Invalidate`
+rebuilds any of them), the collider rule keeps every gameplay chunk over Gameplay tiles, and both subtract
+one sculpt span because a tile's low-X and low-Z edges are covered by sculpt owned by its neighbour. Run it
+against the WIDEST render-distance profile, not the active one: the profile is a runtime setting, and a
+config that only validates on Low is a hole in the world on Ultra.
+
+`Update(ReadOnlySpan<Vector3>)` is the server form: the resident set is the union of the per-focus rings,
+recomputed each update with nothing reference counted, and a tile contested between rings takes the
+strongest any focus assigns it, so the answer does not depend on focus order. Cost is O(foci * ring area).
+Past a few hundred foci a shard server should drive one residency per `CellSim` rather than one global
+residency with a thousand foci. That guidance has two known holes (authored content in a region no player
+ring covers, and a cell crossing arriving cold), tracked as
+[#341](https://github.com/APKiwiOrg/KhaozEngine/issues/341) and not solved here.
+
+The two seams a consumer wires:
+
+- **`GateFor(chunkSize, sculptCellSize)`** returns an `IChunkBuildGate` for `TerrainStreamer.BuildGate`. A
+  chunk builds only when no document tile touching its (sculpt-expanded) footprint is occupied-but-not-
+  resident. An ABSENT tile is buildable, never blocking, because absence is the common case in a sparse
+  world and gating on it would deadlock the streamer over empty terrain.
+- **`MapTileResidency` implements `IPlacementSource`**, so `PropLayer.PlacementLayer(residency, meshes,
+  drawRadius)` streams authored placements to the renderer with no glue. Pass a `TerrainField` to the
+  constructor when any authored placement omits Y, since that is what ground-snaps it.
+
+The sink is a notification seam and nothing more. `TileLoaded` / `TileRingChanged` / `TileUnloaded` fire on
+the calling thread inside `Update` before it returns, so a consumer adds and frees per-tile physics bodies
+with no lock, and the engine never registers, owns, or frees one. The file read and parse behind an arrival
+ran on a worker thread. The handoff did not.
 
 ## Loud failures
 

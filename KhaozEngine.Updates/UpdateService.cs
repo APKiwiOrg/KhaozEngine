@@ -116,7 +116,9 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         // so a Tick-driven recheck does not fire moments later. Cheap and harmless in every state.
         recheckAccumulator = 0.0;
 
-        if (state is UpdateState.Downloading or UpdateState.Applying)
+        // Verifying is in the guard for the same reason as Downloading/Applying: VerifyAndRepairAsync owns the
+        // pending* download plan while it runs, so a Tick-driven or player-driven check must not clobber it.
+        if (state is UpdateState.Verifying or UpdateState.Downloading or UpdateState.Applying)
         {
             return;
         }
@@ -175,21 +177,8 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
             }
 
             // Reject a hostile/oversized manifest before doing any work.
-            long declaredTotal = 0;
-            for (int i = 0; i < remoteManifest.Files.Count; i++)
+            if (!ManifestWithinSizeCaps(remoteManifest))
             {
-                long size = remoteManifest.Files[i].Size;
-                if (size < 0 || size > maxFileBytes)
-                {
-                    log.Warn($"Manifest file {remoteManifest.Files[i].Path} size {size} exceeds cap {maxFileBytes}; refusing.");
-                    SetState(UpdateState.Idle);
-                    return;
-                }
-                declaredTotal += size;
-            }
-            if (declaredTotal > maxTotalDownloadBytes)
-            {
-                log.Warn($"Manifest total {declaredTotal} exceeds cap {maxTotalDownloadBytes}; refusing.");
                 SetState(UpdateState.Idle);
                 return;
             }
@@ -253,10 +242,54 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         }
     }
 
+    /// <summary>
+    /// True when every declared file size in <paramref name="manifest"/> is within the per-file cap and their
+    /// sum is within the total cap: the hostile/oversized-manifest guard, applied before any work is done off
+    /// the manifest. Logs the offending entry on rejection. Shared by the check and the repair paths.
+    /// </summary>
+    private bool ManifestWithinSizeCaps(UpdateManifest manifest)
+    {
+        long declaredTotal = 0;
+        for (int i = 0; i < manifest.Files.Count; i++)
+        {
+            long size = manifest.Files[i].Size;
+            if (size < 0 || size > maxFileBytes)
+            {
+                log.Warn($"Manifest file {manifest.Files[i].Path} size {size} exceeds cap {maxFileBytes}; refusing.");
+                return false;
+            }
+            declaredTotal += size;
+        }
+
+        if (declaredTotal > maxTotalDownloadBytes)
+        {
+            log.Warn($"Manifest total {declaredTotal} exceeds cap {maxTotalDownloadBytes}; refusing.");
+            return false;
+        }
+
+        return true;
+    }
+
     /// <summary>Downloads staged files and transitions to <see cref="UpdateState.ReadyToApply"/>.</summary>
     public async Task StartDownloadAsync(CancellationToken cancellationToken = default)
     {
-        if (state != UpdateState.UpdateAvailable || pendingLatest is null || remoteVersion is null)
+        if (state != UpdateState.UpdateAvailable)
+        {
+            return;
+        }
+
+        await DownloadPendingAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The one download loop: stages every file in <c>pendingDownloads</c> with retry + SHA256 verify, writes
+    /// the signed manifest bytes beside them, and lands on <see cref="UpdateState.ReadyToApply"/> (or
+    /// <see cref="UpdateState.Failed"/>). Split out of <see cref="StartDownloadAsync"/> so the repair path
+    /// composes the SAME loop instead of forking a parallel one; the caller owns the entry-state guard.
+    /// </summary>
+    private async Task DownloadPendingAsync(CancellationToken cancellationToken)
+    {
+        if (pendingLatest is null || remoteVersion is null)
         {
             return;
         }

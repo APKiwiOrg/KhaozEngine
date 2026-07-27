@@ -74,6 +74,16 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   sink. Scatter and companion layers keep the older layer-0-only collider rule (issue #288): only a layer at
   index 0 registers colliders. A placement layer instead follows its `colliders` flag regardless of where it
   sits in the list.
+  - **`PlacementLayer(source, meshes, drawRadius, ...)`** (both overloads) takes an
+    `IPlacementSource` (`KhaozEngine.Terrain`) instead of a frozen list, exposed as `PropLayer.PlacementSource`.
+    The sink then queries the source at EVERY chunk build rather than bucketing once at construction, which is
+    what lets content arriving later reach the renderer at all: a frozen list is split into per-chunk buckets
+    when the sink is built, so a placement added afterwards would never draw no matter how correct the layer
+    above it is. Exactly one of `Placements` and `PlacementSource` is set, `IsPlacement` covers both, and every
+    knob (fade band, LOD variants, `WithHlod`, `colliders`) applies unchanged. The query runs on the build
+    thread. `MapTileResidency` (`KhaozEngine.MapDoc`) is one, so a game streaming a tiled map document writes
+    `PropLayer.PlacementLayer(residency, meshes, drawRadius)` and no glue. A frozen-list layer is untouched by
+    any of this.
 - **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
   extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
   overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a

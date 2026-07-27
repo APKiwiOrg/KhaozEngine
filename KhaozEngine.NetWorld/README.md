@@ -402,6 +402,56 @@ it survive a correction, plus one anti-cheat change that had to land with it.
 - **This is a wire break: generation 6 -> 7.** Client and server must ship together, gated at the handshake by
   the always-on `WireGenerationAuthenticator`.
 
+## Island frame on the flat head (opt-in, `WorldServerConfig.FrameAnchoring`)
+
+Simulating at 100 km from the world origin costs precision: float32's quantum out there is 7.8 mm, and the
+movement step's carried state accumulates it every tick (measured on production code at about 1.7 m of divergence
+per 20 s at 100 km, against 0 m at the origin). An ISLAND FRAME removes the magnitude rather than widening the
+type. A simulation island is one `World` plus one `IPhysicsWorld`, and a frame is a property of that SPACE, never
+of an entity in it: `WorldServer` is exactly one island, so it has exactly one frame and it follows one player.
+
+**Off by default, and the default path is byte-identical to before**: an unframed island is `WorldFrame.Origin`,
+whose anchor is exactly `Vector3.Zero`.
+
+- **`ReplicatedPosition` is a frame stamp plus a frame-local offset.** `Frame` (a `WorldFrame` from
+  `KhaozEngine.Primitives`) and `Local`, with `Value` a computed property. Reading `Value` is unchanged and always
+  absolute, and `default` is still an absolute position at the world origin, so every existing reader keeps
+  working. WRITING `Value` resets the stamp and stores the value as-is, which is safe rather than merely
+  tolerated: `{Origin, p}` and `{f, f.ToLocal(p)}` denote the same world position, so a legacy write can only
+  produce a correct position with a stale stamp, which the island then converts back exactly. Build one explicitly
+  with `FromWorld(absolute, frame)` (a position from outside the sim) or `InFrame(frame, local)` (one that came
+  out of it), and move one with `WithLocal` / `ToFrame`.
+- **`WorldServerConfig.FrameAnchoring`** turns it on. The step then runs on a frame-local position, the island's
+  physics world is rebased with it (`IPhysicsWorld.Rebase`, so a query never crosses spaces), and every entity in
+  the world carries the island's stamp. **Do not enable it against a client that predicts in absolute
+  coordinates**: the wire is absolute in this release, so a server stepping in a 136 m frame while its client
+  steps at 100 km produces two trajectories from two spaces and the reconciliation error GROWS. It is for a
+  single-player or single-region game with no reconciled client, and for testing. There is deliberately no
+  `ShardedWorldServerConfig.FrameAnchoring` yet: the sharded head hands ONE physics world to every cell, so a cell
+  stepping in its own frame would query colliders sitting in another, and the knob lands with per-cell physics.
+- **`WorldServerConfig.SamplerSpace`** says which space the game's sampler delegates read.
+  `SamplerSpace.World` (the default) keeps them on absolute coordinates and the step converts for them: zero
+  adoption work, and it still fixes the accumulating half, because the carried state is what compounds.
+  `SamplerSpace.Frame` passes frame-local coordinates straight through, which is the full fix for a game whose
+  ground follow already comes from the island's own physics world. `WorldBounds` is the exception neither mode
+  governs: a play area is authored content and stays absolute, so the step converts for it either way.
+- **Everything the server exposes stays ABSOLUTE.** `TryGetPlayerState`, `PlayerLeaving`, `ListOnline`,
+  `ReplicatedPosition.Value`, the interest grid and the wire all read world metres, whatever frame the island is
+  simulating in. `PlayerMoveState.FrameAnchor` (stamped by `PlayerMoveSimulator.Step`) says which space a state is
+  in, and a state handed across the public surface carries `Vector2.Zero` with an absolute position, so the two
+  can never disagree. Assigning `PlayerMoveState.Position` writes an absolute position and resets the stamp, the
+  same contract as `ReplicatedPosition.Value`.
+- **`WorldServer.IslandFrame` and `WorldServer.FrameChanged`.** The event fires after a re-anchor with
+  `(from, to, delta)`, the exact translation into the new frame. The engine's own state is already converted when
+  it fires, INCLUDING the physics world, so a consumer needs a handler only for state it holds in the old frame
+  itself (cached poses it read out of the physics world, its own spatial indices, debug overlays).
+- **Constructing with `FrameAnchoring` and a physics world that cannot rebase throws.** A framed step querying an
+  unframed world is a wrong answer, not an imprecise one, so the combination is refused rather than served.
+- **The re-anchor policy.** `WorldFrame.Grid` is 128 m and the trigger is a local axis past
+  `WorldFrame.ReanchorRadius` (96 m), which guarantees at least 64 m of travel between consecutive re-anchors. The
+  island re-anchors after the tick's movement has settled and before anything reads a position back, so no step
+  ever observes a half-rebased island.
+
 ## Reconnect input backlog (since 8.8.0)
 
 Holding the movement key through a long auto-reconnect outage no longer freezes the player on rejoin. Two guards:

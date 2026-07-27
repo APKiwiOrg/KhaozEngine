@@ -52,7 +52,7 @@ public sealed partial class BepuPhysicsWorld
         if (delta == Vector3.Zero) return;   // adopting the origin you already have moves nothing
 
         // Bodies: every allocated set, so awake and sleeping alike. A sleeping body written this way stays asleep
-        // and does not move on the next step; that is the whole reason the poses are written directly.
+        // and does not move on the next step, which is the whole reason the poses are written directly.
         for (int setIndex = 0; setIndex < _sim.Bodies.Sets.Length; setIndex++)
         {
             ref BodySet set = ref _sim.Bodies.Sets[setIndex];

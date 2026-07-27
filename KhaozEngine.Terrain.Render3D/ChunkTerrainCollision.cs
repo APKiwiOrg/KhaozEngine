@@ -19,7 +19,7 @@ namespace KhaozEngine.Terrain
         /// recentered, so they are used verbatim) and the pose supplies the placement, which is what keeps every
         /// triangle test at chunk magnitude however far out the chunk sits. The handle is returned so the caller can
         /// record it for removal. <paramref name="handle"/> is set and the method returns true when a body was
-        /// added; it returns false (and does not set a handle) for an empty chunk with no surface triangles.</summary>
+        /// added, and it returns false (and sets no handle) for an empty chunk with no surface triangles.</summary>
         internal static bool Add(IPhysicsWorld physics, TerrainChunkMesh chunk, out StaticHandle handle)
         {
             if (physics is null) throw new ArgumentNullException(nameof(physics));

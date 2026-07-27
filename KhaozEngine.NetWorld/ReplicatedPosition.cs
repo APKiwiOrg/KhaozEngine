@@ -12,7 +12,7 @@ public struct ReplicatedPosition : IComponent
 {
     /// <summary>The frame <see cref="Local"/> is expressed against: a STAMP of the owning simulation island's frame
     /// (one world plus one physics world), never an independent per-entity choice. On a framed head the island
-    /// writes it; nothing derives it on the receiving side.</summary>
+    /// writes it, and nothing derives it on the receiving side.</summary>
     public WorldFrame Frame;
 
     /// <summary>Position relative to <see cref="Frame"/>. X and Z are frame-local, Y is absolute world height

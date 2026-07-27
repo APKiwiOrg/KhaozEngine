@@ -49,7 +49,7 @@ this doc cannot silently drift apart.
 | Area | Seam (dependency-free) | Backend(s) | Third-party library |
 |---|---|---|---|
 | GPU / rendering | `KhaozEngine.Gpu` (`GpuDeviceContext` + `GpuInterfaces`, `GpuBackendSelector`) | (in-package) `Internal/VeldridGpuDevice` | Veldrid (+ Veldrid.SPIRV) |
-| 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`) | BepuPhysics v2 |
+| 3D physics | `KhaozEngine.Physics` (`IPhysicsWorld`, value-type shapes/poses/queries, and since the floating-origin release also the default-method `Origin` / `CanRebase` / `Rebase(newOrigin)`, so an existing implementer keeps compiling and correctly reports that it cannot rebase - the seam learns a plain `Vector3`, never a frame type, and keeps its zero project references) | `KhaozEngine.Physics.Bepu` (`BepuPhysicsWorld`, which overrides all three: bulk direct pose writes plus broadphase refits over every allocated body set and the statics, so sleeping bodies, contacts and constraints all survive a shift) | BepuPhysics v2 |
 | Netcode transport | `KhaozEngine.Netcode` (`INetTransport` incl. the default-method `Stats` -> `NetTransportStats`, `LoopbackTransport`) + `Netcode.Abstractions` | `KhaozEngine.Netcode.LiteNetLib` (fills `Stats` via `EnableStatistics`) | LiteNetLib |
 | Persistence | `KhaozEngine.WorldStore` (`IWorldStore`, `InMemoryWorldStore`) | `WorldStore.Sqlite`, `WorldStore.SqlServer` | Microsoft.Data.Sqlite / SqlClient |
 | Commerce wallet | `KhaozEngine.Commerce` (`IWalletStore`, `IGrantScheduleStore`, `IEntitlementValidator`, `InMemoryWalletStore`) | `Commerce.Sqlite` (`SqliteWalletStore`), `Commerce.SqlServer` (`SqlServerWalletStore`) | Microsoft.Data.Sqlite / SqlClient |

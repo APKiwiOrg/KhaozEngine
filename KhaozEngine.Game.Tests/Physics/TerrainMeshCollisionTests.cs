@@ -262,7 +262,7 @@ public class TerrainMeshCollisionTests
 
     // A planar ramp field: height depends only on X, with a slope we know exactly, so the meshed surface
     // reproduces the field EXACTLY (a triangulated plane is a plane) and any residual is measurement, not
-    // tessellation. The ramp is measured from refX so the heights stay small however far out the chunk is; it is
+    // tessellation. The ramp is measured from refX so the heights stay small however far out the chunk is. It is
     // still a pure function of (x, z), which is what ITerrainFeature requires.
     sealed class RampFeature : ITerrainFeature
     {

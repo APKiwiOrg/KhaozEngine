@@ -41,8 +41,8 @@ namespace KhaozEngine.Terrain
         /// leading surface vertices. The vertices are taken verbatim, so they are in whatever space the mesh is in
         /// (chunk-local for a <see cref="TerrainChunkBuilder"/> chunk) and the caller's pose supplies the placement.
         /// <para>Skirts are the appended vertices at or beyond <paramref name="surfaceVertexCount"/>. A triangle
-        /// whose three indices are all below the surface count is kept; any triangle touching a skirt vertex is
-        /// dropped. Returns <c>null</c> when no surface triangle survives.</para></summary>
+        /// whose three indices are all below the surface count is kept, and any triangle touching a skirt vertex
+        /// is dropped. Returns <c>null</c> when no surface triangle survives.</para></summary>
         public static TriangleMeshShape? Build(GltfMesh mesh, int surfaceVertexCount)
         {
             if (mesh is null) throw new ArgumentNullException(nameof(mesh));

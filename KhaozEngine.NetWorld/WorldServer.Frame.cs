@@ -28,7 +28,7 @@ public sealed partial class WorldServer
 
     /// <summary>The island's current frame. <see cref="WorldFrame.Origin"/> unless
     /// <see cref="WorldServerConfig.FrameAnchoring"/> is on, in which case it follows the anchored player. Read it
-    /// to convert something the engine handed you in island space; everything on the PUBLIC surface
+    /// to convert something the engine handed you in island space. Everything on the PUBLIC surface
     /// (<see cref="TryGetPlayerState"/>, <see cref="PlayerLeaving"/>, <see cref="ListOnline"/>,
     /// <see cref="ReplicatedPosition.Value"/>, the wire) is already absolute.</summary>
     public WorldFrame IslandFrame => islandFrame;

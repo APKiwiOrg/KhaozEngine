@@ -8,7 +8,7 @@ namespace KhaozEngine.Terrain
 {
     /// <summary>Scene3D glue for terrain chunks. A consumer with `using KhaozEngine.Terrain;` gets these in scope
     /// (same pattern as the Ground* telegraph extensions). Chunk vertices are CHUNK-LOCAL (see
-    /// <see cref="TerrainChunkBuilder"/>), so the draw transform carries the chunk's region origin; tint white lets
+    /// <see cref="TerrainChunkBuilder"/>), so the draw transform carries the chunk's region origin. Tint white lets
     /// the baked vertex-colour ramp through.</summary>
     public static class TerrainScene3D
     {

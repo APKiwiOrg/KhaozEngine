@@ -81,7 +81,7 @@ public sealed class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCo
     public WorldBounds? Bounds => bounds;
 
     // --- sampler adaptation ------------------------------------------------------------------------------------
-    // A sampler that reads absolute coordinates gets the anchor added back before the call; one that reads frame
+    // A sampler that reads absolute coordinates gets the anchor added back before the call. One that reads frame
     // coordinates is called straight through. Both are exact adds under the frame lemma, and both are no-ops at
     // WorldFrame.Origin, so an unframed head pays one forwarding call and nothing else.
 

@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.10.0
+
+### Document residency: tile documents stream around the player on both heads
+
+Release 2 of the tiled-mapdoc program. Splitting the format did nothing on its own if every head
+still loaded every tile at boot. `MapTileResidency` closes that: it loads and unloads tile documents
+around one focus or many, on the client and on a headless server, and the whole live set is bounded
+by the rings instead of the world.
+
+- **`KhaozEngine.MapDoc`**: `MapResidencyConfig` (Chebyshev rings, defaults LoadRadius 2,
+  UnloadRadius 3, MaxLoadsPerUpdate 2, with `ValidateAgainst(StreamerConfig, tileSize,
+  sculptCellSize)` enforcing the worked coverage rules, including the true diagonal chunk reach and
+  the sculpt-span inset, so a configuration that can build a chunk against a non-resident tile is
+  rejected up front). `IMapTileSink` (`TileLoaded`, `TileRingChanged`, `TileUnloaded`, the seam a
+  consumer hangs per-tile physics off, callbacks must not re-enter the residency and a guard throws
+  if they do). `MapTileResidency` (single and multi-focus `Update` with union-of-rings and
+  strongest-ring-wins, `PrimeAround` for teleports, async loading budgeted per update, and the
+  placement snapshot published before callbacks fire so a sink-triggered chunk rebuild always sees
+  the arriving tile). `MapDocumentSource.Refresh` re-reads the manifest so an externally re-saved
+  world can be picked up while running.
+- **`KhaozEngine.Terrain`**: `TerrainField.SetSculpt` (atomic copy-on-write snapshot swap, volatile
+  publication, every public sampler reads the snapshot once so a mid-call swap cannot tear a
+  normal), `TerrainSculpt.With` (builds a new sculpt sharing unchanged tile arrays),
+  `IChunkBuildGate` and `TerrainStreamer.BuildGate` (the streamer defers chunk requests whose tiles
+  are not yet resident, absent tiles stay buildable, the footprint honors sculpt-tile ownership).
+- **`KhaozEngine.Terrain.Render3D`**: `IPlacementSource` on `PropLayer`, queried per chunk build, so
+  streamed-in placements reach the render sink without rebuilding the layer.
+  `MapTileResidency` implements it directly. Note for adopters: the new overload makes a bare
+  untyped `null` first argument to `PropLayer.PlacementLayer` ambiguous, cast it.
+
+The per-cell server residency pattern (one residency per shard cell, pre-warming across handoffs)
+stays deferred as #341. Design in `docs/design/TILED-MAPDOC-AND-RESIDENCY-DESIGN-2026-07-27.md`.
+Resolves #335, for the 100 km world program (https://github.com/APKiwiOrg/Ruinborne/issues/242).
+
 ## 16.9.0
 
 ### Update verify-and-repair: hash the install for real, even when the version already matches

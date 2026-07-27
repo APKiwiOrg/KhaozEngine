@@ -4588,7 +4588,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.9.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.10.0" />
 ```
 
 ```csharp

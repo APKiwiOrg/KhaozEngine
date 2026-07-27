@@ -11,7 +11,7 @@ namespace KhaozEngine.Render3D
     /// Convention: Y up, right-handed. Eye = Target + Distance * dirToEye, where
     /// dirToEye = normalize(cosE*sinA, sinE, cosE*cosA). Forward = -dirToEye.
     /// </summary>
-    public sealed class IsoCamera3D : IIsoCamera3D
+    public sealed class IsoCamera3D : IIsoCamera3D, IRenderOriginAware
     {
         /// <summary>Rotation about the Y (up) axis, radians. Default 45 deg.</summary>
         public float Azimuth = MathF.PI / 4f;
@@ -43,7 +43,20 @@ namespace KhaozEngine.Render3D
         public Vector3 Eye => Target + DirToEye * Distance;
         public Vector3 Forward => -DirToEye;
 
-        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye, Target, Vector3.UnitY);
+        /// <summary>The render origin eye and target are expressed against when building <see cref="View"/>. See
+        /// <see cref="IRenderOriginAware"/>. <see cref="Vector3.Zero"/> (the default) is the pre-floating-origin
+        /// camera, bit for bit.</summary>
+        public Vector3 RenderOrigin { get; set; }
+
+        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye - RenderOrigin, Target - RenderOrigin, Vector3.UnitY);
+
+        /// <summary>The view built from the ABSOLUTE eye and target, ignoring <see cref="RenderOrigin"/>. Backs
+        /// <see cref="AbsoluteViewProjection"/> and the <see cref="Frame"/> fit, both of which work in absolute
+        /// world space.</summary>
+        Matrix4x4 AbsoluteView => Matrix4x4.CreateLookAt(Eye, Target, Vector3.UnitY);
+
+        /// <summary>The pre-shift view-projection. See <see cref="IRenderOriginAware.AbsoluteViewProjection"/>.</summary>
+        public Matrix4x4 AbsoluteViewProjection => AbsoluteView * Projection;
 
         public Matrix4x4 Projection
         {
@@ -66,7 +79,7 @@ namespace KhaozEngine.Render3D
         public void Frame(Vector3 center, Vector3 size, float margin = 1.1f)
         {
             Target = center;
-            Matrix4x4 view = View;
+            Matrix4x4 view = AbsoluteView;   // the corners below are ABSOLUTE world points, so fit against the absolute view
             Vector3 h = size * 0.5f;
             float maxX = 0f, maxY = 0f;
             for (int sx = -1; sx <= 1; sx += 2)
@@ -86,7 +99,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Project a world point to a screen pixel (forward inverse of <see cref="ScreenToRay"/>); false
         /// when the point is not in front of the camera. See <see cref="IIsoCamera3D.WorldToScreen(Vector3, int, int, out Vector2)"/>.</summary>
         public bool WorldToScreen(Vector3 world, int viewportWidth, int viewportHeight, out Vector2 screenPixel) =>
-            CameraProjection.WorldToScreen(ViewProjection, world, viewportWidth, viewportHeight, out screenPixel);
+            CameraProjection.WorldToScreen(ViewProjection, world - RenderOrigin, viewportWidth, viewportHeight, out screenPixel);
 
         /// <summary>
         /// Unproject a screen pixel (top-left origin, y-down) into a world ray. For this orthographic camera
@@ -100,7 +113,9 @@ namespace KhaozEngine.Render3D
             Matrix4x4.Invert(ViewProjection, out var inv);
             Vector3 near = Unproject(new Vector3(ndcX, ndcY, 0f), inv);
             Vector3 far = Unproject(new Vector3(ndcX, ndcY, 1f), inv);
-            return new Ray(near, far - near);
+            // The unprojection lands in the RENDER frame, so add the origin back: the ray this returns is absolute
+            // world, as it always was. The direction is a difference and is frame-invariant.
+            return new Ray(near + RenderOrigin, far - near);
         }
 
         /// <summary>Pick the world point under a screen pixel on the horizontal plane y = <paramref name="groundY"/>.</summary>

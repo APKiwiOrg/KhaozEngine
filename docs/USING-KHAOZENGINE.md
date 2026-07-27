@@ -2505,7 +2505,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       10 units at 90 out to 22 at the far edge. The trade is that the mesh is camera-relative, so vertices slide
       through the wave field as the camera moves. On a small water body the camera can see all of, turn the bias
       down or leave it at 1.
-    - `WaterGridMode.Clipmap` (since 16.7.0): concentric square rings, each at twice the previous ring's
+    - `WaterGridMode.Clipmap` (since 16.9.0): concentric square rings, each at twice the previous ring's
       world-space cell size, every vertex SNAPPED to its own ring's lattice in world space. For a sub-cell camera
       step nothing moves at all, and a larger step moves a ring by a whole even number of its own cells, which
       maps its lattice onto itself - so the surface is not resampled as the camera travels. **That slide is not a
@@ -2520,8 +2520,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       triangles than the camera-focused grid - with half-metre cells around the camera out to 2048 m of coverage,
       and it only rebuilds and re-uploads when a ring actually snaps rather than every frame.
       Under `WaterWaveSource.FftOcean` it also band-limits each ring to its own Nyquist against the (now mipped)
-      cascade maps, tuned by `ClipmapBandLimitSamples` (2 = plain Nyquist). Rationale, and the measured before and
-      after: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
+      cascade maps, tuned by `ClipmapBandLimitSamples` (2 = plain Nyquist).
+      It composes with camera-relative rendering (`RenderOrigin`) without a knob: the snap lattice is decided in
+      ABSOLUTE world space, so a render-origin rebase leaves every ring exactly where it was and only re-uploads
+      the (render-relative) positions, costing one rebuild frame per 128 m travelled. Rationale, and the measured
+      before and after: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
   - **Ripple spectrum, and why it is shaped this way**: ten cosine components (`RippleComponents`) generated
     from four scalars, with headings stepping by the GOLDEN ANGLE so no two are parallel and no subset lines up,
     wave numbers laddering by `RippleLacunarity` over about five octaves, and amplitudes renormalized to a fixed

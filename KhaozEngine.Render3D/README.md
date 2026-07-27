@@ -343,7 +343,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `ClipmapCellSize`, `ClipmapRingCells` and `ClipmapLevels` (0 = derive the ring count from the plane), and it
   band-limits each ring to its own Nyquist against the mipped cascade maps (`ClipmapBandLimitSamples`).
   `GridFocusBias` is inert under it. At the defaults it draws FEWER triangles than the grid it replaces and only
-  rebuilds its buffers when a ring snaps. The layout math is `Internal.WaterClipmap` (pure, headless-tested);
+  rebuilds its buffers when a ring snaps (per plane: each plane owns a slice of the buffers, so one plane's rebuild
+  never invalidates another's). Its snap lattice is decided in ABSOLUTE world space and only then reduced by the
+  camera-relative `RenderOrigin`, so an origin rebase moves no ring. The layout math is `Internal.WaterClipmap` (pure, headless-tested);
   rationale: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
 - FFT ocean sampling frame (since 16.5.0, all opt-in, all defaulting to the exact identity): `OnshoreFocusPoint` /
   `OnshoreFocusStrength` / `OnshoreFocusSectors` aim the local wave heading at a world point, so an island gets

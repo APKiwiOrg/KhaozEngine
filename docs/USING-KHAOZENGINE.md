@@ -2451,13 +2451,32 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     from the same seven scalars. Wavelengths ladder down geometrically, amplitudes are proportional to wavelength,
     and each component's speed comes from the deep-water dispersion relation, so long rollers genuinely overtake
     the short chop. `SwellSteepness` is capped at 1, the point past which the surface would fold through itself.
-  - **Surface grid**: a fixed 97x97 budget (9,409 vertices, 18,432 triangles, one draw per plane), spread
-    NON-uniformly by `GridFocusBias` toward the camera. That matters because the plane is whatever size the
-    consumer asks for: at a 600-unit half-extent a uniform grid puts vertices 12 units apart and cannot carry a
-    42-unit swell, while a biased grid runs roughly half a unit at the camera through 10 units at 90 out to 22 at
-    the far edge. The trade is that the mesh is camera-relative, so vertices slide through the wave field as the
-    camera moves - continuous, never popping, and invisible in the dense near field. On a small water body the
-    camera can see all of, turn it down or leave it at 1.
+  - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
+    camera moves much:
+    - `WaterGridMode.CameraFocused` (the default): a fixed 97x97 budget (9,409 vertices, 18,432 triangles, one
+      draw per plane), spread NON-uniformly by `GridFocusBias` toward the camera. That matters because the plane
+      is whatever size the consumer asks for: at a 600-unit half-extent a uniform grid puts vertices 12 units
+      apart and cannot carry a 42-unit swell, while a biased grid runs roughly half a unit at the camera through
+      10 units at 90 out to 22 at the far edge. The trade is that the mesh is camera-relative, so vertices slide
+      through the wave field as the camera moves. On a small water body the camera can see all of, turn the bias
+      down or leave it at 1.
+    - `WaterGridMode.Clipmap` (since 16.7.0): concentric square rings, each at twice the previous ring's
+      world-space cell size, every vertex SNAPPED to its own ring's lattice in world space. For a sub-cell camera
+      step nothing moves at all, and a larger step moves a ring by a whole even number of its own cells, which
+      maps its lattice onto itself - so the surface is not resampled as the camera travels. **That slide is not a
+      cosmetic detail on the FFT ocean**: measured at frozen wave time, a 0.10 m camera step on the camera-focused
+      grid changes the rendered height field by about 85 per cent of the sea's own per-frame motion at running
+      speed, and 3.7x it at a sprint, which reads as the ocean boiling in place. Sized by `ClipmapCellSize` (0.5,
+      the innermost ring's cell), `ClipmapRingCells` (32 cells per side per ring, rounded to a multiple of 4) and
+      `ClipmapLevels` (**0, meaning size the ring count from the plane** - the intended setting). Ring boundaries
+      are closed by stitch vertices, not skirts, so there is no double-blended geometry and no degenerate
+      triangle. `GridFocusBias` goes inert here; the two are alternatives.
+      At the defaults on a 600-unit half-extent plane it is 9 rings, 9,801 vertices and 14,336 triangles - fewer
+      triangles than the camera-focused grid - with half-metre cells around the camera out to 2048 m of coverage,
+      and it only rebuilds and re-uploads when a ring actually snaps rather than every frame.
+      Under `WaterWaveSource.FftOcean` it also band-limits each ring to its own Nyquist against the (now mipped)
+      cascade maps, tuned by `ClipmapBandLimitSamples` (2 = plain Nyquist). Rationale, and the measured before and
+      after: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
   - **Ripple spectrum, and why it is shaped this way**: ten cosine components (`RippleComponents`) generated
     from four scalars, with headings stepping by the GOLDEN ANGLE so no two are parallel and no subset lines up,
     wave numbers laddering by `RippleLacunarity` over about five octaves, and amplitudes renormalized to a fixed
@@ -4529,7 +4548,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.6.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.7.0" />
 ```
 
 ```csharp

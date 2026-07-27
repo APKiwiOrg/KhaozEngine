@@ -55,6 +55,13 @@ What it owns today:
     samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch that reads
     what an earlier dispatch wrote: separate them with `End` + `Submit` + `WaitForIdle`. Full reasoning per backend
     is on `IGpuCommandList`, in `docs/USING-KHAOZENGINE.md`, and in `docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
+  - **A compute-written texture that also needs a mip chain is TWO textures.** A storage-image binding must cover
+    exactly one mip level, and resource sets bind whole textures rather than views, so the compute target stays
+    single-mip and a second `Sampled | GenerateMipmaps` texture carries the chain.
+    `IGpuCommandList.CopyTextureSubresource(src, srcMip, srcLayer, dst, dstMip, dstLayer, w, h)` seeds the second
+    one's base level per array layer; `GenerateMipmaps` then fills the rest. Both go in the same list as the
+    dispatch and cost no extra drain - the ordering rule above is about a dispatch reading a dispatch, and a
+    transfer is where every backend synchronises anyway.
 - **`ShaderValidation`** - `ValidatePair(vertexGlsl, fragmentGlsl, label?)` compiles a GLSL 450 vertex/fragment
   pair to SPIR-V and cross-compiles it to every backend target (HLSL, MSL, GLSL, ESSL) with NO `GraphicsDevice`,
   so a shader syntax error or a backend miscompile is caught in a fast GPU-free test loop instead of at first run

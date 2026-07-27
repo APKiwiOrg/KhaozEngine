@@ -36,8 +36,8 @@ namespace KhaozEngine.Render3D.Internal
     vec4 FoamColor;     // rgba
     vec4 FoamParams;    // x=strength, y=crestCoverage, z=shoreWidth, w=patternScale
     vec4 RippleSpectrum;   // x=componentCount, y=lacunarity, z=gain, w=seed
-    vec4 FootprintParams;  // x=samplesPerWavelength (0 = band-limit off), y=varianceToRoughness, z/w reserved
-    vec4 FftParams;        // x=1 when the FFT ocean maps are live (0 = procedural), y=cascadeCount, z=resolution, w reserved
+    vec4 FootprintParams;  // x=samplesPerWavelength (0 = band-limit off), y=varianceToRoughness, z=clipmap band-limit samples, w reserved
+    vec4 FftParams;        // x=1 when the FFT ocean maps are live (0 = procedural), y=cascadeCount, z=resolution, w=top mip index (0 = no chain)
     vec4 FftTiles;         // xyz = per-cascade tile size in world metres, w reserved
     vec4 FftVariance;      // xyz = per-cascade slope variance of the baked spectrum (Toksvig input), w reserved
     vec4 FftFocus;         // xy = onshore focus point (world XZ), z = focus strength (0 = off), w = wind heading radians
@@ -68,9 +68,30 @@ namespace KhaozEngine.Render3D.Internal
         //      only (no gap-free-signature hazard: everything declared is read). One UBO (read by both stages, the
         //      vertex needing ViewProj + the swell block). ----
 
+        /// <summary>Water vertex stage for <see cref="WaterGridMode.CameraFocused"/>, the default grid. See
+        /// <see cref="VertSource"/> for what it does; <c>clipmap: false</c> fixes the tap count at a compile-time 1
+        /// and the band-limit spacing at 0, which is the pre-clipmap source with the loop unrolled away.</summary>
+        public static readonly string WaterVert = VertSource(clipmap: false);
+
         /// <summary>
-        /// Water vertex stage: displaces the still-water grid by the Gerstner swell and hands the fragment the
-        /// displaced world position, the swell's analytic normal, and its fold factor for whitecaps.
+        /// The <see cref="WaterGridMode.Clipmap"/> vertex stage: the same source as <see cref="WaterVert"/> plus
+        /// two extra vertex inputs, so there is ONE copy of the swell/FFT/sampling-frame maths and not two drifting
+        /// ones. <c>Cell</c> is the ring's world-space sample spacing, which drives the per-ring mip band limit;
+        /// <c>Stitch</c> is non-zero only on the ring-boundary vertices that have no counterpart on the next ring
+        /// out's lattice, and turns the tap loop into a two-tap average that lands the vertex exactly on the coarse
+        /// ring's edge segment (see <see cref="WaterClipmapVertex"/>).
+        /// <para>
+        /// A separate SHADER rather than a uniform branch because the two grids do not share a vertex LAYOUT
+        /// (12 bytes against 24), so they cannot share a pipeline anyway. With the layouts already split, the only
+        /// honest saving left is textual, and it is taken above.
+        /// </para>
+        /// </summary>
+        public static readonly string WaterClipmapVert = VertSource(clipmap: true);
+
+        /// <summary>
+        /// Water vertex stage: displaces the still-water grid by the Gerstner swell (or by the FFT cascades) and
+        /// hands the fragment the displaced world position, the swell's analytic normal, and its fold factor for
+        /// whitecaps.
         /// <para>
         /// The component stack is REGENERATED here from the seven scalars in <c>SwellParams</c>/<c>SwellShape</c>
         /// rather than uploaded per component, which is why the whole swell costs two vec4s of UBO instead of one
@@ -78,11 +99,21 @@ namespace KhaozEngine.Render3D.Internal
         /// the loop is bounded by a compile-time constant with an early break on the runtime count, the form every
         /// backend's cross-compiler handles without an unroll hazard.
         /// </para>
+        /// <para>
+        /// <b>The tap loop.</b> Everything is evaluated once per TAP and averaged. On the camera-focused grid
+        /// <c>taps</c> is a compile-time 1 and <c>sxz</c> is <c>Position.xz</c>, so the loop unrolls away and the
+        /// arithmetic is what it always was. On the clipmap it is 2 for the ring-boundary stitch vertices, whose
+        /// two taps are their coarse neighbours: averaging the two DISPLACED positions puts the vertex on the
+        /// straight world-space segment the coarse ring draws between them, which is an exact seam rather than a
+        /// nearly-exact one, with no skirt and no degenerate triangle.
+        /// </para>
         /// </summary>
-        public const string WaterVert = @"#version 450
+        static string VertSource(bool clipmap) => @"#version 450
 " + WaterFftBindingsGlsl + WaterUboGlsl + WaterFftCommonGlsl + @"
 layout(location=0) in vec3 Position;
-layout(location=0) out vec3 vWorldPos;
+" + (clipmap ? @"layout(location=1) in vec2 Stitch;   // half the offset to the two COARSE neighbours; (0,0) = one tap
+layout(location=2) in float Cell;    // this vertex's ring cell size: the spacing it band-limits the cascades to
+" : "") + @"layout(location=0) out vec3 vWorldPos;
 layout(location=1) out vec3 vSwellNormal;
 layout(location=2) out float vFold;
 layout(location=3) out vec2 vRefXz;      // where this vertex samples the ocean maps: the STILL-water XZ, warped
@@ -100,21 +131,36 @@ void main() {
     float steepness = SwellShape.x, speedScale = SwellShape.y, seed = SwellShape.w;
     float time = WaveParams.w;
 
-    vec3 p = Position;
-    vec3 swellNormal = vec3(0.0, 1.0, 0.0);
-    float fold = 0.0;
+" + (clipmap ? @"    int taps = dot(Stitch, Stitch) > 0.0 ? 2 : 1;
+    float bandCell = Cell;
+" : @"    const int taps = 1;
+    const float bandCell = 0.0;
+") + @"    float tapWeight = 1.0 / float(taps);
 
-    // The ocean sampling frame. Declared out here so both branches leave the varyings written, and so the FFT
+    vec3 p = vec3(0.0);
+    vec3 swellNormal = vec3(0.0);
+    float fold = 0.0;
+    // The ocean sampling frame. Accumulated out here so both branches leave the varyings written, and so the FFT
     // branch's values are the ones the fragment reads: the frame belongs to the still-water grid position, which
-    // only this stage has. Defaults are the exact identity, which is what the procedural branch keeps.
-    vec2 refXz = Position.xz;
-    vec2 focusRot = vec2(1.0, 0.0);
+    // only this stage has. The procedural branch keeps the exact identity.
+    vec2 refXz = vec2(0.0);
+    vec2 focusRot = vec2(0.0);
+
+    for (int tap = 0; tap < 2; tap++) {
+        if (tap >= taps) break;
+" + (clipmap ? @"        vec2 sxz = taps == 2 ? (tap == 0 ? Position.xz - Stitch : Position.xz + Stitch) : Position.xz;
+" : @"        vec2 sxz = Position.xz;
+") + @"        vec3 tapPos = vec3(sxz.x, Position.y, sxz.y);
+        vec3 tapNormal = vec3(0.0, 1.0, 0.0);
+        float tapFold = 0.0;
+        vec2 tapRef = sxz;
+        vec2 tapRot = vec2(1.0, 0.0);
 
     // FFT ocean: the displacement is a texture lookup per cascade, and the normal + the fold both come out of the
     // derivative map in the fragment, so the whole Gerstner block below is skipped rather than added to. The two
     // sources are alternatives, never a sum - summing them would double-count the same sea twice over.
     if (FftParams.x > 0.5) {
-" + WaterFftVertGlsl + @"        p = Position + oceanDisp;
+" + WaterFftVertGlsl + @"        tapPos += oceanDisp;
     } else if (amplitude > 0.0 && wavelength > 0.0) {
         int n = clamp(int(SwellShape.z + 0.5), 1, KE_MAX_COMPONENTS);
         // Closed-form geometric sum (NOT an accumulated loop), matching GerstnerWaves.BuildComponents so the two
@@ -138,7 +184,7 @@ void main() {
             float ph = seed * float(i + 1) * KE_SEED_STRIDE;
             vec2 d = vec2(cos(angle), sin(angle));
 
-            float phase = k * (d.x * Position.x + d.y * Position.z) - omega * time + ph;
+            float phase = k * (d.x * sxz.x + d.y * sxz.y) - omega * time + ph;
             float s = sin(phase), cs = cos(phase);
 
             float qa = q * a;                      // horizontal orbital radius
@@ -156,18 +202,25 @@ void main() {
             jzz += qka * d.y * d.y * s;
             jxz += qka * d.x * d.y * s;
         }
-        p += offset;
+        tapPos += offset;
 
         vec3 nv = vec3(-nx, 1.0 - nyLoss, -nz);
         float nl = length(nv);
-        swellNormal = nl > 1e-8 ? nv / nl : vec3(0.0, 1.0, 0.0);
+        tapNormal = nl > 1e-8 ? nv / nl : vec3(0.0, 1.0, 0.0);
 
         // Determinant of the horizontal Jacobian: 1 where undeformed, > 1 in stretched troughs, dropping toward 0
         // at compressed crests. 1 - determinant is therefore a physical whitecap driver, and dividing by the
         // steepness normalizes it so the foam coverage knob means the same thing at any steepness.
         float jXX = 1.0 - jxx, jZZ = 1.0 - jzz, jXZ = -jxz;
         float determinant = jXX * jZZ - jXZ * jXZ;
-        fold = max(0.0, 1.0 - determinant) / max(steepness, 1e-4);
+        tapFold = max(0.0, 1.0 - determinant) / max(steepness, 1e-4);
+    }
+
+        p += tapPos * tapWeight;
+        swellNormal += tapNormal * tapWeight;
+        fold += tapFold * tapWeight;
+        refXz += tapRef * tapWeight;
+        focusRot += tapRot * tapWeight;
     }
 
     gl_Position = ViewProj * vec4(p, 1.0);

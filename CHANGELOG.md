@@ -5,6 +5,68 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 16.7.0
+
+### World-locked water grid: the FFT ocean no longer boils under camera motion
+
+The water surface grid was camera-locked, so every vertex translated rigidly with the camera and slid
+through the wave field as it moved, while the vertex stage sampled every cascade at LOD 0 with no band
+limit at all. Measured at frozen wave time, a 0.10 m camera step changed the rendered height field by
+about 85 per cent of the field's own per-frame motion at running speed, and 3.7x it at a sprint. Nothing
+about the sea had moved: all of it was resampling, and it read as the ocean boiling in place.
+
+The new `WaterSettings.GridMode = WaterGridMode.Clipmap` replaces that grid with concentric square rings,
+each with its own world-space cell size (doubling outward) and every vertex SNAPPED to its own ring's
+lattice in world space. For a sub-cell camera step nothing moves at all; a larger step moves each ring by
+a whole even number of its own cells, which maps its lattice onto itself, so the surface over the overlap
+is unchanged rather than resampled. Ring boundaries are closed by stitch vertices (the fine side's
+off-lattice boundary vertices evaluate the surface at both coarse neighbours and average, landing exactly
+on the coarse ring's edge segment) rather than by skirts, which would double-blend on an alpha-blended
+pass, or by collapsed quads, which are the degenerate geometry the transition exists to avoid.
+
+Measured by the new acceptance test at 64 texels over three cascades, worst case over a full snap period:
+against one 60 fps frame of real motion (0.00732 m RMS), a 0.10 m step is 0.00287 m on the camera-focused
+grid and 0.00086 m on the clipmap, and a 0.50 m step is 0.01343 m against the same 0.00086 m. So 3.3x
+better at a walk and 15.6x at a sprint - and the clipmap's figure is identical at both steps, because its
+residual is one ring-boundary band wide however far the camera went, while the old grid's error is
+proportional to the distance travelled.
+
+It is also cheaper. At the defaults on a 600-unit half-extent plane it is 9 rings, 9801 vertices and
+14336 triangles against the previous grid's 9409 and 18432, with half-metre cells around the camera and
+coverage to 2048 m. And because the geometry only changes when a ring actually snaps, most frames upload
+nothing at all instead of 113 KB of vertices unconditionally.
+
+New knobs, all on `WaterSettings` and all inert outside `WaterGridMode.Clipmap`: `GridMode`
+(`CameraFocused` by default), `ClipmapCellSize` (0.5), `ClipmapRingCells` (32, rounded to a multiple of 4),
+`ClipmapLevels` (0 = size it from the plane, which is the intended setting) and `ClipmapBandLimitSamples`
+(2, plain Nyquist). `GridFocusBias` goes fully inert under the clipmap: the two are alternatives, and the
+power warp is precisely the thing with no snap quantum to snap to.
+
+**The default is unchanged and byte-identical.** `WaterGridMode.CameraFocused` remains the default, both
+water goldens pass unbaked, and the switch that makes that exact is the top-mip index reaching the shader
+as 0, on which the band-limit helper early-returns so both stages sample a literal LOD 0 as before.
+
+### Mipped ocean cascade maps
+
+The ocean displacement/derivative/foam maps carried a single mip level and both shader stages sampled
+`textureLod(..., 0.0)`, so there was nothing to band-limit against. They now carry a full chain whenever a
+grid mode asks for one. Because a storage-image binding must cover exactly one mip level, the compute
+target stays single-mip and unchanged (which keeps its determinism guarantees intact) and a second sampled
+texture carries the chain, seeded per array layer and regenerated in the SAME command list as the column
+dispatch. That costs no extra GPU stall - the seam's expensive ordering rule is about a dispatch reading
+what a dispatch wrote, and this is a transfer - and measured about +0.1 ms/frame on Metal at 128 texels
+over three cascades. The vertex stage selects its level from the ring's cell size, the fragment from its
+pixel footprint, folding into the `rippleResolve` band limit that was already there.
+
+`IGpuCommandList.CopyTextureSubresource` gains an overload taking an explicit destination mip level and
+array layer, which is what seeds a mipped texture's base level from a single-mip one.
+
+Closes [#296](https://github.com/APKiwiOrg/KhaozEngine/issues/296) and
+[#344](https://github.com/APKiwiOrg/KhaozEngine/issues/344). Design rationale, including why centre-snapping
+the existing grid cannot work and why the remaining 12 per cent
+([#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348)) was left:
+`docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
+
 ## 16.6.0
 
 ### Cell eviction: idle shard cells now unload without losing state

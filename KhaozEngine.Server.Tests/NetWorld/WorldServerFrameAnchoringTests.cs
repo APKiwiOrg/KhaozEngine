@@ -12,9 +12,9 @@ using Xunit;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
-/// The flat head's island frame, behind <see cref="WorldServerConfig.FrameAnchoring"/> (off by default). A framed
-/// server steps on a frame-local position and rebases its physics world with it, while everything it hands a
-/// consumer or puts on the wire stays absolute world metres.
+/// The flat head's island frame, behind <see cref="WorldServerConfig.FrameAnchoring"/> (ON by default since the wire
+/// carries the frame stamp). A framed server steps on a frame-local position and rebases its physics world with it,
+/// while everything it hands a consumer stays absolute world metres.
 /// </summary>
 public class WorldServerFrameAnchoringTests
 {
@@ -43,7 +43,7 @@ public class WorldServerFrameAnchoringTests
     }
 
     [Fact]
-    public void Off_by_default_and_the_island_stays_at_the_world_origin()
+    public void Turning_frame_anchoring_off_keeps_the_island_at_the_world_origin()
     {
         (WorldServer server, WorldClient client, WorldServerConfig config) = Connect(frameAnchoring: false, Far);
         using (client)
@@ -87,9 +87,11 @@ public class WorldServerFrameAnchoringTests
     [Fact]
     public void Test22_OriginFramedAbsolute_IsAlwaysAValidRepresentation_AndTheSelfHealIsExact()
     {
-        // The invariant that makes a SETTABLE ReplicatedPosition.Value safe on a framed server: {Origin, p} and
-        // {f, f.ToLocal(p)} denote the same world position, so a legacy write cannot produce a wrong position, only
-        // a correct one with a stale stamp - which the island then converts back EXACTLY.
+        // {Origin, p} and {f, f.ToLocal(p)} denote the same world position, so an Origin-framed absolute is always a
+        // VALID representation rather than a wrong one - which is what makes the self-heal a conversion rather than
+        // a repair, and what let the pre-major settable Value be safe on a framed server. It still matters with the
+        // setter gone: FromWorld(p, WorldFrame.Origin) is exactly what a consumer writes when it has an absolute
+        // position and no frame in hand, and the island has to convert that back EXACTLY.
         (WorldServer framed, WorldClient framedClient, WorldServerConfig config) = Connect(frameAnchoring: true, Far);
         (WorldServer plain, WorldClient plainClient, _) = Connect(frameAnchoring: false, Far);
         using (framedClient)
@@ -99,7 +101,7 @@ public class WorldServerFrameAnchoringTests
             plain.Tick(config.TickSeconds);
             Assert.NotEqual(WorldFrame.Origin, framed.IslandFrame);   // or the rest of this proves nothing
 
-            // A consumer's OnBeforeTick brain writing an NPC through the legacy setter, at 100 km.
+            // A consumer OnBeforeTick brain writing an NPC from an absolute position with no frame in hand, at 100 km.
             Vector3 p = Far + new Vector3(37.5f, 2.25f, -18.75f);
             long framedId = framed.SpawnEntity(p.X, p.Z);
             long plainId = plain.SpawnEntity(p.X, p.Z);

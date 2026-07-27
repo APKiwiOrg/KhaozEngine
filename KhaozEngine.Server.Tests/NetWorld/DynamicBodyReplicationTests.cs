@@ -8,6 +8,7 @@ using KhaozEngine.Primitives;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Replication;
+using KhaozEngine.Sharding;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -286,6 +287,37 @@ public class DynamicBodyReplicationTests
             $"client should hold the rest pose {serverPose.Position}, was {clientPos}");
 
         physics.Dispose();
+    }
+
+    [Fact]
+    public void Test20_A_body_in_a_rebased_world_replicates_its_ABSOLUTE_position_stamped_with_the_island_frame()
+    {
+        // A pose comes back in the PHYSICS WORLD'S space, which stops being world space the moment an island rebases
+        // that world. Writing it as an absolute position would teleport every replicated crate by the anchor delta
+        // on the first re-anchor; writing it as an absolute would ALSO re-quantize it at world magnitude, undoing
+        // exactly what the frame bought. So it is stamped, not converted.
+        var frame = new WorldFrame(781, -781);
+        using var physics = new BepuPhysicsWorld();
+        physics.Rebase(frame.Anchor);
+
+        var world = new World();
+        world.SetIslandFrame(frame);
+        Entity e = world.Spawn();
+        world.Set(e, new NetId(42));
+
+        // A body sitting 3.25 m from the island's anchor, expressed the way a rebased world expresses it.
+        var local = new Vector3(3.25f, 2f, -1.5f);
+        DynamicBodyHandle body = physics.AddDynamic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)),
+            Pose.At(local), DynamicBodyDescription.WithMass(1f));
+
+        var replication = new DynamicBodyReplication(world, physics);
+        replication.Track(42, body, e);
+        replication.Sample();
+
+        Assert.True(world.TryGet(e, out ReplicatedPosition pos));
+        Assert.Equal(frame, pos.Frame);                      // stamped with the island's frame
+        Assert.Equal(local, pos.Local);                      // and the pose rides verbatim, un-requantized
+        Assert.Equal(frame.ToWorld(local), pos.Value);       // while Value still reads the absolute world position
     }
 
     // Resolve the ECS entity SpawnEntity created for a netId (the one carrying the replicated NetId component).

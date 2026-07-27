@@ -2996,12 +2996,12 @@ namespace KhaozEngine.Render3D
                 bool valid = _slots.IsValid(run.Mesh.Index, run.Mesh.Generation);
                 Mesh mesh = default; bool haveMesh = false;
                 if (valid && _meshes[run.Mesh.Index] is { } m) { mesh = m; haveMesh = true; }
-                // Terrain (splat) chunks draw at identity with world-space vertices, so their local AABB IS the
-                // world AABB: cull them with the tighter positive-vertex AABB test (a flat chunk's bounding sphere
-                // is far too conservative). Props/models use the world-sphere test (cheap under arbitrary
-                // scale/rotation). An instance with a non-identity splat transform (not produced by the terrain
-                // path) falls back to the sphere test.
-                bool splatIdentity = haveMesh && mesh.SplatMaterial >= 0;
+                // Terrain (splat) chunks draw chunk-local under a PURE TRANSLATION (their region origin), so their
+                // local AABB offset by that translation IS the world AABB: cull them with the tighter AABB test (a
+                // flat chunk's bounding sphere is far too conservative), and the offset is exact. Props/models use
+                // the world-sphere test (cheap under arbitrary scale/rotation). A splat instance under a rotation or
+                // a scale (not produced by the terrain path) falls back to the sphere test.
+                bool splatPlaced = haveMesh && mesh.SplatMaterial >= 0;
                 for (uint s = 0; s < run.Count; s++)
                 {
                     int slot = (int)(run.Start + s);
@@ -3009,8 +3009,8 @@ namespace KhaozEngine.Render3D
                     if (haveMesh)
                     {
                         Matrix4x4 world = _instanceData[slot].Model;
-                        if (splatIdentity && IsIdentityTransform(world))
-                            visible = frustum.IntersectsAabb(mesh.Bounds.Min, mesh.Bounds.Max);
+                        if (splatPlaced && IsPureTranslation(world, out Vector3 t))
+                            visible = frustum.IntersectsAabb(mesh.Bounds.Min + t, mesh.Bounds.Max + t);
                         else
                         {
                             mesh.Bounds.WorldSphere(world, out Vector3 c, out float r);

@@ -29,7 +29,8 @@ namespace KhaozEngine.Tests.Terrain
         {
             const int W = 96, H = 96;
             var field = new TerrainField(TerrainPresets.Clearing());
-            var chunk = TerrainChunkBuilder.Build(field, new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f }, lod: 0);
+            var region = new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f };
+            var chunk = TerrainChunkBuilder.Build(field, region, lod: 0);
 
             MeshHandle h = default;
             byte[] rgba = Render3DSnapshot.Capture(W, H,
@@ -39,7 +40,7 @@ namespace KhaozEngine.Tests.Terrain
                     h = scene.LoadTerrainChunk(chunk, mat);
                     scene.Camera.Frame(new Vector3(16f, 1f, 16f), new Vector3(16f, 26f, 16.4f));
                 },
-                drawFrame: scene => scene.DrawTerrainChunk(h));
+                drawFrame: scene => scene.DrawTerrainChunk(h, region));
 
             int Idx(int x, int y) => (y * W + x) * 4;
             (byte r, byte g, byte b) At(int x, int y) { int i = Idx(x, y); return (rgba[i], rgba[i + 1], rgba[i + 2]); }

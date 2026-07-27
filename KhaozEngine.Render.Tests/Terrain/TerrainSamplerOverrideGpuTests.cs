@@ -20,7 +20,8 @@ namespace KhaozEngine.Tests.Terrain
         {
             const int W = 96, H = 96;
             var field = new TerrainField(TerrainPresets.Clearing());
-            var chunk = TerrainChunkBuilder.Build(field, new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f }, lod: 0);
+            var region = new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f };
+            var chunk = TerrainChunkBuilder.Build(field, region, lod: 0);
 
             var material = TerrainMaterialPresets.Procedural(32);
             material.Sampler = new TerrainSamplerConfig(GpuSamplerFilter.MinLinearMagLinearMipLinear, maximumAnisotropy: 1, mipLodBias: 4);
@@ -33,7 +34,7 @@ namespace KhaozEngine.Tests.Terrain
                     h = scene.LoadTerrainChunk(chunk, mat);
                     scene.Camera.Frame(new Vector3(16f, 1f, 16f), new Vector3(16f, 26f, 16.4f));
                 },
-                drawFrame: scene => scene.DrawTerrainChunk(h));
+                drawFrame: scene => scene.DrawTerrainChunk(h, region));
 
             // Centre must be a lit, tinted texture, not background/black or blown-out white - i.e. the override
             // sampler bound + sampled the arrays. (Trilinear + bias 4 heavily blurs it, so we do NOT require a high

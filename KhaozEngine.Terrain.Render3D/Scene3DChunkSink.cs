@@ -170,6 +170,11 @@ namespace KhaozEngine.Terrain
             /// <summary>One placement list per layer (scatter or derived companions), index-aligned to the sink's layers.</summary>
             public IReadOnlyList<PropPlacement>[] LayerProps = Array.Empty<IReadOnlyList<PropPlacement>>();
             public int Lod;
+            /// <summary>The world-space square this chunk meshes. Its origin is the chunk's draw translation and its
+            /// terrain collider's pose, because chunk vertices are chunk-local (see <see cref="TerrainChunkBuilder"/>).
+            /// The sink's own draw could reconstruct it from the coord it iterates, but a consumer holding a
+            /// <see cref="ChunkLoad"/> has no coord, so it is carried here.</summary>
+            public TerrainChunkRegion Region;
             /// <summary>The residency ring this chunk is built for. A decor chunk carries no scatter or physics.</summary>
             public ChunkRing Ring;
             /// <summary>Static body handles added for this chunk's props; empty when no physics world is wired.</summary>
@@ -343,6 +348,7 @@ namespace KhaozEngine.Terrain
                     Mesh = UploadMesh(cpu.Mesh),
                     LayerProps = cpu.LayerProps,
                     Lod = lod,
+                    Region = cpu.Mesh.Region,
                     Ring = ring,
                 };
                 _loaded[coord] = load;
@@ -373,6 +379,7 @@ namespace KhaozEngine.Terrain
             _scene.UnloadMesh(relod.Mesh);
             relod.Mesh = UploadMesh(cpu.Mesh);
             relod.Lod = lod;
+            relod.Region = cpu.Mesh.Region;   // same square at every tier, refreshed so it can never lag the mesh
             relod.Ring = ring;
             // Scatter is deterministic per (chunk, field): a pure LOD transition (no field change) reproduces
             // byte-identical placements, so adopting cpu.LayerProps costs nothing extra there, and after a field
@@ -484,7 +491,7 @@ namespace KhaozEngine.Terrain
             foreach (KeyValuePair<ChunkCoord, ChunkLoad> kv in _loaded)
             {
                 ChunkLoad load = kv.Value;
-                _scene.DrawTerrainChunk(load.Mesh);
+                _scene.DrawTerrainChunk(load.Mesh, load.Region);
 
                 // Chunk-centre horizontal distance drives the per-cluster HLOD crossfade (one merged mesh per chunk,
                 // so the swap is decided per chunk, not per placement). Only computed when a layer needs it.

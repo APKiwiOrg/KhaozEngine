@@ -32,7 +32,8 @@ namespace KhaozEngine.Tests.Terrain
             // proven-good top-down frame), so only the mesh DENSITY differs from that near-tier golden.
             int farLod = TerrainLodConfig.Default.TierCount - 1;
             Assert.Equal(4, TerrainLodConfig.Default.ResolutionFor(farLod));
-            var chunk = TerrainChunkBuilder.Build(field, new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f }, lod: farLod);
+            var region = new TerrainChunkRegion { OriginX = 0f, OriginZ = 0f, Size = 32f };
+            var chunk = TerrainChunkBuilder.Build(field, region, lod: farLod);
             Assert.Equal((4 + 1) * (4 + 1), chunk.SurfaceVertexCount);   // a 4-segment grid, not a 64-segment one
 
             MeshHandle h = default;
@@ -43,7 +44,7 @@ namespace KhaozEngine.Tests.Terrain
                     h = scene.LoadTerrainChunk(chunk, mat);
                     scene.Camera.Frame(new Vector3(16f, 1f, 16f), new Vector3(16f, 26f, 16.4f));
                 },
-                drawFrame: scene => scene.DrawTerrainChunk(h));
+                drawFrame: scene => scene.DrawTerrainChunk(h, region));
 
             int Idx(int x, int y) => (y * W + x) * 4;
             (byte r, byte g, byte b) At(int x, int y) { int i = Idx(x, y); return (rgba[i], rgba[i + 1], rgba[i + 2]); }
@@ -94,6 +95,7 @@ namespace KhaozEngine.Tests.Terrain
         {
             var field = new TerrainField(TerrainPresets.Clearing());
             var handles = new List<MeshHandle>();
+            var regions = new List<TerrainChunkRegion>();
             var captured = default(RenderFrameStats);
             Render3DSnapshot.Capture(W, H,
                 setup: scene =>
@@ -104,6 +106,7 @@ namespace KhaozEngine.Tests.Terrain
                     for (int cz = 0; cz < Strip; cz++)
                     {
                         var region = new TerrainChunkRegion { OriginX = 0f, OriginZ = cz * Size, Size = Size };
+                        regions.Add(region);
                         // Distance from the origin camera to the chunk centre (x = 30 m, z = cz*60 + 30 m).
                         float dist = MathF.Sqrt(30f * 30f + (cz * Size + 30f) * (cz * Size + 30f));
                         int lod = farField ? TerrainLodConfig.Default.PickLod(dist) : 0;   // near-only meshes all dense
@@ -113,7 +116,7 @@ namespace KhaozEngine.Tests.Terrain
                 },
                 drawFrame: scene =>
                 {
-                    foreach (MeshHandle h in handles) scene.DrawTerrainChunk(h);
+                    for (int i = 0; i < handles.Count; i++) scene.DrawTerrainChunk(handles[i], regions[i]);
                     captured = scene.LastFrameStats;
                 },
                 frames: 2);

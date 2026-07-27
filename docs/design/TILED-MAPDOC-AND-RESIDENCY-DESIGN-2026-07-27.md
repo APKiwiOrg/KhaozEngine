@@ -1579,7 +1579,7 @@ false failure.
 **Save durability.** Every one of these fakes the crash by aborting the writer at a named step, so they run
 headless and deterministically with no process kill.
 
-- `CrashDuringTileWrite_LeavesPreviousVersionIntact`, `CrashBeforeManifestRename_LeavesPreviousVersionIntact`,
+- `CrashBeforeFirstTileWrite_LeavesPreviousVersionIntact`, `CrashBeforeManifestRename_LeavesPreviousVersionIntact`,
   `CrashDuringSweep_LeavesNewVersionIntact`. Each asserts the document still LOADS and equals the expected
   whole version, which is the invariant, rather than asserting on files.
 - `ResaveAfterCrash_SweepsOrphansAndTmpFiles`.

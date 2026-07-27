@@ -16,8 +16,10 @@ public partial class MapEditorScene
     /// <summary>Loads the document at <see cref="MapEditorOptions.DocumentPath"/> or starts a blank one. A path
     /// with no form at all (nothing on disk) starts blank, same as an empty path. A monolithic file or a tiled
     /// directory at or under <see cref="MapEditorOptions.WholeWorldTileLimit"/> occupied tiles loads whole. A
-    /// larger tiled directory opens windowed (<see cref="MapDocumentWindowing"/>). A seam so a headless test can
-    /// inject a document without touching the file system.</summary>
+    /// larger tiled directory opens windowed (<see cref="MapDocumentWindowing"/>) at
+    /// <see cref="EffectiveWindowRadius"/>, which is the head's configured radius scaled by the operator's
+    /// render-distance multiplier so the loaded slice keeps up with the visible horizon. A seam so a headless test
+    /// can inject a document without touching the file system.</summary>
     protected virtual MapDocument CreateDocument(MapDocRegistry registry)
     {
         _window = null;
@@ -33,7 +35,7 @@ public partial class MapEditorScene
 
         MapDocument doc = MapDocumentWindowing.Load(_options.DocumentPath,
             new MapDocumentLoadOptions { Registry = registry },
-            _options.WholeWorldTileLimit, _options.EditorWindowRadius,
+            _options.WholeWorldTileLimit, EffectiveWindowRadius,
             out _, out MapTileRect? window);
         _window = window;
         return doc;

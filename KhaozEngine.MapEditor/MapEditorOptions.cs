@@ -81,6 +81,24 @@ public sealed class MapEditorOptions
 
     /// <summary>Tile radius either side of the window center when a tiled document opens windowed (see
     /// <see cref="WholeWorldTileLimit"/>). Default 2, <see cref="MapDocumentWindowing.DefaultEditorWindowRadius"/>.
-    /// </summary>
+    /// The operator's render-distance multiplier scales this at open time (see the editor settings menu), so a
+    /// wider horizon also loads a wider slice of a tiled world rather than reaching past it.</summary>
     public int EditorWindowRadius = MapDocumentWindowing.DefaultEditorWindowRadius;
+
+    /// <summary>When true (the default) the editor OWNS the host <c>Scene3D</c>'s look: it applies its own sky,
+    /// lighting, and water settings to that scene's post-process block from the settings menu (preset plus slider
+    /// overrides), re-applying only when a setting actually changed. This is what gives a freshly opened editor a
+    /// day sky instead of the engine's default starfield background behind the terrain.
+    /// <para>Set false when the embedding host wants to keep ownership of the look (its own sky, its own day/night
+    /// cycle, its own water tuning): the editor then never writes to <c>Post</c> at all, and the settings menu's
+    /// sky, lighting, and ocean rows have no effect. Render distance is unaffected either way, it is the
+    /// viewport's own concern rather than the host's.</para></summary>
+    public bool DriveEnvironment = true;
+
+    /// <summary>The persisted editor preferences (render distance, sky, lighting, ocean) the settings menu reads
+    /// and writes. Null (the default) runs the menu over a session-only <see cref="EditorSettings"/> instead, so an
+    /// embedder that wants no files on disk still gets a working menu, it just forgets the choices on exit. A head
+    /// wires <see cref="EditorSettingsStore"/> here, the same way the landing menu is handed an
+    /// <see cref="IRecentFilesStore"/>.</summary>
+    public IEditorSettingsStore? Settings;
 }

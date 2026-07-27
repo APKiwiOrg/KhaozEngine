@@ -30,8 +30,12 @@ namespace KhaozEngine.Showcase
         /// actually renders.</summary>
         public static MapEditorScene Create(Scene3D scene, Texture2D white, DpiFont font)
         {
-            // The outline post effect is off by the engine default, and MapEditorScene never touches Post (no
-            // cel/outline key bindings of its own), so the editor gets the plain lit look with nothing to force.
+            // MapEditorScene DRIVES the scene's environment by default (MapEditorOptions.DriveEnvironment): its
+            // settings menu owns the sky, lighting, and water look and writes them onto this Scene3D's Post, so
+            // the editor opens under a day sky rather than the engine's default starfield background. A host that
+            // wants to keep that ownership (its own sky or day/night cycle) sets DriveEnvironment false instead.
+            // The outline post effect is still untouched (the editor has no cel/outline bindings of its own), so
+            // the room keeps the plain lit look with nothing to force.
 
             string assets = Path.Combine(AppContext.BaseDirectory, "assets");
             var options = new MapEditorOptions
@@ -46,6 +50,11 @@ namespace KhaozEngine.Showcase
                 // Reserve the bottom band the app's F7-F10 display readout draws in, so the editor's own status
                 // strip sits directly above it instead of stacking on the same pixels.
                 StatusBottomOffset = ShowcaseApp.DisplayReadoutHeight,
+                // Persist the settings menu's render distance, sky, lighting, and ocean choices across sessions
+                // (the design in docs/design/EDITOR-SETTINGS-MENU-DESIGN-2026-07-27.md), under the same
+                // publisher/app-name identity every other KhaozEngine consumer uses for its own GameStorage, so
+                // editor-settings.json lands beside the showcase's own app data rather than a one-off location.
+                Settings = new EditorSettingsStore("APKiwi", "Showcase"),
             };
             return new MapEditorScene().Init(scene, white, font, options);
         }

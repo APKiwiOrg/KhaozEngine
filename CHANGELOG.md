@@ -81,6 +81,99 @@ being written anyway.
 
 Design rationale, including why a per-plane sea state is refused rather than deferred:
 `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+## 17.6.0
+
+### The map editor gets a settings menu, a day sky by default, and a live 2x/4x horizon
+
+Bare Escape now opens a settings menu in the map editor, and the editor opens under a day sky instead
+of the engine's default starfield background. Closes #364.
+
+The sky default is the interesting half. The map editor never touched `Post`, so the background behind
+the terrain was the engine default: `PixelPostProcessSettings.Starfield` on, `SkySettings.Enabled` off.
+That produced two artifacts nobody had connected. The white squares above the horizon were the
+procedural starfield (whole grid cells lit by a hash). The jagged black band at the waterline was the
+500 m far plane cutting through wave-displaced water geometry, against a near-black clear colour. The
+band looked like a water bug and was not one: `WaterRenderer.PackUbo` reads
+`SkySettings.HorizonColor`/`ZenithColor` UNCONDITIONALLY, so distant water was already fading toward a
+blue sky gradient that nothing ever painted behind it. Enabling the sky makes water and background meet
+in the same palette, so the fix is a default, not new machinery. Verified by rendering, not by
+re-deriving the premise.
+
+- **`KhaozEngine.Terrain`**: `RenderDistanceProfile.Scaled(multiplier)` returns the profile scaled up as
+  one coherent set, for a UI offering Base/2x/4x on top of whatever profile the app was configured with
+  rather than the fixed `For` tiers. `FarClip`, `OceanHalfExtent` and `PropDrawRadius` scale linearly.
+  `DecorRadiusChunks` and `UnloadRadiusChunks` scale in whole chunks, rounded UP, because a linear scale
+  of a chunk count is usually fractional and rounding up only ever grows residency, so it cannot break
+  the rim rules `Validate()` enforces. The unload radius is then clamped above the scaled decor radius
+  and the unchanged gameplay radius, so the hysteresis invariant holds even if rounding lands exactly on
+  the boundary. `GameplayLoadRadiusChunks` does not scale, for the same reason every built-in tier pins
+  it: the gameplay ring is a simulation footprint, not a view distance. `Scaled(1f)` is the identity, and
+  a multiplier below 1 (or NaN, or infinity) throws `ArgumentOutOfRangeException`, since scaling DOWN is
+  what a smaller `For` tier is for. This exists because a blind per-field multiply lands on a set
+  `Validate()` rejects, so the scaling belongs on the type that owns the invariants.
+- **`KhaozEngine.Render3D`**: `EnvironmentPresets` + `EnvironmentPresetKind` (`Day`, `Sunset`, `Night`,
+  `Starfield`) apply a sky palette, a background mode and the five lighting fields to
+  `PixelPostProcessSettings` as one bundle. `OceanPresets` + `OceanPresetKind` (`Calm`, `Moderate`,
+  `Rough`) do the same for `WaterSettings`' swell, ripple, foam and glint. Both are presentation data
+  with no new rendering machinery. These are fixed snapshots for a "pick a look" menu, deliberately
+  distinct from `SunCycle`, which is a continuous arc driven by a caller-owned clock. Do not mix the two
+  on one scene, they own the same fields.
+  - The `Starfield` preset pulls the sky palette DOWN to its own near-black background on purpose. That
+    is the same unconditional water/sky coupling described above, read the other way: leaving the
+    palette at its bright defaults behind a black background paints a bright horizon into reflective
+    water that nothing else in the frame matches.
+  - `OceanPresets.Apply` leaves `GridMode`, the clipmap fields, `Bathymetry` and the surf fields alone.
+    Those describe the water body's geometry and shoreline rather than its weather, so a preset pick
+    never undoes a consumer's clipmap or bathymetry wiring.
+  - `EnvironmentPresets.SunLightDirection(azimuthDegrees, elevationDegrees)` is the sun-angle helper a
+    slider pair drives: the key light's normalized TRAVEL direction (so an elevation above the horizon
+    gives a downward-pointing vector), in the same Y-up, north = `-Z`, east = `+X` convention
+    `SunCycle.SolarDirection` uses, matching `SkySettings.ResolveSunDirection`'s sign convention exactly.
+    One pair of angles therefore moves the sun disc, the key light and the water glint together.
+- **`KhaozEngine.MapEditor`**: bare Escape opens `MapEditorSettingsDialog`, a modal `PropertyGrid` of ten
+  live rows over one `EditorSettings` instance, plus Reset and Close. Sections: View (render distance
+  Base/2x/4x), Sky (preset, sun azimuth and elevation), Lighting (key and ambient intensity multipliers),
+  Ocean (preset, swell amplitude, foam strength, surf). Every row writes straight into the settings and
+  persists immediately rather than on close. It sits one gate below the exit dialog, so Shift+Escape
+  still wins when both would apply and the two never stack.
+  - **Escape never double-fires.** The scene samples whether the tool layer would consume this frame's
+    Escape BEFORE the tool step runs, because by the time the shortcut handler sees the key the gesture
+    is already cancelled and the mode is back to `Select`. Asking then would let one press both cancel a
+    drag and pop the menu open.
+  - **`MapEditorOptions.DriveEnvironment`** (new, default true) is the seam for the editor now writing to
+    the host `Scene3D`'s `Post`, which it never did before. True gives a fresh editor the day sky. Set
+    false and the editor never touches `Post` at all, for an embedding host that keeps ownership of its
+    own sky, `SunCycle` or water tuning: the sky, lighting and ocean rows then go inert. Render distance
+    is unaffected either way, it is the viewport's concern rather than the host's.
+  - **`MapEditorOptions.Settings`** (new, default null) takes an `IEditorSettingsStore`.
+    `EditorSettingsStore` is the canonical one, riding the same `ISettingsStorage`/`GameStorage` seam as
+    `EditorRecentFiles` under its own `editor-settings.json`, through the coalesced persistence queue so
+    a run of slider frames collapses to one write. Null runs the menu over a session-only `EditorSettings`,
+    so an embedder wanting no files on disk still gets a working menu that forgets on exit. Loading always
+    runs `EditorSettings.Sanitize()`, so a hand-edited, truncated or version-skewed file degrades to a
+    duller editor rather than a crash or a black viewport.
+  - **Live render distance rescales the whole set.** The multiplier reaches the viewport world, the camera
+    far clip and the streamed ring. The ring is the part that cannot simply be assigned: `ViewportWorld`
+    bakes its streamer config and every prop layer's cull radius when it BUILDS, so a change to a built
+    world drives the same rebuild path the Layers panel uses and pays its hitch. The tiled-document load
+    window scales with it too (`EditorWindowRadius` times the multiplier, rounded up), which is the #363
+    window/decor coupling handled at the point of live rescale rather than left implicit. That radius is
+    read once at open time, since re-windowing a live document means reloading it and discarding unsaved
+    edits, so a multiplier changed mid-session reports it in the status strip instead of under-loading in
+    silence.
+  - **Surf** (menu toggle, off by default) builds a `WaterBathymetry` depth field from the document's own
+    terrain and water level, so waves shoal and break along the shoreline. It comes off data the viewport
+    already streams, so nothing new is plumbed through `ViewportWorld`, and it is capped at 256 texels a
+    side so a large document cannot turn a rebuild into a million ground samples. Off by default because
+    the fill costs a pass over the document bounds on every world rebuild.
+  - Two files were split to satisfy the KESIZE ratchet with no behaviour change: the viewport overlay
+    subsystem into `MapEditorScene.Overlays.cs`, and `EditorFrameInput` into its own file. The baseline
+    ratcheted down accordingly.
+- **`KhaozEngine.Showcase`**: the map editor room wires `EditorSettingsStore("APKiwi", "Showcase")`, so
+  the room's settings persist across runs, and its stale "MapEditorScene never touches Post" comment is
+  now correct.
+- Design: `docs/design/EDITOR-SETTINGS-MENU-DESIGN-2026-07-27.md`, whose "What shipped" section records
+  the three places the implementation departed from the plan.
 
 ## 17.5.0
 

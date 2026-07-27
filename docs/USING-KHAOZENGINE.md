@@ -2312,6 +2312,41 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Post.LightDirection`/`LightColor`/`AmbientColor`/`FillLightColor` every call. If your game reads those values
     to drive something else (for example a water horizon tint sampled from `Sky.HorizonColor`), re-tie it after
     `Apply` runs so it does not read a stale value from before the time of day advanced.
+- **Environment presets** (`KhaozEngine.Render3D.EnvironmentPresets` + `EnvironmentPresetKind`, since 17.6.0):
+  the fixed-snapshot counterpart to `SunCycle`, for a tool or a settings menu that wants a "pick a look"
+  dropdown rather than a live arc.
+
+  ```csharp
+  EnvironmentPresets.Apply(EnvironmentPresetKind.Day, scene.Post);   // Day / Sunset / Night / Starfield
+  ```
+
+  One call writes the sky palette (`Sky.HorizonColor`/`ZenithColor`/`SunColor`/`SunEnabled`), the background
+  mode (`Sky.Enabled` + `Starfield` + `BackgroundColor`), and the five lighting fields (`LightDirection`,
+  `LightColor`, `AmbientColor`, `FillLightDirection`, `FillLightColor`) as one coherent bundle.
+  - **Do not mix it with `SunCycle` on the same scene.** They own the same fields and mean different things:
+    these are snapshots a user picks, `SunCycle` is an arc your clock drives. Pick one per scene.
+  - **`Starfield` pulls the sky palette down on purpose.** Water reflects `Sky.HorizonColor`/`ZenithColor`
+    whether or not the sky PASS is enabled, so leaving the palette at its bright defaults behind a near-black
+    starfield background paints a bright horizon into reflective water that nothing else in the frame matches.
+    The preset sets the palette to its own background colour, which is the fix. The same coupling is why the
+    engine's default background (starfield on, sky off) reads as a jagged black band across distant water, and
+    why the map editor now defaults to `Day`.
+  - **Sun angles from a slider pair.** `EnvironmentPresets.SunLightDirection(azimuthDegrees, elevationDegrees)`
+    returns the key light's normalized TRAVEL direction for a sun at that compass bearing (clockwise from
+    north) and height above the horizon, so an elevation above the horizon gives a downward-pointing vector. It
+    is the same Y-up, north = `-Z`, east = `+X` convention `SunCycle.SolarDirection` uses and matches
+    `SkySettings.ResolveSunDirection`'s sign convention, so assigning it to `Post.LightDirection` moves the sun
+    disc, the key light and the water glint together:
+
+    ```csharp
+    scene.Post.LightDirection = EnvironmentPresets.SunLightDirection(azimuthDegrees: 135f, elevationDegrees: 55f);
+    ```
+- **Ocean presets** (`KhaozEngine.Render3D.OceanPresets` + `OceanPresetKind`, since 17.6.0): the same idea for
+  the sea. `OceanPresets.Apply(OceanPresetKind.Moderate, scene.Post.Water)` writes the Gerstner swell, the
+  ripple normal strength, the whitecap foam and the sun glint as one bundle (`Calm` / `Moderate` / `Rough`,
+  `Moderate` being closest to `WaterSettings`' own defaults). It deliberately leaves `GridMode`, the clipmap
+  fields, `Bathymetry` and the surf fields alone: those describe the water body's geometry and shoreline rather
+  than its weather, so a preset pick never undoes your clipmap or bathymetry wiring.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
@@ -5154,6 +5189,21 @@ horizon, not simulation cost. See the `KhaozEngine.Terrain` README for the full 
 `KhaozEngine.MapEditor`'s `MapEditorOptions.RenderDistance` for a turn-key consumer that applies all four
 radii together.
 
+`Scaled(multiplier)` (17.6.0) is the other way to move the set, for a UI that offers Base / 2x / 4x on top of
+whatever profile the app was configured with, rather than the fixed tier steps:
+
+```csharp
+RenderDistanceProfile wide = profile.Scaled(2f);   // Validate() still passes
+```
+
+`FarClip`, `OceanHalfExtent` and `PropDrawRadius` scale linearly. `DecorRadiusChunks` and `UnloadRadiusChunks`
+scale in whole chunks, rounded UP, since a linear scale of a chunk count is usually fractional and rounding up
+only ever grows residency, so it cannot break the rim rules. `GameplayLoadRadiusChunks` does not scale at all,
+for the same reason every `For` tier pins it: the gameplay ring is a simulation footprint, not a view
+distance. `Scaled(1f)` is the identity, and a multiplier below 1 (or NaN, or infinity) throws
+`ArgumentOutOfRangeException` - scale DOWN with a smaller `For` tier instead. Reach for this rather than
+multiplying the fields yourself: a blind per-field multiply lands on a set `Validate()` rejects.
+
 ### Far props: HLOD merged clusters
 
 The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD
@@ -6086,7 +6136,8 @@ Freeze zone below), Delete removes the current selection, R snaps the selected p
 (undoable, a no-op when already grounded or nothing placement-shaped is selected), Ctrl+Up / Ctrl+Down
 reorder the selected terrain feature or scatter override (see Feature apply order above, dragging a
 feature, exclusion, or scatter override row in the outline tree reorders it the same way), bare 1..9 recalls a camera bookmark and Shift+1..9 stores one
-(see Camera bookmarks below), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`. Every
+(see Camera bookmarks below), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`, and
+opens the settings menu (below) when there is no gesture to cancel. Every
 Ctrl chord above also accepts Cmd (Super) in its place (`InputState.IsCommandDown` treats the two as one
 modifier), so the same keys work unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that
 one frame, since both carry a WASD letter). All of the chords, plus the bare R hotkey and the bookmark
@@ -6108,6 +6159,48 @@ open and the work intact. **Save and Close** does the same save, then leaves the
 `MapEditorOptions.RequestQuit`, above) only if that save succeeded, so a save failure never quits. **Discard**
 / **Close** leave without saving. Esc or Cancel dismisses with nothing changed. See the `KhaozEngine.MapEditor`
 README's "Exit dialog" section for the full mechanics.
+
+**Settings menu** (since 17.6.0). Bare Escape with no gesture to cancel opens a modal settings menu over the
+editor's own view preferences: render distance (Base / 2x / 4x), sky (preset plus sun azimuth and elevation),
+lighting (key and ambient intensity multipliers), and ocean (preset, swell amplitude, foam strength, and a
+surf toggle). None of it touches the map document, so two operators can prefer different horizons and skies
+over the same world. It sits one gate below the exit dialog, so Shift+Escape still wins when both would apply.
+
+- **Render distance** runs `RenderDistanceProfile.Scaled(multiplier)` over `MapEditorOptions.RenderDistance`
+  and pushes the result at the viewport world, the camera far clip and the streamed ring, which means a
+  rebuild and a brief hitch (the ring's radii are baked when the world builds). A tiled document that opened
+  windowed is the one thing it cannot grow live, since re-windowing means reloading and discarding unsaved
+  edits, so it says so in the status strip instead of under-loading in silence.
+- **Sky and ocean** run through `EnvironmentPresets` / `OceanPresets` (above) plus the sliders on top. This is
+  the editor writing to the HOST scene's `Post`, which is new: `MapEditorOptions.DriveEnvironment` (default
+  true) is the seam. The default is what gives a freshly opened editor a day sky rather than the engine's
+  default starfield background, whose black the far plane used to cut wave-displaced water against as a
+  jagged band. Set `DriveEnvironment = false` when the embedding host keeps ownership of the look (its own
+  sky, its own `SunCycle`, its own water tuning): the editor then never touches `Post` and those rows go
+  inert. Render distance is unaffected either way.
+- **Surf** builds a `WaterBathymetry` depth field from the document's own terrain and water level, so waves
+  shoal and break along the shoreline. Off by default because the fill costs a pass over the document bounds
+  on every world rebuild.
+
+**Settings persistence.** `MapEditorOptions.Settings` takes an `IEditorSettingsStore`. `EditorSettingsStore`
+is the canonical one, riding the same `GameStorage`/`ISettingsStorage` seam as `EditorRecentFiles` under its
+own `editor-settings.json` (so it never collides with a game's `settings.json` or with the recents file), and
+writing through the coalesced persistence queue so a run of slider frames collapses to one write:
+
+```csharp
+var options = new MapEditorOptions
+{
+    // ...
+    Settings = new EditorSettingsStore("MyStudio", "MyGame"),
+};
+```
+
+Leave it null and the menu runs over a session-only `EditorSettings`, so an embedder that wants no files on
+disk still gets a working menu that just forgets the choices on exit. A head that owns the
+`(publisher, appName)` overload calls `Flush()` during its own shutdown, exactly like `EditorRecentFiles`.
+Loading always sanitizes, so a hand-edited or version-skewed file degrades to a duller editor rather than a
+crash or a black viewport. See the `KhaozEngine.MapEditor` README's "Settings menu" section for the full row
+list and the persistence mechanics.
 
 **Duplicate.** Ctrl+D (Cmd+D on a Mac) clones the current selection across all ten selectable kinds
 (placement, spawn, player spawn, feature, exclusion, scatter override, region, biome band, scatter layer, companion layer)

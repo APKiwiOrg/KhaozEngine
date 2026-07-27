@@ -41,58 +41,6 @@ public enum EditorToolMode
     SculptTerrain,
 }
 
-/// <summary>Per-frame editor input, GPU-free and immutable: the pick ray (origin plus a caller-normalized
-/// direction, so a returned pick T reads as a world distance), the pointer press/down/release edges, the
-/// screen-space distance the pointer has travelled since the press (for the body-drag arming threshold), the shift
-/// modifier, the delete/escape key edges, and the frame delta. A scene wires the window input into this struct;
-/// the controller reads nothing else, so its whole policy is headless-testable frame by frame.</summary>
-public readonly struct EditorFrameInput
-{
-    /// <summary>World-space pick ray origin (the camera eye).</summary>
-    public Vector3 RayOrigin { get; }
-    /// <summary>World-space pick ray direction, normalized by the caller so pick T reads as a world distance.</summary>
-    public Vector3 RayDirection { get; }
-    /// <summary>True on the frame the primary pointer button went down (press edge).</summary>
-    public bool PointerPressed { get; }
-    /// <summary>True while the primary pointer button is held.</summary>
-    public bool PointerDown { get; }
-    /// <summary>True on the frame the primary pointer button went up (release edge).</summary>
-    public bool PointerReleased { get; }
-    /// <summary>Screen-space distance (design units, the space the pointer helpers work in) from the press origin to
-    /// the current pointer position, i.e. how far the pointer has moved since the button went down. Zero on the
-    /// press frame. The body-drag gesture arms only once this clears
-    /// <see cref="EditorToolController.BodyDragThreshold"/>, matching the TreeView row-drag threshold precedent, so
-    /// a tap below it never turns into a move.</summary>
-    public float PointerTravel { get; }
-    /// <summary>True while a shift modifier is held (switches the draw modes from disc to rect).</summary>
-    public bool Shift { get; }
-    /// <summary>True on the frame the delete key went down (removes the selection).</summary>
-    public bool DeletePressed { get; }
-    /// <summary>True on the frame the escape key went down (cancels the gesture and returns to Select).</summary>
-    public bool EscapePressed { get; }
-    /// <summary>Seconds elapsed this frame.</summary>
-    public float Dt { get; }
-
-    /// <summary>Builds a frame input. Every flag defaults to false, <paramref name="pointerTravel"/> and
-    /// <paramref name="dt"/> to zero, so a test only names the edges it exercises.</summary>
-    public EditorFrameInput(Vector3 rayOrigin, Vector3 rayDirection,
-        bool pointerPressed = false, bool pointerDown = false, bool pointerReleased = false,
-        float pointerTravel = 0f,
-        bool shift = false, bool deletePressed = false, bool escapePressed = false, float dt = 0f)
-    {
-        RayOrigin = rayOrigin;
-        RayDirection = rayDirection;
-        PointerPressed = pointerPressed;
-        PointerDown = pointerDown;
-        PointerReleased = pointerReleased;
-        PointerTravel = pointerTravel;
-        Shift = shift;
-        DeletePressed = deletePressed;
-        EscapePressed = escapePressed;
-        Dt = dt;
-    }
-}
-
 /// <summary>Which transform-gizmo handles the current selection exposes, resolved by
 /// <see cref="EditorToolController.TryGizmo"/> and shared with the viewport so the drawn handles match the
 /// controller's pickable region.</summary>
@@ -245,6 +193,17 @@ public sealed partial class EditorToolController
 
     /// <summary>True while a draw-mode rubber-band is in flight (press captured, release pending).</summary>
     public bool IsDrawing => _drawing;
+
+    /// <summary>
+    /// True while a bare Escape would actually CANCEL something here: a gesture is in flight, or the active tool is
+    /// not <see cref="EditorToolMode.Select"/> and so would be reset to it. False means <see cref="Update"/>'s
+    /// Escape branch would change nothing observable, which is what lets the host give a bare Escape a second
+    /// meaning (the map editor opens its settings menu) without ever stealing the gesture cancel.
+    /// <para>The host must read this BEFORE the frame's <see cref="Update"/>, since that call is what clears the
+    /// state this reports.</para>
+    /// </summary>
+    internal bool ConsumesEscape =>
+        _mode != EditorToolMode.Select || _dragging || _drawing || _pendingBody || _placing || _sculpting;
 
     /// <summary>A one-line, mode-specific hint for the active tool, folding in <see cref="PlaceKind"/> and
     /// <see cref="SpawnArchetype"/> where they apply. The one-shot draw tools (exclusion, region, scatter override,

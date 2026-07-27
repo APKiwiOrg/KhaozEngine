@@ -80,6 +80,17 @@ up regardless of load order. Plain `float` math throughout.
   visible). Call it once where a caller-supplied profile is consumed, because a `readonly record struct`
   always has a zero-initialised `default` no constructor can intercept, so validating in the constructor
   would only give the illusion of an always-valid value. Every built-in `For` tier passes.
+  **`Scaled(multiplier)`** (17.6.0) returns this profile scaled up as one coherent set, for a settings UI that
+  offers Base/2x/4x rather than the fixed `For` tiers. `FarClip`, `OceanHalfExtent` and `PropDrawRadius` scale
+  linearly. `DecorRadiusChunks` and `UnloadRadiusChunks` scale in whole chunks, rounded UP, because a linear
+  scale of a chunk count is usually fractional and rounding up only ever grows residency, so it cannot break
+  the rim rules `Validate` enforces. The unload radius is then clamped above the scaled decor radius and the
+  unchanged `GameplayLoadRadiusChunks` in case rounding lands exactly on the boundary, so the hysteresis
+  invariant holds regardless. `GameplayLoadRadiusChunks` itself does not scale: the gameplay ring is a
+  simulation footprint, not a view distance, the same reason every `For` tier pins it. `Scaled(1f)` is the
+  identity, a multiplier below 1 (or NaN, or infinity) throws `ArgumentOutOfRangeException` (scale DOWN with a
+  smaller `For` tier), and every built-in tier still passes `Validate` after scaling by any factor at or above
+  1. A blind per-field multiply does not: that is why the scaling lives on the type that owns the invariants.
 - **`IChunkBuildGate`** + **`TerrainStreamer.BuildGate`** - an optional veto on which chunks the streamer
   may build, null by default (every chunk in the ring is eligible, the pre-gate behaviour exactly). A
   refused chunk is DEFERRED: not requested, not marked loaded, reconsidered next `Update`. It exists for a

@@ -18,8 +18,16 @@ namespace KhaozEngine.Render3D
     /// else.</b> Every submission queue stays ABSOLUTE, so every CPU-side spatial computation (frustum culling, the
     /// terrain identity fast path, shadow-caster classification, cascade fitting, the four transparency sorts) runs
     /// on absolute inputs and is byte-identical to the pre-floating-origin engine. Only the copy that reaches the
-    /// GPU is relative. A site that forgets the reduction renders visibly displaced at range, which is loud; a cull
+    /// GPU is relative. A site that forgets the reduction renders visibly displaced at range, which is loud. A cull
     /// that silently ran in the wrong space is not.
+    /// </para>
+    /// <para>
+    /// Five queues are the deliberate exception and reduce AT SUBMISSION rather than on a GPU-bound copy: the
+    /// debug-line queue (<c>Scene3D.DebugLine</c>), the debug-shape scratch expansion (<c>AppendScratch</c>), the
+    /// debug-wire scratch expansion (<c>AppendWireScratch</c>), the debug-fill scratch expansion
+    /// (<c>AppendFillScratch</c>), and the additive-billboard vertex expansion. Nothing CPU-side reads any of these
+    /// queues after submission, so there is no absolute copy for an early reduction to break, and each site carries
+    /// a one-line note pointing back here.
     /// </para>
     /// </summary>
     public sealed partial class Scene3D
@@ -30,6 +38,10 @@ namespace KhaozEngine.Render3D
         // LATCHED at Begin(): what everything submitted this frame is expressed against on its way to the GPU.
         Vector3 _frameOrigin;
         bool _frameOriginActive;
+        // The aware camera the origin was last pushed onto, so LatchRenderOrigin can zero it if it stops being
+        // the active one (m6, review r1): otherwise a non-aware wrapper that still delegates its ViewProjection
+        // to that same camera keeps reading a stale nonzero shift after Scene3D itself has gone absolute.
+        IRenderOriginAware? _lastOriginCamera;
 
         // Reused staging buffers for the GPU-bound copies. Grown, never per-frame allocated, exactly like
         // _instanceVisible: a staging copy costs one pass over the stream and buys an invariant that no later edit
@@ -51,16 +63,19 @@ namespace KhaozEngine.Render3D
         /// representable in float32, so the reduction introduces no error at all. Set it explicitly to a simulation
         /// frame's anchor when running one, so render and simulation share a space.
         /// <see cref="System.Numerics.Vector3.Zero"/> reproduces the pre-floating-origin output exactly, and is the
-        /// opt-out for a consumer with goldens it has not rebaked.
+        /// opt-out for a consumer with goldens it has not rebaked. Assign <c>null</c> to clear an explicit value and
+        /// restore the automatic quantized-eye default, exactly as if it had never been set: there is otherwise no
+        /// way back to the default once an override is assigned.
         /// <para>
         /// LATCHED AT <see cref="Begin"/>: the value in force for a frame is read once, at Begin, and a write during
-        /// the frame is ignored until the next one. So the getter returns THIS frame's origin, not necessarily what
-        /// was last assigned. A frame that submitted half its geometry against one origin and uploaded it against
-        /// another would be displaced by the difference, and would be stable enough between re-anchors to read as a
-        /// content bug rather than as a renderer one.
+        /// the frame is ignored until the next one. So the getter returns THIS frame's origin (never <c>null</c>,
+        /// the type is nullable only so the setter can accept <c>null</c>), not necessarily what was last assigned.
+        /// A frame that submitted half its geometry against one origin and uploaded it against another would be
+        /// displaced by the difference, and would be stable enough between re-anchors to read as a content bug
+        /// rather than as a renderer one.
         /// </para>
         /// </summary>
-        public Vector3 RenderOrigin
+        public Vector3? RenderOrigin
         {
             get => _frameOrigin;
             set => _renderOriginOverride = value;
@@ -89,15 +104,32 @@ namespace KhaozEngine.Render3D
             if (cam is not IRenderOriginAware) wanted = Vector3.Zero;
             _frameOrigin = wanted;
             _frameOriginActive = wanted != Vector3.Zero;
+
+            // A camera the origin was pushed onto keeps carrying it until told otherwise. If it stopped being the
+            // ACTIVE camera since the last latch (a consumer swapped CameraOverride, whether to a non-aware camera
+            // or to a different aware one), its RenderOrigin is now stale: a non-aware wrapper that still delegates
+            // its ViewProjection to that same camera would read a nonzero shift Scene3D itself no longer accounts
+            // for anywhere else, displacing the whole scene by the stale value (m6, review r1).
+            if (_lastOriginCamera != null && !ReferenceEquals(_lastOriginCamera, cam))
+            {
+                _lastOriginCamera.RenderOrigin = Vector3.Zero;
+                _lastOriginCamera = null;
+            }
+
             ApplyOriginToCamera(cam);
         }
 
-        /// <summary>Push the latched origin onto <paramref name="cam"/> when it can take one. Idempotent, and
+        /// <summary>Push the latched origin onto <paramref name="cam"/> when it can take one, and remember it as
+        /// the camera <see cref="LatchRenderOrigin"/> must clean up once it is no longer active. Idempotent, and
         /// re-asserted at render time because a consumer may swap <see cref="CameraOverride"/> between
         /// <see cref="Begin"/> and the render.</summary>
         void ApplyOriginToCamera(IIsoCamera3D cam)
         {
-            if (cam is IRenderOriginAware aware) aware.RenderOrigin = _frameOrigin;
+            if (cam is IRenderOriginAware aware)
+            {
+                aware.RenderOrigin = _frameOrigin;
+                _lastOriginCamera = aware;
+            }
         }
 
         /// <summary>
@@ -113,13 +145,14 @@ namespace KhaozEngine.Render3D
         Matrix4x4 FrameViewProjection()
         {
             IIsoCamera3D cam = ActiveCamera;
-            if (cam is IRenderOriginAware aware)
+            if (cam is IRenderOriginAware)
             {
-                aware.RenderOrigin = _frameOrigin;
+                ApplyOriginToCamera(cam);   // routes through the m6 tracker too, in case this swapped to a
+                                             // DIFFERENT aware camera since Begin
                 return cam.ViewProjection;
             }
             return _frameOriginActive
-                ? Matrix4x4.CreateTranslation(-_frameOrigin) * cam.ViewProjection
+                ? Matrix4x4.CreateTranslation(_frameOrigin) * cam.ViewProjection
                 : cam.ViewProjection;
         }
 
@@ -155,7 +188,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>The translation-column reduction assumes an affine matrix (a fourth ROW of (0,0,0,1), i.e. no
-        /// projective terms in M14/M24/M34). Nothing in the engine submits a projective model matrix; this documents
+        /// projective terms in M14/M24/M34). Nothing in the engine submits a projective model matrix. This documents
         /// the assumption where it lives and compiles out of Release.</summary>
         [Conditional("DEBUG")]
         static void AssertAffine(in Matrix4x4 m) =>
@@ -190,7 +223,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>The queued ground decals with their centres in the render frame. The queue itself stays
-        /// absolute; the staging list is reused across both decal passes (each consumes its span inside the
+        /// absolute. The staging list is reused across both decal passes (each consumes its span inside the
         /// call).</summary>
         ReadOnlySpan<GroundDecal> RelativeDecals(List<GroundDecal> src)
         {
@@ -206,7 +239,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>The queued water planes with their centres in the render frame. The surface height moves with
-        /// the origin's Y for consistency with every other reduction; a <c>WorldFrame</c> anchor has Y = 0, so in
+        /// the origin's Y for consistency with every other reduction. A <c>WorldFrame</c> anchor has Y = 0, so in
         /// practice the height is untouched (Y is never framed).</summary>
         ReadOnlySpan<WaterPlane> RelativeWaterPlanes()
         {
@@ -280,7 +313,7 @@ namespace KhaozEngine.Render3D
         /// whether the shadow atlas can be reused compares <see cref="_cascadeCpuVps"/> frame to frame, so it is
         /// these RELATIVE matrices it sees: an origin step changes them by the step and forces the depth pass to
         /// re-render, which is what stops the atlas being reused against a frame it was not baked for. The rotation is unchanged and
-        /// only the focus moves, so the ortho extents and the texel world size are identical; the light-space texel
+        /// only the focus moves, so the ortho extents and the texel world size are identical. The light-space texel
         /// snap is not origin-invariant, so a shadow edge can jump by one texel for the one frame an origin steps
         /// (accepted and documented in the design doc, section 9).
         /// </summary>

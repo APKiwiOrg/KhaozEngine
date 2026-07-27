@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu
     /// reference grid: it is the property flavour of golden (see <see cref="GoldenCompare"/>'s naming contract),
     /// comparing two grids IT rendered against each other under the same per-channel tolerance. That is deliberate
     /// and it is the stronger form here. A committed grid would need a three-backend bake to land, would drift with
-    /// every unrelated lighting change, and would only ever assert that this scene still looks like itself; the
+    /// every unrelated lighting change, and would only ever assert that this scene still looks like itself. The
     /// self-comparison asserts the thing the release actually claims, which is that distance from the origin stops
     /// mattering.
     /// </para>
@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
         /// decal pass), an alpha billboard and a particle (their post-sort expansions), a debug line (the immediate
         /// vertex queue), and cascaded shadows (the render-relative cascade matrices).
         /// </summary>
-        static byte[] Render(Vector3 at, Action<Scene3D>? configure = null)
+        static byte[] Render(Vector3 at, Action<Scene3D>? configure = null, Action<Scene3D>? onDrawFrame = null)
         {
             MeshHandle floor = default, tall = default, wide = default;
             return Render3DSnapshot.Capture(W, H,
@@ -57,6 +57,7 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 drawFrame: scene =>
                 {
+                    onDrawFrame?.Invoke(scene);
                     scene.Draw(floor, Matrix4x4.CreateTranslation(at), new Color(0.55f, 0.57f, 0.60f, 1f));
                     scene.Draw(tall, Matrix4x4.CreateScale(1f, 2.2f, 1f) * Matrix4x4.CreateTranslation(at + new Vector3(-4f, 1.3f, 2f)),
                         new Color(0.20f, 0.72f, 0.30f, 1f));
@@ -97,8 +98,15 @@ namespace KhaozEngine.Tests.Gpu
             // What this one really guards is COMPLETENESS of the reduction sites rather than precision: a payload
             // that missed its subtraction is displaced by the whole render origin, so it leaves the frustum and the
             // image loses it entirely. The precision half is the close-up below.
-            float worst = WorstCellDelta(GoldenCompare.Downsample(Render(Vector3.Zero), W, H),
-                                         GoldenCompare.Downsample(Render(Far), W, H));
+            float[] origin = GoldenCompare.Downsample(Render(Vector3.Zero), W, H);
+            float[] far = GoldenCompare.Downsample(Render(Far), W, H);
+
+            // The scene has to actually be in frame, or "both blank" would satisfy the comparison below for free
+            // (same anti-vacuity guard as the close-up test).
+            Assert.True(WorstCellDelta(origin, new float[origin.Length]) > 0.3f,
+                "the broad scene rendered nothing bright enough to be meaningful: the comparison below is vacuous");
+
+            float worst = WorstCellDelta(origin, far);
             Assert.True(worst <= GoldenCompare.Tolerance,
                 $"the scene at {Far} differs from the same scene at the origin by {worst} " +
                 $"(tolerance {GoldenCompare.Tolerance}): camera-relative rendering is not holding at range.");
@@ -107,7 +115,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A tight close-up: a 12 cm box filling the frame, so ONE float32 quantum at 100 km (7.8 mm, the ULP of the
         /// binade the coordinate sits in) is several pixels wide instead of a tenth of one. The broad scene above is
-        /// a completeness check on the reduction sites; this is the precision check, and it is the one that can tell
+        /// a completeness check on the reduction sites. This is the precision check, and it is the one that can tell
         /// the two paths apart at all.
         /// </summary>
         static byte[] RenderCloseUp(Vector3 at, Action<Scene3D>? configure = null)
@@ -167,17 +175,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             // Tests 18 and 19b together, and together is the point. Both of these must render through the WHOLE
             // pre-release absolute pipeline:
-            //   - RenderOrigin = Vector3.Zero, the explicit opt-out for a consumer with goldens it has not rebaked;
+            //   - RenderOrigin = Vector3.Zero, the explicit opt-out for a consumer with goldens it has not rebaked
             //   - a consumer camera that implements IIsoCamera3D but NOT IRenderOriginAware, which falls the whole
-            //     pipeline back rather than half-applying an origin the camera cannot honour.
+            //     pipeline back rather than half-applying an origin the camera cannot honour
             // Asserting they are BYTE-identical is what makes both claims checkable at once: if any reduction leaked
             // into either path, or the fallback were partial, the two images would differ. Neither reports the origin
             // as active.
-            byte[] optOut = Render(Far, scene =>
-            {
-                scene.RenderOrigin = Vector3.Zero;
-                Assert.False(scene.RenderOriginActive);   // reads back before the first Begin latches
-            });
+            byte[] optOut = Render(Far,
+                configure: scene => scene.RenderOrigin = Vector3.Zero,
+                onDrawFrame: scene => Assert.False(scene.RenderOriginActive));   // reads back AFTER Begin latches
             byte[] fallback = Render(Far, scene => scene.CameraOverride = new PlainConsumerCamera(scene.Camera));
 
             Assert.Equal(optOut.Length, fallback.Length);
@@ -201,9 +207,9 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     if (frame++ == 0)
                     {
-                        latched = scene.RenderOrigin;
+                        latched = scene.RenderOrigin!.Value;
                         scene.RenderOrigin = new Vector3(1_234f, 5f, 6_789f);   // ignored until the next Begin
-                        duringFrame = scene.RenderOrigin;
+                        duringFrame = scene.RenderOrigin!.Value;
                     }
                 },
                 frames: 1);
@@ -211,6 +217,155 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(WorldFrame.Nearest(latched).Anchor, latched);   // quantized, so it cannot jitter per frame
             Assert.NotEqual(Vector3.Zero, latched);                      // the camera really is far from the origin
             Assert.Equal(latched, duringFrame);
+        }
+
+        [GpuFact]
+        public void Mid_frame_camera_swap_to_a_non_aware_camera_still_projects_absolute_geometry_correctly()
+        {
+            // M2 (review r1): FrameViewProjection's non-aware-camera fallback composed T(-origin) onto the
+            // camera's own (never-shifted) view-projection. Geometry is ALREADY reduced by the origin at
+            // submission (ToRender), so that second subtraction turned p_abs - O into p_abs - 2O: at 100 km this
+            // pushes the geometry twice as far out and it leaves the frustum entirely. The fix composes T(+origin)
+            // instead, adding the origin back so the fallback sees absolute geometry again, exactly what its own
+            // view-projection expects. Swapping CameraOverride to a non-aware camera strictly BETWEEN Begin (which
+            // latches the origin while scene.Camera, still aware, is active) and the render call is what reaches
+            // this branch, and it must project the same point to (within the committed goldens' own tolerance)
+            // the same pixel as the same camera set from the very start (the pure absolute path, never touched by
+            // the origin machinery at all). Tolerance, not byte-exact: the fixed fallback composes an extra
+            // T(+origin) * VP matrix multiply the pure absolute path never does, so a few ULPs of edge/AA noise
+            // between the two paths is expected even when the fix is correct. A real double-subtraction bug pushes
+            // the box a whole render origin away, well outside any float32-noise tolerance, so this still catches it.
+            MeshHandle box = default;
+            Vector3 boxSize = new(1.2f, 1.2f, 1.2f);
+
+            byte[] Capture(bool swapMidFrame)
+            {
+                IsoCamera3D fresh = new() { AspectRatio = (float)W / H, FarPlane = 400f };
+                fresh.Frame(Far, boxSize);   // never touched by Scene3D's origin machinery: a genuinely absolute VP
+                return Render3DSnapshot.Capture(W, H,
+                    setup: scene =>
+                    {
+                        box = scene.LoadMesh(MeshPrimitives.Box(1.2f));
+                        scene.Post.Starfield = false;
+                        scene.Post.Outline = false;
+                        scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.08f, 1f);
+                        scene.Camera.Frame(Far, boxSize);   // gives Begin something aware and nonzero to latch
+                        if (!swapMidFrame) scene.CameraOverride = new PlainConsumerCamera(fresh);
+                    },
+                    drawFrame: scene =>
+                    {
+                        if (swapMidFrame) scene.CameraOverride = new PlainConsumerCamera(fresh);
+                        scene.Draw(box, Matrix4x4.CreateTranslation(Far), new Color(0.85f, 0.80f, 0.30f, 1f));
+                    },
+                    frames: 1);
+            }
+
+            float[] swapped = GoldenCompare.Downsample(Capture(swapMidFrame: true), W, H);
+            float[] absolute = GoldenCompare.Downsample(Capture(swapMidFrame: false), W, H);
+
+            // The box has to actually be in frame, or "both blank" would satisfy the comparison below for free.
+            Assert.True(WorstCellDelta(absolute, new float[absolute.Length]) > 0.3f,
+                "the reference render was nothing bright enough to be the box: the comparison below is vacuous");
+
+            float worst = WorstCellDelta(swapped, absolute);
+            Assert.True(worst <= GoldenCompare.Tolerance,
+                $"the mid-frame camera swap differs from the same camera active from Begin by {worst} " +
+                $"(tolerance {GoldenCompare.Tolerance}): the non-aware fallback is not projecting absolute " +
+                "geometry correctly.");
+        }
+
+        [GpuFact]
+        public void Assigning_a_null_render_origin_restores_the_automatic_quantized_eye_default()
+        {
+            // m5 (review r1): the old Vector3-typed property could latch an explicit override but never clear it,
+            // so a consumer that set RenderOrigin once could never get back to the automatic
+            // WorldFrame.Nearest(Eye) default. RenderOrigin is Vector3? now: assigning null restores the automatic
+            // default, exactly like never having set it. Three frames: frame 0 sets an explicit override (latches
+            // for frame 1), frame 1 reads it back and clears it with null (latches for frame 2), frame 2 reads the
+            // automatic default again.
+            Vector3 explicitOverride = new(1_234f, 0f, 6_789f);
+            Vector3 expectedAutomatic = default;
+            Vector3? readAtFrame1 = null, readAtFrame2 = null;
+            int frame = 0;
+            Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    scene.Camera.Frame(Far, new Vector3(20f, 6f, 20f));
+                    expectedAutomatic = WorldFrame.Nearest(scene.Camera.Eye).Anchor;
+                },
+                drawFrame: scene =>
+                {
+                    switch (frame++)
+                    {
+                        case 0:
+                            scene.RenderOrigin = explicitOverride;
+                            break;
+                        case 1:
+                            readAtFrame1 = scene.RenderOrigin;
+                            scene.RenderOrigin = null;
+                            break;
+                        case 2:
+                            readAtFrame2 = scene.RenderOrigin;
+                            break;
+                    }
+                },
+                frames: 3);
+
+            Assert.Equal(explicitOverride, readAtFrame1);
+            Assert.Equal(expectedAutomatic, readAtFrame2);
+        }
+
+        [GpuFact]
+        public void Overriding_to_a_wrapper_around_the_still_aware_camera_zeroes_its_stale_origin()
+        {
+            // m6 (review r1): ApplyOriginToCamera only ever touched ActiveCamera, so switching from an aware
+            // scene.Camera (driven to a nonzero origin O in frame 0) to a non-aware CameraOverride that wraps and
+            // delegates to that SAME aware camera left its RenderOrigin stuck at O for frame 1: Scene3D itself
+            // correctly treats frame 1 as absolute (RenderOriginActive false, geometry submitted unreduced), but
+            // the wrapper's ViewProjection still came from a camera built against Eye - O, so the whole frame
+            // displaced by O. LatchRenderOrigin now tracks which camera it last pushed the origin onto and zeroes
+            // it the moment that camera stops being active, so frame 1 here must render byte-identical to a
+            // reference where the wrapper was active the whole time and the origin was never latched nonzero at
+            // all.
+            MeshHandle box = default;
+            Vector3 boxSize = new(1.2f, 1.2f, 1.2f);
+            byte[] wrapped = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.2f));
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = false;
+                    scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.08f, 1f);
+                    scene.Camera.Frame(Far, boxSize);
+                },
+                drawFrame: scene =>
+                {
+                    bool firstFrame = scene.CameraOverride == null;
+                    if (firstFrame)
+                        Assert.True(scene.RenderOriginActive, "frame 0 should latch a nonzero origin on the aware camera");
+                    scene.Draw(box, Matrix4x4.CreateTranslation(Far), new Color(0.85f, 0.80f, 0.30f, 1f));
+                    if (firstFrame) scene.CameraOverride = new PlainConsumerCamera(scene.Camera);
+                },
+                frames: 2);
+
+            byte[] reference = Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    box = scene.LoadMesh(MeshPrimitives.Box(1.2f));
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = false;
+                    scene.Post.BackgroundColor = new Color(0.05f, 0.06f, 0.08f, 1f);
+                    scene.Camera.Frame(Far, boxSize);
+                    scene.CameraOverride = new PlainConsumerCamera(scene.Camera);
+                },
+                drawFrame: scene => scene.Draw(box, Matrix4x4.CreateTranslation(Far), new Color(0.85f, 0.80f, 0.30f, 1f)),
+                frames: 1);
+
+            Assert.Equal(wrapped.Length, reference.Length);
+            for (int i = 0; i < wrapped.Length; i++)
+                if (wrapped[i] != reference[i])
+                    Assert.Fail($"byte {i} differs ({wrapped[i]} vs {reference[i]}): the wrapper camera is still " +
+                        "reading a stale origin from the aware camera it delegates to.");
         }
 
         /// <summary>The largest per-channel difference between two downsampled grids, the same metric
@@ -225,7 +380,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A consumer's own camera: the read-only <see cref="IIsoCamera3D"/> surface and nothing else, which is
         /// exactly what release 1 promises keeps working unchanged. Delegates to a real camera so the pose is a
-        /// sensible one; the point is only that it does not implement <see cref="IRenderOriginAware"/>.
+        /// sensible one. The point is only that it does not implement <see cref="IRenderOriginAware"/>.
         /// </summary>
         sealed class PlainConsumerCamera : IIsoCamera3D
         {

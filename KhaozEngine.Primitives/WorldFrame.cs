@@ -10,7 +10,7 @@ namespace KhaozEngine.Primitives;
 /// <para>
 /// A frame belongs to a SIMULATION ISLAND (one world plus one physics world), never to an individual entity: an
 /// entity's stored frame is a stamp of its island's frame, not an independent choice. The rendering release uses
-/// only <see cref="Nearest(Vector3)"/> and <see cref="Anchor"/> (through <c>Scene3D.RenderOrigin</c>); the
+/// only <see cref="Nearest(Vector3)"/> and <see cref="Anchor"/> (through <c>Scene3D.RenderOrigin</c>). The
 /// simulation-side members exist so the frame math has a single home and a single set of exactness tests.
 /// </para>
 /// <para>
@@ -18,8 +18,8 @@ namespace KhaozEngine.Primitives;
 /// <c>|L| &lt; Grid</c> and let <c>k * Grid</c> be an integer multiple of the grid. If
 /// <c>|L + k * Grid| &lt;= |L|</c> then <c>L + k * Grid</c> is exactly representable and the addition introduces no
 /// error at all. <c>|L| &lt; 128</c> puts <c>L</c> in a binade no higher than <c>[64, 128)</c>, so <c>L</c> is an
-/// integer multiple of <c>ULP(L) &lt;= 2^-17</c>; <c>k * 128</c> is an integer and hence also a multiple of
-/// <c>2^-17</c>; and a sum whose magnitude does not grow cannot need a finer quantum than its operands had. That is
+/// integer multiple of <c>ULP(L) &lt;= 2^-17</c>, <c>k * 128</c> is an integer and hence also a multiple of
+/// <c>2^-17</c>, and a sum whose magnitude does not grow cannot need a finer quantum than its operands had. That is
 /// why <see cref="Nearest(Vector3)"/> rounds to NEAREST rather than flooring: rounding leaves a freshly anchored
 /// local in <c>[-Grid/2, Grid/2]</c> and the <see cref="ReanchorRadius"/> trigger only fires past 96 m, so a
 /// re-anchor strictly reduces the per-axis magnitude and the lemma applies unconditionally.
@@ -96,7 +96,7 @@ public readonly record struct WorldFrame(short X, short Z)
     /// <summary>The translation that carries a local coordinate in THIS frame into <paramref name="target"/>: add it
     /// to the local. Both anchors are integer multiples of <see cref="Grid"/>, so the delta is an integer multiple of
     /// the grid and the addition is exact whenever the magnitude does not grow (the lemma on the type doc). A
-    /// re-anchor guarantees that by construction; a conversion between two arbitrary frames does not, and is exact
+    /// re-anchor guarantees that by construction. A conversion between two arbitrary frames does not, and is exact
     /// only to half a ULP of the destination magnitude.</summary>
     public Vector3 DeltaTo(WorldFrame target) => new((X - target.X) * Grid, 0f, (Z - target.Z) * Grid);
 

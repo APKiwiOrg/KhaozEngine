@@ -56,9 +56,9 @@ namespace KhaozEngine.Render3D.Rendering
         // pattern), so a whole crowd shares one grow-with-retire buffer.
         internal const uint SkinnedHeaderMats = 3;                        // Mvp + Model + P(Tint/Emissive/Spec)
         internal const uint SkinnedFrameOffset = SkinnedHeaderMats * 64;  // 192: the frame block starts here
-        internal static readonly uint SkinnedBonesOffset = SkinnedFrameOffset + UboBytes;  // 192 + 768 = 960
+        internal static readonly uint SkinnedBonesOffset = SkinnedFrameOffset + UboBytes;  // 192 + 1008 = 1200
         internal static readonly uint SkinnedMainSlotBytes =
-            Align256(SkinnedBonesOffset + (uint)SkinningMath.MaxBonesPerDraw * 64);  // 960 + 128*64 = 9152 -> 9216
+            Align256(SkinnedBonesOffset + (uint)SkinningMath.MaxBonesPerDraw * 64);  // 1200 + 128*64 = 9392 -> 9472
         static uint Align256(uint n) => (n + 255u) & ~255u;
 
         /// <summary>Per-frame uniforms (binding 0) header. 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes, uploaded at

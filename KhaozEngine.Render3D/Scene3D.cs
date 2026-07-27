@@ -1052,7 +1052,7 @@ namespace KhaozEngine.Render3D
         /// <paramref name="color"/> (RGBA). Cleared in <see cref="Begin"/>; drawn over the post image.</summary>
         public void DebugLine(Vector3 a, Vector3 b, Color color)
         {
-            // A line queue IS its own vertex expansion, so the render-frame reduction lands here (Begin latched it).
+            // Exception queue (class doc, Scene3D.RenderOrigin.cs): reduced here at submission since nothing reads it CPU-side.
             _lineVerts.Add(new LineRenderer.LineVertex(ToRender(a), color));
             _lineVerts.Add(new LineRenderer.LineVertex(ToRender(b), color));
         }
@@ -1107,7 +1107,7 @@ namespace KhaozEngine.Render3D
         void AppendScratch(Vector4 color)
         {
             foreach (var p in _scratch)
-                _lineVerts.Add(new LineRenderer.LineVertex(ToRender(p), color));
+                _lineVerts.Add(new LineRenderer.LineVertex(ToRender(p), color));   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
         }
 
         // ---- Debug wire VOLUMES (immediate-mode): closed 3D wire shapes for tuning gameplay volumes in-world
@@ -1192,7 +1192,7 @@ namespace KhaozEngine.Render3D
             Vector4 c = opacity >= 1f ? color : color.WithAlpha(color.A * opacity);
             var dst = depth == DebugDepthMode.DepthTested ? _depthLineVerts : _lineVerts;
             foreach (var p in _scratch)
-                dst.Add(new LineRenderer.LineVertex(ToRender(p), c));
+                dst.Add(new LineRenderer.LineVertex(ToRender(p), c));   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
         }
 
         /// <summary>Count of queued always-on-top debug-line vertices this frame (2 per segment). Internal: lets
@@ -1261,7 +1261,7 @@ namespace KhaozEngine.Render3D
         void AppendFillScratch(Vector4 color)
         {
             foreach (var p in _fillScratch)
-                _fillVerts.Add(new FillRenderer.FillVertex(ToRender(p), color));
+                _fillVerts.Add(new FillRenderer.FillVertex(ToRender(p), color));   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
         }
 
         /// <summary>Count of queued filled-overlay vertices this frame (3 per triangle). Internal: lets tests
@@ -1360,7 +1360,7 @@ namespace KhaozEngine.Render3D
             }
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
-            BillboardGeometry.Triangles(ToRender(worldPos), size, _billboardRight, _billboardUp, pos, uv);
+            BillboardGeometry.Triangles(ToRender(worldPos), size, _billboardRight, _billboardUp, pos, uv);   // exception queue, see the class doc: reduced at submission, nothing reads it CPU-side
             for (int i = 0; i < 6; i++)
                 _billboardAdditive.Add(new BillboardRenderer.BillboardVertex(pos[i], uv[i], color));
         }

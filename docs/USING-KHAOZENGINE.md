@@ -2025,8 +2025,9 @@ scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // sti
   frame's value rather than the pending one. Half a frame's geometry against one origin and the other half
   against another would be displaced by the difference.
 - `Scene3D.RenderOriginActive` says whether an origin is in force this frame.
-- **`RenderOrigin = Vector3.Zero` is the opt-out**, reproducing the pre-15.x output exactly. Use it if you have
-  committed goldens you do not want to rebake.
+- **`RenderOrigin = Vector3.Zero` is the opt-out**, reproducing the pre-16.x output exactly. Use it if you have
+  committed goldens you do not want to rebake. Assign `null` to clear an explicit override and restore the
+  automatic quantized-eye default.
 - **A camera you wrote yourself keeps working unchanged.** The engine cameras (`IsoCamera3D`, `FollowCamera3D`,
   `FlyCamera3D`) implement `IRenderOriginAware`. A consumer `IIsoCamera3D` that does not gets the WHOLE pipeline
   back on the absolute path (never half an origin), which is exactly as precise as it was before, and
@@ -2034,6 +2035,9 @@ scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // sti
   from `Eye - RenderOrigin` and expose the unshifted matrix as `AbsoluteViewProjection`. Keep `Eye` absolute.
 - `WorldToScreen` and `ScreenToRay` still take and return ABSOLUTE world points, so nameplates and picking need
   no change.
+- **Warning:** `camera.View` and `camera.ViewProjection` return RELATIVE matrices once a render origin has
+  latched. For your own CPU spatial math (frustum culling, picking against your own bounds, and similar), use
+  the camera's `AbsoluteViewProjection` instead.
 - What it does NOT fix: terrain chunk vertices are baked in absolute world space, so terrain geometry and terrain
   collision at range are a later release. Triplanar terrain texturing at range is preserved rather than improved
   (the shader reconstructs the absolute position for it). Depth precision at range is governed by the near-to-far

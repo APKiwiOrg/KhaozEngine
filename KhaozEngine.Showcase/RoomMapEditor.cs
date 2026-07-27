@@ -50,6 +50,11 @@ namespace KhaozEngine.Showcase
                 // Reserve the bottom band the app's F7-F10 display readout draws in, so the editor's own status
                 // strip sits directly above it instead of stacking on the same pixels.
                 StatusBottomOffset = ShowcaseApp.DisplayReadoutHeight,
+                // Persist the settings menu's render distance, sky, lighting, and ocean choices across sessions
+                // (the design in docs/design/EDITOR-SETTINGS-MENU-DESIGN-2026-07-27.md), under the same
+                // publisher/app-name identity every other KhaozEngine consumer uses for its own GameStorage, so
+                // editor-settings.json lands beside the showcase's own app data rather than a one-off location.
+                Settings = new EditorSettingsStore("APKiwi", "Showcase"),
             };
             return new MapEditorScene().Init(scene, white, font, options);
         }

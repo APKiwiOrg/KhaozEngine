@@ -56,11 +56,12 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 FftRotCos;         // xyz = cos(per-cascade rotation offset), w = domain-warp metres
             public Vector4 FftRotSin;         // xyz = sin(per-cascade rotation offset), w = domain-warp wavelength
             public Vector4 FftSector;         // x = focus sector count, yz = (cos, sin) of one sector, w reserved
+            public Vector4 RenderOrigin;      // xyz = the render origin the plane, the grid and the eye were reduced by
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + 28*16 (vec4) = 576.</summary>
-        internal const uint PayloadBytes = 576;
+        /// 2*64 (mat4) + 29*16 (vec4) = 592.</summary>
+        internal const uint PayloadBytes = 592;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -81,7 +82,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 768;   // Align256(576)
+        internal const uint SlotBytes = 768;   // Align256(592)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -214,14 +215,14 @@ namespace KhaozEngine.Render3D.Rendering
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
             Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds)
             => PackUbo(clipViewProj, rawViewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds,
-                default);
+                default, default);
 
         /// <summary>As above, plus the FFT ocean's live map description. <paramref name="ocean"/> defaulted (i.e.
         /// inactive) packs <c>FftParams.x = 0</c>, which is what makes every FFT branch in both shader stages a
         /// not-taken uniform branch and the procedural surface byte-identical to 14.28.0.</summary>
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
             Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds,
-            in OceanMaps ocean)
+            in OceanMaps ocean, Vector3 renderOrigin = default)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
@@ -278,6 +279,10 @@ namespace KhaozEngine.Render3D.Rendering
                 FftRotCos = new Vector4(Cos(sea.CascadeRotationDegrees), MathF.Max(sea.DomainWarpMetres, 0f)),
                 FftRotSin = new Vector4(Sin(sea.CascadeRotationDegrees), sea.DomainWarpWavelengthMetres),
                 FftSector = SectorParams(sea.OnshoreFocusSectors),
+                // The plane, the grid and the eye all arrive already reduced by this. The surface's world-ANCHORED
+                // patterns (the swell phase, the ocean sampling frame, the ripple and foam lattices, the onshore
+                // focus point) add it back so they stay pinned to the world across an origin step.
+                RenderOrigin = new Vector4(renderOrigin, 0f),
             };
         }
 
@@ -312,7 +317,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// The live FFT ocean maps' shape, as the shaders need to read them: whether the maps are live at all, how
         /// many cascade layers they carry, their resolution, each layer's world tile size, and each layer's baked
         /// slope variance. A pure value so <see cref="PackUbo(Matrix4x4, Matrix4x4, Vector3, Color, Vector3,
-        /// WaterSettings, SkySettings, float, in OceanMaps)"/> stays testable without a device.
+        /// WaterSettings, SkySettings, float, in OceanMaps, Vector3)"/> stays testable without a device.
         /// </summary>
         internal readonly struct OceanMaps
         {
@@ -351,7 +356,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <paramref name="planes"/> is empty.</summary>
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos, WaterSettings settings,
-            SkySettings sky, float timeSeconds)
+            SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
         {
             if (planes.Length == 0) return;
             EnsureUboCapacity(planes.Length);
@@ -369,7 +374,7 @@ namespace KhaozEngine.Render3D.Rendering
             for (int i = 0; i < planes.Length; i++)
             {
                 var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds,
-                    oceanMaps);
+                    oceanMaps, renderOrigin);
                 cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
             }
 

@@ -11,6 +11,14 @@ public enum UpdateState
     /// <summary>Fetching remote version info and manifest, computing the diff.</summary>
     Checking,
 
+    /// <summary>
+    /// Hashing the install directory against the signed manifest during
+    /// <see cref="UpdateService.VerifyAndRepairAsync"/>. Distinct from <see cref="Checking"/> because it is a
+    /// long, local, progress-reporting pass over every installed file rather than a quick feed probe, and
+    /// because a feed check must not start while it runs.
+    /// </summary>
+    Verifying,
+
     /// <summary>A newer build exists and files need downloading.</summary>
     UpdateAvailable,
 

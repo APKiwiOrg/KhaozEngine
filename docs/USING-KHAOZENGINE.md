@@ -470,6 +470,20 @@ restyling the fill carries the marquee with it. Assign `MarqueeColor` only for a
 and note it now draws at its own alpha rather than a fixed fraction of it. All player-facing copy lives in
 `BootStrings` (`boot.*` keys) with a built-in English fallback, so add those keys to your catalog to localize.
 
+### Verify and repair a damaged install (`UpdateService.VerifyAndRepairAsync`)
+
+The launch check cannot see a corrupted install: it short-circuits at the version gate when the installed
+version already matches the feed, and even past that gate its local picture is the cached manifest, which
+records the hash each file is *supposed* to have. So a file damaged after an update leaves the client
+reporting the right version forever while a content handshake rejects it.
+`await updates.VerifyAndRepairAsync()` is the explicit way out: it hashes the install for real, diffs it
+against the signed manifest, and re-downloads plus re-applies the difference through the ordinary pipeline.
+Wire it to a "Verify game files" action, never to launch (hashing an install is expensive). Branch on
+`UpdateRepairResult.Outcome` (`Verified` / `Repairing` / `RepairStaged` / `FeedUnreachable` / `Failed`) and
+show `FilesChecked` / `FilesNeedingRepair`; pass an `IProgress<UpdateRepairProgress>` for a progress screen,
+and `applyRepair: false` to stage the fix and apply it yourself later. Extraneous files are reported, never
+deleted. Full mechanics in [UPDATER.md](UPDATER.md).
+
 ### In-session update recheck + post-update relaunch (`UpdateService`)
 
 Two opt-in `UpdateService` conveniences for a long-running game, both driven from the game loop. Full
@@ -2001,6 +2015,51 @@ for (int i = 0; i < live.Length; i++)
 }
 scene.DrawTrail(strip, TrailStyle.Default with { Color = new Color(0.8f, 0.9f, 1f, 1f) });
 ```
+
+### Camera-relative rendering (`Scene3D.RenderOrigin`)
+
+A world hundreds of metres or kilometres from the origin used to render badly, and the reason was float32
+precision rather than anything about the content: a 100 km world translation meeting a 100 km view translation
+inside the matrix concatenation leaves a small difference carrying the rounding error of both large operands, so
+geometry swims, shadow edges crawl, and thin geometry vibrates as the camera moves. `Scene3D` now subtracts a
+quantized **render origin** from everything on its way to the GPU, so the GPU never sees the large operands.
+
+**Adoption: none.** The whole public surface still takes ABSOLUTE world coordinates and there is nothing to call.
+
+```csharp
+scene.Begin();                       // latches this frame's origin
+scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // still absolute, as always
+```
+
+- `Scene3D.RenderOrigin` defaults to `WorldFrame.Nearest(camera.Eye).Anchor`: the nearest point on a 128 m grid,
+  so it is exactly representable in float32 (the subtraction introduces literally no error) and it does not
+  jitter per frame. Set it explicitly to a simulation frame's anchor if you are running one, so render and
+  simulation share a space.
+- It is **latched at `Begin()`**. A write during a frame takes effect at the next one, and the getter reports the
+  frame's value rather than the pending one. Half a frame's geometry against one origin and the other half
+  against another would be displaced by the difference.
+- `Scene3D.RenderOriginActive` says whether an origin is in force this frame.
+- **`RenderOrigin = Vector3.Zero` is the opt-out**, reproducing the pre-16.x output exactly. Use it if you have
+  committed goldens you do not want to rebake. Assign `null` to clear an explicit override and restore the
+  automatic quantized-eye default.
+- **A camera you wrote yourself keeps working unchanged.** The engine cameras (`IsoCamera3D`, `FollowCamera3D`,
+  `FlyCamera3D`) implement `IRenderOriginAware`. A consumer `IIsoCamera3D` that does not gets the WHOLE pipeline
+  back on the absolute path (never half an origin), which is exactly as precise as it was before, and
+  `RenderOriginActive` reports `false`. Implement `IRenderOriginAware` on your camera to opt in: build `View`
+  from `Eye - RenderOrigin` and expose the unshifted matrix as `AbsoluteViewProjection`. Keep `Eye` absolute.
+- `WorldToScreen` and `ScreenToRay` still take and return ABSOLUTE world points, so nameplates and picking need
+  no change.
+- **Warning:** `camera.View` and `camera.ViewProjection` return RELATIVE matrices once a render origin has
+  latched. For your own CPU spatial math (frustum culling, picking against your own bounds, and similar), use
+  the camera's `AbsoluteViewProjection` instead.
+- What it does NOT fix: terrain chunk vertices are baked in absolute world space, so terrain geometry and terrain
+  collision at range are a later release. Triplanar terrain texturing at range is preserved rather than improved
+  (the shader reconstructs the absolute position for it). Depth precision at range is governed by the near-to-far
+  ratio and is unrelated. Nothing about simulation changes.
+
+If you write your own renderer against `Transform3D`, `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix
+directly. You do not need it for `Scene3D`, which reduces the absolute matrix you hand it. Calling both
+double-subtracts.
 
 ### Transparency ordering
 
@@ -4529,7 +4588,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.7.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="16.9.0" />
 ```
 
 ```csharp

@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>Builds the model pipeline and draws the lit/cel glTF meshes into the low-res MRT via GPU
     /// instancing: one per-frame UBO upload (frame uniforms only) + one instance-buffer upload + one draw per
     /// UNIQUE mesh, each with the run's instanceCount.</summary>
-    internal sealed class ModelRenderer : IDisposable
+    internal sealed partial class ModelRenderer : IDisposable
     {
         /// <summary>Maximum dynamic point lights consumed per frame. The host picks the N nearest (CPU-side
         /// budget); the renderer defensively clamps to this and zero-fills the unused tail. Must match the
@@ -24,7 +24,8 @@ namespace KhaozEngine.Render3D.Rendering
 
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
         // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the cascaded shadow tail
-        // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992 bytes.
+        // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992, then
+        // the render-origin vec4 = 1008 bytes.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
@@ -37,7 +38,15 @@ namespace KhaozEngine.Render3D.Rendering
         // normal-offset world size (texel-world-size_i x ShadowNormalOffset, CPU-baked so it is extent-aware per cascade).
         internal const uint ShadowTailBytes = (uint)MaxCascades * 64 + 48;     // mat4[4] + 3*vec4 = 304
         internal const uint ShadowTailOffset = HeaderBytes + LightArraysBytes;  // 688
-        internal const uint UboBytes = HeaderBytes + LightArraysBytes + ShadowTailBytes;  // 992
+        // Camera-relative rendering (design doc 2026-07-27, section 9): the render origin every GPU-bound world
+        // position this frame was reduced by, so a fragment can reconstruct the ABSOLUTE position for world-anchored
+        // texturing and noise (terrain triplanar UVs, the model dissolve pattern). Lighting, eye vectors and depth
+        // stay render-relative: those are differences and the origin cancels. It rides at the END of the SAME frame
+        // UBO rather than in a second one, because a second uniform buffer in a set mis-binds on Metal (the note
+        // below), which is also why the splat params tail follows it rather than the shadow tail.
+        internal const uint RenderOriginBytes = 16;                                            // one vec4, w unused
+        internal const uint RenderOriginOffset = ShadowTailOffset + ShadowTailBytes;           // 992
+        internal const uint UboBytes = RenderOriginOffset + RenderOriginBytes;                 // 1008
 
         // ---- GPU skinning (opt-in) combined-buffer geometry. The whole skinned pipeline reads ONE dynamic-offset
         // UBO at set 0 binding 0 (both stages) laid out as { mat4 Mvp; mat4 Model; mat4 P; <frame block>; mat4
@@ -47,9 +56,9 @@ namespace KhaozEngine.Render3D.Rendering
         // pattern), so a whole crowd shares one grow-with-retire buffer.
         internal const uint SkinnedHeaderMats = 3;                        // Mvp + Model + P(Tint/Emissive/Spec)
         internal const uint SkinnedFrameOffset = SkinnedHeaderMats * 64;  // 192: the frame block starts here
-        internal static readonly uint SkinnedBonesOffset = SkinnedFrameOffset + UboBytes;  // 192 + 768 = 960
+        internal static readonly uint SkinnedBonesOffset = SkinnedFrameOffset + UboBytes;  // 192 + 1008 = 1200
         internal static readonly uint SkinnedMainSlotBytes =
-            Align256(SkinnedBonesOffset + (uint)SkinningMath.MaxBonesPerDraw * 64);  // 960 + 128*64 = 9152 -> 9216
+            Align256(SkinnedBonesOffset + (uint)SkinningMath.MaxBonesPerDraw * 64);  // 1200 + 128*64 = 9392 -> 9472
         static uint Align256(uint n) => (n + 255u) & ~255u;
 
         /// <summary>Per-frame uniforms (binding 0) header. 1 mat4 + 7 vec4 = 64 + 112 = 176 bytes, uploaded at
@@ -425,117 +434,6 @@ namespace KhaozEngine.Render3D.Rendering
             cl.ClearColorTarget(1, bg);
             cl.ClearColorTarget(2, bg);
             cl.ClearDepthStencil(1f);
-        }
-
-        /// <summary>Upload the per-frame uniforms once per frame, before the instanced draws. <paramref name="lights"/>
-        /// is the host's per-frame point-light list; it is clamped to <see cref="MaxPointLights"/> (the host is
-        /// responsible for picking the N nearest) and the active count is written into <c>Params.y</c>. An empty
-        /// span leaves the shader's point-light loop unentered, so the render is bit-identical to the key+fill path.</summary>
-        public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj, Vector3 cameraPos,
-            PixelPostProcessSettings s, ReadOnlySpan<PointLightData> lights)
-        {
-            int count = BuildLightArrays(lights, _lightPosRadius, _lightColorIntensity);
-
-            // Clip-space-Y correction is derived from the live backend (GpuClip), not baked for Metal: it is the
-            // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).
-            // Applied only to the GPU-uploaded matrix; IsoCamera3D.ScreenToGround picking keeps the raw
-            // Camera.ViewProjection, so render and picking stay consistent (an earlier unconditional flip broke both).
-            _frame = new FrameUbo
-            {
-                ViewProj = GpuClip.Correct(viewProj, _gd.Capabilities),
-                Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
-                Color = s.LightColor,
-                Ambient = s.AmbientColor,
-                Params = new Vector4(s.CelBands, count, 0, 0),
-                FillDir = new Vector4(Vector3.Normalize(s.FillLightDirection), 0f),
-                FillColor = s.FillLightColor,
-                CameraPos = new Vector4(cameraPos, 1f),
-            };
-            WriteFrameUniformsTo(cl, _ubo);
-        }
-
-        // Cached this-frame uniforms (set in SetFrameUniforms), re-uploaded into each splat material's combined UBO
-        // by WriteFrameUniformsTo so the splat pipeline reads the current frame from its own single UBO.
-        FrameUbo _frame;
-        // Cached this-frame shadow tail (set in SetShadowUniforms, default = strength 0 = inactive). Written into
-        // the frame UBO + every splat material UBO by WriteFrameUniformsTo, so both passes receive shadows.
-        ShadowUbo _shadow;
-
-        /// <summary>Set this frame's cascaded shadow tail (per-cascade RECEIVER matrices + PCF/bias/strength/fade
-        /// params). Call after <see cref="SetFrameUniforms"/> when the shadow-map tier is active. Leave unset (or pass
-        /// a zero-strength tail) for no shadows. The value is uploaded by
-        /// <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/> into the model UBO and each splat material
-        /// UBO. <paramref name="receiverMats"/> are already GPU-clip-corrected by the caller (up to
-        /// <see cref="MaxCascades"/> entries, the first <paramref name="cascadeCount"/> are read).
-        /// <paramref name="cascadeBlend"/> is the inner-cascade cross-fade band width (fraction of cascade-local UV
-        /// from each edge) that blends toward the next cascade's result near a hand-off. <paramref name="normalOffsets"/>
-        /// is the per-cascade normal-offset world size (index 0..cascadeCount-1).</summary>
-        public void SetShadowUniforms(ReadOnlySpan<Matrix4x4> receiverMats, int cascadeCount, float texelStep,
-            float constantBias, float slopeBias, float strength, float maxDistance, float borderFrac,
-            float cascadeBlend, ReadOnlySpan<float> normalOffsets)
-        {
-            var s = new ShadowUbo
-            {
-                Params = new Vector4(cascadeCount, strength, constantBias, slopeBias),
-                Params2 = new Vector4(texelStep, maxDistance, borderFrac, cascadeBlend),
-            };
-            // Fill up to MaxCascades matrices + normal offsets, leaving unread slots (past cascadeCount) at identity/zero.
-            Matrix4x4 m0 = Matrix4x4.Identity, m1 = Matrix4x4.Identity, m2 = Matrix4x4.Identity, m3 = Matrix4x4.Identity;
-            Vector4 no = Vector4.Zero;
-            int n = Math.Min(cascadeCount, MaxCascades);
-            if (n > 0) { m0 = receiverMats[0]; no.X = normalOffsets[0]; }
-            if (n > 1) { m1 = receiverMats[1]; no.Y = normalOffsets[1]; }
-            if (n > 2) { m2 = receiverMats[2]; no.Z = normalOffsets[2]; }
-            if (n > 3) { m3 = receiverMats[3]; no.W = normalOffsets[3]; }
-            s.Cascade0 = m0; s.Cascade1 = m1; s.Cascade2 = m2; s.Cascade3 = m3;
-            s.NormalOffsets = no;
-            _shadow = s;
-        }
-
-        /// <summary>Clear the shadow tail to inactive (strength 0), so the frame renders with no shadow map (the key
-        /// light is unshadowed). Call each frame before the model pass unless the shadow tier is active; keeps the
-        /// ShadowMode.Off render byte-stable.</summary>
-        public void ClearShadowUniforms() => _shadow = default;
-
-        /// <summary>Upload the cached frame uniforms (header + the two point-light arrays) into <paramref name="dst"/>
-        /// at offset 0. <paramref name="dst"/> must be at least <see cref="UboBytes"/> bytes; a splat material's
-        /// combined UBO is larger (params follow at <see cref="UboBytes"/>) and that tail is left untouched.</summary>
-        public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst) => WriteFrameUniformsTo(cl, dst, 0);
-
-        /// <summary>As <see cref="WriteFrameUniformsTo(IGpuCommandList,IGpuBuffer)"/>, but writes the frame block at an
-        /// arbitrary <paramref name="baseOffset"/> into <paramref name="dst"/> (must be 256-aligned for a UBO region).
-        /// The GPU-skinning combined slot embeds the frame block at <see cref="SkinnedFrameOffset"/> within each
-        /// per-draw slot, so the skinned fragment reads this frame's lighting from its one bound buffer.</summary>
-        public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst, uint baseOffset)
-        {
-            cl.UpdateBuffer(dst, baseOffset, in _frame);
-            // Point-light arrays follow the 176-byte header. Always upload the full fixed-size arrays (zero-filled
-            // tail) so a previous frame's lights never leak past the active count.
-            cl.UpdateBuffer(dst, baseOffset + HeaderBytes, (ReadOnlySpan<Vector4>)_lightPosRadius);
-            cl.UpdateBuffer(dst, baseOffset + HeaderBytes + LightArrayBytes, (ReadOnlySpan<Vector4>)_lightColorIntensity);
-            // Shadow tail follows the light arrays. Always uploaded (default = strength 0 = inactive), so the model
-            // and splat passes read a consistent shadow tail and the Off render stays byte-stable.
-            cl.UpdateBuffer(dst, baseOffset + ShadowTailOffset, in _shadow);
-        }
-
-        /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
-        /// copies up to <see cref="MaxPointLights"/> lights (extras are dropped - the host selects the N nearest),
-        /// zero-fills the remaining tail, and returns the active count. Both output arrays must be length
-        /// <see cref="MaxPointLights"/>.</summary>
-        internal static int BuildLightArrays(ReadOnlySpan<PointLightData> lights, Vector4[] posRadius, Vector4[] colorIntensity)
-        {
-            int count = Math.Min(lights.Length, MaxPointLights);
-            for (int i = 0; i < count; i++)
-            {
-                posRadius[i] = lights[i].PosRadius;
-                colorIntensity[i] = lights[i].ColorIntensity;
-            }
-            for (int i = count; i < MaxPointLights; i++)
-            {
-                posRadius[i] = Vector4.Zero;
-                colorIntensity[i] = Vector4.Zero;
-            }
-            return count;
         }
 
         /// <summary>

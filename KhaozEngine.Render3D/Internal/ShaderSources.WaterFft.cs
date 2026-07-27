@@ -160,8 +160,8 @@ vec2 oceanWarp(vec2 xz) {
         const string WaterFftVertGlsl = @"
         int nc = clamp(int(FftParams.y + 0.5), 1, KE_MAX_CASCADES);
         float halfTexel = 0.5 / max(FftParams.z, 1.0);
-        focusRot = oceanFocusRot(Position.xz);
-        refXz = oceanWarp(Position.xz);
+        focusRot = oceanFocusRot(aXz);
+        refXz = oceanWarp(aXz);
         vec4 sec = oceanSectors(focusRot);
         vec2 csHi = oceanRotAdd(sec.xy, FftSector.yz);
         float wLo = (1.0 - sec.z) * sec.w, wHi = sec.z * sec.w;

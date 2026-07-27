@@ -44,6 +44,7 @@ namespace KhaozEngine.Render3D.Internal
     vec4 FftRotCos;        // xyz = cos of each cascade's fixed rotation offset, w = domain-warp amplitude (metres, 0 = off)
     vec4 FftRotSin;        // xyz = sin of each cascade's fixed rotation offset, w = domain-warp wavelength (metres)
     vec4 FftSector;        // x = focus sector count, yz = (cos, sin) of one sector, w reserved
+    vec4 RenderOrigin;     // xyz = camera-relative render origin: add to a render-frame position for the ABSOLUTE one
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -104,10 +105,16 @@ void main() {
     vec3 swellNormal = vec3(0.0, 1.0, 0.0);
     float fold = 0.0;
 
+    // The grid arrives in the RENDER frame (the plane's centre and the camera were both reduced by RenderOrigin),
+    // and the whole sea is ANCHORED TO THE WORLD: every phase, lattice and sampling frame below is keyed on aXz,
+    // the absolute planar position, so an origin step does not slide the ocean under the player. Only gl_Position
+    // and vWorldPos stay render-relative, which is the entire point of reducing them in the first place.
+    vec2 aXz = Position.xz + RenderOrigin.xz;
+
     // The ocean sampling frame. Declared out here so both branches leave the varyings written, and so the FFT
     // branch's values are the ones the fragment reads: the frame belongs to the still-water grid position, which
     // only this stage has. Defaults are the exact identity, which is what the procedural branch keeps.
-    vec2 refXz = Position.xz;
+    vec2 refXz = aXz;
     vec2 focusRot = vec2(1.0, 0.0);
 
     // FFT ocean: the displacement is a texture lookup per cascade, and the normal + the fold both come out of the
@@ -138,7 +145,7 @@ void main() {
             float ph = seed * float(i + 1) * KE_SEED_STRIDE;
             vec2 d = vec2(cos(angle), sin(angle));
 
-            float phase = k * (d.x * Position.x + d.y * Position.z) - omega * time + ph;
+            float phase = k * (d.x * aXz.x + d.y * aXz.y) - omega * time + ph;
             float s = sin(phase), cs = cos(phase);
 
             float qa = q * a;                      // horizontal orbital radius
@@ -364,6 +371,12 @@ void main() {
     // uniform control flow on every backend (a derivative inside a per-fragment branch is undefined).
     float footprint = max(fwidth(vWorldPos.x), fwidth(vWorldPos.z));
 
+    // The ABSOLUTE planar position of this fragment. vWorldPos is render-relative, and the ripple and foam
+    // lattices below are anchored to the WORLD, so they read this instead: a render-origin step must not slide the
+    // sea's surface detail. Everything else here (the eye vector, the depth grading, the derivatives) is a
+    // difference or a derivative, so the origin cancels and they keep reading vWorldPos.
+    vec2 wpAbsXz = vWorldPos.xz + RenderOrigin.xz;
+
     // One eye vector, used for the view direction, the fresnel term, the reflected ray AND the detail fade's
     // camera distance.
     vec3 toEye = CameraPos.xyz - vWorldPos;
@@ -418,7 +431,7 @@ void main() {
     } else {
     // Ripple spectrum, band-limited to this pixel. slope.xy is the surviving slope, slope.z the variance the
     // band-limit removed (handed to the glint lobe below rather than discarded).
-    vec3 slope = waterSlope(vWorldPos.xz, time, waveScale, waveSpeed, warpStrength, detail,
+    vec3 slope = waterSlope(wpAbsXz, time, waveScale, waveSpeed, warpStrength, detail,
                             footprint, footprintSamples);
     vec3 ripple = slopeToNormal(slope.x, slope.y, normalStrength);
 
@@ -555,7 +568,7 @@ void main() {
         // WaveSpeed's foam-drift job both go inert here as a result (see WaterSettings.WaveSource's doc).
         float mask = FftParams.x > 0.5
             ? fftFoamBreakup(oceanFoam)
-            : foamPattern(vWorldPos.xz, time * waveSpeed, FoamParams.w);
+            : foamPattern(wpAbsXz, time * waveSpeed, FoamParams.w);
         foam = clamp(max(crest, band) * mask * foamStrength, 0.0, 1.0);
     }
 

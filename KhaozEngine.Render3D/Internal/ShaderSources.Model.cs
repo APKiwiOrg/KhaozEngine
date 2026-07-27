@@ -28,6 +28,7 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -87,6 +88,7 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;     // x=cascadeCount, y=strength (0 => shadows off), z=constBias, w=slopeBias
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
@@ -172,7 +174,7 @@ void main() {
     if (vDissolve.x > 0.0) {
         float threshold = clamp(vDissolve.x, 0.0, 1.0);
         float edgeW = max(vDissolve.y, 1e-3);
-        float mask = dnoise(vWorldPos * 6.0);
+        float mask = dnoise((vWorldPos + RenderOrigin.xyz) * 6.0);
         if (mask < threshold) discard;          // dissolved away
         float edge = 1.0 - smoothstep(threshold, threshold + edgeW, mask);
         lit += vEmissive.rgb * edge;
@@ -208,6 +210,7 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
 layout(set=0, binding=2) uniform texture2D NormalMap;
@@ -242,7 +245,7 @@ float dnoise(vec3 p) {
 void main() {
     float threshold = clamp(vSpecParams.z, 0.0, 1.0);
     float edgeW = max(vSpecParams.w, 1e-3);
-    float mask = dnoise(vWorldPos * 6.0);   // 0..1 world-space dissolve mask
+    float mask = dnoise((vWorldPos + RenderOrigin.xyz) * 6.0);   // 0..1 world-space dissolve mask
     if (mask < threshold) discard;          // dissolved away
 
     vec3 Ngeo = normalize(vNormalW);
@@ -300,7 +303,8 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
-    mat4 bones[128];       // offset 976: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    mat4 bones[128];       // offset 1200: this draw's composed palette (inverseBind*jointWorld), padded/validated to <=128
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -385,6 +389,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -456,6 +461,7 @@ layout(set=0, binding=0) uniform VBlock {
     vec4 ShadowParams;         // x=cascadeCount, y=strength, z=constBias, w=slopeBias
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
+    vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     mat4 bones[128];
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -491,7 +497,7 @@ float dnoise(vec3 p) {
 void main() {
     float threshold = clamp(vSpecParams.z, 0.0, 1.0);
     float edgeW = max(vSpecParams.w, 1e-3);
-    float mask = dnoise(vWorldPos * 6.0);
+    float mask = dnoise((vWorldPos + RenderOrigin.xyz) * 6.0);
     if (mask < threshold) discard;
 
     vec3 Ngeo = normalize(vNormalW);

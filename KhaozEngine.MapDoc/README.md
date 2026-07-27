@@ -353,6 +353,11 @@ MapTileContent tile = source.ReadTile(new MapTileCoord(3, -2)); // parses and va
 `MapDocumentSource.FromDocument(doc)` wraps an in-memory whole document behind the same API.
 `MapTileContent` is immutable once handed out, INCLUDING the delta arrays inside `SculptTiles`, because a
 reader hands out the arrays it parsed and `TerrainSculpt` stores them by reference: clone before editing.
+For `OpenTiled`, the occupied-tile index is a snapshot taken at open time, since a re-saved tile is
+content-addressed and gets a new filename on every edit. Call `source.Refresh()` after an external save (an
+editor, a generation tool) re-reads `map.json` and atomically swaps in the fresh index, which
+`MapTileResidency.Invalidate` already does before it re-reads a tile. `Refresh` is a no-op for a
+`FromDocument` source, since there is no `map.json` to re-read. Rebuild it over the updated document instead.
 
 A tile read runs a per-tile validation subset, keeping the loud-fail stance for a read that cannot see the
 whole document: ids non-empty and unique within the tile, placement kinds non-empty, delta counts exact,

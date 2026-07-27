@@ -111,6 +111,27 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Fact]
+        public void GateFor_TurnsPermissiveOnceTheResidencyIsDisposed()
+        {
+            // F6 regression. A disposed residency reports nothing resident, so the occupied-but-not-resident
+            // test would otherwise refuse every occupied tile forever. Disposal turns the gate permissive
+            // instead - the cleaner shutdown path is clearing TerrainStreamer.BuildGate, this is the safety net
+            // for a caller that does not do that.
+            using MapDocumentSource source = ResidencyFixture.Source(ResidencyFixture.Square(4));
+            var sink = new RecordingTileSink();
+            var residency = new MapTileResidency(source, Sync(1, 2), sink);
+            IChunkBuildGate gate = residency.GateFor(Chunk, SculptCell);
+
+            residency.Update(ResidencyFixture.At(0, 0));
+            Assert.False(gate.CanBuild(ChunkDeepInside(4, 0)));   // occupied, never resident: deferred as usual
+
+            residency.Dispose();
+
+            Assert.True(gate.CanBuild(ChunkDeepInside(4, 0)));    // permissive once disposed
+            Assert.True(gate.CanBuild(ChunkDeepInside(0, 0)));    // even the tile that WAS resident
+        }
+
+        [Fact]
         public void Teleport_PrimeAroundFillsTheRingBeforeAnyChunkAsks()
         {
             // Ordering residency before the streamer is necessary and NOT sufficient: async residency leaves a
@@ -244,32 +265,92 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Fact]
+        public void FromDocument_ReadTile_ClonesPlacementsAndSculptDeltasAwayFromTheCallersDocument()
+        {
+            // F8 regression. FromDocument's spatial index buckets the CALLER's own live document objects once.
+            // Handing those straight out would break the immutability MapTileContent promises, since a
+            // placement is a mutable class and a sculpt tile's Deltas is a mutable float[] that something like
+            // TerrainSculpt.With stores by reference. OpenTiled never has this problem - every read parses fresh
+            // objects off disk - so this is specific to the in-memory path.
+            var doc = new MapDocument
+            {
+                Id = "clone-check", DisplayName = "Clone Check",
+                Bounds = new MapBounds { MinX = -512f, MinZ = -512f, MaxX = 512f, MaxZ = 512f },
+                TileSize = ResidencyFixture.Tile,
+            };
+            var placement = new MapPlacement { Id = "p", Kind = "rock", X = 10f, Z = 20f, Y = 0f };
+            doc.Placements.Add(placement);
+            var overrides = new MapTerrainOverrides(2f);
+            overrides.SetDelta(4, 6, 1.5f);   // sculpt tile (0, 0) -> document tile (0, 0)
+            doc.TerrainOverrides = overrides;
+
+            using MapDocumentSource source = MapDocumentSource.FromDocument(doc);
+            MapTileContent content = source.ReadTile(new MapTileCoord(0, 0));
+
+            MapPlacement servedPlacement = Assert.Single(content.Placements);
+            Assert.NotSame(placement, servedPlacement);
+            Assert.Equal(placement.X, servedPlacement.X);
+
+            MapSculptTile originalTile = doc.TerrainOverrides.Tiles[0];
+            MapSculptTile servedTile = Assert.Single(content.SculptTiles);
+            Assert.NotSame(originalTile, servedTile);
+            Assert.NotSame(originalTile.Deltas, servedTile.Deltas);
+            Assert.Equal(originalTile.Deltas, servedTile.Deltas);   // same VALUES, distinct array
+
+            // Mutating the original document after the fact must not reach back into content already served.
+            placement.X = 999f;
+            originalTile.Deltas[0] = 42f;
+
+            Assert.Equal(10f, servedPlacement.X);
+            Assert.NotEqual(42f, servedTile.Deltas[0]);
+        }
+
+        [Fact]
         public void Invalidate_RereadsAResidentTileThroughTheFullLifecycle()
         {
             // Re-reading fires unload then load, because the bodies and sculpt a consumer built from the OLD
-            // content have to go before the new content replaces it.
-            using MapDocumentSource source = ResidencyFixture.Source(ResidencyFixture.Square(1));
-            var sink = new RecordingTileSink();
-            using var residency = new MapTileResidency(source, Sync(1, 2), sink);
-            var home = new MapTileCoord(0, 0);
+            // content have to go before the new content replaces it - and it has to see GENUINELY new content.
+            // A re-saved tile is content-addressed (F2), so its file changes name on every edit: this needs a
+            // real tiled directory rather than the in-memory fixture the rest of the suite uses, or Invalidate
+            // would just re-derive the identical frozen snapshot and this test would not tell a re-read from a
+            // no-op.
+            TiledDocFixture.InDirectory(directory =>
+            {
+                MapDocument doc = TiledDocFixture.SampleDoc();
+                MapDocumentFile.SaveTiled(doc, directory);
 
-            residency.Update(ResidencyFixture.At(0, 0));
-            Assert.True(residency.TryGetContent(home, out MapTileContent before));
-            sink.Reset();
+                using MapDocumentSource source = MapDocumentSource.OpenTiled(directory);
+                var sink = new RecordingTileSink();
+                using var residency = new MapTileResidency(source, Sync(1, 2), sink);
+                var home = new MapTileCoord(0, 0);
 
-            residency.Invalidate(home);
+                residency.Update(new Vector3(10f, 0f, 20f));   // sits inside document tile (0, 0)
+                Assert.True(residency.TryGetContent(home, out MapTileContent before));
+                Assert.Equal(2, before.Placements.Count);      // p-a, p-b
+                sink.Reset();
 
-            Assert.Equal(home, Assert.Single(sink.Unloaded));
-            Assert.Equal(home, Assert.Single(sink.LoadedCoords()));
-            Assert.True(residency.TryGetContent(home, out MapTileContent after));
-            Assert.NotSame(before, after);
-            Assert.Equal(before.Placements.Count, after.Placements.Count);
+                // The editor re-saves the SAME tile with a genuinely different placement set, which lands under
+                // a new content hash - the exact case a frozen index cannot re-read without
+                // MapDocumentSource.Refresh() (F2).
+                doc.Placements.Add(new MapPlacement { Id = "p-new", Kind = "rock", X = 50f, Z = 60f });
+                MapDocumentFile.SaveTiled(doc, directory);
 
-            // A tile that is not resident has nothing to re-read: it picks the new content up when it arrives.
-            sink.Reset();
-            residency.Invalidate(new MapTileCoord(40, 40));
-            Assert.Empty(sink.Unloaded);
-            Assert.Empty(sink.Loaded);
+                residency.Invalidate(home);
+
+                Assert.Equal(home, Assert.Single(sink.Unloaded));
+                Assert.Equal(home, Assert.Single(sink.LoadedCoords()));
+                Assert.True(residency.TryGetContent(home, out MapTileContent after));
+                Assert.NotSame(before, after);
+                Assert.Equal(3, after.Placements.Count);
+                Assert.Contains(after.Placements, p => p.Id == "p-new");
+
+                // A tile that is not resident has nothing to re-read: it picks the new content up when it
+                // arrives.
+                sink.Reset();
+                residency.Invalidate(new MapTileCoord(40, 40));
+                Assert.Empty(sink.Unloaded);
+                Assert.Empty(sink.Loaded);
+            });
         }
 
         [Fact]
@@ -296,9 +377,116 @@ namespace KhaozEngine.Tests.MapDoc
             residency.Update(ResidencyFixture.At(0, 0));
             Assert.Equal(9, sink.Loaded.Count);   // and it refills cleanly afterwards
 
+            sink.Reset();
             residency.Dispose();
+            Assert.Equal(9, sink.Unloaded.Count);   // Dispose drains through the sink too, not just UnloadAll
+            Assert.Empty(residency.Resident);
+
             residency.Dispose();                  // idempotent
             Assert.Throws<ObjectDisposedException>(() => residency.Update(ResidencyFixture.At(0, 0)));
+        }
+
+        [Fact]
+        public void ArrivingTileProps_ReachAnAlreadyBuiltChunk_ThroughARealStreamerInvalidate()
+        {
+            // F1 regression. The composition contract's third leg in practice: a REAL residency wired to a REAL
+            // TerrainStreamer through a sink whose TileLoaded calls streamer.Invalidate on arrival - the pattern
+            // the class doc names, and the one PlacementSourceLayerTests.StreamedPlacements_ReachTheSink (a fake
+            // IPlacementSource, no MapTileResidency involved) cannot exercise. BuildGate is left null (the
+            // un-gated default): the streamer already built the chunk once, against nothing, BEFORE the
+            // document tile lands - the exact configuration the reviewer reproduced the failure in. If Publish()
+            // ran after TileLoaded, the streamer's synchronous rebuild inside TileLoaded would read the snapshot
+            // from BEFORE this tile arrived and the props would never draw.
+            const float chunkSize = 64f;
+            var doc = new MapDocument
+            {
+                Id = "streamer-wiring", DisplayName = "Streamer Wiring",
+                Bounds = new MapBounds { MinX = -512f, MinZ = -512f, MaxX = 512f, MaxZ = 512f },
+                TileSize = ResidencyFixture.Tile,
+            };
+            // An explicit Y: this residency is built with no TerrainField, and PlacementsIn throws for a
+            // null-Y placement without one - orthogonal to what F1 is about. Kind (not Id) is what
+            // MapTileResidency.PlacementsIn carries into PropPlacement.Id, so Kind is what the assertion below
+            // checks.
+            doc.Placements.Add(new MapPlacement { Id = "p-a", Kind = "p-a", X = 10f, Z = 20f, Y = 0f });
+            using MapDocumentSource source = MapDocumentSource.FromDocument(doc);
+            var dispatcher = new ManualTileDispatcher();
+            var tileSink = new InvalidatingMapTileSink(source.Tiles.TileSize);
+            // LoadRadius 0: the desired ring is exactly the focus tile, so exactly one read is in flight below.
+            using var residency = new MapTileResidency(source, new MapResidencyConfig(0, 1, 8), tileSink, dispatcher);
+
+            var chunkSink = new PropCapturingChunkSink(residency, chunkSize);
+            var streamerConfig = new StreamerConfig(LoadRadius: 2, UnloadRadius: 3, MaxLoadsPerFrame: 8, ChunkSize: chunkSize);
+            using var streamer = new TerrainStreamer(streamerConfig, chunkSink);
+            tileSink.Streamer = streamer;   // BuildGate stays null: the un-gated case the finding calls out
+
+            var focus = new Vector3(10f, 0f, 20f);   // exactly where placement p-a sits
+            ChunkCoord homeChunk = ChunkGrid.CoordOf(focus.X, focus.Z, chunkSize);
+
+            // The streamer runs once BEFORE the tile arrives: the chunk builds now, against nothing.
+            streamer.Update(focus, 1f / 60f);
+            Assert.True(chunkSink.Props.TryGetValue(homeChunk, out List<PropPlacement>? before));
+            Assert.Empty(before!);
+
+            // Residency requests the tile asynchronously and it is still in flight.
+            residency.Update(focus);
+            Assert.Equal(1, dispatcher.PendingCount);
+
+            // Complete the read: Pump -> ApplyReady fires TileLoaded, which (through the glue sink) calls
+            // streamer.Invalidate SYNCHRONOUSLY, rebuilding the already-loaded chunk and re-querying
+            // residency.PlacementsIn right then, inside the same call.
+            dispatcher.RunAll();
+            residency.Update(focus);
+
+            Assert.True(chunkSink.Props.TryGetValue(homeChunk, out List<PropPlacement>? after));
+            Assert.Equal("p-a", Assert.Single(after!).Id);
+        }
+    }
+
+    /// <summary>An <see cref="IMapTileSink"/> that glues residency arrivals to a real
+    /// <see cref="TerrainStreamer"/>, exactly as the class doc's composition contract describes:
+    /// <c>TileLoaded</c> re-invalidates the document tile's chunk footprint. <see cref="Streamer"/> is settable
+    /// because the streamer's own sink needs residency (as an <see cref="IPlacementSource"/>) to exist first, so
+    /// the two cannot be constructed in one line each.</summary>
+    sealed class InvalidatingMapTileSink : IMapTileSink
+    {
+        readonly float _tileSize;
+        public TerrainStreamer? Streamer;
+
+        public InvalidatingMapTileSink(float tileSize) => _tileSize = tileSize;
+
+        public void TileLoaded(MapTileCoord coord, MapTileContent content, ChunkRing ring) =>
+            Streamer?.Invalidate(MapTileGrid.AreaOf(coord, _tileSize));
+
+        public void TileRingChanged(MapTileCoord coord, MapTileContent content, ChunkRing ring) { }
+        public void TileUnloaded(MapTileCoord coord) { }
+    }
+
+    /// <summary>An <see cref="IChunkSink"/> that builds by querying a live <see cref="IPlacementSource"/> (the
+    /// production wiring an <see cref="IPlacementSource"/>-backed <c>PropLayer</c> uses) and records what each
+    /// chunk got, so a test can see whether an arrival actually reached an already-loaded chunk.</summary>
+    sealed class PropCapturingChunkSink : IChunkSink
+    {
+        readonly IPlacementSource _placements;
+        readonly float _chunkSize;
+        public readonly Dictionary<ChunkCoord, List<PropPlacement>> Props = new();
+
+        public PropCapturingChunkSink(IPlacementSource placements, float chunkSize)
+        {
+            _placements = placements;
+            _chunkSize = chunkSize;
+        }
+
+        public object Load(ChunkCoord coord, int lod, ChunkRing ring) => Build(coord);
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring) => Build(coord);
+        public void Unload(ChunkCoord coord, object handle) => Props.Remove(coord);
+
+        object Build(ChunkCoord coord)
+        {
+            var into = new List<PropPlacement>();
+            _placements.PlacementsIn(ChunkGrid.AreaOf(coord, _chunkSize), into);
+            Props[coord] = into;
+            return coord;
         }
     }
 }

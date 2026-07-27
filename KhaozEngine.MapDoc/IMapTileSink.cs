@@ -11,7 +11,16 @@ namespace KhaozEngine.MapDoc;
 /// <see cref="MapTileResidency.Update(System.Numerics.Vector3)"/> (or <c>PrimeAround</c> / <c>UnloadAll</c> /
 /// <c>Invalidate</c>), before that call returns, so a consumer registers and frees physics bodies with no lock.
 /// The file read and parse that produced <c>content</c> ran on a worker thread, but the handoff to you does
-/// not.</para></summary>
+/// not.</para>
+/// <para><b>No re-entrancy.</b> A callback must not call back into the <see cref="MapTileResidency"/> it came
+/// from - <c>Update</c>, <c>PrimeAround</c>, <c>FlushPendingLoads</c>, <c>UnloadAll</c>, <c>Dispose</c> or
+/// <c>Invalidate</c> - while still inside <c>TileLoaded</c>, <c>TileRingChanged</c> or <c>TileUnloaded</c>.
+/// Residency's own scratch collections are mid-iteration for the very call that is running, so re-entering
+/// would mutate them out from under it. A cheap re-entrancy flag turns that into a loud
+/// <see cref="System.InvalidOperationException"/> instead of a corrupted scratch list: queue the work and run
+/// it once the outer call returns. A callback rebuilding something else that reads THIS residency (a chunk
+/// streamer's <c>Invalidate</c>, say) is fine and is exactly what <see cref="TileLoaded"/> is for - the rule is
+/// about calling back into this residency's own API, not about triggering other work.</para></summary>
 public interface IMapTileSink
 {
     /// <summary>The tile entered residency, at <paramref name="ring"/>. Fires exactly once per arrival. This is

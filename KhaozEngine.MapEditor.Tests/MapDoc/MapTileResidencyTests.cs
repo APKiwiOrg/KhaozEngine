@@ -253,6 +253,85 @@ namespace KhaozEngine.Tests.MapDoc
         }
 
         [Fact]
+        public void LateArrivalNoLongerDesired_IsDroppedNotAppliedAsGameplay()
+        {
+            // F3 regression. A read can complete after the focus moved the tile out of the desired set but
+            // before DropDeparted evicts it: the hysteresis band means MinChebyshev can still be <= UnloadRadius
+            // even though the tile is no longer in _desired. Applying it anyway used to default its ring to
+            // Gameplay and resurrect a tile nothing asked for, one that would never leave until something else
+            // evicted it. The fix drops a late read for an undesired tile instead, exactly like a cancelled one.
+            using MapDocumentSource source = ResidencyFixture.Source(ResidencyFixture.Square(2));
+            var sink = new RecordingTileSink();
+            var dispatcher = new ManualTileDispatcher();
+            // LoadRadius 0: the desired set is exactly the focus tile, so each Update below wants exactly one.
+            using var residency = new MapTileResidency(source, Async(load: 0, unload: 2, budget: 10), sink, dispatcher);
+
+            residency.Update(ResidencyFixture.At(1, 0));
+            Assert.Equal(1, dispatcher.PendingCount);           // tile (1, 0) requested, not yet completed
+
+            // Focus moves to tile (2, 0): tile (1, 0) leaves the desired set (LoadRadius 0) but stays inside the
+            // UnloadRadius(2) hysteresis band (MinChebyshev 1), so DropDeparted does not cancel its in-flight
+            // read.
+            residency.Update(ResidencyFixture.At(2, 0));
+            Assert.Equal(2, dispatcher.PendingCount);           // (1, 0) still in flight, plus a fresh (2, 0)
+
+            dispatcher.RunAt(0);                                // completes the now-STALE (1, 0) read
+            sink.Reset();
+            residency.Update(ResidencyFixture.At(2, 0));        // Pump moves it to _ready; ApplyReady must drop it
+
+            Assert.DoesNotContain(new MapTileCoord(1, 0), residency.Resident);
+            Assert.Empty(sink.Loaded);                          // never applied, so the sink never heard about it
+        }
+
+        [Fact]
+        public void PublishRunsInFinally_SoAThrowingReadDoesNotLeaveTheSnapshotStale()
+        {
+            // F5 regression. DropDeparted can fire TileUnloaded for a resident tile in the SAME update that
+            // Pump() then throws for an unrelated tile's failed read. Publish() must still run in that case, or
+            // the published snapshot goes stale: it would keep serving placements for a tile the sink was
+            // already told is gone.
+            var doc = new MapDocument
+            {
+                Id = "publish-finally-check", DisplayName = "Publish Finally Check",
+                Bounds = new MapBounds { MinX = -4096f, MinZ = -4096f, MaxX = 4096f, MaxZ = 4096f },
+                TileSize = ResidencyFixture.Tile,
+            };
+            doc.Placements.Add(new MapPlacement { Id = "good", Kind = "rock", X = 10f, Z = 20f, Y = 0f });   // tile (0, 0)
+            doc.Placements.Add(new MapPlacement                                                              // tile (0, 1), fails per-tile validation
+            {
+                Id = "bad", Kind = "rock", X = 10f, Z = ResidencyFixture.Tile + 20f, Y = 0f, Scale = 0f,
+            });
+            using MapDocumentSource source = MapDocumentSource.FromDocument(doc);
+            var sink = new RecordingTileSink();
+            var dispatcher = new ManualTileDispatcher();
+            using var residency = new MapTileResidency(source, new MapResidencyConfig(1, 2, 8), sink, dispatcher);
+
+            residency.Update(ResidencyFixture.At(0, 0));
+            Assert.Equal(2, dispatcher.PendingCount);        // both (0, 0) and (0, 1) requested
+
+            dispatcher.RunAt(0);                             // completes the GOOD tile's read
+            residency.Update(ResidencyFixture.At(0, 0));
+            Assert.Contains(new MapTileCoord(0, 0), residency.Resident);
+
+            var into = new List<PropPlacement>();
+            residency.PlacementsIn(new RectArea(-4096f, -4096f, 4096f, 4096f), into);
+            Assert.Single(into);
+
+            dispatcher.RunAt(0);                             // completes the BAD tile's read. The failure is
+                                                               // caught inside the scheduled body and surfaces
+                                                               // at Pump() instead, on the NEXT Update
+
+            // Move far enough that tile (0, 0) departs (beyond UnloadRadius 2) while tile (0, 1)'s failed read
+            // stays tracked (still within UnloadRadius 2), so Pump() throws in the SAME update DropDeparted
+            // fired TileUnloaded for (0, 0).
+            Assert.Throws<MapDocumentException>(() => residency.Update(ResidencyFixture.At(0, 3)));
+
+            into.Clear();
+            residency.PlacementsIn(new RectArea(-4096f, -4096f, 4096f, 4096f), into);
+            Assert.Empty(into);   // the published snapshot dropped the departed tile despite the throw
+        }
+
+        [Fact]
         public void CancelledLoadIsDiscarded()
         {
             using MapDocumentSource source = ResidencyFixture.Source(ResidencyFixture.Square(1));
@@ -332,6 +411,21 @@ namespace KhaozEngine.Tests.MapDoc
 
             Assert.Empty(residency.Resident);
             Assert.Equal(9, sink.Unloaded.Count);
+        }
+
+        [Fact]
+        public void CallbackThatCallsBackIntoUpdate_ThrowsLoudlyInsteadOfCorruptingState()
+        {
+            // F7 regression. IMapTileSink forbids a callback re-entering the residency it came from - guarded
+            // with a cheap re-entrancy flag so this is a loud InvalidOperationException, not a scratch
+            // collection mutated out from under the call that is still iterating it.
+            using MapDocumentSource source = ResidencyFixture.Source((0, 0));
+            var sink = new ReentrantTileSink();
+            using var residency = new MapTileResidency(source, Sync(1, 2), sink);
+            sink.Residency = residency;
+            sink.Reentry = r => r.Update(ResidencyFixture.At(0, 0));
+
+            Assert.Throws<InvalidOperationException>(() => residency.Update(ResidencyFixture.At(0, 0)));
         }
 
         [Fact]

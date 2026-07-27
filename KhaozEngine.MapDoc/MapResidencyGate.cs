@@ -13,7 +13,13 @@ namespace KhaozEngine.MapDoc;
 /// containing its ORIGIN corner: ground inside this chunk can carry deltas owned by the neighbour on the low
 /// side, so the chunk waits for that neighbour too.</para>
 /// <para>This is the per-chunk half of the same inset <see cref="MapResidencyConfig.ValidateAgainst"/> checks at
-/// startup. The startup check is the backstop, this is the defence.</para></summary>
+/// startup. The startup check is the backstop, this is the defence.</para>
+/// <para>Once the residency behind this gate is DISPOSED, <see cref="CanBuild"/> turns permissive (every chunk
+/// builds) instead of refusing forever: a disposed residency reports nothing resident, so the occupied-but-not-
+/// resident test above would otherwise defer every occupied tile for good. The cleaner shutdown path is
+/// clearing <c>TerrainStreamer.BuildGate</c> back to null before or alongside disposing the residency, so the
+/// gate is never consulted during teardown. This permissive fallback only catches a caller that does not do
+/// that.</para></summary>
 sealed class MapResidencyGate : IChunkBuildGate
 {
     readonly MapTileResidency _residency;
@@ -33,6 +39,8 @@ sealed class MapResidencyGate : IChunkBuildGate
 
     public bool CanBuild(ChunkCoord coord)
     {
+        if (_residency.IsDisposed) return true;
+
         RectArea area = ChunkGrid.AreaOf(coord, _chunkSize);
         float tileSize = _residency.TileSize;
 

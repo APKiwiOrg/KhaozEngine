@@ -139,6 +139,21 @@ namespace KhaozEngine.Tests.MapDoc
         }
     }
 
+    /// <summary>F7 regression fixture: a sink whose <see cref="TileLoaded"/> calls straight back into the
+    /// residency it came from, which <see cref="IMapTileSink"/>'s doc forbids. Set <see cref="Residency"/> and
+    /// <see cref="Reentry"/> (an action against it) before the first callback fires.</summary>
+    internal sealed class ReentrantTileSink : IMapTileSink
+    {
+        internal MapTileResidency? Residency;
+        internal Action<MapTileResidency>? Reentry;
+
+        public void TileLoaded(MapTileCoord coord, MapTileContent content, ChunkRing ring) =>
+            Reentry?.Invoke(Residency!);
+
+        public void TileRingChanged(MapTileCoord coord, MapTileContent content, ChunkRing ring) { }
+        public void TileUnloaded(MapTileCoord coord) { }
+    }
+
     /// <summary>Queues tile reads instead of running them, so a test drives completion order by hand. Mirrors
     /// the streamer suite's manual dispatcher.</summary>
     internal sealed class ManualTileDispatcher : IChunkBuildDispatcher

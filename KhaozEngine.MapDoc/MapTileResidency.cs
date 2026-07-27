@@ -35,7 +35,8 @@ namespace KhaozEngine.MapDoc;
 /// <c>ChunkBuildScheduler</c> maintains for chunks. <see cref="PlacementsIn"/> and the
 /// <see cref="GateFor">build gate</see> are the two members safe to call from a build thread: both read one
 /// immutable published snapshot. <see cref="Resident"/>, <see cref="RingOf"/> and
-/// <see cref="TryGetContent"/> are frame-thread members.</para></summary>
+/// <see cref="TryGetContent"/> are frame-thread members. No callback may call back into this residency - see
+/// <see cref="IMapTileSink"/>.</para></summary>
 public sealed class MapTileResidency : IDisposable, IPlacementSource
 {
     readonly MapDocumentSource _source;
@@ -69,6 +70,17 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     readonly List<Pending> _applyOrder = new();
     readonly List<MapTileCoord> _scratch = new();
     bool _disposed;
+
+    // Set for the exact duration of one IMapTileSink callback (TileLoaded/TileRingChanged/TileUnloaded), so a
+    // callback that calls back into this residency is caught loudly rather than mutating a scratch collection
+    // the outer call is still iterating.
+    bool _inCallback;
+
+    const string ReentrancyMessage =
+        "an IMapTileSink callback (TileLoaded, TileRingChanged or TileUnloaded) called back into this " +
+        "MapTileResidency (Update, PrimeAround, FlushPendingLoads, UnloadAll, Dispose or Invalidate) while it " +
+        "was still firing. A callback must not re-enter the residency it came from - queue the work and run " +
+        "it after the outer call returns.";
 
     readonly record struct Completion(MapTileCoord Coord, long Gen, MapTileContent? Content, Exception? Error);
 
@@ -137,10 +149,15 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     /// thread.</summary>
     internal bool IsResident(MapTileCoord coord) => _snapshot.ContainsKey(coord);
 
+    /// <summary>True once this residency is disposed. <see cref="MapResidencyGate"/> reads this to turn
+    /// permissive instead of refusing every occupied tile forever once nothing is resident any more.</summary>
+    internal bool IsDisposed => _disposed;
+
     /// <summary>Client form: one focus.</summary>
     public void Update(Vector3 focus)
     {
         ThrowIfDisposed();
+        ThrowIfInCallback();
         _foci.Clear();
         _foci.Add(focus);
         UpdateCore();
@@ -160,6 +177,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     public void Update(ReadOnlySpan<Vector3> foci)
     {
         ThrowIfDisposed();
+        ThrowIfInCallback();
         _foci.Clear();
         for (int i = 0; i < foci.Length; i++) _foci.Add(foci[i]);
         UpdateCore();
@@ -173,9 +191,19 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
         changed |= ApplyRingChanges();
         RequestArrivals();
 
-        Pump();
-        changed |= ApplyReady(_config.MaxLoadsPerUpdate);
-        if (changed) Publish();
+        // Pump() can throw (a worker-thread read failed), and DropDeparted above may already have fired
+        // TileUnloaded and removed the departed tiles from _content. Publish() runs in a finally so a throwing
+        // read cannot leave _snapshot stale against _content: the sink already believes those tiles are gone,
+        // and the published snapshot must agree even though this Update is about to propagate an exception.
+        try
+        {
+            Pump();
+            changed |= ApplyReady(_config.MaxLoadsPerUpdate);
+        }
+        finally
+        {
+            if (changed) Publish();
+        }
     }
 
     /// <summary>Deterministic BLOCKING fill of the whole ring around one focus, for a loading moment rather than
@@ -185,6 +213,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     public void PrimeAround(Vector3 focus)
     {
         ThrowIfDisposed();
+        ThrowIfInCallback();
         int before = -1;
         while (_resident.Count != before)
         {
@@ -200,6 +229,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     public void FlushPendingLoads()
     {
         ThrowIfDisposed();
+        ThrowIfInCallback();
         _dispatcher.Drain();
         Pump();
         if (ApplyReady(int.MaxValue)) Publish();
@@ -207,24 +237,36 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
 
     /// <summary>The build gate to hand <see cref="TerrainStreamer.BuildGate"/>, for a given chunk size and sculpt
     /// cell size. A chunk is buildable only when every document tile its sculpt-expanded footprint touches is
-    /// either resident or unoccupied. See <see cref="IChunkBuildGate"/>.</summary>
+    /// either resident or unoccupied. See <see cref="IChunkBuildGate"/>.
+    /// <para>Once THIS residency is disposed the gate turns permissive (every chunk builds) instead of refusing
+    /// every occupied tile forever, which is what it would otherwise do once nothing reports resident any more.
+    /// The cleaner shutdown path is clearing <c>TerrainStreamer.BuildGate</c> back to null before or alongside
+    /// disposing this residency, so the gate is not consulted at all during teardown. The permissive fallback is
+    /// only the safety net for a caller that does not do that.</para></summary>
     public IChunkBuildGate GateFor(float chunkSize, float sculptCellSize) =>
         new MapResidencyGate(this, chunkSize, sculptCellSize);
 
-    /// <summary>Re-read one resident tile from the source (an editor wrote it, a tool regenerated it). Fires
-    /// <see cref="IMapTileSink.TileUnloaded"/> then <see cref="IMapTileSink.TileLoaded"/> for it, because the
-    /// bodies and sculpt a consumer built from the OLD content have to go before the new content replaces it.
+    /// <summary>Re-read one resident tile from the source (an editor wrote it, a tool regenerated it). Calls
+    /// <see cref="MapDocumentSource.Refresh"/> first: a re-saved tile is content-addressed, so its file gets a
+    /// new name on every edit, and without a fresh index <see cref="MapDocumentSource.ReadTile"/> would still
+    /// seek the OLD name. Fires <see cref="IMapTileSink.TileUnloaded"/> then <see cref="IMapTileSink.TileLoaded"/>
+    /// for it, because the bodies and sculpt a consumer built from the OLD content have to go before the new
+    /// content replaces it, and publishes the new snapshot BEFORE that <c>TileLoaded</c> fires, so a consumer
+    /// that reads placements from inside the callback (directly, or indirectly through something like
+    /// <c>TerrainStreamer.Invalidate</c>) sees the new content rather than the stale published snapshot.
     /// A no-op for a tile that is not resident: it picks up the new content when it next arrives.</summary>
     /// <exception cref="MapDocumentException">The tile cannot be read or fails per-tile validation.</exception>
     public void Invalidate(MapTileCoord coord)
     {
         ThrowIfDisposed();
+        ThrowIfInCallback();
         if (!_resident.TryGetValue(coord, out ChunkRing ring)) return;
+        _source.Refresh();
         MapTileContent content = _source.ReadTile(coord);
-        _sink.TileUnloaded(coord);
+        FireUnloaded(coord);
         _content[coord] = content;
-        _sink.TileLoaded(coord, content, ring);
         Publish();
+        FireLoaded(coord, content, ring);
     }
 
     /// <summary>Drop every resident tile through the sink and discard any outstanding read. After this
@@ -232,6 +274,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     /// reproducible.</summary>
     public void UnloadAll()
     {
+        ThrowIfInCallback();
         Reset();
         if (_resident.Count == 0) return;
         _scratch.Clear();
@@ -239,7 +282,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
         _scratch.Sort(static (a, b) => a.Z != b.Z ? a.Z.CompareTo(b.Z) : a.X.CompareTo(b.X));
         _resident.Clear();
         _content.Clear();
-        foreach (MapTileCoord c in _scratch) _sink.TileUnloaded(c);
+        foreach (MapTileCoord c in _scratch) FireUnloaded(c);
         Publish();
     }
 
@@ -249,6 +292,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     public void Dispose()
     {
         if (_disposed) return;
+        ThrowIfInCallback();
         UnloadAll();
         _disposed = true;
     }
@@ -335,7 +379,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
                 MapTileCoord c = _scratch[i];
                 _resident.Remove(c);
                 _content.Remove(c);
-                _sink.TileUnloaded(c);
+                FireUnloaded(c);
                 changed = true;
             }
         }
@@ -374,7 +418,7 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
             MapTileCoord c = _scratch[i];
             ChunkRing ring = _desired[c];
             _resident[c] = ring;
-            _sink.TileRingChanged(c, _content[c], ring);
+            FireRingChanged(c, _content[c], ring);
             changed = true;
         }
         return changed;
@@ -446,17 +490,28 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
         foreach (MapTileCoord c in _ready.Keys) _applyOrder.Add(new Pending(c, MinDistance(c)));
         _applyOrder.Sort(NearestFirst);
         int take = Math.Min(max, _applyOrder.Count);
+        bool changed = false;
         for (int i = 0; i < take; i++)
         {
             MapTileCoord c = _applyOrder[i].Coord;
             MapTileContent content = _ready[c];
             _ready.Remove(c);
-            ChunkRing ring = _desired.TryGetValue(c, out ChunkRing r) ? r : ChunkRing.Gameplay;
+            // The read outlived the tile's place in the desired set: the focus moved on while it was in flight,
+            // and it survived DropDeparted only because it had not yet crossed the unload radius (the
+            // hysteresis band). Applying it anyway would resurrect an undesired tile at a guessed ring and it
+            // would never leave until something else evicts it - drop it instead, exactly like a cancelled read.
+            if (!_desired.TryGetValue(c, out ChunkRing ring)) continue;
             _resident[c] = ring;
             _content[c] = content;
-            _sink.TileLoaded(c, content, ring);
+            // Publish BEFORE the callback: a consumer's TileLoaded commonly triggers a synchronous rebuild
+            // (e.g. a chunk sink calling back into a streamer's Invalidate) that reads this residency's
+            // placements right then. Publishing after the callback would hand that rebuild the snapshot from
+            // BEFORE this tile arrived, so the tile's props silently never draw.
+            Publish();
+            FireLoaded(c, content, ring);
+            changed = true;
         }
-        return take > 0;
+        return changed;
     }
 
     // Nearest first, with an ascending (Z, then X) tie-break so two tiles equidistant from the focus still have
@@ -480,6 +535,36 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
     }
 
     void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    void ThrowIfInCallback()
+    {
+        if (_inCallback) throw new InvalidOperationException(ReentrancyMessage);
+    }
+
+    // --- Sink dispatch, all three routed through here so _inCallback covers exactly the window a callback is
+    // actually running in - no wider (a legitimate nested call, e.g. PrimeAround calling Update, must not trip
+    // it) and no narrower (a callback that calls back in must be caught before it touches any scratch state). ---
+
+    void FireLoaded(MapTileCoord coord, MapTileContent content, ChunkRing ring)
+    {
+        _inCallback = true;
+        try { _sink.TileLoaded(coord, content, ring); }
+        finally { _inCallback = false; }
+    }
+
+    void FireRingChanged(MapTileCoord coord, MapTileContent content, ChunkRing ring)
+    {
+        _inCallback = true;
+        try { _sink.TileRingChanged(coord, content, ring); }
+        finally { _inCallback = false; }
+    }
+
+    void FireUnloaded(MapTileCoord coord)
+    {
+        _inCallback = true;
+        try { _sink.TileUnloaded(coord); }
+        finally { _inCallback = false; }
+    }
 
     /// <summary>Chebyshev tile distance to the NEAREST focus, which is the metric the whole ring is drawn in.
     /// int.MaxValue with no foci at all, so an Update with an empty span unloads everything rather than keeping

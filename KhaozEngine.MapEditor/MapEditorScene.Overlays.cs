@@ -77,7 +77,7 @@ public partial class MapEditorScene
     /// scatter overrides orange, regions blue-ish) and each terrain feature a small amber marker disc at its center,
     /// all lifted a small epsilon above
     /// the sampled ground so they clear the terrain. The overlay whose element matches <paramref name="selection"/>
-    /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z); a
+    /// is flagged and brightened. <paramref name="sampleHeight"/> supplies the ground height at an (x, z). A
     /// <c>null</c> shape, a polygon with fewer than three points, or a feature whose center cannot be derived (an
     /// unknown custom type) is skipped, and so is any element <paramref name="visibility"/> hides (its group is off
     /// or it is individually hidden), so a hidden overlay is not drawn. Leaves the buffer empty when

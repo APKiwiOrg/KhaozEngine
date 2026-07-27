@@ -5780,11 +5780,28 @@ interactive viewport state, so they have no MCP equivalent: `ke-mapedit`'s rende
 one-shot calls with nothing to store a camera pose between.
 
 **Save semantics.** Ctrl+S (`MapEditorScene.SaveDocument`) validates through the same load-time
-`MapDocumentFile.Save` validator before writing, so an invalid document is never written to disk. A
-validation failure lands as a message in the status strip instead of throwing. A successful save also
-calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's leading `*`) and sealing
-the current gesture, so a later same-gesture edit can never merge into the just-saved command and hide
-itself from `IsDirty`.
+`MapDocumentFile.Save`/`SaveAuto` validator before writing, so an invalid document is never written to
+disk. A validation failure lands as a message in the status strip instead of throwing. A successful save
+also calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status strip's leading `*`) and
+sealing the current gesture, so a later same-gesture edit can never merge into the just-saved command and
+hide itself from `IsDirty`.
+
+**Tiled documents.** `MapEditorOptions.DocumentPath` may name a `.map.json` file OR a tiled document
+directory: `CreateDocument` dispatches on `MapDocumentFile.DetectForm` (never `File.Exists`, which is
+false for a directory and used to fall through to a blank untitled document, silently discarding whatever
+Ctrl+S then overwrote). Below `MapEditorOptions.WholeWorldTileLimit` occupied tiles (default 512) a tiled
+document loads whole, exactly like a monolithic one. Above it the editor opens a WINDOW instead (see
+`MapDocumentWindowing`), centered on the tile containing the document bounds' midpoint,
+`MapEditorOptions.EditorWindowRadius` tiles either side (default 2), and the status strip's `window:
+(minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`, tile coordinates) shows the loaded extent. Ctrl+S
+always saves back in the form and directory the document was opened from (`MapDocumentFile.SaveAuto`),
+never converting implicitly: a plain `.map.json` load-then-save round-trips as monolithic, a tiled
+directory round-trips as tiled, touching only the tiles that actually changed. Moving content into a tile
+the loaded window never covered surfaces as an ordinary "Save failed: ..." status message
+(`MapDocumentException`, the same guard `SaveTiled` states on the document itself), not a crash. Explicit
+form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retile`) are `ke-mapedit` verbs,
+below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
+the tool, and the GUI editor just opens whatever form is already on disk.
 
 **Renaming.** The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
 row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,
@@ -5857,17 +5874,38 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 (`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
 into the thrown message on failure, so the in-session document is never left invalid.
 
+**Tiled documents, whole-load vs windowed.** `map_open` and `map_save` are form-aware, exactly like the GUI
+editor: `map_open` dispatches on `MapDocumentFile.DetectForm` (a directory loads tiled, a file loads
+monolithic), and a tiled document at or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default
+512, matching `MapEditorOptions.WholeWorldTileLimit`) loads WHOLE. Above it, `map_open` windows instead:
+the manifest plus only the tiles inside a square centered on the document bounds, radius
+`EditorWindowRadius` tiles (default 2). `map_save` always writes back in the form and directory the
+document came from (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the
+loaded window's tile and world rect plus the occupied/loaded tile counts (`Tiled` false for a monolithic
+document). `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window: it refuses with unsaved
+changes unless `discard` is passed, and on success discards whatever was loaded before (this session keeps
+no undo stack across calls, so there is nothing to replay) and reloads fresh from the manifest. Writing
+content that moved into a tile the window never loaded throws a precise `MapDocumentException` naming the
+item and the target tile rather than silently dropping it, the same guard `SaveTiled` states on the
+document itself. `convert_to_tiled(directory)` / `convert_to_single(path)` change the on-disk FORM
+explicitly (`MapDocumentFile.SaveAs`, no extension heuristics: `Path.GetExtension("island.map")` is
+`".map"`, not empty, so guessing from the path would route a directory-shaped name to the wrong writer) and
+always preserve `tileSize` and the world hash exactly. `retile(tileSize)` changes `tileSize` itself and
+re-saves: `tileSize` IS part of world identity (`MapDocumentHash.OfWorld`), so this changes the world hash
+on purpose, and the result's `Warning` states the before/after digests plainly rather than leaving a caller
+to notice a coordinated client/server release is now needed.
+
 **Features and shapes cross the wire as JSON.** Terrain features (`featureJson`) and
 exclusion/region/override shapes (`shapeJson`) are registry-open or polymorphic unions, so they cross
 the MCP boundary as raw JSON strings parsed with the open document's own serializer options rather than
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (73 tools).**
+**Verb surface (78 tools).**
 
 | Group | Verbs |
 |---|---|
-| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary` |
+| Document | `map_open`, `map_create`, `map_save`, `map_validate`, `map_summary`, `set_window`, `window_status`, `convert_to_tiled`, `convert_to_single`, `retile` |
 | Query | `ground_height`, `is_walkable`, `placements_in_rect`, `scatter_preview_in_rect`, `find_flat_area`, `procedural_info`, `exclusions_info`, `scatter_overrides_info`, `sculpt_stats` |
 | Placements | `placement_add`, `placement_move`, `placement_rotate`, `placement_scale`, `placement_rename`, `placement_remove` |
 | Spawns | `spawn_add`, `spawn_move`, `spawn_set_enabled`, `spawn_rename`, `spawn_remove` |

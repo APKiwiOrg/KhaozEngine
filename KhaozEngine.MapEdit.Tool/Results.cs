@@ -8,6 +8,27 @@ public sealed record OpenResult(string Path, string Id, string DisplayName, MapS
 /// <summary>Result of a save: the path written and whether it was saved.</summary>
 public sealed record SaveResult(string Path, bool Saved);
 
+/// <summary>The loaded window of the open document: <see cref="Tiled"/> false for a monolithic or in-memory
+/// document, in which case every other field is its default. <see cref="Windowed"/> is the tiled document's
+/// own <c>MapTileIndex.IsPartial</c>: true only when at least one occupied tile is not currently loaded. The
+/// tile-coordinate and world-coordinate rect fields are null when the whole world is loaded (including a
+/// whole-loaded, unwindowed tiled document), never a scanned whole-document extent. <see cref="OccupiedCount"/>
+/// and <see cref="LoadedCount"/> are always the document's tile index totals regardless of windowing.</summary>
+public sealed record WindowStatusResult(bool Tiled, bool Windowed,
+    int? MinTileX, int? MinTileZ, int? MaxTileX, int? MaxTileZ,
+    float? MinX, float? MinZ, float? MaxX, float? MaxZ,
+    int OccupiedCount, int LoadedCount);
+
+/// <summary>Result of an explicit form conversion (<c>convert_to_tiled</c> / <c>convert_to_single</c>): the
+/// path written, the form written in ("Tiled" or "Monolithic"), the preserved <c>MapDocument.TileSize</c>, and
+/// the world hash, which a conversion never changes (the same world, a different on-disk layout).</summary>
+public sealed record ConvertResult(string Path, string Form, float TileSize, string WorldHash);
+
+/// <summary>Result of <c>retile</c>: the path re-saved, the new tile size, the world hash before and after, and
+/// a warning that states plainly whether (and how) the world hash changed, since <c>tileSize</c> is part of
+/// world identity and a re-tile that changed it needs a coordinated client and server release.</summary>
+public sealed record RetileResult(string Path, float TileSize, string OldWorldHash, string NewWorldHash, string Warning);
+
 /// <summary>Result of validation: structural (semantic) validity and JSON-schema validity, each with its
 /// errors. When the document is structurally invalid the schema check is skipped and its errors carry a note.</summary>
 public sealed record ValidateResult(bool StructuralValid, IReadOnlyList<string> StructuralErrors,

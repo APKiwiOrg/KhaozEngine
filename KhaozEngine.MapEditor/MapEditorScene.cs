@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Game;
@@ -14,62 +13,6 @@ using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 
 namespace KhaozEngine.MapEditor;
-
-/// <summary>Turn-key startup for <see cref="MapEditorScene"/>: which document to open (and save back to on
-/// Ctrl+S), the asset manifests the palette + picking read, the feature registry, and the game-supplied spawn
-/// archetype list. A per-game editor head fills this and pushes the scene onto its <see cref="SceneManager"/>.
-/// </summary>
-public sealed class MapEditorOptions
-{
-    /// <summary>The map document file to load on enter and save back to on Ctrl+S. Empty starts a blank document.</summary>
-    public string DocumentPath = "";
-
-    /// <summary>How the editor leaves when it is the bottom scene on the stack (nothing to pop back to). The head
-    /// wires this to its own quit path (a <c>GameApp3D</c> subclass calling the protected <c>GameApp.Quit()</c>),
-    /// since a scene never touches window APIs directly. Null (the default) means the editor only ever pops: with
-    /// no <see cref="RequestQuit"/> and no scene beneath, the exit dialog's Close leaves an empty stack (a blank
-    /// screen), so a head that pushes the editor as its only scene should set this.</summary>
-    public Action? RequestQuit;
-
-    /// <summary>Asset manifests parsed into the kit palette and the picking heights.</summary>
-    public List<string> ManifestPaths = new();
-
-    /// <summary>The feature registry used to load / save / build the document. Null defaults to
-    /// <see cref="MapDocRegistry.CreateDefault"/>.</summary>
-    public MapDocRegistry? Registry;
-
-    /// <summary>Spawn archetype ids the game offers in the spawn tool (dropdown content).</summary>
-    public List<string> SpawnArchetypes = new();
-
-    /// <summary>Points of extra clearance reserved at the bottom of the window for a host-drawn overlay (for
-    /// example the Showcase's F7-F10 display readout line): the status strip and the editor body above it shift
-    /// up by this much, so the editor chrome never stacks on the same pixels as the host readout. Default 0 keeps
-    /// the status strip flush with the window bottom.</summary>
-    public float StatusBottomOffset;
-
-    /// <summary>When true (the default) the viewport draws translucent ground overlays for exclusions (red),
-    /// regions (blue), and terrain-feature centers (amber), with the selected element brightened, so those
-    /// otherwise-invisible authoring shapes are findable while editing. Set false to hide them.</summary>
-    public bool ShowOverlays = true;
-
-    /// <summary>When true (the default, matching gameplay) a manifest entry flagged <see cref="AssetEntry.Textured"/>
-    /// loads its textured multi-part form in the viewport, same as the game. Set false to render every prop in its
-    /// flattened, load-time-averaged colour instead, regardless of the manifest flag, for editing clarity (a dense
-    /// textured forest can be harder to read while placing props than its flat silhouette). Session-level state
-    /// only, read at load time via <see cref="ViewportWorld.TexturedPropsEnabled"/>, so flipping it rebuilds the
-    /// streamed world (see the Layers-panel "Textured props" row).</summary>
-    public bool TexturedProps = true;
-
-    /// <summary>Minimum seconds between FULL viewport rebuilds while a drag or draw gesture is live
-    /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>), so a fast
-    /// mid-gesture edit stream (dragging a lake's radius, say) does not re-mesh the whole streamed world every
-    /// frame. The default 0.25 keeps the viewport visibly live during a drag without paying for a rebuild on
-    /// every frame. 0 disables the throttle (rebuilds every frame, the pre-throttle behaviour). Only the FULL
-    /// rebuild path is throttled: a bounded-region <see cref="MapEditorScene.PartialRebuildWorld"/> is cheap by
-    /// construction and always runs immediately, and once the gesture ends the very next check performs the
-    /// final full rebuild regardless of this interval.</summary>
-    public float GestureRebuildInterval = 0.25f;
-}
 
 /// <summary>The turn-key in-engine map editor scene a per-game head pushes onto its <see cref="SceneManager"/>:
 /// it wires a <see cref="ViewportWorld"/> + fly camera + <see cref="EditorToolController"/> together with the Gui
@@ -391,19 +334,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _document.CommandUndone -= OnCommandVisibilityInverse;
         _document.Selection.Changed -= OnSelectionChanged;
         TeardownWorld();
-    }
-
-    /// <summary>Loads the document from <see cref="MapEditorOptions.DocumentPath"/> (when it exists) or starts a
-    /// blank one. A seam so a headless test can inject a document without touching the file system.</summary>
-    protected virtual MapDocument CreateDocument(MapDocRegistry registry)
-    {
-        if (!string.IsNullOrWhiteSpace(_options.DocumentPath) && File.Exists(_options.DocumentPath))
-            return MapDocumentFile.Load(_options.DocumentPath, new MapDocumentLoadOptions { Registry = registry });
-        return new MapDocument
-        {
-            Id = "untitled",
-            Bounds = new MapBounds { MinX = -128f, MinZ = -128f, MaxX = 128f, MaxZ = 128f },
-        };
     }
 
     /// <summary>GPU seam: builds the streamed viewport world, uploads the gizmo meshes, points the controller at
@@ -1273,32 +1203,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             quit();
         else
             Manager?.Pop();
-    }
-
-    /// <summary>Saves the document back to <see cref="MapEditorOptions.DocumentPath"/>, surfacing a
-    /// <see cref="MapDocumentException"/> (invalid content) or a missing path into the status strip instead of
-    /// throwing. Returns true only when the save actually wrote and the document was marked clean. The exit
-    /// dialog relies on that so a failure never quits or dismisses. Internal so the Ctrl+S handler, the toolbar
-    /// button, and the tests share one path.</summary>
-    internal bool SaveDocument()
-    {
-        if (string.IsNullOrWhiteSpace(_options.DocumentPath))
-        {
-            _statusText = "No document path set";
-            return false;
-        }
-        try
-        {
-            MapDocumentFile.Save(_document.Doc, _options.DocumentPath, _document.Registry);
-            _document.MarkSaved();
-            _statusText = "Saved " + _options.DocumentPath;
-            return true;
-        }
-        catch (MapDocumentException ex)
-        {
-            _statusText = "Save failed: " + ex.Message;
-            return false;
-        }
     }
 
     void OnDocumentChanged()
@@ -3420,17 +3324,18 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _viewport is not null && _viewport.KindHeights.TryGetValue(kind, out float h) ? h : FallbackKindHeight;
 
     /// <summary>Composes the status-strip text. The active mode name and its <see cref="EditorToolController.ModeHint"/>
-    /// lead the line (the operator's most useful cue), followed by the undo/redo labels, the exit chord, and any
-    /// transient message (a save result or a bookmark action). Internal so a headless test can assert the
-    /// ordering.</summary>
+    /// lead the line (the operator's most useful cue), followed by the undo/redo labels, the loaded window extent
+    /// when the document opened windowed (<see cref="Window"/>), the exit chord, and any transient message (a save
+    /// result or a bookmark action). Internal so a headless test can assert the ordering.</summary>
     internal string StatusLine()
     {
         string dirty = _document.IsDirty ? "*" : "";
         string hint = _controller.ModeHint;
         string undo = _document.History.UndoLabel ?? "-";
         string redo = _document.History.RedoLabel ?? "-";
+        string window = _window is { } w ? $"   window: ({w.Min.X},{w.Min.Z})-({w.Max.X},{w.Max.Z})" : "";
         string tail = string.IsNullOrEmpty(_statusText) ? "" : "  |  " + _statusText;
-        return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}   " +
+        return $"{dirty}{_controller.Mode}   {hint}   undo: {undo}   redo: {redo}{window}   " +
             $"R: snap to ground   Ctrl+Up/Down: reorder feature   Shift+Esc: exit{tail}";
     }
 

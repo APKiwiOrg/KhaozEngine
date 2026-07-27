@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class WaterRenderer : IDisposable
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 28 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 34 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -56,12 +56,17 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 FftRotCos;         // xyz = cos(per-cascade rotation offset), w = domain-warp metres
             public Vector4 FftRotSin;         // xyz = sin(per-cascade rotation offset), w = domain-warp wavelength
             public Vector4 FftSector;         // x = focus sector count, yz = (cos, sin) of one sector, w reserved
+            public Vector4 FftWave;           // xyz = per-cascade energy-weighted mean wave number (rad/m), w reserved
+            public Vector4 BathyRect;         // xy = depth field world min corner (XZ), zw = 1 / world size
+            public Vector4 BathyParams;       // x = field live, y = shoaling strength, z = depth scale, w = significant wave height
+            public Vector4 SurfParams;        // x = surf strength, y = break depth (m), z = band width, w = crest bias
+            public Vector4 SurfShape;         // x = trail width, y = amplitude collapse, z = plane surface Y, w = bathymetry texel metres
             public Vector4 RenderOrigin;      // xyz = the render origin the plane, the grid and the eye were reduced by
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + 29*16 (vec4) = 592.</summary>
-        internal const uint PayloadBytes = 592;
+        /// 2*64 (mat4) + 34*16 (vec4) = 672.</summary>
+        internal const uint PayloadBytes = 672;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -82,7 +87,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 768;   // Align256(592)
+        internal const uint SlotBytes = 768;   // Align256(672)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -90,7 +95,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuPipeline _pipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         GpuOutputDescription _outputs;
         // The clipmap grid's own shader set + pipeline, built on FIRST USE and kept. It needs its own because the
-        // two grids do not share a vertex layout (12 bytes against 24); the resource LAYOUT and the fragment source
+        // two grids do not share a vertex layout (12 bytes against 28); the resource LAYOUT and the fragment source
         // are the same, so nothing else doubles. A scene that never selects WaterGridMode.Clipmap never creates it.
         IGpuShaderSet? _clipShaders;
         IGpuPipeline? _clipPipe;
@@ -104,8 +109,13 @@ namespace KhaozEngine.Render3D.Rendering
         // compute-to-graphics ordering. Updated ONCE per Draw, before the per-plane loop: one ocean state serves
         // every queued plane.
         readonly OceanFftProducer _ocean;
+        // The consumer's depth field on the GPU. Owned here for the same reason the ocean is: it is bound into
+        // this pass's resource set, and nothing else in the engine reads it.
+        readonly WaterBathymetryMap _bathymetry;
         // Which ocean map the current set was built against, so a rebaked (or first-activated) map rebinds.
         IGpuTexture? _boundMap;
+        // Same, for the depth field: a resolution change replaces the texture and the set has to follow it.
+        IGpuTexture? _boundBathy;
         // Fixed-size grid buffers: every WaterPlane draws through the SAME GridResolution grid (only the CPU-side
         // vertex positions differ per plane, re-uploaded per draw), so these are allocated once and never regrown.
         IGpuBuffer? _vb;
@@ -157,7 +167,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// compared separately (they are an array). The plane fields are ABSOLUTE world coordinates and the render
         /// origin is carried separately: the lattice is a function of the world alone, but the vertex POSITIONS are
         /// render-relative, so a rebase leaves the lattice put and still needs a re-upload.</summary>
-        readonly record struct ClipKey(float Cell, int RingCells, int Levels,
+        readonly record struct ClipKey(float Cell, int RingCells, int Levels, float GeomorphBand,
             float CenterX, float CenterZ, float SurfaceY, float HalfX, float HalfZ,
             float OriginX, float OriginY, float OriginZ);
 
@@ -172,10 +182,17 @@ namespace KhaozEngine.Render3D.Rendering
                 // with one counter PER KIND over this whole list, binding each element to the stages in its mask,
                 // while the cross-compiler numbers each stage DENSELY over only the bindings that stage declares.
                 // Those agree only when every stage's resources are a PREFIX of this list. The vertex stage uses
-                // the ocean map and the shared UBO and nothing else, so the ocean map has to be the FIRST texture
-                // and its sampler the FIRST sampler; put the scene depth first instead and the vertex samples an
-                // unbound slot and reads zero, on Metal, silently. That is also why the ocean is ONE array texture
-                // (displacement layers then derivative layers) rather than the two it reads as.
+                // the bathymetry field, the ocean map and the shared UBO and nothing else, so both of those
+                // textures have to precede the fragment-only scene depth and their samplers likewise; put the
+                // scene depth first instead and the vertex samples an unbound slot and reads zero, on Metal,
+                // silently. That is also why the ocean is ONE array texture (displacement layers then derivative
+                // layers) rather than the two it reads as.
+                //
+                // Bathymetry leads the ocean for a SECOND reason on top of that: within a stage the numbering
+                // follows FIRST REFERENCE, and the vertex needs the depth before it sums the cascades because the
+                // shoaling taper is per cascade and applied inside that loop. See ShaderSources.WaterShore.cs.
+                new GpuResourceLayoutElement("BathyTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("BathySamp", GpuResourceKind.Sampler, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("OceanMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("OceanSamp", GpuResourceKind.Sampler, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
@@ -184,6 +201,7 @@ namespace KhaozEngine.Render3D.Rendering
                 // same buffer per the one-UBO-per-set rule).
                 new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
             _ocean = new OceanFftProducer(gd);
+            _bathymetry = new WaterBathymetryMap(gd);
             _pipe = Pipe(f, colorOutput, _shaders, false);
         }
 
@@ -201,13 +219,15 @@ namespace KhaozEngine.Render3D.Rendering
 
         IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs, IGpuShaderSet shaders, bool clipmap)
         {
-            // Position only for the camera-focused grid; the clipmap adds the stitch offset and the ring cell size
-            // (WaterClipmapVertex), which is why it cannot share this pipeline.
+            // Position only for the camera-focused grid; the clipmap adds the coarse-neighbour offset, the morphed
+            // band-limit spacing and the morph weight (WaterClipmapVertex), which is why it cannot share this
+            // pipeline.
             var vertexLayout = clipmap
                 ? new GpuVertexLayoutDescription(
                     new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
-                    new GpuVertexElement("Stitch", GpuVertexElementFormat.Float2),
-                    new GpuVertexElement("Cell", GpuVertexElementFormat.Float1))
+                    new GpuVertexElement("Coarse", GpuVertexElementFormat.Float2),
+                    new GpuVertexElement("Cell", GpuVertexElementFormat.Float1),
+                    new GpuVertexElement("Morph", GpuVertexElementFormat.Float1))
                 : new GpuVertexLayoutDescription(
                     new GpuVertexElement("Position", GpuVertexElementFormat.Float3));
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
@@ -239,14 +259,16 @@ namespace KhaozEngine.Render3D.Rendering
         void BindTargets(RenderResources res)
         {
             IGpuTexture map = _ocean.Map;
+            IGpuTexture bathy = _bathymetry.Texture;
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen
-                && ReferenceEquals(_boundMap, map)) return;
+                && ReferenceEquals(_boundMap, map) && ReferenceEquals(_boundBathy, bathy)) return;
             _set?.Dispose();
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
-                map, _ocean.Sampler, res.DepthColorTex, _gd.PointSampler,
+                bathy, _bathymetry.Sampler, map, _ocean.Sampler, res.DepthColorTex, _gd.PointSampler,
                 new GpuBufferRange(_ubo!, 0, SlotBytes)));
             _bound = res; _boundGen = res.Generation;
             _boundMap = map;
+            _boundBathy = bathy;
         }
 
         /// <summary>Ensure the UBO holds at least <paramref name="planeCount"/> slots, growing geometrically. A
@@ -295,7 +317,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// not-taken uniform branch and the procedural surface byte-identical to 14.28.0.</summary>
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
             Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds,
-            in OceanMaps ocean, Vector3 renderOrigin = default)
+            in OceanMaps ocean, Vector3 renderOrigin = default, ShoreMaps shore = default,
+            float planeSurfaceY = 0f)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
@@ -311,6 +334,13 @@ namespace KhaozEngine.Render3D.Rendering
             // behind FftParams.x, so a procedural surface never looks at them, and packing them unconditionally
             // keeps this a pure function of the settings bag.
             WaterSeaState sea = settings.SeaState;
+            // The depth-driven group. It needs BOTH a field and live cascades: the shoaling taper is per cascade
+            // against that cascade's own mean wave number, and the procedural swell has none, so the whole group
+            // is gated to the FFT source here rather than half-gated in two shader stages.
+            bool shoreLive = shore.Active && ocean.Active;
+            float breakDepth = shoreLive
+                ? WaterShoaling.BreakDepth(ocean.SignificantHeight, settings.SurfBreakerIndex)
+                : 0f;
             return new WaterUbo
             {
                 ViewProj = clipViewProj,
@@ -356,6 +386,16 @@ namespace KhaozEngine.Render3D.Rendering
                 FftRotCos = new Vector4(Cos(sea.CascadeRotationDegrees), MathF.Max(sea.DomainWarpMetres, 0f)),
                 FftRotSin = new Vector4(Sin(sea.CascadeRotationDegrees), sea.DomainWarpWavelengthMetres),
                 FftSector = SectorParams(sea.OnshoreFocusSectors),
+                FftWave = new Vector4(ocean.MeanWavenumber, 0f),
+                BathyRect = shore.Rect,
+                // BathyParams.x is the switch for the whole group: 0 makes every shore helper in both stages
+                // early-return its identity, so an ocean with no depth field is what it was before 16.13.0.
+                BathyParams = new Vector4(shoreLive ? 1f : 0f, Math.Clamp(settings.ShoalingStrength, 0f, 1f),
+                    MathF.Max(settings.ShoalingDepthScale, 1e-4f), ocean.SignificantHeight),
+                SurfParams = new Vector4(Math.Clamp(settings.SurfStrength, 0f, 1f), breakDepth,
+                    MathF.Max(settings.SurfBandWidth, 1e-3f), settings.SurfCrestBias),
+                SurfShape = new Vector4(MathF.Max(settings.SurfTrailWidth, 0f),
+                    Math.Clamp(settings.SurfAmplitudeCollapse, 0f, 1f), planeSurfaceY, shore.TexelMetres),
                 // The plane, the grid and the eye all arrive already reduced by this. The surface's world-ANCHORED
                 // patterns (the swell phase, the ocean sampling frame, the ripple and foam lattices, the onshore
                 // focus point) add it back so they stay pinned to the world across an origin step.
@@ -393,8 +433,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>
         /// The live FFT ocean maps' shape, as the shaders need to read them: whether the maps are live at all, how
         /// many cascade layers they carry, their resolution, each layer's world tile size, and each layer's baked
-        /// slope variance. A pure value so <see cref="PackUbo(Matrix4x4, Matrix4x4, Vector3, Color, Vector3,
-        /// WaterSettings, SkySettings, float, in OceanMaps, Vector3)"/> stays testable without a device.
+        /// slope variance, plus the two spectrum scalars the shoaling and the breaker criterion need. A pure value
+        /// so <c>PackUbo</c> stays testable without a device.
         /// </summary>
         internal readonly struct OceanMaps
         {
@@ -413,7 +453,15 @@ namespace KhaozEngine.Render3D.Rendering
             /// sample LOD 0 exactly as they did before mips existed.</summary>
             public float MaxMip { get; }
 
-            public OceanMaps(int cascadeCount, int resolution, Vector3 tiles, Vector3 slopeVariance, float maxMip)
+            /// <summary>Per-cascade energy-weighted mean wave number, rad/m. The shoaling taper's <c>k</c>.</summary>
+            public Vector3 MeanWavenumber { get; }
+
+            /// <summary>Significant wave height of the whole sea state, metres: what the breaker criterion
+            /// measures the local depth against.</summary>
+            public float SignificantHeight { get; }
+
+            public OceanMaps(int cascadeCount, int resolution, Vector3 tiles, Vector3 slopeVariance, float maxMip,
+                Vector3 meanWavenumber = default, float significantHeight = 0f)
             {
                 Active = true;
                 CascadeCount = cascadeCount;
@@ -421,6 +469,8 @@ namespace KhaozEngine.Render3D.Rendering
                 Tiles = tiles;
                 SlopeVariance = slopeVariance;
                 MaxMip = maxMip;
+                MeanWavenumber = meanWavenumber;
+                SignificantHeight = significantHeight;
             }
 
             /// <summary>Snapshot a producer's current output. Returns the inactive default when it produced
@@ -430,7 +480,9 @@ namespace KhaozEngine.Render3D.Rendering
                     ? new OceanMaps(producer.CascadeCount, producer.Resolution,
                         new Vector3(producer.TileMetres[0], producer.TileMetres[1], producer.TileMetres[2]),
                         new Vector3(producer.SlopeVariance[0], producer.SlopeVariance[1], producer.SlopeVariance[2]),
-                        producer.MaxMip)
+                        producer.MaxMip,
+                        new Vector3(producer.MeanWavenumber[0], producer.MeanWavenumber[1], producer.MeanWavenumber[2]),
+                        producer.SignificantHeight)
                     : default;
         }
 
@@ -461,13 +513,19 @@ namespace KhaozEngine.Render3D.Rendering
             // writes and the draws that sample them share a list - the seam's guaranteed ordering.
             _ocean.Update(cl, settings, timeSeconds, wantMips: clipmap);
             var oceanMaps = OceanMaps.From(_ocean);
+            // The depth field, likewise once per frame and ahead of BindTargets. Uploads only on a revision
+            // change, so the steady state is a compare and nothing else.
+            _bathymetry.Update(settings.Bathymetry);
+            ShoreMaps shore = _bathymetry.Snapshot();
             BindTargets(res);
 
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
             for (int i = 0; i < planes.Length; i++)
             {
+                // Per plane now, not once: the surf band measures the crest's height above THIS plane's still
+                // water, and a scene may queue several planes at different levels.
                 var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, settings, sky, timeSeconds,
-                    oceanMaps, renderOrigin);
+                    oceanMaps, renderOrigin, shore, planes[i].SurfaceY);
                 cl.UpdateBuffer(_ubo!, (uint)i * SlotBytes, in u);
             }
 
@@ -531,7 +589,8 @@ namespace KhaozEngine.Render3D.Rendering
             Vector2 focus = WaterClipmap.ClampFocus(plane, cameraPos.X + renderOrigin.X, cameraPos.Z + renderOrigin.Z);
 
             ClipSlot slot = _clipSlots[index];
-            var key = new ClipKey(cell, ringCells, levels, plane.CenterX, plane.CenterZ, plane.SurfaceY,
+            var key = new ClipKey(cell, ringCells, levels, settings.ClipmapGeomorphBand,
+                plane.CenterX, plane.CenterZ, plane.SurfaceY,
                 plane.HalfExtentX, plane.HalfExtentZ, renderOrigin.X, renderOrigin.Y, renderOrigin.Z);
             WaterClipmap.SnapIndices(focus.X, focus.Y, cell, levels, _clipSnapScratchX, _clipSnapScratchZ);
 
@@ -541,7 +600,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (same) return;
 
             int vcount = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ringCells, levels,
-                _clipVerts, _clipIndices, out int icount, renderOrigin);
+                settings.ClipmapGeomorphBand, _clipVerts, _clipIndices, out int icount, renderOrigin);
             cl.UpdateBuffer<WaterClipmapVertex>(_clipVb!,
                 (uint)(index * _clipSliceVerts) * ClipVertexBytes, _clipVerts.AsSpan(0, vcount));
             cl.UpdateBuffer<uint>(_clipIb!,
@@ -613,9 +672,10 @@ namespace KhaozEngine.Render3D.Rendering
             foreach (ClipSlot slot in _clipSlots) slot.Valid = false;
         }
 
-        /// <summary>Byte size of one <see cref="WaterClipmapVertex"/>: Float3 position + Float2 stitch + Float1
-        /// cell. Must match the clipmap pipeline's vertex layout, which <c>WaterClipmapVertexTests</c> pins.</summary>
-        internal const uint ClipVertexBytes = 24;
+        /// <summary>Byte size of one <see cref="WaterClipmapVertex"/>: Float3 position + Float2 coarse-neighbour
+        /// offset + Float1 cell + Float1 morph. Must match the clipmap pipeline's vertex layout, which
+        /// <c>WaterClipmapVertexTests</c> pins.</summary>
+        internal const uint ClipVertexBytes = 28;
 
         /// <summary>The FFT producer's last-frame diagnostics: GPU stalls it cost and the wall-clock milliseconds
         /// they took. Internal, for the perf test that pins #311's cost as a measured number.</summary>
@@ -624,6 +684,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             _ocean.Dispose();
+            _bathymetry.Dispose();
             _set?.Dispose();
             _clipPipe?.Dispose();
             _pipe.Dispose();

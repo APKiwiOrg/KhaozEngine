@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
@@ -154,6 +155,70 @@ namespace KhaozEngine.Tests.Gpu
                 $"the clipmap resamples {at50.Clip / motion:P0} of a frame of motion at a 0.50 m step. {report}");
             Assert.True(at50.Clip * 3f < at50.Focused,
                 $"the clipmap only improved the 0.50 m artifact by {at50.Focused / MathF.Max(at50.Clip, 1e-9f):F1}x. {report}");
+        }
+
+        /// <summary>
+        /// The same measurement across the geomorph band, which is the acceptance metric for
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/348">#348</see>. Band 0 is 16.12.0's grid
+        /// exactly - the boundary stitch and a hard LOD swap behind it - so it reproduces the residual that issue
+        /// recorded, and every wider band has to beat it.
+        /// <para>
+        /// <b>Why a wider band wins, and why it is not free.</b> The residual is not really the boundary line, it
+        /// is the STRIP a ring gains or loses when it snaps: two of its own cells that used to be drawn by one
+        /// level and are now drawn by the next, at a different mip, jumping by the full difference between the
+        /// two evaluations. A morph band makes those outermost cells already evaluate (nearly) the coarse
+        /// surface, so handing them over changes almost nothing, and what is left is the smooth weight shift over
+        /// the band - the full jump spread over <c>b</c> cells instead of landing on 2 of them, which falls as
+        /// <c>1 / sqrt(b)</c>. The cost is that the band is band-limited toward twice its own cell spacing, so it
+        /// is softer than its geometry could carry. That is the trade the default picks a point on, and printing
+        /// the sweep is what lets a later retune move it without re-deriving the measurement.
+        /// </para>
+        /// </summary>
+        [GpuFact]
+        public void TheGeomorphBandFadesOutTheRingBoundaryLodSwap()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice dev = gpu.GpuDevice;
+            Assert.True(dev.Capabilities.SupportsCompute, $"{dev.Backend} reports no compute support");
+
+            WaterSettings settings = Settings();
+            using var producer = new OceanFftProducer(dev);
+            WaterMirror.Ocean maps = WaterMirror.Capture(dev, producer, settings, FrozenTime);
+
+            float shippedBand = new WaterSettings().ClipmapGeomorphBand;
+            float hard10 = 0f, hard50 = 0f, shipped10 = 0f, shipped50 = 0f;
+            var report = new System.Text.StringBuilder();
+            foreach (float band in new[] { 0f, 0.25f, 0.5f, 0.75f, 1f, shippedBand }.Distinct().Order())
+            {
+                settings.ClipmapGeomorphBand = band;
+                float at10 = 0f, at50 = 0f;
+                foreach (float start in StartOffsets)
+                {
+                    at10 = MathF.Max(at10, Rms(Sample(maps, settings, start, true),
+                                               Sample(maps, settings, start + 0.1f, true)));
+                    at50 = MathF.Max(at50, Rms(Sample(maps, settings, start, true),
+                                               Sample(maps, settings, start + 0.5f, true)));
+                }
+                report.Append($"band {band:F2}: 0.10 m {at10:F5} m RMS, 0.50 m {at50:F5}; ");
+                if (band == 0f) { hard10 = at10; hard50 = at50; }
+                if (band == shippedBand) { shipped10 = at10; shipped50 = at50; }
+            }
+            _out.WriteLine(report.ToString().TrimEnd(' ', ';'));
+
+            // 1. Band 0 reproduces the defect, or the rest of this proves nothing.
+            Assert.True(hard10 > 5e-4f,
+                $"the hard-swap grid's residual is only {hard10} m RMS, so this run is not reproducing #348's " +
+                $"artifact at all. {report}");
+            // 2. The residual is bounded by the band's WIDTH, not by how far the camera went - that was #296's
+            //    headline property and the geomorph must not cost it.
+            Assert.Equal(hard10, hard50, 5);
+            Assert.Equal(shipped10, shipped50, 5);
+            // 3. The fix, at the shipped default. A third off is the floor a reviewer should accept; the measured
+            //    figure is in the printed report and in the design doc.
+            Assert.True(shipped10 < 0.7f * hard10,
+                $"the shipped geomorph band only cut the 0.10 m residual from {hard10} to {shipped10}. {report}");
+            Assert.True(shipped50 < 0.7f * hard50,
+                $"the shipped geomorph band only cut the 0.50 m residual from {hard50} to {shipped50}. {report}");
         }
 
         /// <summary>

@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D.Internal
         // one-UBO-per-set rule). UboLayoutTests asserts every member appears in both, in both directions, so a
         // rename on one side cannot silently reinterpret the other side's bytes. Packing note: every member is
         // 16-byte aligned, so std140 needs no explicit padding, and WaterRenderer.WaterUbo is the C# mirror.
-        const string WaterUboGlsl = @"layout(set=0, binding=4) uniform Water {
+        const string WaterUboGlsl = @"layout(set=0, binding=6) uniform Water {
     mat4 ViewProj;
     mat4 InvViewProj;   // RAW (not clip-corrected) inverse, for the fragment's depth reconstruction
     vec4 LightDir;      // xyz = key light travel direction
@@ -44,6 +44,11 @@ namespace KhaozEngine.Render3D.Internal
     vec4 FftRotCos;        // xyz = cos of each cascade's fixed rotation offset, w = domain-warp amplitude (metres, 0 = off)
     vec4 FftRotSin;        // xyz = sin of each cascade's fixed rotation offset, w = domain-warp wavelength (metres)
     vec4 FftSector;        // x = focus sector count, yz = (cos, sin) of one sector, w reserved
+    vec4 FftWave;          // xyz = per-cascade energy-weighted mean wave number (rad/m), w reserved
+    vec4 BathyRect;        // xy = the depth field's world min corner (XZ), zw = 1 / its world size
+    vec4 BathyParams;      // x = 1 when a depth field is live, y = shoaling strength, z = shoaling depth scale, w = significant wave height (m)
+    vec4 SurfParams;       // x = surf strength (0 = off), y = break depth (m), z = band width, w = crest bias
+    vec4 SurfShape;        // x = trail width, y = amplitude collapse, z = the plane's surface Y (render frame), w = bathymetry texel size (m)
     vec4 RenderOrigin;     // xyz = camera-relative render origin: add to a render-frame position for the ABSOLUTE one
 };";
 
@@ -76,14 +81,15 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>
         /// The <see cref="WaterGridMode.Clipmap"/> vertex stage: the same source as <see cref="WaterVert"/> plus
-        /// two extra vertex inputs, so there is ONE copy of the swell/FFT/sampling-frame maths and not two drifting
-        /// ones. <c>Cell</c> is the ring's world-space sample spacing, which drives the per-ring mip band limit;
-        /// <c>Stitch</c> is non-zero only on the ring-boundary vertices that have no counterpart on the next ring
-        /// out's lattice, and turns the tap loop into a two-tap average that lands the vertex exactly on the coarse
-        /// ring's edge segment (see <see cref="WaterClipmapVertex"/>).
+        /// three extra vertex inputs, so there is ONE copy of the swell/FFT/sampling-frame maths and not two
+        /// drifting ones. <c>Cell</c> is the (already morphed) world-space sample spacing driving the per-ring mip
+        /// band limit; <c>Coarse</c> names the two next-ring-out lattice nodes this vertex sits between; and
+        /// <c>Morph</c> is how far it has faded toward that coarse ring's own evaluation - 1 on the ring boundary,
+        /// which is the stitch that closes the T-junction, ramping to 0 inward over
+        /// <see cref="WaterSettings.ClipmapGeomorphBand"/> (see <see cref="WaterClipmapVertex"/>).
         /// <para>
         /// A separate SHADER rather than a uniform branch because the two grids do not share a vertex LAYOUT
-        /// (12 bytes against 24), so they cannot share a pipeline anyway. With the layouts already split, the only
+        /// (12 bytes against 28), so they cannot share a pipeline anyway. With the layouts already split, the only
         /// honest saving left is textual, and it is taken above.
         /// </para>
         /// </summary>
@@ -101,19 +107,24 @@ namespace KhaozEngine.Render3D.Internal
         /// backend's cross-compiler handles without an unroll hazard.
         /// </para>
         /// <para>
-        /// <b>The tap loop.</b> Everything is evaluated once per TAP and averaged. On the camera-focused grid
-        /// <c>taps</c> is a compile-time 1 and <c>sxz</c> is <c>Position.xz</c>, so the loop unrolls away and the
-        /// arithmetic is what it always was. On the clipmap it is 2 for the ring-boundary stitch vertices, whose
-        /// two taps are their coarse neighbours: averaging the two DISPLACED positions puts the vertex on the
-        /// straight world-space segment the coarse ring draws between them, which is an exact seam rather than a
-        /// nearly-exact one, with no skirt and no degenerate triangle.
+        /// <b>The tap loop.</b> Everything is evaluated once per TAP and summed by weight. On the camera-focused
+        /// grid there is a compile-time single tap at weight 1 and <c>sxz</c> is <c>Position.xz</c>, so the loop
+        /// unrolls away and the arithmetic is what it always was. On the clipmap the weights are
+        /// <c>(1 - Morph, Morph/2, Morph/2)</c> over the vertex's own position and its two coarse neighbours,
+        /// which is the geomorph: at <c>Morph = 1</c> the first weight is 0 and the remaining two average the
+        /// coarse neighbours, putting the vertex on the straight world-space segment the coarse ring draws between
+        /// them - an exact seam, no skirt, no degenerate triangle. Below 1 it is a continuous fade between the
+        /// ring's own surface and the coarse ring's, which is what turns the LOD change from a step into a ramp.
+        /// A vertex already ON the coarse lattice has a zero offset and collapses to the single tap, morph or no
+        /// morph: for it the whole geomorph is the band limit, which <c>Cell</c> already carries.
         /// </para>
         /// </summary>
         static string VertSource(bool clipmap) => @"#version 450
-" + WaterFftBindingsGlsl + WaterUboGlsl + WaterFftCommonGlsl + @"
+" + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + @"
 layout(location=0) in vec3 Position;
-" + (clipmap ? @"layout(location=1) in vec2 Stitch;   // half the offset to the two COARSE neighbours; (0,0) = one tap
-layout(location=2) in float Cell;    // this vertex's ring cell size: the spacing it band-limits the cascades to
+" + (clipmap ? @"layout(location=1) in vec2 Coarse;   // half the offset to the two COARSE neighbours; (0,0) = on their lattice
+layout(location=2) in float Cell;    // morphed sample spacing: what this vertex band-limits the cascades to
+layout(location=3) in float Morph;   // 0 = this ring's own surface, 1 = exactly the next ring out's
 " : "") + @"layout(location=0) out vec3 vWorldPos;
 layout(location=1) out vec3 vSwellNormal;
 layout(location=2) out float vFold;
@@ -132,12 +143,17 @@ void main() {
     float steepness = SwellShape.x, speedScale = SwellShape.y, seed = SwellShape.w;
     float time = WaveParams.w;
 
-" + (clipmap ? @"    int taps = dot(Stitch, Stitch) > 0.0 ? 2 : 1;
+" + (clipmap ? @"    // The geomorph weights. A vertex on the coarse lattice has nowhere to blend TO positionally, so it
+    // collapses to its own single tap and carries the morph in Cell alone.
+    vec3 tapWeights = dot(Coarse, Coarse) > 0.0
+        ? vec3(1.0 - Morph, 0.5 * Morph, 0.5 * Morph)
+        : vec3(1.0, 0.0, 0.0);
+    const int KE_TAPS = 3;
     float bandCell = Cell;
-" : @"    const int taps = 1;
+" : @"    const vec3 tapWeights = vec3(1.0, 0.0, 0.0);
+    const int KE_TAPS = 1;
     const float bandCell = 0.0;
-") + @"    float tapWeight = 1.0 / float(taps);
-
+") + @"
     vec3 p = vec3(0.0);
     vec3 swellNormal = vec3(0.0);
     float fold = 0.0;
@@ -147,9 +163,12 @@ void main() {
     vec2 refXz = vec2(0.0);
     vec2 focusRot = vec2(0.0);
 
-    for (int tap = 0; tap < 2; tap++) {
-        if (tap >= taps) break;
-" + (clipmap ? @"        vec2 sxz = taps == 2 ? (tap == 0 ? Position.xz - Stitch : Position.xz + Stitch) : Position.xz;
+    for (int tap = 0; tap < KE_TAPS; tap++) {
+        float tapWeight = tap == 0 ? tapWeights.x : (tap == 1 ? tapWeights.y : tapWeights.z);
+        // Skipping a zero-weight tap is not an optimisation: it is what makes an un-morphed vertex evaluate
+        // exactly once, and a fully morphed one exactly twice, with no third term added in at weight 0.
+        if (tapWeight <= 0.0) continue;
+" + (clipmap ? @"        vec2 sxz = Position.xz + (tap == 0 ? vec2(0.0) : (tap == 1 ? -Coarse : Coarse));
 " : @"        vec2 sxz = Position.xz;
 ") + @"        // The grid arrives in the RENDER frame (the plane's centre and the camera were both reduced by
         // RenderOrigin), and the whole sea is ANCHORED TO THE WORLD: every phase, lattice and sampling frame
@@ -166,7 +185,7 @@ void main() {
         float tapFold = 0.0;
         vec2 tapRef = aXz;
         vec2 tapRot = vec2(1.0, 0.0);
-
+" + WaterShoreVertGlsl + @"
     // FFT ocean: the displacement is a texture lookup per cascade, and the normal + the fold both come out of the
     // derivative map in the fragment, so the whole Gerstner block below is skipped rather than added to. The two
     // sources are alternatives, never a sum - summing them would double-count the same sea twice over.
@@ -234,6 +253,7 @@ void main() {
         focusRot += tapRot * tapWeight;
     }
 
+
     gl_Position = ViewProj * vec4(p, 1.0);
     vWorldPos = p;
     vSwellNormal = swellNormal;
@@ -247,10 +267,10 @@ void main() {
         /// glint, foam, shore fade) and <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
         public const string WaterFrag = @"#version 450
-" + WaterFftBindingsGlsl + @"
-layout(set=0, binding=2) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
-layout(set=0, binding=3) uniform sampler Samp;
-" + WaterUboGlsl + WaterFftCommonGlsl + @"
+" + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
+layout(set=0, binding=4) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
+layout(set=0, binding=5) uniform sampler Samp;
+" + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + @"
 layout(location=0) in vec3 vWorldPos;
 layout(location=1) in vec3 vSwellNormal;
 layout(location=2) in float vFold;
@@ -434,6 +454,10 @@ void main() {
     // difference or a derivative, so the origin cancels and they keep reading vWorldPos.
     vec2 wpAbsXz = vWorldPos.xz + RenderOrigin.xz;
 
+    // Bathymetry FIRST, ahead of both the ocean maps and the scene depth: it is binding 0, and the Metal
+    // cross-compiler numbers a stage's textures by first reference (see ShaderSources.WaterShore.cs). The
+    // shoaling taper and the surf band both key off what this reads.
+" + WaterShoreFragGlsl + @"
     // One eye vector, used for the view direction, the fresnel term, the reflected ray AND the detail fade's
     // camera distance.
     vec3 toEye = CameraPos.xyz - vWorldPos;
@@ -626,7 +650,13 @@ void main() {
         float mask = FftParams.x > 0.5
             ? fftFoamBreakup(oceanFoam)
             : foamPattern(wpAbsXz, time * waveSpeed, FoamParams.w);
-        foam = clamp(max(crest, band) * mask * foamStrength, 0.0, 1.0);
+" + WaterShoreSurfGlsl + @"
+        // The surf band is folded in with a max AFTER the break-up mask rather than through it. Its own
+        // structure is the wave field's (the crest gate and the seaward-face trail), and the mask it would
+        // otherwise pass through is the FFT foam channel, which by construction is near zero exactly where the
+        // shoaling has calmed the crests - so masking the surf would delete it precisely where it belongs.
+        // With no depth field bound surf is 0 and this is arithmetically the expression it replaced.
+        foam = clamp(max(max(crest, band) * mask, surf) * foamStrength, 0.0, 1.0);
     }
 
     // Waterline alpha feather (mirrors WaterMath.ShoreFade): a much tighter distance than the depth grading above,

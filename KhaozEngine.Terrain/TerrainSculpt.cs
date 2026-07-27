@@ -8,7 +8,7 @@ namespace KhaozEngine.Terrain;
 /// <see cref="SampleDelta"/> bilinearly interpolates the authored deltas between cell centers and returns 0
 /// outside every stored tile. Read-only and deterministic: the delta at (x, z) depends only on (x, z) and
 /// the stored tiles, so composited terrain stays stateless and every head agrees. Attach one to a
-/// <see cref="TerrainField"/> to fold hand-sculpted topology into <see cref="TerrainField.SampleHeight"/>.
+/// <see cref="TerrainField"/> to fold hand-sculpted topology into <see cref="TerrainField.SampleHeight(float, float)"/>.
 /// A global cell (cellX, cellZ) has its center at world (cellX * <see cref="CellSize"/>,
 /// cellZ * CellSize).</summary>
 public sealed class TerrainSculpt
@@ -32,6 +32,35 @@ public sealed class TerrainSculpt
         _tiles = new Dictionary<long, float[]>();
         foreach (TerrainSculptTile t in tiles)
             _tiles[Key(t.TileX, t.TileZ)] = t.Deltas;
+    }
+
+    TerrainSculpt(float cellSize, Dictionary<long, float[]> tiles)
+    {
+        _cellSize = cellSize;
+        _tiles = tiles;
+    }
+
+    /// <summary>This sculpt with tiles added and removed, returned as a NEW immutable snapshot that shares every
+    /// unchanged tile's delta array by reference. O(tile count), not O(cell count): no delta array is copied, so
+    /// rebuilding the snapshot as streamed content arrives and departs is microseconds at a few thousand tiles.
+    /// Removals are applied first, so a coordinate present in both ends up with the added tile.
+    /// <para><b>TAKES OWNERSHIP of every added tile's array</b>, matching the constructor's existing contract:
+    /// the array is referenced, not copied, and the returned snapshot may be sampled from worker threads
+    /// immediately. A caller that wants to keep editing the deltas it handed over clones them first, exactly as
+    /// the editor's sculpt stroke already does. This is a rule rather than a convention because a streamed tile's
+    /// arrays cross a thread boundary: a later in-place edit of one is a data race against every sampler, and
+    /// nothing in the type system can express it, since the element type is a mutable array.</para></summary>
+    /// <param name="add">Tiles to add or replace, or null for none.</param>
+    /// <param name="remove">Tile coordinates to drop, or null for none. A coordinate that is not stored is
+    /// ignored.</param>
+    public TerrainSculpt With(IEnumerable<TerrainSculptTile>? add, IEnumerable<(int TileX, int TileZ)>? remove)
+    {
+        var tiles = new Dictionary<long, float[]>(_tiles);
+        if (remove is not null)
+            foreach ((int tileX, int tileZ) in remove) tiles.Remove(Key(tileX, tileZ));
+        if (add is not null)
+            foreach (TerrainSculptTile t in add) tiles[Key(t.TileX, t.TileZ)] = t.Deltas;
+        return new TerrainSculpt(_cellSize, tiles);
     }
 
     /// <summary>The world size of one sculpt cell, in meters.</summary>

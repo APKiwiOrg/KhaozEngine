@@ -15,7 +15,15 @@ namespace KhaozEngine.Terrain
     {
         readonly TerrainConfig _cfg;
         readonly BiomeBand[] _bands;
-        readonly TerrainSculpt? _sculpt;
+        // Volatile, not readonly: SetSculpt swaps the whole snapshot while worker threads sample. Volatile is
+        // load-bearing rather than decorative - a plain reference write is atomic but is NOT ordered against the
+        // writes that filled the new TerrainSculpt's dictionary, so on a weak memory model (arm64) a reader can
+        // observe the new reference before that dictionary is visible and read a half-built one. The volatile
+        // write is a release and every read below is an acquire, which is what makes "either the old snapshot or
+        // the new one, never a torn state" actually true. Every public sampler reads this field EXACTLY ONCE into
+        // a local and threads that local through the private overloads, so one call is one snapshot by
+        // construction (see SampleNormal, which used to read it five times per call).
+        volatile TerrainSculpt? _sculpt;
 
         public TerrainField(TerrainConfig config) : this(config, null) { }
 
@@ -55,10 +63,26 @@ namespace KhaozEngine.Terrain
             return (baseH, hill, best);
         }
 
+        /// <summary>Replaces the sculpt layer with a new immutable snapshot, by an atomic reference exchange. A
+        /// sampler running concurrently on a worker thread sees either the old snapshot or the new one, never a
+        /// torn state, and both are valid terrain: every public sampler takes ONE read of the field and threads
+        /// that one snapshot through the whole call. Applies the SAME normalization the constructor does - a null
+        /// or empty sculpt stores null, which is what keeps the analytic fast path in <see cref="SampleHeight(float, float)"/>
+        /// and the 1 m normal epsilon in <see cref="SampleNormal"/>.
+        /// <para>Build the new snapshot with <see cref="TerrainSculpt.With"/>, which shares every unchanged
+        /// tile's delta array by reference, so a swap costs O(tile count) and copies no deltas. A chunk build
+        /// already running when the swap lands carries the pre-swap terrain, which the caller corrects by
+        /// invalidating that chunk (<see cref="TerrainStreamer.Invalidate(RectArea)"/>) after the swap - a
+        /// bounded, self-correcting outcome rather than a torn read.</para></summary>
+        public void SetSculpt(TerrainSculpt? sculpt) => _sculpt = sculpt is { IsEmpty: false } ? sculpt : null;
+
         /// <summary>The one source of truth for ground height at a world point. Folds biome shape, base
         /// coordinate-hash noise, then each feature in order, then adds the authored sculpt delta when a
         /// sculpt layer is attached. Stateless in (x,z,seed) and the sculpt data.</summary>
-        public float SampleHeight(float x, float z)
+        public float SampleHeight(float x, float z) => SampleHeight(x, z, _sculpt);
+
+        // One snapshot, threaded in by the public entry point that read the field. Never reads _sculpt itself.
+        float SampleHeight(float x, float z, TerrainSculpt? sculpt)
         {
             var shape = ShapeAt(z);
             float gentle = _cfg.GentleAmplitude * TerrainNoise.Fbm(x * _cfg.GentleFrequency, z * _cfg.GentleFrequency, _cfg.Seed);
@@ -70,19 +94,24 @@ namespace KhaozEngine.Terrain
                 for (int i = 0; i < feats.Length; i++)
                     h = feats[i].Apply(x, z, h);
 
-            if (_sculpt != null)
-                h += _sculpt.SampleDelta(x, z);
+            if (sculpt != null)
+                h += sculpt.SampleDelta(x, z);
             return h;
         }
 
         /// <summary>Surface normal via central finite difference over the composited height. The step is 1 m
         /// on the analytic fast path (no sculpt), and the sculpt cell size when a sculpt layer is attached, so
-        /// slope gates read the sculpted surface rather than the analytic one. Flat ground returns +Y.</summary>
+        /// slope gates read the sculpted surface rather than the analytic one. Flat ground returns +Y.
+        /// <para>The sculpt snapshot is read ONCE here and threaded through all four height samples AND the
+        /// epsilon. Re-reading it per sample would let a concurrent <see cref="SetSculpt"/> build a normal out of
+        /// two different snapshots, or pair one snapshot's epsilon with another's heights, which is not "the old
+        /// one or the new one" but a third surface belonging to neither.</para></summary>
         public Vector3 SampleNormal(float x, float z)
         {
-            float eps = _sculpt is null ? 1f : _sculpt.CellSize;
-            float hxp = SampleHeight(x + eps, z), hxm = SampleHeight(x - eps, z);
-            float hzp = SampleHeight(x, z + eps), hzm = SampleHeight(x, z - eps);
+            TerrainSculpt? sculpt = _sculpt;
+            float eps = sculpt is null ? 1f : sculpt.CellSize;
+            float hxp = SampleHeight(x + eps, z, sculpt), hxm = SampleHeight(x - eps, z, sculpt);
+            float hzp = SampleHeight(x, z + eps, sculpt), hzm = SampleHeight(x, z - eps, sculpt);
             var n = new Vector3(-(hxp - hxm) / (2f * eps), 1f, -(hzp - hzm) / (2f * eps));
             return Vector3.Normalize(n);
         }

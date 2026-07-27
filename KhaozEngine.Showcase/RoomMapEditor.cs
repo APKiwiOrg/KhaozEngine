@@ -30,8 +30,12 @@ namespace KhaozEngine.Showcase
         /// actually renders.</summary>
         public static MapEditorScene Create(Scene3D scene, Texture2D white, DpiFont font)
         {
-            // The outline post effect is off by the engine default, and MapEditorScene never touches Post (no
-            // cel/outline key bindings of its own), so the editor gets the plain lit look with nothing to force.
+            // MapEditorScene DRIVES the scene's environment by default (MapEditorOptions.DriveEnvironment): its
+            // settings menu owns the sky, lighting, and water look and writes them onto this Scene3D's Post, so
+            // the editor opens under a day sky rather than the engine's default starfield background. A host that
+            // wants to keep that ownership (its own sky or day/night cycle) sets DriveEnvironment false instead.
+            // The outline post effect is still untouched (the editor has no cel/outline bindings of its own), so
+            // the room keeps the plain lit look with nothing to force.
 
             string assets = Path.Combine(AppContext.BaseDirectory, "assets");
             var options = new MapEditorOptions

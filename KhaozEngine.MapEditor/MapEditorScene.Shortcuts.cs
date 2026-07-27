@@ -25,6 +25,19 @@ public partial class MapEditorScene
         // chords, not just the rename row.
         if (AnyEditorFocused) return;
 
+        // Bare Escape, with no exit dialog and no settings menu open (OnUpdate gates the whole editor step off
+        // each), no editor field focused (the guard above), and nothing for the tool layer to cancel: open the
+        // settings menu. _toolOwnsEscape is sampled in OnUpdate BEFORE the tool step, because the tool step has
+        // already cancelled and reset to Select by the time this runs, so reading the controller here would let a
+        // gesture-cancelling Escape also pop the menu open. Returns either way, so an Escape that cancelled a
+        // gesture is consumed and never falls through to a bookmark chord.
+        // A held command modifier keeps Escape out of this branch, so the menu is strictly the BARE chord.
+        if (!s.IsCommandDown && s.WasPressed(Key.Escape))
+        {
+            if (!_toolOwnsEscape) OpenSettingsDialog();
+            return;
+        }
+
         bool ctrl = s.IsCommandDown;
         if (!ctrl)
         {

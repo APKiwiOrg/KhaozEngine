@@ -19,9 +19,13 @@ namespace KhaozEngine.MapEditor;
 /// chrome (toolbar tab bar, tree outline, property-grid inspector, kit palette, status strip) and the undo / redo
 /// / save hotkeys, over one <see cref="EditorDocument"/>. Shift+Escape opens the modal exit dialog (a scene-owned
 /// <see cref="PopupPanel"/>): a dirty document offers Save and Close / Save / Discard / Cancel, a clean one just
-/// Close / Cancel, and while it is open every other editor chord, tool pick, and camera step is suppressed
-/// (Escape alone stays the gesture cancel when the dialog is closed). Leaving the editor goes through
+/// Close / Cancel, and while it is open every other editor chord, tool pick, and camera step is suppressed.
+/// Leaving the editor goes through
 /// <see cref="MapEditorOptions.RequestQuit"/> when the editor is the bottom scene, otherwise it pops.
+/// Bare Escape stays the tool gesture cancel whenever there is a gesture to cancel, and opens the modal settings
+/// menu (<see cref="MapEditorSettingsDialog"/>) when there is not: that menu owns the render distance and the
+/// sky / lighting / ocean look, which the editor applies to the host scene unless
+/// <see cref="MapEditorOptions.DriveEnvironment"/> is turned off.
 /// Developer tooling, so the whole class is
 /// <see cref="LocalizationExemptAttribute">localization-exempt</see>.
 /// <para>The GPU-touching work lives behind the <see cref="BuildWorld"/> / <see cref="TeardownWorld"/> /
@@ -261,6 +265,9 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     {
         if (_built) return;
 
+        // Before the document: the persisted render-distance multiplier sizes the tiled load window a windowed
+        // open reads (see EffectiveWindowRadius).
+        LoadSettings();
         MapDocRegistry registry = _options.Registry ?? MapDocRegistry.CreateDefault();
         _document = new EditorDocument(CreateDocument(registry), registry);
         _controller = new EditorToolController(_document)
@@ -275,6 +282,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         };
         _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f, FarPlane = _options.RenderDistance.FarClip };
         _camController = new FlyCameraController(_camera);
+        ApplyRenderDistance();   // the persisted multiplier, before the first BuildWorld primes a ring from it
 
         BuildChrome();
         BuildPaletteSource(PaletteKindCategories());
@@ -295,6 +303,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         RebuildOutline();
         RebuildInspector();
         _exitDialog = null;   // a re-entered scene starts with no open exit dialog
+        _settingsDialog = null;   // and with no open settings menu
         _built = true;
     }
 
@@ -350,6 +359,14 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         // clicks to its own buttons) and every other editor step is skipped, so no chord, tool pick, or camera
         // move leaks through to the frozen editor beneath the scrim (decision 3).
         if (_exitDialog is not null) { UpdateExitDialog(dt); return; }
+        // The settings menu owns the frame the same way, one gate below the exit dialog: Shift+Escape's dialog
+        // still wins when both would apply, and neither opens while the other is up.
+        if (_settingsDialog is not null) { UpdateSettingsDialog(dt); return; }
+        // Sampled HERE, before the tool step, because the tool step is what consumes an Escape-cancellable
+        // gesture: by the time HandleShortcuts runs (inside UpdateChrome) the drag is already cancelled and the
+        // mode is back to Select, so asking then would always read "nothing was active" and the same keypress
+        // that cancelled a drag would also open the settings menu.
+        _toolOwnsEscape = _controller.ConsumesEscape;
         UpdateCamera(dt);
         UpdateTools(dt);
         UpdateChrome(dt);
@@ -504,7 +521,11 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     /// <inheritdoc/>
     public void OnDraw3D(Scene3D scene)
     {
-        if (!_built || !_viewport.IsBuilt) return;
+        if (!_built) return;
+        // Ahead of the built guard: the sky, lighting, and ocean look belong to the scene, not to the streamer, so
+        // a world that has not finished building still gets the right background rather than the engine default.
+        ApplyEnvironment(scene.Post);
+        if (!_viewport.IsBuilt) return;
         string? selId = _document.Selection.Kind == SelectionKind.Placement ? _document.Selection.Id : null;
         _viewport.Draw(_camera.Position, selId, SelectionHighlight, _visibility);
         DrawOverlays(scene);
@@ -560,6 +581,9 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             _exitDialog.BodyFont = font;
             _exitDialog.Draw(batch, _white, _ui.Pointer);
         }
+
+        // The settings menu draws in the same slot (they are mutually exclusive, so they never stack).
+        DrawSettingsDialog(batch, font, ui);
     }
 
     // The inspector's hover tooltip: built lazily here (the PatchNotesView precedent, `_tooltip ??= new

@@ -100,7 +100,7 @@ layout(location=1) in vec4 IVelocityRot;  // xyz world velocity, w rotation (rad
 layout(location=2) in vec4 IColor;        // straight rgba tint (premultiplied by the fragment)
 layout(location=3) in vec4 IShape;        // x shape id, y shape param, z life norm, w seed
 layout(location=4) in vec4 IExtra;        // x stretch, y additivity (0 alpha / 1 additive), z orientation (0 camera / 1 flat ground), w soft-fade scale
-layout(location=5) in vec4 IFlip;         // x frameA, y frameB, z blend, w packed grid+strength (0 = procedural)
+layout(location=5) in vec4 IFlip;         // x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
 layout(location=0) out vec2 vLocal;
 layout(location=1) out vec4 vColor;
 layout(location=2) out vec4 vShape;
@@ -172,7 +172,7 @@ layout(location=1) in vec4 vColor;
 layout(location=2) in vec4 vShape;    // x shape id, y shape param, z life norm, w seed
 layout(location=3) in vec4 vExtra;    // x aspect, y additivity, z orientation (0 camera / 1 flat ground), w soft-fade scale
 layout(location=4) in vec3 vWorld;    // fragment world position (flat across the quad's plane)
-layout(location=5) in vec4 vFlip;     // x frameA, y frameB, z blend, w packed grid+strength (0 = procedural)
+layout(location=5) in vec4 vFlip;     // x frameA, y frameB, z blend, w packed grid+strength+flips (0 = procedural)
 layout(location=0) out vec4 oColor;
 
 // Texture-free value noise, the exact polynomial-hash idiom the decal pass ships cross-backend goldens with
@@ -211,12 +211,18 @@ void main() {
     // for that discarded path (a real flipbook always has cols >= 1, so it is a no-op there).
     float packedW = vFlip.w;
     bool useFlip = packedW > 0.5;
-    float cols = mod(packedW, 256.0);
-    float rows = mod(floor(packedW / 256.0), 256.0);
-    float mstr = floor(packedW / 65536.0) / 64.0;
+    float cols  = mod(packedW, 128.0);
+    float rows  = mod(floor(packedW / 128.0), 128.0);
+    float mstr  = mod(floor(packedW / 16384.0), 256.0) / 64.0;
+    float flipU = mod(floor(packedW / 4194304.0), 2.0);
+    float flipV = floor(packedW / 8388608.0);
     float safeCols = max(cols, 1.0);
     vec2 cell = 1.0 / max(vec2(cols, rows), vec2(1.0));
     vec2 lu = vLocal * 0.5 + 0.5;                          // quad-local [0,1], rotates/stretches with the quad
+    // Flip WITHIN the cell only, before uvA/uvB exist, so both cross-fade taps and the motion warp mirror together
+    // and the cell the frame index selects never moves. A cell samples bottom-left, so FlipV is what a top-left
+    // authored sheet (PIL and most packers) needs to render upright.
+    lu = mix(lu, vec2(1.0) - lu, vec2(flipU, flipV));
     vec2 uvA = (vec2(mod(vFlip.x, safeCols), floor(vFlip.x / safeCols)) + lu) * cell;
     vec2 uvB = (vec2(mod(vFlip.y, safeCols), floor(vFlip.y / safeCols)) + lu) * cell;
     vec2 mvA = (texture(sampler2D(MotionTex, AtlasSamp), uvA).rg * 2.0 - 1.0) * mstr * cell;

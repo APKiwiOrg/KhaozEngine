@@ -2539,7 +2539,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       ABSOLUTE world space, so a render-origin rebase leaves every ring exactly where it was and only re-uploads
       the (render-relative) positions, costing one rebuild frame per 128 m travelled. Rationale, and the measured
       before and after: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
-      Since 17.1.0 `ClipmapGeomorphBand` (0.5; `0` restores the 16.12.0 grid exactly) removes what that release
+      Since 17.3.0 `ClipmapGeomorphBand` (0.5; `0` restores the 16.12.0 grid exactly) removes what that release
       left behind. Vertices within that fraction of a ring's half-width fade toward the NEXT ring out's evaluation
       - sampled displacement and band-limit spacing both - reaching it exactly on the boundary, so a ring snapping
       in or out changes the surface continuously instead of swapping level in a one-cell annulus. It subsumes the
@@ -2548,7 +2548,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       acceptance metric: the residual falls from 0.00086 m RMS to 0.00047 m, at both a 0.10 m and a 0.50 m camera
       step. Its optimum at 0.5 is structural, not a taste call, and the sweep is in
       `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`.
-  - **Bathymetry: shoaling shallows and a breaking-surf band** (since 17.1.0, `Post.Water.Bathymetry`, **null by
+  - **Bathymetry: shoaling shallows and a breaking-surf band** (since 17.3.0, `Post.Water.Bathymetry`, **null by
     default, and null is the 16.12.0 surface byte for byte**). Needs `WaterWaveSource.FftOcean` - the taper is per
     cascade against each cascade's own mean wave number, and the procedural swell has none, so the whole group is
     inert there.
@@ -3537,6 +3537,22 @@ a two-tap frame warp that reads fluid at low frame counts, and a plain sheet (no
 At the engine level, `ParticleSprite` carries the same `Flipbook` spec plus a continuous `FlipbookFrame` (integer
 part = current cell, fractional part = blend toward the next), so a raw `DrawParticle`/`DrawParticles` caller drives
 frame timing itself. The adapter's `FlipbookMode` is just the policy that resolves `FlipbookFrame` for you.
+
+**Atlas UV origin (read this if your sheet plays upside down).** A flipbook cell samples with its origin at the
+BOTTOM-LEFT, the same convention as the rest of the 3D sprite path (`BillboardGeometry.Triangles` maps `(u0,v0)`
+to the bottom-left corner). The 2D `SpriteBatch` path samples the SAME image file top-left. So an atlas packed by
+a top-left tool (PIL, and most sprite packers) renders here with EVERY CELL VERTICALLY INVERTED. The fix is one
+knob, per spec:
+
+```csharp
+Flipbook = new ParticleFlipbook(atlas, Columns: 8, Rows: 8, Loop: true, FlipV: true),
+```
+
+`FlipV` mirrors each cell vertically, `FlipU` mirrors it horizontally, and both together are a 180 degree rotation.
+They flip only the coordinate WITHIN a cell, never which cell the frame index selects, so playback order is
+untouched. Both default to false, so a bottom-left-authored sheet needs neither. `Columns` and `Rows` cap at 127
+(the grid, the motion strength, and the two flip bits share one packed float): a 128-column sheet at even a 64px
+cell is 8192px wide, at or past the max texture size on most GPUs, so the cap is unreachable in practice.
 
 **Quality and soft fade** are host knobs, not cleared by `Begin`. Set the quality tier once when picking a graphics
 tier, the soft fade per frame:
@@ -4677,7 +4693,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="17.3.0" />
 ```
 
 ```csharp

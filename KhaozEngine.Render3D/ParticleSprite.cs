@@ -61,23 +61,42 @@ namespace KhaozEngine.Render3D
     /// handle) leaves the sprite on the procedural <see cref="ParticleShape"/> path, so a sprite that never sets this
     /// renders byte-identically to before flipbooks existed. Load the atlas (and the optional motion sheet) with
     /// <see cref="Scene3D.LoadTexture(byte[],int,int)"/>.
+    /// <para>
+    /// UV ORIGIN: a flipbook cell samples with its origin at the BOTTOM-LEFT, matching the rest of the 3D sprite
+    /// path (see the <c>(u0,v0)</c> note on
+    /// <see cref="BillboardGeometry.Triangles(System.Numerics.Vector3,float,System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector4,System.Span{System.Numerics.Vector3},System.Span{System.Numerics.Vector2})"/>).
+    /// The 2D <c>SpriteBatch</c> path samples the SAME image file top-left. So an atlas packed by a top-left tool
+    /// (PIL, and most sprite packers) renders through this path with every cell VERTICALLY INVERTED. Set
+    /// <see cref="FlipV"/> to true to correct it. That is the fix for the "my flipbook plays upside down" symptom,
+    /// and it is per-spec, so a bottom-left-authored sheet keeps the default.
+    /// </para>
     /// </summary>
     /// <param name="Texture">The atlas sheet, a grid of frame cells. An invalid handle keeps the sprite procedural.</param>
-    /// <param name="Columns">Atlas columns (frames per row). Must be positive for the spec to be active.</param>
-    /// <param name="Rows">Atlas rows. Must be positive for the spec to be active.</param>
+    /// <param name="Columns">Atlas columns (frames per row). Must be positive for the spec to be active, and is
+    /// clamped to 127 by the GPU packing (a 128-column sheet at even a 64px cell is 8192px wide, at or past the max
+    /// texture size on most GPUs, so the cap is unreachable in practice).</param>
+    /// <param name="Rows">Atlas rows. Must be positive for the spec to be active, and is clamped to 127 by the GPU
+    /// packing for the same reason as <paramref name="Columns"/>.</param>
     /// <param name="MotionTexture">Optional motion-vector sheet on the same grid, driving the two-tap frame warp. An
     /// absent or neutral sheet degrades to a plain cross-fade, so no flag is needed to opt out of the warp.</param>
     /// <param name="MotionStrength">Scales the motion-vector displacement, clamped to [0,4] and quantized to 1/64. 1 is
     /// the authored strength, 0 disables the warp (plain cross-fade).</param>
     /// <param name="Loop">When true the frame past the last wraps back to the first (looping fire/smoke). When false
     /// playback clamps on the last frame (one-shot explosion sheets).</param>
+    /// <param name="FlipU">Mirrors each cell horizontally. Only the coordinate WITHIN a cell flips, the cell the
+    /// frame index selects does not move, so playback order is untouched.</param>
+    /// <param name="FlipV">Mirrors each cell vertically. This is the one most consumers need: it makes a
+    /// TOP-LEFT-authored atlas (PIL and most packers) sample correctly through this bottom-left path. Like
+    /// <paramref name="FlipU"/> it flips only within a cell, never the cell selection.</param>
     public readonly record struct ParticleFlipbook(
         Scene3D.TextureHandle Texture,
         int Columns,
         int Rows,
         Scene3D.TextureHandle MotionTexture = default,
         float MotionStrength = 1f,
-        bool Loop = false)
+        bool Loop = false,
+        bool FlipU = false,
+        bool FlipV = false)
     {
         /// <summary>True when this spec names a real atlas with a positive grid, so the renderer routes the sprite
         /// through the flipbook path instead of the procedural shapes.</summary>

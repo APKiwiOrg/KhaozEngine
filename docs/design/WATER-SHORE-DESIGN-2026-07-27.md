@@ -1,6 +1,6 @@
 # Bathymetry, shoaling and the breaking-surf band
 
-Design rationale for 17.1.0's depth-aware water surface
+Design rationale for 17.3.0's depth-aware water surface
 ([#355](https://github.com/APKiwiOrg/KhaozEngine/issues/355), the amplitude half of
 [#330](https://github.com/APKiwiOrg/KhaozEngine/issues/330)) and for the clipmap LOD geomorph that
 shipped alongside it ([#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348)). Shipped API lives

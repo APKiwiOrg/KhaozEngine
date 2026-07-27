@@ -2002,6 +2002,47 @@ for (int i = 0; i < live.Length; i++)
 scene.DrawTrail(strip, TrailStyle.Default with { Color = new Color(0.8f, 0.9f, 1f, 1f) });
 ```
 
+### Camera-relative rendering (`Scene3D.RenderOrigin`)
+
+A world hundreds of metres or kilometres from the origin used to render badly, and the reason was float32
+precision rather than anything about the content: a 100 km world translation meeting a 100 km view translation
+inside the matrix concatenation leaves a small difference carrying the rounding error of both large operands, so
+geometry swims, shadow edges crawl, and thin geometry vibrates as the camera moves. `Scene3D` now subtracts a
+quantized **render origin** from everything on its way to the GPU, so the GPU never sees the large operands.
+
+**Adoption: none.** The whole public surface still takes ABSOLUTE world coordinates and there is nothing to call.
+
+```csharp
+scene.Begin();                       // latches this frame's origin
+scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // still absolute, as always
+```
+
+- `Scene3D.RenderOrigin` defaults to `WorldFrame.Nearest(camera.Eye).Anchor`: the nearest point on a 128 m grid,
+  so it is exactly representable in float32 (the subtraction introduces literally no error) and it does not
+  jitter per frame. Set it explicitly to a simulation frame's anchor if you are running one, so render and
+  simulation share a space.
+- It is **latched at `Begin()`**. A write during a frame takes effect at the next one, and the getter reports the
+  frame's value rather than the pending one. Half a frame's geometry against one origin and the other half
+  against another would be displaced by the difference.
+- `Scene3D.RenderOriginActive` says whether an origin is in force this frame.
+- **`RenderOrigin = Vector3.Zero` is the opt-out**, reproducing the pre-15.x output exactly. Use it if you have
+  committed goldens you do not want to rebake.
+- **A camera you wrote yourself keeps working unchanged.** The engine cameras (`IsoCamera3D`, `FollowCamera3D`,
+  `FlyCamera3D`) implement `IRenderOriginAware`. A consumer `IIsoCamera3D` that does not gets the WHOLE pipeline
+  back on the absolute path (never half an origin), which is exactly as precise as it was before, and
+  `RenderOriginActive` reports `false`. Implement `IRenderOriginAware` on your camera to opt in: build `View`
+  from `Eye - RenderOrigin` and expose the unshifted matrix as `AbsoluteViewProjection`. Keep `Eye` absolute.
+- `WorldToScreen` and `ScreenToRay` still take and return ABSOLUTE world points, so nameplates and picking need
+  no change.
+- What it does NOT fix: terrain chunk vertices are baked in absolute world space, so terrain geometry and terrain
+  collision at range are a later release. Triplanar terrain texturing at range is preserved rather than improved
+  (the shader reconstructs the absolute position for it). Depth precision at range is governed by the near-to-far
+  ratio and is unrelated. Nothing about simulation changes.
+
+If you write your own renderer against `Transform3D`, `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix
+directly. You do not need it for `Scene3D`, which reduces the absolute matrix you hand it. Calling both
+double-subtracts.
+
 ### Transparency ordering
 
 Overlapping alpha-blended billboards and overlay meshes composite correctly regardless of submission order:

@@ -26,6 +26,19 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   pipeline variant. `Scene3D.ClearScreenTransition()` / `Transition.Reset()` cancel a transition on teardown. Remote
   teleports cut for observers automatically (see `KhaozEngine.NetWorld`). Byte-identical when none is active. See
   docs/USING-KHAOZENGINE.md.
+- `Scene3D.RenderOrigin` / `RenderOriginActive` / `IRenderOriginAware` - camera-relative rendering, so a world
+  100 km from the origin renders as cleanly as one at it. `Scene3D` subtracts a quantized render origin (default
+  `WorldFrame.Nearest(camera.Eye).Anchor`, a 128 m grid point, so the subtraction is exact) from every world
+  position on its way to the GPU, which removes the large operands before the matrix concatenation ever meets
+  them. **Adoption: none** - every entry point still takes ABSOLUTE world coordinates, `WorldToScreen` and
+  `ScreenToRay` still speak absolute, and every CPU-side spatial computation (frustum culling, the terrain cull
+  fast path, shadow-cascade fitting, caster classification, the transparency sorts) still runs in absolute space,
+  byte-identical to before. The origin is LATCHED at `Begin()`. `RenderOrigin = Vector3.Zero` opts out exactly.
+  The three engine cameras implement `IRenderOriginAware`. A consumer camera that does not falls the WHOLE
+  pipeline back to the absolute path (never half an origin) and `RenderOriginActive` reports `false`.
+  `Transform3D.ToMatrix(Vector3 renderOrigin)` builds a reduced matrix for a consumer that wants one, which
+  `Scene3D` itself never requires. Terrain chunk vertices, terrain texturing at range and depth precision are
+  explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
   with per-instance tint + `Material`, plus a per-instance dissolve overload `Draw(handle, transform, tint,

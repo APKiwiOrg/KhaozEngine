@@ -26,8 +26,30 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     /// </summary>
     public uint TeleportEpoch { get; set; }
 
-    /// <summary>Capsule-centre world position (Y is ground-clamped while grounded, free while airborne).</summary>
-    public Vector3 Position { readonly get => Move.Position; set => Move.Position = value; }
+    /// <summary>
+    /// The planar (XZ) anchor <see cref="Position"/> is expressed against, stamped by
+    /// <see cref="PlayerMoveSimulator.Step"/> from the island frame it stepped in. <see cref="Vector2.Zero"/> (the
+    /// default) means absolute world coordinates, which is what an unframed head and every client produce.
+    /// <para>It is an OUTPUT of a step, not an input a caller has to remember to set: a state that came out of a
+    /// step always carries the frame it was stepped in. Y is never framed, so this is planar only. Everything a
+    /// consumer sees across <see cref="WorldServer"/>'s public surface is re-expressed as absolute before it is
+    /// handed over, so a state read from there carries <see cref="Vector2.Zero"/> here and an absolute
+    /// <see cref="Position"/> - the two never disagree.</para>
+    /// </summary>
+    public Vector2 FrameAnchor { get; set; }
+
+    /// <summary>Capsule-centre position, in the space <see cref="FrameAnchor"/> names (Y is ground-clamped while
+    /// grounded, free while airborne, and always absolute).
+    /// <para>WRITING it stores an ABSOLUTE position and resets <see cref="FrameAnchor"/>, exactly as
+    /// <see cref="ReplicatedPosition.Value"/>'s setter does and for the same reason: every site that assigns a
+    /// position assigns one that came from outside the simulation (an authored spawn, an admin teleport, a
+    /// persisted record), and a write that kept a stale anchor would claim a frame the value was never in. A
+    /// framed island converts it back exactly on the next tick.</para></summary>
+    public Vector3 Position
+    {
+        readonly get => Move.Position;
+        set { Move.Position = value; FrameAnchor = Vector2.Zero; }
+    }
 
     /// <summary>Vertical velocity (m/s, positive up).</summary>
     public float VerticalVelocity { readonly get => Move.VerticalVelocity; set => Move.VerticalVelocity = value; }
@@ -54,7 +76,7 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     {
         MoveState m = Move;
         m.Position = new Vector3(position.X, Move.Position.Y, position.Y);
-        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch };
+        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch, FrameAnchor = FrameAnchor };
     }
 
     /// <summary>Returns a copy with the smoothed planar (XZ) AND vertical (Y) render position applied; the rest of
@@ -64,7 +86,7 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     {
         MoveState m = Move;
         m.Position = new Vector3(position.X, vertical, position.Y);
-        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch };
+        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch, FrameAnchor = FrameAnchor };
     }
 
     /// <summary>Rebuilds a full state from the two replicated components: the 3D <paramref name="position"/>

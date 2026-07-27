@@ -63,6 +63,29 @@ public sealed class WorldServerConfig
     /// <see cref="MoveProtocol.EncodeReplicationAck"/>, so a dropped delta on the reliable-ordered channel self-heals.</summary>
     public bool DeltaReplication { get; init; } = true;
 
+    /// <summary>Run the simulation in an ISLAND FRAME that follows the anchored player, so the movement step's
+    /// carried state stays small however far the world extends. Off by default. See <see cref="WorldServer.IslandFrame"/>
+    /// for what it changes and what it deliberately does not.
+    /// <para><b>Do not enable this against a client that does not carry the frame on the wire.</b> The wire is
+    /// absolute in this release and the client predicts in absolute coordinates, so a server stepping in a 136 m
+    /// frame while its client steps at 100 km produces two trajectories from two spaces and the reconciliation
+    /// error GROWS. Today both heads are equally imprecise and therefore agree. This flag is for a single-player or
+    /// single-region game with no reconciled client, and for testing.</para>
+    /// <para>A flat server is ONE island and follows ONE player. A world with players spread across it needs an
+    /// island per region, which is <see cref="ShardedWorldServer"/> (whose own flag lands with per-cell physics -
+    /// shipping the knob before that would ship a switch whose ON position walks players through walls).</para>
+    /// <para>Requires a physics world that can rebase (<c>IPhysicsWorld.CanRebase</c>) when one is supplied at all:
+    /// a framed step querying an unframed world is a wrong answer, not an imprecise one, so the constructor
+    /// refuses the combination instead of producing it.</para></summary>
+    public bool FrameAnchoring { get; init; }
+
+    /// <summary>The coordinate space this server's sampler delegates (ground height, ground normal, medium) read.
+    /// Only meaningful with <see cref="FrameAnchoring"/> on. <see cref="NetWorld.SamplerSpace.World"/> (the default)
+    /// means they keep taking absolute coordinates and the step converts for them, which is the zero-work adoption
+    /// step and still fixes the accumulating half of the problem. <see cref="NetWorld.SamplerSpace.Frame"/> is the
+    /// full fix, for a game whose ground follow already comes from the island's own physics world.</summary>
+    public SamplerSpace SamplerSpace { get; init; } = SamplerSpace.World;
+
     /// <summary>Maximum payload size (bytes) accepted on a client-to-server game message
     /// (<see cref="WorldClient.SendGameMessage"/>). A larger payload is DROPPED (never dispatched to
     /// <see cref="WorldServer.OnGameMessage"/>) and flagged <see cref="SuspiciousReason.OversizedMessage"/> so a
@@ -121,6 +144,9 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     private double selfRescueClock;
     private readonly Dictionary<int, double> selfRescueReadyAt = new();
     private readonly MoveTuning tuning;
+    // The island's physics world, held (not just handed to the simulator) because a re-anchor rebases it in the
+    // same gap between two steps that the entities move in. Null when the game supplied none.
+    private readonly IPhysicsWorld? physics;
     // The single NetId allocator (node 0 for this single-process server) that both player joins and SpawnEntity draw
     // from, so ids never collide. Replaces the pre-10.0.0 raw ++int counter; see NetIdAllocator for the node-prefix scheme.
     private readonly NetIdAllocator allocator = new();
@@ -146,7 +172,17 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
-        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium);
+        // A framed step queries the island's physics world in the island's space, so that world has to be able to
+        // follow the frame. Refuse the combination at construction rather than serve queries from another space:
+        // the failure that would produce is a character standing on nothing, not a rounding artifact.
+        if (this.config.FrameAnchoring && physics is not null && !physics.CanRebase)
+            throw new ArgumentException(
+                "WorldServerConfig.FrameAnchoring needs an IPhysicsWorld that can rebase (CanRebase), or no physics " +
+                "world at all: the island's frame and its physics world's Origin move together or the step queries " +
+                "colliders in a space its state is not in.", nameof(physics));
+        this.physics = physics;
+        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium,
+            this.config.SamplerSpace);
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator));
@@ -248,8 +284,14 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// <summary>The account id for a joined slot (connect token or <c>guest:{slot}</c> fallback).</summary>
     public bool TryGetAccountId(int slot, out string accountId) => accountIdBySlot.TryGetValue(slot, out accountId!);
 
-    /// <summary>The current authoritative movement state for a joined slot.</summary>
-    public bool TryGetPlayerState(int slot, out PlayerMoveState state) => stateBySlot.TryGetValue(slot, out state);
+    /// <summary>The current authoritative movement state for a joined slot, in ABSOLUTE world metres (with a zero
+    /// <see cref="PlayerMoveState.FrameAnchor"/>), whatever frame the island happens to be simulating in.</summary>
+    public bool TryGetPlayerState(int slot, out PlayerMoveState state)
+    {
+        if (!stateBySlot.TryGetValue(slot, out state)) return false;
+        state = ToAbsolute(state);
+        return true;
+    }
 
     /// <summary>The slots of all currently joined players.</summary>
     public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
@@ -259,15 +301,18 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// unknown slot. When <paramref name="teleport"/> is true the player's monotonic teleport epoch is advanced
     /// (from the server-held value, ignoring any epoch on the incoming state) so the client cuts to the new position
     /// instead of gliding; otherwise the current epoch is preserved. The per-tick movement path bypasses this and
-    /// never advances the epoch.</summary>
+    /// never advances the epoch.
+    /// <para>The incoming position is ABSOLUTE world metres unless the state carries a
+    /// <see cref="PlayerMoveState.FrameAnchor"/> saying otherwise (one read back from this server does not: it is
+    /// handed out absolute). A framed island converts it in, exactly.</para></summary>
     public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
     {
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
         uint baseEpoch = stateBySlot.TryGetValue(slot, out PlayerMoveState cur) ? cur.TeleportEpoch : 0u;
-        PlayerMoveState next = state;
+        PlayerMoveState next = ToIsland(state);
         next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
         stateBySlot[slot] = next;
-        world.Set(e, new ReplicatedPosition { Value = next.Position });
+        world.Set(e, ReplicatedPosition.InFrame(islandFrame, next.Position));
         world.Set(e, MovementState.From(next));
     }
 
@@ -300,7 +345,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         long netId = allocator.Next().Value;
         Entity e = world.Spawn();
         world.Set(e, new NetId(netId));
-        world.Set(e, new ReplicatedPosition { Value = new Vector3(x, 0f, z) });
+        world.Set(e, ReplicatedPosition.FromWorld(new Vector3(x, 0f, z), islandFrame));   // authored absolute
         spawnedEntities[netId] = e;   // the netId -> entity index TryGetEntity / DespawnEntity resolve through
         configure?.Invoke(world, e);
         return netId;
@@ -404,20 +449,23 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
-            PlayerMoveState prev = stateBySlot[slot];
+            // Everything this island owns is stepped in the island's frame. Unframed (the default) that frame is
+            // WorldFrame.Origin, whose anchor is exactly zero, so every line below is byte-identical to the
+            // pre-frame server: a state converted from Origin to Origin is the same state, and InFrame(Origin, p)
+            // is the same component as { Value = p }.
+            PlayerMoveState prev = ToIsland(stateBySlot[slot]);
             PlayerMoveState state = simulator.Step(prev, cmd, dt);
             stateBySlot[slot] = state;
-            world.Set(entityBySlot[slot], new ReplicatedPosition { Value = state.Position });
+            world.Set(entityBySlot[slot], ReplicatedPosition.InFrame(islandFrame, state.Position));
             world.Set(entityBySlot[slot], MovementState.From(state));   // replicate the vertical axis
             if (config.AntiCheat.CorrectionEnabled) TrackCorrection(slot, prev, state, dt);
         }
 
-        // Rebuild AoI index from current positions.
-        interest.Clear();
-        world.ForEach<NetId>((Entity e, ref NetId id) =>
-        {
-            if (world.TryGet(e, out ReplicatedPosition p)) interest.Insert(id.Value, p.Value.X, p.Value.Z);
-        });
+        // Re-anchor the island once the tick's movement has settled, before anything reads a position back.
+        ReanchorIsland();
+
+        // Rebuild AoI index from current positions, healing any stale frame stamp on the way past.
+        RebuildInterestAndHealFrames();
 
         // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
         // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
@@ -429,7 +477,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         foreach (int slot in slots)
         {
             long netId = netIdBySlot[slot];
-            Vector3 p = stateBySlot[slot].Position;
+            Vector3 p = AbsolutePositionOf(slot);   // the interest grid is keyed absolute, so the query is too
             HashSet<long> set = interest.Query(p.X, p.Z, config.InterestRadius);
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
@@ -557,7 +605,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         foreach (int slot in netIdBySlot.Keys)
         {
             string acct = accountIdBySlot.TryGetValue(slot, out string? a) ? a : string.Empty;
-            PlayerMoveState st = stateBySlot.TryGetValue(slot, out PlayerMoveState s) ? s : default;
+            PlayerMoveState st = stateBySlot.TryGetValue(slot, out PlayerMoveState s) ? ToAbsolute(s) : default;
             long netId = netIdBySlot[slot];
             string name = string.Empty;
             if (entityBySlot.TryGetValue(slot, out Entity e) && world.TryGet(e, out PlayerIdentity pi))
@@ -589,13 +637,15 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         deltaCapableSlots.Remove(slot);
 
         Vector3 spawn = config.SpawnPosition?.Invoke(slot) ?? new Vector3(slot * 2f, 0f, 0f);
-        // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height).
-        PlayerMoveState state = simulator.Step(new PlayerMoveState { Position = spawn }, MoveCommand.Idle, config.TickSeconds);
+        // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height). The spawn position is
+        // authored ABSOLUTE, so it converts into the island first: the clamp step queries the island's physics
+        // world and samplers, which speak the island's space.
+        PlayerMoveState state = simulator.Step(ToIsland(new PlayerMoveState { Position = spawn }), MoveCommand.Idle, config.TickSeconds);
 
         long netId = allocator.Next().Value;
         Entity e = world.Spawn();
         world.Set(e, new NetId(netId));
-        world.Set(e, new ReplicatedPosition { Value = state.Position });
+        world.Set(e, ReplicatedPosition.InFrame(islandFrame, state.Position));
         world.Set(e, MovementState.From(state));   // vertical axis present from the first snapshot
 
         netIdBySlot[slot] = netId;
@@ -621,8 +671,10 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     // may later surface a Left event for the same slot through Poll, calling OnLeave a second time.
     private void OnLeave(int slot)
     {
+        // The final state goes out ABSOLUTE: a persistence layer writes world metres, and a save that carried a
+        // runtime frame would break the moment the grid constant changed.
         if (accountIdBySlot.TryGetValue(slot, out string? acct) && stateBySlot.TryGetValue(slot, out PlayerMoveState final))
-            PlayerLeaving?.Invoke(slot, acct, final);
+            PlayerLeaving?.Invoke(slot, acct, ToAbsolute(final));
 
         if (entityBySlot.TryGetValue(slot, out Entity e) && world.IsAlive(e)) world.Despawn(e);
         netIdBySlot.Remove(slot);

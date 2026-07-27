@@ -43,9 +43,14 @@ The per-emitter presentation recipe:
   brightest live particles as budgeted point lights. Per-particle intensity is scaled by the particle's
   alpha, so a fading particle dims its light. 0 disables the light link.
 - `Flipbook`: an optional `ParticleFlipbook` (atlas `TextureHandle`, `Columns` x `Rows` grid, optional
-  motion-vector sheet + `MotionStrength`, `Loop`). Default (an invalid texture) keeps the look on the
-  procedural `Shape` path. When set, the adapter resolves each sprite's `FlipbookFrame` and the atlas frame
-  replaces the procedural shape. Load the sheets with `Scene3D.LoadTexture`.
+  motion-vector sheet + `MotionStrength`, `Loop`, `FlipU`, `FlipV`). Default (an invalid texture) keeps the
+  look on the procedural `Shape` path. When set, the adapter resolves each sprite's `FlipbookFrame` and the
+  atlas frame replaces the procedural shape. Load the sheets with `Scene3D.LoadTexture`.
+  A cell samples with its origin at the BOTTOM-LEFT, while the 2D `SpriteBatch` path samples the same file
+  top-left, so an atlas packed by a top-left tool (PIL, most packers) plays with every cell VERTICALLY
+  INVERTED until you pass `FlipV: true`. `FlipU` is the horizontal mirror. Both flip within a cell only, so
+  the cell the frame index selects does not move. `Columns`/`Rows` cap at 127 (grid, motion strength, and the
+  two flip bits share one packed float).
 - `FlipbookMode`: `LifeOneShot` (default) sweeps the sheet once across a particle's life and clamps on the
   last cell (one-shot explosion/impact sheets), or `TimeLoop` advances at `FlipbookFps` and wraps (looping
   fire/smoke). Only read when `Flipbook` is active.

@@ -55,6 +55,37 @@ namespace KhaozEngine.Tests.Gpu
             return (px, w, h);
         }
 
+        /// <summary>
+        /// A cols x rows atlas whose cell is asymmetric on BOTH axes: the cell's hue is one opaque blob filling a
+        /// single quadrant (low x, low y in the row-major byte order), the rest of the cell transparent. A
+        /// horizontal mirror moves the blob to the opposite column, a vertical mirror to the opposite row, and both
+        /// to the diagonal, so all four of {none, FlipU, FlipV, both} render to distinguishable, measurable
+        /// positions.
+        /// <para>This exists because <see cref="Atlas"/> cannot see a flip at all: its cell is a CENTRED RADIALLY
+        /// SYMMETRIC disc, so it is byte-identical under any mirror. That is precisely why the flipbook suite could
+        /// not catch a UV-origin bug.</para>
+        /// </summary>
+        public static (byte[] rgba, int w, int h) AsymmetricAtlas(int cols, int rows, int cellPx)
+        {
+            int w = cols * cellPx, h = rows * cellPx;
+            var px = new byte[w * h * 4];
+            int margin = Math.Max(1, cellPx / 8);
+            int half = cellPx / 2;
+            int frameCount = cols * rows;
+            for (int cr = 0; cr < rows; cr++)
+                for (int cc = 0; cc < cols; cc++)
+                {
+                    (byte r, byte g, byte b) = CellRgb(cr * cols + cc, frameCount);
+                    for (int y = cr * cellPx + margin; y < cr * cellPx + half; y++)
+                        for (int x = cc * cellPx + margin; x < cc * cellPx + half; x++)
+                        {
+                            int i = (y * w + x) * 4;
+                            px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255;
+                        }
+                }
+            return (px, w, h);
+        }
+
         /// <summary>A uniform-colour motion sheet: every texel is (r, g, 0, 255). (128, 128) is neutral (zero
         /// displacement). A value away from 128 encodes a constant per-frame warp.</summary>
         public static (byte[] rgba, int w, int h) UniformMotion(int cols, int rows, int cellPx, byte r, byte g)

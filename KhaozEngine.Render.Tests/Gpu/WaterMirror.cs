@@ -68,8 +68,8 @@ namespace KhaozEngine.Tests.Gpu
                 var verts = new WaterClipmapVertex[WaterClipmap.VertexCount(levels, ring)];
                 var indices = new uint[WaterClipmap.IndexCount(levels, ring)];
                 Vector2 focus = WaterClipmap.ClampFocus(plane, camX, 0f);
-                int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels, verts, indices, out _,
-                    renderOrigin);
+                int vc = WaterClipmap.Build(plane, focus.X, focus.Y, cell, ring, levels,
+                    settings.ClipmapGeomorphBand, verts, indices, out _, renderOrigin);
 
                 var s = new Surface
                 {
@@ -88,19 +88,26 @@ namespace KhaozEngine.Tests.Gpu
                 for (int i = 0; i < vc; i++)
                 {
                     WaterClipmapVertex v = verts[i];
-                    // Mirrors the vertex stage's tap loop exactly: one tap normally, two averaged on a stitched
-                    // ring-boundary vertex, each band-limited to this vertex's own Cell.
-                    int taps = v.Stitch == Vector2.Zero ? 1 : 2;
+                    // Mirrors the vertex stage's tap loop exactly, geomorph included: weights
+                    // (1 - Morph, Morph/2, Morph/2) over the vertex's own position and its two coarse neighbours,
+                    // collapsing to the single tap when the vertex is already on the coarse lattice, and every tap
+                    // band-limited to this vertex's own (already morphed) Cell. Zero-weight taps are SKIPPED, not
+                    // evaluated at 0, which is what keeps an un-morphed vertex a single evaluation.
+                    Vector3 w = v.Coarse == Vector2.Zero
+                        ? new Vector3(1f, 0f, 0f)
+                        : new Vector3(1f - v.Morph, 0.5f * v.Morph, 0.5f * v.Morph);
                     float sum = 0f;
-                    for (int t = 0; t < taps; t++)
+                    for (int t = 0; t < 3; t++)
                     {
-                        Vector2 o = taps == 1 ? Vector2.Zero : (t == 0 ? -v.Stitch : v.Stitch);
+                        float tw = t == 0 ? w.X : (t == 1 ? w.Y : w.Z);
+                        if (tw <= 0f) continue;
+                        Vector2 o = t == 0 ? Vector2.Zero : (t == 1 ? -v.Coarse : v.Coarse);
                         // The shader's aXz: the cascade maps are indexed by ABSOLUTE world position, so the
                         // origin goes back on here and nowhere else.
                         float sx = v.Position.X + o.X + renderOrigin.X, sz = v.Position.Z + o.Y + renderOrigin.Z;
-                        sum += v.Position.Y + renderOrigin.Y + maps.Displace(sx, sz, v.Cell, settings).Y;
+                        sum += (v.Position.Y + renderOrigin.Y + maps.Displace(sx, sz, v.Cell, settings).Y) * tw;
                     }
-                    s._clipH[i] = sum / taps;
+                    s._clipH[i] = sum;
                 }
                 return s;
             }

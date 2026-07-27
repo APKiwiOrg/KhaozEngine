@@ -2539,6 +2539,46 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       ABSOLUTE world space, so a render-origin rebase leaves every ring exactly where it was and only re-uploads
       the (render-relative) positions, costing one rebuild frame per 128 m travelled. Rationale, and the measured
       before and after: `docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md`.
+      Since 17.3.0 `ClipmapGeomorphBand` (0.5; `0` restores the 16.12.0 grid exactly) removes what that release
+      left behind. Vertices within that fraction of a ring's half-width fade toward the NEXT ring out's evaluation
+      - sampled displacement and band-limit spacing both - reaching it exactly on the boundary, so a ring snapping
+      in or out changes the surface continuously instead of swapping level in a one-cell annulus. It subsumes the
+      stitch rather than sitting beside it (a boundary vertex is the fully-morphed case) and its weights are
+      static per grid build, so a frame where no ring snapped still uploads nothing. Re-measured on the same
+      acceptance metric: the residual falls from 0.00086 m RMS to 0.00047 m, at both a 0.10 m and a 0.50 m camera
+      step. Its optimum at 0.5 is structural, not a taste call, and the sweep is in
+      `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`.
+  - **Bathymetry: shoaling shallows and a breaking-surf band** (since 17.3.0, `Post.Water.Bathymetry`, **null by
+    default, and null is the 16.12.0 surface byte for byte**). Needs `WaterWaveSource.FftOcean` - the taper is per
+    cascade against each cascade's own mean wave number, and the procedural swell has none, so the whole group is
+    inert there.
+    - **The seam is a plain CPU array**, not a texture: a `WaterBathymetry` holds water depth in METRES (still
+      water minus ground, so positive is water and zero or less is land) over a world-space XZ rectangle, and
+      `FillFromGround(groundHeight, surfaceY)` fills it from any height function - a terrain field, a heightmap, a
+      collision query. The renderer owns the texture and re-uploads only when `Revision` moves, so a coastline
+      baked once at load costs one upload for the life of the process. **Outside the rectangle the surface reads
+      as deep open water**, which is what makes it affordable to bake a coastal strip at a useful resolution
+      instead of a whole ocean at a useless one. Resolution wants to resolve the SHAPE of the coast, not its
+      texture: a texel every few metres reads well, and what it must not do is miss a feature the surf is meant to
+      wrap.
+    - **Shoaling** scales each cascade by `tanh(k d)` against its energy-weighted mean wave number, so the long
+      swell starts calming in metres of depth while the chop rides in almost untouched, and the shallows go
+      glassy-and-rippled rather than uniformly damped. `ShoalingStrength` (1, `0` = off) blends it;
+      `ShoalingDepthScale` (1) moves where the calm starts without changing its shape. Note this is deliberately
+      the textbook shoaling factor read BACKWARDS: real waves grow as they come in, and a game wants the surface
+      to settle down to meet the beach instead of piling up against it.
+    - **The surf band** foams where the depth falls below `Hs / SurfBreakerIndex` (0.78, the classic `H/d`
+      criterion), and the foam is gated on the incoming wave's CREST PHASE, so it surges up the beach with each
+      wave rather than sitting there as a lit strip. `SurfStrength` (1, `0` = off and skips the branch),
+      `SurfBandWidth` (1, how gradually the band builds), `SurfCrestBias` (0.25, where on the wave foam starts),
+      `SurfTrailWidth` (0.8, the wash that lingers on the seaward face behind the surge) and
+      `SurfAmplitudeCollapse` (0.6, how much amplitude the break takes out on top of the taper, flat across every
+      cascade). It rides `FoamStrength` like every other foam source.
+    - **The surge direction is the depth gradient**, not the wind heading, which is what makes an isolated shallow
+      - a rock, a sandbar - break AROUND itself with no extra authoring: the direction wraps it, so every side
+      gets its own onshore.
+    - Rationale, including the two things the first implementation got wrong and how the probe renders caught
+      them: `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`.
   - **Ripple spectrum, and why it is shaped this way**: ten cosine components (`RippleComponents`) generated
     from four scalars, with headings stepping by the GOLDEN ANGLE so no two are parallel and no subset lines up,
     wave numbers laddering by `RippleLacunarity` over about five octaves, and amplitudes renormalized to a fixed
@@ -3497,6 +3537,22 @@ a two-tap frame warp that reads fluid at low frame counts, and a plain sheet (no
 At the engine level, `ParticleSprite` carries the same `Flipbook` spec plus a continuous `FlipbookFrame` (integer
 part = current cell, fractional part = blend toward the next), so a raw `DrawParticle`/`DrawParticles` caller drives
 frame timing itself. The adapter's `FlipbookMode` is just the policy that resolves `FlipbookFrame` for you.
+
+**Atlas UV origin (read this if your sheet plays upside down).** A flipbook cell samples with its origin at the
+BOTTOM-LEFT, the same convention as the rest of the 3D sprite path (`BillboardGeometry.Triangles` maps `(u0,v0)`
+to the bottom-left corner). The 2D `SpriteBatch` path samples the SAME image file top-left. So an atlas packed by
+a top-left tool (PIL, and most sprite packers) renders here with EVERY CELL VERTICALLY INVERTED. The fix is one
+knob, per spec:
+
+```csharp
+Flipbook = new ParticleFlipbook(atlas, Columns: 8, Rows: 8, Loop: true, FlipV: true),
+```
+
+`FlipV` mirrors each cell vertically, `FlipU` mirrors it horizontally, and both together are a 180 degree rotation.
+They flip only the coordinate WITHIN a cell, never which cell the frame index selects, so playback order is
+untouched. Both default to false, so a bottom-left-authored sheet needs neither. `Columns` and `Rows` cap at 127
+(the grid, the motion strength, and the two flip bits share one packed float): a 128-column sheet at even a 64px
+cell is 8192px wide, at or past the max texture size on most GPUs, so the cap is unreachable in practice.
 
 **Quality and soft fade** are host knobs, not cleared by `Begin`. Set the quality tier once when picking a graphics
 tier, the soft fade per frame:

@@ -273,6 +273,101 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public float ClipmapBandLimitSamples = 2f;
 
+        /// <summary>
+        /// How far in from each clipmap ring's outer edge the geometry fades toward the NEXT ring out's
+        /// evaluation, as a fraction of that ring's half-width. This is the LOD geomorph: over the band, a
+        /// vertex's sampled displacement and its band-limit spacing both blend toward what the coarse ring would
+        /// draw at the same place, reaching it exactly on the boundary, so a ring snapping in or out changes the
+        /// surface continuously instead of swapping level in a one-cell annulus.
+        /// <para>
+        /// <c>0</c> restores 16.12.0's hard swap exactly: the boundary stitch and nothing else, byte for byte.
+        /// <c>1</c> morphs a whole level. A RING's drawn extent starts at half its half-width (that is where its
+        /// hole ends), so <c>0.5</c> already morphs an entire ring and only level 0 keeps an unmorphed core.
+        /// </para>
+        /// <para>
+        /// <b>What it trades.</b> Near a boundary the surface is band-limited toward twice its own cell spacing,
+        /// i.e. deliberately oversampled, so the band is a little softer than the ring's geometry could carry.
+        /// That is the whole cost, and it buys the residual measured on
+        /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/348">#348</see>. Inert unless
+        /// <see cref="GridMode"/> is <see cref="WaterGridMode.Clipmap"/>.
+        /// </para>
+        /// </summary>
+        public float ClipmapGeomorphBand = 0.5f;
+
+        // ---- Bathymetry, shoaling and surf --------------------------------------------------------------------
+
+        /// <summary>
+        /// Consumer-supplied water depth over a world-space rectangle, and the switch for everything below it.
+        /// <c>null</c> (the default) means the surface has no idea where the shallows are, which is exactly what
+        /// it knew before 16.13.0 and renders bit-identically.
+        /// <para>
+        /// <b>It needs <see cref="WaterWaveSource.FftOcean"/>.</b> Under
+        /// <see cref="WaterWaveSource.Procedural"/> the depth field and every knob in this group go fully inert:
+        /// the shoaling taper is per-cascade against each cascade's own mean wave number, and the procedural swell
+        /// has no cascades - it is a closed-form component stack whose whole point is that it needs no maps. The
+        /// stylized path keeps <see cref="FoamShoreWidth"/>, which is a shoreline BAND rather than a breaking one.
+        /// </para>
+        /// </summary>
+        public WaterBathymetry? Bathymetry;
+
+        /// <summary>How much of the depth taper is applied, 0..1. At 1 each cascade is scaled by
+        /// <c>tanh(k d)</c> against its own energy-weighted mean wave number, so the long swell starts calming in
+        /// metres of depth while the chop rides in almost untouched; at 0 nothing is attenuated and the depth
+        /// field only drives the surf band. Needs <see cref="Bathymetry"/>. Default <c>1</c>.</summary>
+        public float ShoalingStrength = 1f;
+
+        /// <summary>Multiplies the depth fed to the taper, so it moves where the calm starts without changing its
+        /// shape: below 1 the calm shelf reaches further out into deeper water, above 1 it hugs the shore.
+        /// <c>1</c> is the physical reading. Ignored when <see cref="ShoalingStrength"/> is 0. Default
+        /// <c>1</c>.</summary>
+        public float ShoalingDepthScale = 1f;
+
+        /// <summary>
+        /// Intensity of the breaking-surf band, 0..1. <c>0</c> disables the band entirely (and skips its branch,
+        /// including its two extra depth taps). The band is foam gated on the incoming wave's CREST PHASE, so it
+        /// surges up the beach with each wave rather than glowing in place, and it wraps anything shallow - a rock
+        /// standing in shallow water breaks around itself with no extra authoring.
+        /// <para>
+        /// It rides <see cref="FoamStrength"/> like every other foam source, so a scene with foam turned off has
+        /// no surf either. Needs <see cref="Bathymetry"/>. Default <c>1</c>.
+        /// </para>
+        /// </summary>
+        public float SurfStrength = 1f;
+
+        /// <summary>The breaker index <c>gamma</c> in <c>H / d = gamma</c>: waves of significant height <c>H</c>
+        /// break where the depth falls below <c>H / gamma</c>. <c>0.78</c> is the classic shallow-water value and
+        /// the default; raising it pulls the break line into shallower water (a narrower, later-breaking band),
+        /// lowering it pushes the surf further out. Ignored when <see cref="SurfStrength"/> is 0.</summary>
+        public float SurfBreakerIndex = 0.78f;
+
+        /// <summary>How GRADUALLY the band builds once the water is shallow enough to break, as a fraction of the
+        /// break depth. <c>1</c> (the default) ramps the whole way from the break line to the waterline, so the
+        /// surf fades in over the entire zone; smaller values complete the ramp sooner below the break line, which
+        /// reads as a harder-edged, more uniformly white surf zone. Where the band STARTS is
+        /// <see cref="SurfBreakerIndex"/>'s job, not this one. Ignored when <see cref="SurfStrength"/>
+        /// is 0.</summary>
+        public float SurfBandWidth = 1f;
+
+        /// <summary>Where on the incoming wave the foam starts, as a fraction of the crest height (0..1 in
+        /// practice, hard-limited just under 1). <c>0</c> whitens everything from mean water level up, which reads
+        /// as a wash; the default confines the surge to the upper part of the wave, so the band is visibly a
+        /// travelling crest rather than a lit strip. Ignored when <see cref="SurfStrength"/> is 0. Default
+        /// <c>0.25</c>.</summary>
+        public float SurfCrestBias = 0.25f;
+
+        /// <summary>How far below <see cref="SurfCrestBias"/> the foam trail reaches on the SEAWARD face behind
+        /// the surge, in the same normalized wave height. This is what stops the foam vanishing the instant the
+        /// crest passes: a break leaves its wash behind it. <c>0</c> leaves only the crest itself. Ignored when
+        /// <see cref="SurfStrength"/> is 0. Default <c>0.8</c>.</summary>
+        public float SurfTrailWidth = 0.8f;
+
+        /// <summary>How much amplitude the break takes out, 0..1, on top of the depth taper and flat across every
+        /// cascade: past the break line a wave is turbulent whitewater rather than a clean surface, at every
+        /// scale. Rides <see cref="ShoalingStrength"/> (it is geometry, not foam), so a scene that wants the surf
+        /// LOOK without the collapse turns this to 0 rather than turning the shoaling off. Default
+        /// <c>0.6</c>.</summary>
+        public float SurfAmplitudeCollapse = 0.6f;
+
         // ---- Ripple detail (fragment normal field) -----------------------------------------------------------
 
         /// <summary>World-space size of the LONGEST ripple component (larger = broader, slower-looking chop). The

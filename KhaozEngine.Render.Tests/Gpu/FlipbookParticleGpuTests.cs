@@ -66,18 +66,40 @@ namespace KhaozEngine.Tests.Gpu
                 frames: 2);
         }
 
-        static (int r, int g, int b) CenterColor(byte[] rgba)
+        static (int r, int g, int b) CenterColor(byte[] rgba) => PatchColor(rgba, W / 2, H / 2);
+
+        // Off-centre sampler: the mean colour of a 9x9 patch anywhere in the frame, so a test can read WHERE in the
+        // sprite footprint a marker landed instead of only what sits at dead centre. CenterColor is the middle case.
+        static (int r, int g, int b) PatchColor(byte[] rgba, int px, int py)
         {
             long sr = 0, sg = 0, sb = 0;
             int n = 0;
-            for (int y = H / 2 - 4; y <= H / 2 + 4; y++)
-                for (int x = W / 2 - 4; x <= W / 2 + 4; x++)
+            for (int y = Math.Max(py - 4, 0); y <= Math.Min(py + 4, H - 1); y++)
+                for (int x = Math.Max(px - 4, 0); x <= Math.Min(px + 4, W - 1); x++)
                 {
                     int i = (y * W + x) * 4;
                     sr += rgba[i]; sg += rgba[i + 1]; sb += rgba[i + 2];
                     n++;
                 }
             return ((int)(sr / n), (int)(sg / n), (int)(sb / n));
+        }
+
+        // Luminance-weighted centroid of the lit pixels. The background is black and the asymmetric sheet's only
+        // lit thing is its one-quadrant blob, so this reads the blob's screen position directly, with no assumption
+        // about where the sprite's footprint falls.
+        static (double x, double y) MarkerCentroid(byte[] rgba)
+        {
+            double sx = 0, sy = 0, sw = 0;
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    double lum = rgba[i] + rgba[i + 1] + rgba[i + 2];
+                    if (lum <= 90) continue;   // background and bloom skirt
+                    sx += x * lum; sy += y * lum; sw += lum;
+                }
+            Assert.True(sw > 0, "no lit pixels: the marker blob did not render");
+            return (sx / sw, sy / sw);
         }
 
         static int ClosestCell(int r, int g, int b)
@@ -109,6 +131,97 @@ namespace KhaozEngine.Tests.Gpu
 
             (int r10, int g10, int b10) = CenterColor(RenderOneSprite(10f, Motion.Neutral));
             Assert.Equal(10, ClosestCell(r10, g10, b10));
+        }
+
+        // One centred sprite on the ASYMMETRIC sheet at an integer frame (blend 0, so exactly one cell shows),
+        // with the given UV flips. Same scene setup as RenderOneSprite, no motion sheet.
+        static byte[] RenderAsymmetric(float frame, bool flipU, bool flipV)
+        {
+            Scene3D.TextureHandle atlas = default;
+            return Render3DSnapshot.Capture(W, H,
+                setup: scene =>
+                {
+                    (byte[] ap, int aw, int ah) = FlipbookTestSheets.AsymmetricAtlas(Cols, Rows, CellPx);
+                    atlas = scene.LoadTexture(ap, aw, ah);
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = false;
+                    scene.Post.BackgroundColor = new Color(0f, 0f, 0f, 1f);
+                    scene.ParticleSoftFade = 0f;
+                    scene.EffectTimeSeconds = 0f;
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(1.4f, 1.4f, 1.4f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.DrawParticle(new ParticleSprite
+                    {
+                        Position = Vector3.Zero,
+                        Size = 0.6f,
+                        Color = new Color(1f, 1f, 1f, 1f),
+                        Flipbook = new ParticleFlipbook(atlas, Cols, Rows, Loop: true, FlipU: flipU, FlipV: flipV),
+                        FlipbookFrame = frame,
+                        Blend = BillboardBlend.Alpha,
+                    });
+                },
+                frames: 2);
+        }
+
+        [GpuFact]
+        public void Flipbook_flips_mirror_the_cell_on_each_axis()
+        {
+            // The asymmetric sheet paints its hue into ONE quadrant of the cell, so the lit centroid says exactly
+            // where that quadrant landed on screen. FlipU must mirror it horizontally and leave y alone, FlipV must
+            // mirror it vertically and leave x alone, and each mirror must be about the sprite centre (the screen
+            // centre, since the sprite is centred on the framed origin) rather than an arbitrary shift.
+            const float Frame = 5f;
+            (double nx, double ny) = MarkerCentroid(RenderAsymmetric(Frame, flipU: false, flipV: false));
+            (double ux, double uy) = MarkerCentroid(RenderAsymmetric(Frame, flipU: true, flipV: false));
+            (double vx, double vy) = MarkerCentroid(RenderAsymmetric(Frame, flipU: false, flipV: true));
+
+            // The marker is genuinely off-centre, so a mirror is a big, unambiguous move.
+            Assert.True(Math.Abs(ux - nx) > 8.0, $"FlipU barely moved the marker in x ({nx:F1} -> {ux:F1})");
+            Assert.True(Math.Abs(vy - ny) > 8.0, $"FlipV barely moved the marker in y ({ny:F1} -> {vy:F1})");
+
+            // Each flip is confined to its own axis.
+            Assert.True(Math.Abs(uy - ny) < 4.0, $"FlipU must not move y ({ny:F1} -> {uy:F1})");
+            Assert.True(Math.Abs(vx - nx) < 4.0, $"FlipV must not move x ({nx:F1} -> {vx:F1})");
+
+            // Mirror, not translation: each pair straddles the sprite centre.
+            Assert.True(Math.Abs((nx + ux) / 2.0 - W / 2.0) < 4.0, $"FlipU is not a mirror about the sprite centre ({nx:F1}, {ux:F1})");
+            Assert.True(Math.Abs((ny + vy) / 2.0 - H / 2.0) < 4.0, $"FlipV is not a mirror about the sprite centre ({ny:F1}, {vy:F1})");
+        }
+
+        [GpuFact]
+        public void Flipbook_both_flips_are_the_180_rotation()
+        {
+            // FlipU and FlipV compose: the marker's x must match the FlipU-only render and its y the FlipV-only
+            // render, which is exactly a 180 degree rotation of the unflipped cell.
+            const float Frame = 5f;
+            (double nx, double ny) = MarkerCentroid(RenderAsymmetric(Frame, flipU: false, flipV: false));
+            (double ux, _) = MarkerCentroid(RenderAsymmetric(Frame, flipU: true, flipV: false));
+            (_, double vy) = MarkerCentroid(RenderAsymmetric(Frame, flipU: false, flipV: true));
+            (double bx, double by) = MarkerCentroid(RenderAsymmetric(Frame, flipU: true, flipV: true));
+
+            Assert.True(Math.Abs(bx - ux) < 4.0, $"both-flip x should equal the FlipU x ({ux:F1} vs {bx:F1})");
+            Assert.True(Math.Abs(by - vy) < 4.0, $"both-flip y should equal the FlipV y ({vy:F1} vs {by:F1})");
+            // And it is a real 180 rotation, so it differs from the unflipped render on BOTH axes.
+            Assert.True(Math.Abs(bx - nx) > 8.0 && Math.Abs(by - ny) > 8.0,
+                $"both-flip should move on both axes ({nx:F1},{ny:F1} -> {bx:F1},{by:F1})");
+        }
+
+        [GpuFact]
+        public void Flipbook_flips_do_not_change_cell_selection()
+        {
+            // The flips mirror WITHIN a cell. The cell the frame index picks must not move, so the marker still
+            // carries frame 10's hue under every flip combination.
+            const int Frame = 10;
+            foreach ((bool fu, bool fv) in new[] { (false, false), (true, false), (false, true), (true, true) })
+            {
+                byte[] px = RenderAsymmetric(Frame, fu, fv);
+                (double cx, double cy) = MarkerCentroid(px);
+                (int r, int g, int b) = PatchColor(px, (int)Math.Round(cx), (int)Math.Round(cy));
+                Assert.True(Frame == ClosestCell(r, g, b),
+                    $"FlipU={fu} FlipV={fv} selected cell {ClosestCell(r, g, b)}, expected {Frame}");
+            }
         }
 
         [GpuFact]

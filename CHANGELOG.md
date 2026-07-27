@@ -53,6 +53,122 @@ section below Open Recent.
 
 Closes #359.
 
+## 17.3.0
+
+### The sea knows where the shallows are: bathymetry, shoaling, breaking surf, and a geomorphed water clipmap
+
+A consumer-supplied water DEPTH field, and the two things the FFT ocean can do once it has one: calm
+down as it comes into the shallows, and break where it runs out of water. Plus the LOD geomorph that
+fades the water clipmap's ring boundaries instead of swapping them, which is the last of the
+camera-motion artifact [#296](https://github.com/APKiwiOrg/KhaozEngine/issues/296) left behind.
+
+Bathymetry, shoaling and the breaking surf are OFF by default and off is byte-identical: with no depth
+field set every shore helper in both shader stages returns its identity by an early return. The clipmap
+LOD geomorph is the exception: `ClipmapGeomorphBand` ships ON at 0.5 for `WaterGridMode.Clipmap`
+consumers, which changes their default vertex positions and band-limit spacing, in exchange for the
+measured continuity improvement below (`0` reproduces 16.12.0's grid vertex for vertex). The Metal
+golden suite, both water goldens included, passes unchanged.
+
+Prompted by a Ruinborne playtest of 16.12.0: *"Sea should be a bit calmer around the shore, and there
+is no natural wave crash on the beach/rocks"*, plus *"there is a SLIGHT jump (very slight) when moving
+fast"*. Closes [#355](https://github.com/APKiwiOrg/KhaozEngine/issues/355) and
+[#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348); the amplitude half of
+[#330](https://github.com/APKiwiOrg/KhaozEngine/issues/330), which stays open for refraction.
+
+**New: the bathymetry seam.**
+
+- **`WaterBathymetry`** (`KhaozEngine.Render3D`) - water depth in metres over a world-space XZ
+  rectangle, as a plain `float[]` the consumer writes and a `Revision` it bumps. The renderer owns the
+  texture and re-uploads only on a revision change, so a coastline baked once at load costs one upload
+  for the life of the process. `FillFromGround(groundHeight, surfaceY)` is the whole adoption path for
+  a consumer that already has a terrain field. Outside the rectangle the surface reads as deep open
+  water, so a coastal strip can be baked at a useful resolution instead of an ocean at a useless one.
+- **`WaterSettings.Bathymetry`** (default `null`) is the switch for everything below. It needs
+  `WaterWaveSource.FftOcean`: the shoaling taper is per cascade against each cascade's own mean wave
+  number, and the procedural swell has no cascades, so the whole group is documented inert there.
+
+**New: shoaling.** Each cascade's displacement, slope and whitecap foam are scaled by `tanh(k d)`
+against that cascade's energy-weighted mean wave number, so the long swell starts calming in metres of
+depth while the chop rides in almost untouched - which is what a lee shore looks like, by a mechanism
+that is deliberately the textbook one read backwards (real shoaling makes waves GROW; a game wants the
+surface to settle down to meet the beach).
+
+- `ShoalingStrength` (default `1`, `0` = off) and `ShoalingDepthScale` (default `1`, below 1 widens the
+  calm shelf).
+
+**New: the breaking-surf band.** Where the depth falls below `Hs / gamma` the surface foams, and the
+foam is gated on the incoming wave's CREST PHASE rather than on depth alone, so it surges up the beach
+with each wave instead of glowing in place. Anything shallow is wrapped, so a rock standing in shallow
+water breaks around itself with no authoring - the surge direction comes from the depth gradient, not
+from the wind heading.
+
+- `SurfStrength` (default `1`, `0` = off and skips the branch), `SurfBreakerIndex` (default `0.78`, the
+  classic `H/d` criterion), `SurfBandWidth` (default `1`), `SurfCrestBias` (default `0.25`),
+  `SurfTrailWidth` (default `0.8`, the foam that lingers on the seaward face behind the surge) and
+  `SurfAmplitudeCollapse` (default `0.6`, how much amplitude the break takes out on top of the taper,
+  flat across every cascade).
+
+**New: the water clipmap's LOD geomorph.** `WaterSettings.ClipmapGeomorphBand` (default `0.5`, `0`
+restores 16.12.0 exactly). Vertices within that fraction of a ring's half-width fade toward the next
+ring out's evaluation - sampled displacement and band-limit spacing both - reaching it exactly on the
+boundary, so a ring snapping in or out changes the surface continuously instead of swapping level in a
+one-cell annulus. It SUBSUMES the two-tap boundary stitch rather than sitting beside it (the stitch is
+the `Morph = 1` case), and the weights are static per grid build, so a frame where no ring snapped
+still does no work.
+
+Re-measured on #348's own acceptance metric (64 texels, three cascades, worst over five start offsets):
+the residual falls from **0.00086 m RMS to 0.00047 m** at both a 0.10 m and a 0.50 m camera step, 1.83x
+better, and still bounded by the band's width rather than by how far the camera moved. The sweep across
+the band is in the design doc, including why its optimum at 0.5 is structural rather than a taste call.
+
+**Behaviour and API notes.**
+
+- `OceanSpectrum.BuildInitialSpectrum` returns a `CascadeStatistics` (slope variance, height variance,
+  energy-weighted mean wave number) instead of a bare slope variance. Internal.
+- The water pass's resource layout gained the depth texture and its clamped sampler, AHEAD of the ocean
+  maps. Both stages sample it first. The ordering is not cosmetic and is spelled out in
+  `ShaderSources.WaterShore.cs`: the vertex stage needs the depth before it sums the cascades, and on
+  Metal a stage's textures are numbered by first reference.
+- The per-plane water UBO grew from 592 to 672 bytes. The bound range is unchanged at 768, so the
+  D3D11 constant-count rule is unaffected.
+- The clipmap vertex grew from 24 to 28 bytes (a morph weight).
+
+Design rationale, including the two things the first implementation got wrong and how the probe renders
+caught them: `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`.
+
+## 17.2.0
+
+### Flipbook atlases get a documented UV origin and a `FlipU`/`FlipV` knob
+
+A flipbook cell samples with its origin at the BOTTOM-LEFT, while the 2D `SpriteBatch` path samples the
+same image file top-left. That was never written down anywhere, so an atlas packed by a top-left tool
+(PIL, and most sprite packers) played with every cell vertically inverted and nothing in the API said
+why. The origin is now documented on the type, in the using guide, and in both particle READMEs, and
+there is a knob to correct a sheet without re-exporting it.
+
+- **`KhaozEngine.Render3D`**: `ParticleFlipbook` gains trailing optional `FlipU` and `FlipV`
+  (both default false, so every existing construction site is source-compatible and renders
+  identically). `FlipV: true` is what a top-left-authored atlas needs to play upright, `FlipU` is the
+  horizontal mirror, and both together are a 180 degree rotation. The mirrors apply to the coordinate
+  WITHIN a cell only, before the cross-fade taps and the motion-vector warp are built, so both taps
+  flip together and the cell the frame index selects never moves: playback order is untouched.
+  `ParticleLook.Flipbook` is a `ParticleFlipbook`, so the adapter picks the knobs up for free.
+- **Atlas grid cap narrows from 255 to 127 columns and rows.** The grid, the quantized motion
+  strength, and the two new flip bits share one packed float on the instance stream, and that lane is
+  capped at 2^24-1 so every field stays exact in float32. Buying two bits cost one bit each from
+  columns and rows (the layout is now 7 + 7 + 8 + 1 + 1 = 24 bits). Nothing real is lost: a
+  128-column atlas at even a 64px cell is 8192px wide, at or past the max texture size on most GPUs,
+  so the old ceiling was unreachable in practice. A larger value clamps rather than wrapping.
+- **Tests**: the flipbook suite could not have caught this. Its test sheet paints each cell a centred
+  radially symmetric disc, which is byte-identical under any mirror, and the sampler read only the dead
+  centre of the frame. Both are addressed: a new asymmetric test sheet whose cell hue fills a single
+  quadrant, an off-centre sampler plus a lit-centroid probe that reads where the marker landed, GPU
+  proofs for each axis and the composed 180 rotation, a guard that no flip changes cell selection, and
+  a headless round-trip pinning the new bit layout field by field. The three flipbook goldens still
+  pass unchanged, which is the encode/decode agreement check.
+
+Closes #338.
+
 ## 17.0.0
 
 ### The wire goes frame-relative and the sharded head simulates in island frames. BREAKING

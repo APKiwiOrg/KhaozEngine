@@ -11,7 +11,8 @@ namespace KhaozEngine.Render3D.Internal
     /// </para>
     /// <para>
     /// <b>Two Metal-only landmines shape everything below.</b> Neither is visible in the GLSL, and between them
-    /// they are why the ocean is ONE texture bound FIRST rather than two textures bound last.
+    /// they are why the ocean is ONE texture, declared in both stages, bound ahead of the fragment-only scene
+    /// depth rather than as two textures bound last.
     /// </para>
     /// <para>
     /// First, Veldrid numbers a backend's resource slots with one counter PER KIND across the whole resource
@@ -20,8 +21,9 @@ namespace KhaozEngine.Render3D.Internal
     /// PREFIX of the layout. A vertex-only texture sitting after a fragment-only one therefore cannot line up at
     /// any binding number: the vertex sees dense index 0 and Veldrid binds it at global index 1, so the vertex
     /// samples an unbound slot and gets zero, silently. Hence one ocean map array, declared identically in both
-    /// stages, ahead of the fragment-only scene depth - the vertex's resources are then exactly the first entry of
-    /// each kind, and the fragment's are the first two.
+    /// stages, ahead of the fragment-only scene depth - the vertex's resources are then a prefix of each kind, and
+    /// the fragment's are the whole list. (16.13.0's bathymetry field is read by both stages too, and sits ahead
+    /// of the ocean for a reason of its own: see <see cref="WaterShoreBindingsGlsl"/>'s file.)
     /// </para>
     /// <para>
     /// Second, within a stage that dense numbering follows FIRST REFERENCE across the emitted function bodies, and
@@ -35,10 +37,12 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static partial class ShaderSources
     {
-        // Declared IDENTICALLY in both stages, and FIRST in the set, both deliberately (see the class note).
-        // Layers [0, cascadeCount) are displacement, [cascadeCount, 2*cascadeCount) are derivatives.
-        const string WaterFftBindingsGlsl = @"layout(set=0, binding=0) uniform texture2DArray OceanMap;
-layout(set=0, binding=1) uniform sampler OceanSamp;   // WRAPPING bilinear: each cascade tiles at its own period
+        // Declared IDENTICALLY in both stages, and ahead of the fragment-only scene depth, both deliberately (see
+        // the class note). Layers [0, cascadeCount) are displacement, [cascadeCount, 2*cascadeCount) are
+        // derivatives. Bindings 0/1 are the bathymetry pair, which both stages also declare and which both sample
+        // FIRST (ShaderSources.WaterShore.cs).
+        const string WaterFftBindingsGlsl = @"layout(set=0, binding=2) uniform texture2DArray OceanMap;
+layout(set=0, binding=3) uniform sampler OceanSamp;   // WRAPPING bilinear: each cascade tiles at its own period
 ";
 
         // Shared by both stages. Touches no resource, so it may safely live in a function: only the SAMPLING has to
@@ -194,6 +198,9 @@ vec2 oceanWarp(vec2 xz) {
             if (i >= nc) break;
             vec2 off = vec2(oceanRotCos(i), oceanRotSin(i));
             vec2 cs = oceanRotAdd(sec.xy, off);
+            // Shoaling: exactly 1.0 with no depth field bound (early return), so the weights below are multiplied
+            // by a literal 1 and an ocean without bathymetry displaces bit for bit what it always did.
+            float shoal = oceanShoal(tapDepth, tapBand, i);
             // The per-ring band limit. bandCell is this vertex's own grid spacing under WaterGridMode.Clipmap and
             // a literal 0 under WaterGridMode.CameraFocused, where oceanMip returns 0 and this is the LOD-0 sample
             // it always was. A vertex shader has no derivatives, so the level has to come from the geometry.
@@ -201,7 +208,7 @@ vec2 oceanWarp(vec2 xz) {
             vec2 uv = oceanUv(oceanToSample(tapRef, cs), oceanTile(i), halfTexel);
             vec4 dm = textureLod(sampler2DArray(OceanMap, OceanSamp), vec3(uv, float(i)), lod);
             vec2 dxz = oceanToWorld(dm.xz, cs);
-            oceanDisp += vec3(dxz.x, dm.y, dxz.y) * wLo;
+            oceanDisp += vec3(dxz.x, dm.y, dxz.y) * (wLo * shoal);
             // The second tap only exists mid-sector. Skipping it is what keeps an unfocused ocean at ONE sample
             // per cascade, and the branch is uniform there because the weight comes from a uniform.
             if (wHi > 0.0) {
@@ -209,7 +216,7 @@ vec2 oceanWarp(vec2 xz) {
                 vec2 uv2 = oceanUv(oceanToSample(tapRef, cs2), oceanTile(i), halfTexel);
                 vec4 dm2 = textureLod(sampler2DArray(OceanMap, OceanSamp), vec3(uv2, float(i)), lod);
                 vec2 dxz2 = oceanToWorld(dm2.xz, cs2);
-                oceanDisp += vec3(dxz2.x, dm2.y, dxz2.y) * wHi;
+                oceanDisp += vec3(dxz2.x, dm2.y, dxz2.y) * (wHi * shoal);
             }
         }
 ";
@@ -273,20 +280,27 @@ vec2 oceanWarp(vec2 xz) {
             // mip. It collapses to keepAll at lod 0, which is the whole camera-focused path.
             float lod = oceanMip(footprint, texel, footprintSamples);
             float keep = lod > 0.0 ? rippleResolve(2.0 * texel * exp2(lod), footprint, footprintSamples) : keepAll;
+            // The SAME shoaling factor the vertex stage applied to this cascade's displacement, so the shading
+            // stays attached to the geometry: a crest the vertex flattened must not still be lit as a crest.
+            // Exactly 1.0 with no depth field bound.
+            float shoal = oceanShoal(bathyDepth, surfBand, i);
             // Derivative layers follow the displacement layers, so cascade i is at nc + i.
             vec4 d = textureLod(sampler2DArray(OceanMap, OceanSamp),
                                 vec3(oceanUv(oceanToSample(vRefXz, cs), tile, halfTexel), float(nc + i)), lod);
-            oceanSlope += oceanToWorld(d.xy, cs) * (keep * wLo);
+            oceanSlope += oceanToWorld(d.xy, cs) * (keep * wLo * shoal);
             float foam = d.z * (1.0 - sec.z);
             if (wHi > 0.0) {
                 vec2 cs2 = oceanRotAdd(csHi, off);
                 vec4 d2 = textureLod(sampler2DArray(OceanMap, OceanSamp),
                                      vec3(oceanUv(oceanToSample(vRefXz, cs2), tile, halfTexel), float(nc + i)), lod);
-                oceanSlope += oceanToWorld(d2.xy, cs2) * (keep * wHi);
+                oceanSlope += oceanToWorld(d2.xy, cs2) * (keep * wHi * shoal);
                 foam += d2.z * sec.z;
             }
-            oceanFoam = max(oceanFoam, foam);
-            oceanLost += oceanVariance(i) * (1.0 - keepAll * keepAll);
+            // Whitecaps ride the taper too: a crest the shoaling flattened is not breaking, and leaving its foam
+            // behind would leave a wash of white sitting on calm shallows. The BREAKING foam that replaces it
+            // comes from the surf band in the fragment's foam block, which is a max() over this.
+            oceanFoam = max(oceanFoam, foam * shoal);
+            oceanLost += oceanVariance(i) * shoal * shoal * (1.0 - keepAll * keepAll);
         }
 ";
     }

@@ -340,7 +340,7 @@ namespace KhaozEngine.Tests.Render3D
             float previous = 0f;
             for (int cascade = 0; cascade < 3; cascade++)
             {
-                float slope = OceanSpectrum.BuildInitialSpectrum(sea, cascade, n, h0);
+                float slope = OceanSpectrum.BuildInitialSpectrum(sea, cascade, n, h0).SlopeVariance;
                 float height = HeightVariance(h0);
                 Assert.True(slope > 0f && height > 0f, $"cascade {cascade} carries no energy at all");
                 float meanKSquared = slope / height;

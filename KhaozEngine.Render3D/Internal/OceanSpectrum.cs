@@ -237,6 +237,28 @@ namespace KhaozEngine.Render3D.Internal
         // ---- Initial spectrum ------------------------------------------------------------------------------
 
         /// <summary>
+        /// What one cascade's bake knows about the spectrum it just laid down, beyond the amplitudes themselves.
+        /// All three fall out of the SAME loop that walks the band, so none of them costs an extra pass, and all
+        /// three are properties of the spectrum rather than of the one random draw - which is what makes them
+        /// stable across a reseed and safe to key shading on.
+        /// </summary>
+        /// <param name="SlopeVariance">Expected slope variance, <c>sum k^2 S2D dk^2</c> over the band. The water
+        /// fragment feeds it to the Toksvig transfer: when the pixel footprint band-limits a cascade out of the
+        /// normal, this is the variance that has to reappear as glint-lobe width instead of being lost to a glassy
+        /// far field.</param>
+        /// <param name="HeightVariance">Expected height variance, <c>sum S2D dk^2</c> over the band. Summed across
+        /// the cascades it is <c>m0</c>, and <c>4 sqrt(m0)</c> is the significant wave height the breaking
+        /// criterion measures the local depth against (<see cref="WaterShoaling.SignificantHeight"/>).</param>
+        /// <param name="MeanWavenumber">Energy-weighted mean wave number over the band, rad/m:
+        /// <c>sum k S2D dk^2 / sum S2D dk^2</c>. This is the <c>k</c> the shoaling taper uses, and weighting it by
+        /// energy rather than taking the band's midpoint is what makes it mean something: cascade 0's band runs
+        /// from 0 to its Nyquist and nearly all of its energy sits near the spectral peak at the bottom of that,
+        /// so a midpoint would put the swell's <c>k</c> an order of magnitude too high and the swell would never
+        /// feel the bottom at all.</param>
+        internal readonly record struct CascadeStatistics(float SlopeVariance, float HeightVariance,
+            float MeanWavenumber);
+
+        /// <summary>
         /// Bake one cascade's initial amplitude field into <paramref name="destination"/>, one
         /// <see cref="Vector4"/> per texel in row-major <c>(m + n * resolution)</c> order:
         /// <c>xy = h0(k)</c> and <c>zw = conj(h0(-k))</c>, the two halves the per-frame time evolution needs.
@@ -254,13 +276,9 @@ namespace KhaozEngine.Render3D.Internal
         /// other. It carries the least energy of any row in the cascade, so dropping it costs nothing visible.
         /// </para>
         /// </summary>
-        /// <returns>
-        /// The cascade's EXPECTED slope variance, <c>sum k^2 S2D dk^2</c> over its band. The water fragment feeds
-        /// it to the Toksvig transfer: when the pixel footprint band-limits a cascade out of the normal, this is
-        /// exactly the variance that has to reappear as glint-lobe width instead of being lost to a glassy far
-        /// field. It is a property of the SPECTRUM rather than of one random draw, which is what makes it stable.
-        /// </returns>
-        public static float BuildInitialSpectrum(WaterSeaState sea, int cascadeIndex, int resolution,
+        /// <returns>The cascade's <see cref="CascadeStatistics"/>: the expected slope variance, height variance and
+        /// energy-weighted mean wave number of the band it just baked.</returns>
+        public static CascadeStatistics BuildInitialSpectrum(WaterSeaState sea, int cascadeIndex, int resolution,
             Span<Vector4> destination)
         {
             int n = resolution;
@@ -280,7 +298,7 @@ namespace KhaozEngine.Render3D.Internal
             float dk = TwoPi / tile;
             float cellArea = dk * dk;
 
-            float slopeVariance = 0f;
+            float slopeVariance = 0f, heightVariance = 0f, weightedK = 0f;
             for (int row = 0; row < n; row++)
             {
                 for (int col = 0; col < n; col++)
@@ -291,18 +309,26 @@ namespace KhaozEngine.Render3D.Internal
                     Vector2 h0 = Amplitude(col, row);
                     Vector2 mirror = Amplitude((n - col) % n, (n - row) % n);
                     destination[index] = new Vector4(h0.X, h0.Y, mirror.X, -mirror.Y);   // zw = conj(h0(-k))
-                    slopeVariance += SlopeVarianceAt(col, row);
+                    Accumulate(col, row);
                 }
             }
-            return slopeVariance;
+            // No energy at all in this cascade's band (a band the sea state simply does not reach) leaves the mean
+            // wave number at 0, which every consumer reads as "nothing here to attenuate".
+            return new CascadeStatistics(slopeVariance, heightVariance,
+                heightVariance > 0f ? weightedK / heightVariance : 0f);
 
-            float SlopeVarianceAt(int col, int row)
+            void Accumulate(int col, int row)
             {
                 float kx = (col - n * 0.5f) * dk;
                 float kz = (row - n * 0.5f) * dk;
                 float k2 = kx * kx + kz * kz;
-                float density = SpectralDensity(MathF.Sqrt(k2), MathF.Atan2(kz, kx));
-                return density <= 0f ? 0f : k2 * density * cellArea;
+                float k = MathF.Sqrt(k2);
+                float density = SpectralDensity(k, MathF.Atan2(kz, kx));
+                if (density <= 0f) return;
+                float energy = density * cellArea;
+                slopeVariance += k2 * energy;
+                heightVariance += energy;
+                weightedK += k * energy;
             }
 
             // The 2D wave-number spectrum S2D(k) at one grid point, or 0 outside this cascade's band. Shared by
